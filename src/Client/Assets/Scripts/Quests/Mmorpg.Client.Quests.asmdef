@@ -1,0 +1,21 @@
+{
+  "name": "Mmorpg.Client.Quests",
+  "rootNamespace": "Mmorpg.Client.Quests",
+  "references": [
+    "Mmorpg.Client.Api",
+    "Mmorpg.Client.Core",
+    "Mmorpg.Client.Networking",
+    "Mmorpg.Client.Items",
+    "Mmorpg.GameProtocol",
+    "Mmorpg.WorldData"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

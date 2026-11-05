@@ -161,6 +161,10 @@ namespace Mmorpg.Client.WorldActors
         // Vendor capability. The inventory presents it while the interaction stays open.
         public event Action<RealtimeWorldActorCapability> InventoryCapabilityOpened;
 
+        // Raised when the player chooses the quests capability of the open interaction, so the
+        // quest dialog opens for the NPC. Its actions need no other call to open.
+        public event Action<RealtimeWorldActorCapability> QuestCapabilityOpened;
+
         public WorldInteractionClientState State { get; } =
             new WorldInteractionClientState();
 
@@ -303,6 +307,11 @@ namespace Mmorpg.Client.WorldActors
             switch (ActivationFor(capability.Kind))
             {
                 case WorldCapabilityActivation.OpenOnly:
+                    if (capability.Kind == RealtimeWorldActorCapabilityKind.Quests)
+                    {
+                        QuestCapabilityOpened?.Invoke(capability);
+                    }
+
                     return;
                 case WorldCapabilityActivation.StartGathering:
                     if (Gathering.InteractionSessionId == active.InteractionSessionId
@@ -581,7 +590,10 @@ namespace Mmorpg.Client.WorldActors
             out string error,
             string offerDefinitionId = "",
             int quantity = 0,
-            long expectedPrice = 0)
+            long expectedPrice = 0,
+            string questId = "",
+            string questObjectiveId = "",
+            string rewardChoiceDefinitionId = "")
         {
             error = string.Empty;
             var active = State.ActiveInteraction;
@@ -628,7 +640,10 @@ namespace Mmorpg.Client.WorldActors
                 destinationSlotIndex,
                 offerDefinitionId ?? string.Empty,
                 quantity,
-                expectedPrice);
+                expectedPrice,
+                questId ?? string.Empty,
+                questObjectiveId ?? string.Empty,
+                rewardChoiceDefinitionId ?? string.Empty);
             if (!simulationClient.TrySendWorldInteraction(intent))
             {
                 error = "The capability action request could not be sent.";
@@ -640,6 +655,53 @@ namespace Mmorpg.Client.WorldActors
             pendingCapability = capability;
             pendingCapabilityAction = action;
             return true;
+        }
+
+        // A quest action at the NPC of the open interaction: accept, grant start items again,
+        // talk, hand over, or turn in with a reward choice. The worker checks it against the
+        // quest log and the NPC.
+        public bool TryExecuteQuestAction(
+            RealtimeCapabilityActionKind action,
+            string questId,
+            string objectiveId,
+            string rewardChoiceDefinitionId,
+            out string error)
+        {
+            var capability = State.ActiveInteraction == null
+                ? null
+                : Array.Find(
+                    State.ActiveInteraction.Capabilities,
+                    value => value.Kind == RealtimeWorldActorCapabilityKind.Quests);
+            if (capability == null)
+            {
+                error = "This NPC has no quests.";
+                return false;
+            }
+
+            return TryExecuteCapability(
+                capability.Id,
+                action,
+                0,
+                Guid.Empty,
+                0,
+                Guid.Empty,
+                -1,
+                out error,
+                questId: questId,
+                questObjectiveId: objectiveId,
+                rewardChoiceDefinitionId: rewardChoiceDefinitionId);
+        }
+
+        // The actor of the open interaction, such as the NPC whose quests the dialog shows.
+        public bool TryGetActiveActor(out WorldActorClientEntry actor)
+        {
+            actor = null;
+            var active = State.ActiveInteraction;
+            return active != null
+                && actorController != null
+                && actorController.State.TryGet(active.TargetEntityId, out actor)
+                && actor != null
+                && actor.RuntimeActorId == active.TargetRuntimeId;
         }
 
         // Unknown until the inventory has loaded, so only a loaded inventory without a

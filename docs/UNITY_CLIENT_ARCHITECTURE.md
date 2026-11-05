@@ -136,10 +136,11 @@ layers from the bottom up:
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
+| `Mmorpg.Client.Quests` | The quest catalog, the joined character's quest log and its loading, quest progress, the quest dialog's entries, and quest notices, described in [Quest Client](#quest-client) | Api, Core, Networking, Items |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation, the water wakes | Api, Core, Worlds, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, death and projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
-| `Mmorpg.Client.Ui` | Every panel including the combat HUD, the UI kit and theme, the inventory windows, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Gameplay, WorldActors, Combat |
+| `Mmorpg.Client.Ui` | Every panel including the combat HUD, the UI kit and theme, the inventory and quest windows, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Quests, Gameplay, WorldActors, Combat |
 | `Mmorpg.Client.App` | `ClientBootstrap`, the composition root | The same as Ui, and Ui |
 
 The client assemblies also reference the shared runtime packages they use:
@@ -392,6 +393,7 @@ endpoints.
 | Realtime timeout | 10 s | Realtime join and leave deadlines and the UDP disconnect timeout |
 | Session validation interval | 5 s, clamped to 2 to 60 s | The periodic account-session check |
 | Item gameplay catalog | `core.item-catalog.json` of the local WorldData package | `ClientItemCatalog` |
+| Quest catalog | `core.quest-catalog.json` of the local WorldData package | `ClientQuestCatalog` |
 | Runtime primitive material | `Assets/Art/Materials/M_RuntimePrimitive.mat`, URP Lit | Primitives that runtime presentation creates |
 | Debug line material | `Assets/Art/Materials/M_DebugLines.mat`, URP Unlit | The Debug menu's collision and path lines |
 | Arrow model | `Assets/Art/Models/Projectiles/BronzeArrow.fbx` | Arrows in flight and on an archer's string |
@@ -2794,6 +2796,60 @@ the final interface art.
   at the edge of the range to full size within `FullSizeDistanceMetres` (10).
 - Canvas: its own screen-space canvas at sorting order 10, below the combat HUD,
   so damage numbers and frames draw over it. Nothing on it takes a raycast.
+
+## Quest Client
+
+The client shows quests and never decides one: the servers check every action,
+as [Quest System Design](QUEST_SYSTEM_DESIGN.md#authority) describes.
+`Mmorpg.Client.Quests` holds the state and the rules it reads, and the quest
+windows in `Mmorpg.Client.Ui` present it.
+
+- `ClientQuestCatalog` reads the bundled `core.quest-catalog.json` through the
+  camelCase `QuestCatalogJsonDocument` of the WorldData package, which Unity's
+  `JsonUtility` needs, and accepts it only when `QuestCatalogCompiler.ValidateRuntime`
+  computes the same fingerprints and revision.
+- `QuestClientController` reads `GET /api/characters/{characterId}/quests` when
+  the character joins, up to three times, and refuses a log of another quest
+  catalog revision with `quest_catalog_update_required`. It applies every
+  `QuestLogChanged` whose previous revision is the log's; a change the log
+  already holds is stale, and one after a gap, or one with `ReloadRequired`,
+  reads the log again. Changes that arrive during a read wait and follow it in
+  revision order. When all three tries of a read fail, `QuestLogRetry` reads it
+  again after 2 s, doubling up to 30 s; a quest change or an opened quest dialog
+  reads it at once.
+- `QuestClientState` keeps the active quests with their current step and the
+  stored progress of the step's counted objectives, the completion counts, and
+  the character's level from the character list. It raises `QuestsChanged` with
+  each quest a change touched, before and after.
+- `QuestProgress` counts a collect objective by the carried items, as
+  `QuestCarriedItems` counts them from the confirmed inventory: the permanent
+  inventory and the equipped Bag, an ordinary item without an active policy and
+  a quest item with a `quest_grant` policy. The client does not see which quest
+  a lineage names.
+- `QuestDialogEntries` lists what an NPC can do for the player now: ready quests
+  it completes, talk-to and deliver objectives that name it, the quests it gives
+  that `QuestRules.Evaluate` allows, start items of its quests that the player
+  owns nowhere the inventory shows, carried, equipped, in the Bank, or in
+  Recovery Storage, and active quests it completes later.
+- `QuestNotices` writes the game messages of a committed change: an accepted
+  quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on,
+  and a completed or abandoned quest. `QuestProgressWatcher` follows every
+  quest change and every inventory change and writes the progress that carried
+  items make, such as `Wolf Pelts 2/3`, and a quest that became ready to turn in,
+  whatever made it ready, once. A load of the quest log starts it over without
+  messages.
+
+Choosing the `quests` capability raises
+`WorldInteractionClientController.QuestCapabilityOpened`, and `QuestWindows`
+opens the quest dialog at the screen's left edge for the NPC of the open
+interaction. Its canvas has sorting order 90, above the interaction panel and
+below the inventory. The dialog lists the entries; an entry shows its text, the
+current step's objectives, and the rewards, with `Accept`, `Complete` after a
+reward choice, `Continue`, `Hand over` once enough is carried, or `Ask again`.
+Each action goes through `TryExecuteQuestAction` with the quest, objective, and
+reward choice, and the dialog follows the quest log the change patches. A
+rejection shows its message in the dialog, and the dialog closes with its
+interaction. The temporary interaction panel's `Quests` button opens it again.
 
 ## Test Architecture
 

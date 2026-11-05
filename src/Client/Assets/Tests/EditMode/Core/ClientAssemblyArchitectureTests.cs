@@ -30,6 +30,7 @@ namespace Mmorpg.Client.Tests.EditMode
             "Mmorpg.Client.Worlds",
             "Mmorpg.Client.Networking",
             "Mmorpg.Client.Items",
+            "Mmorpg.Client.Quests",
             "Mmorpg.Client.Gameplay",
             "Mmorpg.Client.WorldActors",
             "Mmorpg.Client.Combat",
@@ -82,6 +83,15 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.WorldData.Client",
                     "Unity.ResourceManager"
                 },
+                ["Mmorpg.Client.Quests"] = new[]
+                {
+                    "Mmorpg.Client.Api",
+                    "Mmorpg.Client.Core",
+                    "Mmorpg.Client.Networking",
+                    "Mmorpg.Client.Items",
+                    "Mmorpg.GameProtocol",
+                    "Mmorpg.WorldData"
+                },
                 ["Mmorpg.Client.Gameplay"] = new[]
                 {
                     "Mmorpg.Client.Api",
@@ -129,6 +139,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.Client.Networking",
                     "Mmorpg.Client.Items",
+                    "Mmorpg.Client.Quests",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.WorldActors",
                     "Mmorpg.Client.Combat",
@@ -148,6 +159,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Worlds",
                     "Mmorpg.Client.Networking",
                     "Mmorpg.Client.Items",
+                    "Mmorpg.Client.Quests",
                     "Mmorpg.Client.Gameplay",
                     "Mmorpg.Client.WorldActors",
                     "Mmorpg.Client.Combat",

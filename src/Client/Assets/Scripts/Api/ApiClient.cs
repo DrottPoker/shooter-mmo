@@ -214,6 +214,24 @@ namespace Mmorpg.Client.Api
                 onError);
         }
 
+        public IEnumerator GetCharacterQuests(
+            string gameServiceBaseUrl,
+            string sessionToken,
+            string characterId,
+            Action<CharacterQuestLogResponse> onSuccess,
+            Action<ApiError> onError)
+        {
+            return SendJson(
+                "GET",
+                CombineUrl(
+                    gameServiceBaseUrl,
+                    "/api/characters/" + Uri.EscapeDataString(characterId) + "/quests"),
+                null,
+                sessionToken,
+                onSuccess,
+                onError);
+        }
+
         public IEnumerator GetCharacterBank(
             string gameServiceBaseUrl,
             string sessionToken,

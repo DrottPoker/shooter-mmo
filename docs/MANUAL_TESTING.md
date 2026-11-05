@@ -755,9 +755,42 @@ identities, and no old actor or interaction survives.
 
 ## Quests
 
+### The Quest Dialog
+
+Join Development World 2 with a new character, as
+[Join With The Unity Client](#join-with-the-unity-client) describes.
+
+1. Left-click Mira the Quartermaster, whose first option is `Quests`.
+   Expected result: the quest dialog opens at the left edge of the screen,
+   titled `MIRA THE QUARTERMASTER`, and lists `! A Letter for the Outpost` and
+   `! Wolves at the Gate`. `Pelts and Fangs` is missing, because it needs Wolves
+   at the Gate first.
+2. Choose `Wolves at the Gate`. Expected result: Mira's offer text,
+   `Feral Wolves slain 0/5` under `OBJECTIVES`, and `20 Gold` under `REWARDS`,
+   with `Back` and `Accept` below.
+3. Press `Accept`. Expected result: the game messages say
+   `Quest accepted: Wolves at the Gate`, and the dialog lists
+   `? Wolves at the Gate (in progress)`.
+4. Kill a Feral Wolf at the gate. Expected result: the game messages say
+   `Feral Wolves slain 1/5`. After the fifth, they also say
+   `Wolves at the Gate is ready to turn in.`
+5. Open Mira's quests again and choose `? Wolves at the Gate (Complete)`, then
+   press `Complete`. Expected result: Mira's completion text, the game messages
+   say `Quest completed: Wolves at the Gate`, the balance grows by 20 Gold, and
+   the dialog offers `! Pelts and Fangs`.
+6. Accept `A Letter for the Outpost`. Expected result: a Sealed Letter appears
+   in the inventory, and the game messages say
+   `Quest accepted: A Letter for the Outpost` and
+   `A Letter for the Outpost is ready to turn in.`, because the letter is all
+   the sergeant asks for. Put it into the Character Bank at Mira and open her
+   quests again. Expected result: the letter does not show as lost. Take it out
+   of the Bank again.
+7. Walk away from Mira while the dialog is open. Expected result: the dialog
+   closes with the interaction.
+
 ### Quest Commands On The Worker Quest Route
 
-The worker runs the quest actions, but no quest window shows them yet, so they
+The worker runs the quest actions through the quest dialog, and the same routes
 are checked against a real PostgreSQL database through the GameService services
 and the worker's own GameService client, with the test quests of
 [Quest Catalog Fixture](../tests/README.md#quest-catalog-fixture). Start the
@@ -866,8 +899,19 @@ corpse, which the Mob retries, an owner whose session ended or who has none
 on the worker gets no letter, and a durable corpse sends every rolled letter
 to GameService with the quest.
 
-The in-game checks of the quest dialog replace this section once the quest
-windows exist.
+Then run the client's quest state and dialog rules in the Unity Editor:
+
+```powershell
+./tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter QuestClientTests
+```
+
+Expected result: every test passes. The quest log loads for the character and
+its catalog and refuses another catalog revision, realtime changes apply in
+revision order and a gap asks for a reload, Mira lists her offers, the ready
+turn-in, the errand's talk, delivery, and lost letter, a change writes the
+accepted, progress, completed, and abandoned notices, carried letters write the
+trophies' progress and readiness once, and a failed read is tried again after a
+growing delay.
 
 ## Debug Menu (F2)
 

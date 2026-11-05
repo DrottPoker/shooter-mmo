@@ -67,6 +67,44 @@ namespace Mmorpg.Client.Api
         public long currency;
         public string createdAt;
         public string bodyModel;
+        public int level;
+    }
+
+    // A character's quest log at one quest log revision, for the bundled quest catalog of the
+    // named revision, which holds every quest text and rule.
+    [Serializable]
+    public sealed class CharacterQuestLogResponse
+    {
+        public string characterId;
+        public string questCatalogRevision;
+        public long questLogRevision;
+        public ActiveQuestResponse[] activeQuests;
+        public CompletedQuestResponse[] completedQuests;
+    }
+
+    // An active quest at its current step, with the progress of the step's counted objectives.
+    [Serializable]
+    public sealed class ActiveQuestResponse
+    {
+        public string questId;
+        public string stepId;
+        public string acceptedAt;
+        public QuestObjectiveProgressResponse[] objectives;
+    }
+
+    [Serializable]
+    public sealed class QuestObjectiveProgressResponse
+    {
+        public string objectiveId;
+        public int progress;
+    }
+
+    [Serializable]
+    public sealed class CompletedQuestResponse
+    {
+        public string questId;
+        public int completionCount;
+        public string lastCompletedAt;
     }
 
     // What character creation offers: the kinds of a look with their rules, and every body model,

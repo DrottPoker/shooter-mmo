@@ -7,12 +7,14 @@ internal sealed record CharacterAppearanceRequest(string? BodyModel, CharacterAp
 
 internal sealed record CharacterAppearanceChoiceRequest(string? Kind, string? Slot, string? Option);
 
+// Level is the character's level, which quest availability and level requirements read.
 internal sealed record CharacterResponse(
     Guid Id,
     string Name,
     long Currency,
     DateTime CreatedAt,
-    string BodyModel);
+    string BodyModel,
+    int Level);
 
 // What character creation offers, from the appearance content: the kinds of a look with their
 // rules, and every body model, the default first, with its options per kind and slot, the first

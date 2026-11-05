@@ -7,6 +7,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Quests;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.Client.Worlds;
@@ -26,6 +27,7 @@ namespace Mmorpg.Client.App
         private AsyncOperationHandle<ClientConfig> configHandle;
         private RealtimeSimulationClient simulationClient;
         private InventoryClientController inventoryController;
+        private QuestClientController questController;
         private CorpseClientController corpseController;
         private WorldActorClientController worldActorController;
         private WorldInteractionClientController worldInteractionController;
@@ -125,6 +127,9 @@ namespace Mmorpg.Client.App
             inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog);
             inventoryController.State.Changed += UpdatePlayerEquipment;
             UpdatePlayerEquipment();
+
+            questController = GetOrAddComponent<QuestClientController>();
+            questController.Initialize(apiClient, simulationClient, config.QuestCatalog);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient, inventoryController);
@@ -416,6 +421,13 @@ namespace Mmorpg.Client.App
                     bodyLook,
                     sceneContext != null ? sceneContext.Preview : null,
                     pointerFocus));
+            AddSceneComponentIfMissing<QuestWindows>(
+                windows => windows.Initialize(
+                    uiTheme,
+                    questController,
+                    inventoryController,
+                    worldInteractionController,
+                    gameMessages));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,
