@@ -158,7 +158,12 @@ internal sealed partial class CorpseService(
         }
 
         return ServiceResult<PersistentMobCorpseResponse>.Ok(
-            new PersistentMobCorpseResponse(request.OperationId, corpse));
+            new PersistentMobCorpseResponse(request.OperationId, corpse)
+            {
+                QuestDrops = (result.QuestDrops ?? [])
+                    .Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity))
+                    .ToArray()
+            });
     }
 
     public async Task<ServiceResult<SimulationItemOperationResponse>> GrantLiveMobLootAsync(

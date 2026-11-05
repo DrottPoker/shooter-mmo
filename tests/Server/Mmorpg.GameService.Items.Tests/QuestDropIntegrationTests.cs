@@ -180,10 +180,50 @@ public sealed class QuestDropIntegrationTests
             new(Guid.NewGuid(), Letter, 1, Trophies)
         ];
 
-        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, loot));
+        var created = await CreateCorpseAsync(world, corpseId, characterId, loot);
 
+        ItemScenarioWorld.AssertCommitted(created);
         Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Letter));
+        Assert.Equal([new ItemTransactionQuestDrop(Trophies, Letter, 1)], created.QuestDrops);
+    }
+
+    // The worker learns which quest drops a durable corpse kept, so it can tell the owner, also
+    // when it asks again with the same operation; a corpse without quest drops reports none.
+    [PostgresIntegrationFact]
+    public async Task TheWorkerLearnsWhichQuestDropsADurableCorpseKept()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_drop_reporter");
+        var characterId = player.Character.Id;
+        var session = await world.JoinAsync(player);
+        ItemScenarioWorld.AssertCommitted(
+            await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
+        var request = PersistentCorpseRequest(
+            characterId,
+            [
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 2),
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies),
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies),
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies)
+            ]);
+
+        var created = await context.CorpseService.CreatePersistentMobCorpseAsync(WorkerId, request, CancellationToken.None);
+        var replayed = await context.CorpseService.CreatePersistentMobCorpseAsync(WorkerId, request, CancellationToken.None);
+        var oreOnly = await context.CorpseService.CreatePersistentMobCorpseAsync(
+            WorkerId,
+            PersistentCorpseRequest(characterId, [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1)]),
+            CancellationToken.None);
+
+        // The trophies need two letters, so the corpse keeps two of the three.
+        SimulationQuestDrop[] kept = [new(Trophies, Letter, 1), new(Trophies, Letter, 1)];
+        Assert.True(created.Succeeded, created.Error?.Message);
+        Assert.Equal(kept, created.Value!.QuestDrops);
+        Assert.True(replayed.Succeeded, replayed.Error?.Message);
+        Assert.Equal(kept, replayed.Value!.QuestDrops);
+        Assert.True(oreOnly.Succeeded, oreOnly.Error?.Message);
+        Assert.Empty(oreOnly.Value!.QuestDrops);
     }
 
     // The worker's read before it lays out a live corpse: the drops that the owner's quests still
@@ -332,6 +372,34 @@ public sealed class QuestDropIntegrationTests
                     ownerCharacterId,
                     ownerCharacterId is null ? null : Guid.NewGuid())),
             CancellationToken.None);
+    }
+
+    private static CreatePersistentMobCorpseRequest PersistentCorpseRequest(
+        Guid ownerCharacterId,
+        IReadOnlyList<MobCorpseLootEntryRequest> loot)
+    {
+        return new CreatePersistentMobCorpseRequest(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            WorkerId,
+            WorkerRuntimeId,
+            ShardId,
+            Wolf,
+            "Feral Wolf",
+            1.5d,
+            0d,
+            -2d,
+            0d,
+            0d,
+            0d,
+            1d,
+            "corpse.mob",
+            90d,
+            loot)
+        {
+            OwnerCharacterId = ownerCharacterId,
+            LootGroupId = Guid.NewGuid()
+        };
     }
 
     private static async Task<ItemTransactionResult> LootAsync(

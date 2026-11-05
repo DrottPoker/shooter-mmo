@@ -73,9 +73,14 @@ internal sealed record CreatePersistentMobCorpseRequest(
     public Guid? LootGroupId { get; init; }
 }
 
+// QuestDrops are the quest drops that the corpse keeps for its owner, in corpse order, so the
+// worker can tell the owner.
 internal sealed record PersistentMobCorpseResponse(
     Guid OperationId,
-    DurableCorpseResponse Corpse);
+    DurableCorpseResponse Corpse)
+{
+    public IReadOnlyList<SimulationQuestDrop> QuestDrops { get; init; } = [];
+}
 
 internal sealed record SimulationMobLootGrantRequest(
     Guid GrantId,
