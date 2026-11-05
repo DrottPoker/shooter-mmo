@@ -39,6 +39,10 @@ internal sealed class RealtimePeerContext(
 
     public bool AuthorityOperationInFlight { get; set; }
 
+    // The peer that a reconnect moved this peer's session to while an operation still ran on
+    // this peer's lane. Its lane opens when that operation ends.
+    public RealtimePeerContext? LaneSuccessor { get; set; }
+
     public string? CorpsePresenceSignature { get; set; }
 
     public DateTime? DisconnectAfterUtc { get; set; }

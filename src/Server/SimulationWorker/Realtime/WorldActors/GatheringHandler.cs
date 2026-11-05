@@ -193,7 +193,7 @@ internal sealed class GatheringHandler(
         {
             activity.Node.ReleaseResourceCharge(activity.Generation);
             activity.CycleQueued = false;
-            context.AuthorityOperationInFlight = false;
+            authorityScheduler.Release(context);
             authorityScheduler.StartNext(context);
             return;
         }
@@ -225,7 +225,7 @@ internal sealed class GatheringHandler(
 
     private void FinalizeCycle(GatheringCycleCompleted completed)
     {
-        completed.Context.AuthorityOperationInFlight = false;
+        authorityScheduler.Release(completed.Context);
         var node = completed.Node;
         var activity = activities.TryGetValue(completed.Context.PeerId, out var current)
             && current.OperationId == completed.Request.OperationId

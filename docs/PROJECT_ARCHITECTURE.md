@@ -965,7 +965,9 @@ and disconnects the older peer generation. While the reconnect is still being
 finalized, the older peer only detaches its connection. It never removes the
 shared entity or carry state that the reconnecting client takes over. The reused
 entity resets its movement input sequence, because the new client generation
-starts its input sequence from the beginning.
+starts its input sequence from the beginning. An authority operation that still
+runs on the older peer's lane keeps the new peer's lane closed until it ends, so
+the session's operations keep their order across the reconnect.
 
 ### Leave, Disconnect, Expiry, And Failover
 

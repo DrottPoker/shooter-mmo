@@ -72,7 +72,7 @@ internal sealed class PlayerCombatAuthority(
             existing.LeaveRequested = false;
             if (!ReferenceEquals(previousContext, context))
             {
-                MoveLane(existing);
+                MoveLane(existing, previousContext);
             }
 
             return existing;
@@ -606,10 +606,12 @@ internal sealed class PlayerCombatAuthority(
     }
 
     // A reconnect gives the session a new peer, whose lane starts empty. Durable work that is in
-    // flight or waits for a retry keeps holding the lane, so the new peer's operations wait for
-    // it, and the work that waited in the old peer's lane takes its place in the new one: the
-    // death first, then the kill credits in kill order. A batch is queued again when it is due.
-    private void MoveLane(PlayerCombatSession combatSession)
+    // flight or waits for a retry keeps holding the lane, and its completion opens the new one.
+    // A client operation that still runs on the old peer's lane keeps the new lane closed until
+    // it ends, so a credit that waited behind an accept still sees the accepted quest. The work
+    // that waited in the old peer's lane takes its place in the new one: the death first, then
+    // the kill credits in kill order. A batch is queued again when it is due.
+    private void MoveLane(PlayerCombatSession combatSession, RealtimePeerContext previousContext)
     {
         combatSession.BatchQueued = false;
         if (combatSession.InFlightBatch is not null
@@ -617,6 +619,10 @@ internal sealed class PlayerCombatAuthority(
             || combatSession.InFlightQuestCredit is not null)
         {
             combatSession.Context.AuthorityOperationInFlight = true;
+        }
+        else if (previousContext.AuthorityOperationInFlight)
+        {
+            AuthorityOperationScheduler.HandOver(previousContext, combatSession.Context);
         }
 
         if (combatSession.Death is { Committed: false, InFlight: false, RetryAtTick: null })
@@ -967,7 +973,7 @@ internal sealed class PlayerCombatAuthority(
 
     private void FinishLeave(RealtimePeerContext context, PlayerCombatSession combatSession)
     {
-        context.AuthorityOperationInFlight = false;
+        scheduler.Release(context);
         if (combatSession.HasDurableWork
             && (combatSession.Death is not null || combatSession.HasQuestCredits))
         {
@@ -1062,7 +1068,7 @@ internal sealed class PlayerCombatAuthority(
     private void EndSession(PlayerCombatSession combatSession, string code, string message)
     {
         sessions.Remove(combatSession.Session.SimulationSessionId);
-        combatSession.Context.AuthorityOperationInFlight = false;
+        scheduler.Release(combatSession.Context);
         if (combatSession.Detached)
         {
             sessionOperations.ReleaseDetachedInBackground(combatSession.Session);
@@ -1083,7 +1089,7 @@ internal sealed class PlayerCombatAuthority(
 
     private void ReleaseLane(PlayerCombatSession combatSession)
     {
-        combatSession.Context.AuthorityOperationInFlight = false;
+        scheduler.Release(combatSession.Context);
         if (!combatSession.Detached)
         {
             scheduler.StartNext(combatSession.Context);

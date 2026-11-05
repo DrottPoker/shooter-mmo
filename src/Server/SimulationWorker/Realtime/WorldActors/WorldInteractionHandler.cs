@@ -150,7 +150,7 @@ internal sealed class WorldInteractionHandler(
         {
             // The operation is dropped, so the rest of the queue must not wait for an
             // intent that may never arrive.
-            context.AuthorityOperationInFlight = false;
+            authorityScheduler.Release(context);
             authorityScheduler.StartNext(context);
             return;
         }
@@ -176,7 +176,7 @@ internal sealed class WorldInteractionHandler(
     private void FinalizeOperation(
         WorldInteractionOperationCompleted completed)
     {
-        completed.Context.AuthorityOperationInFlight = false;
+        authorityScheduler.Release(completed.Context);
         if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
             || completed.Context.Session.SimulationSessionId
