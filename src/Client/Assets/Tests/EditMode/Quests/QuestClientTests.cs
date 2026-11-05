@@ -122,20 +122,55 @@ namespace Mmorpg.Client.Tests.EditMode
             var twoKills = new QuestClientActiveQuest(FixtureQuestCatalog.Wolves, "hunt", Progress(("wolves", 2)));
 
             Assert.That(
-                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, null, hunting, 0, 0) }, catalog, _ => 0),
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, null, hunting, 0, 0) }, catalog),
                 Is.EqualTo(new[] { "Quest accepted: Fixture Wolves" }));
             Assert.That(
-                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, hunting, oneKill, 0, 0) }, catalog, _ => 0),
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, hunting, oneKill, 0, 0) }, catalog),
                 Is.EqualTo(new[] { "Feral Wolves slain 1/2" }));
             Assert.That(
-                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, oneKill, twoKills, 0, 0) }, catalog, _ => 0),
-                Is.EqualTo(new[] { "Feral Wolves slain 2/2", "Fixture Wolves is ready to turn in." }));
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, oneKill, twoKills, 0, 0) }, catalog),
+                Is.EqualTo(new[] { "Feral Wolves slain 2/2" }));
             Assert.That(
-                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, twoKills, null, 0, 1) }, catalog, _ => 0),
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, twoKills, null, 0, 1) }, catalog),
                 Is.EqualTo(new[] { "Quest completed: Fixture Wolves" }));
             Assert.That(
-                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, oneKill, null, 0, 0) }, catalog, _ => 0),
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Wolves, oneKill, null, 0, 0) }, catalog),
                 Is.EqualTo(new[] { "Quest abandoned: Fixture Wolves" }));
+        }
+
+        // Carried letters move the trophies' collect objective, and the quest says once that it is
+        // ready, whether a kill or an item made it so. A load tells nothing.
+        [Test]
+        public void TheWatcherTellsCollectProgressAndReadinessOnce()
+        {
+            var letters = 0;
+            Func<string, int> carried = id => id == "fixture.letter" ? letters : 0;
+            var state = Ready(
+                Active(FixtureQuestCatalog.Trophies, "collect"),
+                Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 1)));
+            var watcher = new QuestProgressWatcher();
+
+            Assert.That(watcher.Update(state, carried), Is.Empty);
+            letters = 1;
+            Assert.That(watcher.Update(state, carried), Is.EqualTo(new[] { "Stolen letters 1/2" }));
+            letters = 2;
+            Assert.That(
+                watcher.Update(state, carried),
+                Is.EqualTo(new[] { "Stolen letters 2/2", "Fixture Trophies is ready to turn in." }));
+            letters = 3;
+            Assert.That(watcher.Update(state, carried), Is.Empty);
+
+            state.ApplyChange(Change(3, 4, Quest(FixtureQuestCatalog.Wolves, "hunt", 0, ("wolves", 2))));
+            Assert.That(watcher.Update(state, carried), Is.EqualTo(new[] { "Fixture Wolves is ready to turn in." }));
+            state.ApplyChange(Change(4, 5, Quest(FixtureQuestCatalog.OreRun, "deliver", 2)));
+            Assert.That(watcher.Update(state, carried), Is.Empty);
+
+            // A quest that is ready when it is accepted says so at once.
+            var fresh = Ready();
+            var freshWatcher = new QuestProgressWatcher();
+            freshWatcher.Update(fresh, carried);
+            fresh.ApplyChange(Change(3, 4, Quest(FixtureQuestCatalog.Trophies, "collect", 0)));
+            Assert.That(freshWatcher.Update(fresh, carried), Is.EqualTo(new[] { "Fixture Trophies is ready to turn in." }));
         }
 
         // A failed read of the quest log is tried again after 2 s, then 4 s, up to 30 s, and a

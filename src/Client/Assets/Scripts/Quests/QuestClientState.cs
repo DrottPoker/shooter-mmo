@@ -116,6 +116,10 @@ namespace Mmorpg.Client.Quests
         // The quest log revision the state holds, or -1 before a load.
         public long Revision { get; private set; } = -1;
 
+        // Counts every load of a log and every change of character, so a watcher of the state
+        // knows when it starts over.
+        public int LoadCount { get; private set; }
+
         public IReadOnlyDictionary<string, QuestClientActiveQuest> ActiveQuests
         {
             get { return activeQuests; }
@@ -145,6 +149,7 @@ namespace Mmorpg.Client.Quests
             CharacterId = characterId;
             CharacterLevel = Math.Max(1, level);
             Revision = -1;
+            LoadCount++;
             ErrorCode = string.Empty;
             ErrorMessage = string.Empty;
             if (Status != QuestClientStatus.UpdateRequired)
@@ -243,6 +248,7 @@ namespace Mmorpg.Client.Quests
             }
 
             Revision = response.questLogRevision;
+            LoadCount++;
             Status = QuestClientStatus.Ready;
             ErrorCode = string.Empty;
             ErrorMessage = string.Empty;

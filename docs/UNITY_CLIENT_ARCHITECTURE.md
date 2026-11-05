@@ -2833,7 +2833,11 @@ windows in `Mmorpg.Client.Ui` present it.
   Recovery Storage, and active quests it completes later.
 - `QuestNotices` writes the game messages of a committed change: an accepted
   quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on,
-  a quest ready to turn in, and a completed or abandoned quest.
+  and a completed or abandoned quest. `QuestProgressWatcher` follows every
+  quest change and every inventory change and writes the progress that carried
+  items make, such as `Wolf Pelts 2/3`, and a quest that became ready to turn in,
+  whatever made it ready, once. A load of the quest log starts it over without
+  messages.
 
 Choosing the `quests` capability raises
 `WorldInteractionClientController.QuestCapabilityOpened`, and `QuestWindows`

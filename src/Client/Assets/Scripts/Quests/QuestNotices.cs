@@ -5,14 +5,14 @@ using Mmorpg.WorldData.Quests;
 namespace Mmorpg.Client.Quests
 {
     // The game messages for the quests that one committed change touched: an accepted quest, the
-    // progress of a counted objective such as "Feral Wolves slain 3/5", a step that moved on, a
-    // quest ready to turn in, and a completed or abandoned quest.
+    // progress of a counted objective such as "Feral Wolves slain 3/5", a step that moved on, and
+    // a completed or abandoned quest. QuestProgressWatcher tells the collect progress and when a
+    // quest is ready to turn in.
     public static class QuestNotices
     {
         public static IReadOnlyList<string> For(
             IReadOnlyList<QuestClientChange> changes,
-            ClientQuestCatalog catalog,
-            Func<string, int> carriedCount)
+            ClientQuestCatalog catalog)
         {
             var notices = new List<string>();
             if (changes == null || catalog == null)
@@ -49,7 +49,7 @@ namespace Mmorpg.Client.Quests
                 }
                 else
                 {
-                    foreach (var line in QuestProgress.CurrentObjectives(quest, change.After, carriedCount))
+                    foreach (var line in QuestProgress.CurrentObjectives(quest, change.After, null))
                     {
                         if (QuestRules.StoresProgress(line.Objective)
                             && line.Progress > change.Before.ProgressOf(line.Objective.Id))
@@ -57,12 +57,6 @@ namespace Mmorpg.Client.Quests
                             notices.Add(line.Text);
                         }
                     }
-                }
-
-                if (QuestProgress.IsReadyToTurnIn(quest, change.After, carriedCount)
-                    && (change.Before == null || !QuestProgress.IsReadyToTurnIn(quest, change.Before, carriedCount)))
-                {
-                    notices.Add(quest.Title + " is ready to turn in.");
                 }
             }
 

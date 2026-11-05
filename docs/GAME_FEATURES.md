@@ -670,9 +670,10 @@ personal, and its progress survives death, leaving, and Shard switches.
   them, and collect objectives count the carried items. A quest item that a Mob
   drops lies in the corpse of the player whose quest needs it.
 - The game messages report every change: `Quest accepted: <quest>`, progress
-  such as `Feral Wolves slain 3/5`, `Quest updated: <quest>` when a quest moves to
-  its next step, `<quest> is ready to turn in.`, and
-  `Quest completed: <quest>` or `Quest abandoned: <quest>`.
+  such as `Feral Wolves slain 3/5` or, for carried items, `Wolf Pelts 2/3`,
+  `Quest updated: <quest>` when a quest moves to its next step,
+  `<quest> is ready to turn in.` once a quest is done, also when looting its last
+  item finishes it, and `Quest completed: <quest>` or `Quest abandoned: <quest>`.
 - The quest log, the tracker, the markers over NPCs, and abandoning a quest are
   not in the client yet.
 

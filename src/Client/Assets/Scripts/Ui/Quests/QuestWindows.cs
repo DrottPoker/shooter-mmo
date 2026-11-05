@@ -33,7 +33,9 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController inventory;
         private WorldInteractionClientController interaction;
         private GameMessageLog messages;
+        private readonly QuestProgressWatcher progressWatcher = new QuestProgressWatcher();
         private UiWindow dialog;
+        private int watchedLoad = -1;
         private string npcActorId = string.Empty;
         private Guid dialogInteractionSessionId;
         private QuestDialogEntry selected;
@@ -98,13 +100,13 @@ namespace Mmorpg.Client.Ui
             BuildUi();
             if (quests != null)
             {
-                quests.State.Changed += Refresh;
+                quests.State.Changed += OnQuestStateChanged;
                 quests.State.QuestsChanged += OnQuestsChanged;
             }
 
             if (inventory != null)
             {
-                inventory.State.Changed += Refresh;
+                inventory.State.Changed += OnInventoryChanged;
             }
 
             if (interaction != null)
@@ -118,13 +120,13 @@ namespace Mmorpg.Client.Ui
         {
             if (quests != null)
             {
-                quests.State.Changed -= Refresh;
+                quests.State.Changed -= OnQuestStateChanged;
                 quests.State.QuestsChanged -= OnQuestsChanged;
             }
 
             if (inventory != null)
             {
-                inventory.State.Changed -= Refresh;
+                inventory.State.Changed -= OnInventoryChanged;
             }
 
             if (interaction != null)
@@ -157,14 +159,44 @@ namespace Mmorpg.Client.Ui
             Refresh();
         }
 
+        // A load starts the progress watch over without notices; a quest change comes with its
+        // notices below.
+        private void OnQuestStateChanged()
+        {
+            if (quests.State.LoadCount != watchedLoad)
+            {
+                watchedLoad = quests.State.LoadCount;
+                progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State));
+            }
+
+            Refresh();
+        }
+
         private void OnQuestsChanged(IReadOnlyList<QuestClientChange> changes)
+        {
+            Say(QuestNotices.For(changes, quests.State.Catalog));
+            Say(progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State)));
+        }
+
+        // Carried items move collect objectives, and they can make a quest ready.
+        private void OnInventoryChanged()
+        {
+            if (quests != null)
+            {
+                Say(progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State)));
+            }
+
+            Refresh();
+        }
+
+        private void Say(IReadOnlyList<string> notices)
         {
             if (messages == null)
             {
                 return;
             }
 
-            foreach (var notice in QuestNotices.For(changes, quests.State.Catalog, QuestCarriedItems.Counter(inventory?.State)))
+            foreach (var notice in notices)
             {
                 messages.Add(notice, Time.unscaledTime);
             }

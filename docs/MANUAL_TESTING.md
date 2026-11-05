@@ -908,8 +908,10 @@ Then run the client's quest state and dialog rules in the Unity Editor:
 Expected result: every test passes. The quest log loads for the character and
 its catalog and refuses another catalog revision, realtime changes apply in
 revision order and a gap asks for a reload, Mira lists her offers, the ready
-turn-in, the errand's talk, delivery, and lost letter, and a change writes the
-accepted, progress, ready, completed, and abandoned notices.
+turn-in, the errand's talk, delivery, and lost letter, a change writes the
+accepted, progress, completed, and abandoned notices, carried letters write the
+trophies' progress and readiness once, and a failed read is tried again after a
+growing delay.
 
 ## Debug Menu (F2)
 
