@@ -26,4 +26,12 @@ public static class GameServiceOutcome
     {
         return EndsSession(code) || code is "wrong_simulation_worker";
     }
+
+    // An item transaction may have committed before its answer was lost or failed: a timeout, a
+    // lost connection, or a server error such as a failed read of the committed state. An answer
+    // that ends the session is final.
+    public static bool MayHaveCommitted(string code, int statusCode)
+    {
+        return !EndsItemSession(code) && (IsUncertain(code) || statusCode >= 500);
+    }
 }

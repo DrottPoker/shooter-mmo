@@ -4,6 +4,7 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Items;
@@ -15,7 +16,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // behind the peer's other authority work. A committed yield consumes the charge, the last
 // charge depletes the node for everyone, and the central timer queue respawns it. Moving,
 // closing the interaction, or a rejected yield stops gathering. While a player gathers, it
-// uses the item of its Tool slot, which its look shows in its hands. Loop-confined.
+// uses the item of its Tool slot, which its look shows in its hands. A yield that the
+// character's quest log asks for names the node's actor definition, and the quests it
+// advanced reach the client after the item change. Loop-confined.
 internal sealed class GatheringHandler(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -32,7 +35,8 @@ internal sealed class GatheringHandler(
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     GatheringAuthorityOperations authority,
-    WorldActorMetrics? metrics) : IRealtimeCompletionHandler
+    WorldActorMetrics? metrics,
+    QuestProgressFilter? questProgress = null) : IRealtimeCompletionHandler
 {
     // A character that moves farther than this from where gathering started stops.
     private const float MovementTolerance = 0.1f;
@@ -189,9 +193,24 @@ internal sealed class GatheringHandler(
         {
             activity.Node.ReleaseResourceCharge(activity.Generation);
             activity.CycleQueued = false;
-            context.AuthorityOperationInFlight = false;
+            authorityScheduler.Release(context);
             authorityScheduler.StartNext(context);
             return;
+        }
+
+        // A retry after an uncertain answer sends the same request, so a committed yield replays
+        // its stored result even when the quest log changed since.
+        if (activity.Request?.OperationId != activity.OperationId)
+        {
+            activity.Request = new SimulationGatheringRequest(
+                activity.OperationId,
+                activity.InteractionSessionId,
+                activity.CapabilityId,
+                activity.Node.Spawn.Id,
+                activity.Node.ResourceProfile!,
+                questProgress?.CountsGather(activity.Session, activity.Node.Definition.Id) == true
+                    ? activity.Node.Definition.Id
+                    : null);
         }
 
         activity.CycleStarted = true;
@@ -201,17 +220,12 @@ internal sealed class GatheringHandler(
             activity.Session,
             activity.Node,
             activity.Generation,
-            new SimulationGatheringRequest(
-                activity.OperationId,
-                activity.InteractionSessionId,
-                activity.CapabilityId,
-                activity.Node.Spawn.Id,
-                activity.Node.ResourceProfile!)));
+            activity.Request));
     }
 
     private void FinalizeCycle(GatheringCycleCompleted completed)
     {
-        completed.Context.AuthorityOperationInFlight = false;
+        authorityScheduler.Release(completed.Context);
         var node = completed.Node;
         var activity = activities.TryGetValue(completed.Context.PeerId, out var current)
             && current.OperationId == completed.Request.OperationId
@@ -283,6 +297,7 @@ internal sealed class GatheringHandler(
             sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
         }
 
+        SendQuestLogChange(peer, completed);
         if (entityRegistry.TryGetPlayerByCharacterId(completed.Session.CharacterId, out var entity))
         {
             carrySync.ApplyLatest(entity!);
@@ -306,6 +321,14 @@ internal sealed class GatheringHandler(
             profile.YieldDefinitionId,
             profile.YieldQuantity,
             carry.ItemStateRevision)));
+    }
+
+    private void SendQuestLogChange(IRealtimePeerConnection peer, GatheringCycleCompleted completed)
+    {
+        if (completed.QuestLogChange is { } change)
+        {
+            sender.SendControl(peer, RealtimeProtocol.EncodeQuestLogChanged(change));
+        }
     }
 
     private void TerminateForDivergence(IRealtimePeerConnection peer, GatheringCycleCompleted completed)
@@ -340,6 +363,9 @@ internal sealed class GatheringHandler(
             return;
         }
 
+        // A yield that may have counted for a quest before its answer was lost had the worker
+        // read the quest log again.
+        SendQuestLogChange(peer, completed);
         if (activity is null)
         {
             metrics?.RecordGatheringCycle("rejected");
@@ -479,6 +505,9 @@ internal sealed class GatheringHandler(
         public long Generation { get; set; }
 
         public Guid OperationId { get; set; }
+
+        // The request of the current operation id, which every retry sends again.
+        public SimulationGatheringRequest? Request { get; set; }
 
         public int UncertainRetries { get; set; }
     }

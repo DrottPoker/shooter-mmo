@@ -1,5 +1,6 @@
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
@@ -62,9 +63,37 @@ internal sealed class PlayerDeathAttempt(
     public uint? RetryAtTick { get; set; }
 }
 
+// A credited Mob kill on its way to GameService for the character's quests. A retry reuses
+// its operation id, so a lost answer replays the stored result instead of counting twice.
+internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IReadOnlyList<string> mobTags)
+{
+    public Guid OperationId { get; } = operationId;
+
+    public string MobActorId { get; } = mobActorId;
+
+    public IReadOnlyList<string> MobTags { get; } = mobTags;
+
+    public int Attempts { get; set; }
+
+    // While set, the credit waits for a retry after an uncertain outcome.
+    public uint? RetryAtTick { get; set; }
+
+    public QuestOperation ToOperation()
+    {
+        return new QuestOperation(
+            OperationId,
+            QuestOperationKinds.CreditKill,
+            null,
+            MobActorId: MobActorId,
+            MobTags: MobTags,
+            ClientIntent: false);
+    }
+}
+
 // The durable combat work of one simulation session: uncommitted shots, the batch in
-// flight, and a death that has not committed. It outlives the peer, so a disconnect or
-// leave first commits it and only then releases the session. Loop-confined.
+// flight, a death that has not committed, and the quest kill credits. It outlives the
+// peer, so a disconnect or leave first commits it and only then releases the session.
+// Loop-confined.
 internal sealed class PlayerCombatSession(ActiveSimulationSession session, RealtimePeerContext context)
 {
     public ActiveSimulationSession Session { get; set; } = session;
@@ -96,10 +125,19 @@ internal sealed class PlayerCombatSession(ActiveSimulationSession session, Realt
     // client intent computed on one of them is forwarded with the newest.
     public List<long> BatchRevisionChain { get; } = [];
 
+    // Credited kills that count for the character's quests and wait for their turn in the lane,
+    // in kill order.
+    public List<QuestKillCredit> QuestCredits { get; } = [];
+
+    public QuestKillCredit? InFlightQuestCredit { get; set; }
+
+    public bool HasQuestCredits => QuestCredits.Count > 0 || InFlightQuestCredit is not null;
+
     public bool HasDurableWork => PendingShots > 0
         || BatchQueued
         || InFlightBatch is not null
-        || Death is { Committed: false };
+        || Death is { Committed: false }
+        || HasQuestCredits;
 
     public void RecordBatchRevision(long previousRevision, long committedRevision)
     {

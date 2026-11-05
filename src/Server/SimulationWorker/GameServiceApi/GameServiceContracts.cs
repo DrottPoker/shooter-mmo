@@ -134,7 +134,8 @@ public sealed record SimulationItemOperationRequest(
     long? ExpectedPrice = null,
     string? ResourceProfileId = null,
     string? ResourceNodeId = null,
-    string? RequiredToolKind = null);
+    string? RequiredToolKind = null,
+    string? ResourceActorId = null);
 
 public sealed record SimulationPlayerDeathRequest(
     Guid OperationId,

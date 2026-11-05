@@ -1,21 +1,16 @@
-using System.Net;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using Dapper;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Database;
-using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Testing;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Actors;
-using ServerItemOperationRequest = Mmorpg.GameService.Items.SimulationItemOperationRequest;
 using ServerJoinTicket = Mmorpg.GameService.Placement.ConsumedSimulationJoinTicketResponse;
 using WorkerAccessRequest = Mmorpg.SimulationWorker.GameServiceApi.SimulationItemAccessRequest;
 using WorkerItemOperationRequest = Mmorpg.SimulationWorker.GameServiceApi.SimulationItemOperationRequest;
@@ -45,7 +40,7 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             "Vendor Flow");
         await CreditAsync(context, player.Character.Id, 100);
         var session = await JoinAsync(context, player);
-        using var httpClient = new HttpClient(new InProcessItemOperations(context))
+        using var httpClient = new HttpClient(new InProcessWorkerRoutes(context, WorkerId))
         {
             BaseAddress = new Uri("http://game-service.test")
         };
@@ -235,41 +230,5 @@ public sealed class VendorAndGatheringFlowIntegrationTests
             .Select(slot => slot.Item)
             .Concat(snapshot.Equipment.Select(slot => slot.Item))
             .OfType<ItemInstanceSnapshotResponse>();
-    }
-
-    // Serves the worker's item-operation calls with the GameService mutation service, the
-    // route's request type, and its HTTP result mapping, without a web host.
-    private sealed class InProcessItemOperations(PostgresIntegrationTestContext context)
-        : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            var segments = request.RequestUri!.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            Assert.Equal(HttpMethod.Post, request.Method);
-            Assert.Equal(4, segments.Length);
-            Assert.Equal("simulation-sessions", segments[1]);
-            Assert.Equal("item-operations", segments[3]);
-            var operation = JsonSerializer.Deserialize<ServerItemOperationRequest>(
-                await request.Content!.ReadAsStringAsync(cancellationToken),
-                WebJson)!;
-            await using var scope = context.Services.CreateAsyncScope();
-            var result = await scope.ServiceProvider
-                .GetRequiredService<SimulationItemMutationService>()
-                .ExecuteAsync(WorkerId, Guid.Parse(segments[2]), operation, cancellationToken);
-
-            var httpContext = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
-            var body = new MemoryStream();
-            httpContext.Response.Body = body;
-            await result.ToHttpResult().ExecuteAsync(httpContext);
-            var response = new HttpResponseMessage((HttpStatusCode)httpContext.Response.StatusCode)
-            {
-                Content = new ByteArrayContent(body.ToArray())
-            };
-            response.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(
-                httpContext.Response.ContentType ?? "application/json");
-            return response;
-        }
     }
 }

@@ -145,7 +145,7 @@ internal sealed class ItemOperationHandler(
 
     private void FinalizeOperation(ItemOperationCompleted completed)
     {
-        completed.Context.AuthorityOperationInFlight = false;
+        authorityScheduler.Release(completed.Context);
         combatGate?.ClientOperationFinished(completed.Context);
         if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
             || completed.Context.Session is null
