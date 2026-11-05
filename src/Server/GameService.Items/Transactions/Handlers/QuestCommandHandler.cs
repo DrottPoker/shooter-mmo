@@ -3,6 +3,7 @@ using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
 
@@ -26,8 +27,6 @@ internal sealed class QuestCommandHandler(
     IItemCommandHandler<CreditQuestKillCommand>,
     IItemCommandHandler<TurnInQuestCommand>
 {
-    private const int MaximumMobTags = 16;
-
     private readonly IQuestDefinitions questDefinitions = questDefinitions;
     private readonly ICharacterQuestLog questLog = questLog;
     private readonly ICharacterWallet characterWallet = characterWallet;
@@ -203,12 +202,14 @@ internal sealed class QuestCommandHandler(
         context.Authority.EnsureSimulationWorkerAuthority();
         if (!Identifiers.IsContentIdentifier(command.MobActorId)
             || command.MobTags is null
-            || command.MobTags.Count > MaximumMobTags
+            || command.MobTags.Count > WorldActorCompiler.MaximumTagsPerActor
             || command.MobTags.Any(tag => !Identifiers.IsContentIdentifier(tag)))
         {
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.SimulationOperationInvalid,
-                "A kill credit names the Mob's actor definition and at most 16 tags.");
+                "A kill credit names the Mob's actor definition and at most "
+                    + WorldActorCompiler.MaximumTagsPerActor
+                    + " of its tags.");
         }
 
         await context.Locks.LockCharacterStateForIdempotentEventAsync(command.CharacterId, cancellationToken);

@@ -775,7 +775,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests"
 ```
 
-Expected result: 16 tests pass. Each one joins a character to the Shard and
+Expected result: 17 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -784,7 +784,8 @@ checks one outcome:
   quest, a full inventory, and a second acceptance are refused and change
   nothing.
 - Two credited Feral Wolf kills bring `wolves` to 2, and a third changes
-  nothing. Two gathering yields of an Iron Vein bring the errand's `ore` to 2.
+  nothing; a kill credit takes the up to 32 tags an actor may carry. Two
+  gathering yields of an Iron Vein bring the errand's `ore` to 2.
 - Talking to Mira and handing over one `fixture.ore` complete the errand's
   first step, take the ore, and move the quest to step `return`.
 - Turning in the errand takes the letter, removes a spare letter with the

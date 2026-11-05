@@ -4,6 +4,7 @@ using Mmorpg.GameService.Items.Tests.ItemTransactions;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 using static Mmorpg.GameService.Items.Tests.QuestScenario;
 
@@ -36,6 +37,27 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal("hunt", Assert.Single((await ReadQuestLogAsync(context, characterId)).ActiveQuests).StepId);
         Assert.Empty(first.ItemChanges ?? []);
         Assert.NotNull(world);
+    }
+
+    // A kill credit carries every tag an actor may have, and no more.
+    [PostgresIntegrationFact]
+    public async Task AKillCreditTakesEveryTagAnActorMayCarry()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var (_, player, session) = await JoinAsync(context, "quest_tagged_hunter");
+        var characterId = player.Character.Id;
+        ItemScenarioWorld.AssertCommitted(await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira));
+        var tags = Enumerable.Range(0, WorldActorCompiler.MaximumTagsPerActor).Select(index => $"tag{index}").ToArray();
+
+        var fullyTagged = await ExecuteAsync(context, session, new CreditQuestKillCommand(characterId, "mob.feral_wolf", tags), null);
+        var overTagged = await ExecuteAsync(
+            context,
+            session,
+            new CreditQuestKillCommand(characterId, "mob.feral_wolf", [.. tags, "one_more"]),
+            null);
+
+        Assert.Equal(1, Progress(fullyTagged, Wolves, "wolves"));
+        Assert.Equal(ItemTransactionErrorCodes.SimulationOperationInvalid, overTagged.Error!.Code);
     }
 
     [PostgresIntegrationFact]
