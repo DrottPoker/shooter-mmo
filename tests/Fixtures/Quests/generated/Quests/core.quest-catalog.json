@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "catalogId": "core",
-  "revision": "81d0741b96637d05ce15040ed1861b5b2ea6c304f045e11d0324a939dd4ebd84",
+  "revision": "a30a18e4aa66074cd890ec84118c670770d0e1aac694401baf4076359192377d",
   "maximumActiveQuests": 25,
   "retiredQuestIds": [],
   "quests": [
@@ -132,6 +132,51 @@
       "rewardItems": [],
       "rewardChoiceItems": [],
       "structuralFingerprint": "d3ffea602a925024bd6875861ca4edd8c3a3b01196a0f49f5e556ed737e2959e"
+    },
+    {
+      "id": "quest.fixture.trophies",
+      "title": "Fixture Trophies",
+      "giverActorId": "npc.city_services",
+      "turnInActorId": "npc.city_services",
+      "minimumLevel": 1,
+      "requiredQuestIds": [],
+      "repeatable": false,
+      "tags": [
+        "fixture"
+      ],
+      "offerText": "The wolves carry stolen letters. Bring me two of them.",
+      "progressText": "Two letters, from the wolves.",
+      "completionText": "Both letters. Thank you.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "collect",
+          "objectives": [
+            {
+              "id": "letters",
+              "kind": "collect",
+              "text": "Stolen letters",
+              "count": 2,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "fixture.letter",
+              "npcActorId": "",
+              "line": "",
+              "dropSources": [
+                {
+                  "actorId": "mob.feral_wolf",
+                  "chanceBasisPoints": 5000,
+                  "quantity": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "rewardGold": 2,
+      "rewardItems": [],
+      "rewardChoiceItems": [],
+      "structuralFingerprint": "62462d340ab0bc5aa262004dfb6d53628011b05121986572358baf212fb0943b"
     },
     {
       "id": "quest.fixture.wolves",

@@ -103,6 +103,34 @@ public sealed class QuestRulesTests
         Assert.False(QuestRules.StoresProgress(pelts));
     }
 
+    [Fact]
+    public void ACollectObjectiveNamesTheMobsThatDropItsQuestItem()
+    {
+        var fangs = new QuestObjectiveDefinition
+        {
+            Id = "fangs",
+            Kind = QuestObjectiveKindIds.Collect,
+            Count = 2,
+            ActorIds = [],
+            ActorTag = "",
+            ItemId = "quest_item.wolf_fang",
+            DropSources = [new QuestDropSourceDefinition { ActorId = "mob.feral_wolf", ChanceBasisPoints = 5000, Quantity = 1 }]
+        };
+        var wolves = new QuestObjectiveDefinition
+        {
+            Id = "wolves",
+            Kind = QuestObjectiveKindIds.Kill,
+            Count = 2,
+            ActorIds = ["mob.feral_wolf"],
+            ActorTag = "",
+            DropSources = [new QuestDropSourceDefinition { ActorId = "mob.feral_wolf", ChanceBasisPoints = 5000, Quantity = 1 }]
+        };
+
+        Assert.Equal(5000, QuestRules.FindDropSource(fangs, "mob.feral_wolf")!.ChanceBasisPoints);
+        Assert.Null(QuestRules.FindDropSource(fangs, "mob.grey_wolf"));
+        Assert.Null(QuestRules.FindDropSource(wolves, "mob.feral_wolf"));
+    }
+
     private static QuestAvailability Evaluate(
         QuestDefinition quest,
         int level,

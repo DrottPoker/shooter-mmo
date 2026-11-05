@@ -303,12 +303,13 @@ packages, read the real catalog. How to change and recompile the fixture is in
 ## Quest Catalog Fixture
 
 GameService quest tests never name game quests either. The test kit runs the
-Quests module on the test-owned quest catalog in `Fixtures/Quests`: three
+Quests module on the test-owned quest catalog in `Fixtures/Quests`: four
 `quest.fixture.*` quests that use the fixture items and the actors of the
 fixture World layout. `quest.fixture.wolves` kills two Feral Wolves and offers a
 reward choice, `quest.fixture.errand` requires it and has a gather, deliver, and
-talk-to step before it collects its start item, and `quest.fixture.ore_run` is
-a repeatable collect quest. `RepositoryPaths.QuestCatalogFixtureContent` and
+talk-to step before it collects its start item, `quest.fixture.ore_run` is a
+repeatable collect quest, and `quest.fixture.trophies` collects two
+`fixture.letter` quest drops that Feral Wolves drop at 50 %. `RepositoryPaths.QuestCatalogFixtureContent` and
 `QuestCatalogFixtureRuntimePath` name the authoring and the compiled catalog,
 and `QuestCatalogTestData.CompileFixture` compiles it.
 

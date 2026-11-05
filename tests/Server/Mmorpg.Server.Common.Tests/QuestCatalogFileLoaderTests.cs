@@ -15,7 +15,7 @@ public sealed class QuestCatalogFileLoaderTests
         Assert.Equal("core", content.CatalogId);
         Assert.Contains(content.Quests, quest => quest.Id == "quest.wolves_at_the_gate");
         Assert.Equal(
-            ["quest.fixture.errand", "quest.fixture.ore_run", "quest.fixture.wolves"],
+            ["quest.fixture.errand", "quest.fixture.ore_run", "quest.fixture.trophies", "quest.fixture.wolves"],
             fixture.Quests.Select(quest => quest.Id));
     }
 

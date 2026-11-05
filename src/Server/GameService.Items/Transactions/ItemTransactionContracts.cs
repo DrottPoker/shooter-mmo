@@ -337,12 +337,14 @@ internal sealed record GrantMobLootCommand(
     int DestinationSlotIndex,
     string? EquipmentSlotId = null,
     Guid? TargetItemInstanceId = null,
-    long? ExpectedTargetItemRevision = null);
+    long? ExpectedTargetItemRevision = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuestId = null);
 
 internal sealed record MobLootGrantEntry(
     Guid GrantId,
     string DefinitionId,
-    int Quantity);
+    int Quantity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuestId = null);
 
 // Grants every loot entry of a live Mob corpse that fits, whole, as CorpseLootAllPlanner plans
 // it. An entry that an earlier operation already granted is left alone and reported as

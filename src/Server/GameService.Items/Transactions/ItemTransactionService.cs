@@ -28,14 +28,14 @@ internal sealed class ItemTransactionService
     private readonly QuestCommandHandler quest;
     private readonly PlayerDeathCommandHandler playerDeath = new();
     private readonly CorpseExpiryCommandHandler corpseExpiry = new();
-    private readonly CorpseLootCommandHandler corpseLoot = new();
+    private readonly CorpseLootCommandHandler corpseLoot;
     private readonly CorpseDepositCommandHandler corpseDeposit = new();
     private readonly CorpseInternalMoveCommandHandler corpseInternalMove = new();
     private readonly CorpseBagSwapCommandHandler corpseBagSwap = new();
-    private readonly CorpseLootAllCommandHandler corpseLootAll = new();
+    private readonly CorpseLootAllCommandHandler corpseLootAll;
     private readonly MobCorpseCommandHandler mobCorpse;
-    private readonly MobLootGrantCommandHandler mobLootGrant = new();
-    private readonly MobLootAllGrantCommandHandler mobLootAllGrant = new();
+    private readonly MobLootGrantCommandHandler mobLootGrant;
+    private readonly MobLootAllGrantCommandHandler mobLootAllGrant;
     private readonly RecoveryExpiryCommandHandler recoveryExpiry = new();
     private readonly VendorCommandHandler vendor;
     private readonly GatherResourceCommandHandler gatherResource;
@@ -63,7 +63,12 @@ internal sealed class ItemTransactionService
         vendor = new VendorCommandHandler(characterWallet);
         quest = new QuestCommandHandler(questDefinitions, questLog, characterWallet);
         gatherResource = new GatherResourceCommandHandler(questDefinitions, questLog);
-        mobCorpse = new MobCorpseCommandHandler(simulationAuthority);
+        var questDrops = new QuestDrops(questDefinitions, questLog);
+        corpseLoot = new CorpseLootCommandHandler(questDrops);
+        corpseLootAll = new CorpseLootAllCommandHandler(questDrops);
+        mobCorpse = new MobCorpseCommandHandler(simulationAuthority, questDrops);
+        mobLootGrant = new MobLootGrantCommandHandler(questDrops);
+        mobLootAllGrant = new MobLootAllGrantCommandHandler(questDrops);
         kernel = new ItemTransactionKernel(
             dataSource,
             itemOperationsOptions ?? ItemOperationsOptions.CreateDefaults(),

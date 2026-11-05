@@ -210,7 +210,8 @@ internal sealed partial class CorpseService(
                     request.DestinationSlotIndex,
                     string.IsNullOrWhiteSpace(request.EquipmentSlotId) ? null : request.EquipmentSlotId.Trim(),
                     request.TargetItemInstanceId,
-                    request.ExpectedTargetItemRevision)),
+                    request.ExpectedTargetItemRevision,
+                    request.QuestId?.Trim())),
             cancellationToken);
         return MapTransactionResult(
             result,
@@ -263,7 +264,11 @@ internal sealed partial class CorpseService(
                     request.SourceCorpseId,
                     request.SourceActorDefinitionId.Trim(),
                     request.Loot
-                        .Select(loot => new MobLootGrantEntry(loot.GrantId, loot.DefinitionId.Trim(), loot.Quantity))
+                        .Select(loot => new MobLootGrantEntry(
+                            loot.GrantId,
+                            loot.DefinitionId.Trim(),
+                            loot.Quantity,
+                            loot.QuestId?.Trim()))
                         .ToArray())),
             cancellationToken);
         if (!result.Succeeded)
@@ -925,6 +930,7 @@ internal sealed partial class CorpseService(
             && request.CorpseId != Guid.Empty
             && request.OwnerCharacterId != Guid.Empty
             && request.LootGroupId != Guid.Empty
+            && (request.OwnerCharacterId is not null || request.Loot?.All(loot => loot.QuestId is null) != false)
             && Identifiers.IsServiceIdentifier(request.WorkerId)
             && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
             && Identifiers.IsServiceIdentifier(request.ShardId)
@@ -942,7 +948,8 @@ internal sealed partial class CorpseService(
             && request.Loot.All(loot =>
                 loot.GrantId != Guid.Empty
                 && Identifiers.IsContentIdentifier(loot.DefinitionId)
-                && loot.Quantity > 0)
+                && loot.Quantity > 0
+                && (loot.QuestId is null || Identifiers.IsContentIdentifier(loot.QuestId)))
             && request.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 == request.Loot.Count;
     }
@@ -970,7 +977,8 @@ internal sealed partial class CorpseService(
             && request.Loot.All(loot =>
                 loot.GrantId != Guid.Empty
                 && Identifiers.IsContentIdentifier(loot.DefinitionId)
-                && loot.Quantity > 0)
+                && loot.Quantity > 0
+                && (loot.QuestId is null || Identifiers.IsContentIdentifier(loot.QuestId)))
             && request.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 == request.Loot.Count;
     }
@@ -992,6 +1000,7 @@ internal sealed partial class CorpseService(
             && request.SourceCorpseId != Guid.Empty
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
             && Identifiers.IsContentIdentifier(request.DefinitionId)
+            && (request.QuestId is null || Identifiers.IsContentIdentifier(request.QuestId))
             && request.Quantity > 0
             && (request.TargetItemInstanceId is null) == (request.ExpectedTargetItemRevision is null)
             && request.TargetItemInstanceId != Guid.Empty

@@ -6,11 +6,13 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // Loots a whole or partial corpse stack into carried character storage, merging
 // or swapping with a target stack, or straight into an equipment slot: a whole stack, or
 // part of one that tops up the equipped stack or fills the empty slot.
-internal sealed class CorpseLootCommandHandler
+internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
     : IItemCommandHandler<LootCorpseItemCommand>,
     IItemCommandHandler<LootCorpsePartialStackCommand>,
     IItemCommandHandler<LootCorpseItemToEquipmentCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
     // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
     // the slot swaps into the corpse slot the loot came from, as a deposit into that slot would.
@@ -382,7 +384,7 @@ internal sealed class CorpseLootCommandHandler
             cancellationToken);
     }
 
-    private static async Task ExecuteLootCorpseStackAsync(
+    private async Task ExecuteLootCorpseStackAsync(
         ItemTransactionContext context,
         CorpseItemTransferCommand command,
         CancellationToken cancellationToken)
@@ -461,15 +463,19 @@ internal sealed class CorpseLootCommandHandler
         var sourceCapabilities = ItemPolicyRules.Evaluate(
             definition.RuntimeDefinition,
             ItemPolicyStates.ToPolicyStates(sourcePolicies));
-        if (!sourceCapabilities.CanChangeOwningCharacter)
-        {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.ItemPolicyRestricted,
-                "An active item policy prevents this corpse item from changing ownership.");
-        }
-
         var isPartial = command.Quantity is not null;
         var movedQuantity = isPartial ? command.Quantity!.Value : source.Quantity;
+        if (!sourceCapabilities.CanChangeOwningCharacter)
+        {
+            await RequireNeededQuestDropAsync(
+                context,
+                command.CharacterId,
+                corpse,
+                sourcePolicies,
+                definition,
+                movedQuantity,
+                cancellationToken);
+        }
         if (isPartial
             && (movedQuantity <= 0
                 || movedQuantity >= source.Quantity
@@ -635,5 +641,45 @@ internal sealed class CorpseLootCommandHandler
         context.Journal.TouchContainer(source.ContainerId);
         context.Journal.TouchContainer(destination.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
+    }
+
+    // A protected item leaves corpse custody only as a quest drop: its Mob corpse belongs to the
+    // looter, and the looter's quest still needs all of what moves.
+    private async Task RequireNeededQuestDropAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        LockedCorpseRow corpse,
+        IReadOnlyList<LockedItemPolicy> policies,
+        ResolvedItemDefinition definition,
+        int movedQuantity,
+        CancellationToken cancellationToken)
+    {
+        var questId = QuestDrops.LineageQuestId(policies);
+        var sourceActorDefinitionId = questId is null
+            ? null
+            : await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken);
+        if (questId is null || sourceActorDefinitionId is null)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemPolicyRestricted,
+                "An active item policy prevents this corpse item from changing ownership.");
+        }
+
+        var needed = await questDrops.NeededAsync(
+            context,
+            characterId,
+            questId!,
+            sourceActorDefinitionId!,
+            definition,
+            movedQuantity,
+            cancellationToken);
+        if (needed < movedQuantity)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.QuestItemNotNeeded,
+                needed == 0
+                    ? "Your quests do not need this item anymore."
+                    : "Your quests need fewer of this item.");
+        }
     }
 }

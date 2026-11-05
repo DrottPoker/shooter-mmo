@@ -6,10 +6,14 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Grants live Mob loot to the looting character: under a derived item id into an empty container
 // or equipment slot, or as a top-up of a compatible stack that the worker names in that slot. It
-// never swaps, because the worker holds the corpse in memory and cannot take an item back.
-internal sealed class MobLootGrantCommandHandler
+// never swaps, because the worker holds the corpse in memory and cannot take an item back. A
+// quest drop goes into a container slot with its quest's lineage, at most the quantity that the
+// quest still needs.
+internal sealed class MobLootGrantCommandHandler(QuestDrops questDrops)
     : IItemCommandHandler<GrantMobLootCommand>
 {
+    private readonly QuestDrops questDrops = questDrops;
+
     public async Task ExecuteAsync(
         ItemTransactionContext context,
         GrantMobLootCommand command,
@@ -26,6 +30,7 @@ internal sealed class MobLootGrantCommandHandler
             || (command.TargetItemInstanceId is null) != (command.ExpectedTargetItemRevision is null)
             || command.TargetItemInstanceId == Guid.Empty
             || command.ExpectedTargetItemRevision < 0
+            || (command.QuestId is not null && !Identifiers.IsContentIdentifier(command.QuestId))
             || (toEquipment
                 ? string.IsNullOrWhiteSpace(command.EquipmentSlotId)
                     || !MobLootRules.NamesEquipmentDestinationOnly(
@@ -53,7 +58,16 @@ internal sealed class MobLootGrantCommandHandler
         var definition = await context.State.LoadDefinitionAsync(
             command.DefinitionId,
             cancellationToken);
-        MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
+        var quantity = command.Quantity;
+        if (command.QuestId is null)
+        {
+            MobLootRules.ValidateMobLootDefinition(definition, command.Quantity);
+        }
+        else
+        {
+            quantity = await NeededQuestDropAsync(context, command, definition, toEquipment, cancellationToken);
+        }
+
         await MobLootRules.RecordGrantAsync(
             context,
             command.GrantId,
@@ -71,7 +85,7 @@ internal sealed class MobLootGrantCommandHandler
 
         if (command.TargetItemInstanceId is not null)
         {
-            await TopUpAsync(context, command, grant, definition, destination, cancellationToken);
+            await TopUpAsync(context, command, grant, definition, destination, quantity, cancellationToken);
             return;
         }
 
@@ -81,14 +95,14 @@ internal sealed class MobLootGrantCommandHandler
                 command.CharacterId,
                 command.EquipmentSlotId!,
                 definition,
-                command.Quantity,
+                quantity,
                 false,
                 cancellationToken);
             await MobLootWrites.CreateEquippedAsync(
                 context,
                 grant,
                 definition,
-                command.Quantity,
+                quantity,
                 command.EquipmentSlotId!,
                 cancellationToken);
             return;
@@ -97,20 +111,70 @@ internal sealed class MobLootGrantCommandHandler
         var slotIndex = await context.Placement.SelectDestinationSlotAsync(
             destination,
             definition,
-            command.Quantity,
+            quantity,
             command.DestinationSlotIndex,
             false,
             null,
             false,
             cancellationToken);
-        await MobLootWrites.CreateInContainerAsync(
+        if (command.QuestId is null)
+        {
+            await MobLootWrites.CreateInContainerAsync(
+                context,
+                grant,
+                definition,
+                quantity,
+                destination.ContainerId,
+                slotIndex,
+                cancellationToken);
+        }
+        else
+        {
+            await MobLootWrites.CreateQuestDropInContainerAsync(
+                context,
+                grant,
+                definition,
+                quantity,
+                destination.ContainerId,
+                slotIndex,
+                command.QuestId,
+                cancellationToken);
+        }
+    }
+
+    // A quest drop is a protected quest item that never equips, and its quest must still need it.
+    private async Task<int> NeededQuestDropAsync(
+        ItemTransactionContext context,
+        GrantMobLootCommand command,
+        ResolvedItemDefinition definition,
+        bool toEquipment,
+        CancellationToken cancellationToken)
+    {
+        if (toEquipment
+            || !QuestDrops.IsQuestDropItem(definition)
+            || command.Quantity > definition.RuntimeDefinition.MaximumStackSize)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.MobLootGrantInvalid,
+                "A quest drop must be a protected quest item within its stack limit, looted into a container slot.");
+        }
+
+        var needed = await questDrops.NeededAsync(
             context,
-            grant,
+            command.CharacterId,
+            command.QuestId!,
+            command.SourceActorDefinitionId,
             definition,
             command.Quantity,
-            destination.ContainerId,
-            slotIndex,
             cancellationToken);
+        if (needed == 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.QuestItemNotNeeded,
+                "Your quests do not need this item anymore.");
+        }
+
+        return needed;
     }
 
     private static async Task<LockedContainer> LoadDestinationAsync(
@@ -133,13 +197,15 @@ internal sealed class MobLootGrantCommandHandler
     }
 
     // Adds the loot to the named stack, which must still be in the named slot, have the loot's
-    // definition, merge under the stack rules, and stay within its slot's limit.
+    // definition, merge under the stack rules, and stay within its slot's limit. A quest drop
+    // merges only with a stack that carries the same quest's lineage.
     private static async Task TopUpAsync(
         ItemTransactionContext context,
         GrantMobLootCommand command,
         MobLootGrantSource grant,
         ResolvedItemDefinition definition,
         LockedContainer? destination,
+        int quantity,
         CancellationToken cancellationToken)
     {
         var target = await context.State.LoadOwnedItemAsync(
@@ -175,8 +241,10 @@ internal sealed class MobLootGrantCommandHandler
             StringComparison.Ordinal));
         var lootState = new ItemStackState(
             definition.RuntimeDefinition.Id,
-            command.Quantity,
-            ItemPolicyStates.CalculatePolicyFingerprint([]),
+            quantity,
+            ItemPolicyStates.CalculatePolicyFingerprint(command.QuestId is null
+                ? []
+                : QuestDrops.LineagePolicies(definition, command.QuestId)),
             ItemPolicyStates.EmptyStackStateFingerprint);
         var targetState = new ItemStackState(
             target.DefinitionId,
@@ -204,7 +272,7 @@ internal sealed class MobLootGrantCommandHandler
                 command.CharacterId,
                 command.EquipmentSlotId!,
                 definition,
-                target.Quantity + command.Quantity,
+                target.Quantity + quantity,
                 cancellationToken);
         }
         else
@@ -212,7 +280,7 @@ internal sealed class MobLootGrantCommandHandler
             await context.Placement.SelectDestinationSlotAsync(
                 destination,
                 definition,
-                target.Quantity + command.Quantity,
+                target.Quantity + quantity,
                 command.DestinationSlotIndex,
                 false,
                 null,
@@ -221,7 +289,7 @@ internal sealed class MobLootGrantCommandHandler
                 target.ItemInstanceId);
         }
 
-        await MobLootWrites.TopUpAsync(context, grant, target.ItemInstanceId, command.Quantity, cancellationToken);
+        await MobLootWrites.TopUpAsync(context, grant, target.ItemInstanceId, quantity, cancellationToken);
         if (destination is not null)
         {
             context.Journal.TouchContainer(destination.ContainerId);

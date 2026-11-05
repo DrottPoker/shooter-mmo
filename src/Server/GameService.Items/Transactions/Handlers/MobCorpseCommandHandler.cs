@@ -6,11 +6,14 @@ using Mmorpg.WorldData.Actors;
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Creates a durable Mob corpse with its loot for a simulation worker that holds a
-// fresh lease on the corpse's Shard.
-internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulationAuthority)
+// fresh lease on the corpse's Shard. A quest drop for the corpse's owner takes its quest's
+// lineage and only the quantity that the quest still needs; one the owner does not need is left
+// out, and a corpse that keeps no loot is not created.
+internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulationAuthority, QuestDrops questDrops)
     : IItemCommandHandler<CreatePersistentMobCorpseCommand>
 {
     private readonly ItemSimulationAuthority simulationAuthority = simulationAuthority;
+    private readonly QuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -41,14 +44,49 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                 "The durable Mob corpse id was already used by another operation.");
         }
 
-        var definitions = new List<ResolvedItemDefinition>(command.Loot.Count);
+        var kept = new List<KeptLoot>(command.Loot.Count);
+        var questDropPlan = questDrops.Plan();
         foreach (var loot in command.Loot)
         {
             var definition = await context.State.LoadDefinitionAsync(
                 loot.DefinitionId,
                 cancellationToken);
-            MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);
-            definitions.Add(definition);
+            if (loot.QuestId is null)
+            {
+                MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);
+                kept.Add(new KeptLoot(loot, definition, loot.Quantity));
+                continue;
+            }
+
+            var ownerId = command.OwnerCharacterId;
+            if (ownerId is null
+                || !QuestDrops.IsQuestDropItem(definition)
+                || loot.Quantity > definition.RuntimeDefinition.MaximumStackSize)
+            {
+                ItemTransactionContext.Reject(
+                    ItemTransactionErrorCodes.MobCorpseInvalid,
+                    "A quest drop must be a protected quest item within its stack limit for the corpse's owner.");
+            }
+
+            var needed = await questDropPlan.TakeAsync(
+                context,
+                ownerId!.Value,
+                loot.QuestId,
+                command.SourceActorDefinitionId,
+                definition,
+                loot.Quantity,
+                cancellationToken);
+            if (needed > 0)
+            {
+                kept.Add(new KeptLoot(loot, definition, needed));
+            }
+        }
+
+        if (kept.Count == 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.MobCorpseEmpty,
+                "No loot is left for the durable Mob corpse.");
         }
 
         var generalContainerId = Guid.NewGuid();
@@ -84,15 +122,29 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             generalContainerId,
             equipmentContainerId,
             bagContainerId,
-            command.Loot.Count,
+            kept.Count,
             cancellationToken);
 
-        for (var index = 0; index < command.Loot.Count; index++)
+        for (var index = 0; index < kept.Count; index++)
         {
-            var loot = command.Loot[index];
-            var definition = definitions[index];
+            var (loot, definition, quantity) = kept[index];
             var itemInstanceId = ScopedGuid.Create("mob-loot-item", loot.GrantId);
-            await context.Connection.ExecuteAsync(new CommandDefinition(
+            if (loot.QuestId is not null)
+            {
+                await NewItemInstances.CreateAsync(
+                    context,
+                    itemInstanceId,
+                    definition,
+                    quantity,
+                    generalContainerId,
+                    index,
+                    ItemPolicySourceKinds.QuestGrant,
+                    loot.QuestId,
+                    cancellationToken);
+            }
+            else
+            {
+                await context.Connection.ExecuteAsync(new CommandDefinition(
                 """
                 insert into item_instances (
                     id,
@@ -111,12 +163,14 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                 {
                     ItemInstanceId = itemInstanceId,
                     DefinitionId = definition.RuntimeDefinition.Id,
-                    loot.Quantity,
+                    Quantity = quantity,
                     ContainerId = generalContainerId,
                     SlotIndex = index
                 },
                 context.Transaction,
                 cancellationToken: cancellationToken));
+            }
+
             var afterState = await context.Journal.CaptureItemStateJsonAsync(
                 itemInstanceId,
                 cancellationToken);
@@ -140,7 +194,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                 command.LifetimeSeconds,
                 corpseTimes.CreatedAt,
                 corpseTimes.ExpiresAt,
-                LootCount = command.Loot.Count
+                LootCount = kept.Count
             });
     }
 
@@ -185,6 +239,8 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             cancellationToken: cancellationToken));
     }
 
+    private sealed record KeptLoot(MobCorpseLootEntryRequest Loot, ResolvedItemDefinition Definition, int Quantity);
+
     internal static void ValidatePersistentMobCorpseCommand(
         CreatePersistentMobCorpseCommand command)
     {
@@ -214,7 +270,8 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             || command.Loot.Any(loot =>
                 loot.GrantId == Guid.Empty
                 || !Identifiers.IsContentIdentifier(loot.DefinitionId)
-                || loot.Quantity <= 0)
+                || loot.Quantity <= 0
+                || (loot.QuestId is not null && !Identifiers.IsContentIdentifier(loot.QuestId)))
             || command.Loot.Select(loot => loot.GrantId).Distinct().Count()
                 != command.Loot.Count)
         {

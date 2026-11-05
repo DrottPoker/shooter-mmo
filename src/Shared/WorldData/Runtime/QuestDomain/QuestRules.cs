@@ -181,6 +181,32 @@ namespace Mmorpg.WorldData.Quests
             return false;
         }
 
+        // A collect objective for a quest item names the Mobs that drop it. Returns the drop source
+        // of the Mob's actor definition, or null when the Mob drops nothing for the objective.
+        public static QuestDropSourceDefinition FindDropSource(QuestObjectiveDefinition objective, string mobActorId)
+        {
+            if (objective == null)
+            {
+                throw new ArgumentNullException(nameof(objective));
+            }
+
+            if (!string.Equals(objective.Kind, QuestObjectiveKindIds.Collect, StringComparison.Ordinal)
+                || objective.DropSources == null)
+            {
+                return null;
+            }
+
+            foreach (var source in objective.DropSources)
+            {
+                if (string.Equals(source.ActorId, mobActorId, StringComparison.Ordinal))
+                {
+                    return source;
+                }
+            }
+
+            return null;
+        }
+
         // Collect objectives count the carried items, so only the other kinds store progress.
         public static bool StoresProgress(QuestObjectiveDefinition objective)
         {

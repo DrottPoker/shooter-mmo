@@ -1022,6 +1022,21 @@ Seen from outside:
   It never swaps, because the worker cannot take live Mob loot back, so a named
   stack of another item is rejected with `item_slot_occupied` or
   `equipment_slot_occupied`.
+- A quest drop is live Mob loot or a durable Mob corpse entry that names
+  `questId`: a protected quest item within its stack limit that the quest's
+  current step collects with the Mob as a drop source, as
+  [Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes. It is granted with
+  the quest's grant lineage, never into an equipment slot, and only up to the
+  quantity the character still needs, which is the objective's count minus the
+  items with the lineage it owns anywhere; a drop that its quest no longer needs
+  is rejected with `quest_item_not_needed`. Ordinary Mob loot stays policy-free,
+  and loot that names no quest is never a quest item. Loot all leaves a quest
+  drop that is not needed in the corpse, and drops of one quest item share what
+  the quest still needs. A durable Mob corpse needs an owner for its quest drops,
+  keeps only what that owner needs, and is not created, with
+  `mob_corpse_empty`, when no loot is left. A quest drop leaves a durable Mob
+  corpse only into its owner's carried storage, and only while the owner's quest
+  needs all of what moves; the corpse's expiry destroys it like any other loot.
 - Every worker mutation response, from item operations, ammunition batches,
   corpse operations, live Mob loot grants, and player deaths, carries
   `characterState`: the acting character's item-state revision, carry tuple,
@@ -1343,7 +1358,8 @@ results and closures, and Unity adds `item_catalog_update_required`.
   `item_slot_occupied`, `equipment_slot_occupied`, `item_quantity_changed`,
   `bag_state_changed`, `worker_runtime_changed`, `vendor_price_changed`,
   `inventory_full`, `quest_not_active`, `quest_already_active`,
-  `quest_objective_complete`, the corpse lifecycle codes, and on account routes
+  `quest_objective_complete`, `quest_item_not_needed`, the corpse lifecycle codes,
+  and on account routes
   `item_offline_access_required`, and `422` for every other domain rejection.
   An incomplete request returns `400` with `item_operation_id_required` or
   `item_simulation_operation_invalid`.
@@ -1360,7 +1376,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
 | Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
-| Quest commands | `quest_not_found`, `quest_not_active`, `quest_already_active`, `quest_already_completed`, `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, `quest_npc_access_required`, `quest_objective_invalid`, `quest_objective_complete`, `quest_items_missing`, `quest_not_ready`, `quest_reward_choice_required`, `quest_reward_choice_invalid` |
+| Quest commands | `quest_not_found`, `quest_not_active`, `quest_already_active`, `quest_already_completed`, `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, `quest_npc_access_required`, `quest_objective_invalid`, `quest_objective_complete`, `quest_items_missing`, `quest_not_ready`, `quest_reward_choice_required`, `quest_reward_choice_invalid`, `quest_item_not_needed` |
 | Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
 | Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
@@ -1370,7 +1386,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
 | Gathering | `gathering_tool_required`, `gathering_yield_invalid` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
-| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `corpse_not_lootable`, `item_already_looted` |
+| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_corpse_empty`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `corpse_not_lootable`, `item_already_looted` |
 | Development tools | `development_simulation_bots_disabled`, `development_bot_loopback_required`, `invalid_development_bot_authority`, `invalid_development_bot_index`, `invalid_development_bot_instance_id`, `development_bot_already_active`, `development_bot_identity_changed`, `development_bot_placement_unavailable`, `development_bot_worker_capacity_reached`, `invalid_shard_id`, `invalid_join_ticket`, `invalid_stack_stress_fixture_authority`, `stack_stress_fixture_loopback_required`, `stack_stress_fixture_invalid`, `stack_stress_fixture_not_empty` |
 
 ### Realtime Codes

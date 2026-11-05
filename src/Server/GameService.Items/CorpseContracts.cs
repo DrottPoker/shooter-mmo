@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Mmorpg.GameService.Items;
 
 internal sealed record SimulationPlayerDeathRequest(
@@ -38,10 +40,12 @@ internal sealed record PlayerDeathPartitionResponse(
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterStateResponse? CharacterState = null);
 
+// QuestId names the quest whose lineage a quest drop gets; ordinary loot names none.
 internal sealed record MobCorpseLootEntryRequest(
     Guid GrantId,
     string DefinitionId,
-    int Quantity);
+    int Quantity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuestId = null);
 
 internal sealed record CreatePersistentMobCorpseRequest(
     Guid OperationId,
@@ -91,7 +95,8 @@ internal sealed record SimulationMobLootGrantRequest(
     int DestinationSlotIndex,
     string? EquipmentSlotId = null,
     Guid? TargetItemInstanceId = null,
-    long? ExpectedTargetItemRevision = null);
+    long? ExpectedTargetItemRevision = null,
+    string? QuestId = null);
 
 // Loot all on a live Mob corpse: every loot entry still in the corpse, in its slot order.
 internal sealed record SimulationMobLootAllRequest(
