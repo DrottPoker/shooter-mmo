@@ -766,10 +766,10 @@ set `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` to their values in `.env`,
 and run:
 
 ```powershell
-dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests"
+dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 17 tests pass. Each one joins a character to the Shard and
+Expected result: 20 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -789,6 +789,12 @@ checks one outcome:
   and the chosen item; without room for them, nothing changes.
 - Abandoning the errand removes its letter with the `quest_abandoned` reason,
   and Mira grants a lost start item again, never a second one.
+- With `quest.fixture.trophies` accepted, two live Feral Wolf quest drops each
+  grant a `fixture.letter` with the quest's lineage, and a third, one before the
+  acceptance, one from a Grey Wolf, and one that names no quest are refused.
+  Loot all takes the two letters the quest needs and leaves the third in the
+  corpse. A durable Mob corpse keeps the letter its owner needs, which the owner
+  then loots, and is not created when its only loot is a letter nobody needs.
 
 Then run the worker's side of the same actions:
 

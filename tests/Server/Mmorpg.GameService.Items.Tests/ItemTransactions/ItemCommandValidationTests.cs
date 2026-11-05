@@ -18,6 +18,10 @@ public sealed class ItemCommandValidationTests
     {
         var grantId = Guid.NewGuid();
         AssertMobCorpseInvalid(MobCorpse() with { CorpseId = Guid.Empty });
+        AssertMobCorpseInvalid(MobCorpse() with
+        {
+            Loot = [new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.letter", 1, "Not A Quest")]
+        });
         AssertMobCorpseInvalid(MobCorpse() with { WorkerId = "worker one" });
         AssertMobCorpseInvalid(MobCorpse() with { PresentationKey = "corpse.other" });
         AssertMobCorpseInvalid(MobCorpse() with { PresentationKey = "corpse.remains" });

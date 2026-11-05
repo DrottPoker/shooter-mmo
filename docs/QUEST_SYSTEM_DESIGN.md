@@ -42,6 +42,10 @@ Implemented:
 - The worker counts the credited kills and the gathering yields that the
   current steps ask for, as [Service Features](SERVICE_FEATURES.md#quests)
   describes.
+- GameService grants [quest drops](#quest-drops) from live Mob loot and keeps
+  them in durable Mob corpses with the quest's lineage, up to what the quest
+  still needs, as
+  [Service Features](SERVICE_FEATURES.md#item-transactions) describes.
 
 Planned: everything else in this document. The worker does not roll quest drops
 yet, and the client receives the quest messages but shows no quest window yet.

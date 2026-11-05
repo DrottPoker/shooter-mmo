@@ -803,9 +803,11 @@ others, which they cannot loot. A Mob that credits no one leaves a corpse that
 everyone may loot. Live and durable corpses follow the same rules, and player
 corpses stay full loot for everyone.
 
-Planned: a quest drop joins the loot of the player it drops for, as
-[Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes, and loot that holds
-only a quest drop still creates the corpse.
+GameService grants a quest drop with its quest's lineage from live Mob loot, and
+keeps it in a durable Mob corpse for the corpse's owner, as
+[Quest Drops](QUEST_SYSTEM_DESIGN.md#quest-drops) describes. Planned: the worker
+rolls quest drops, so they join the loot of the player they drop for, and loot
+that holds only a quest drop still creates the corpse.
 
 A Mob corpse shows its Mob's own model lying in the last pose of its Death clip,
 turned as the Mob died. A Mob without a model of its own shows a generic

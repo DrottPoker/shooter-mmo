@@ -8,8 +8,10 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Loot all for a live Mob corpse: grants every loot entry that fits, whole, under the item id
 // derived from its grant id. The worker holds the corpse in memory, so nothing ever swaps and
-// no stack is split; the grant ledger keeps an entry from being granted twice.
-internal sealed class MobLootAllGrantCommandHandler : IItemCommandHandler<GrantMobLootAllCommand>
+// no stack is split; the grant ledger keeps an entry from being granted twice. A quest drop
+// takes its quest's lineage and only the quantity that the quest still needs, and one that the
+// quest no longer needs stays in the corpse.
+internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IItemCommandHandler<GrantMobLootAllCommand>
 {
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -42,19 +44,51 @@ internal sealed class MobLootAllGrantCommandHandler : IItemCommandHandler<GrantM
             .ToHashSet();
         var grants = new Dictionary<Guid, MobLootGrantEntry>();
         var items = new List<LootAllCorpseItem>();
+        var unneededQuestDrops = 0;
+        var plannedQuestDrops = new Dictionary<(string QuestId, string DefinitionId), int>();
         foreach (var loot in command.Loot.Where(loot => !alreadyGranted.Contains(loot.GrantId)))
         {
             var definition = await state.LoadDefinitionAsync(loot.DefinitionId, cancellationToken);
-            MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);
+            var quantity = loot.Quantity;
+            IReadOnlyList<LockedItemPolicy> policies = [];
+            if (loot.QuestId is null)
+            {
+                MobLootRules.ValidateMobLootDefinition(definition, loot.Quantity);
+            }
+            else
+            {
+                // Drops of one quest item share what the quest still needs.
+                var key = (loot.QuestId, definition.RuntimeDefinition.Id);
+                var planned = plannedQuestDrops.GetValueOrDefault(key);
+                quantity = Math.Max(
+                    0,
+                    await NeededQuestDropAsync(context, command, loot, definition, planned, cancellationToken));
+                if (quantity == 0)
+                {
+                    unneededQuestDrops++;
+                    continue;
+                }
+
+                plannedQuestDrops[key] = planned + quantity;
+                policies = QuestDrops.LineagePolicies(definition, loot.QuestId);
+            }
+
             var itemInstanceId = MobLootWrites.ItemInstanceId(loot.GrantId);
             grants.Add(itemInstanceId, loot);
             items.Add(new LootAllCorpseItem(
                 itemInstanceId,
                 loot.DefinitionId,
-                loot.Quantity,
+                quantity,
                 CorpseSectionKindIds.GeneralInventory,
-                LootAllState.MergeKey(definition, []),
+                LootAllState.MergeKey(definition, policies),
                 true));
+        }
+
+        if (items.Count == 0 && alreadyGranted.Count == 0 && unneededQuestDrops > 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.QuestItemNotNeeded,
+                "Your quests do not need what is left in the corpse.");
         }
 
         var plan = CorpseLootAllPlanner.Plan(new LootAllRequest(
@@ -88,7 +122,7 @@ internal sealed class MobLootAllGrantCommandHandler : IItemCommandHandler<GrantM
                 command.CharacterId,
                 command.SourceCorpseId,
                 cancellationToken);
-            await ExecuteStepAsync(context, state, command, grant, step, cancellationToken);
+            await ExecuteStepAsync(context, state, command, grant, step, loot.QuestId, cancellationToken);
         }
 
         context.Journal.TouchCharacter(command.CharacterId);
@@ -103,12 +137,41 @@ internal sealed class MobLootAllGrantCommandHandler : IItemCommandHandler<GrantM
             });
     }
 
+    // A quest drop is a protected quest item within its stack limit, granted up to the quantity
+    // that its quest still needs.
+    private async Task<int> NeededQuestDropAsync(
+        ItemTransactionContext context,
+        GrantMobLootAllCommand command,
+        MobLootGrantEntry loot,
+        ResolvedItemDefinition definition,
+        int planned,
+        CancellationToken cancellationToken)
+    {
+        if (!QuestDrops.IsQuestDropItem(definition)
+            || loot.Quantity > definition.RuntimeDefinition.MaximumStackSize)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.MobLootGrantInvalid,
+                "A quest drop must be a protected quest item within its stack limit.");
+        }
+
+        return await questDrops.NeededAsync(
+            context,
+            command.CharacterId,
+            loot.QuestId!,
+            command.SourceActorDefinitionId,
+            definition,
+            loot.Quantity + planned,
+            cancellationToken) - planned;
+    }
+
     private static async Task ExecuteStepAsync(
         ItemTransactionContext context,
         LootAllState state,
         GrantMobLootAllCommand command,
         MobLootGrantSource grant,
         LootAllStep step,
+        string? questId,
         CancellationToken cancellationToken)
     {
         var definition = await state.LoadDefinitionAsync(step.Item.DefinitionId, cancellationToken);
@@ -181,14 +244,30 @@ internal sealed class MobLootAllGrantCommandHandler : IItemCommandHandler<GrantM
                         null,
                         false,
                         cancellationToken);
-                    await MobLootWrites.CreateInContainerAsync(
-                        context,
-                        grant,
-                        definition,
-                        step.Quantity,
-                        destination.ContainerId,
-                        slotIndex,
-                        cancellationToken);
+                    if (questId is null)
+                    {
+                        await MobLootWrites.CreateInContainerAsync(
+                            context,
+                            grant,
+                            definition,
+                            step.Quantity,
+                            destination.ContainerId,
+                            slotIndex,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        await MobLootWrites.CreateQuestDropInContainerAsync(
+                            context,
+                            grant,
+                            definition,
+                            step.Quantity,
+                            destination.ContainerId,
+                            slotIndex,
+                            questId,
+                            cancellationToken);
+                    }
+
                     return;
                 }
 

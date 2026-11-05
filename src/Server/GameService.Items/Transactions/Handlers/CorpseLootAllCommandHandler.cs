@@ -6,8 +6,9 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Loots everything that fits from a durable corpse in one transaction. CorpseLootAllPlanner
 // plans the steps from the locked corpse and carry state, and each step commits under the
-// same placement rules as the single loot it stands for.
-internal sealed class CorpseLootAllCommandHandler : IItemCommandHandler<LootAllCorpseItemsCommand>
+// same placement rules as the single loot it stands for. A quest drop in the looter's own Mob
+// corpse moves only while the looter's quest needs all of it, and otherwise stays.
+internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItemCommandHandler<LootAllCorpseItemsCommand>
 {
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -36,7 +37,7 @@ internal sealed class CorpseLootAllCommandHandler : IItemCommandHandler<LootAllC
 
         var state = new LootAllState(context);
         var looter = await state.LoadLooterAsync(character, cancellationToken);
-        var corpseItems = await LoadCorpseItemsAsync(context, state, command.CorpseId, cancellationToken);
+        var corpseItems = await LoadCorpseItemsAsync(context, state, corpse, command.CharacterId, cancellationToken);
         await context.Locks.LockMutationScopeAsync(
             corpseItems.Select(item => item.Item.ItemInstanceId).Concat(looter.ItemInstanceIds),
             corpseItems.Select(item => item.SectionContainerId)
@@ -256,10 +257,11 @@ internal sealed class CorpseLootAllCommandHandler : IItemCommandHandler<LootAllC
     }
 
     // Every corpse item in section and slot order, with the contents slots of every Bag.
-    private static async Task<IReadOnlyList<LootAllCorpseEntry>> LoadCorpseItemsAsync(
+    private async Task<IReadOnlyList<LootAllCorpseEntry>> LoadCorpseItemsAsync(
         ItemTransactionContext context,
         LootAllState state,
-        Guid corpseId,
+        LockedCorpseRow corpse,
+        Guid characterId,
         CancellationToken cancellationToken)
     {
         var rows = (await context.Connection.QueryAsync<CorpseItemRow>(new CommandDefinition(
@@ -287,7 +289,7 @@ internal sealed class CorpseLootAllCommandHandler : IItemCommandHandler<LootAllC
                 end,
                 item.container_slot_index;
             """,
-            new { CorpseId = corpseId },
+            new { corpse.CorpseId },
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
 
@@ -316,12 +318,34 @@ internal sealed class CorpseLootAllCommandHandler : IItemCommandHandler<LootAllC
                     row.Quantity,
                     row.SectionKind,
                     LootAllState.MergeKey(definition, policies),
-                    capabilities.CanChangeOwningCharacter,
+                    capabilities.CanChangeOwningCharacter
+                        || await IsNeededQuestDropAsync(context, corpse, characterId, policies, definition, row.Quantity, cancellationToken),
                     bag),
                 row.SectionContainerId));
         }
 
         return entries;
+    }
+
+    private async Task<bool> IsNeededQuestDropAsync(
+        ItemTransactionContext context,
+        LockedCorpseRow corpse,
+        Guid characterId,
+        IReadOnlyList<LockedItemPolicy> policies,
+        ResolvedItemDefinition definition,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        return QuestDrops.LineageQuestId(policies) is { } questId
+            && QuestDrops.IsOwnMobCorpse(corpse, characterId)
+            && await questDrops.NeededAsync(
+                context,
+                characterId,
+                questId,
+                corpse.SourceNpcDefinitionId!,
+                definition,
+                quantity,
+                cancellationToken) == quantity;
     }
 
     private sealed record LootAllCorpseEntry(LootAllCorpseItem Item, Guid SectionContainerId);

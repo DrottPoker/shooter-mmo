@@ -1,0 +1,44 @@
+{
+    "id": "quest.fixture.trophies",
+    "title": "Fixture Trophies",
+    "giverActorId": "npc.city_services",
+    "turnInActorId": "npc.city_services",
+    "minimumLevel": 1,
+    "requiredQuestIds": [],
+    "repeatable": false,
+    "tags": [
+        "fixture"
+    ],
+    "offerText": "The wolves carry stolen letters. Bring me two of them.",
+    "progressText": "Two letters, from the wolves.",
+    "completionText": "Both letters. Thank you.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "collect",
+            "objectives": [
+                {
+                    "id": "letters",
+                    "kind": "collect",
+                    "text": "Stolen letters",
+                    "count": 2,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "fixture.letter",
+                    "npcActorId": "",
+                    "line": "",
+                    "dropSources": [
+                        {
+                            "actorId": "mob.feral_wolf",
+                            "chanceBasisPoints": 5000,
+                            "quantity": 1
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "rewardGold": 2,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

@@ -34,6 +34,7 @@ internal static class ItemTransactionErrorCodes
     public const string QuestNotReady = "quest_not_ready";
     public const string QuestRewardChoiceRequired = "quest_reward_choice_required";
     public const string QuestRewardChoiceInvalid = "quest_reward_choice_invalid";
+    public const string QuestItemNotNeeded = "quest_item_not_needed";
     public const string CurrencyInsufficient = "currency_insufficient";
     public const string CurrencyLimitExceeded = "currency_limit_exceeded";
     public const string VendorAccessRequired = "vendor_access_required";
@@ -59,6 +60,7 @@ internal static class ItemTransactionErrorCodes
     public const string RecoveryDeliveryNotExpired = "recovery_delivery_not_expired";
     public const string DeathEventConflict = "death_event_conflict";
     public const string MobCorpseInvalid = "mob_corpse_invalid";
+    public const string MobCorpseEmpty = "mob_corpse_empty";
     public const string MobLootGrantInvalid = "mob_loot_grant_invalid";
     public const string CorpseNotFound = "corpse_not_found";
     public const string CorpseNotExpired = "corpse_not_expired";

@@ -5,7 +5,7 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 
 // The item writes of a live Mob loot grant: a new item under the id derived from its grant id,
 // in a container slot or an equipment slot, or a top-up of an existing stack, each with its
-// audit rows.
+// audit rows. A quest drop is created with its quest's lineage.
 internal static class MobLootWrites
 {
     public static Guid ItemInstanceId(Guid grantId)
@@ -49,6 +49,31 @@ internal static class MobLootWrites
             context.Transaction,
             cancellationToken: cancellationToken));
         await JournalAsync(context, grant, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
+        context.Journal.TouchContainer(containerId);
+    }
+
+    public static async Task CreateQuestDropInContainerAsync(
+        ItemTransactionContext context,
+        MobLootGrantSource grant,
+        ResolvedItemDefinition definition,
+        int quantity,
+        Guid containerId,
+        int slotIndex,
+        string questId,
+        CancellationToken cancellationToken)
+    {
+        var itemInstanceId = ItemInstanceId(grant.GrantId);
+        await NewItemInstances.CreateAsync(
+            context,
+            itemInstanceId,
+            definition,
+            quantity,
+            containerId,
+            slotIndex,
+            ItemPolicySourceKinds.QuestGrant,
+            questId,
+            cancellationToken);
+        await JournalAsync(context, grant, itemInstanceId, "live_mob_quest_drop_granted", null, cancellationToken);
         context.Journal.TouchContainer(containerId);
     }
 

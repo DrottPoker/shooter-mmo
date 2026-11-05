@@ -38,7 +38,8 @@ internal static class SimulationItemRejections
             ItemTransactionErrorCodes.InventoryFull or
             ItemTransactionErrorCodes.QuestNotActive or
             ItemTransactionErrorCodes.QuestAlreadyActive or
-            ItemTransactionErrorCodes.QuestObjectiveComplete =>
+            ItemTransactionErrorCodes.QuestObjectiveComplete or
+            ItemTransactionErrorCodes.QuestItemNotNeeded =>
                 ServiceResult<T>.Conflict(error.Code, error.Message),
             _ => ServiceResult<T>.UnprocessableEntity(error.Code, error.Message)
         };
