@@ -1293,15 +1293,17 @@ the quest actions of the realtime protocol through these routes:
   with `quest_log_unavailable` while GameService cannot answer, so no change
   builds on a log that misses one.
 - A Mob's death credits its kill to the players that
-  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) names. For every
-  credited player whose current steps hold an unfinished kill objective for the
-  Mob, or whose quest log is stale, the worker queues a `credit_quest_kill` with
-  a random operation id behind the player's other authority work, in kill
-  order, and sends the changed quests as a `QuestLogChanged` without an
-  operation id. The credit takes its place in the lane at the kill, so an
-  operation that the player sends after the kill, such as abandoning and
-  accepting the quest again, never overtakes it. A kill that no quest asks for
-  costs no GameService call. An
+  [Mobs And Encounters](GAME_DESIGN.md#mobs-and-encounters) names. When a quest
+  of the catalog asks for kills of the Mob, every credited player gets a kill
+  credit with a random operation id, which takes its place in the player's lane
+  at the kill, so an operation that the player sends after the kill, such as
+  abandoning and accepting the quest again, never overtakes it. When its turn
+  comes, the worker sends it as a `credit_quest_kill` if a current step holds an
+  unfinished kill objective for the Mob by the quest log that every operation
+  before it left, or if that log is stale, so a kill during an accept counts for
+  the accepted quest; a kill that no quest asks for costs no GameService call.
+  The changed quests reach the player as a `QuestLogChanged` without an
+  operation id. An
   uncertain answer keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
   a death; a rejection drops the credit with a warning, and a code that ends the

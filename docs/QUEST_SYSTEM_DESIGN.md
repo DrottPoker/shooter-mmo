@@ -454,8 +454,10 @@ fit. GameService, SimulationWorker, and Unity run the same rules.
 - It commits every credited kill that a current step asks for to GameService as
   a kill credit, which counts for the kill objectives of current steps, with one
   operation id per credited character that it keeps for retries, so a retry
-  never counts twice. Pending credits commit before a leave and retry until they
-  commit, like a death. A gathering yield that a current step asks for names the
+  never counts twice. A credit keeps the place in the character's lane that it
+  took at the kill, and whether a step asks for it is decided when its turn
+  comes. Pending credits commit before a leave and retry until they commit,
+  like a death. A gathering yield that a current step asks for names the
   node's actor definition, and GameService counts it for gather objectives in
   the same transaction that places the yield. While the worker's quest log may
   miss a change, it sends every credited kill and names every node, and

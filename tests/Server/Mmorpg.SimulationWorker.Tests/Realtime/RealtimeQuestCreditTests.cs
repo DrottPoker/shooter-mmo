@@ -156,6 +156,117 @@ public sealed class RealtimeQuestCreditTests
         }
     }
 
+    // A kill while the accept of its quest is in flight waits for the accept, and then counts by
+    // the quest log the accept left.
+    [Fact]
+    public async Task AKillDuringAnAcceptCountsForTheAcceptedQuest()
+    {
+        await using var harness = Create();
+        var archer = AddArcher(harness, "Eager Hunter");
+        var gate = new TestGate();
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 0));
+        harness.GameService.OnQuestOperation = async (_, request, _) =>
+        {
+            if (request.OperationKind != "accept_quest")
+            {
+                return KillCounted(request, 2, 1);
+            }
+
+            await gate.WaitAsync();
+            return ScriptedGameServiceHandler.CommittedQuestOperation(
+                request,
+                0,
+                1,
+                new SimulationQuestChange(Wolves, "hunt", [new SimulationQuestObjectiveProgress("wolves", 0)], 0));
+        };
+        await harness.StartAsync();
+        try
+        {
+            var client = await harness.JoinAsync(archer);
+            var services = await RealtimeWorldActorInteractionTests.WaitForServicesAsync(harness, client);
+            client.SendWorldIntent(RealtimeWorldActorInteractionTests.CreateOpen(archer.SimulationSessionId, services));
+            await harness.PollUntilAsync(() => client.WorldOpened.Count == 1, "the open");
+            var opened = client.WorldOpened[0];
+            var quests = opened.Capabilities.Single(value => value.Kind == RealtimeWorldActorCapabilityKind.Quests);
+            client.SendWorldIntent(RealtimeWorldInteractionIntent.CreateCapabilityAction(
+                Guid.NewGuid(),
+                archer.SimulationSessionId,
+                opened.InteractionSessionId,
+                RealtimeWorldInteractionTargetKind.WorldActor,
+                services.EntityId,
+                services.RuntimeActorId,
+                services.InteractionRevision,
+                quests.Id,
+                quests.Kind,
+                quests.Revision,
+                RealtimeCapabilityActionKind.AcceptQuest,
+                questId: Wolves));
+            await harness.PollUntilAsync(() => gate.HasEntered, "the accept to reach GameService");
+
+            var wolf = await WaitForWolfAsync(harness, client);
+            client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+            await harness.PollUntilAsync(
+                () => Events(client).Any(value => value.Kind == RealtimeCombatEventKind.Died && value.TargetEntityId == wolf.EntityId),
+                "the wolf to die");
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+            Assert.Single(harness.GameService.QuestOperations);
+
+            gate.Release();
+            await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 2, "the credit after the accept");
+
+            Assert.Equal(
+                ["accept_quest", "credit_quest_kill"],
+                harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
+            await harness.PollUntilAsync(
+                () => QuestChanges(client).Any(change => change.OperationId == Guid.Empty),
+                "the counted kill on the client");
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    // A reconnect while the credits wait behind a quest intent of the old client starts them on
+    // the new client's lane, while the old client's intent finishes on its own.
+    [Fact]
+    public async Task AReconnectStartsTheCreditsThatWaitedBehindAnIntent()
+    {
+        await using var harness = Create(wolfRespawnSeconds: 0.5f);
+        var archer = AddArcher(harness, "Hasty Hunter");
+        var gate = new TestGate();
+        ScriptGatedCredits(harness, gate);
+        await harness.StartAsync();
+        try
+        {
+            var first = await harness.JoinAsync(archer, "first");
+            first.Send(RealtimeProtocol.EncodeQuestIntent(
+                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            await harness.PollUntilAsync(() => gate.HasEntered, "the abandon to reach GameService");
+            await KillTwoWolvesAsync(harness, first, gate);
+            Assert.Single(harness.GameService.QuestOperations);
+
+            var reconnect = archer with
+            {
+                Ticket = "ticket-reconnect",
+                SimulationSessionToken = "reconnected-session-token"
+            };
+            harness.GameService.AddCharacter(reconnect);
+            var second = await harness.JoinAsync(reconnect, "second");
+            await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 3, "both credits");
+
+            Assert.Equal(
+                ["abandon_quest", "credit_quest_kill", "credit_quest_kill"],
+                harness.GameService.QuestOperations.Select(operation => operation.OperationKind));
+            Assert.Null(second.ServerDisconnect);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     // A reconnect from another client keeps both credits ahead of the new client's operations:
     // the one in flight holds the new client's lane, and the one that waited behind it keeps its
     // place.
@@ -295,6 +406,7 @@ public sealed class RealtimeQuestCreditTests
     private static void ScriptGatedCredits(RealtimeServerHarness harness, TestGate gate)
     {
         var calls = 0;
+        var kills = 0;
         harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
             ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, Hunting(0)));
         harness.GameService.OnQuestOperation = async (_, request, _) =>
@@ -311,11 +423,12 @@ public sealed class RealtimeQuestCreditTests
                     0,
                     3 + call,
                     new SimulationQuestChange(Wolves, null, [], 0))
-                : KillCounted(request, 3 + call, call);
+                : KillCounted(request, 3 + call, Interlocked.Increment(ref kills));
         };
     }
 
-    // Kills the wolf, waits until its credit holds the gate, and kills the respawned wolf too.
+    // Kills the wolf, waits until the first quest operation holds the gate, and kills the
+    // respawned wolf too.
     private static async Task KillTwoWolvesAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client,
@@ -323,7 +436,7 @@ public sealed class RealtimeQuestCreditTests
     {
         var wolf = await WaitForWolfAsync(harness, client);
         client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
-        await harness.PollUntilAsync(() => gate.HasEntered, "the first credit to reach GameService");
+        await harness.PollUntilAsync(() => gate.HasEntered, "the first quest operation to hold the gate");
         await harness.PollUntilAsync(
             () => WolfSpawns(client).Any(value => value.EntityId != wolf.EntityId && value.SpawnDefinitionId == wolf.SpawnDefinitionId),
             "the wolf to respawn");

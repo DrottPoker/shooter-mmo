@@ -821,7 +821,8 @@ tags; the player gets a `QuestLogChanged` without an operation id that moves
 `wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
 answers are lost asks again with the same operation id until it commits, and an
 abandon sent after two kills waits for both credits, also after a reconnect
-from another client. A leave waits for the credit of the last kill and survives
+from another client. A kill while the hunt's accept is in flight counts once the
+accept committed. A leave waits for the credit of the last kill and survives
 a death while it waits, and a stopping worker counts the kill that still waits
 in the lane. An Iron Vein yield names `resource.iron_vein`
 while the errand needs ore and none once the ore is done, a retry sends the same

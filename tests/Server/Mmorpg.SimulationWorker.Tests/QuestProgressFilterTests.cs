@@ -33,6 +33,17 @@ public sealed class QuestProgressFilterTests
         Assert.False(filter.CountsKill(unknown, "mob.feral_wolf", ["wolf"]));
     }
 
+    // The catalog alone tells whether a kill of a Mob can count for any quest.
+    [Fact]
+    public void AKillCanCountOnlyForAMobThatAQuestAsksFor()
+    {
+        var filter = new QuestProgressFilter(new CharacterQuestLogStore(), RealtimeServerHarness.QuestCatalog);
+
+        Assert.True(filter.MayCountKill("mob.feral_wolf", ["wolf"]));
+        Assert.False(filter.MayCountKill("mob.grey_wolf", ["wolf"]));
+        Assert.False(filter.MayCountKill("resource.iron_vein", []));
+    }
+
     private static void Register(
         CharacterQuestLogStore store,
         Mmorpg.SimulationWorker.Sessions.ActiveSimulationSession session,

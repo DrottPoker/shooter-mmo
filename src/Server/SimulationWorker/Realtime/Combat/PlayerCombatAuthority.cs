@@ -167,15 +167,18 @@ internal sealed class PlayerCombatAuthority(
         return true;
     }
 
-    // A dying Mob credited these players. Each one whose quest log asks for the kill gets a
-    // credit in its lane, which counts the kill for every quest that it advances. The credit
-    // takes its place in the lane at the kill, so no operation that the player sends after the
-    // kill, such as abandoning and accepting the quest again, overtakes it.
+    // A dying Mob that a quest asks for credited these players. Each gets a credit that takes
+    // its place in the player's lane at the kill, so no operation that the player sends after the
+    // kill, such as abandoning and accepting the quest again, overtakes it. Whether the kill
+    // counts is decided once the credit's turn comes, by the quest log that every operation
+    // before it left, so a kill during an accept still counts for the accepted quest.
     public void CreditQuestKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
     {
         ArgumentNullException.ThrowIfNull(mob);
         ArgumentNullException.ThrowIfNull(credits);
-        if (questOperations is null || questProgress is null)
+        if (questOperations is null
+            || questProgress is null
+            || !questProgress.MayCountKill(mob.Definition.Id, mob.Definition.Tags))
         {
             return;
         }
@@ -185,8 +188,7 @@ internal sealed class PlayerCombatAuthority(
             if (!entityRegistry.TryGetPlayerByCharacterId(credit.CharacterId, out var player)
                 || player is null
                 || !sessions.TryGetValue(player.Session.SimulationSessionId, out var combatSession)
-                || combatSession.Detached
-                || !questProgress.CountsKill(combatSession.Session, mob.Definition.Id, mob.Definition.Tags))
+                || combatSession.Detached)
             {
                 continue;
             }
@@ -428,7 +430,7 @@ internal sealed class PlayerCombatAuthority(
                     credits.Add(inFlight);
                 }
 
-                credits.AddRange(combatSession.QuestCredits);
+                credits.AddRange(combatSession.QuestCredits.Where(credit => Counts(combatSession, credit)));
                 combatSession.QuestCredits.Clear();
                 if (credits.Count > 0)
                 {
@@ -506,10 +508,11 @@ internal sealed class PlayerCombatAuthority(
         scheduler.Enqueue(combatSession.Context, new QueuedAmmunitionBatch(this, combatSession));
     }
 
+    // A credit that a disconnect already sent has left the session's credits, and one that the
+    // quest log does not ask for costs no GameService call.
     private void StartQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
     {
-        // A credit that a disconnect already sent has left the session's credits.
-        if (!combatSession.QuestCredits.Remove(credit))
+        if (!combatSession.QuestCredits.Remove(credit) || !Counts(combatSession, credit))
         {
             ReleaseLane(combatSession);
             return;
@@ -517,6 +520,13 @@ internal sealed class PlayerCombatAuthority(
 
         combatSession.InFlightQuestCredit = credit;
         SendQuestCredit(combatSession, credit);
+    }
+
+    // A detached session left its quest log with its peer, so GameService decides its credits.
+    private bool Counts(PlayerCombatSession combatSession, QuestKillCredit credit)
+    {
+        return combatSession.Detached
+            || questProgress!.CountsKill(combatSession.Session, credit.MobActorId, credit.MobTags);
     }
 
     private void SendQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
@@ -607,7 +617,8 @@ internal sealed class PlayerCombatAuthority(
             QueueDeath(combatSession);
         }
 
-        foreach (var credit in combatSession.QuestCredits)
+        // A credit may start, and leave the list, while the next one is queued.
+        foreach (var credit in combatSession.QuestCredits.ToArray())
         {
             scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, credit));
         }

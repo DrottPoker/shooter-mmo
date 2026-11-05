@@ -11,12 +11,24 @@ public sealed class QuestProgressFilter
 {
     private readonly CharacterQuestLogStore questLogs;
     private readonly Dictionary<string, QuestDefinition> quests;
+    private readonly QuestObjectiveDefinition[] killObjectives;
 
     public QuestProgressFilter(CharacterQuestLogStore questLogs, QuestCatalogRuntimeDocument catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         this.questLogs = questLogs ?? throw new ArgumentNullException(nameof(questLogs));
         quests = catalog.Quests.ToDictionary(quest => quest.Id, StringComparer.Ordinal);
+        killObjectives = catalog.Quests
+            .SelectMany(quest => quest.Steps)
+            .SelectMany(step => step.Objectives)
+            .Where(objective => string.Equals(objective.Kind, QuestObjectiveKindIds.Kill, StringComparison.Ordinal))
+            .ToArray();
+    }
+
+    // Whether any quest of the catalog asks for kills of the Mob, whatever any character holds.
+    public bool MayCountKill(string mobActorId, IReadOnlyCollection<string> mobTags)
+    {
+        return killObjectives.Any(objective => QuestRules.CountsKill(objective, mobActorId, mobTags));
     }
 
     public bool CountsKill(ActiveSimulationSession session, string mobActorId, IReadOnlyCollection<string> mobTags)
