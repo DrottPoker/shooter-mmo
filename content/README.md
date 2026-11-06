@@ -179,7 +179,8 @@ compiled item catalog:
 `quests/catalog.json` holds `maximumActiveQuests`, how many quests a character
 can have active at once, and `retiredQuestIds`. Every file in
 `quests/definitions` is one quest of the model in
-[Quest System Design](../docs/QUEST_SYSTEM_DESIGN.md#quest-model):
+[Quest System Design](../docs/QUEST_SYSTEM_DESIGN.md#quest-model). Quest Studio
+edits them, as [Quest Studio](#quest-studio) describes:
 
 | Field | Meaning |
 | --- | --- |
@@ -345,15 +346,16 @@ content in a temporary directory before anything is written.
 
 ## Unity Content Tools
 
-`MMORPG > Tools > Item Catalog`, `MMORPG > Tools > Content > Actor Studio`, and
-`MMORPG > Tools > Content > Spawn Authoring` load these files, validate every
+`MMORPG > Tools > Item Catalog`, `MMORPG > Tools > Content > Actor Studio`,
+`MMORPG > Tools > Content > Spawn Authoring`, and
+`MMORPG > Tools > Content > Quest Studio` load these files, validate every
 change with the same command-line compilers that CI runs, and write all affected
 source and generated files in one transaction that is rolled back on failure.
 The tools need `dotnet` on the path, because they run the compilers with
 `dotnet run`. The Item Catalog window edits item definitions and vendor profiles,
 as [Item Catalog Authoring](items/README.md#unity-editor-workflow) describes.
-Actor Studio edits NPCs, Mobs, and resource nodes, and Spawn Authoring places
-them in a World.
+Actor Studio edits NPCs, Mobs, and resource nodes, Spawn Authoring places
+them in a World, and Quest Studio edits the quests and the quest catalog.
 
 Everything else is edited by hand in its `catalog.json`: the item catalog
 settings and identities, and the actor catalog's factions, presentation
@@ -369,16 +371,17 @@ describes.
 The saved files are the only source: SimulationWorker never reads a scene, and
 the command-line compilers rebuild every compiled actor and spawn without Unity.
 
-Both actor tools share these behaviors:
+Actor Studio, Spawn Authoring, and Quest Studio share these behaviors:
 
 - A searchable list with filters and a `Problems` filter. Hold Ctrl or Shift to
   select several entries; one editor then edits all of them, a field whose
   values differ shows a mixed value, a field applies only to the selected
   entries that have it, and a vector edit changes only the edited axis of each
   entry.
-- Referenced profiles, presentation archetypes, actors, and patrol paths are
-  chosen from dropdowns of the existing entries. A reference to a removed entry
-  stays visible, marked as unknown, and fails validation.
+- References, such as profiles, presentation archetypes, actors, patrol paths,
+  items, and quests, are chosen from dropdowns of the existing entries. A
+  reference to a removed entry stays visible, marked as unknown, and fails
+  validation.
 - Live validation with the shared compiler. A field with a problem turns red,
   the list marks its entry, and the problems panel below names the field path,
   such as `interactionBounds.sizeY`; clicking a problem selects the entry and
@@ -390,13 +393,16 @@ Both actor tools share these behaviors:
 - `Preview Changes` compiles with the content compiler and lists every canonical
   file, with changed files in bold, or reports `No canonical changes detected.`.
   `Save + Compile` lists the runtime changes for confirmation with
-  `Write files`, writes the actor catalog, one file per actor, the spawn file,
-  and the runtime JSON of every World in one transaction, deletes the definition
-  file of a removed actor, and then recompiles the World collision. When that
-  last step fails, the status says so, and the collision stays stale until
-  `tools/WorldCollisionCompiler` runs. `Verify Canonical` runs the actor
-  compiler's verify mode. A save without changes leaves every file byte for byte
-  the same.
+  `Write files`, writes the authoring files and the compiled files in one
+  transaction, and deletes the definition file of a removed entry. The actor
+  tools write the actor catalog, one file per actor, the spawn file, and the
+  runtime JSON of every World, and then recompile the World collision; when
+  that last step fails, the status says so, and the collision stays stale until
+  `tools/WorldCollisionCompiler` runs. `Verify Canonical` runs the compiler's
+  verify mode. A save without changes leaves every file byte for byte the same.
+- Only the list and the editor shrink with the window; the problems panel, the
+  status line, and the action buttons keep their height. A long status is cut
+  at a third of the window, and its tooltip shows all of it.
 
 ### Actor Studio
 
@@ -499,3 +505,72 @@ Renaming a patrol path updates the spawns that follow it in the same undo step.
 `Delete` keeps a patrol path that a remaining spawn still follows and says so.
 How to check the result in the running game is in
 [Manual Testing](../docs/MANUAL_TESTING.md).
+
+### Quest Studio
+
+Quest Studio edits the files in `quests` and writes the compiled quest catalog,
+`src/Shared/WorldData/Generated/Quests/core.quest-catalog.json`. Its list
+filters by giver, turn-in NPC, objective kind, tag, and problems. With several
+quests selected, giver, turn-in NPC, minimum level, repeatable, tags, and reward
+Gold edit every selected quest at once; id, title, texts, requirements, items,
+and steps are edited one quest at a time. With no quest selected, the editor
+shows the quest catalog's `Maximum Active Quests` and its retired ids.
+
+The dropdowns offer what the compiler accepts: NPCs with the `quests`
+capability for the giver, the turn-in NPC, a delivery, and a conversation;
+placed Mobs and the tags of placed Mobs for a kill objective; placed resource
+nodes for a gathering objective; protected quest items for start items; and
+ordinary items without policies for rewards. They come from the compiled items
+and actors, so after a save in the Item Catalog or Actor Studio, click
+`Reload References`, which keeps the quest edits.
+
+1. Open `MMORPG > Tools > Content > Quest Studio`. Create a quest with
+   `New Quest`, which offers `Kill Quest`, `Collect Quest`, `Delivery`,
+   `Talk-To Quest`, `Gathering Quest`, and `Several Steps`, or select quests and
+   click `Duplicate`, which copies each with a new id, such as
+   `quest.wolves_at_the_gate_copy`. A template names the first quest NPCs, Mob,
+   resource node, and items, and compiles as it is.
+2. Under `Quest`, set the `Stable Quest Id`, `Title`, `Giver`, `Turn-In NPC`,
+   `Minimum Level`, and `Repeatable`. Under `Dialog`, write the `Offer Text`,
+   `Progress Text`, and `Completion Text`; a line break typed into a text becomes
+   a space, because every quest text is one line.
+3. Under `Required Quests`, use `Add Requirement` and choose the quests that must
+   be completed first, and add tags under `Content Tags`.
+4. Under `Start Items`, add the quest items the giver hands out at acceptance.
+5. Under `Steps`, each step has its `Step Id` and objectives. Each objective has
+   an `Objective Id`, a `Kind`, its tracker `Text`, a `Count`, and the fields
+   of its kind: `Targets` with `Listed Mobs` or `Mobs With A Tag` for a kill
+   objective, the `Item` and, for a quest item, `Quest Drops` with `Mob`,
+   `Chance (basis points)`, and `Quantity` for a collect objective, the `Item`
+   and `Deliver To` for a delivery, `Talk To` and the NPC's `Line` for a
+   conversation, and the resource nodes for a gathering objective. Changing the
+   kind clears the fields the new kind does not use and fills the ones it needs.
+   `Add Objective`, `Add Step`, `Move Up`, `Move Down`, `Move Step Up`,
+   `Move Step Down`, `Remove`, and `Remove Step` change the order.
+6. Under `Rewards`, set the `Reward Gold`, and add `Reward Items` and the
+   `Reward Choice`, none or two to six items of which the player picks one.
+7. `Quest Chain` shows the selected quest's chain in rows, each row needing
+   quests from the rows above it, and `NPC View` lists every quest the chosen
+   NPC gives, receives, or appears in. Clicking a quest in either selects it.
+8. Click `Preview Changes`, then `Save + Compile`, then `Verify Canonical`.
+   The save lists the changes for confirmation, such as
+   `Added quest: quest.new_kill`, and writes the quest files and the compiled
+   quest catalog.
+
+How to check Quest Studio by hand is in
+[Manual Testing](../docs/MANUAL_TESTING.md#quest-studio).
+
+A saved quest's id is permanent, as
+[Changing Released Quests](../docs/QUEST_SYSTEM_DESIGN.md#changing-released-quests)
+describes. `Delete` removes only quests that no remaining quest requires, says
+which ones it kept, and moves the id of a saved quest to the retired ids;
+changing the `Stable Quest Id` of a saved quest retires the old id after a
+confirmation and updates the quests that require it. A quest that was never
+saved is deleted or renamed without a trace. A save also retires every saved
+quest that left the catalog and keeps every retired id, even when undo across
+a save took the retirement away, and the problems panel names a retired id that
+undo brought back. To try Quest Studio without
+keeping the result, discard the changed files with
+`git restore content/quests src/Shared/WorldData/Generated/Quests` and delete
+any new definition file before GameService starts, because GameService never
+forgets a quest id that it has mirrored.

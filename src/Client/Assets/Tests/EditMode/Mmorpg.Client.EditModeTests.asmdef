@@ -23,6 +23,7 @@
     "Mmorpg.WorldData.Client",
     "Mmorpg.WorldData.Editor",
     "Mmorpg.WorldData.Actors.Editor",
+    "Mmorpg.WorldData.Quests.Editor",
     "Mmorpg.Client.Editor",
     "Unity.Addressables",
     "Unity.Addressables.Editor",

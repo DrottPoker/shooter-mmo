@@ -510,11 +510,12 @@ invokes the same strict .NET compiler used by CI. Runtime WorldData assemblies
 do not reference `UnityEditor`.
 
 `src/Shared/WorldData/Editor/ContentTools` is the UI Toolkit foundation that the
-content tools share: Item Catalog, Actor Studio, and Spawn Authoring. It
-provides a list with search, filters, and multi-selection; fields that edit
-every selected entry at once and show a mixed state when the entries differ;
-live validation with the shared compilers inside Unity, with each finding
-mapped to its entry and field; and undo through Unity's own Undo. Every edit
+content tools share: Item Catalog, Actor Studio, Spawn Authoring, and Quest
+Studio. It provides a list with search, filters, and multi-selection; fields
+that edit every selected entry at once and show a mixed state when the entries
+differ; live validation with the shared compilers inside Unity, with each
+finding mapped to its entry and field; the preview of the canonical files a
+save writes; and undo through Unity's own Undo. Every edit
 records an exact JSON snapshot of the edited content, so Ctrl+Z, the Edit menu,
 and Undo History work as elsewhere in Unity, and null never turns into an empty
 object on undo. A vector field edits only the axis that changed, and a
@@ -523,6 +524,12 @@ window keeps its undo state across script reloads and asks to save unsaved
 changes when it closes. The compilers, the content files, and
 `ContentFileTransaction` are shared with the command-line tools, so a tool never
 produces other compiled content than CI.
+
+Each tool has its own Editor-only assembly beside the foundation:
+`Mmorpg.WorldData.Actors.Editor` in `src/Shared/WorldData/Editor/Actors` holds
+Actor Studio and Spawn Authoring, and `Mmorpg.WorldData.Quests.Editor` in
+`src/Shared/WorldData/Editor/Quests` holds Quest Studio, which validates quests
+with the shared `QuestCatalogCompiler` against the compiled items and actors.
 
 `Assets/Editor` contains project-local orchestration tools below the shared
 `MMORPG > Tools` menu root. `Inventory Item Grants` runs guarded,

@@ -89,15 +89,15 @@ largest, is split by area:
 | `Editor/Water` | `WaterAssets`, which writes the water's textures and materials, and the water of the World Builder: the builders of the lake, river, sea, and waterfall meshes, the beds the water carves, the editors of their shapes, and the water validation |
 | `Editor/Ui` | `UiSpriteImportRules` and `UiThemeBuilder`, the import and build side of [UI Art](ART_PIPELINE.md#ui-art) |
 
-The item catalog, Actor Studio, and Spawn Authoring windows live in the shared
-WorldData package at `src/Shared/WorldData/Editor`.
+The item catalog, Actor Studio, Spawn Authoring, and Quest Studio windows live
+in the shared WorldData package at `src/Shared/WorldData/Editor`.
 
 ### Tests
 
 | Folder | Holds |
 | --- | --- |
-| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Protocol`, and `WorldActors` |
-| `Tests/EditMode/Fixtures` | Test-owned fixtures: a collision world, an item catalog, and actor content |
+| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Protocol`, `Quests`, and `WorldActors` |
+| `Tests/EditMode/Fixtures` | Test-owned fixtures: a collision world, an item catalog, actor content, the quest catalog, and a copy of the quest content |
 | `Tests/EditMode/Shared` | Test sources that the .NET test projects compile too |
 | `Tests/PlayMode` | The PlayMode assembly |
 
@@ -116,6 +116,7 @@ goes there too:
 | `Inventory Item Grants` | Development items, currency, and corpses for offline characters | [Development Item Tools](#development-item-tools) |
 | `Item Catalog` | Edits item definitions and vendor profiles | [Unity Editor Workflow](../content/items/README.md#unity-editor-workflow) |
 | `Content > Actor Studio`, `Content > Spawn Authoring` | Edits actors and their spawns | [Unity Content Tools](../content/README.md#unity-content-tools) |
+| `Content > Quest Studio` | Edits quests and quest chains | [Quest Studio](../content/README.md#quest-studio) |
 | `Art Pipeline > Wardrobe`, `Update Appearance Catalogs`, `Create Missing Materials`, `Build Creature Presentations`, `Measure Cloth`, `Write Cloth Fixtures` | Art pipeline tools | [Art Pipeline](ART_PIPELINE.md) |
 | `UI > Build UI Fonts`, `UI > Build UI Theme` | Makes the UI font assets and fills the UI theme from its sprites | [UI Art](ART_PIPELINE.md#ui-art) |
 | `Water > Create Water Textures And Materials` | Writes the water's textures and materials | [Water](ART_PIPELINE.md#water) |

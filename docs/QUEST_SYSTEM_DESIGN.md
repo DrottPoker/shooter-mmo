@@ -57,8 +57,10 @@ Implemented:
   [Quest Client](UNITY_CLIENT_ARCHITECTURE.md#quest-client) describes.
 - The Admin menu's quest tools, as [Development Tools](#development-tools)
   describes.
+- [Quest Studio](#quest-studio), whose steps are in
+  [Game Content](../content/README.md#quest-studio).
 
-Planned: everything else in this document, next Quest Studio.
+Planned: everything else in this document.
 
 ## Goals
 
@@ -421,9 +423,14 @@ tool foundation of [Unity Content Tools](../content/README.md#unity-content-tool
   tags, resource nodes, items, with only quest items where a quest item is
   needed, and quests for the requirements.
 - Steps and objectives that are added, removed, and moved with buttons.
-- A chain view of the selected quest's requirements and follow-ups, and an NPC
-  view of every quest an NPC gives, receives, or appears in. Clicking an entry
-  selects it.
+- A chain view of the selected quest's chain in rows, each row needing quests
+  from the rows above it, and an NPC view of every quest an NPC gives, receives,
+  or appears in. Clicking an entry selects it.
+- `Delete` and a changed id of a saved quest move its id to the retired ids, as
+  [Changing Released Quests](#changing-released-quests) requires; a quest that
+  was never saved leaves no trace. A save checks the edits against the saved
+  files, so undo across a save can neither remove a saved quest without retiring
+  its id nor bring a retired id back.
 - Live validation, undo, `Preview Changes`, `Save + Compile`, and
   `Verify Canonical`, as in the other content tools.
 

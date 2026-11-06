@@ -464,7 +464,7 @@ namespace Mmorpg.WorldData.Editor.Actors
             RunLiveValidation();
             if (validation.Success)
             {
-                WorldActorChangePreviewWindow.ShowPreview(validation);
+                WorldActorChangePreview.Show(validation);
             }
         }
 

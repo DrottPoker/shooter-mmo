@@ -837,6 +837,47 @@ Continue with a character that completed Wolves at the Gate, as
 2. Once you carry two Wolf Fangs, kill another Feral Wolf. Expected result: no
    drop message, because the quest needs no more fangs.
 
+### Quest Studio
+
+This check runs in the Unity Editor outside Play Mode and leaves every file as
+it was. How to make quests with Quest Studio is in
+[Quest Studio](../content/README.md#quest-studio).
+
+1. Open `MMORPG > Tools > Content > Quest Studio`. Expected result: the list
+   shows the five development quests, the status says `Loaded 5 quests.`, and
+   the problems panel shows `No problems found.`.
+2. Select `Pelts and Fangs` and scroll down to `Quest Chain`. Expected result:
+   three rows, first `A Letter for the Outpost` and `Wolves at the Gate`, then
+   `Pelts and Fangs`, outlined as the selected quest, and
+   `The Sergeant's Request`, then `The Alpha`, each with its giver and turn-in
+   NPC. Below, `NPC View` shows Mira the Quartermaster with `Gives (3)`,
+   `Receives (2)`, and `Appears In (1)`, which is `The Sergeant's Request`.
+   Click `The Alpha`. Expected result: the list selects The Alpha.
+3. Choose `New Quest > Kill Quest`. Expected result: `New Kill Quest`
+   (`quest.new_kill`) is selected, given and taken back by Mira, with one step
+   that asks for five kills of a placed Mob, and the problems panel still shows
+   `No problems found.`.
+4. Set the objective's `Count` to 0. Expected result: the field turns red, the
+   list marks the quest, and the problems panel says
+   `New Kill Quest (quest.new_kill): steps[0].objectives[0].count must be between 1 and 1000.`
+   Click the list and press Ctrl+Z. Expected result: the count is 5 again, and
+   the problem is gone.
+5. Click `Preview Changes`. Expected result: the preview lists the quest files
+   and the compiled quest catalog, with
+   `content/quests/definitions/quest.new_kill.json (changed)` and
+   `Generated/Quests/core.quest-catalog.json (changed)` in bold, and its summary
+   says `Added quest: quest.new_kill`. Close it.
+6. Select `Wolves at the Gate`, Ctrl-click `Pelts and Fangs`, and click
+   `Delete`. Expected result: the question lists only `quest.pelts_and_fangs`,
+   because The Alpha requires Wolves at the Gate, and says that saved quests
+   leave their ids as retired ids. Click `Cancel`.
+7. Click `Reload`, then `Discard and reload`. Expected result: `quest.new_kill`
+   is gone, and `git status` shows no change below `content/quests` or
+   `src/Shared/WorldData/Generated/Quests`.
+
+The EditMode tests `QuestStudioServiceTests` and `QuestStudioViewTests` save,
+delete, rename, and undo across saves in a temporary copy of the content.
+
 ### Quest Commands On The Worker Quest Route
 
 The worker runs the quest actions through the quest dialog, and the same routes

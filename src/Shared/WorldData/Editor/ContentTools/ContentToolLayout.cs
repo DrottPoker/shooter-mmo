@@ -52,6 +52,7 @@ namespace Mmorpg.WorldData.Editor.ContentTools
         public void SetStatus(string message, HelpBoxMessageType type)
         {
             status.text = message ?? string.Empty;
+            status.tooltip = status.text;
             status.messageType = type;
             status.style.display = string.IsNullOrEmpty(status.text) ? DisplayStyle.None : DisplayStyle.Flex;
         }
