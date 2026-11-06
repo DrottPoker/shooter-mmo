@@ -59,9 +59,9 @@ public sealed class ItemTransactionRoutingTests
             })
             .ToArray();
 
-        Assert.Equal(41, overloads.Length);
-        Assert.Equal(41, requestTypes.Distinct().Count());
-        Assert.Equal(41, Routes.Count);
+        Assert.Equal(48, overloads.Length);
+        Assert.Equal(48, requestTypes.Distinct().Count());
+        Assert.Equal(48, Routes.Count);
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -201,6 +201,41 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new TurnInQuestCommand(Id, "quest.fixture.wolves", "fixture.sword"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminAcceptQuest] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminAcceptQuestCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminCompleteQuestObjective] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminCompleteQuestObjectiveCommand(Id, "quest.fixture.wolves", "wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminCompleteQuestStep] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminCompleteQuestStepCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminMakeQuestReady] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminMakeQuestReadyCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminResetQuest] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminResetQuestCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminResetQuestChain] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminResetQuestChainCommand(Id, "quest.fixture.wolves"),
+                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
+            [ItemOperationKinds.AdminResetQuests] = (service, actor) => Run(
+                service,
+                actor,
+                new AdminResetQuestsCommand(Id),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ProcessPlayerDeath] = (service, actor) => Run(
                 service,

@@ -15,7 +15,7 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // protected quest items with the quest's lineage, which ending the quest removes. Quest
 // actions only fill free slots or take the items an objective counts, so they lock the
 // character without an expected revision and never fail because the player moved an item.
-internal sealed class QuestCommandHandler(
+internal sealed partial class QuestCommandHandler(
     IQuestDefinitions questDefinitions,
     ICharacterQuestLog questLog,
     ICharacterWallet characterWallet)
@@ -55,25 +55,7 @@ internal sealed class QuestCommandHandler(
             questId => log.ActiveQuests.Any(active => string.Equals(active.QuestId, questId, StringComparison.Ordinal)),
             questId => CompletionCount(log, questId)));
 
-        var granted = await GrantMissingStartItemsAsync(
-            context,
-            character,
-            quest,
-            _ => 0,
-            cancellationToken);
-        var firstStep = quest.Steps[0];
-        await questLog.AcceptAsync(
-            context.Scope,
-            command.CharacterId,
-            quest.Id,
-            firstStep.Id,
-            QuestProgression.CountedObjectiveIds(firstStep),
-            cancellationToken);
-        context.Journal.AddMetadataAudit(
-            "quest_accepted",
-            null,
-            new { command.CharacterId, QuestId = quest.Id, StepId = firstStep.Id, GrantedStartItems = granted });
-        await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, [quest.Id], cancellationToken);
+        await StartAsync(context, character, quest, "quest_accepted", cancellationToken);
     }
 
     // Abandoning works anywhere from the quest log, so it needs the live character only.
@@ -525,6 +507,35 @@ internal sealed class QuestCommandHandler(
         }
 
         return delivered;
+    }
+
+    // Grants the start items and starts the quest at its first step.
+    private async Task StartAsync(
+        ItemTransactionContext context,
+        LockedCharacterState character,
+        QuestDefinition quest,
+        string auditKind,
+        CancellationToken cancellationToken)
+    {
+        var granted = await GrantMissingStartItemsAsync(
+            context,
+            character,
+            quest,
+            _ => 0,
+            cancellationToken);
+        var firstStep = quest.Steps[0];
+        await questLog.AcceptAsync(
+            context.Scope,
+            character.CharacterId,
+            quest.Id,
+            firstStep.Id,
+            QuestProgression.CountedObjectiveIds(firstStep),
+            cancellationToken);
+        context.Journal.AddMetadataAudit(
+            auditKind,
+            null,
+            new { character.CharacterId, QuestId = quest.Id, StepId = firstStep.Id, GrantedStartItems = granted });
+        await QuestLogChanges.ReportAsync(context, questLog, character.CharacterId, [quest.Id], cancellationToken);
     }
 
     // Grants the start items that the quest still needs and the character does not own,

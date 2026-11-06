@@ -3,7 +3,8 @@ using Microsoft.Extensions.Configuration;
 namespace Mmorpg.SimulationWorker.Config;
 
 // Whether every player may use the development admin tools of the Admin menu: the walk speed,
-// a teleport, full health, and invulnerability. Only the Development environment allows them.
+// a teleport, full health, invulnerability, and the quest tools. Only the Development
+// environment allows them.
 public sealed record DevelopmentAdminOptions(bool Enabled)
 {
     public const string SectionName = "DevelopmentAdmin";

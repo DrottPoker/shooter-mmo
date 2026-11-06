@@ -15,6 +15,15 @@ public static class QuestOperationKinds
     public const string Deliver = "deliver_quest_items";
     public const string TurnIn = "turn_in_quest";
     public const string CreditKill = "credit_quest_kill";
+
+    // The development quest tools of the Admin menu, which only a Development GameService runs.
+    public const string AdminAccept = "admin_accept_quest";
+    public const string AdminCompleteObjective = "admin_complete_quest_objective";
+    public const string AdminCompleteStep = "admin_complete_quest_step";
+    public const string AdminMakeReady = "admin_make_quest_ready";
+    public const string AdminReset = "admin_reset_quest";
+    public const string AdminResetChain = "admin_reset_quest_chain";
+    public const string AdminResetAll = "admin_reset_quests";
 }
 
 // One quest action of a live character. QuestNpcActorId is the actor definition of the NPC whose

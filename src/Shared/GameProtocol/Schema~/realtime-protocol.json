@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 35,
+    "version": 36,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -515,8 +515,17 @@
     {
       "name": "QuestIntentKind",
       "family": "Quests",
-      "description": "What a quest intent outside any interaction asks for.",
-      "values": [ { "name": "Abandon", "value": 1 } ]
+      "description": "What a quest intent outside any interaction asks for; the Admin kinds are development tools that only a worker with the admin tools carries out.",
+      "values": [
+        { "name": "Abandon", "value": 1 },
+        { "name": "AdminAccept", "value": 2 },
+        { "name": "AdminCompleteObjective", "value": 3 },
+        { "name": "AdminCompleteStep", "value": 4 },
+        { "name": "AdminMakeReady", "value": 5 },
+        { "name": "AdminReset", "value": 6 },
+        { "name": "AdminResetChain", "value": 7 },
+        { "name": "AdminResetAll", "value": 8 }
+      ]
     }
   ],
   "structs": [
@@ -3102,13 +3111,45 @@
       "direction": "clientToServer",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "description": "A quest action outside any interaction, such as abandoning a quest from the quest log.",
+      "description": "A quest action outside any interaction, such as abandoning a quest from the quest log or a development tool of the Admin menu.",
       "parameter": "intent",
       "fields": [
         { "name": "OperationId", "type": "guid", "nonEmpty": true, "description": "Correlates the result." },
-        { "name": "Kind", "type": "QuestIntentKind", "description": "What the intent asks for." },
-        { "name": "QuestId", "type": "string", "maxLength": "MaximumIdentifierLength", "description": "The quest." }
-      ]
+        { "name": "Kind", "type": "QuestIntentKind", "description": "What the intent asks for." }
+      ],
+      "variants": {
+        "discriminator": "Kind",
+        "fields": [
+          { "name": "QuestId", "type": "string", "maxLength": "MaximumIdentifierLength", "description": "The quest." },
+          {
+            "name": "ObjectiveId",
+            "type": "string",
+            "maxLength": "MaximumIdentifierLength",
+            "description": "The objective of the quest's current step that the development tool completes."
+          }
+        ],
+        "cases": [
+          {
+            "kinds": [
+              { "kind": "Abandon", "factory": "CreateAbandon" },
+              { "kind": "AdminAccept", "factory": "CreateAdminAccept" },
+              { "kind": "AdminCompleteStep", "factory": "CreateAdminCompleteStep" },
+              { "kind": "AdminMakeReady", "factory": "CreateAdminMakeReady" },
+              { "kind": "AdminReset", "factory": "CreateAdminReset" },
+              { "kind": "AdminResetChain", "factory": "CreateAdminResetChain" }
+            ],
+            "fields": [ { "field": "QuestId" } ]
+          },
+          {
+            "kinds": [ { "kind": "AdminCompleteObjective", "factory": "CreateAdminCompleteObjective" } ],
+            "fields": [ { "field": "QuestId" }, { "field": "ObjectiveId" } ]
+          },
+          {
+            "kinds": [ { "kind": "AdminResetAll", "factory": "CreateAdminResetAll" } ],
+            "fields": []
+          }
+        ]
+      }
     },
     {
       "name": "QuestIntentResult",

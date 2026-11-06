@@ -112,7 +112,8 @@ internal static class GameServiceTestComposition
                 new StackStressFixtureOptions(false, string.Empty))
             {
                 DevelopmentItemPackages = new DevelopmentItemPackageSource(
-                    ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent))
+                    ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent)),
+                DevelopmentQuestTools = true
             });
     }
 }

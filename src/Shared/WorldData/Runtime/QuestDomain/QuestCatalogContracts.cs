@@ -36,6 +36,9 @@ namespace Mmorpg.WorldData.Quests
         public const int MaximumDropChanceBasisPoints = 10_000;
         public const int MinimumActiveQuestLimit = 1;
         public const int MaximumActiveQuestLimit = 100;
+
+        // Quests in one catalog, which bounds every list of a character's quests.
+        public const int MaximumQuests = 10_000;
     }
 
     // What an objective asks for. Each kind uses its own fields and leaves the others empty.

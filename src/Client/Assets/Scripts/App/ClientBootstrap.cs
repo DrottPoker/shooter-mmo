@@ -407,7 +407,13 @@ namespace Mmorpg.Client.App
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
                 menu => menu.Initialize(worldActorController, gameMessages));
             AddSceneComponentIfMissing<TemporaryAdminMenu>(
-                menu => menu.Initialize(simulationClient, bodyLook, worldMenu, combatController, inventoryWindowRequests));
+                menu => menu.Initialize(
+                    simulationClient,
+                    bodyLook,
+                    worldMenu,
+                    combatController,
+                    inventoryWindowRequests,
+                    questController));
             AddSceneComponentIfMissing<InventoryWindows>(
                 windows => windows.Initialize(
                     uiTheme,

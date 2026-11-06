@@ -716,8 +716,13 @@ The Quests family carries the quest actions outside an interaction and the
 changes of the owner's quest log, as [Quests](SERVICE_FEATURES.md#quests)
 describes.
 
-- `QuestIntent` (42) carries an operation id, a `QuestIntentKind`, and the
-  quest. `Abandon` (1) is the only kind.
+- `QuestIntent` (42) carries an operation id and a `QuestIntentKind` with the
+  fields of its case: `Abandon` (1) and the Admin menu's development tools
+  `AdminAccept` (2), `AdminCompleteStep` (4), `AdminMakeReady` (5),
+  `AdminReset` (6), and `AdminResetChain` (7) name the quest,
+  `AdminCompleteObjective` (3) the quest and the objective, and
+  `AdminResetAll` (8) nothing. Only a worker with the admin tools carries out
+  the Admin kinds.
 - `QuestIntentResult` (43) echoes the operation id and kind and carries the
   item-state revision after the intent, and an `Error` when it failed.
 - `QuestLogChanged` (44) lists every quest that one committed change of the

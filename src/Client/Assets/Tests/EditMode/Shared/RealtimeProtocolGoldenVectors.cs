@@ -432,6 +432,18 @@ namespace Mmorpg.SharedTests
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "01 18 00 71 75 65 73 74 2e 77 6f 6c 76 65 73 5f " +
                 "61 74 5f 74 68 65 5f 67 61 74 65",
+            ["Quests/QuestIntent/admin accept"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "02 0f 00 71 75 65 73 74 2e 74 68 65 5f 61 6c 70 " +
+                "68 61",
+            ["Quests/QuestIntent/admin complete objective"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "03 15 00 71 75 65 73 74 2e 70 65 6c 74 73 5f 61 " +
+                "6e 64 5f 66 61 6e 67 73 0a 00 77 6f 6c 66 5f 66 " +
+                "61 6e 67 73",
+            ["Quests/QuestIntent/admin reset all"] =
+                "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
+                "08",
             ["Quests/QuestIntentResult/accepted"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "01 01 2a 00 00 00 00 00 00 00",

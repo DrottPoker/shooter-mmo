@@ -49,7 +49,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel |
 | `POST /api/simulation-sessions/{id}/quest-log` | Worker service policy | Read the exact-session character's quest log when it joins the worker's Shard |
-| `POST /api/simulation-sessions/{id}/quest-operations` | Worker service policy | Run one quest action of the session's character through the durable kernel: accept, abandon, grant start items again, talk, deliver, turn in, or count a credited kill |
+| `POST /api/simulation-sessions/{id}/quest-operations` | Worker service policy | Run one quest action of the session's character through the durable kernel: accept, abandon, grant start items again, talk, deliver, turn in, count a credited kill, or, in Development only, a quest tool of the Admin menu |
 | `POST /api/simulation-sessions/{id}/quest-drops` | Worker service policy | Read how much of the quest drops that a dying Mob rolled for the session's character the character's quests still need, before the worker lays out a live corpse |
 | `POST /api/simulation-sessions/{id}/ammunition-consumptions` | Worker service policy | Commit one idempotent batch of shots from the exact-session character's equipped ammunition stack |
 | `POST /api/simulation-sessions/{id}/player-deaths` | Worker service policy | Partition one exact-session authoritative player death into durable corpse and Recovery custody |
@@ -929,6 +929,11 @@ startup outside the Development environment, is on in the worker's
 - The walk speed and invulnerability belong to the character's entity, so they
   last until the session ends, and a reconnect of the same session keeps them.
   Nothing is stored in PostgreSQL.
+- The quest tools are `QuestIntent` kinds, which run on the character's quest
+  route like abandoning, as [Quests](#quests) describes; a worker without the
+  option answers them with `admin_tools_disabled`. GameService runs them only
+  in the Development environment and answers every other environment with
+  `403` and `development_tools_disabled`.
 
 ## Items And Corpses
 
@@ -1279,6 +1284,21 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   - `credit_quest_kill` counts one credited kill of the Mob that `mobActorId`
     and `mobTags` describe for every matching kill objective of the character's
     current steps; a kill that no step asks for changes nothing.
+  - The Admin menu's quest tools, which only a Development GameService runs:
+    `admin_accept_quest` accepts any quest that is not active, and not
+    completed unless it repeats, around its giver, level, and required quests,
+    with its start items. `admin_complete_quest_objective` completes the
+    objective `objectiveId` of the current step, `admin_complete_quest_step`
+    every objective of the current step, which moves the quest on, and
+    `admin_make_quest_ready` every step up to the last: a counted objective
+    reaches its count, and a collect objective gets the items it lacks into
+    carried storage, a quest item with the quest's lineage. `admin_reset_quest`
+    forgets a quest with its completions, `admin_reset_quest_chain` also every
+    quest that requires it, directly or through another, and
+    `admin_reset_quests`, without a quest, every quest; each removes the items
+    of the forgotten quests' lineage with the `quest_reset` destruction reason.
+    A tool that leaves the quest log as it was, such as filling a collect
+    objective, reports no quest change.
   - A quest that the catalog does not hold returns `404` with `quest_not_found`,
     an action at another NPC `403` with `quest_npc_access_required`, and a quest
     that is not active `409` with `quest_not_active`.
@@ -1441,7 +1461,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
 | Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, `corpse_not_found` when the worker or GameService no longer knows it, and `corpse_not_lootable` when the corpse belongs to the player who tagged its Mob; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
 | World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_action_invalid` |
-| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `quest_log_unavailable`, `simulation_worker_quest_catalog_mismatch`, and the GameService rejection of a quest action, such as `quest_not_active` |
+| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `quest_log_unavailable`, `simulation_worker_quest_catalog_mismatch`, `admin_tools_disabled` for a quest tool on a worker without the admin tools, and the GameService rejection of a quest action, such as `quest_not_active` or `development_tools_disabled` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
 | Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |

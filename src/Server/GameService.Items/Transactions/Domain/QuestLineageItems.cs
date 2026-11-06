@@ -75,6 +75,16 @@ internal static class QuestLineageItems
         return RemoveAllAsync(context, characterId, lineageId, DestroyCompletedSql, cancellationToken);
     }
 
+    // Removes every item with the lineage of a quest that a development reset forgets.
+    public static Task<int> RemoveResetAsync(
+        ItemTransactionContext context,
+        Guid characterId,
+        string lineageId,
+        CancellationToken cancellationToken)
+    {
+        return RemoveAllAsync(context, characterId, lineageId, DestroyResetSql, cancellationToken);
+    }
+
     private static async Task<int> RemoveAllAsync(
         ItemTransactionContext context,
         Guid characterId,
@@ -190,6 +200,25 @@ internal static class QuestLineageItems
             @OperationId,
             @Quantity,
             'quest_completed');
+
+        delete from item_instances
+        where id = @ItemInstanceId;
+        """;
+
+    private const string DestroyResetSql =
+        """
+        insert into item_destructions (
+            item_instance_id,
+            definition_id,
+            source_operation_id,
+            quantity,
+            reason)
+        values (
+            @ItemInstanceId,
+            @DefinitionId,
+            @OperationId,
+            @Quantity,
+            'quest_reset');
 
         delete from item_instances
         where id = @ItemInstanceId;

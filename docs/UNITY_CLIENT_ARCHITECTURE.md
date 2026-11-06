@@ -735,6 +735,10 @@ with a header that names its key and has a close button, a row of tabs, one
 scrolling page per tab, and a footer with a status line. Pages are built once and
 keep the `Text`, `Toggle`, and `Button` components that change, so a refresh sets
 text and lays nothing out, and a closed menu draws nothing. Both start closed.
+The Admin menu's Quests tab, `TemporaryAdminQuestTab`, is the exception: it
+builds its rows again on every quest state change, and sends its tools through
+`QuestClientController.TryRunAdminTool`, which shares the one pending quest
+intent with abandoning.
 What they show is in [Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
 [Admin Menu (F3)](GAME_FEATURES.md#admin-menu-f3).
 

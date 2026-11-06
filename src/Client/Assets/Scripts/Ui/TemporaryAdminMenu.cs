@@ -6,6 +6,7 @@ using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Quests;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using TMPro;
@@ -16,7 +17,8 @@ namespace Mmorpg.Client.Ui
 {
     // The Admin menu (F3): development tools for playing and testing. Look steps the stored body
     // model and look; Movement sets the walk speed and teleports; Combat fills health and mana and makes
-    // the character invulnerable; Storage opens the Bank or Recovery Storage without an NPC. Only a worker in the Development environment allows them, which
+    // the character invulnerable; Storage opens the Bank or Recovery Storage without an NPC; Quests
+    // accepts, completes, and resets quests. Only a worker in the Development environment allows them, which
     // it says by sending the admin state after the join; without it the menu explains that the
     // tools are off. While the menu is open, the world menu offers Teleport here on the ground,
     // and after Pick a spot a left click on the ground teleports.
@@ -41,6 +43,8 @@ namespace Mmorpg.Client.Ui
         private WorldMenuController worldMenu;
         private CombatClientController combat;
         private InventoryWindowRequests inventoryWindowRequests;
+        private QuestClientController quests;
+        private TemporaryAdminQuestTab questTab;
         private LocalPlayerController localPlayer;
         private TemporaryMenuWindow window;
         private RectTransform lookPage;
@@ -82,13 +86,15 @@ namespace Mmorpg.Client.Ui
             PlayerBodyLookSetting lookSetting,
             WorldMenuController menu,
             CombatClientController combatController,
-            InventoryWindowRequests windowRequests = null)
+            InventoryWindowRequests windowRequests = null,
+            QuestClientController questController = null)
         {
             simulationClient = realtimeClient;
             bodyLook = lookSetting;
             worldMenu = menu;
             combat = combatController;
             inventoryWindowRequests = windowRequests;
+            quests = questController;
         }
 
         public void SetOpen(bool open)
@@ -195,6 +201,7 @@ namespace Mmorpg.Client.Ui
             }
 
             worldMenu?.RemoveProvider(this);
+            questTab?.Dispose();
             window?.Destroy();
         }
 
@@ -252,6 +259,10 @@ namespace Mmorpg.Client.Ui
             var storagePage = window.AddTab("Storage");
             toolPages.Add(storagePage.gameObject.AddComponent<CanvasGroup>());
             BuildStorageTab(storagePage);
+
+            var questPage = window.AddTab("Quests");
+            toolPages.Add(questPage.gameObject.AddComponent<CanvasGroup>());
+            questTab = new TemporaryAdminQuestTab(questPage, quests, ShowResult);
         }
 
         // The development worker opens the Bank and Recovery Storage everywhere, so their window

@@ -356,6 +356,90 @@ internal sealed class ItemTransactionService
     }
 
     public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminAcceptQuestCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminAcceptQuest,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminCompleteQuestObjectiveCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminCompleteQuestObjective,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminCompleteQuestStepCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminCompleteQuestStep,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminMakeQuestReadyCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminMakeQuestReady,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminResetQuestCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminResetQuest,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminResetQuestChainCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminResetQuestChain,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
+        ItemTransactionRequest<AdminResetQuestsCommand> request,
+        CancellationToken cancellationToken)
+    {
+        return kernel.ExecuteAsync(
+            request,
+            ItemOperationKinds.AdminResetQuests,
+            request.Command.CharacterId,
+            quest,
+            cancellationToken);
+    }
+
+    public Task<ItemTransactionResult> ExecuteAsync(
         ItemTransactionRequest<ProcessPlayerDeathCommand> request,
         CancellationToken cancellationToken)
     {

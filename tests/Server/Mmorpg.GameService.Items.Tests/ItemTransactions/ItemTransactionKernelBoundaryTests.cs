@@ -178,6 +178,8 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs",
         // S56: quest commands read the quest catalog and the character level and change the quest log.
         "GameService.Items/Transactions/Handlers/QuestCommandHandler.cs",
+        // S56: the Admin menu's quest tools read the quest catalog and change the quest log.
+        "GameService.Items/Transactions/Handlers/QuestCommandHandler.Admin.cs",
         // S57: the result of a quest command reports the quests it changed.
         "GameService.Items/Transactions/Domain/QuestLogChanges.cs",
         // S58: kills, yields, talks, and deliveries count for the objectives of current steps.

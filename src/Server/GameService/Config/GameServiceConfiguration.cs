@@ -67,7 +67,8 @@ internal sealed record GameServiceConfiguration(
                 npcItemLifecycle,
                 stackStressFixtures)
             {
-                DevelopmentItemPackages = DevelopmentItemPackageSource.FromConfiguration(configuration)
+                DevelopmentItemPackages = DevelopmentItemPackageSource.FromConfiguration(configuration),
+                DevelopmentQuestTools = environment.IsDevelopment()
             })
         {
             Telemetry = telemetry
