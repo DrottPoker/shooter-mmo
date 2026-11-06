@@ -1,4 +1,4 @@
-/* Shared layout and states of the content tools: Item Catalog, Actor Studio, Spawn Authoring. */
+/* Shared layout and states of the content tools: Item Catalog, Actor Studio, Spawn Authoring, Quest Studio. */
 
 .content-tool {
     flex-grow: 1;
@@ -164,6 +164,44 @@
     margin: 4px 0 2px 183px;
 }
 
+/* A long text that wraps over several lines but stays one line of content. */
+.content-text-area .unity-base-text-field__input {
+    min-height: 44px;
+    white-space: normal;
+    -unity-text-align: upper-left;
+}
+
+/* Quest Studio's chain and NPC views: one row per layer, one button per quest. */
+.content-chain-layer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.content-chain-node {
+    min-width: 140px;
+    max-width: 260px;
+    padding: 3px 6px;
+    white-space: normal;
+    -unity-text-align: middle-left;
+}
+
+.content-chain-node--selected {
+    -unity-font-style: bold;
+    border-width: 1px;
+    border-color: rgb(120, 170, 230);
+}
+
+.content-chain-node--problem {
+    color: rgb(222, 82, 82);
+}
+
+.content-chain-arrow {
+    -unity-text-align: middle-left;
+    padding-left: 64px;
+    opacity: 0.6;
+}
+
 .content-field--error > Label,
 .content-field--error.unity-toggle > .unity-toggle__input > Label {
     color: rgb(222, 82, 82);
@@ -178,7 +216,9 @@
     color: rgb(230, 175, 60);
 }
 
+/* Only the list and detail body shrink, so a long detail panel never squeezes the rows below. */
 .content-issues {
+    flex-shrink: 0;
     max-height: 160px;
     min-height: 26px;
     border-top-width: 1px;
@@ -207,11 +247,16 @@
     white-space: normal;
 }
 
+/* Long compiler output is cut at a third of the window; its tooltip holds all of it. */
 .content-status {
+    flex-shrink: 0;
+    max-height: 33%;
+    overflow: hidden;
     margin: 2px 4px;
 }
 
 .content-actions {
+    flex-shrink: 0;
     flex-direction: row;
     padding: 4px;
     border-top-width: 1px;

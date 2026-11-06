@@ -335,6 +335,9 @@ Worlds can be redesigned without rewriting them:
 - The Unity `FixtureWorldActorContent` copies the actor content to a temporary
   folder with the fixture spawns as Development World 1's spawns, for the actor
   editor view tests.
+- The Unity `FixtureQuestContent` copies the checked-in quests, every World, and
+  the compiled items, actors, and quest catalog to a temporary folder, so the
+  Quest Studio tests save and verify there and never touch the repository.
 
 Content tests name a World instead. `WorldActorTestData.LoadWorldSpawns`,
 `CompileWorld`, `RuntimeJsonFor`, and `CheckedInWorldIds` read the checked-in

@@ -1,44 +1,55 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using Mmorpg.WorldData.Editor.ContentTools;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Mmorpg.WorldData.Editor.Actors
+namespace Mmorpg.WorldData.Editor.ContentTools
 {
+    // One canonical file that a successful validation would write.
+    public readonly struct ContentChangePreviewFile
+    {
+        public ContentChangePreviewFile(string displayPath, string text, bool changed)
+        {
+            DisplayPath = displayPath ?? string.Empty;
+            Text = text ?? string.Empty;
+            Changed = changed;
+        }
+
+        public string DisplayPath { get; }
+        public string Text { get; }
+        public bool Changed { get; }
+    }
+
     // Shows the canonical files a successful validation would write: the changes, the list of
     // files with the changed ones marked, and the text of the selected file.
-    public sealed class WorldActorChangePreviewWindow : EditorWindow
+    public sealed class ContentChangePreviewWindow : EditorWindow
     {
-        private WorldActorEditorFile[] files = Array.Empty<WorldActorEditorFile>();
+        private ContentChangePreviewFile[] files = Array.Empty<ContentChangePreviewFile>();
         private string summary = string.Empty;
         private HelpBox summaryBox;
         private ListView fileList;
         private TextField content;
 
-        public static void ShowPreview(WorldActorEditorValidationResult validation)
+        // The summary lists the changes and then the files that a save deletes.
+        public static void ShowPreview(
+            string title,
+            IEnumerable<string> changes,
+            IEnumerable<string> removedFiles,
+            IEnumerable<ContentChangePreviewFile> files)
         {
-            if (validation == null || !validation.Success)
-            {
-                throw new ArgumentException(
-                    "A successful validation is required for change preview.",
-                    nameof(validation));
-            }
-
-            var window = GetWindow<WorldActorChangePreviewWindow>(true, "World Actor Canonical Change Preview");
+            // GetWindow names only a new window, and the open one may show another tool's files.
+            var window = GetWindow<ContentChangePreviewWindow>(true, title);
+            window.titleContent = new GUIContent(title);
             window.minSize = new Vector2(720f, 480f);
-            window.files = validation.Files;
-            window.summary = BuildSummary(validation);
+            window.files = (files ?? Array.Empty<ContentChangePreviewFile>()).ToArray();
+            var lines = (changes ?? Array.Empty<string>())
+                .Concat((removedFiles ?? Array.Empty<string>()).Select(path => "Deletes " + path))
+                .ToArray();
+            window.summary = lines.Length == 0 ? "No canonical changes detected." : string.Join("\n", lines);
             window.Refresh();
             window.Show();
-        }
-
-        private static string BuildSummary(WorldActorEditorValidationResult validation)
-        {
-            var lines = validation.Changes.ToList();
-            lines.AddRange(validation.RemovedFiles.Select(path => "Deletes " + path));
-            return lines.Count == 0 ? "No canonical changes detected." : string.Join("\n", lines);
         }
 
         private void CreateGUI()
