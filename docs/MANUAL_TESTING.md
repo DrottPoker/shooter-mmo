@@ -837,6 +837,52 @@ Continue with a character that completed Wolves at the Gate, as
 2. Once you carry two Wolf Fangs, kill another Feral Wolf. Expected result: no
    drop message, because the quest needs no more fangs.
 
+### The Development Chain
+
+This check plays every quest of Development World 2 in order with one
+character. Apply the `equipment` test package to a new character, as
+[Test Packages](#test-packages) describes, join Development World 2, and equip
+the Iron Sword and, in the Tool slot, the Starter Pickaxe. The Admin menu's
+`Invulnerable` and teleport, in [Admin Menu (F3)](#admin-menu-f3), shorten the
+fights and the walks without changing any quest rule.
+
+1. At Mira, accept `Wolves at the Gate` and `A Letter for the Outpost`. Kill
+   five Feral Wolves in the woods around `(-105, 0, -105)` and loot each corpse
+   with `Loot all`. Expected result: `Feral Wolves slain 1/5` up to `5/5`, then
+   `Wolves at the Gate is ready to turn in.`, and Wolf Pelts in the inventory.
+2. Turn in Wolves at the Gate at Mira. Expected result: 20 Gold more, and the
+   dialog offers `Pelts and Fangs` at once. Choose it. Expected result: the
+   offer already counts the carried pelts, such as `Wolf Pelts 1/3`. Accept it.
+3. Kill and loot Feral Wolves until the quest is ready. Expected result: about
+   every other wolf, `Feral Wolf dropped Wolf Fang for Pelts and Fangs.`, the
+   counts reach `Wolf Pelts 3/3` and `Wolf Fangs 2/2`, and the game messages
+   say `Pelts and Fangs is ready to turn in.`
+4. Turn it in at Mira. Expected result: `Complete` waits for a reward choice.
+   Choose `Leather Boots` and press `Complete`. Expected result: 10 Gold more,
+   three Wolf Pelts and both Wolf Fangs leave the inventory, the Leather Boots
+   arrive, and Mira says `There is nothing more to do here for now.`
+5. At Sergeant Hale at `(-174, 0, 3)`, turn in A Letter for the Outpost.
+   Expected result: 15 Gold more, the Sealed Letter leaves the inventory, and
+   Hale offers `The Sergeant's Request`. Accept it.
+6. Mine an Iron Vein in the quarry around `(84, 0, -84)`. Expected result:
+   `Iron Ore mined 1/5` up to `Iron Ore mined 5/5`, then
+   `Quest updated: The Sergeant's Request`, and the tracker shows
+   `Tell the Quartermaster 0/1`. Without a tool in the Tool slot, the vein
+   answers `Equip a gathering tool in the Tool slot to gather here.`
+7. At Mira, choose `The Sergeant's Request: Tell the Quartermaster` and press
+   `Continue`. Expected result: her line, `Tell the Quartermaster 1/1`, and
+   `The Sergeant's Request is ready to turn in.` Turn the quest in at Hale.
+   Expected result: 30 Gold more, and Hale offers `The Alpha`. Accept it.
+8. Kill the Feral Alpha at `(-160, 0, -160)` and loot its corpse. Expected
+   result: `Feral Alpha slain 1/1` and
+   `Feral Alpha dropped Alpha's Fang for The Alpha.`, and after the loot
+   `Alpha's Fang 1/1` and `The Alpha is ready to turn in.`
+9. Turn it in at Hale, choosing a weapon. Expected result: 50 Gold more, the
+   Alpha's Fang leaves the inventory, the chosen weapon arrives, and Hale says
+   `There is nothing more to do here for now.` Press `L`. Expected result:
+   `ACTIVE 0 / 25` and all five quests under `COMPLETED`, and the balance is
+   125 Gold above where it started.
+
 ### Quest Studio
 
 This check runs in the Unity Editor outside Play Mode and leaves every file as

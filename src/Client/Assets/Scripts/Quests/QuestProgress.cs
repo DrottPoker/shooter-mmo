@@ -67,6 +67,17 @@ namespace Mmorpg.Client.Quests
                 .ToArray();
         }
 
+        // The first step of a quest on offer: nothing counted yet, but a collect objective counts
+        // the items the player already carries, as it will right after the quest is accepted.
+        public static IReadOnlyList<QuestObjectiveLine> OfferedObjectives(
+            QuestDefinition quest,
+            Func<string, int> carriedCount)
+        {
+            return QuestRules.CurrentObjectives(quest, 0)
+                .Select(objective => new QuestObjectiveLine(objective, ProgressOf(objective, null, carriedCount)))
+                .ToArray();
+        }
+
         public static bool IsReadyToTurnIn(
             QuestDefinition quest,
             QuestClientActiveQuest active,

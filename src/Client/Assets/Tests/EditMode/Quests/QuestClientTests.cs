@@ -211,6 +211,40 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(new[] { "Quest abandoned: Fixture Wolves" }));
         }
 
+        // A step moves on once it is done, so the counts that the change finished show in full
+        // before the update, also when a tool finished the whole step at once.
+        [Test]
+        public void AStepThatMovesOnShowsTheCountsItFinishedFirst()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            var reporting = new QuestClientActiveQuest(FixtureQuestCatalog.Errand, "work", Progress(("ore", 2), ("hand_over", 1), ("report", 0)));
+            var started = new QuestClientActiveQuest(FixtureQuestCatalog.Errand, "work", Progress(("ore", 1), ("hand_over", 0), ("report", 0)));
+            var returning = new QuestClientActiveQuest(FixtureQuestCatalog.Errand, "return", Progress());
+
+            Assert.That(
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Errand, reporting, returning, 0, 0) }, catalog),
+                Is.EqualTo(new[] { "Report the mining 1/1", "Quest updated: Fixture Errand" }));
+            Assert.That(
+                QuestNotices.For(new[] { new QuestClientChange(FixtureQuestCatalog.Errand, started, returning, 0, 0) }, catalog),
+                Is.EqualTo(new[] { "Ore mined 2/2", "Ore handed over 1/1", "Report the mining 1/1", "Quest updated: Fixture Errand" }));
+        }
+
+        // An offer counts nothing yet, but a collect objective counts the carried items, as it
+        // will right after the quest is accepted.
+        [Test]
+        public void AnOfferCountsTheCarriedItemsOfItsCollectObjectives()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            Func<string, int> carried = id => id == "fixture.ore" ? 1 : 0;
+            Assert.That(catalog.TryGet(FixtureQuestCatalog.OreRun, out var oreRun), Is.True);
+            Assert.That(catalog.TryGet(FixtureQuestCatalog.Errand, out var errand), Is.True);
+
+            Assert.That(QuestProgress.OfferedObjectives(oreRun, carried).Select(line => line.Text), Is.EqualTo(new[] { "Ore 1/3" }));
+            Assert.That(
+                QuestProgress.OfferedObjectives(errand, carried).Select(line => line.Text),
+                Is.EqualTo(new[] { "Ore mined 0/2", "Ore handed over 0/1", "Report the mining 0/1" }));
+        }
+
         // Carried letters move the trophies' collect objective, and the quest says once that it is
         // ready, whether a kill or an item made it so. A load tells nothing.
         [Test]

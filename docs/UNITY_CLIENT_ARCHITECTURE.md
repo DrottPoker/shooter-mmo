@@ -2847,8 +2847,9 @@ windows in `Mmorpg.Client.Ui` present it.
   carried. When none of these waits, a quest that the NPC gives and that
   `QuestRules.Evaluate` holds back only for the level shows a grey `!`.
 - `QuestNotices` writes the game messages of a committed change: an accepted
-  quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on,
-  and a completed or abandoned quest. `QuestClientController.QuestDropped`
+  quest, counted progress such as `Feral Wolves slain 3/5`, a step that moved on
+  after the full counts of the objectives the change finished, and a completed or
+  abandoned quest. `QuestClientController.QuestDropped`
   passes on every `QuestDropInCorpse`, and `QuestNotices.ForDrop` writes it as
   `Feral Wolf dropped 2 x Wolf Fang for Pelts and Fangs.` `QuestProgressWatcher` follows every
   quest change and every inventory change and writes the progress that carried
@@ -2869,7 +2870,8 @@ Choosing the `quests` capability raises
 opens the quest dialog at the screen's left edge for the NPC of the open
 interaction. Its canvas has sorting order 90, above the interaction panel and
 below the inventory. The dialog lists the entries; an entry shows its text, the
-current step's objectives, and the rewards, with `Accept`, `Complete` after a
+current step's objectives, an offer through `QuestProgress.OfferedObjectives`
+with the carried items of its collect objectives, and the rewards, with `Accept`, `Complete` after a
 reward choice, `Continue`, `Hand over` once enough is carried, or `Ask again`.
 Each action goes through `TryExecuteQuestAction` with the quest, objective, and
 reward choice, and the dialog follows the quest log the change patches. A
