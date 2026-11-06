@@ -671,7 +671,8 @@ personal, and its progress survives death, leaving, and Shard switches.
   is not offered.
 - Choosing an entry shows the quest's text, the current objectives with their
   progress, such as `Feral Wolves slain 3/5`, and the rewards: Gold, items, and
-  the items to choose one of. `Accept` takes the quest and gives its start items,
+  the items to choose one of. An offer already counts the carried items of a
+  collect objective, such as `Wolf Pelts 1/3`. `Accept` takes the quest and gives its start items,
   `Complete` turns it in once a reward is chosen, `Continue` finishes a talk,
   `Hand over` gives the asked-for items once the player carries them, and
   `Ask again` gives back lost start items. `Back` returns to the list. A refused
@@ -682,7 +683,8 @@ personal, and its progress survives death, leaving, and Shard switches.
   drops lies in the corpse of the player whose quest needs it.
 - The game messages report every change: `Quest accepted: <quest>`, progress
   such as `Feral Wolves slain 3/5` or, for carried items, `Wolf Pelts 2/3`,
-  `Quest updated: <quest>` when a quest moves to its next step,
+  `Quest updated: <quest>` when a quest moves to its next step, after the last
+  count of the step it finished, such as `Iron Ore mined 5/5`,
   `<quest> is ready to turn in.` once a quest is done, also when looting its last
   item finishes it, `Quest completed: <quest>` or `Quest abandoned: <quest>`,
   and `<Mob> dropped <item> for <quest>.` when a Mob leaves a quest item in its

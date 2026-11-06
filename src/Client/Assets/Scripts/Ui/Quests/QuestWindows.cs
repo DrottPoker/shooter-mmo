@@ -425,16 +425,14 @@ namespace Mmorpg.Client.Ui
             AddParagraph(TextOf(entry, carried), theme.TextColor);
 
             var objectives = entry.Kind == QuestDialogEntryKind.Offer
-                ? QuestRules.CurrentObjectives(quest, 0).Select(objective => new QuestObjectiveLine(objective, 0)).ToArray()
+                ? QuestProgress.OfferedObjectives(quest, carried)
                 : QuestProgress.CurrentObjectives(quest, entry.Active, carried);
             if (objectives.Count > 0)
             {
                 UiFactory.SectionHeading(theme, dialog.Body, "Objectives", null, out _);
                 foreach (var line in objectives)
                 {
-                    AddParagraph(
-                        entry.Kind == QuestDialogEntryKind.Offer ? ObjectiveTextOf(line.Objective) : line.Text,
-                        line.IsComplete ? theme.MutedTextColor : theme.TextColor);
+                    AddParagraph(line.Text, line.IsComplete ? theme.MutedTextColor : theme.TextColor);
                 }
             }
 
@@ -615,11 +613,6 @@ namespace Mmorpg.Client.Ui
         private static string MarkerOf(QuestDialogEntryKind kind)
         {
             return kind is QuestDialogEntryKind.Offer or QuestDialogEntryKind.LostStartItems ? "!" : "?";
-        }
-
-        private static string ObjectiveTextOf(QuestObjectiveDefinition objective)
-        {
-            return objective.Text + " 0/" + objective.Count;
         }
 
         private string ItemText(QuestItemQuantityDefinition item)

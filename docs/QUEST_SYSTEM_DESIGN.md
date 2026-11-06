@@ -59,6 +59,8 @@ Implemented:
   describes.
 - [Quest Studio](#quest-studio), whose steps are in
   [Game Content](../content/README.md#quest-studio).
+- The development chain plays from its first quest to its last in the game, as
+  [The Development Chain](MANUAL_TESTING.md#the-development-chain) checks.
 
 Planned: everything else in this document.
 
