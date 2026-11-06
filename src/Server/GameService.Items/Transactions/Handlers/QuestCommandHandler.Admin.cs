@@ -306,7 +306,7 @@ internal sealed partial class QuestCommandHandler :
             }
             else
             {
-                await CarriedAcquisition.AcquireAsync(
+                await CarriedAcquisition.AcquireStacksAsync(
                     context,
                     character,
                     definition,

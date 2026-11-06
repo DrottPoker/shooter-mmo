@@ -29,6 +29,18 @@ public sealed class ItemTransactionDomainRulesTests
         Assert.Equal("item-stack-state-v1", ItemPolicyStates.EmptyStackStateFingerprint);
     }
 
+    // A collect objective of the Admin menu's quest tools can lack more than one stack.
+    [Fact]
+    public void AnAcquisitionOfSeveralStacksTakesFullStacksThenTheRest()
+    {
+        Assert.Equal([10, 10, 5], CarriedAcquisition.StackSizedParts(25, 10));
+        Assert.Equal([3], CarriedAcquisition.StackSizedParts(3, 100));
+        Assert.Equal([1, 1], CarriedAcquisition.StackSizedParts(2, 1));
+        Assert.Equal(
+            ItemTransactionErrorCodes.ItemStackLimitExceeded,
+            Assert.Throws<ItemTransactionRejectedException>(() => CarriedAcquisition.StackSizedParts(0, 10)).Code);
+    }
+
     [Fact]
     public void PolicyStatesCarryKindStatusAndLineage()
     {

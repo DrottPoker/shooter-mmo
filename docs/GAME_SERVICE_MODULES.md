@@ -403,7 +403,9 @@ transaction and take their quest definitions from `IQuestDefinitions`:
   `AdminMakeQuestReadyCommand`, `AdminResetQuestCommand`,
   `AdminResetQuestChainCommand`, and `AdminResetQuestsCommand`. They require
   the simulation worker authority, fill collect objectives through carried
-  acquisition, and reset through `ICharacterQuestLog.ForgetAsync` and
+  acquisition, ordinary items in stack-sized parts with
+  `CarriedAcquisition.AcquireStacksAsync`, and reset through
+  `ICharacterQuestLog.ForgetAsync` and
   `QuestLineageItems` with the `quest_reset` destruction reason.
   `SimulationQuestMutationService` routes them only while
   `ItemsModuleOptions.DevelopmentQuestTools` is on, which only the Development
