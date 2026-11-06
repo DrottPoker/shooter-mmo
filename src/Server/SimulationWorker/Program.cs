@@ -201,7 +201,7 @@ if (developmentAdminOptions.Enabled)
 {
     logger.LogWarning(
         "Development admin tools are enabled: every player may change its walk speed, teleport, "
-        + "restore its health, and become invulnerable.");
+        + "restore its health, become invulnerable, and use the quest tools.");
 }
 
 logger.LogInformation(

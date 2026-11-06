@@ -97,6 +97,35 @@ public sealed class CharacterQuestLogIntegrationTests
         Assert.Equal(0, await CountProgressRowsAsync(context, characterId));
     }
 
+    // A development reset forgets an active quest with its progress and a completed quest with
+    // its completions, and forgetting a quest the log does not hold still raises the revision.
+    [PostgresIntegrationFact]
+    public async Task ForgettingDropsActiveAndCompletedQuestsAlike()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var characterId = (await context.RegisterPlayerAsync()).Character.Id;
+        var questLog = QuestLog(context);
+        await QuestLogTestDatabase.WriteAsync(context, scope => questLog.AcceptAsync(
+            scope, characterId, "quest.fixture.wolves", "hunt", ["wolves"], None));
+        await QuestLogTestDatabase.WriteAsync(context, scope => questLog.AcceptAsync(
+            scope, characterId, "quest.fixture.ore_run", "deliver", [], None));
+        await QuestLogTestDatabase.WriteAsync(context, scope => questLog.CompleteAsync(
+            scope, characterId, "quest.fixture.ore_run", None));
+
+        Assert.Equal(4, await QuestLogTestDatabase.WriteAsync(context, scope => questLog.ForgetAsync(
+            scope, characterId, "quest.fixture.wolves", None)));
+        Assert.Equal(5, await QuestLogTestDatabase.WriteAsync(context, scope => questLog.ForgetAsync(
+            scope, characterId, "quest.fixture.ore_run", None)));
+        Assert.Equal(6, await QuestLogTestDatabase.WriteAsync(context, scope => questLog.ForgetAsync(
+            scope, characterId, "quest.fixture.errand", None)));
+
+        var log = await QuestLogTestDatabase.ReadAsync(context, questLog, characterId);
+        Assert.Equal(6, log.Revision);
+        Assert.Empty(log.ActiveQuests);
+        Assert.Empty(log.CompletedQuests);
+        Assert.Equal(0, await CountProgressRowsAsync(context, characterId));
+    }
+
     [PostgresIntegrationFact]
     public async Task AWriteThatDoesNotFitTheStoredStateFailsAndChangesNothing()
     {

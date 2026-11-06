@@ -55,8 +55,10 @@ Implemented:
   the quest NPCs tell what waits there, and the game messages report every
   committed quest change, as
   [Quest Client](UNITY_CLIENT_ARCHITECTURE.md#quest-client) describes.
+- The Admin menu's quest tools, as [Development Tools](#development-tools)
+  describes.
 
-Planned: everything else in this document, next the Admin menu's quest tools.
+Planned: everything else in this document, next Quest Studio.
 
 ## Goals
 
@@ -197,6 +199,7 @@ tracker, and keep every quest message within the realtime packet limit:
 | Required quests | Up to 8 |
 | Content tags | Up to 16 |
 | Active quests per character | 25, a setting of the quest catalog from 1 to 100 |
+| Quests in the catalog | Up to 10,000, which bounds every list of a character's quests |
 
 Texts are one paragraph of plain text without control characters, trimmed, and
 written in English like the other content.
@@ -514,10 +517,15 @@ as [UI And UX Principles](GAME_DESIGN.md#ui-and-ux-principles) describes:
 
 ## Development Tools
 
-- The Admin menu (F3) gets quest tools that only the Development environment
-  allows: list every quest with the character's state, accept a quest, complete
-  an objective or the current step, make a quest ready, and reset a quest, a
-  chain, or the whole quest state.
+- The Admin menu (F3) has quest tools that only the Development environment
+  allows: it lists every quest with the character's state, accepts a quest
+  around its giver, level, and required quests, completes an objective or the
+  current step, makes a quest ready to turn in, and resets a quest, a quest
+  with the quests that require it, or the whole quest state. Completing a
+  collect objective grants the items it lacks, and a reset forgets the quest
+  with its completions and takes every item of its lineage. The tools keep the
+  quest log valid, so the normal quest actions go on from wherever they leave a
+  quest.
 - The development Worlds hold a test chain whose quests together use every
   objective kind, a quest drop, a reward choice, a delivery between two NPCs,
   several steps, and a follow-up that requires two quests.

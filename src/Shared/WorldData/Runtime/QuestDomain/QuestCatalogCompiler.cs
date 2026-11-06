@@ -142,6 +142,11 @@ namespace Mmorpg.WorldData.Quests
                     + ".");
             }
 
+            if (runtime.Quests.Length > QuestContentRules.MaximumQuests)
+            {
+                errors.Add("runtime quest catalog must hold at most " + QuestContentRules.MaximumQuests + " quests.");
+            }
+
             var retired = new HashSet<string>(StringComparer.Ordinal);
             foreach (var id in runtime.RetiredQuestIds)
             {
@@ -244,6 +249,11 @@ namespace Mmorpg.WorldData.Quests
                     + " and "
                     + QuestContentRules.MaximumActiveQuestLimit
                     + ".");
+            }
+
+            if (authoring.Quests != null && authoring.Quests.Length > QuestContentRules.MaximumQuests)
+            {
+                errors.Add("quests must hold at most " + QuestContentRules.MaximumQuests + " quests.");
             }
 
             if (authoring.RetiredQuestIds == null)

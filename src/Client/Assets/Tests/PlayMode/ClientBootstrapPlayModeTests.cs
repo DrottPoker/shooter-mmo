@@ -179,7 +179,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(debugMenu.Window.SelectedTab, Is.EqualTo(2));
 
             Assert.That(adminMenu.IsOpen, Is.True);
-            Assert.That(adminMenu.Window.TabCount, Is.EqualTo(4));
+            Assert.That(adminMenu.Window.TabCount, Is.EqualTo(5));
             Assert.That(adminMenu.ToolsAvailable, Is.False);
             Assert.That(adminMenu.Window.StatusText, Does.Contain("Join a World"));
             Assert.That(

@@ -426,6 +426,7 @@ internal static class RealtimeServerComposition
             operationTracker,
             completions,
             questDependencies.Executor,
+            dependencies.DevelopmentAdmin ?? DevelopmentAdminOptions.Disabled,
             logger,
             combatAuthority);
         var admin = new AdminIntentHandler(

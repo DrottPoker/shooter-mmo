@@ -28,10 +28,26 @@ namespace Mmorpg.SharedTests
             r.Vector(
                 "Quests/QuestIntent/abandon",
                 intent,
-                () => RealtimeProtocol.EncodeQuestIntent(new RealtimeQuestIntent(
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(
                     G(1),
-                    RealtimeQuestIntentKind.Abandon,
                     "quest.wolves_at_the_gate")));
+            r.Vector(
+                "Quests/QuestIntent/admin accept",
+                intent,
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminAccept(
+                    G(1),
+                    "quest.the_alpha")));
+            r.Vector(
+                "Quests/QuestIntent/admin complete objective",
+                intent,
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminCompleteObjective(
+                    G(1),
+                    "quest.pelts_and_fangs",
+                    "wolf_fangs")));
+            r.Vector(
+                "Quests/QuestIntent/admin reset all",
+                intent,
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminResetAll(G(1))));
             r.Vector(
                 "Quests/QuestIntentResult/accepted",
                 result,
@@ -129,16 +145,40 @@ namespace Mmorpg.SharedTests
             r.Rejects("Quests/QuestIntent/whitespace quest", QuestIntentWire(quest: " "));
             r.Rejects("Quests/QuestIntent/empty operation id", QuestIntentWire(operationId: Guid.Empty));
             r.Rejects("Quests/QuestIntent/kind 0", QuestIntentWire(kind: 0));
-            r.Rejects("Quests/QuestIntent/kind 2", QuestIntentWire(kind: 2));
+            r.Rejects("Quests/QuestIntent/kind 9", QuestIntentWire(kind: 9));
+
+            // The development tools: every kind but these two names only a quest.
+            foreach (var kind in new byte[] { 2, 4, 5, 6, 7 })
+            {
+                r.Accepts("Quests/QuestIntent/admin kind " + kind, QuestIntentWire(kind: kind));
+                r.Rejects("Quests/QuestIntent/admin kind " + kind + " without a quest", QuestIntentWire(kind: kind, quest: ""));
+            }
+
+            r.Accepts("Quests/QuestIntent/admin complete objective", QuestIntentWire(kind: 3, objective: "wolves"));
+            r.Accepts(
+                "Quests/QuestIntent/admin complete objective 128 character objective",
+                QuestIntentWire(kind: 3, objective: Repeat("o", 128)));
+            r.Rejects(
+                "Quests/QuestIntent/admin complete objective 129 character objective",
+                QuestIntentWire(kind: 3, objective: Repeat("o", 129)));
+            r.Rejects("Quests/QuestIntent/admin complete objective without an objective", QuestIntentWire(kind: 3, objective: ""));
+            r.Rejects("Quests/QuestIntent/admin complete objective that names none", QuestIntentWire(kind: 3));
+            r.Accepts("Quests/QuestIntent/admin reset all", Wire.Message(RealtimeMessageType.QuestIntent).Guid(G(1)).U8(8));
+            r.Rejects("Quests/QuestIntent/admin reset all with a quest", QuestIntentWire(kind: 8));
             r.RejectsEncode(
                 "Quests/QuestIntent/empty quest",
-                () => RealtimeProtocol.EncodeQuestIntent(new RealtimeQuestIntent(G(1), RealtimeQuestIntentKind.Abandon, "")));
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(G(1), "")));
             r.RejectsEncode(
                 "Quests/QuestIntent/empty operation id",
-                () => RealtimeProtocol.EncodeQuestIntent(new RealtimeQuestIntent(
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(
                     Guid.Empty,
-                    RealtimeQuestIntentKind.Abandon,
                     "quest.wolves_at_the_gate")));
+            r.RejectsEncode(
+                "Quests/QuestIntent/admin complete objective without an objective",
+                () => RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminCompleteObjective(
+                    G(1),
+                    "quest.wolves_at_the_gate",
+                    "")));
         }
 
         private static void RegisterQuestIntentResultCases(Registry r)
@@ -287,12 +327,18 @@ namespace Mmorpg.SharedTests
                     1)));
         }
 
-        private static Wire QuestIntentWire(Guid? operationId = null, byte kind = 1, WireText quest = null)
+        // A quest intent that names a quest, and an objective when one is given.
+        private static Wire QuestIntentWire(
+            Guid? operationId = null,
+            byte kind = 1,
+            WireText quest = null,
+            WireText objective = null)
         {
-            return Wire.Message(RealtimeMessageType.QuestIntent)
+            var wire = Wire.Message(RealtimeMessageType.QuestIntent)
                 .Guid(operationId ?? G(1))
                 .U8(kind)
                 .Text(quest ?? "quest.wolves_at_the_gate");
+            return objective == null ? wire : wire.Text(objective);
         }
 
         private static Wire QuestIntentResultWire(

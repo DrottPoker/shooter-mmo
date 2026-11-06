@@ -7,11 +7,18 @@ using System;
 namespace Mmorpg.GameProtocol
 {
     /// <summary>
-    /// What a quest intent outside any interaction asks for.
+    /// What a quest intent outside any interaction asks for; the Admin kinds are development tools that only a worker with the admin tools carries out.
     /// </summary>
     public enum RealtimeQuestIntentKind : byte
     {
-        Abandon = 1
+        Abandon = 1,
+        AdminAccept = 2,
+        AdminCompleteObjective = 3,
+        AdminCompleteStep = 4,
+        AdminMakeReady = 5,
+        AdminReset = 6,
+        AdminResetChain = 7,
+        AdminResetAll = 8
     }
 
     /// <summary>
@@ -77,18 +84,20 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// A quest action outside any interaction, such as abandoning a quest from the quest log.
+    /// A quest action outside any interaction, such as abandoning a quest from the quest log or a development tool of the Admin menu.
     /// </summary>
     public sealed partial class RealtimeQuestIntent
     {
-        public RealtimeQuestIntent(
+        internal RealtimeQuestIntent(
             Guid operationId,
             RealtimeQuestIntentKind kind,
-            string questId)
+            string questId,
+            string objectiveId)
         {
             OperationId = operationId;
             Kind = kind;
             QuestId = questId;
+            ObjectiveId = objectiveId;
         }
 
         /// <summary>
@@ -105,6 +114,99 @@ namespace Mmorpg.GameProtocol
         /// The quest.
         /// </summary>
         public string QuestId { get; }
+
+        /// <summary>
+        /// The objective of the quest's current step that the development tool completes.
+        /// </summary>
+        public string ObjectiveId { get; }
+
+        public static RealtimeQuestIntent CreateAbandon(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.Abandon,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminAccept(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminAccept,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminCompleteStep(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminCompleteStep,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminMakeReady(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminMakeReady,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminReset(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminReset,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminResetChain(
+            Guid operationId,
+            string questId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminResetChain,
+                questId,
+                string.Empty);
+        }
+
+        public static RealtimeQuestIntent CreateAdminCompleteObjective(
+            Guid operationId,
+            string questId,
+            string objectiveId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminCompleteObjective,
+                questId,
+                objectiveId);
+        }
+
+        public static RealtimeQuestIntent CreateAdminResetAll(
+            Guid operationId)
+        {
+            return new RealtimeQuestIntent(
+                operationId,
+                RealtimeQuestIntentKind.AdminResetAll,
+                string.Empty,
+                string.Empty);
+        }
     }
 
     /// <summary>
@@ -246,7 +348,7 @@ namespace Mmorpg.GameProtocol
     public static partial class RealtimeProtocol
     {
         /// <summary>
-        /// A quest action outside any interaction, such as abandoning a quest from the quest log.
+        /// A quest action outside any interaction, such as abandoning a quest from the quest log or a development tool of the Admin menu.
         /// </summary>
         public static byte[] EncodeQuestIntent(RealtimeQuestIntent intent)
         {
@@ -284,13 +386,67 @@ namespace Mmorpg.GameProtocol
         {
             writer.WriteGuid(value.OperationId);
             writer.WriteByte((byte)value.Kind);
-            writer.WriteString(value.QuestId);
+
+            switch (value.Kind)
+            {
+                case RealtimeQuestIntentKind.Abandon:
+                case RealtimeQuestIntentKind.AdminAccept:
+                case RealtimeQuestIntentKind.AdminCompleteStep:
+                case RealtimeQuestIntentKind.AdminMakeReady:
+                case RealtimeQuestIntentKind.AdminReset:
+                case RealtimeQuestIntentKind.AdminResetChain:
+                {
+                    writer.WriteString(value.QuestId);
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminCompleteObjective:
+                {
+                    writer.WriteString(value.QuestId);
+                    writer.WriteString(value.ObjectiveId);
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminResetAll:
+                {
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Quest intent is invalid.", nameof(value));
+                }
+            }
         }
 
         private static int SizeOfQuestIntent(RealtimeQuestIntent value)
         {
             var size = 17;
-            size += StringSize(value.QuestId);
+            switch (value.Kind)
+            {
+                case RealtimeQuestIntentKind.Abandon:
+                case RealtimeQuestIntentKind.AdminAccept:
+                case RealtimeQuestIntentKind.AdminCompleteStep:
+                case RealtimeQuestIntentKind.AdminMakeReady:
+                case RealtimeQuestIntentKind.AdminReset:
+                case RealtimeQuestIntentKind.AdminResetChain:
+                {
+                    size += StringSize(value.QuestId);
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminCompleteObjective:
+                {
+                    size += StringSize(value.QuestId);
+                    size += StringSize(value.ObjectiveId);
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminResetAll:
+                {
+                    break;
+                }
+                default:
+                {
+                    throw new ArgumentException("Quest intent is invalid.", nameof(value));
+                }
+            }
+
             return size;
         }
 
@@ -309,12 +465,51 @@ namespace Mmorpg.GameProtocol
 
             var kind = (RealtimeQuestIntentKind)kindByte;
 
-            if (!reader.TryReadString(MaximumIdentifierLength, out var questId, out error))
+            string questId = string.Empty;
+            string objectiveId = string.Empty;
+
+            switch (kind)
             {
-                return false;
+                case RealtimeQuestIntentKind.Abandon:
+                case RealtimeQuestIntentKind.AdminAccept:
+                case RealtimeQuestIntentKind.AdminCompleteStep:
+                case RealtimeQuestIntentKind.AdminMakeReady:
+                case RealtimeQuestIntentKind.AdminReset:
+                case RealtimeQuestIntentKind.AdminResetChain:
+                {
+                    if (!reader.TryReadString(MaximumIdentifierLength, out questId, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminCompleteObjective:
+                {
+                    if (!reader.TryReadString(MaximumIdentifierLength, out questId, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!reader.TryReadString(MaximumIdentifierLength, out objectiveId, out error))
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminResetAll:
+                {
+                    break;
+                }
+                default:
+                {
+                    error = "Quest intent kind is invalid.";
+                    return false;
+                }
             }
 
-            value = new RealtimeQuestIntent(operationId, kind, questId);
+            value = new RealtimeQuestIntent(operationId, kind, questId, objectiveId);
             return true;
         }
 
@@ -322,11 +517,48 @@ namespace Mmorpg.GameProtocol
         {
             if (value == null
                 || value.OperationId == Guid.Empty
-                || !IsDefined(value.Kind)
-                || string.IsNullOrWhiteSpace(value.QuestId)
-                || value.QuestId.Length > MaximumIdentifierLength)
+                || !IsDefined(value.Kind))
             {
                 return false;
+            }
+
+            switch (value.Kind)
+            {
+                case RealtimeQuestIntentKind.Abandon:
+                case RealtimeQuestIntentKind.AdminAccept:
+                case RealtimeQuestIntentKind.AdminCompleteStep:
+                case RealtimeQuestIntentKind.AdminMakeReady:
+                case RealtimeQuestIntentKind.AdminReset:
+                case RealtimeQuestIntentKind.AdminResetChain:
+                {
+                    if (string.IsNullOrWhiteSpace(value.QuestId)
+                        || value.QuestId.Length > MaximumIdentifierLength)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminCompleteObjective:
+                {
+                    if (string.IsNullOrWhiteSpace(value.QuestId)
+                        || value.QuestId.Length > MaximumIdentifierLength
+                        || string.IsNullOrWhiteSpace(value.ObjectiveId)
+                        || value.ObjectiveId.Length > MaximumIdentifierLength)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+                case RealtimeQuestIntentKind.AdminResetAll:
+                {
+                    break;
+                }
+                default:
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -858,7 +1090,7 @@ namespace Mmorpg.GameProtocol
 
         private static bool IsDefined(RealtimeQuestIntentKind value)
         {
-            return (byte)value >= 1 && (byte)value <= 1;
+            return (byte)value >= 1 && (byte)value <= 8;
         }
     }
 }

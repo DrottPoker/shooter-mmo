@@ -72,4 +72,12 @@ public interface ICharacterQuestLog
         Guid characterId,
         string questId,
         CancellationToken cancellationToken);
+
+    // Forgets the quest, active or completed, as a development reset does, so the character can
+    // accept it as if for the first time.
+    Task<long> ForgetAsync(
+        PostgresTransactionScope scope,
+        Guid characterId,
+        string questId,
+        CancellationToken cancellationToken);
 }

@@ -370,6 +370,24 @@ public sealed class QuestCatalogCompilerTests
             error => error.Contains("duplicate quest 'quest.first'", StringComparison.Ordinal));
     }
 
+    // The catalog size bounds every list of a character's quests, such as a reset of all of them.
+    [Fact]
+    public void ACatalogHoldsAtMostTenThousandQuests()
+    {
+        var crowded = Catalog(Enumerable.Range(0, QuestContentRules.MaximumQuests + 1)
+            .Select(index => KillQuest("quest.test_" + index))
+            .ToArray());
+        var crowdedRuntime = Compile(KillQuest());
+        crowdedRuntime.Quests = Enumerable.Repeat(crowdedRuntime.Quests[0], QuestContentRules.MaximumQuests + 1).ToArray();
+
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => Compile(crowded)).Errors,
+            error => error == "quests must hold at most 10000 quests.");
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(crowdedRuntime)).Errors,
+            error => error == "runtime quest catalog must hold at most 10000 quests.");
+    }
+
     private static QuestCatalogRuntimeDocument Compile(params QuestAuthoringEntry[] quests)
     {
         return Compile(Catalog(quests));

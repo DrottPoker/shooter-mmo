@@ -35,6 +35,7 @@ internal static class ItemTransactionErrorCodes
     public const string QuestRewardChoiceRequired = "quest_reward_choice_required";
     public const string QuestRewardChoiceInvalid = "quest_reward_choice_invalid";
     public const string QuestItemNotNeeded = "quest_item_not_needed";
+    public const string DevelopmentToolsDisabled = "development_tools_disabled";
     public const string CurrencyInsufficient = "currency_insufficient";
     public const string CurrencyLimitExceeded = "currency_limit_exceeded";
     public const string VendorAccessRequired = "vendor_access_required";

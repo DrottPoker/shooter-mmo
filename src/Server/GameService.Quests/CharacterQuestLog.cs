@@ -223,6 +223,27 @@ internal sealed class CharacterQuestLog : ICharacterQuestLog
         return revision;
     }
 
+    public async Task<long> ForgetAsync(
+        PostgresTransactionScope scope,
+        Guid characterId,
+        string questId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentException.ThrowIfNullOrWhiteSpace(questId);
+        var revision = await RaiseRevisionAsync(scope, characterId, cancellationToken);
+        await DeleteActiveAsync(scope, characterId, questId, cancellationToken);
+        await scope.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            delete from character_completed_quests
+            where character_id = @CharacterId and quest_id = @QuestId;
+            """,
+            new { CharacterId = characterId, QuestId = questId },
+            scope.Transaction,
+            cancellationToken: cancellationToken));
+        return revision;
+    }
+
     private static Task<long> RaiseRevisionAsync(
         PostgresTransactionScope scope,
         Guid characterId,

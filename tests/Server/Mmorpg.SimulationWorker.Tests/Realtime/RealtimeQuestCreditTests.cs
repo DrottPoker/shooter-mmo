@@ -143,7 +143,7 @@ public sealed class RealtimeQuestCreditTests
             var client = await harness.JoinAsync(archer);
             await KillTwoWolvesAsync(harness, client, gate);
             client.Send(RealtimeProtocol.EncodeQuestIntent(
-                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+                RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
             await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
 
             gate.Release();
@@ -221,7 +221,7 @@ public sealed class RealtimeQuestCreditTests
         {
             var first = await harness.JoinAsync(archer, "first");
             first.Send(RealtimeProtocol.EncodeQuestIntent(
-                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+                RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
             await harness.PollUntilAsync(() => gate.HasEntered, "the abandon to reach GameService");
             await KillTwoWolvesAsync(harness, first, gate);
             Assert.Single(harness.GameService.QuestOperations);
@@ -298,7 +298,7 @@ public sealed class RealtimeQuestCreditTests
             await KillTwoWolvesAsync(harness, first, gate);
             var second = await ReconnectAsync(harness, archer);
             second.Send(RealtimeProtocol.EncodeQuestIntent(
-                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+                RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
             await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
             Assert.Single(harness.GameService.QuestOperations);
 
@@ -446,7 +446,7 @@ public sealed class RealtimeQuestCreditTests
         {
             var client = await harness.JoinAsync(archer);
             client.Send(RealtimeProtocol.EncodeQuestIntent(
-                new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Chain)));
+                RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Chain)));
             await harness.PollUntilAsync(() => gate.HasEntered, "the abandon to reach GameService");
             foreach (var actorId in new[] { "mob.feral_wolf", "mob.grey_wolf" })
             {

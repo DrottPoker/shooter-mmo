@@ -98,20 +98,44 @@ namespace Mmorpg.Client.Quests
                 return false;
             }
 
+            return TrySend(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), questId), out error);
+        }
+
+        // Runs a development quest tool of the Admin menu, such as accepting any quest or making
+        // one ready; only a Development worker carries it out. Its answer arrives like an abandon's.
+        public bool TryRunAdminTool(RealtimeQuestIntent intent, out string error)
+        {
+            error = string.Empty;
+            if (intent == null || intent.Kind == RealtimeQuestIntentKind.Abandon)
+            {
+                throw new ArgumentException("An admin tool is a development quest intent.", nameof(intent));
+            }
+
+            if (!initialized || !State.IsReady)
+            {
+                error = "Your quests are not loaded yet.";
+                return false;
+            }
+
+            return TrySend(intent, out error);
+        }
+
+        private bool TrySend(RealtimeQuestIntent intent, out string error)
+        {
+            error = string.Empty;
             if (pendingIntentId != Guid.Empty)
             {
                 error = "Wait for the last quest action to finish.";
                 return false;
             }
 
-            var operationId = Guid.NewGuid();
-            if (!simulationClient.TrySendQuestIntent(new RealtimeQuestIntent(operationId, RealtimeQuestIntentKind.Abandon, questId)))
+            if (!simulationClient.TrySendQuestIntent(intent))
             {
-                error = "The abandon request could not be sent.";
+                error = "The quest request could not be sent.";
                 return false;
             }
 
-            pendingIntentId = operationId;
+            pendingIntentId = intent.OperationId;
             LastIntentError = string.Empty;
             IntentChanged?.Invoke();
             return true;

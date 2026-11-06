@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
@@ -14,7 +15,8 @@ internal sealed record QuestIntentCompleted(
     QuestOperationOutcome Outcome)
     : RealtimeOperationResult(PeerContext);
 
-// Quest actions outside any interaction, such as abandoning a quest from the quest log. They
+// Quest actions outside any interaction, such as abandoning a quest from the quest log or a
+// development tool of the Admin menu, which only a worker with the admin tools carries out. They
 // queue behind the peer's other authority work, so the worker applies every committed quest
 // change in order. The changed items and quest log go to the client before the result.
 // Loop-confined; the GameService call runs off the loop.
@@ -28,6 +30,7 @@ internal sealed class QuestIntentHandler(
     RealtimeOperationTracker operationTracker,
     RealtimeCompletionQueue completions,
     QuestOperationExecutor? executor,
+    DevelopmentAdminOptions adminOptions,
     ILogger logger,
     ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
@@ -50,6 +53,12 @@ internal sealed class QuestIntentHandler(
         if (executor is null || entity.Session.IsSyntheticBot)
         {
             SendRejection(peer, intent, "quests_unavailable", "This worker runs no quests for the character.");
+            return;
+        }
+
+        if (intent.Kind != RealtimeQuestIntentKind.Abandon && !adminOptions.Enabled)
+        {
+            SendRejection(peer, intent, "admin_tools_disabled", "Only a Development worker allows the admin tools.");
             return;
         }
 
@@ -89,10 +98,7 @@ internal sealed class QuestIntentHandler(
         QuestOperationOutcome outcome;
         try
         {
-            outcome = await executor!.ExecuteAsync(
-                session,
-                new QuestOperation(intent.OperationId, QuestOperationKinds.Abandon, intent.QuestId),
-                CancellationToken.None);
+            outcome = await executor!.ExecuteAsync(session, OperationOf(intent), CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -106,6 +112,27 @@ internal sealed class QuestIntentHandler(
         }
 
         completions.Post(this, new QuestIntentCompleted(context, session, intent, outcome));
+    }
+
+    private static QuestOperation OperationOf(RealtimeQuestIntent intent)
+    {
+        var kind = intent.Kind switch
+        {
+            RealtimeQuestIntentKind.Abandon => QuestOperationKinds.Abandon,
+            RealtimeQuestIntentKind.AdminAccept => QuestOperationKinds.AdminAccept,
+            RealtimeQuestIntentKind.AdminCompleteObjective => QuestOperationKinds.AdminCompleteObjective,
+            RealtimeQuestIntentKind.AdminCompleteStep => QuestOperationKinds.AdminCompleteStep,
+            RealtimeQuestIntentKind.AdminMakeReady => QuestOperationKinds.AdminMakeReady,
+            RealtimeQuestIntentKind.AdminReset => QuestOperationKinds.AdminReset,
+            RealtimeQuestIntentKind.AdminResetChain => QuestOperationKinds.AdminResetChain,
+            RealtimeQuestIntentKind.AdminResetAll => QuestOperationKinds.AdminResetAll,
+            _ => throw new InvalidOperationException($"Quest intent kind {intent.Kind} has no operation.")
+        };
+        return new QuestOperation(
+            intent.OperationId,
+            kind,
+            string.IsNullOrEmpty(intent.QuestId) ? null : intent.QuestId,
+            ObjectiveId: string.IsNullOrEmpty(intent.ObjectiveId) ? null : intent.ObjectiveId);
     }
 
     private void FinalizeIntent(QuestIntentCompleted completed)

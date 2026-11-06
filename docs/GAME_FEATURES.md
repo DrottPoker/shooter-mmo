@@ -352,6 +352,16 @@ not implemented, and running with run energy is planned in
   its health as it is until the character leaves the World.
 - **Storage** opens the Bank or Recovery Storage in the storage window beside
   Inventory without an NPC, as the development worker allows.
+- **Quests** lists every quest by title with the character's state, such as
+  `available`, `needs an earlier quest`, `active, step 1 of 2`, or `completed 2
+  times, available again`. `Accept` takes a quest around its giver, level, and
+  earlier quests. An active quest offers `Complete step`, `Make ready`, which
+  completes every step up to the turn-in, and `Complete: <objective>` for each
+  objective of its current step; completing a collect objective gives the
+  items it lacks. `Reset` forgets a quest the character has or completed, and
+  takes its quest items; `Reset with follow-ups` also forgets the quests that
+  need it, and `Reset all quests` forgets everything. The quest log, the
+  tracker, the markers, and the game messages follow every change.
 - The footer shows what the worker answered, such as
   `Teleport to 85.0, 1.9, 80.0: done.` or the reason a tool was refused.
 

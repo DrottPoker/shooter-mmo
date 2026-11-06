@@ -397,6 +397,19 @@ transaction and take their quest definitions from `IQuestDefinitions`:
   acquisition, credits the Gold reward with a `quest_reward` ledger row, and
   counts the completion. Missing room for a reward rejects the whole turn-in
   with `inventory_full`.
+- The Admin menu's quest tools are `QuestCommandHandler` commands too, in
+  `QuestCommandHandler.Admin.cs`: `AdminAcceptQuestCommand`,
+  `AdminCompleteQuestObjectiveCommand`, `AdminCompleteQuestStepCommand`,
+  `AdminMakeQuestReadyCommand`, `AdminResetQuestCommand`,
+  `AdminResetQuestChainCommand`, and `AdminResetQuestsCommand`. They require
+  the simulation worker authority, fill collect objectives through carried
+  acquisition, ordinary items in stack-sized parts with
+  `CarriedAcquisition.AcquireStacksAsync`, and reset through
+  `ICharacterQuestLog.ForgetAsync` and
+  `QuestLineageItems` with the `quest_reset` destruction reason.
+  `SimulationQuestMutationService` routes them only while
+  `ItemsModuleOptions.DevelopmentQuestTools` is on, which only the Development
+  environment sets.
 - The result names the changed quests in `ItemTransactionResult.QuestLog`: the
   quest log revision afterwards and each quest's step, the progress of its
   counted objectives, and its completion count. A stored result replays it.
@@ -641,7 +654,7 @@ the statement ids.
 | S53 | The worker appearance route lowers or raises the headwear, or stores a development look | Chr L, W | `ICharacterAppearances.SetHeadwearLoweredAsync` and `SetDevelopmentLookAsync` in `SimulationAppearanceService` |
 | S54 | Durable corpse responses read the looks of their source characters, deleted ones too | Chr R | `ICharacterAppearances.ReadManyAsync` in `CorpseService` |
 | S55 | The quest log read checks character ownership | Chr R | `CharactersSql.ActiveCharacters` in `QuestLogQueryService` |
-| S56 | Quest commands read the quest catalog and the character level, and read and change the quest log | Qst R, W; Chr R | `IQuestDefinitions`, `ICharacterQuestLog`, and `CharactersSql.LevelOf` in `QuestCommandHandler` |
+| S56 | Quest commands, also the Admin menu's quest tools, read the quest catalog and the character level, and read, change, and forget quests in the quest log | Qst R, W; Chr R | `IQuestDefinitions`, `ICharacterQuestLog`, and `CharactersSql.LevelOf` in `QuestCommandHandler` and its `QuestCommandHandler.Admin.cs` part |
 | S57 | A quest command's result reports the quests it changed | Qst R | `ICharacterQuestLog.ReadAsync` in `QuestLogChanges` |
 | S58 | Kills, yields, talks, and deliveries count for the objectives of current steps | Qst R, W | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestProgression` and `GatherResourceCommandHandler` |
 | S59 | A quest turn-in credits its Gold reward | Chr L, W | `ICharacterWallet.CreditAsync` with a `quest_reward` ledger row in `QuestCommandHandler` |

@@ -1017,12 +1017,42 @@ The worker must log `Development admin tools are enabled`.
    Expected result: the storage window opens beside the Inventory window on the
    Bank with `Bank` and `Recovery` tabs, then switches to Recovery Storage.
 6. The `Look` tab is checked in
-   [The Look Tab Of The Admin Menu](#the-look-tab-of-the-admin-menu).
+   [The Look Tab Of The Admin Menu](#the-look-tab-of-the-admin-menu), and the
+   `Quests` tab in [The Quests Tab Of The Admin Menu](#the-quests-tab-of-the-admin-menu).
 7. Stop SimulationWorker and start it again with
    `$env:DevelopmentAdmin__Enabled = "false"`, join, and press F3. Expected
    result: the tabs are greyed out, and the footer says `The admin tools are
    off: only a SimulationWorker in the Development environment allows them.`
    Remove the variable afterwards.
+
+### The Quests Tab Of The Admin Menu
+
+Join Development World 2 with a new character, press F3, and choose `Quests`.
+
+1. Expected result: every quest of Development World 2 by title, with
+   `available` for Wolves at the Gate and A Letter for the Outpost and
+   `needs an earlier quest` for the rest.
+2. Press `Accept` under Pelts and Fangs. Expected result: the footer says
+   `Accept Pelts and Fangs: done.`, the game messages say
+   `Quest accepted: Pelts and Fangs`, and the quest shows `active, step 1 of 1`
+   with `Complete step`, `Make ready`, `Complete: Wolf Pelts`,
+   `Complete: Wolf Fangs`, `Reset`, and `Reset with follow-ups`.
+3. Press `Complete: Wolf Fangs`. Expected result: two Wolf Fangs appear in the
+   inventory, and the game messages say `Wolf Fangs 2/2`. Press `Make ready`.
+   Expected result: three Wolf Pelts appear, and the game messages say
+   `Wolf Pelts 3/3` and `Pelts and Fangs is ready to turn in.`
+4. Press `Reset with follow-ups`. Expected result: the Wolf Fangs leave the
+   inventory, the Wolf Pelts stay, the game messages say
+   `Quest abandoned: Pelts and Fangs`, and the quest shows
+   `needs an earlier quest` again.
+5. Accept Wolves at the Gate, press `Complete: Feral Wolves slain`, and turn
+   the quest in at Mira. Expected result: Mira completes it as usual, and the
+   tab shows it as `completed`. Press `Reset all quests`. Expected result:
+   Wolves at the Gate shows `available` again.
+
+The GameService tests `QuestAdminIntegrationTests` and the worker tests
+`RealtimeQuestTests` cover the same tools, also the refusal outside
+Development.
 
 ## Inventory And Equipment
 

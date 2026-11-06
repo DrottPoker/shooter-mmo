@@ -723,6 +723,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && IsValidQuestProgress(quest.Objectives))
             && response.ActiveQuests.Select(quest => quest.QuestId).Distinct(StringComparer.Ordinal).Count()
                 == response.ActiveQuests.Count
+            && response.CompletedQuests.Count <= QuestContentRules.MaximumQuests
             && response.CompletedQuests.All(quest =>
                 quest is not null
                 && Identifiers.IsContentIdentifier(quest.QuestId)
@@ -795,7 +796,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             || (change.CharacterId == characterId
                 && change.Revision >= 0
                 && change.Quests is not null
-                && change.Quests.Count <= QuestContentRules.MaximumActiveQuestLimit
+                && change.Quests.Count <= QuestContentRules.MaximumQuests
                 && change.Quests.All(quest =>
                     quest is not null
                     && Identifiers.IsContentIdentifier(quest.QuestId)

@@ -48,6 +48,40 @@ internal static class CarriedAcquisition
         context.Journal.TouchCharacter(character.CharacterId);
     }
 
+    // Places a quantity that may take several stacks, one acquisition per stack-sized part.
+    public static async Task AcquireStacksAsync(
+        ItemTransactionContext context,
+        LockedCharacterState character,
+        ResolvedItemDefinition definition,
+        int quantity,
+        string auditPrefix,
+        CancellationToken cancellationToken)
+    {
+        foreach (var part in StackSizedParts(quantity, definition.RuntimeDefinition.MaximumStackSize))
+        {
+            await AcquireAsync(context, character, definition, part, auditPrefix, cancellationToken);
+        }
+    }
+
+    // Full stacks first, then the rest.
+    public static IReadOnlyList<int> StackSizedParts(int quantity, int maximumStackSize)
+    {
+        if (quantity <= 0 || maximumStackSize <= 0)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.ItemStackLimitExceeded,
+                "An acquired quantity and its stack size must be positive.");
+        }
+
+        var parts = new List<int>((quantity + maximumStackSize - 1) / maximumStackSize);
+        for (var remaining = quantity; remaining > 0; remaining -= parts[^1])
+        {
+            parts.Add(Math.Min(remaining, maximumStackSize));
+        }
+
+        return parts;
+    }
+
     public static async Task AcquireAsync(
         ItemTransactionContext context,
         LockedCharacterState character,

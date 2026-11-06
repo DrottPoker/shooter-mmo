@@ -270,6 +270,42 @@ internal sealed record TurnInQuestCommand(
     string QuestId,
     string? RewardChoiceDefinitionId);
 
+// The development quest tools of the Admin menu, which the quest route runs only in the
+// Development environment. Accepting goes around the giver, the level, and the required quests.
+internal sealed record AdminAcceptQuestCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Completes one objective of the active quest's current step: a counted objective reaches its
+// count, and a collect objective gets the items it still lacks into carried storage.
+internal sealed record AdminCompleteQuestObjectiveCommand(
+    Guid CharacterId,
+    string QuestId,
+    string ObjectiveId);
+
+// Completes every objective of the active quest's current step, which moves it to the next.
+internal sealed record AdminCompleteQuestStepCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Completes the active quest's steps up to the last, which then waits for the turn-in.
+internal sealed record AdminMakeQuestReadyCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Forgets a quest as if the character never took it, with every item of its lineage.
+internal sealed record AdminResetQuestCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Forgets a quest and every quest that requires it, directly or through another.
+internal sealed record AdminResetQuestChainCommand(
+    Guid CharacterId,
+    string QuestId);
+
+// Forgets every quest of the character.
+internal sealed record AdminResetQuestsCommand(Guid CharacterId);
+
 internal sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
     Guid CharacterId,
@@ -595,6 +631,13 @@ internal static class ItemOperationKinds
     public const string DeliverQuestItems = "deliver_quest_items";
     public const string CreditQuestKill = "credit_quest_kill";
     public const string TurnInQuest = "turn_in_quest";
+    public const string AdminAcceptQuest = "admin_accept_quest";
+    public const string AdminCompleteQuestObjective = "admin_complete_quest_objective";
+    public const string AdminCompleteQuestStep = "admin_complete_quest_step";
+    public const string AdminMakeQuestReady = "admin_make_quest_ready";
+    public const string AdminResetQuest = "admin_reset_quest";
+    public const string AdminResetQuestChain = "admin_reset_quest_chain";
+    public const string AdminResetQuests = "admin_reset_quests";
     public const string ProcessPlayerDeath = "process_player_death";
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";

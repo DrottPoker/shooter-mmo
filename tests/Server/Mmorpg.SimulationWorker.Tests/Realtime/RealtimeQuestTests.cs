@@ -74,7 +74,7 @@ public sealed class RealtimeQuestTests
         await harness.StartAsync();
         var client = await harness.JoinAsync(character);
 
-        var intent = new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves);
+        var intent = RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves);
         client.Send(RealtimeProtocol.EncodeQuestIntent(intent));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the abandon result");
 
@@ -99,6 +99,64 @@ public sealed class RealtimeQuestTests
         Assert.Empty(log.ActiveQuests);
     }
 
+    // The Admin menu's quest tools run as quest operations with their quest and objective, and
+    // resetting every quest names none.
+    [Fact]
+    public async Task AdminQuestToolsRunThroughTheQuestRoute()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableQuests = true,
+            EnableAdminTools = true
+        });
+        var character = harness.AddCharacter("Quest Admin");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(
+            request.OperationKind == "admin_reset_quests"
+                ? ScriptedGameServiceHandler.CommittedQuestOperation(request, 0, 5, new SimulationQuestChange(Wolves, null, [], 0))
+                : ScriptedGameServiceHandler.CommittedQuestOperation(
+                    request,
+                    0,
+                    4,
+                    new SimulationQuestChange(Wolves, "hunt", [new SimulationQuestObjectiveProgress("wolves", 2)], 0)));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            RealtimeQuestIntent.CreateAdminCompleteObjective(Guid.NewGuid(), Wolves, "wolves")));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the completed objective");
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminResetAll(Guid.NewGuid())));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 2, "the reset");
+
+        Assert.Equal(
+            [("admin_complete_quest_objective", Wolves, "wolves"), ("admin_reset_quests", (string?)null, (string?)null)],
+            harness.GameService.QuestOperations.Select(operation => (operation.OperationKind, operation.QuestId, operation.ObjectiveId)));
+        Assert.All(QuestResults(client), result => Assert.True(result.Succeeded, result.Error?.Code));
+        Assert.Equal([4L, 5L], QuestChanges(client).Select(change => change.QuestLogRevision));
+        Assert.True(harness.QuestLogs!.TryGet(character.CharacterId, character.SimulationSessionId, out var log));
+        Assert.Equal(5, log!.Revision);
+        Assert.Empty(log.ActiveQuests);
+    }
+
+    [Fact]
+    public async Task AWorkerWithoutTheAdminToolsRefusesTheQuestToolsButNotAbandoning()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Visitor");
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAdminAccept(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the refused tool");
+
+        var result = Assert.Single(QuestResults(client));
+        Assert.Equal((false, "admin_tools_disabled"), (result.Succeeded, result.Error!.Code));
+        Assert.Equal(RealtimeQuestIntentKind.AdminAccept, result.Kind);
+        Assert.Empty(harness.GameService.QuestOperations);
+        Assert.Null(client.ServerDisconnect);
+    }
+
     [Fact]
     public async Task ARefusedQuestIntentKeepsTheSessionAndItsQuestLog()
     {
@@ -110,7 +168,7 @@ public sealed class RealtimeQuestTests
         var client = await harness.JoinAsync(character);
 
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the refused abandon");
 
         var result = Assert.Single(QuestResults(client));
@@ -142,7 +200,7 @@ public sealed class RealtimeQuestTests
         var client = await harness.JoinAsync(character);
 
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the abandon result");
 
         Assert.True(Assert.Single(QuestResults(client)).Succeeded);
@@ -179,7 +237,7 @@ public sealed class RealtimeQuestTests
         // The action committed behind a lost answer, and GameService's log now holds it.
         Interlocked.Exchange(ref logRevision, 4);
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the uncertain result");
 
         Assert.Equal("auth_service_unavailable", QuestResults(client)[0].Error!.Code);
@@ -191,13 +249,13 @@ public sealed class RealtimeQuestTests
         // Neither the answer nor the log comes through, so the next action first reads the log.
         logAvailable = false;
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 2, "the second uncertain result");
         Assert.True(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
         var operations = harness.GameService.QuestOperations.Count;
 
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 3, "the refused action");
         Assert.Equal("quest_log_unavailable", QuestResults(client)[2].Error!.Code);
         Assert.Equal(operations, harness.GameService.QuestOperations.Count);
@@ -206,7 +264,7 @@ public sealed class RealtimeQuestTests
         logAvailable = true;
         committing = false;
         client.Send(RealtimeProtocol.EncodeQuestIntent(
-            new RealtimeQuestIntent(Guid.NewGuid(), RealtimeQuestIntentKind.Abandon, Wolves)));
+            RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 4, "the committed action");
 
         Assert.True(QuestResults(client)[3].Succeeded);
