@@ -91,13 +91,15 @@ namespace Mmorpg.WorldData.Editor.Quests
             string message,
             QuestEditorFile[] files,
             string[] removedFiles,
-            string[] changes)
+            string[] changes,
+            string[] retiredQuestIds)
         {
             Success = success;
             Message = message ?? string.Empty;
             Files = files ?? Array.Empty<QuestEditorFile>();
             RemovedFiles = removedFiles ?? Array.Empty<string>();
             Changes = changes ?? Array.Empty<string>();
+            RetiredQuestIds = retiredQuestIds ?? Array.Empty<string>();
         }
 
         public bool Success { get; }
@@ -112,14 +114,22 @@ namespace Mmorpg.WorldData.Editor.Quests
         // Such as "Added quest: quest.new_hunt", for the save confirmation.
         public string[] Changes { get; }
 
+        // The retired quest ids that the save writes, which may hold more than the edited ones.
+        public string[] RetiredQuestIds { get; }
+
         public static QuestEditorValidationResult Failed(string message)
         {
-            return new QuestEditorValidationResult(false, message, null, null, null);
+            return new QuestEditorValidationResult(false, message, null, null, null, null);
         }
 
-        public static QuestEditorValidationResult Passed(string message, QuestEditorFile[] files, string[] removedFiles, string[] changes)
+        public static QuestEditorValidationResult Passed(
+            string message,
+            QuestEditorFile[] files,
+            string[] removedFiles,
+            string[] changes,
+            string[] retiredQuestIds)
         {
-            return new QuestEditorValidationResult(true, message, files, removedFiles, changes);
+            return new QuestEditorValidationResult(true, message, files, removedFiles, changes, retiredQuestIds);
         }
     }
 
@@ -160,13 +170,15 @@ namespace Mmorpg.WorldData.Editor.Quests
             Directory.CreateDirectory(temporaryDirectory);
             try
             {
+                var savedRetired = SavedRetiredQuestIds();
+                var catalog = Reconcile(workspace.Catalog);
                 QuestCatalogCompiler.Compile(
-                    workspace.Catalog.ToDomain(),
+                    catalog.ToDomain(),
                     workspace.References.Items,
                     workspace.References.Worlds);
                 var contentRoot = Path.Combine(temporaryDirectory, "content");
                 var generatedRoot = Path.Combine(temporaryDirectory, "generated");
-                var authoredFiles = QuestEditorContent.CreateFiles(workspace.Catalog)
+                var authoredFiles = QuestEditorContent.CreateFiles(catalog)
                     .OrderBy(file => file.Key, StringComparer.Ordinal)
                     .Select(file => new KeyValuePair<string, string>(
                         Path.Combine(ContentLayout.QuestsDirectory(string.Empty), file.Key),
@@ -220,10 +232,14 @@ namespace Mmorpg.WorldData.Editor.Quests
                     .Select(file => Path.GetFullPath(file.Path))
                     .Where(path => !written.Contains(path))
                     .ToArray();
-                var changes = ClassifyChanges(ReadRuntime(paths.RuntimePath), ReadRuntimeJson(runtimeFile.Value));
+                var changes = ClassifyChanges(ReadRuntime(paths.RuntimePath), ReadRuntimeJson(runtimeFile.Value))
+                    .Concat((catalog.retiredQuestIds ?? Array.Empty<string>())
+                        .Where(id => !savedRetired.Contains(id, StringComparer.Ordinal))
+                        .Select(id => "Retired quest id: " + id))
+                    .ToArray();
                 var message = compilerResult.Output.Trim() + Environment.NewLine
                     + (changes.Length == 0 ? "No quest changes detected." : string.Join(Environment.NewLine, changes));
-                return QuestEditorValidationResult.Passed(message.Trim(), files, removedFiles, changes);
+                return QuestEditorValidationResult.Passed(message.Trim(), files, removedFiles, changes, catalog.retiredQuestIds);
             }
             catch (QuestValidationException exception)
             {
@@ -263,6 +279,52 @@ namespace Mmorpg.WorldData.Editor.Quests
         public ContentCompilerRunResult VerifyCanonical()
         {
             return compilerRunner.Verify(paths.ContentRoot, paths.GeneratedRoot);
+        }
+
+        // The catalog as a save writes it: the edited content, plus every id that the saved
+        // catalog retired and the id of every saved quest that left the catalog, because a
+        // released quest id is permanent. So undo across a save can neither remove a saved quest
+        // without retiring its id nor bring a retired id back, which the compiler then rejects.
+        public QuestEditorCatalog Reconcile(QuestEditorCatalog catalog)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            var retired = catalog.retiredQuestIds ?? Array.Empty<string>();
+            var kept = new HashSet<string>(
+                (catalog.quests ?? Array.Empty<QuestEditorDefinition>()).Select(quest => quest?.id).Where(id => id != null),
+                StringComparer.Ordinal);
+            var missing = SavedRetiredQuestIds()
+                .Concat(SavedQuestIds().Where(id => !kept.Contains(id)))
+                .Where(id => !retired.Contains(id, StringComparer.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+            if (missing.Length == 0)
+            {
+                return catalog;
+            }
+
+            var reconciled = QuestEditorJson.Clone(catalog);
+            reconciled.retiredQuestIds = retired.Concat(missing).ToArray();
+            return reconciled;
+        }
+
+        private string[] SavedQuestIds()
+        {
+            return Directory.Exists(ContentLayout.DefinitionsDirectory(paths.QuestsDirectory))
+                ? ContentLayout.ListDefinitionFiles(paths.QuestsDirectory).Select(file => file.Id).ToArray()
+                : Array.Empty<string>();
+        }
+
+        private string[] SavedRetiredQuestIds()
+        {
+            var path = ContentLayout.CatalogPath(paths.QuestsDirectory);
+            return File.Exists(path)
+                ? QuestEditorJson.DeserializeCatalogHeader(File.ReadAllText(path)).retiredQuestIds ?? Array.Empty<string>()
+                : Array.Empty<string>();
         }
 
         private static string[] ClassifyChanges(QuestCatalogJsonDocument baseline, QuestCatalogJsonDocument candidate)

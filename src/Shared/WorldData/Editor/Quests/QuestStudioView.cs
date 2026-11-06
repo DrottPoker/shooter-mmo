@@ -262,6 +262,9 @@ namespace Mmorpg.WorldData.Editor.Quests
             {
                 service.Save(validation);
                 AssetDatabase.Refresh();
+
+                // The save may retire more ids than the edits did, such as after undo across a save.
+                workspace.Catalog.retiredQuestIds = validation.RetiredQuestIds;
                 session.MarkSaved();
 
                 // A saved quest's id is permanent from now on.
@@ -699,9 +702,11 @@ namespace Mmorpg.WorldData.Editor.Quests
             liveValidation.ExecuteLater(LiveValidationDelayMilliseconds);
         }
 
+        // Validates the catalog as a save would write it, so a retired id that undo brought back
+        // shows as a problem at once.
         private void RunLiveValidation()
         {
-            issues = QuestEditorIssues.Collect(workspace?.Catalog, workspace?.References);
+            issues = QuestEditorIssues.Collect(SavedForm(), workspace?.References);
             list.SetIssueState(IssueState);
             toolLayout.Issues.SetIssues(issues, issue => QuestEditorIssues.Describe(issue, workspace?.Catalog));
             form?.ApplyIssues(issues);
@@ -1387,12 +1392,15 @@ namespace Mmorpg.WorldData.Editor.Quests
             return npcs.FirstOrDefault(id => id != quest.turnInActorId) ?? npcs.FirstOrDefault() ?? string.Empty;
         }
 
+        // The retired ids with the new ones appended in order, as a save appends them.
         private string[] Retired(IEnumerable<string> ids)
         {
-            return (workspace.Catalog.retiredQuestIds ?? Array.Empty<string>())
-                .Concat(ids)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(id => id, StringComparer.Ordinal)
+            var retired = workspace.Catalog.retiredQuestIds ?? Array.Empty<string>();
+            return retired
+                .Concat(ids
+                    .Where(id => !retired.Contains(id, StringComparer.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(id => id, StringComparer.Ordinal))
                 .ToArray();
         }
 
@@ -1446,6 +1454,26 @@ namespace Mmorpg.WorldData.Editor.Quests
         private QuestEditorDefinition[] Quests()
         {
             return workspace?.Catalog.quests ?? Array.Empty<QuestEditorDefinition>();
+        }
+
+        private QuestEditorCatalog SavedForm()
+        {
+            if (workspace == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return service.Reconcile(workspace.Catalog);
+            }
+            catch (Exception exception) when (exception is IOException
+                || exception is InvalidDataException
+                || exception is UnauthorizedAccessException)
+            {
+                // Unreadable files on disk fail the save itself; live validation checks the edits.
+                return workspace.Catalog;
+            }
         }
 
         private QuestEditorDefinition SingleTarget()

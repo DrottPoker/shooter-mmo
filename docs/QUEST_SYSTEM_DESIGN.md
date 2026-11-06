@@ -428,7 +428,9 @@ tool foundation of [Unity Content Tools](../content/README.md#unity-content-tool
   or appears in. Clicking an entry selects it.
 - `Delete` and a changed id of a saved quest move its id to the retired ids, as
   [Changing Released Quests](#changing-released-quests) requires; a quest that
-  was never saved leaves no trace.
+  was never saved leaves no trace. A save checks the edits against the saved
+  files, so undo across a save can neither remove a saved quest without retiring
+  its id nor bring a retired id back.
 - Live validation, undo, `Preview Changes`, `Save + Compile`, and
   `Verify Canonical`, as in the other content tools.
 

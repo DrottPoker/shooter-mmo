@@ -137,7 +137,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 var removal = service.Validate(workspace);
                 Assert.That(removal.Success, Is.True, removal.Message);
                 Assert.That(removal.RemovedFiles, Is.EqualTo(new[] { Path.GetFullPath(addedPath) }));
-                Assert.That(removal.Changes, Is.EqualTo(new[] { "Removed quest: quest.editor_test_hunt" }));
+                Assert.That(
+                    removal.Changes,
+                    Is.EqualTo(new[] { "Removed quest: quest.editor_test_hunt", "Retired quest id: quest.editor_test_hunt" }));
                 service.Save(removal);
 
                 Assert.That(File.Exists(addedPath), Is.False);
@@ -145,6 +147,42 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     QuestEditorContent.Load(paths.QuestsDirectory).retiredQuestIds,
                     Is.EqualTo(new[] { "quest.editor_test_hunt" }));
+            }
+        }
+
+        // Undo may take a saved quest away together with its retirement, or bring a retired quest
+        // back. A save still retires the removed quest, and the retired id never returns.
+        [Test]
+        public void SavesRetireRemovedSavedQuestsAndNeverReviveRetiredIds()
+        {
+            using (var content = new FixtureQuestContent())
+            {
+                var service = new QuestEditorService(content.Paths);
+                var workspace = service.Load();
+                var original = QuestEditorJson.Clone(workspace.Catalog);
+                var hunt = QuestEditorTemplates.Create(QuestEditorTemplates.Kill, "quest.editor_test_hunt", workspace.References);
+                workspace.Catalog.quests = workspace.Catalog.quests.Append(hunt).ToArray();
+                service.Save(service.Validate(workspace));
+
+                workspace.RestoreContent(QuestEditorJson.Clone(original));
+                var removal = service.Validate(workspace);
+
+                Assert.That(removal.Success, Is.True, removal.Message);
+                Assert.That(
+                    removal.Changes,
+                    Is.EqualTo(new[] { "Removed quest: quest.editor_test_hunt", "Retired quest id: quest.editor_test_hunt" }));
+                Assert.That(removal.RetiredQuestIds, Is.EqualTo(new[] { "quest.editor_test_hunt" }));
+                service.Save(removal);
+                Assert.That(
+                    QuestEditorContent.Load(content.Paths.QuestsDirectory).retiredQuestIds,
+                    Is.EqualTo(new[] { "quest.editor_test_hunt" }));
+
+                workspace.Catalog.quests = workspace.Catalog.quests.Append(QuestEditorJson.Clone(hunt)).ToArray();
+                var revival = service.Validate(workspace);
+
+                Assert.That(revival.Success, Is.False);
+                Assert.That(revival.Message, Does.Contain("'quest.editor_test_hunt' is retired"));
+                Assert.That(service.Reconcile(workspace.Catalog).retiredQuestIds, Is.EqualTo(new[] { "quest.editor_test_hunt" }));
             }
         }
 

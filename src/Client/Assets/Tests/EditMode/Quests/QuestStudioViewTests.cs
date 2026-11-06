@@ -271,6 +271,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(view.Workspace.Catalog.retiredQuestIds, Is.EqualTo(new[] { "quest.new_gather" }));
         }
 
+        [Test]
+        public void UndoAcrossASaveNeitherDropsNorRevivesASavedId()
+        {
+            view.AddQuest(QuestEditorTemplates.Kill);
+            Assert.That(view.Save(_ => true), Is.True, view.StatusText);
+
+            Undo.PerformUndo();
+            Assert.That(view.Workspace.Catalog.quests.Select(QuestStudioView.Key), Does.Not.Contain("quest.new_kill"));
+            string[] changes = null;
+            Assert.That(view.Save(values =>
+            {
+                changes = values;
+                return true;
+            }), Is.True, view.StatusText);
+
+            Assert.That(changes, Does.Contain("Retired quest id: quest.new_kill"));
+            Assert.That(view.Workspace.Catalog.retiredQuestIds, Is.EqualTo(new[] { "quest.new_kill" }));
+            Assert.That(File.Exists(DefinitionPath("quest.new_kill")), Is.False);
+            Assert.That(view.HasUnsavedChanges, Is.False);
+
+            Undo.PerformRedo();
+            Assert.That(view.Workspace.Catalog.quests.Select(QuestStudioView.Key), Does.Contain("quest.new_kill"));
+            Assert.That(view.Save(_ => true), Is.False);
+            Assert.That(view.StatusText, Does.Contain("'quest.new_kill' is retired"));
+            Assert.That(
+                view.Issues.Where(issue => issue.EntityKey == "quest.new_kill").Select(issue => issue.Field),
+                Does.Contain("id"));
+        }
+
         private void Select(string questId)
         {
             view.List.Select(new[] { questId });

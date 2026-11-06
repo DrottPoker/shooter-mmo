@@ -553,12 +553,12 @@ and actors, so after a save in the Item Catalog or Actor Studio, click
    quests from the rows above it, and `NPC View` lists every quest the chosen
    NPC gives, receives, or appears in. Clicking a quest in either selects it.
 8. Click `Preview Changes`, then `Save + Compile`, then `Verify Canonical`.
+   The save lists the changes for confirmation, such as
+   `Added quest: quest.new_kill`, and writes the quest files and the compiled
+   quest catalog.
 
-Expected result: the problems panel shows `No problems found.`, the preview
-lists the quest files and the compiled quest catalog with the changed files
-marked, the save asks to confirm a list such as `Added quest: quest.new_kill`
-and writes the files, and verification reports the same quest catalog
-revision.
+How to check Quest Studio by hand is in
+[Manual Testing](../docs/MANUAL_TESTING.md#quest-studio).
 
 A saved quest's id is permanent, as
 [Changing Released Quests](../docs/QUEST_SYSTEM_DESIGN.md#changing-released-quests)
@@ -566,7 +566,10 @@ describes. `Delete` removes only quests that no remaining quest requires, says
 which ones it kept, and moves the id of a saved quest to the retired ids;
 changing the `Stable Quest Id` of a saved quest retires the old id after a
 confirmation and updates the quests that require it. A quest that was never
-saved is deleted or renamed without a trace. To try Quest Studio without
+saved is deleted or renamed without a trace. A save also retires every saved
+quest that left the catalog and keeps every retired id, even when undo across
+a save took the retirement away, and the problems panel names a retired id that
+undo brought back. To try Quest Studio without
 keeping the result, discard the changed files with
 `git restore content/quests src/Shared/WorldData/Generated/Quests` and delete
 any new definition file before GameService starts, because GameService never
