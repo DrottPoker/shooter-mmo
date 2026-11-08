@@ -1361,7 +1361,10 @@ the quest actions of the realtime protocol through these routes:
   catalog does not hold with `quest_not_found`, an action on a quest that the
   log does not have active with `quest_not_active`, an objective of another
   quest or kind with `quest_objective_invalid`, and a reward that the quest
-  does not offer with `quest_reward_choice_invalid`.
+  does not offer with `quest_reward_choice_invalid`. When the action first read
+  a stale quest log again and the read moved it on, the refusal still comes
+  after a `QuestLogChanged` with `ReloadRequired`, because the client may show
+  a change that committed behind lost answers, such as an abandon.
 - After every committed action the worker applies the carry state and the
   quest log change, sends the item change and then a `QuestLogChanged` from
   the revision it held, and then the result. A rejection keeps the session

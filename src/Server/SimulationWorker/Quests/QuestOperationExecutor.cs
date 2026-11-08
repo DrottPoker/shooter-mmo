@@ -120,10 +120,14 @@ public sealed class QuestOperationExecutor(
         }
 
         // What the worker's own catalog and log already refuse never reaches GameService, so a
-        // client intent with any id costs no stored operation.
+        // client intent with any id costs no stored operation. A log that the read above moved on
+        // may hold a change the client missed, so the client reads its own again.
         if (operation.ClientIntent && Refuse(session, operation) is { } refused)
         {
-            return refused;
+            return refused with
+            {
+                QuestLogChange = ReloadNotice(session, operation.ReportedOperationId, reloadFrom)
+            };
         }
 
         var request = new SimulationQuestOperationRequest(

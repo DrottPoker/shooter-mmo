@@ -303,6 +303,47 @@ public sealed class RealtimeQuestTests
         Assert.Null(client.ServerDisconnect);
     }
 
+    // An abandon that committed behind lost answers leaves a stale log that the next action reads
+    // again. The worker's own log then refuses that action, and the refusal still tells the
+    // client to read its log, which still shows the abandoned quest.
+    [Fact]
+    public async Task ARefusalAfterAStaleLogWasReadAgainTellsTheClientToReload()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Doubter");
+        var abandoned = false;
+        var logAvailable = true;
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(!logAvailable
+            ? ScriptedGameServiceHandler.Problem(HttpStatusCode.ServiceUnavailable, "database_unavailable", "Try again.")
+            : abandoned
+                ? ScriptedGameServiceHandler.QuestLog(request.CharacterId, 4)
+                : ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        harness.GameService.OnQuestOperation = (_, _, _) =>
+        {
+            abandoned = true;
+            throw new HttpRequestException("The answer was lost.");
+        };
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        logAvailable = false;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the uncertain abandon");
+        Assert.True(harness.QuestLogs!.IsStale(character.CharacterId, character.SimulationSessionId));
+        Assert.Empty(QuestChanges(client));
+        var operations = harness.GameService.QuestOperations.Count;
+
+        logAvailable = true;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 2, "the refused abandon");
+
+        Assert.Equal("quest_not_active", QuestResults(client)[1].Error!.Code);
+        Assert.Equal(operations, harness.GameService.QuestOperations.Count);
+        var reload = Assert.Single(QuestChanges(client));
+        Assert.Equal((3L, 4L, true), (reload.PreviousQuestLogRevision, reload.QuestLogRevision, reload.ReloadRequired));
+        Assert.False(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
+    }
+
     // A lost answer asks again with the same operation, which replays a committed result.
     [Fact]
     public async Task AQuestActionWhoseAnswerIsLostAsksAgainWithTheSameOperation()

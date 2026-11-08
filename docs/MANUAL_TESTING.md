@@ -1012,7 +1012,9 @@ released before its peer took it over drops its log. Of a burst of 20 quest
 intents, the first twelve pass the shared rate limit and the ones beyond it
 fail with `world_interaction_rate_limited`, and an abandon of an unknown or
 inactive quest or an objective the quest lacks fails with GameService's code
-without reaching GameService.
+without reaching GameService. An abandon that committed behind lost answers is
+refused when sent again, after a `QuestLogChanged` with `ReloadRequired` from
+revision 3 to 4.
 
 Then run the worker's kill and gathering credits:
 
