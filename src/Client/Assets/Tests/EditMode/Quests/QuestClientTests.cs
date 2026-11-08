@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Items;
 using Mmorpg.Client.Quests;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 using NUnit.Framework;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -310,6 +312,70 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(freshWatcher.Update(fresh, carried), Is.EqualTo(new[] { "Fixture Trophies is ready to turn in." }));
         }
 
+        // The quest windows start after a login loaded the log, and the first change after that
+        // tells as much as any later one, such as a quest that is ready once it is accepted.
+        [Test]
+        public void TheFirstChangeAfterTheFeedStartsTellsItsReadiness()
+        {
+            var state = Ready();
+            var said = new List<string>();
+            using (new QuestNoticeFeed(state, null, notices => said.AddRange(notices)))
+            {
+                state.ApplyChange(Change(3, 4, Quest(FixtureQuestCatalog.Wolves, "hunt", 0, ("wolves", 2))));
+            }
+
+            Assert.That(said, Is.EqualTo(new[] { "Quest accepted: Fixture Wolves", "Fixture Wolves is ready to turn in." }));
+        }
+
+        // Carried items that load after the quest log were carried before, so they tell nothing;
+        // what changes after them tells as usual.
+        [Test]
+        public void CarriedItemsThatLoadAfterTheLogTellNothing()
+        {
+            var state = Ready(Active(FixtureQuestCatalog.Trophies, "collect"));
+            var catalog = FixtureItemCatalog.Load();
+            var inventory = new InventoryClientState();
+            inventory.SetCatalog(catalog);
+            inventory.PrepareCharacter(CharacterId);
+            var said = new List<string>();
+            using (new QuestNoticeFeed(state, inventory, notices => said.AddRange(notices)))
+            {
+                Assert.That(inventory.ApplyFull(Carrying(catalog, 3, 2)), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+                Assert.That(said, Is.Empty);
+
+                Assert.That(inventory.ApplyFull(Carrying(catalog, 4, 1)), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+                Assert.That(inventory.ApplyFull(Carrying(catalog, 5, 2)), Is.EqualTo(InventorySnapshotApplyResult.Applied));
+            }
+
+            Assert.That(said, Is.EqualTo(new[] { "Stolen trophies 2/2", "Fixture Trophies is ready to turn in." }));
+        }
+
+        // A client build whose bundled catalog is invalid says so for every character instead of
+        // reading quests forever.
+        [Test]
+        public void AnInvalidBundledCatalogKeepsItsReasonForEveryCharacter()
+        {
+            var state = new QuestClientState();
+            state.SetFailed("quest_catalog_invalid", "The quest catalog is invalid.");
+
+            state.PrepareCharacter(CharacterId, 1);
+
+            Assert.That(state.Status, Is.EqualTo(QuestClientStatus.Failed));
+            Assert.That((state.ErrorCode, state.ErrorMessage), Is.EqualTo(("quest_catalog_invalid", "The quest catalog is invalid.")));
+        }
+
+        [Test]
+        public void TheCatalogListsTheQuestsEachNpcGivesByTitle()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+
+            Assert.That(
+                catalog.QuestsGivenBy(FixtureQuestCatalog.Mira).Select(quest => quest.Title),
+                Is.EqualTo(new[] { "Fixture Errand", "Fixture Ore Run", "Fixture Trophies", "Fixture Wolves" }));
+            Assert.That(catalog.QuestsGivenBy("npc.outpost_sergeant"), Is.Empty);
+            Assert.That(catalog.QuestsGivenBy(string.Empty), Is.Empty);
+        }
+
         // A failed read of the quest log is tried again after 2 s, then 4 s, up to 30 s, and a
         // read that succeeds starts over.
         [Test]
@@ -427,6 +493,39 @@ namespace Mmorpg.Client.Tests.EditMode
         private static IReadOnlyDictionary<string, int> Progress(params (string Id, int Progress)[] objectives)
         {
             return objectives.ToDictionary(objective => objective.Id, objective => objective.Progress, StringComparer.Ordinal);
+        }
+
+        // The character's inventory at a revision, carrying quest-granted trophies in its first
+        // slots.
+        private static CharacterInventorySnapshot Carrying(ClientItemCatalog catalog, long revision, int trophies)
+        {
+            var slots = Enumerable.Range(0, 4)
+                .Select(index => new InventorySlot(
+                    index,
+                    "general",
+                    Array.Empty<string>(),
+                    index < trophies
+                        ? new InventoryItem(
+                            Guid.NewGuid(),
+                            "fixture.trophy",
+                            1,
+                            1,
+                            new[] { new InventoryPolicy(ItemPolicyIds.ProtectedOnDeath, ItemPolicyRules.ActiveStatus, QuestCarriedItems.QuestGrantProtection) })
+                        : null))
+                .ToArray();
+            return new CharacterInventorySnapshot(
+                CharacterId,
+                catalog.Revision,
+                revision,
+                new InventoryContainer(Guid.NewGuid(), "permanent_inventory", 1, slots.Length, slots),
+                Array.Empty<InventoryEquipmentSlot>(),
+                null,
+                new InventoryContainer(Guid.NewGuid(), "bank", 1, 0, Array.Empty<InventorySlot>()),
+                new RecoveryStorageInventory(Guid.NewGuid(), 1, Array.Empty<RecoveryDelivery>()),
+                trophies,
+                200,
+                0,
+                10_000);
         }
     }
 }

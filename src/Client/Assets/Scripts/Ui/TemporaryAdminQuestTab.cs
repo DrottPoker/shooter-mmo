@@ -11,13 +11,16 @@ namespace Mmorpg.Client.Ui
     // and the development quest tools that a Development worker carries out: accepting any quest,
     // completing an objective, the current step, or the whole quest up to its turn-in, and
     // resetting a quest, a quest with its follow-ups, or every quest. The quest log follows from
-    // the committed changes, so the tab only rebuilds from the quest state.
+    // the committed changes, so the tab only rebuilds from the quest state, and only while the
+    // menu shows it; a change while it is hidden rebuilds it once it shows.
     public sealed class TemporaryAdminQuestTab : IDisposable
     {
         private readonly RectTransform page;
         private readonly QuestClientController quests;
         private readonly Action<string, Color> showResult;
         private string pendingDescription;
+        private bool shown;
+        private bool stale = true;
 
         public TemporaryAdminQuestTab(RectTransform page, QuestClientController quests, Action<string, Color> showResult)
         {
@@ -26,19 +29,39 @@ namespace Mmorpg.Client.Ui
             this.showResult = showResult ?? throw new ArgumentNullException(nameof(showResult));
             if (quests != null)
             {
-                quests.State.Changed += Rebuild;
+                quests.State.Changed += OnQuestStateChanged;
                 quests.IntentChanged += OnIntentChanged;
             }
-
-            Rebuild();
         }
 
         public void Dispose()
         {
             if (quests != null)
             {
-                quests.State.Changed -= Rebuild;
+                quests.State.Changed -= OnQuestStateChanged;
                 quests.IntentChanged -= OnIntentChanged;
+            }
+        }
+
+        // Whether the menu shows the tab now: open, on the Quests tab.
+        public void SetShown(bool value)
+        {
+            shown = value;
+            if (shown && stale)
+            {
+                Rebuild();
+            }
+        }
+
+        private void OnQuestStateChanged()
+        {
+            if (shown)
+            {
+                Rebuild();
+            }
+            else
+            {
+                stale = true;
             }
         }
 
@@ -72,6 +95,7 @@ namespace Mmorpg.Client.Ui
 
         public void Rebuild()
         {
+            stale = false;
             UiFactory.ClearChildren(page);
             TemporaryMenuWindow.AddSection(page, "Quests");
             var state = quests != null ? quests.State : null;

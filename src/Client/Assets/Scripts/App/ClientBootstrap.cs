@@ -414,7 +414,7 @@ namespace Mmorpg.Client.App
                     combatController,
                     inventoryWindowRequests,
                     questController));
-            AddSceneComponentIfMissing<InventoryWindows>(
+            var inventoryWindows = AddSceneComponentIfMissing<InventoryWindows>(
                 windows => windows.Initialize(
                     uiTheme,
                     inventoryController,
@@ -434,7 +434,8 @@ namespace Mmorpg.Client.App
                     inventoryController,
                     worldInteractionController,
                     gameMessages,
-                    worldMenu));
+                    worldMenu,
+                    inventoryWindows));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,

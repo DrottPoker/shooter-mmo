@@ -103,9 +103,9 @@ namespace Mmorpg.Client.Quests
 
     // The carried items that count for a collect objective, as GameService counts them: stacks
     // in the permanent inventory and the equipped Bag, an ordinary item without an active
-    // policy and a quest item with the quest grant's lineage. The client does not see which
-    // quest a lineage names, so a quest item of another quest would count too; GameService
-    // decides.
+    // policy and a quest item with a quest grant. The client does not see which quest a lineage
+    // names, but a quest item belongs to one quest, so each of its quest grants carries that
+    // quest's lineage.
     public static class QuestCarriedItems
     {
         public const string QuestGrantProtection = "quest_grant";
@@ -176,13 +176,13 @@ namespace Mmorpg.Client.Quests
             return count;
         }
 
-        private static bool IsQuestGrant(InventoryItem item)
+        internal static bool IsQuestGrant(InventoryItem item)
         {
             return item.Policies.Any(policy => IsActive(policy)
                 && string.Equals(policy.ProtectionSource, QuestGrantProtection, StringComparison.Ordinal));
         }
 
-        private static bool IsActive(InventoryPolicy policy)
+        internal static bool IsActive(InventoryPolicy policy)
         {
             return string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal);
         }

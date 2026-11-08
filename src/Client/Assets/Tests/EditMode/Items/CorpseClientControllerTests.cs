@@ -423,6 +423,10 @@ namespace Mmorpg.Client.Tests.EditMode
             public void EnsureFullState(long minimumRevision)
             {
             }
+
+            public void RefreshFullState()
+            {
+            }
         }
 
         private sealed class FakeCorpseChannel : IRealtimeCorpseChannel

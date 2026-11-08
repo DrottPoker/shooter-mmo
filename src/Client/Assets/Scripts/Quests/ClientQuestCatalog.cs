@@ -13,11 +13,19 @@ namespace Mmorpg.Client.Quests
     public sealed class ClientQuestCatalog
     {
         private readonly Dictionary<string, QuestDefinition> quests;
+        private readonly Dictionary<string, QuestDefinition[]> questsByGiver;
 
         private ClientQuestCatalog(QuestCatalogRuntimeDocument runtime)
         {
             Runtime = runtime;
             quests = runtime.Quests.ToDictionary(quest => quest.Id, quest => quest, StringComparer.Ordinal);
+            questsByGiver = runtime.Quests
+                .Where(quest => !string.IsNullOrEmpty(quest.GiverActorId))
+                .GroupBy(quest => quest.GiverActorId, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderBy(quest => quest.Title, StringComparer.Ordinal).ToArray(),
+                    StringComparer.Ordinal);
         }
 
         public QuestCatalogRuntimeDocument Runtime { get; }
@@ -94,6 +102,15 @@ namespace Mmorpg.Client.Quests
         {
             quest = null;
             return !string.IsNullOrEmpty(questId) && quests.TryGetValue(questId, out quest);
+        }
+
+        // The quests an NPC gives, by title, so the dialog and the marker of one NPC never walk
+        // the whole catalog.
+        public IReadOnlyList<QuestDefinition> QuestsGivenBy(string npcActorId)
+        {
+            return !string.IsNullOrEmpty(npcActorId) && questsByGiver.TryGetValue(npcActorId, out var given)
+                ? given
+                : Array.Empty<QuestDefinition>();
         }
 
         public bool MatchesServerRevision(string serverRevision)

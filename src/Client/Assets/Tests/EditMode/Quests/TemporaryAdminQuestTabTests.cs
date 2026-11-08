@@ -38,8 +38,9 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var page = TemporaryUiKit.CreateUiObject("QuestsPage", canvasObject.transform).GetComponent<RectTransform>();
             var controller = controllerObject.AddComponent<QuestClientController>();
-            using (new TemporaryAdminQuestTab(page, controller, (_, _) => { }))
+            using (var tab = new TemporaryAdminQuestTab(page, controller, (_, _) => { }))
             {
+                tab.SetShown(true);
                 Assert.That(Texts(page), Has.Some.Contains("once they are loaded"));
 
                 controller.State.SetCatalog(FixtureQuestCatalog.Load());
@@ -59,6 +60,29 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(buttons.Count(label => label == "Accept"), Is.EqualTo(3), "Every quest but the active one.");
                 Assert.That(buttons.Count(label => label == "Reset"), Is.EqualTo(2), "The active wolves and the completed ore run.");
                 Assert.That(buttons, Does.Contain("Reset all quests"));
+            }
+        }
+
+        // The tab rebuilds only while the Admin menu shows it, and a change while it is hidden
+        // shows once it is shown again.
+        [Test]
+        public void AHiddenTabRebuildsOnlyOnceItShows()
+        {
+            var page = TemporaryUiKit.CreateUiObject("QuestsPage", canvasObject.transform).GetComponent<RectTransform>();
+            var controller = controllerObject.AddComponent<QuestClientController>();
+            using (var tab = new TemporaryAdminQuestTab(page, controller, (_, _) => { }))
+            {
+                Assert.That(Texts(page), Is.Empty, "A tab that never showed builds nothing.");
+
+                tab.SetShown(true);
+                tab.SetShown(false);
+                controller.State.SetCatalog(FixtureQuestCatalog.Load());
+                controller.State.PrepareCharacter(CharacterId, 1);
+                Assert.That(controller.State.TryApplyLog(Log(), out var error), Is.True, error);
+                Assert.That(Texts(page), Has.Some.Contains("once they are loaded"), "The hidden tab kept what it showed.");
+
+                tab.SetShown(true);
+                Assert.That(Texts(page), Does.Contain("active, step 1 of 1"));
             }
         }
 

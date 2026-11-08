@@ -18,9 +18,10 @@ namespace Mmorpg.Client.Ui
     // player now, and for the chosen entry its text, objectives, and rewards with the action that
     // answers it; it closes with the interaction. They read the quest state, the inventory, and
     // the open interaction, send every action through the interaction or the quest controller,
-    // and own no quest rule. They also write the notices of every committed quest change into the
-    // game messages. They run after the inventory windows, so an Escape that a dialog took does
-    // nothing else; the abandon confirmation takes its Escape before the inventory windows.
+    // and own no quest rule. A QuestNoticeFeed writes the notices of every committed quest change
+    // into the game messages. They run after the inventory windows, so an Escape that a dialog
+    // took does nothing else; the abandon confirmation takes its Escape before the inventory
+    // windows.
     [DefaultExecutionOrder(InventoryWindows.ExecutionOrder + 1)]
     [DisallowMultipleComponent]
     public sealed class QuestWindows : MonoBehaviour
@@ -30,7 +31,7 @@ namespace Mmorpg.Client.Ui
         // Above the interaction panel and below the inventory, whose tooltips draw over it.
         public const int CanvasSortingOrder = 90;
 
-        private const float DialogWidth = 460f;
+        public const float DialogWidth = 460f;
 
         private UiTheme theme;
         private QuestClientController quests;
@@ -38,13 +39,14 @@ namespace Mmorpg.Client.Ui
         private WorldInteractionClientController interaction;
         private GameMessageLog messages;
         private WorldMenuController worldMenu;
+        private InventoryWindows inventoryWindows;
         private LocalPlayerInput localPlayerInput;
-        private readonly QuestProgressWatcher progressWatcher = new QuestProgressWatcher();
+        private QuestNoticeFeed notices;
         private UiWindow dialog;
         private QuestLogWindow log;
         private QuestTracker tracker;
         private UiDialog confirmation;
-        private int watchedLoad = -1;
+        private bool placedBesideEquipment;
         private string npcActorId = string.Empty;
         private Guid dialogInteractionSessionId;
         private QuestDialogEntry selected;
@@ -81,14 +83,16 @@ namespace Mmorpg.Client.Ui
             get { return confirmation; }
         }
 
-        // Called by the composition root before the component is activated.
+        // Called by the composition root before the component is activated. The inventory
+        // windows tell where the Equipment window stands, which the dialog and the log keep clear.
         public void Initialize(
             UiTheme uiTheme,
             QuestClientController questController,
             InventoryClientController inventoryController,
             WorldInteractionClientController worldInteraction,
             GameMessageLog gameMessages,
-            WorldMenuController menu = null)
+            WorldMenuController menu = null,
+            InventoryWindows inventoryWindowsBeside = null)
         {
             theme = uiTheme;
             quests = questController;
@@ -96,6 +100,7 @@ namespace Mmorpg.Client.Ui
             interaction = worldInteraction;
             messages = gameMessages;
             worldMenu = menu;
+            inventoryWindows = inventoryWindowsBeside;
         }
 
         public void SetLogOpen(bool open)
@@ -126,6 +131,9 @@ namespace Mmorpg.Client.Ui
             dialogInteractionSessionId = active.InteractionSessionId;
             selected = null;
             rewardChoice = string.Empty;
+
+            // A message of an earlier action belongs to that action, not to this dialog.
+            interaction.State.ClearMessage();
             dialog.SetTitle(active.DisplayName);
             dialog.SetOpen(true);
             quests?.EnsureLoaded();
@@ -148,8 +156,10 @@ namespace Mmorpg.Client.Ui
             FindPlayerInput();
             if (quests != null)
             {
+                // The quest log may have loaded before the windows, so the notices start from
+                // it now.
+                notices = new QuestNoticeFeed(quests.State, inventory?.State, Say);
                 quests.State.Changed += OnQuestStateChanged;
-                quests.State.QuestsChanged += OnQuestsChanged;
                 quests.IntentChanged += RefreshLog;
                 quests.QuestDropped += OnQuestDropped;
             }
@@ -168,10 +178,10 @@ namespace Mmorpg.Client.Ui
 
         private void OnDestroy()
         {
+            notices?.Dispose();
             if (quests != null)
             {
                 quests.State.Changed -= OnQuestStateChanged;
-                quests.State.QuestsChanged -= OnQuestsChanged;
                 quests.IntentChanged -= RefreshLog;
                 quests.QuestDropped -= OnQuestDropped;
             }
@@ -190,6 +200,11 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
+            if (dialog != null && IsEquipmentOpen != placedBesideEquipment)
+            {
+                PlaceWindows();
+            }
+
             if (localPlayerInput == null)
             {
                 FindPlayerInput();
@@ -262,7 +277,7 @@ namespace Mmorpg.Client.Ui
                 quests.State,
                 QuestCarriedItems.Counter(inventory?.State),
                 quests.HasPendingIntent,
-                quests.LastIntentError);
+                quests.LastAbandonError);
         }
 
         private void RefreshTracker()
@@ -296,25 +311,11 @@ namespace Mmorpg.Client.Ui
             Refresh();
         }
 
-        // A load starts the progress watch over without notices; a quest change comes with its
-        // notices below.
         private void OnQuestStateChanged()
         {
-            if (quests.State.LoadCount != watchedLoad)
-            {
-                watchedLoad = quests.State.LoadCount;
-                progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State));
-            }
-
             Refresh();
             RefreshLog();
             RefreshTracker();
-        }
-
-        private void OnQuestsChanged(IReadOnlyList<QuestClientChange> changes)
-        {
-            Say(QuestNotices.For(changes, quests.State.Catalog));
-            Say(progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State)));
         }
 
         private void OnQuestDropped(RealtimeQuestDropInCorpse drop)
@@ -325,14 +326,26 @@ namespace Mmorpg.Client.Ui
         // Carried items move collect objectives, and they can make a quest ready.
         private void OnInventoryChanged()
         {
-            if (quests != null)
-            {
-                Say(progressWatcher.Update(quests.State, QuestCarriedItems.Counter(inventory?.State)));
-            }
-
             Refresh();
             RefreshLog();
             RefreshTracker();
+        }
+
+        private bool IsEquipmentOpen
+        {
+            get { return inventoryWindows != null && inventoryWindows.IsEquipmentOpen && inventoryWindows.Equipment != null; }
+        }
+
+        // The dialog stands at the left screen edge, or beside the Equipment window while that is
+        // open, since the Equipment window stands there too and draws over this canvas; the log
+        // stands beside the dialog.
+        private void PlaceWindows()
+        {
+            placedBesideEquipment = IsEquipmentOpen;
+            var left = theme.ScreenMargin
+                + (placedBesideEquipment ? inventoryWindows.Equipment.Rect.sizeDelta.x + theme.WindowGap : 0f);
+            dialog.Place(new Vector2(0f, 1f), new Vector2(left, -theme.WindowTop));
+            log.Window.Place(new Vector2(0f, 1f), new Vector2(left + DialogWidth + theme.WindowGap, -theme.WindowTop));
         }
 
         private void Say(IReadOnlyList<string> notices)
@@ -360,7 +373,7 @@ namespace Mmorpg.Client.Ui
             var state = quests.State;
             if (!state.IsReady)
             {
-                AddParagraph(StatusText(state), theme.MutedTextColor);
+                AddParagraph(QuestLogWindow.StatusText(state), theme.MutedTextColor);
                 dialog.FitBody();
                 return;
             }
@@ -450,9 +463,20 @@ namespace Mmorpg.Client.Ui
                     break;
                 case QuestDialogEntryKind.TurnIn:
                     var needsChoice = quest.RewardChoiceItems != null && quest.RewardChoiceItems.Length > 0;
+                    var rewardsFit = QuestRewardFit.Fits(
+                        quest,
+                        rewardChoice,
+                        inventory?.State.ConfirmedSnapshot,
+                        inventory?.State.Catalog,
+                        out var noRoom);
+                    if (!rewardsFit)
+                    {
+                        AddParagraph(noRoom, theme.DangerColor);
+                    }
+
                     AddAction(
                         "Complete",
-                        idle && (!needsChoice || !string.IsNullOrEmpty(rewardChoice)),
+                        idle && rewardsFit && (!needsChoice || !string.IsNullOrEmpty(rewardChoice)),
                         () => Send(RealtimeCapabilityActionKind.TurnInQuest, string.Empty, needsChoice ? rewardChoice : string.Empty));
                     break;
                 case QuestDialogEntryKind.TalkTo:
@@ -629,22 +653,6 @@ namespace Mmorpg.Client.Ui
                 : definitionId;
         }
 
-        private static string StatusText(QuestClientState state)
-        {
-            switch (state.Status)
-            {
-                case QuestClientStatus.Loading:
-                case QuestClientStatus.Unavailable:
-                    return "Reading your quests...";
-                case QuestClientStatus.UpdateRequired:
-                    return "This client build requires a quest catalog update.";
-                default:
-                    return string.IsNullOrWhiteSpace(state.ErrorMessage)
-                        ? "Your quests are unavailable."
-                        : "Your quests are unavailable: " + state.ErrorMessage;
-            }
-        }
-
         private static bool IsSameEntry(QuestDialogEntry entry, QuestDialogEntry other)
         {
             return entry.Kind == other.Kind
@@ -681,14 +689,13 @@ namespace Mmorpg.Client.Ui
             UiFactory.Fill(root);
             tracker = new QuestTracker(theme, root);
             dialog = UiWindow.Create(theme, root, DialogWindowName, null, "Quests", DialogWidth);
-            dialog.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin, -theme.WindowTop));
             dialog.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
             dialog.CloseRequested += CloseDialog;
             dialog.SetOpen(false);
             // The log stands beside the dialog, so both show at once.
             log = new QuestLogWindow(theme, root, Abandon, RefreshLog);
-            log.Window.Place(new Vector2(0f, 1f), new Vector2(theme.ScreenMargin + DialogWidth + theme.WindowGap, -theme.WindowTop));
             log.Window.CloseRequested += () => SetLogOpen(false);
+            PlaceWindows();
             confirmation = UiDialog.Create(theme, root);
             gameObject.AddComponent<UiDialogEscape>().Initialize(confirmation, worldMenu, () => localPlayerInput);
             RefreshTracker();

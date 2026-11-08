@@ -47,9 +47,8 @@ namespace Mmorpg.Client.Quests
             if (marker == QuestMarker.None
                 && state != null
                 && state.IsReady
-                && state.Catalog.Quests.Any(quest =>
-                    string.Equals(quest.GiverActorId, npcActorId, StringComparison.Ordinal)
-                    && state.AvailabilityOf(quest) == QuestAvailability.BelowMinimumLevel))
+                && state.Catalog.QuestsGivenBy(npcActorId).Any(quest =>
+                    state.AvailabilityOf(quest) == QuestAvailability.BelowMinimumLevel))
             {
                 marker = QuestMarker.HigherLevelQuest;
             }
