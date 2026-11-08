@@ -521,7 +521,13 @@ and Undo History work as elsewhere in Unity, and null never turns into an empty
 object on undo. A vector field edits only the axis that changed, and a
 continuous edit such as a Scene view handle drag becomes one undo step. A tool
 window keeps its undo state across script reloads and asks to save unsaved
-changes when it closes. The compilers, the content files, and
+changes when it closes. The undo state also keeps the content that the edits
+were made on, so after a script reload `ContentEditSession` applies them again
+only to the same content, merges them with content that changed on disk through
+the tool's `ContentMerge`, or lets them give way. `ContentDiskState` remembers
+the content files a tool loaded or saved, and a save stops when they changed on
+disk since, so it never deletes or writes over a file it did not load. The
+compilers, the content files, and
 `ContentFileTransaction` are shared with the command-line tools, so a tool never
 produces other compiled content than CI.
 

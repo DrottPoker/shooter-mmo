@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Editor.ContentTools;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Actors
@@ -55,22 +56,34 @@ namespace Mmorpg.WorldData.Editor.Actors
 
     public sealed class WorldActorEditorWorkspace
     {
+        // diskState is the actor and spawn files as they were when the content was read from
+        // them, or null for a workspace that no files back.
         public WorldActorEditorWorkspace(
             WorldActorEditorCatalog catalog,
             WorldActorEditorSpawns spawns,
             WorldActorEditorRuntime runtime,
-            WorldActorEditorItemReferences itemReferences = null)
+            WorldActorEditorItemReferences itemReferences = null,
+            ContentDiskState diskState = null)
         {
             Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             Spawns = spawns ?? throw new ArgumentNullException(nameof(spawns));
             CurrentRuntime = runtime
                 ?? throw new ArgumentNullException(nameof(runtime));
             ItemReferences = itemReferences ?? new WorldActorEditorItemReferences();
+            DiskState = diskState;
         }
 
         public WorldActorEditorCatalog Catalog { get; }
         public WorldActorEditorSpawns Spawns { get; }
         public WorldActorEditorRuntime CurrentRuntime { get; private set; }
+
+        // The actor and spawn files as the workspace last read or wrote them.
+        public ContentDiskState DiskState { get; private set; }
+
+        public void MarkFilesWritten(ContentDiskState diskState)
+        {
+            DiskState = diskState;
+        }
 
         // The vendor profiles of the compiled item catalog, which vendor capabilities name.
         public WorldActorEditorItemReferences ItemReferences { get; }
@@ -257,25 +270,38 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         public WorldActorEditorPaths Paths => paths;
 
+        // The actor and spawn files are read before their content, so a file that changes in
+        // between makes the next save stop instead of writing over it.
         public WorldActorEditorWorkspace Load()
         {
             RequireFile(paths.SpawnPath);
             RequireFile(paths.RuntimePath);
+            var diskState = ReadDiskState();
             return new WorldActorEditorWorkspace(
                 WorldActorEditorContent.Load(paths.ActorsDirectory),
                 WorldActorEditorJson.DeserializeSpawns(File.ReadAllText(paths.SpawnPath)),
                 WorldActorEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)),
-                WorldActorEditorItemReferences.Load(paths.GeneratedRoot));
+                WorldActorEditorItemReferences.Load(paths.GeneratedRoot),
+                diskState);
         }
 
         // Compiles the edited catalog and spawns together with the committed spawns of every
-        // other World, because each World's runtime embeds the shared actor catalog.
+        // other World, because each World's runtime embeds the shared actor catalog. Actor or
+        // spawn files that changed on disk since the workspace read them stop it, because the
+        // save would delete or write over them.
         public WorldActorEditorValidationResult Validate(
             WorldActorEditorWorkspace workspace)
         {
             if (workspace == null)
             {
                 throw new ArgumentNullException(nameof(workspace));
+            }
+
+            var changedOnDisk = workspace.DiskState?.Changes() ?? Array.Empty<string>();
+            if (changedOnDisk.Count > 0)
+            {
+                return WorldActorEditorValidationResult.Failed(
+                    ContentDiskState.ChangedMessage(changedOnDisk, paths.ContentRoot, "Actor Studio"));
             }
 
             var temporaryDirectory = Path.Combine(
@@ -456,13 +482,26 @@ namespace Mmorpg.WorldData.Editor.Actors
                     "Successful actor validation is required before saving.");
             }
 
+            var changedOnDisk = workspace.DiskState?.Changes() ?? Array.Empty<string>();
+            if (changedOnDisk.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    ContentDiskState.ChangedMessage(changedOnDisk, paths.ContentRoot, "Actor Studio"));
+            }
+
             ContentFileTransaction.Commit(
                 validation.Files.Select(file =>
                     new KeyValuePair<string, string>(file.FullPath, file.Text)),
                 validation.RemovedFiles);
+            workspace.MarkFilesWritten(ReadDiskState());
             workspace.ApplyRuntime(
                 WorldActorEditorJson.DeserializeRuntime(validation.RuntimeJson));
             return collisionCompilerRunner.Compile(paths.ContentRoot, paths.GeneratedRoot);
+        }
+
+        private ContentDiskState ReadDiskState()
+        {
+            return ContentDiskState.Read(new[] { paths.ActorsDirectory }, new[] { paths.SpawnPath });
         }
 
         public ContentCompilerRunResult VerifyCanonical()

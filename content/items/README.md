@@ -258,8 +258,9 @@ there once.
    marks its definition, and choosing a problem in the panel below selects the
    definition and its field.
 4. Undo and redo with Ctrl+Z and Ctrl+Y or the Edit menu; every edit is one step
-   in `Edit > Undo History`. Unsaved edits survive script reloads, and closing
-   the window asks whether to save them.
+   in `Edit > Undo History`. Unsaved edits survive script reloads, as
+   [Unity Content Tools](../README.md#unity-content-tools) describes, and
+   closing the window asks whether to save them.
 5. Optionally choose an icon Sprite below `Assets/Content/Items/Icons`, one
    Sprite per file. The folder is an Addressables folder entry, so the window
    stores the icon's address, such as `Items/Icons/<file>.png`, not the image,

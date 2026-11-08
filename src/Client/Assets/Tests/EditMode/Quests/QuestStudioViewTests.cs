@@ -301,6 +301,168 @@ namespace Mmorpg.Client.Tests.EditMode
                 Does.Contain("id"));
         }
 
+        // A git pull adds a quest file while the Studio has unsaved edits: the save stops instead
+        // of deleting and retiring it, and a reload that keeps the edits lets the save through.
+        [Test]
+        public void ASaveStopsForQuestFilesThatArrivedOnDiskUntilAReloadKeepsTheEdits()
+        {
+            view.AddQuest(QuestEditorTemplates.Kill);
+            WritePulledQuest("quest.pulled_hunt");
+
+            Assert.That(view.Save(_ => throw new AssertionException("Nothing may be confirmed.")), Is.False);
+            Assert.That(view.StatusText, Does.Contain("changed on disk").And.Contain("quest.pulled_hunt.json"));
+            Assert.That(File.Exists(DefinitionPath("quest.pulled_hunt")), Is.True);
+
+            view.Reload(() => true);
+            Assert.That(
+                view.Workspace.Catalog.quests.Select(QuestStudioView.Key),
+                Does.Contain("quest.pulled_hunt").And.Contain("quest.new_kill"));
+            Assert.That(view.Save(_ => true), Is.True, view.StatusText);
+            Assert.That(File.Exists(DefinitionPath("quest.pulled_hunt")), Is.True);
+            Assert.That(QuestEditorContent.Load(content.Paths.QuestsDirectory).retiredQuestIds, Is.Empty);
+        }
+
+        // After a save, a git pull changes a quest file and reloads the scripts. The Studio loads
+        // the pulled file and restores nothing over it.
+        [Test]
+        public void AScriptReloadAfterASaveLoadsTheFilesThatChangedOnDisk()
+        {
+            view.AddQuest(QuestEditorTemplates.Kill);
+            Assert.That(view.Save(_ => true), Is.True, view.StatusText);
+            RaiseMinimumLevelOnDisk(Wolves);
+
+            ReloadScripts();
+
+            Assert.That(view.HasUnsavedChanges, Is.False);
+            Assert.That(view.StatusText, Does.Not.Contain("restored"));
+            Assert.That(Quest(Wolves).minimumLevel, Is.EqualTo(2));
+            Assert.That(view.Workspace.Catalog.quests.Select(QuestStudioView.Key), Does.Contain("quest.new_kill"));
+        }
+
+        // Unsaved edits that survive a script reload apply on top of the quest files that changed
+        // on disk since, quest by quest, and a quest that both changed keeps the disk's version.
+        [Test]
+        public void UnsavedEditsApplyOnTopOfQuestFilesThatChangedOnDisk()
+        {
+            Select(Wolves);
+            Assert.That(view.Form.TrySetValue("title", "Wolves at the Old Gate"), Is.True);
+            Select(Pelts);
+            Assert.That(view.Form.TrySetValue("title", "Pelts and Teeth"), Is.True);
+            RaiseMinimumLevelOnDisk(Letter);
+            RaiseMinimumLevelOnDisk(Pelts);
+
+            ReloadScripts();
+
+            Assert.That(Quest(Wolves).title, Is.EqualTo("Wolves at the Old Gate"));
+            Assert.That(Quest(Letter).minimumLevel, Is.EqualTo(2));
+            Assert.That((Quest(Pelts).title, Quest(Pelts).minimumLevel), Is.EqualTo(("Pelts and Fangs", 2)));
+            Assert.That(view.HasUnsavedChanges, Is.True);
+            Assert.That(view.StatusType, Is.EqualTo(HelpBoxMessageType.Warning));
+            Assert.That(view.StatusText, Does.Contain(Pelts));
+        }
+
+        // Quest content that fails to load after a script reload keeps the unsaved edits, and a
+        // load once the file is fixed brings them back.
+        [Test]
+        public void UnsavedEditsSurviveQuestContentThatFailsToLoad()
+        {
+            Select(Wolves);
+            Assert.That(view.Form.TrySetValue("title", "Wolves at the Old Gate"), Is.True);
+            var letter = File.ReadAllText(DefinitionPath(Letter));
+            File.WriteAllText(DefinitionPath(Letter), "{ broken");
+
+            ReloadScripts();
+
+            Assert.That(view.Workspace, Is.Null);
+            Assert.That(view.HasUnsavedChanges, Is.True);
+            Assert.That(view.StatusText, Does.Contain("kept for the next load"));
+
+            File.WriteAllText(DefinitionPath(Letter), letter);
+            view.Reload(() => true);
+            Assert.That(Quest(Wolves).title, Is.EqualTo("Wolves at the Old Gate"));
+        }
+
+        // Undo takes a saved quest out of the catalog, but its id stays its own.
+        [Test]
+        public void ANewQuestNeverTakesTheIdOfASavedQuestThatUndoTookOut()
+        {
+            view.AddQuest(QuestEditorTemplates.Kill);
+            Assert.That(view.Save(_ => true), Is.True, view.StatusText);
+            Undo.PerformUndo();
+
+            view.AddQuest(QuestEditorTemplates.Kill);
+
+            Assert.That(view.List.Selection.Single().id, Is.EqualTo("quest.new_kill_2"));
+            Assert.That(view.RenameQuest("quest.new_kill_2", "quest.new_kill", _ => true), Is.False);
+            Assert.That(view.StatusText, Does.Contain("already used, saved, or retired"));
+        }
+
+        // A quest never offers its own follow-ups as requirements, which would form a cycle.
+        [Test]
+        public void RequirementsNeverOfferAFollowUp()
+        {
+            Select(Letter);
+
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                view.AddRequirement();
+            }
+
+            Assert.That(Quest(Letter).requiredQuestIds, Is.EqualTo(new[] { Pelts, Wolves }));
+            Assert.That(Problems(), Is.Empty);
+        }
+
+        // Every quest item of the checked-in content belongs to a quest already.
+        [Test]
+        public void AStartItemNeverOffersAQuestItemOfAnotherQuest()
+        {
+            view.AddQuest(QuestEditorTemplates.Kill);
+
+            view.AddItem("startItems");
+
+            var used = view.Workspace.Catalog.quests
+                .Where(quest => quest.id != "quest.new_kill")
+                .SelectMany(quest => (quest.startItems ?? Array.Empty<QuestEditorItemQuantity>()).Select(item => item.definitionId)
+                    .Concat(quest.Objectives().Select(objective => objective.itemId)))
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToArray();
+            Assert.That(used, Does.Not.Contain(Quest("quest.new_kill").startItems.Single().definitionId));
+        }
+
+        // A quest file with a field the content model does not know shows as a warning at once,
+        // because the quest compiler rejects it.
+        [Test]
+        public void AQuestFileWithAnUnknownFieldShowsAWarning()
+        {
+            var path = DefinitionPath(Wolves);
+            File.WriteAllText(path, File.ReadAllText(path).Replace("\"title\":", "\"titel\": \"Typo\",\n    \"title\":"));
+
+            view.Load(false);
+
+            var warning = view.Issues.Single();
+            Assert.That((warning.EntityKey, warning.Severity), Is.EqualTo((Wolves, ContentIssueSeverity.Warning)));
+            Assert.That(warning.Message, Does.Contain("definitions/" + Wolves + ".json"));
+        }
+
+        // A new view on the same undo state, as after a script reload.
+        private void ReloadScripts()
+        {
+            view.Dispose();
+            view = new QuestStudioView(new QuestEditorService(content.Paths), undoState);
+            view.Load(true);
+        }
+
+        private void WritePulledQuest(string questId)
+        {
+            File.WriteAllText(DefinitionPath(questId), File.ReadAllText(DefinitionPath(Wolves)).Replace(Wolves, questId));
+        }
+
+        private void RaiseMinimumLevelOnDisk(string questId)
+        {
+            var path = DefinitionPath(questId);
+            File.WriteAllText(path, File.ReadAllText(path).Replace("\"minimumLevel\": 1,", "\"minimumLevel\": 2,"));
+        }
+
         private void Select(string questId)
         {
             view.List.Select(new[] { questId });

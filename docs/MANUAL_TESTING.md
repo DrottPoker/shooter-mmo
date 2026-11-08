@@ -927,12 +927,29 @@ it was. How to make quests with Quest Studio is in
    `Delete`. Expected result: the question lists only `quest.pelts_and_fangs`,
    because The Alpha requires Wolves at the Gate, and says that saved quests
    leave their ids as retired ids. Click `Cancel`.
-7. Click `Reload`, then `Discard and reload`. Expected result: `quest.new_kill`
-   is gone, and `git status` shows no change below `content/quests` or
+7. Select `A Letter for the Outpost` and click `Add Requirement` until it stops
+   adding. Expected result: it adds `Pelts and Fangs` and `Wolves at the Gate`
+   and never `The Sergeant's Request`, `Ore for the Quartermaster`, or
+   `The Alpha`, which already require the letter. Press Ctrl+Z twice.
+8. Copy `content/quests/definitions/quest.wolves_at_the_gate.json` to
+   `quest.pulled_hunt.json` in the same folder and replace
+   `quest.wolves_at_the_gate` in the copy with `quest.pulled_hunt`, as a
+   `git pull` would add a quest. Click `Save + Compile`. Expected result: the
+   status says that the content files changed on disk since Quest Studio loaded
+   them and names `quests/definitions/quest.pulled_hunt.json`, and nothing is
+   written or retired.
+9. Click `Reload`, then `Discard my edits`. Expected result: the list shows
+   `quest.pulled_hunt` and no longer `quest.new_kill`. Delete
+   `quest.pulled_hunt.json` again and click `Reload`. Expected result:
+   `git status` shows no change below `content/quests` or
    `src/Shared/WorldData/Generated/Quests`.
 
 The EditMode tests `QuestStudioServiceTests` and `QuestStudioViewTests` save,
-delete, rename, and undo across saves in a temporary copy of the content.
+delete, rename, and undo across saves in a temporary copy of the content, and
+check that a save stops for files that changed on disk, that unsaved edits
+apply on top of pulled files after a script reload and survive content that
+fails to load, that undo never frees a saved id, and that a file with an
+unknown field shows as a warning and fails `Verify Canonical`.
 
 ### Quest Commands On The Worker Quest Route
 

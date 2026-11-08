@@ -132,6 +132,56 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // After a save, the files change on disk, such as by a git pull. The next session after a
+        // script reload loads them as they are and restores nothing over them.
+        [Test]
+        public void AfterASaveANewSessionLoadsFilesThatChangedOnDisk()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                session.Change("Weight", () => holder.Document.entries[0].weight = 3f);
+                session.MarkSaved();
+            }
+
+            var pulled = CreateDocument();
+            pulled.entries[0].weight = 3f;
+            pulled.entries[1].weight = 7f;
+            var reloaded = new Holder { Document = pulled };
+            using (var session = CreateSession(reloaded))
+            {
+                Assert.That(session.Load(true), Is.EqualTo(ContentPendingEdits.None));
+                Assert.That(reloaded.Document.entries.Select(entry => entry.weight), Is.EqualTo(new[] { 3f, 7f }));
+                Assert.That(session.HasUnsavedChanges, Is.False);
+            }
+        }
+
+        // Unsaved edits made on content that changed on disk since give way to it in a tool that
+        // cannot merge them, and the tool says so.
+        [Test]
+        public void EditsOnFilesThatChangedOnDiskGiveWayWithoutAMerge()
+        {
+            var holder = new Holder { Document = CreateDocument() };
+            using (var session = CreateSession(holder))
+            {
+                session.Load(false);
+                session.Change("Weight", () => holder.Document.entries[0].weight = 5f);
+            }
+
+            var pulled = CreateDocument();
+            pulled.entries[1].weight = 7f;
+            var reloaded = new Holder { Document = pulled };
+            using (var session = CreateSession(reloaded))
+            {
+                Assert.That(session.Load(true), Is.EqualTo(ContentPendingEdits.Dropped));
+                Assert.That(reloaded.Document.entries.Select(entry => entry.weight), Is.EqualTo(new[] { 1f, 7f }));
+                Assert.That(session.HasUnsavedChanges, Is.False);
+                Assert.That(session.PendingEditsGaveWay, Is.True);
+                Assert.That(session.PendingEditsMessage, Does.Contain("not restored"));
+            }
+        }
+
         [TestCase("definitions[3].unitWeight must not be negative.", "definitions", 3, "unitWeight", "unitWeight must not be negative.")]
         [TestCase("definitions[0].bag.slots[1].kind is invalid.", "definitions", 0, "bag.slots[1].kind", "bag.slots[1].kind is invalid.")]
         [TestCase("actors[12] must not be null.", "actors", 12, "", "must not be null.")]

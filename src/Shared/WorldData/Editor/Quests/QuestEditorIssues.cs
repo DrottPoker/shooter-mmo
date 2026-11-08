@@ -8,10 +8,13 @@ namespace Mmorpg.WorldData.Editor.Quests
 {
     // Live validation of quest content with the shared QuestCatalogCompiler. Every finding is
     // keyed by its quest id, with the path inside the quest, such as
-    // "steps[0].objectives[1].count"; a finding about the catalog settings has no key.
+    // "steps[0].objectives[1].count"; a finding about the catalog settings has no key and names
+    // the setting as its field, such as "maximumActiveQuests".
     public static class QuestEditorIssues
     {
         public const string Quests = "quests";
+
+        public const string MaximumActiveQuests = "maximumActiveQuests";
 
         public static IReadOnlyList<ContentIssue> Collect(QuestEditorCatalog catalog, QuestEditorReferences references)
         {
@@ -30,6 +33,11 @@ namespace Mmorpg.WorldData.Editor.Quests
                 var ids = (catalog.quests ?? Array.Empty<QuestEditorDefinition>()).Select(quest => quest?.id).ToArray();
                 return exception.Errors
                     .Select(error => ContentIssuePath.ToIssue(error, Quests, index => index < ids.Length ? ids[index] : null))
+                    .Select(issue => issue.EntityKey.Length == 0
+                        && issue.Field.Length == 0
+                        && issue.Message.StartsWith(MaximumActiveQuests + " ", StringComparison.Ordinal)
+                            ? new ContentIssue(string.Empty, MaximumActiveQuests, issue.Message)
+                            : issue)
                     .ToArray();
             }
             catch (Exception exception)

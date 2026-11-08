@@ -393,7 +393,16 @@ Actor Studio, Spawn Authoring, and Quest Studio share these behaviors:
 - Undo and redo with Ctrl+Z and Ctrl+Y while no text field has keyboard focus;
   every edit, such as a whole drag in the Scene view, is one step. Unsaved
   edits survive script reloads, `Reload` discards them after a confirmation, and
-  closing the window asks whether to save them.
+  closing the window asks whether to save them. The tools remember the files
+  the edits were made on: when a script reload follows a change of the files on
+  disk, such as a `git pull`, the pulled files load as they are. Quest Studio
+  then applies the unsaved edits on top of them, quest by quest, and names the
+  quests whose edits gave way because the files changed them too; the other
+  tools keep the pulled files and say that the edits were not restored.
+- A save, and `Preview Changes`, stop when the tool's content files changed on
+  disk since it loaded them, list the changed files, and write nothing, so a
+  save never deletes or writes over a file it did not load. `Reload` loads
+  them.
 - `Preview Changes` compiles with the content compiler and lists every canonical
   file, with changed files in bold, or reports `No canonical changes detected.`.
   `Save + Compile` lists the runtime changes for confirmation with
@@ -523,10 +532,20 @@ shows the quest catalog's `Maximum Active Quests` and its retired ids.
 The dropdowns offer what the compiler accepts: NPCs with the `quests`
 capability for the giver, the turn-in NPC, a delivery, and a conversation;
 placed Mobs and the tags of placed Mobs for a kill objective; placed resource
-nodes for a gathering objective; protected quest items for start items; and
-ordinary items without policies for rewards. They come from the compiled items
-and actors, so after a save in the Item Catalog or Actor Studio, click
-`Reload References`, which keeps the quest edits.
+nodes for a gathering objective; protected quest items that no other quest
+uses for start items, and every item but another quest's quest items for a
+collect or delivery objective; ordinary items without policies for rewards;
+and for a requirement every quest that does not already require this one,
+directly or through others, which would form a cycle. They come from the
+compiled items and actors, so after a save in the Item Catalog or Actor Studio,
+click `Reload References`, which keeps the quest edits.
+
+`Reload` with unsaved edits asks whether to keep them on top of the files on
+disk, quest by quest, or to discard them. A quest file that is not in the form
+Quest Studio writes, for example because of a field that the content model does
+not know, shows as a warning, because the quest compiler rejects it; a save
+writes it in that form. `Verify Canonical` checks the quest files this way too,
+like the Unity tests, besides the compiler's verify mode.
 
 1. Open `MMORPG > Tools > Content > Quest Studio`. Create a quest with
    `New Quest`, which offers `Kill Quest`, `Collect Quest`, `Delivery`,
@@ -576,7 +595,9 @@ confirmation and updates the quests that require it. A quest that was never
 saved is deleted or renamed without a trace. A save also retires every saved
 quest that left the catalog and keeps every retired id, even when undo across
 a save took the retirement away, and the problems panel names a retired id that
-undo brought back. To try Quest Studio without
+undo brought back. Saved means as Quest Studio last loaded or saved the files:
+a new quest or a rename never takes the id of a saved quest, also one that undo
+took out of the catalog. To try Quest Studio without
 keeping the result, discard the changed files with
 `git restore content/quests src/Shared/WorldData/Generated/Quests` and delete
 any new definition file before GameService starts, because GameService never

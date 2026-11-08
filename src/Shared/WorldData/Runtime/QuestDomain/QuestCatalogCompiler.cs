@@ -963,14 +963,19 @@ namespace Mmorpg.WorldData.Quests
             }
         }
 
+        // A cycle is reported at the requirements of the quest it starts from, so an editor can
+        // mark them.
         private static void ValidateRequirementCycles(QuestAuthoringEntry[] quests, List<string> errors)
         {
             var required = new Dictionary<string, string[]>(StringComparer.Ordinal);
-            foreach (var quest in quests)
+            var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var index = 0; index < quests.Length; index++)
             {
+                var quest = quests[index];
                 if (quest?.Id != null && !required.ContainsKey(quest.Id))
                 {
                     required.Add(quest.Id, quest.RequiredQuestIds ?? Array.Empty<string>());
+                    positions.Add(quest.Id, index);
                 }
             }
 
@@ -995,7 +1000,9 @@ namespace Mmorpg.WorldData.Quests
                     var cycle = trail.Skip(trail.IndexOf(id)).ToArray();
                     if (reported.Add(string.Join(",", cycle.OrderBy(value => value, StringComparer.Ordinal))))
                     {
-                        errors.Add("requiredQuestIds form a cycle: " + string.Join(" -> ", cycle) + ".");
+                        errors.Add(
+                            "quests[" + positions[cycle[0]].ToString(CultureInfo.InvariantCulture)
+                                + "].requiredQuestIds form a cycle: " + string.Join(" -> ", cycle) + ".");
                     }
 
                     trail.RemoveAt(trail.Count - 1);

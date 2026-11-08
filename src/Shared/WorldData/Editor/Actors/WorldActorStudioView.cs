@@ -183,8 +183,8 @@ namespace Mmorpg.WorldData.Editor.Actors
 
                 toolLayout.SetStatus(
                     "Loaded " + actors.Length + " actor definitions and the spawns of World '" + service.Paths.WorldId + "'."
-                        + (HasUnsavedChanges ? " Unsaved edits from before the script reload were restored." : string.Empty),
-                    HelpBoxMessageType.Info);
+                        + session.PendingEditsMessage,
+                    session.PendingEditsGaveWay ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info);
                 RunLiveValidation();
             }
             catch (Exception exception)

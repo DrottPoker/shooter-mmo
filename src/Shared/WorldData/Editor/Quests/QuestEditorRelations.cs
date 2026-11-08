@@ -105,6 +105,31 @@ namespace Mmorpg.WorldData.Editor.Quests
                 .ToArray();
         }
 
+        // The ids of every quest that requires the quest, directly or through other quests, which
+        // the quest itself may therefore never require.
+        public static ISet<string> AllFollowUpIds(QuestEditorCatalog catalog, string questId)
+        {
+            var followUps = new HashSet<string>(StringComparer.Ordinal);
+            var open = new Queue<string>();
+            if (!string.IsNullOrEmpty(questId))
+            {
+                open.Enqueue(questId);
+            }
+
+            while (open.Count > 0)
+            {
+                foreach (var quest in FollowUps(catalog, open.Dequeue()))
+                {
+                    if (!string.IsNullOrEmpty(quest.id) && followUps.Add(quest.id))
+                    {
+                        open.Enqueue(quest.id);
+                    }
+                }
+            }
+
+            return followUps;
+        }
+
         private static Dictionary<string, QuestEditorDefinition> ById(QuestEditorCatalog catalog)
         {
             var quests = new Dictionary<string, QuestEditorDefinition>(StringComparer.Ordinal);

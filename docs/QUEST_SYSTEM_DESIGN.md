@@ -439,16 +439,19 @@ tool foundation of [Unity Content Tools](../content/README.md#unity-content-tool
   `Duplicate` for an existing one.
 - Dropdowns for every reference: NPCs with a `quests` capability, Mobs and actor
   tags, resource nodes, items, with only quest items where a quest item is
-  needed, and quests for the requirements.
+  needed and never another quest's quest item, and quests for the requirements,
+  without the quests that would form a cycle.
 - Steps and objectives that are added, removed, and moved with buttons.
 - A chain view of the selected quest's chain in rows, each row needing quests
   from the rows above it, and an NPC view of every quest an NPC gives, receives,
   or appears in. Clicking an entry selects it.
 - `Delete` and a changed id of a saved quest move its id to the retired ids, as
   [Changing Released Quests](#changing-released-quests) requires; a quest that
-  was never saved leaves no trace. A save checks the edits against the saved
-  files, so undo across a save can neither remove a saved quest without retiring
-  its id nor bring a retired id back.
+  was never saved leaves no trace. A save checks the edits against the files
+  as Quest Studio last loaded or saved them, so undo across a save can neither
+  remove a saved quest without retiring its id nor bring a retired id back, a new
+  quest never takes a saved id, and a quest file that arrived on disk since, such
+  as by a `git pull`, stops the save instead of being deleted and retired.
 - Live validation, undo, `Preview Changes`, `Save + Compile`, and
   `Verify Canonical`, as in the other content tools.
 
