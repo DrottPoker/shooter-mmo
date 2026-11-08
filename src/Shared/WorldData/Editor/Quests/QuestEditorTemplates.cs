@@ -6,8 +6,8 @@ using Mmorpg.WorldData.Quests;
 namespace Mmorpg.WorldData.Editor.Quests
 {
     // The quests that New starts from. Each compiles once the World has two quest NPCs, a Mob,
-    // a resource node, an ordinary item, and a protected quest item; the author then changes
-    // what fits the story.
+    // a resource node, and an ordinary material; the author then changes what fits the story. A
+    // quest item belongs to one quest, so no template takes one that another quest uses.
     public static class QuestEditorTemplates
     {
         public const string Kill = "kill";
@@ -57,7 +57,6 @@ namespace Mmorpg.WorldData.Editor.Quests
             var node = references.ResourceNodes.Select(actor => actor.Id).FirstOrDefault() ?? string.Empty;
             var material = references.ItemChoices
                 .FirstOrDefault(item => item.Category == MaterialCategory)?.Id ?? string.Empty;
-            var questItem = references.ItemChoices.FirstOrDefault(item => item.ProtectedQuestItem)?.Id ?? string.Empty;
             var quest = new QuestEditorDefinition
             {
                 id = id,
@@ -85,10 +84,9 @@ namespace Mmorpg.WorldData.Editor.Quests
                     quest.steps = new[] { Step("collect", CollectObjective("items", material)) };
                     break;
                 case Delivery:
-                    quest.startItems = new[] { new QuestEditorItemQuantity { definitionId = questItem, quantity = 1 } };
                     quest.steps = new[]
                     {
-                        Step("deliver", Objective("delivery", QuestObjectiveKindIds.Deliver, "Item handed over", 1, itemId: questItem, npcActorId: other))
+                        Step("deliver", Objective("delivery", QuestObjectiveKindIds.Deliver, "Items handed over", 3, itemId: material, npcActorId: other))
                     };
                     break;
                 case TalkTo:

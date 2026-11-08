@@ -122,7 +122,12 @@ public sealed class GatheringQuestLogTests
                 new SimulationGatheringService(client),
                 fixture.Completions,
                 NullLogger.Instance,
-                new QuestOperationExecutor(client, new CharacterItemStateStore(), new ActiveSimulationSessionStore(), QuestLogs));
+                new QuestOperationExecutor(
+                    client,
+                    new CharacterItemStateStore(),
+                    new ActiveSimulationSessionStore(),
+                    QuestLogs,
+                    RealtimeServerHarness.QuestCatalog));
             handler = fixture.CreateGatheringHandler();
             vein = fixture.WorldActors!.ListActors().Single(actor => actor.Definition.Kind == WorldActorKindIds.ResourceNode);
             QuestLogs.Register(

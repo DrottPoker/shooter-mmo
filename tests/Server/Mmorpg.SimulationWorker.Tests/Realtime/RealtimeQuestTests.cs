@@ -180,6 +180,29 @@ public sealed class RealtimeQuestTests
         Assert.Equal(0, log!.Revision);
     }
 
+    // Every quest operation names the quest catalog the worker runs, and GameService refusing it
+    // because it runs another catalog ends the session, since no quest progress can build on it.
+    [Fact]
+    public async Task AQuestOperationRefusedForAnotherQuestCatalogEndsTheSession()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Outdated");
+        harness.GameService.OnQuestOperation = (_, _, _) => Task.FromResult(
+            ScriptedGameServiceHandler.Problem(
+                HttpStatusCode.Conflict,
+                "simulation_worker_quest_catalog_mismatch",
+                "The simulation worker runs another quest catalog than GameService."));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => client.ServerDisconnect is not null, "the ended session");
+
+        var operation = Assert.Single(harness.GameService.QuestOperations);
+        Assert.Equal(RealtimeServerHarness.QuestCatalog.Revision, operation.QuestCatalogRevision);
+        Assert.Equal("simulation_worker_quest_catalog_mismatch", client.ServerDisconnect!.Code);
+    }
+
     // A lost answer asks again with the same operation, which replays a committed result.
     [Fact]
     public async Task AQuestActionWhoseAnswerIsLostAsksAgainWithTheSameOperation()

@@ -246,6 +246,7 @@ public sealed record SimulationQuestDropRequest(
     string WorkerRuntimeId,
     string ShardId,
     string SessionToken,
+    string QuestCatalogRevision,
     string SourceActorDefinitionId,
     IReadOnlyList<SimulationQuestDrop> Drops);
 
@@ -305,7 +306,9 @@ public sealed record SimulationQuestObjectiveProgress(string ObjectiveId, int Pr
 
 // A quest action of a live character on GameService's quest route, which answers like the
 // item route. QuestNpcActorId is the actor definition of the NPC whose quests capability the
-// worker validated; abandoning needs none, and a kill credit names the Mob instead.
+// worker validated; abandoning needs none, and a kill credit names the Mob instead. Every quest
+// request names the revision of the quest catalog the worker runs, which GameService refuses
+// with simulation_worker_quest_catalog_mismatch when it runs another.
 public sealed record SimulationQuestOperationRequest(
     Guid OperationId,
     Guid AccountId,
@@ -314,6 +317,7 @@ public sealed record SimulationQuestOperationRequest(
     string WorkerRuntimeId,
     string ShardId,
     string SessionToken,
+    string QuestCatalogRevision,
     string OperationKind,
     string? QuestId,
     string? QuestNpcActorId = null,
@@ -328,7 +332,8 @@ public sealed record SimulationQuestLogRequest(
     string WorkerId,
     string WorkerRuntimeId,
     string ShardId,
-    string SessionToken);
+    string SessionToken,
+    string QuestCatalogRevision);
 
 // A joining character's quest log with the revision of the quest catalog GameService runs.
 public sealed record SimulationQuestLogResponse(

@@ -8,7 +8,10 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 internal static class QuestProgression
 {
     // Adds the credit that creditFor gives each counted objective of every active quest's
-    // current step, at most up to the objective's count, and returns the changed quests.
+    // current step, at most up to the objective's count, and returns the changed quests. The
+    // catalog check at startup keeps every active quest in the catalog; a quest that is not,
+    // such as one that a manual database change left behind, gets no credit and never blocks
+    // the credit of the others.
     public static async Task<IReadOnlyList<string>> CreditAsync(
         ItemTransactionContext context,
         IQuestDefinitions questDefinitions,
@@ -21,10 +24,16 @@ internal static class QuestProgression
         var changed = new List<string>();
         foreach (var active in log.ActiveQuests)
         {
-            var quest = questDefinitions.Find(active.QuestId)
-                ?? throw new InvalidOperationException(
-                    $"Active quest '{active.QuestId}' is missing from the quest catalog.");
-            var step = CurrentStep(quest, active);
+            if (questDefinitions.Find(active.QuestId) is not { } quest
+                || TryCurrentStep(quest, active) is not { } step)
+            {
+                context.Journal.AddMetadataAudit(
+                    "quest_credit_skipped",
+                    null,
+                    new { CharacterId = characterId, active.QuestId, active.StepId });
+                continue;
+            }
+
             var progress = new Dictionary<string, int>(active.Progress, StringComparer.Ordinal);
             var updates = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var objective in step.Objectives.Where(QuestRules.StoresProgress))
@@ -85,9 +94,14 @@ internal static class QuestProgression
 
     public static QuestStepDefinition CurrentStep(QuestDefinition quest, ActiveQuestState active)
     {
-        return quest.Steps.FirstOrDefault(step => string.Equals(step.Id, active.StepId, StringComparison.Ordinal))
+        return TryCurrentStep(quest, active)
             ?? throw new InvalidOperationException(
                 $"Active quest '{active.QuestId}' is at step '{active.StepId}', which its definition no longer holds.");
+    }
+
+    public static QuestStepDefinition? TryCurrentStep(QuestDefinition quest, ActiveQuestState active)
+    {
+        return quest.Steps.FirstOrDefault(step => string.Equals(step.Id, active.StepId, StringComparison.Ordinal));
     }
 
     public static string[] CountedObjectiveIds(QuestStepDefinition step)

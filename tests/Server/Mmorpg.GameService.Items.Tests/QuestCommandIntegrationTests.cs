@@ -1,6 +1,8 @@
 using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
+using Mmorpg.WorldData.Actors;
 using static Mmorpg.GameService.Items.Tests.QuestScenario;
 
 namespace Mmorpg.GameService.Items.Tests;
@@ -204,5 +206,38 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal(400, unsupported.StatusCode);
         Assert.True(abandoned.Succeeded, abandoned.Error?.Message);
         Assert.Null(Assert.Single(abandoned.Value!.QuestLog!.Quests).StepId);
+    }
+
+    // A worker that runs another quest catalog would build on other rules, so its quest
+    // operations change nothing, and a kill credit with more tags than an actor carries is
+    // refused before it is claimed.
+    [PostgresIntegrationFact]
+    public async Task TheWorkerRouteRefusesAnotherQuestCatalogAndTooManyTags()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("quest_fenced_user");
+        var session = await world.JoinAsync(player);
+        var tags = Enumerable.Range(0, WorldActorCompiler.MaximumTagsPerActor + 1).Select(index => $"tag{index}").ToArray();
+
+        var otherCatalog = await RouteAsync(
+            context,
+            session,
+            "accept_quest",
+            Wolves,
+            Mira,
+            questCatalogRevision: new string('a', 64));
+        var overTagged = await RouteAsync(
+            context,
+            session,
+            "credit_quest_kill",
+            null,
+            null,
+            mobActorId: "mob.feral_wolf",
+            mobTags: tags);
+
+        Assert.Equal((409, QuestCatalogFence.MismatchCode), (otherCatalog.StatusCode, otherCatalog.Error!.Code));
+        Assert.Empty((await ReadQuestLogAsync(context, player.Character.Id)).ActiveQuests);
+        Assert.Equal((400, ItemApiErrorCodes.SimulationOperationInvalid), (overTagged.StatusCode, overTagged.Error!.Code));
     }
 }

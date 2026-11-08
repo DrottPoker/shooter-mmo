@@ -1,0 +1,40 @@
+{
+    "id": "quest.ore_for_the_quartermaster",
+    "title": "Ore for the Quartermaster",
+    "giverActorId": "npc.outpost_sergeant",
+    "turnInActorId": "npc.outpost_sergeant",
+    "minimumLevel": 1,
+    "requiredQuestIds": [
+        "quest.sergeants_request"
+    ],
+    "repeatable": false,
+    "tags": [
+        "development"
+    ],
+    "offerText": "The Quartermaster wants to see the ore before she sends her smith out here. Take her three Iron Ore, then come back and tell me what she said.",
+    "progressText": "Has the Quartermaster seen the ore yet?",
+    "completionText": "She liked it? Then the smith is on his way. Good work.",
+    "startItems": [],
+    "steps": [
+        {
+            "id": "deliver",
+            "objectives": [
+                {
+                    "id": "iron_ore",
+                    "kind": "deliver",
+                    "text": "Iron Ore handed to the Quartermaster",
+                    "count": 3,
+                    "actorIds": [],
+                    "actorTag": "",
+                    "itemId": "material.iron_ore",
+                    "npcActorId": "npc.city_services",
+                    "line": "",
+                    "dropSources": []
+                }
+            ]
+        }
+    ],
+    "rewardGold": 15,
+    "rewardItems": [],
+    "rewardChoiceItems": []
+}

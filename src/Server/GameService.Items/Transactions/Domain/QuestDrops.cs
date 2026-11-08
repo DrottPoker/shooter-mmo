@@ -60,7 +60,7 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
             string.Equals(value.QuestId, quest.Id, StringComparison.Ordinal));
         var objective = active is null
             ? null
-            : QuestProgression.CurrentStep(quest, active).Objectives.FirstOrDefault(value =>
+            : QuestProgression.TryCurrentStep(quest, active)?.Objectives.FirstOrDefault(value =>
                 string.Equals(value.ItemId, definitionId, StringComparison.Ordinal)
                 && QuestRules.FindDropSource(value, sourceActorDefinitionId) is not null);
         if (objective is null)
@@ -125,12 +125,14 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         }
     }
 
-    // Only a protected quest item carries a quest's lineage.
+    // Only a protected quest item carries a quest's lineage. It is never equippable, because
+    // equipment counts for no collect objective and a Loot all would equip it.
     public static bool IsQuestDropItem(ResolvedItemDefinition definition)
     {
         var runtime = definition.RuntimeDefinition;
         return string.Equals(runtime.Category, ItemCategoryIds.QuestItem, StringComparison.Ordinal)
             && runtime.DefaultPolicies.Contains(ItemPolicyIds.ProtectedOnDeath, StringComparer.Ordinal)
+            && runtime.EquipmentSlots.Length == 0
             && !definition.IsBag;
     }
 

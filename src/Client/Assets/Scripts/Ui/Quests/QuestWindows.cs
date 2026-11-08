@@ -579,7 +579,7 @@ namespace Mmorpg.Client.Ui
                     return "Hand over " + ItemText(new QuestItemQuantityDefinition
                     {
                         DefinitionId = entry.Objective.ItemId,
-                        Quantity = entry.Objective.Count
+                        Quantity = QuestDialogEntries.RemainingDelivery(entry)
                     }) + ". You carry " + carried(entry.Objective.ItemId) + ".";
                 case QuestDialogEntryKind.LostStartItems:
                     return "You no longer have what you were given for this quest: "

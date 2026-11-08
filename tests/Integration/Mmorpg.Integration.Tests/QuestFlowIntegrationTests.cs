@@ -7,6 +7,7 @@ using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Quests;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
+using Mmorpg.Server.Common.Quests;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Quests;
@@ -37,7 +38,7 @@ public sealed class QuestFlowIntegrationTests
     private const string Errand = "quest.fixture.errand";
     private const string Wolves = "quest.fixture.wolves";
     private const string Trophies = "quest.fixture.trophies";
-    private const string Letter = "fixture.letter";
+    private const string Trophy = "fixture.trophy";
     private const string Mira = "npc.city_services";
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
@@ -196,11 +197,11 @@ public sealed class QuestFlowIntegrationTests
         Assert.Equal(await QuestLogRevisionAsync(context, session.CharacterId), kept.Revision);
     }
 
-    // The worker asks which of three rolled letters the trophies still need, gets the two the
-    // quest asks for, and loots one with the quest's lineage, so the next wolf's letters come
-    // down to the one still missing.
+    // The worker asks which of three rolled trophies the quest still needs, gets the two it asks
+    // for, and loots one with the quest's lineage, so the next wolf's trophies come down to the
+    // one still missing.
     [PostgresIntegrationFact]
-    public async Task TheWorkerLearnsWhichLettersTheTrophiesStillNeedAndLootsOne()
+    public async Task TheWorkerLearnsWhichTrophiesTheQuestStillNeedsAndLootsOne()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -214,14 +215,14 @@ public sealed class QuestFlowIntegrationTests
             new QuestOperation(Guid.NewGuid(), QuestOperationKinds.Accept, Trophies, Mira),
             cancellationToken);
         Assert.True(accepted.Succeeded, accepted.Code + ": " + accepted.Message);
-        WorkerQuestDrop[] rolled = [new(Trophies, Letter, 1), new(Trophies, Letter, 1), new(Trophies, Letter, 1)];
+        WorkerQuestDrop[] rolled = [new(Trophies, Trophy, 1), new(Trophies, Trophy, 1), new(Trophies, Trophy, 1)];
 
         var needed = await client.ResolveQuestDropsAsync(
             session.SimulationSessionId,
             QuestDrops(session, rolled),
             cancellationToken);
         Assert.True(needed.Succeeded, needed.Error?.Code + ": " + needed.Error?.Message);
-        Assert.Equal([new WorkerQuestDrop(Trophies, Letter, 1), new WorkerQuestDrop(Trophies, Letter, 1)], needed.Value!.Drops);
+        Assert.Equal([new WorkerQuestDrop(Trophies, Trophy, 1), new WorkerQuestDrop(Trophies, Trophy, 1)], needed.Value!.Drops);
 
         var snapshot = await SnapshotAsync(context, player);
         var looted = await client.GrantLiveMobLootAsync(
@@ -237,7 +238,7 @@ public sealed class QuestFlowIntegrationTests
                 session.SimulationSessionToken,
                 Guid.NewGuid(),
                 "mob.feral_wolf",
-                Letter,
+                Trophy,
                 1,
                 snapshot.PermanentInventory.ContainerId,
                 snapshot.PermanentInventory.Revision,
@@ -251,7 +252,7 @@ public sealed class QuestFlowIntegrationTests
             QuestDrops(session, rolled),
             cancellationToken);
         Assert.True(stillNeeded.Succeeded, stillNeeded.Error?.Code + ": " + stillNeeded.Error?.Message);
-        Assert.Equal([new WorkerQuestDrop(Trophies, Letter, 1)], stillNeeded.Value!.Drops);
+        Assert.Equal([new WorkerQuestDrop(Trophies, Trophy, 1)], stillNeeded.Value!.Drops);
     }
 
     private static WorkerQuestDropRequest QuestDrops(ActiveSimulationSession session, IReadOnlyList<WorkerQuestDrop> drops)
@@ -263,6 +264,7 @@ public sealed class QuestFlowIntegrationTests
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
+            PostgresIntegrationTestContext.FixtureQuestCatalogRevision,
             "mob.feral_wolf",
             drops);
     }
@@ -291,7 +293,8 @@ public sealed class QuestFlowIntegrationTests
                 session.WorkerId,
                 session.WorkerRuntimeId,
                 session.ShardId,
-                session.SimulationSessionToken),
+                session.SimulationSessionToken,
+                PostgresIntegrationTestContext.FixtureQuestCatalogRevision),
             CancellationToken.None);
         Assert.True(read.Succeeded, read.Error?.Code + ": " + read.Error?.Message);
         var sessions = new ActiveSimulationSessionStore();
@@ -309,7 +312,12 @@ public sealed class QuestFlowIntegrationTests
             read.Value!,
             items,
             questLogs,
-            new QuestOperationExecutor(client, items, sessions, questLogs));
+            new QuestOperationExecutor(
+                client,
+                items,
+                sessions,
+                questLogs,
+                QuestCatalogFileLoader.Load(RepositoryPaths.QuestCatalogFixtureRuntimePath)));
     }
 
     private static async Task CompleteWolvesAsync(PostgresIntegrationTestContext context, Guid characterId)

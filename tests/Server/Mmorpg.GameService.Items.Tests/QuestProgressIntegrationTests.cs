@@ -39,6 +39,30 @@ public sealed class QuestProgressIntegrationTests
         Assert.NotNull(world);
     }
 
+    // An active quest that the catalog does not hold, such as one a manual database change left
+    // behind, gets no credit and never stops the credit of the others.
+    [PostgresIntegrationFact]
+    public async Task AQuestMissingFromTheCatalogNeverBlocksTheCreditOfTheOthers()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var (_, player, session) = await JoinAsync(context, "quest_legacy_hunter");
+        var characterId = player.Character.Id;
+        ItemScenarioWorld.AssertCommitted(await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira));
+        await using (var connection = await context.DataSource.OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                """
+                insert into quest_definitions (id, structural_fingerprint) values ('quest.fixture.legacy', @Fingerprint);
+                insert into character_active_quests (character_id, quest_id, step_id) values (@CharacterId, 'quest.fixture.legacy', 'hunt');
+                """,
+                new { Fingerprint = new string('a', 64), CharacterId = characterId });
+        }
+
+        var credited = await KillAsync(context, session, characterId, "mob.feral_wolf");
+
+        Assert.Equal(1, Progress(credited, Wolves, "wolves"));
+    }
+
     // A kill credit carries every tag an actor may have, and no more.
     [PostgresIntegrationFact]
     public async Task AKillCreditTakesEveryTagAnActorMayCarry()

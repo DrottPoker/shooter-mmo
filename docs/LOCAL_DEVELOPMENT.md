@@ -203,6 +203,8 @@ describes.
   only on a worker whose item and quest catalog revisions equal the catalogs it
   mirrors, and otherwise a join fails with
   `simulation_worker_item_catalog_mismatch` or
+  `simulation_worker_quest_catalog_mismatch`. A worker that kept running across
+  a quest catalog change ends each session at its next quest action with
   `simulation_worker_quest_catalog_mismatch`. A catalog change
   that would invalidate live item state stops GameService; see
   [Reset The Local Development Database](#reset-the-local-development-database).

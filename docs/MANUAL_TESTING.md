@@ -872,16 +872,22 @@ fights and the walks without changing any quest rule.
 7. At Mira, choose `The Sergeant's Request: Tell the Quartermaster` and press
    `Continue`. Expected result: her line, `Tell the Quartermaster 1/1`, and
    `The Sergeant's Request is ready to turn in.` Turn the quest in at Hale.
-   Expected result: 30 Gold more, and Hale offers `The Alpha`. Accept it.
-8. Kill the Feral Alpha at `(-160, 0, -160)` and loot its corpse. Expected
+   Expected result: 30 Gold more, and Hale offers `The Alpha` and
+   `Ore for the Quartermaster`. Accept both.
+8. At Mira, choose `Ore for the Quartermaster: Iron Ore handed to the Quartermaster`
+   and press `Hand over`. Expected result: three of the mined Iron Ore leave
+   the inventory, the game messages say
+   `Ore for the Quartermaster is ready to turn in.`, and Hale shows a yellow
+   `?`. Turn the quest in at Hale. Expected result: 15 Gold more.
+9. Kill the Feral Alpha at `(-160, 0, -160)` and loot its corpse. Expected
    result: `Feral Alpha slain 1/1` and
    `Feral Alpha dropped Alpha's Fang for The Alpha.`, and after the loot
    `Alpha's Fang 1/1` and `The Alpha is ready to turn in.`
-9. Turn it in at Hale, choosing a weapon. Expected result: 50 Gold more, the
-   Alpha's Fang leaves the inventory, the chosen weapon arrives, and Hale says
-   `There is nothing more to do here for now.` Press `L`. Expected result:
-   `ACTIVE 0 / 25` and all five quests under `COMPLETED`, and the balance is
-   125 Gold above where it started.
+10. Turn it in at Hale, choosing a weapon. Expected result: 50 Gold more, the
+    Alpha's Fang leaves the inventory, the chosen weapon arrives, and Hale says
+    `There is nothing more to do here for now.` Press `L`. Expected result:
+    `ACTIVE 0 / 25` and all six quests under `COMPLETED`, and the balance is
+    140 Gold above where it started.
 
 ### Quest Studio
 
@@ -890,14 +896,15 @@ it was. How to make quests with Quest Studio is in
 [Quest Studio](../content/README.md#quest-studio).
 
 1. Open `MMORPG > Tools > Content > Quest Studio`. Expected result: the list
-   shows the five development quests, the status says `Loaded 5 quests.`, and
+   shows the six development quests, the status says `Loaded 6 quests.`, and
    the problems panel shows `No problems found.`.
 2. Select `Pelts and Fangs` and scroll down to `Quest Chain`. Expected result:
    three rows, first `A Letter for the Outpost` and `Wolves at the Gate`, then
    `Pelts and Fangs`, outlined as the selected quest, and
-   `The Sergeant's Request`, then `The Alpha`, each with its giver and turn-in
-   NPC. Below, `NPC View` shows Mira the Quartermaster with `Gives (3)`,
-   `Receives (2)`, and `Appears In (1)`, which is `The Sergeant's Request`.
+   `The Sergeant's Request`, then `Ore for the Quartermaster` and `The Alpha`,
+   each with its giver and turn-in NPC. Below, `NPC View` shows Mira the
+   Quartermaster with `Gives (3)`, `Receives (2)`, and `Appears In (2)`, which
+   are `Ore for the Quartermaster` and `The Sergeant's Request`.
    Click `The Alpha`. Expected result: the list selects The Alpha.
 3. Choose `New Quest > Kill Quest`. Expected result: `New Kill Quest`
    (`quest.new_kill`) is selected, given and taken back by Mira, with one step
@@ -938,7 +945,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 23 tests pass. Each one joins a character to the Shard and
+Expected result: 25 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -947,8 +954,12 @@ checks one outcome:
   quest, a full inventory, and a second acceptance are refused and change
   nothing.
 - Two credited Feral Wolf kills bring `wolves` to 2, and a third changes
-  nothing; a kill credit takes the up to 32 tags an actor may carry. Two
-  gathering yields of an Iron Vein bring the errand's `ore` to 2.
+  nothing; a kill credit takes the up to 32 tags an actor may carry, and a
+  quest that the catalog does not hold never holds back the credit of the
+  others. Two gathering yields of an Iron Vein bring the errand's `ore` to 2.
+- The worker route refuses a request that names another quest catalog with
+  `simulation_worker_quest_catalog_mismatch` and changes nothing, and a kill
+  credit with more than 32 tags with `400`.
 - Talking to Mira and handing over one `fixture.ore` complete the errand's
   first step, take the ore, and move the quest to step `return`.
 - Turning in the errand takes the letter, removes a spare letter with the
@@ -959,19 +970,19 @@ checks one outcome:
 - Abandoning the errand removes its letter with the `quest_abandoned` reason,
   and Mira grants a lost start item again, never a second one.
 - With `quest.fixture.trophies` accepted, two live Feral Wolf quest drops each
-  grant a `fixture.letter` with the quest's lineage, and a third, one before the
+  grant a `fixture.trophy` with the quest's lineage, and a third, one before the
   acceptance, one from a Grey Wolf, and one that names no quest are refused.
-  Loot all takes the two letters the quest needs and leaves the third in the
-  corpse. A durable Mob corpse keeps the letter its owner needs, which the owner
-  then loots, and is not created when its only loot is a letter nobody needs.
-  Three letters in one durable corpse keep only the two the quest needs, and
+  Loot all takes the two trophies the quest needs and leaves the third in the
+  corpse. A durable Mob corpse keeps the trophy its owner needs, which the owner
+  then loots, and is not created when its only loot is a trophy nobody needs.
+  Three trophies in one durable corpse keep only the two the quest needs, and
   Loot all then takes only the one still needed. A durable corpse with 23
-  entries of its own loot keeps one needed letter in its last entry, and
-  neither a letter for a quest that is not active nor a second needed letter
-  takes that place. The durable corpse's answer lists the two letters it kept,
+  entries of its own loot keeps one needed trophy in its last entry, and
+  neither a trophy for a quest that is not active nor a second needed trophy
+  takes that place. The durable corpse's answer lists the two trophies it kept,
   also when the worker asks again, and none for a corpse of ore alone.
-- The worker's quest drop read for three rolled letters answers the two the
-  quest needs, and after one letter was looted only one; before the acceptance
+- The worker's quest drop read for three rolled trophies answers the two the
+  quest needs, and after one trophy was looted only one; before the acceptance
   and for a Grey Wolf it answers none, and another session token is refused
   with `simulation_session_invalid`.
 
@@ -990,8 +1001,8 @@ revision before it, sent before the action's result. Through the same routes, a
 credited Feral Wolf kill brings the hunt's `wolves` to 1 once, also when the
 worker asks again with the same operation, a Grey Wolf counts for nothing, and
 an Iron Vein yield with the pickaxe brings the errand's `ore` to 1. With the
-trophies accepted, the worker's quest drop read for three rolled letters
-answers two, a letter looted with the quest's lineage counts, and the next
+trophies accepted, the worker's quest drop read for three rolled trophies
+answers two, a trophy looted with the quest's lineage counts, and the next
 read answers one. A join whose
 quest log cannot be read, or that GameService answers with another quest
 catalog, is rejected and released, and a development bot never reads a quest
@@ -1025,15 +1036,15 @@ dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release -
 
 Expected result: every test passes. An archer on `quest.fixture.trophies` kills
 a Feral Wolf, and its corpse holds the wolf's own loot and then a
-`fixture.letter` that names the quest; the archer gets a `QuestDropInCorpse`
-for the letter, and looting it sends the quest with the grant. A wolf without loot of its own leaves a corpse with only the letter,
-and none when GameService answers that the quest needs no more letters. A
-player without the quest gets no letter, and the worker asks GameService
+`fixture.trophy` that names the quest; the archer gets a `QuestDropInCorpse`
+for the trophy, and looting it sends the quest with the grant. A wolf without loot of its own leaves a corpse with only the trophy,
+and none when GameService answers that the quest needs no more trophies. A
+player without the quest gets no trophy, and the worker asks GameService
 nothing. The read uses the owner's session token after a reconnect, and when
-the wolf's own loot leaves one free entry, only a letter that GameService says
+the wolf's own loot leaves one free entry, only a trophy that GameService says
 the quest needs takes it. A lost answer of the quest drop read fails the
 corpse, which the Mob retries, an owner whose session ended or who has none
-on the worker gets no letter, and a durable corpse sends every rolled letter
+on the worker gets no trophy, and a durable corpse sends every rolled trophy
 to GameService with the quest. The quest drops that GameService says a durable
 corpse kept become the drops its owner hears of, and an answer that names a
 drop the worker never asked for is refused.

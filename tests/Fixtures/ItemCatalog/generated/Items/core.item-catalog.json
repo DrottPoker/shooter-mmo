@@ -1,7 +1,7 @@
 {
   "formatVersion": 8,
   "catalogId": "core",
-  "revision": "7c6fa2942c7f80dfc71ba619b2e87c5fb79c245f82e7116c4904ce3199a1a8a7",
+  "revision": "9db3924f0a6cf164f3a1e9448c50b5a45b324248c3b1682e5137ce7e4adac10a",
   "character": {
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20,
@@ -417,6 +417,24 @@
         "manaCost": 0
       },
       "structuralFingerprint": "7a91cfb5bbbefa82d3410c7400fc5eb0cb116dd0c8a17c22b56a0ece509c107c"
+    },
+    {
+      "id": "fixture.trophy",
+      "displayName": "Fixture Trophy",
+      "category": "quest_item",
+      "tags": [],
+      "toolKinds": [],
+      "unitWeight": 1,
+      "value": 0,
+      "maximumStackSize": 1,
+      "equipmentSlots": [],
+      "blockedEquipmentSlots": [],
+      "playerDestroyable": false,
+      "defaultPolicies": [
+        "protected_on_death"
+      ],
+      "requiredCharacterLevel": 1,
+      "structuralFingerprint": "fb32d336c0aecd4176b7a9923925526ed6e82af0a9c523ce4cd4ad59e2945874"
     },
     {
       "id": "fixture.tunic",

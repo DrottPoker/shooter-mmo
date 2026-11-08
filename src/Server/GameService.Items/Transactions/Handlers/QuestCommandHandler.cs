@@ -109,7 +109,8 @@ internal sealed partial class QuestCommandHandler(
             context,
             character,
             quest,
-            definitionId => DeliveredQuantity(quest, active, definitionId),
+            Array.IndexOf(quest.Steps, QuestProgression.CurrentStep(quest, active)),
+            active.Progress,
             cancellationToken);
         context.Journal.AddMetadataAudit(
             granted == 0 ? "quest_start_items_present" : "quest_start_items_regranted",
@@ -149,13 +150,15 @@ internal sealed partial class QuestCommandHandler(
             cancellationToken);
         var (step, progress) = await OpenObjectiveAsync(context, command.CharacterId, quest, objective, cancellationToken);
 
+        // A count raised since a part was handed over asks only for the rest.
+        var quantity = QuestRules.RemainingDeliveryQuantity(objective, progress.GetValueOrDefault(objective.Id));
         var definition = await context.State.LoadDefinitionAsync(objective.ItemId, cancellationToken);
         await QuestCarriedItems.TakeAsync(
             context,
             character,
             quest.Id,
             definition,
-            objective.Count,
+            quantity,
             "quest_item_delivered",
             cancellationToken);
         await CompleteObjectiveAsync(context, command.CharacterId, quest, step, objective, progress, cancellationToken);
@@ -169,7 +172,7 @@ internal sealed partial class QuestCommandHandler(
                 ObjectiveId = objective.Id,
                 objective.NpcActorId,
                 DefinitionId = objective.ItemId,
-                Quantity = objective.Count
+                Quantity = quantity
             });
         await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, [quest.Id], cancellationToken);
     }
@@ -475,40 +478,6 @@ internal sealed partial class QuestCommandHandler(
         return choice;
     }
 
-    // The quantity of a definition that completed deliver objectives already took: every
-    // delivery of an earlier step and the completed deliveries of the current step.
-    private static int DeliveredQuantity(QuestDefinition quest, ActiveQuestState active, string definitionId)
-    {
-        var delivered = 0;
-        foreach (var step in quest.Steps)
-        {
-            var current = string.Equals(step.Id, active.StepId, StringComparison.Ordinal);
-            foreach (var objective in step.Objectives)
-            {
-                if (!string.Equals(objective.Kind, QuestObjectiveKindIds.Deliver, StringComparison.Ordinal)
-                    || !string.Equals(objective.ItemId, definitionId, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (!current
-                    || QuestRules.IsObjectiveComplete(
-                        objective,
-                        active.Progress.TryGetValue(objective.Id, out var progress) ? progress : 0))
-                {
-                    delivered += objective.Count;
-                }
-            }
-
-            if (current)
-            {
-                break;
-            }
-        }
-
-        return delivered;
-    }
-
     // Grants the start items and starts the quest at its first step.
     private async Task StartAsync(
         ItemTransactionContext context,
@@ -521,7 +490,8 @@ internal sealed partial class QuestCommandHandler(
             context,
             character,
             quest,
-            _ => 0,
+            0,
+            new Dictionary<string, int>(StringComparer.Ordinal),
             cancellationToken);
         var firstStep = quest.Steps[0];
         await questLog.AcceptAsync(
@@ -538,26 +508,31 @@ internal sealed partial class QuestCommandHandler(
         await QuestLogChanges.ReportAsync(context, questLog, character.CharacterId, [quest.Id], cancellationToken);
     }
 
-    // Grants the start items that the quest still needs and the character does not own,
-    // all or nothing, and returns the granted quantity.
+    // Grants the start items that the quest still needs at its current step and the character
+    // does not own, all or nothing, and returns the granted quantity.
     private static async Task<int> GrantMissingStartItemsAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
         QuestDefinition quest,
-        Func<string, int> deliveredQuantity,
+        int currentStepIndex,
+        IReadOnlyDictionary<string, int> progress,
         CancellationToken cancellationToken)
     {
         var granted = 0;
         foreach (var startItem in quest.StartItems)
         {
-            var needed = Math.Max(0, startItem.Quantity - deliveredQuantity(startItem.DefinitionId));
             var owned = await QuestLineageItems.CountOwnedAsync(
                 context,
                 character.CharacterId,
                 quest.Id,
                 startItem.DefinitionId,
                 cancellationToken);
-            var missing = needed - owned;
+            var missing = QuestRules.MissingStartItemQuantity(
+                quest,
+                startItem,
+                currentStepIndex,
+                objectiveId => progress.GetValueOrDefault(objectiveId),
+                owned);
             if (missing <= 0)
             {
                 continue;

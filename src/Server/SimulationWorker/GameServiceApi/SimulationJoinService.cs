@@ -183,7 +183,8 @@ public sealed class SimulationJoinService(
                 session.WorkerId,
                 session.WorkerRuntimeId,
                 session.ShardId,
-                session.SimulationSessionToken),
+                session.SimulationSessionToken,
+                questCatalog?.Revision ?? string.Empty),
             cancellationToken);
         if (!result.Succeeded)
         {

@@ -7,19 +7,19 @@ using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
-// A Feral Wolf drops a stolen letter for quest.fixture.trophies into its tagger's corpse, after
+// A Feral Wolf drops a stolen trophy for quest.fixture.trophies into its tagger's corpse, after
 // its own loot, once GameService says the tagger's quest still needs it, and the tagger hears
-// of it. Looting the letter names the quest, so GameService grants it with the quest's lineage.
+// of it. Looting the trophy names the quest, so GameService grants it with the quest's lineage.
 public sealed class RealtimeQuestDropTests
 {
     private const string Trophies = "quest.fixture.trophies";
-    private const string Letter = "fixture.letter";
+    private const string Trophy = "fixture.trophy";
 
     [Fact]
-    public async Task AWolfDropsTheLetterThatTheTaggersQuestNeedsIntoTheirCorpse()
+    public async Task AWolfDropsTheTrophyThatTheTaggersQuestNeedsIntoTheirCorpse()
     {
         await using var harness = Create(WolfNextToTheSpawn(respawnSeconds: 30f, x: 1f));
-        var archer = AddArcher(harness, "Letter Hunter");
+        var archer = AddArcher(harness, "Trophy Hunter");
         var grants = new ConcurrentQueue<SimulationMobLootGrantRequest>();
         harness.GameService.OnMobLootGrant = (_, request, _) =>
         {
@@ -38,21 +38,21 @@ public sealed class RealtimeQuestDropTests
         await harness.PollUntilAsync(() => Corpse(harness, wolf) is not null, "the wolf's corpse");
 
         var corpse = Corpse(harness, wolf)!;
-        var letter = Assert.Single(corpse.Loot, entry => entry.QuestId is not null);
-        Assert.Equal((Letter, 1, Trophies), (letter.DefinitionId, letter.Quantity, letter.QuestId));
+        var trophy = Assert.Single(corpse.Loot, entry => entry.QuestId is not null);
+        Assert.Equal((Trophy, 1, Trophies), (trophy.DefinitionId, trophy.Quantity, trophy.QuestId));
         Assert.True(corpse.Loot.Count > 1);
-        Assert.Equal(corpse.Loot.Count - 1, letter.SlotIndex);
+        Assert.Equal(corpse.Loot.Count - 1, trophy.SlotIndex);
         Assert.Equal(archer.CharacterId, corpse.OwnerCharacterId);
         var (sessionId, read) = Assert.Single(harness.GameService.QuestDropReads);
         Assert.Equal(archer.SimulationSessionId, sessionId);
         Assert.Equal(
             (archer.CharacterId, archer.SimulationSessionToken, "mob.feral_wolf"),
             (read.CharacterId, read.SessionToken, read.SourceActorDefinitionId));
-        Assert.Equal([new SimulationQuestDrop(Trophies, Letter, 1)], read.Drops);
+        Assert.Equal([new SimulationQuestDrop(Trophies, Trophy, 1)], read.Drops);
         await harness.PollUntilAsync(() => QuestDrops(client).Count == 1, "the quest drop notice");
         var notice = Assert.Single(QuestDrops(client));
         Assert.Equal(
-            (corpse.CorpseId, "Feral Wolf", Trophies, Letter, 1),
+            (corpse.CorpseId, "Feral Wolf", Trophies, Trophy, 1),
             (notice.CorpseId, notice.SourceDisplayName, notice.QuestId, notice.DefinitionId, notice.Quantity));
 
         client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
@@ -61,7 +61,7 @@ public sealed class RealtimeQuestDropTests
             Guid.NewGuid(),
             corpse.CorpseId,
             corpse.Revision,
-            letter.LootEntryId,
+            trophy.LootEntryId,
             0,
             Guid.NewGuid(),
             0,
@@ -72,7 +72,7 @@ public sealed class RealtimeQuestDropTests
 
         Assert.True(client.CorpseResults[^1].Succeeded, client.CorpseResults[^1].Error?.Code);
         var grant = Assert.Single(grants);
-        Assert.Equal((letter.GrantId, Letter, Trophies), (grant.GrantId, grant.DefinitionId, grant.QuestId));
+        Assert.Equal((trophy.GrantId, Trophy, Trophies), (grant.GrantId, grant.DefinitionId, grant.QuestId));
     }
 
     // A quest drop leaves a corpse when the wolf drops nothing of its own, unless the tagger's
@@ -106,7 +106,7 @@ public sealed class RealtimeQuestDropTests
         if (needed)
         {
             var entry = Assert.Single(Corpse(harness, wolf)!.Loot);
-            Assert.Equal((Letter, Trophies, 0), (entry.DefinitionId, entry.QuestId, entry.SlotIndex));
+            Assert.Equal((Trophy, Trophies, 0), (entry.DefinitionId, entry.QuestId, entry.SlotIndex));
             await harness.PollUntilAsync(() => QuestDrops(client).Count == 1, "the quest drop notice");
         }
         else
@@ -147,7 +147,7 @@ public sealed class RealtimeQuestDropTests
             .SingleOrDefault(corpse => corpse.SourceActorRuntimeId == wolf.RuntimeActorId);
     }
 
-    // The lowest roll lands every chance, so the wolf drops its own loot and the letter.
+    // The lowest roll lands every chance, so the wolf drops its own loot and the trophy.
     private static RealtimeServerHarness Create(WorldActorRuntimeDocument document, bool questActive = true)
     {
         var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions

@@ -149,10 +149,15 @@ reputation, and item requirements are planned.
 ### Start Items
 
 - Start items are quest items: the `quest_item` category with the
-  `protected_on_death` default policy, never destroyable by the player. They
-  carry the quest's grant lineage, which the quest's abandonment removes, as
+  `protected_on_death` default policy, never destroyable by the player and
+  never equippable. They carry the quest's grant lineage, which the quest's
+  abandonment removes, as
   [Protected On Death](INVENTORY_AND_DEATH_LOOT_DESIGN.md#protected-on-death)
   describes.
+- A quest item belongs to one quest: no other quest grants, drops, collects, or
+  delivers it. Its stacks therefore carry one lineage and merge, and the client,
+  which sees only that an item is a quest grant, counts exactly what GameService
+  counts.
 - Accepting a quest whose start items do not fit carried storage is refused and
   changes nothing.
 - When a start item of an active quest is gone, for example because its Recovery
@@ -265,7 +270,8 @@ written in English like the other content.
 
 - A deliver objective names an item, a quantity, and the NPC that receives it.
   The player hands the items over in that NPC's quest dialog, which takes them
-  and completes the objective in one transaction.
+  and completes the objective in one transaction. A count raised after a part
+  was handed over asks only for the rest.
 - A deliver objective hands items to an NPC on the way. Items for the turn-in
   NPC use a collect objective in the last step instead, because the turn-in
   takes them.
@@ -392,14 +398,19 @@ The compiler rejects:
   that is not a Mob, and a tag that no Mob carries.
 - A gather target that is not a resource node.
 - An unknown item, start items and quest drops that are not protected quest
-  items, reward items that are quest items or carry default policies, and a
-  quantity above one stack.
+  items or that can be equipped, reward items that are quest items or carry
+  default policies, a collect or deliver objective for an ordinary item with
+  default policies, which would never count, and a quantity above one stack.
 - A collect objective outside the last step, a quest drop source that is not a
   Mob, and a chance outside 1 to 10,000 basis points.
-- Two collect objectives for the same item, which would count the same items.
-- A quest item that the quest's deliveries and its collect objective take more
-  often than its start items grant it, unless the collect objective drops the
-  item, because the player could never get it.
+- A kill target, a kill tag, or a quest drop source that only invulnerable Mobs
+  match, because it could never die.
+- Two collect objectives for the same item, which would count the same items,
+  and a quest item that two quests name.
+- Deliveries of a quest item that take more of it than the start items grant,
+  and a collect objective for a quest item that takes, with those deliveries,
+  more than the start items grant, unless it drops the item, because the player
+  could never get it. Quest drops count only for their collect objective.
 - A talk-to objective with a count other than 1, and a talk-to or deliver
   objective for the turn-in NPC in the last step, whose turn-in already talks
   and takes the items.
@@ -408,8 +419,12 @@ The compiler rejects:
   outside 1 to the character level cap.
 - Every NPC, Mob, and resource node a quest needs that no World places, because
   such a quest could never be finished.
-- Empty or overlong texts, texts with control characters, and anything beyond
-  the [limits](#limits).
+- Empty or overlong texts, texts with control characters or Unicode line and
+  paragraph separators, and anything beyond the [limits](#limits).
+
+The services load the compiled catalog with the same structure and value checks,
+and check its item references against the item catalog they load, so a hand-made
+catalog never reaches a quest rule.
 
 ### Quest Studio
 
@@ -445,7 +460,10 @@ New quest items are made in the Item Catalog window like every other item.
 - Objective ids are stable within their quest, because stored progress refers to
   them.
 - Texts, counts, rewards, requirements, and tags may change freely. A lowered
-  count that stored progress already exceeds completes the objective.
+  count that stored progress already reaches completes the objective, and when
+  GameService starts with the changed catalog, it moves every active quest whose
+  current step that completes on to the next step, since only new progress
+  would move it otherwise.
 - A structural change, to the steps or to an objective's id, kind, or targets,
   of a quest that characters have active needs a data migration. GameService
   refuses to start with such a change instead of guessing, as it does for an
@@ -471,7 +489,11 @@ fit. GameService, SimulationWorker, and Unity run the same rules.
   rewards and credits Gold. Each runs once per operation id, and a retry replays
   its stored result.
 - SimulationWorker reports its quest catalog revision, and placement requires it
-  to match the mirrored revision, as for the item catalog.
+  to match the mirrored revision, as for the item catalog. Every quest request
+  of the worker names that revision too, and GameService refuses one from a
+  worker that runs another catalog, which ends the session, so a worker that
+  kept running after GameService started with changed content never counts by
+  other rules.
 - The owning account reads its character's quest state over HTTP, which the
   client does once when it joins a Shard.
 

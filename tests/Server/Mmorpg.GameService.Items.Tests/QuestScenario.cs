@@ -21,6 +21,7 @@ internal static class QuestScenario
     public const string Errand = "quest.fixture.errand";
     public const string OreRun = "quest.fixture.ore_run";
     public const string Letter = "fixture.letter";
+    public const string Trophy = "fixture.trophy";
     public const string Ore = "fixture.ore";
 
     // Runs a quest command as the worker would after validating an interaction with the NPC.
@@ -63,7 +64,8 @@ internal static class QuestScenario
         string? objectiveId = null,
         string? rewardChoiceDefinitionId = null,
         string? mobActorId = null,
-        IReadOnlyList<string>? mobTags = null)
+        IReadOnlyList<string>? mobTags = null,
+        string? questCatalogRevision = null)
     {
         await using var scope = context.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<SimulationQuestMutationService>().ExecuteAsync(
@@ -83,7 +85,8 @@ internal static class QuestScenario
                 objectiveId,
                 rewardChoiceDefinitionId,
                 mobActorId,
-                mobTags),
+                mobTags,
+                questCatalogRevision ?? PostgresIntegrationTestContext.FixtureQuestCatalogRevision),
             CancellationToken.None);
     }
 

@@ -87,10 +87,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(hunted.First().Kind, Is.EqualTo(QuestDialogEntryKind.TurnIn));
             Assert.That(hunted.First().Quest.Id, Is.EqualTo(FixtureQuestCatalog.Wolves));
 
-            // Two carried letters make the trophies ready; one keeps them in progress.
+            // Two carried trophies make the quest ready; one keeps it in progress.
             var trophies = Ready(Active(FixtureQuestCatalog.Trophies, "collect"));
-            Assert.That(Entries(trophies, id => id == "fixture.letter" ? 2 : 0).First().Kind, Is.EqualTo(QuestDialogEntryKind.TurnIn));
-            Assert.That(Entries(trophies, id => id == "fixture.letter" ? 1 : 0).Last().Kind, Is.EqualTo(QuestDialogEntryKind.InProgress));
+            Assert.That(Entries(trophies, id => id == "fixture.trophy" ? 2 : 0).First().Kind, Is.EqualTo(QuestDialogEntryKind.TurnIn));
+            Assert.That(Entries(trophies, id => id == "fixture.trophy" ? 1 : 0).Last().Kind, Is.EqualTo(QuestDialogEntryKind.InProgress));
         }
 
         [Test]
@@ -124,6 +124,36 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(QuestDialogEntries.CanHandOver(Entries(state, _ => 0).First(entry => entry.Kind == QuestDialogEntryKind.TalkTo), _ => 1), Is.False);
         }
 
+        // A count raised after a part was handed over asks only for the rest, and a start item that
+        // a delivery took is not lost, by the shared rules GameService follows.
+        [Test]
+        public void ADeliveryAsksForTheRestAndADeliveredStartItemIsNotLost()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            Assert.That(catalog.TryGet(FixtureQuestCatalog.Errand, out var errand), Is.True);
+            var handOver = errand.Steps[0].Objectives.Single(objective => objective.Id == "hand_over");
+            handOver.Count = 3;
+            var raised = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 1), ("report", 0)));
+            var delivery = QuestDialogEntries.For(FixtureQuestCatalog.Mira, raised, _ => 0)
+                .Single(entry => entry.Kind == QuestDialogEntryKind.Deliver);
+
+            Assert.That(QuestDialogEntries.RemainingDelivery(delivery), Is.EqualTo(2));
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, id => id == "fixture.ore" ? 2 : 0), Is.True);
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, id => id == "fixture.ore" ? 1 : 0), Is.False);
+
+            // The errand's letter goes to Mira in the first step instead of coming back at the end.
+            handOver.ItemId = "fixture.letter";
+            handOver.Count = 1;
+            var handedOver = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 1), ("report", 0)));
+            var notYet = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 0), ("report", 0)));
+            Assert.That(
+                QuestDialogEntries.MissesStartItems(errand, handedOver.ActiveQuests[FixtureQuestCatalog.Errand], _ => 0),
+                Is.False,
+                "The delivery took the letter, so it is not lost.");
+            Assert.That(QuestDialogEntries.MissesStartItems(errand, notYet.ActiveQuests[FixtureQuestCatalog.Errand], _ => 0), Is.True);
+            Assert.That(QuestDialogEntries.MissesStartItems(errand, notYet.ActiveQuests[FixtureQuestCatalog.Errand], _ => 1), Is.False);
+        }
+
         // Mira's marker shows the most urgent of what waits at her: a quest to turn in over an
         // offer, and an offer over a quest in progress.
         [Test]
@@ -140,9 +170,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 Active(FixtureQuestCatalog.Trophies, "collect"));
             Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, busy, _ => 0), Is.EqualTo(QuestMarker.InProgress));
             Assert.That(
-                QuestMarkers.For(FixtureQuestCatalog.Mira, busy, id => id == "fixture.letter" ? 2 : 0),
+                QuestMarkers.For(FixtureQuestCatalog.Mira, busy, id => id == "fixture.trophy" ? 2 : 0),
                 Is.EqualTo(QuestMarker.Ready),
-                "Two carried letters make the trophies ready to turn in.");
+                "Two carried trophies make the quest ready to turn in.");
             Assert.That(QuestMarkers.For("npc.outpost_sergeant", busy, _ => 0), Is.EqualTo(QuestMarker.None));
             Assert.That(QuestMarkers.For(FixtureQuestCatalog.Mira, Prepared(), _ => 0), Is.EqualTo(QuestMarker.None), "No marker shows before the log loads.");
 
@@ -175,11 +205,11 @@ namespace Mmorpg.Client.Tests.EditMode
         public void AQuestDropInACorpseNamesTheMobTheItemAndTheQuest()
         {
             var catalog = FixtureQuestCatalog.Load();
-            Func<string, string> names = id => id == "fixture.letter" ? "Stolen Letter" : null;
+            Func<string, string> names = id => id == "fixture.trophy" ? "Stolen Trophy" : null;
 
             Assert.That(
-                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Wolf", FixtureQuestCatalog.Trophies, "fixture.letter", 1), catalog, names),
-                Is.EqualTo("Feral Wolf dropped Stolen Letter for Fixture Trophies."));
+                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Wolf", FixtureQuestCatalog.Trophies, "fixture.trophy", 1), catalog, names),
+                Is.EqualTo("Feral Wolf dropped Stolen Trophy for Fixture Trophies."));
             Assert.That(
                 QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Alpha", "quest.unknown", "fixture.fang", 2), catalog, names),
                 Is.EqualTo("Feral Alpha dropped 2 x fixture.fang for quest.unknown."),
@@ -245,26 +275,26 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(new[] { "Ore mined 0/2", "Ore handed over 0/1", "Report the mining 0/1" }));
         }
 
-        // Carried letters move the trophies' collect objective, and the quest says once that it is
+        // Carried trophies move the quest's collect objective, and the quest says once that it is
         // ready, whether a kill or an item made it so. A load tells nothing.
         [Test]
         public void TheWatcherTellsCollectProgressAndReadinessOnce()
         {
-            var letters = 0;
-            Func<string, int> carried = id => id == "fixture.letter" ? letters : 0;
+            var trophies = 0;
+            Func<string, int> carried = id => id == "fixture.trophy" ? trophies : 0;
             var state = Ready(
                 Active(FixtureQuestCatalog.Trophies, "collect"),
                 Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 1)));
             var watcher = new QuestProgressWatcher();
 
             Assert.That(watcher.Update(state, carried), Is.Empty);
-            letters = 1;
-            Assert.That(watcher.Update(state, carried), Is.EqualTo(new[] { "Stolen letters 1/2" }));
-            letters = 2;
+            trophies = 1;
+            Assert.That(watcher.Update(state, carried), Is.EqualTo(new[] { "Stolen trophies 1/2" }));
+            trophies = 2;
             Assert.That(
                 watcher.Update(state, carried),
-                Is.EqualTo(new[] { "Stolen letters 2/2", "Fixture Trophies is ready to turn in." }));
-            letters = 3;
+                Is.EqualTo(new[] { "Stolen trophies 2/2", "Fixture Trophies is ready to turn in." }));
+            trophies = 3;
             Assert.That(watcher.Update(state, carried), Is.Empty);
 
             state.ApplyChange(Change(3, 4, Quest(FixtureQuestCatalog.Wolves, "hunt", 0, ("wolves", 2))));
@@ -313,11 +343,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 Active(FixtureQuestCatalog.Wolves, "hunt", ("wolves", 2)),
                 Active(FixtureQuestCatalog.Trophies, "collect"));
 
-            var active = QuestLogModel.Active(state, id => id == "fixture.letter" ? 1 : 0);
+            var active = QuestLogModel.Active(state, id => id == "fixture.trophy" ? 1 : 0);
             var completed = QuestLogModel.Completed(state);
 
             Assert.That(active.Select(entry => entry.Quest.Title), Is.EqualTo(new[] { "Fixture Trophies", "Fixture Wolves" }));
-            Assert.That(active[0].Objectives.Select(line => line.Text), Is.EqualTo(new[] { "Stolen letters 1/2" }));
+            Assert.That(active[0].Objectives.Select(line => line.Text), Is.EqualTo(new[] { "Stolen trophies 1/2" }));
             Assert.That(active.Select(entry => entry.IsReady), Is.EqualTo(new[] { false, true }));
             Assert.That(completed.Single().Quest.Id, Is.EqualTo(FixtureQuestCatalog.OreRun));
             Assert.That(completed.Single().CompletionCount, Is.EqualTo(2));
@@ -339,6 +369,16 @@ namespace Mmorpg.Client.Tests.EditMode
         private static QuestClientState Ready(params ActiveQuestResponse[] active)
         {
             var state = Prepared();
+            Assert.That(state.TryApplyLog(Log(3, active), out var error), Is.True, error);
+            return state;
+        }
+
+        // A loaded log against a catalog that a test changed, such as a raised count.
+        private static QuestClientState ReadyWith(ClientQuestCatalog catalog, params ActiveQuestResponse[] active)
+        {
+            var state = new QuestClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(CharacterId, 1);
             Assert.That(state.TryApplyLog(Log(3, active), out var error), Is.True, error);
             return state;
         }

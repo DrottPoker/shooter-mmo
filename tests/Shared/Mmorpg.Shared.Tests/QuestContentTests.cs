@@ -32,9 +32,39 @@ public sealed class QuestContentTests
         Assert.Equal(["quest.wolves_at_the_gate"], quests["quest.pelts_and_fangs"].RequiredQuestIds);
         Assert.Empty(quests["quest.letter_for_the_outpost"].RequiredQuestIds);
         Assert.Equal(["quest.letter_for_the_outpost"], quests["quest.sergeants_request"].RequiredQuestIds);
+        Assert.Equal(["quest.sergeants_request"], quests["quest.ore_for_the_quartermaster"].RequiredQuestIds);
         Assert.Equal(
             ["quest.sergeants_request", "quest.wolves_at_the_gate"],
             quests["quest.the_alpha"].RequiredQuestIds);
+    }
+
+    // The development chain tests everything the quest system does, as the quest design promises.
+    [Fact]
+    public void TheDevelopmentChainUsesEveryObjectiveKindAndEveryQuestFeature()
+    {
+        var quests = Catalog.Value.Quests;
+        var objectives = quests.SelectMany(quest => quest.Steps.SelectMany(step => step.Objectives)).ToArray();
+
+        Assert.Equal(
+            [
+                QuestObjectiveKindIds.Collect,
+                QuestObjectiveKindIds.Deliver,
+                QuestObjectiveKindIds.Gather,
+                QuestObjectiveKindIds.Kill,
+                QuestObjectiveKindIds.TalkTo
+            ],
+            objectives.Select(objective => objective.Kind).Distinct().Order(StringComparer.Ordinal));
+        Assert.Contains(objectives, objective => objective.DropSources.Length > 0);
+        Assert.Contains(quests, quest => quest.RewardChoiceItems.Length > 0);
+        Assert.Contains(quests, quest => quest.StartItems.Length > 0);
+        Assert.Contains(quests, quest => quest.Steps.Length > 1);
+        Assert.Contains(quests, quest => quest.RequiredQuestIds.Length > 1);
+        Assert.Contains(quests, quest => quest.GiverActorId != quest.TurnInActorId);
+        Assert.Contains(
+            objectives,
+            objective => objective.Kind == QuestObjectiveKindIds.Deliver
+                && quests.Single(quest => quest.Steps.Any(step => step.Objectives.Contains(objective))).TurnInActorId
+                    != objective.NpcActorId);
     }
 
     // Development World 2 tests everything, so every checked-in quest is playable there.

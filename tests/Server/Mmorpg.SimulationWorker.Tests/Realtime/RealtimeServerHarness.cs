@@ -144,7 +144,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 GameServiceClient,
                 CharacterItemStateStore,
                 SessionStore,
-                QuestLogs);
+                QuestLogs,
+                options.QuestCatalog ?? QuestCatalog);
             capabilityHandlers = [.. capabilityHandlers, new QuestsWorldActorCapabilityHandler(QuestOperations)];
         }
 
@@ -187,7 +188,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 SessionStore,
                 Config,
                 Identity,
-                TimeProvider.System)
+                TimeProvider.System,
+                options.QuestCatalog ?? QuestCatalog)
             : null;
 
         Service = new RealtimeSimulationService(

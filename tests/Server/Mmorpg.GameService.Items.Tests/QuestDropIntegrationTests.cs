@@ -10,7 +10,7 @@ using static Mmorpg.GameService.Items.Tests.QuestScenario;
 
 namespace Mmorpg.GameService.Items.Tests;
 
-// Quest drops: the letters that Feral Wolves drop for quest.fixture.trophies, granted from a live
+// Quest drops: the trophies that Feral Wolves drop for quest.fixture.trophies, granted from a live
 // corpse or kept in a durable one with the quest's lineage, and only while the quest needs them.
 public sealed class QuestDropIntegrationTests
 {
@@ -45,13 +45,13 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(second);
         Assert.Equal(ItemTransactionErrorCodes.QuestItemNotNeeded, third.Error!.Code);
         Assert.Equal(ItemTransactionErrorCodes.MobLootGrantInvalid, withoutQuest.Error!.Code);
-        var letters = await LineageItemsAsync(context, characterId, Trophies);
-        Assert.Equal(2, letters.Count);
-        Assert.All(letters, letter => Assert.Equal((Letter, 1, inventoryId), (letter.DefinitionId, letter.Quantity, letter.ContainerId)));
+        var trophies = await LineageItemsAsync(context, characterId, Trophies);
+        Assert.Equal(2, trophies.Count);
+        Assert.All(trophies, trophy => Assert.Equal((Trophy, 1, inventoryId), (trophy.DefinitionId, trophy.Quantity, trophy.ContainerId)));
     }
 
     [PostgresIntegrationFact]
-    public async Task LiveLootAllTakesTheLettersTheQuestStillNeedsAndLeavesTheRest()
+    public async Task LiveLootAllTakesTheTrophiesTheQuestStillNeedsAndLeavesTheRest()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
@@ -61,26 +61,26 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(
             await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
         var ore = new MobLootGrantEntry(Guid.NewGuid(), Ore, 3);
-        MobLootGrantEntry[] letters =
+        MobLootGrantEntry[] trophies =
         [
-            new(Guid.NewGuid(), Letter, 1, Trophies),
-            new(Guid.NewGuid(), Letter, 1, Trophies),
-            new(Guid.NewGuid(), Letter, 1, Trophies)
+            new(Guid.NewGuid(), Trophy, 1, Trophies),
+            new(Guid.NewGuid(), Trophy, 1, Trophies),
+            new(Guid.NewGuid(), Trophy, 1, Trophies)
         ];
 
-        var looted = await GrantLootAllAsync(world, session, characterId, [ore, .. letters]);
-        var nothingNeeded = await GrantLootAllAsync(world, session, characterId, [letters[2]]);
+        var looted = await GrantLootAllAsync(world, session, characterId, [ore, .. trophies]);
+        var nothingNeeded = await GrantLootAllAsync(world, session, characterId, [trophies[2]]);
 
         ItemScenarioWorld.AssertCommitted(looted);
         Assert.Equal(2, (await LineageItemsAsync(context, characterId, Trophies)).Count);
         Assert.Equal(
-            [ore.GrantId, letters[0].GrantId, letters[1].GrantId],
-            await GrantedAsync(world, [ore.GrantId, .. letters.Select(letter => letter.GrantId)]));
+            [ore.GrantId, trophies[0].GrantId, trophies[1].GrantId],
+            await GrantedAsync(world, [ore.GrantId, .. trophies.Select(trophy => trophy.GrantId)]));
         Assert.Equal(ItemTransactionErrorCodes.QuestItemNotNeeded, nothingNeeded.Error!.Code);
     }
 
     [PostgresIntegrationFact]
-    public async Task ADurableMobCorpseKeepsOnlyTheLetterItsOwnerNeedsAndLetsTheOwnerLootIt()
+    public async Task ADurableMobCorpseKeepsOnlyTheTrophyItsOwnerNeedsAndLetsTheOwnerLootIt()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
@@ -92,46 +92,46 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(
             await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
         var firstCorpseId = Guid.NewGuid();
-        var firstLetter = new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies);
+        var firstTrophy = new MobCorpseLootEntryRequest(Guid.NewGuid(), Trophy, 1, Trophies);
 
         ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(
             world,
             firstCorpseId,
             characterId,
-            [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 2), firstLetter]));
-        var unneeded = await CreateCorpseAsync(world, Guid.NewGuid(), stranger.Character.Id, [firstLetter with { GrantId = Guid.NewGuid() }]);
-        var ownerless = await CreateCorpseAsync(world, Guid.NewGuid(), null, [firstLetter with { GrantId = Guid.NewGuid() }]);
+            [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 2), firstTrophy]));
+        var unneeded = await CreateCorpseAsync(world, Guid.NewGuid(), stranger.Character.Id, [firstTrophy with { GrantId = Guid.NewGuid() }]);
+        var ownerless = await CreateCorpseAsync(world, Guid.NewGuid(), null, [firstTrophy with { GrantId = Guid.NewGuid() }]);
 
-        var firstLetterId = ScopedGuid.Create("mob-loot-item", firstLetter.GrantId);
-        Assert.Equal(Trophies, await LineageOfAsync(world, firstLetterId));
+        var firstTrophyId = ScopedGuid.Create("mob-loot-item", firstTrophy.GrantId);
+        Assert.Equal(Trophies, await LineageOfAsync(world, firstTrophyId));
         Assert.Equal(ItemTransactionErrorCodes.MobCorpseEmpty, unneeded.Error!.Code);
         Assert.Equal(ItemTransactionErrorCodes.MobCorpseInvalid, ownerless.Error!.Code);
-        ItemScenarioWorld.AssertCommitted(await LootAsync(world, characterId, firstCorpseId, firstLetterId, inventoryId, 0));
-        Assert.Equal(firstLetterId, Assert.Single(await LineageItemsAsync(context, characterId, Trophies)).ItemInstanceId);
+        ItemScenarioWorld.AssertCommitted(await LootAsync(world, characterId, firstCorpseId, firstTrophyId, inventoryId, 0));
+        Assert.Equal(firstTrophyId, Assert.Single(await LineageItemsAsync(context, characterId, Trophies)).ItemInstanceId);
 
-        // The second corpse keeps a letter the quest still needs, which a live drop then fills.
+        // The second corpse keeps a trophy the quest still needs, which a live drop then fills.
         var secondCorpseId = Guid.NewGuid();
-        var secondLetter = new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies);
+        var secondTrophy = new MobCorpseLootEntryRequest(Guid.NewGuid(), Trophy, 1, Trophies);
         ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(
             world,
             secondCorpseId,
             characterId,
-            [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1), secondLetter]));
+            [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1), secondTrophy]));
         ItemScenarioWorld.AssertCommitted(await GrantAsync(world, session, characterId, Wolf, Trophies, inventoryId, 1));
-        var secondLetterId = ScopedGuid.Create("mob-loot-item", secondLetter.GrantId);
+        var secondTrophyId = ScopedGuid.Create("mob-loot-item", secondTrophy.GrantId);
 
-        var notNeeded = await LootAsync(world, characterId, secondCorpseId, secondLetterId, inventoryId, 2);
+        var notNeeded = await LootAsync(world, characterId, secondCorpseId, secondTrophyId, inventoryId, 2);
         var lootAll = await LootAllAsync(world, characterId, secondCorpseId);
 
         Assert.Equal(ItemTransactionErrorCodes.QuestItemNotNeeded, notNeeded.Error!.Code);
         ItemScenarioWorld.AssertCommitted(lootAll);
         Assert.Equal(2, (await LineageItemsAsync(context, characterId, Trophies)).Count);
-        Assert.NotEqual(inventoryId, (await world.LoadItemAsync(secondLetterId)).ContainerId);
+        Assert.NotEqual(inventoryId, (await world.LoadItemAsync(secondTrophyId)).ContainerId);
     }
 
-    // Two letters of one corpse share what the quest still needs, at creation and in Loot all.
+    // Two trophies of one corpse share what the quest still needs, at creation and in Loot all.
     [PostgresIntegrationFact]
-    public async Task LettersOfOneDurableCorpseShareWhatTheQuestStillNeeds()
+    public async Task TrophiesOfOneDurableCorpseShareWhatTheQuestStillNeeds()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
@@ -142,14 +142,14 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(
             await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
         var corpseId = Guid.NewGuid();
-        MobCorpseLootEntryRequest[] letters =
+        MobCorpseLootEntryRequest[] trophies =
         [
-            new(Guid.NewGuid(), Letter, 1, Trophies),
-            new(Guid.NewGuid(), Letter, 1, Trophies),
-            new(Guid.NewGuid(), Letter, 1, Trophies)
+            new(Guid.NewGuid(), Trophy, 1, Trophies),
+            new(Guid.NewGuid(), Trophy, 1, Trophies),
+            new(Guid.NewGuid(), Trophy, 1, Trophies)
         ];
 
-        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, letters));
+        ItemScenarioWorld.AssertCommitted(await CreateCorpseAsync(world, corpseId, characterId, trophies));
         Assert.Equal(2, await CountCorpseItemsAsync(world, corpseId));
         ItemScenarioWorld.AssertCommitted(await GrantAsync(world, session, characterId, Wolf, Trophies, inventoryId, 0));
         ItemScenarioWorld.AssertCommitted(await LootAllAsync(world, characterId, corpseId));
@@ -158,9 +158,9 @@ public sealed class QuestDropIntegrationTests
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId));
     }
 
-    // A corpse almost full of the Mob's own loot keeps the letter the owner needs in its last
-    // entry: a letter that no active quest needs does not take that place, and a second needed
-    // letter finds no room.
+    // A corpse almost full of the Mob's own loot keeps the trophy the owner needs in its last
+    // entry: a trophy that no active quest needs does not take that place, and a second needed
+    // trophy finds no room.
     [PostgresIntegrationFact]
     public async Task NeededQuestDropsFillTheRoomThatTheMobsOwnLootLeaves()
     {
@@ -175,17 +175,17 @@ public sealed class QuestDropIntegrationTests
         MobCorpseLootEntryRequest[] loot =
         [
             .. Enumerable.Range(0, 23).Select(_ => new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1)),
-            new(Guid.NewGuid(), Letter, 1, "quest.fixture.wolves"),
-            new(Guid.NewGuid(), Letter, 1, Trophies),
-            new(Guid.NewGuid(), Letter, 1, Trophies)
+            new(Guid.NewGuid(), Trophy, 1, "quest.fixture.wolves"),
+            new(Guid.NewGuid(), Trophy, 1, Trophies),
+            new(Guid.NewGuid(), Trophy, 1, Trophies)
         ];
 
         var created = await CreateCorpseAsync(world, corpseId, characterId, loot);
 
         ItemScenarioWorld.AssertCommitted(created);
         Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
-        Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Letter));
-        Assert.Equal([new ItemTransactionQuestDrop(Trophies, Letter, 1)], created.QuestDrops);
+        Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Trophy));
+        Assert.Equal([new ItemTransactionQuestDrop(Trophies, Trophy, 1)], created.QuestDrops);
     }
 
     // The worker learns which quest drops a durable corpse kept, so it can tell the owner, also
@@ -204,9 +204,9 @@ public sealed class QuestDropIntegrationTests
             characterId,
             [
                 new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 2),
-                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies),
-                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies),
-                new MobCorpseLootEntryRequest(Guid.NewGuid(), Letter, 1, Trophies)
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Trophy, 1, Trophies),
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Trophy, 1, Trophies),
+                new MobCorpseLootEntryRequest(Guid.NewGuid(), Trophy, 1, Trophies)
             ]);
 
         var created = await context.CorpseService.CreatePersistentMobCorpseAsync(WorkerId, request, CancellationToken.None);
@@ -216,8 +216,8 @@ public sealed class QuestDropIntegrationTests
             PersistentCorpseRequest(characterId, [new MobCorpseLootEntryRequest(Guid.NewGuid(), Ore, 1)]),
             CancellationToken.None);
 
-        // The trophies need two letters, so the corpse keeps two of the three.
-        SimulationQuestDrop[] kept = [new(Trophies, Letter, 1), new(Trophies, Letter, 1)];
+        // The trophies need two trophies, so the corpse keeps two of the three.
+        SimulationQuestDrop[] kept = [new(Trophies, Trophy, 1), new(Trophies, Trophy, 1)];
         Assert.True(created.Succeeded, created.Error?.Message);
         Assert.Equal(kept, created.Value!.QuestDrops);
         Assert.True(replayed.Succeeded, replayed.Error?.Message);
@@ -237,26 +237,26 @@ public sealed class QuestDropIntegrationTests
         var characterId = player.Character.Id;
         var session = await world.JoinAsync(player);
         var inventoryId = (await world.LoadStateAsync(characterId)).PermanentInventoryContainerId;
-        SimulationQuestDrop[] letters =
+        SimulationQuestDrop[] trophies =
         [
-            new(Trophies, Letter, 1),
-            new(Trophies, Letter, 1),
-            new(Trophies, Letter, 1)
+            new(Trophies, Trophy, 1),
+            new(Trophies, Trophy, 1),
+            new(Trophies, Trophy, 1)
         ];
 
-        var beforeAccepting = await ResolveAsync(context, session, Wolf, letters);
+        var beforeAccepting = await ResolveAsync(context, session, Wolf, trophies);
         ItemScenarioWorld.AssertCommitted(
             await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Trophies), Mira));
-        var accepted = await ResolveAsync(context, session, Wolf, letters);
-        var otherMob = await ResolveAsync(context, session, "mob.grey_wolf", letters);
+        var accepted = await ResolveAsync(context, session, Wolf, trophies);
+        var otherMob = await ResolveAsync(context, session, "mob.grey_wolf", trophies);
         ItemScenarioWorld.AssertCommitted(await GrantAsync(world, session, characterId, Wolf, Trophies, inventoryId, 0));
-        var afterOne = await ResolveAsync(context, session, Wolf, letters);
-        var stranger = await ResolveAsync(context, session with { SimulationSessionToken = "not-the-token" }, Wolf, letters);
+        var afterOne = await ResolveAsync(context, session, Wolf, trophies);
+        var stranger = await ResolveAsync(context, session with { SimulationSessionToken = "not-the-token" }, Wolf, trophies);
 
         Assert.Empty(beforeAccepting.Value!.Drops);
-        Assert.Equal([new(Trophies, Letter, 1), new(Trophies, Letter, 1)], accepted.Value!.Drops);
+        Assert.Equal([new(Trophies, Trophy, 1), new(Trophies, Trophy, 1)], accepted.Value!.Drops);
         Assert.Empty(otherMob.Value!.Drops);
-        Assert.Equal([new(Trophies, Letter, 1)], afterOne.Value!.Drops);
+        Assert.Equal([new(Trophies, Trophy, 1)], afterOne.Value!.Drops);
         Assert.Equal(("simulation_session_invalid", 401), (stranger.Error!.Code, stranger.StatusCode));
     }
 
@@ -278,7 +278,8 @@ public sealed class QuestDropIntegrationTests
                 session.ShardId,
                 session.SimulationSessionToken,
                 sourceActorDefinitionId,
-                drops),
+                drops,
+                PostgresIntegrationTestContext.FixtureQuestCatalogRevision),
             CancellationToken.None);
     }
 
@@ -317,7 +318,7 @@ public sealed class QuestDropIntegrationTests
                     grantId,
                     Guid.NewGuid(),
                     sourceActorDefinitionId,
-                    Letter,
+                    Trophy,
                     1,
                     containerId,
                     await world.LoadContainerRevisionAsync(containerId),

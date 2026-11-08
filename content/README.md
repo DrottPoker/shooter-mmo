@@ -224,11 +224,15 @@ the outpost:
 | `quest.pelts_and_fangs`, "Pelts and Fangs" | Mira | Wolves at the Gate | Collect 3 Wolf Pelts and 2 Wolf Fangs, which Feral Wolves drop for the quest at a 50 % chance | 10 Gold and Leather Gloves or Leather Boots |
 | `quest.letter_for_the_outpost`, "A Letter for the Outpost" | Mira to Sergeant Hale | | Bring the Sealed Letter, a start item | 15 Gold |
 | `quest.sergeants_request`, "The Sergeant's Request" | Sergeant Hale | A Letter for the Outpost | Gather 5 ore from Iron Veins, then talk to Mira | 30 Gold |
+| `quest.ore_for_the_quartermaster`, "Ore for the Quartermaster" | Sergeant Hale | The Sergeant's Request | Deliver 3 Iron Ore to Mira | 15 Gold |
 | `quest.the_alpha`, "The Alpha" | Sergeant Hale | The Sergeant's Request and Wolves at the Gate | Kill the Feral Alpha and collect the Alpha's Fang, which it always drops for the quest | 50 Gold and a choice of the Iron Sword, the Iron Greataxe, the Oak Staff, or the Training Shortbow |
 
 The Wolf Fang and the Alpha's Fang are the quest items `quest_item.wolf_fang`
-and `quest_item.alpha_fang`. `QuestContentTests` checks that the chain keeps
-its requirements and that Development World 2 places everything it needs.
+and `quest_item.alpha_fang`; a quest item belongs to one quest. `QuestContentTests`
+checks that the chain keeps its requirements, uses every objective kind, a quest
+drop, a reward choice, a start item, a delivery to another NPC, several steps,
+and a follow-up that requires two quests, and that Development World 2 places
+everything it needs.
 
 ## Combat Rules
 
@@ -529,7 +533,10 @@ and actors, so after a save in the Item Catalog or Actor Studio, click
    `Talk-To Quest`, `Gathering Quest`, and `Several Steps`, or select quests and
    click `Duplicate`, which copies each with a new id, such as
    `quest.wolves_at_the_gate_copy`. A template names the first quest NPCs, Mob,
-   resource node, and items, and compiles as it is.
+   resource node, and material, and compiles as it is; `Delivery` hands three of
+   the material to the second quest NPC. A quest item belongs to one quest, so a
+   quest that needs its own start item gets a new quest item from the Item
+   Catalog window.
 2. Under `Quest`, set the `Stable Quest Id`, `Title`, `Giver`, `Turn-In NPC`,
    `Minimum Level`, and `Repeatable`. Under `Dialog`, write the `Offer Text`,
    `Progress Text`, and `Completion Text`; a line break typed into a text becomes
