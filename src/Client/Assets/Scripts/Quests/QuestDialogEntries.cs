@@ -117,7 +117,7 @@ namespace Mmorpg.Client.Quests
 
             foreach (var pair in active)
             {
-                if (IsNpc(pair.Key.GiverActorId, npcActorId) && MissesStartItems(pair.Key, ownedCount ?? carriedCount))
+                if (IsNpc(pair.Key.GiverActorId, npcActorId) && MissesStartItems(pair.Key, pair.Value, ownedCount ?? carriedCount))
                 {
                     entries.Add(new QuestDialogEntry(QuestDialogEntryKind.LostStartItems, pair.Key, pair.Value));
                 }
@@ -135,23 +135,43 @@ namespace Mmorpg.Client.Quests
             return entries;
         }
 
-        // A delivery hands over the whole count at once, so the player must carry all of it.
+        // A delivery hands over what the objective still lacks at once, so the player must carry
+        // all of it; a count raised after a part was handed over asks only for the rest.
         public static bool CanHandOver(QuestDialogEntry entry, Func<string, int> carriedCount)
         {
             return entry != null
                 && entry.Kind == QuestDialogEntryKind.Deliver
                 && entry.Objective != null
                 && carriedCount != null
-                && carriedCount(entry.Objective.ItemId) >= entry.Objective.Count;
+                && carriedCount(entry.Objective.ItemId) >= RemainingDelivery(entry);
         }
 
-        // A start item that the character owns fewer of than the quest gave, which GameService
-        // grants again.
-        public static bool MissesStartItems(QuestDefinition quest, Func<string, int> ownedCount)
+        // What the delivery of the entry still hands over.
+        public static int RemainingDelivery(QuestDialogEntry entry)
         {
-            return quest.StartItems != null
-                && ownedCount != null
-                && quest.StartItems.Any(item => item != null && ownedCount(item.DefinitionId) < item.Quantity);
+            return QuestRules.RemainingDeliveryQuantity(
+                entry.Objective,
+                entry.Active != null ? entry.Active.ProgressOf(entry.Objective.Id) : 0);
+        }
+
+        // A start item that the quest still needs after its deliveries and that the character
+        // owns fewer of, which GameService grants again, by the same shared rule.
+        public static bool MissesStartItems(QuestDefinition quest, QuestClientActiveQuest active, Func<string, int> ownedCount)
+        {
+            if (quest.StartItems == null || active == null || ownedCount == null)
+            {
+                return false;
+            }
+
+            var stepIndex = QuestProgress.StepIndexOf(quest, active.StepId);
+            return stepIndex >= 0
+                && quest.StartItems.Any(item => item != null
+                    && QuestRules.MissingStartItemQuantity(
+                        quest,
+                        item,
+                        stepIndex,
+                        active.ProgressOf,
+                        ownedCount(item.DefinitionId)) > 0);
         }
 
         private static bool IsNpc(string actorId, string npcActorId)

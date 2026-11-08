@@ -124,6 +124,36 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(QuestDialogEntries.CanHandOver(Entries(state, _ => 0).First(entry => entry.Kind == QuestDialogEntryKind.TalkTo), _ => 1), Is.False);
         }
 
+        // A count raised after a part was handed over asks only for the rest, and a start item that
+        // a delivery took is not lost, by the shared rules GameService follows.
+        [Test]
+        public void ADeliveryAsksForTheRestAndADeliveredStartItemIsNotLost()
+        {
+            var catalog = FixtureQuestCatalog.Load();
+            Assert.That(catalog.TryGet(FixtureQuestCatalog.Errand, out var errand), Is.True);
+            var handOver = errand.Steps[0].Objectives.Single(objective => objective.Id == "hand_over");
+            handOver.Count = 3;
+            var raised = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 1), ("report", 0)));
+            var delivery = QuestDialogEntries.For(FixtureQuestCatalog.Mira, raised, _ => 0)
+                .Single(entry => entry.Kind == QuestDialogEntryKind.Deliver);
+
+            Assert.That(QuestDialogEntries.RemainingDelivery(delivery), Is.EqualTo(2));
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, id => id == "fixture.ore" ? 2 : 0), Is.True);
+            Assert.That(QuestDialogEntries.CanHandOver(delivery, id => id == "fixture.ore" ? 1 : 0), Is.False);
+
+            // The errand's letter goes to Mira in the first step instead of coming back at the end.
+            handOver.ItemId = "fixture.letter";
+            handOver.Count = 1;
+            var handedOver = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 1), ("report", 0)));
+            var notYet = ReadyWith(catalog, Active(FixtureQuestCatalog.Errand, "work", ("ore", 2), ("hand_over", 0), ("report", 0)));
+            Assert.That(
+                QuestDialogEntries.MissesStartItems(errand, handedOver.ActiveQuests[FixtureQuestCatalog.Errand], _ => 0),
+                Is.False,
+                "The delivery took the letter, so it is not lost.");
+            Assert.That(QuestDialogEntries.MissesStartItems(errand, notYet.ActiveQuests[FixtureQuestCatalog.Errand], _ => 0), Is.True);
+            Assert.That(QuestDialogEntries.MissesStartItems(errand, notYet.ActiveQuests[FixtureQuestCatalog.Errand], _ => 1), Is.False);
+        }
+
         // Mira's marker shows the most urgent of what waits at her: a quest to turn in over an
         // offer, and an offer over a quest in progress.
         [Test]
@@ -339,6 +369,16 @@ namespace Mmorpg.Client.Tests.EditMode
         private static QuestClientState Ready(params ActiveQuestResponse[] active)
         {
             var state = Prepared();
+            Assert.That(state.TryApplyLog(Log(3, active), out var error), Is.True, error);
+            return state;
+        }
+
+        // A loaded log against a catalog that a test changed, such as a raised count.
+        private static QuestClientState ReadyWith(ClientQuestCatalog catalog, params ActiveQuestResponse[] active)
+        {
+            var state = new QuestClientState();
+            state.SetCatalog(catalog);
+            state.PrepareCharacter(CharacterId, 1);
             Assert.That(state.TryApplyLog(Log(3, active), out var error), Is.True, error);
             return state;
         }
