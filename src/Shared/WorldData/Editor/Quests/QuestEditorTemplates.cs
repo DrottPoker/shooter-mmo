@@ -146,15 +146,21 @@ namespace Mmorpg.WorldData.Editor.Quests
             return new QuestEditorStep { id = id, objectives = objectives };
         }
 
-        // The first id from the base that neither the catalog nor its retired ids use.
-        public static string UniqueId(string baseId, QuestEditorCatalog catalog)
+        // The first id from the base that neither the catalog nor its retired ids use, nor any id
+        // that reserved holds, such as a saved quest's that undo took out of the catalog.
+        public static string UniqueId(string baseId, QuestEditorCatalog catalog, Func<string, bool> reserved = null)
         {
             var used = new HashSet<string>(
                 (catalog?.quests ?? Array.Empty<QuestEditorDefinition>()).Select(quest => quest?.id)
                     .Concat(catalog?.retiredQuestIds ?? Array.Empty<string>())
                     .Where(id => id != null),
                 StringComparer.Ordinal);
-            if (!used.Contains(baseId))
+            bool Taken(string id)
+            {
+                return used.Contains(id) || (reserved != null && reserved(id));
+            }
+
+            if (!Taken(baseId))
             {
                 return baseId;
             }
@@ -162,7 +168,7 @@ namespace Mmorpg.WorldData.Editor.Quests
             for (var suffix = 2; ; suffix++)
             {
                 var candidate = baseId + "_" + suffix;
-                if (!used.Contains(candidate))
+                if (!Taken(candidate))
                 {
                     return candidate;
                 }

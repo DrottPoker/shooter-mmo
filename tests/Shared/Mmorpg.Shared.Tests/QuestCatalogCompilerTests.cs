@@ -378,7 +378,7 @@ public sealed class QuestCatalogCompilerTests
 
         var errors = Assert.Throws<QuestValidationException>(() => Compile(first, second, missing)).Errors;
 
-        Assert.Contains(errors, error => error.StartsWith("requiredQuestIds form a cycle: quest.first -> quest.second -> quest.first", StringComparison.Ordinal));
+        Assert.Contains(errors, error => error.StartsWith("quests[0].requiredQuestIds form a cycle: quest.first -> quest.second -> quest.first", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Contains("names missing id 'quest.unknown'", StringComparison.Ordinal));
     }
 

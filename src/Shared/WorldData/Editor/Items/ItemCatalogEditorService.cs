@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
 
@@ -147,11 +148,14 @@ namespace Mmorpg.WorldData.Editor.Items
 
         public ItemCatalogEditorPaths Paths => paths;
 
+        // The item files are read before their content, so a file that changes in between makes
+        // the next save stop instead of writing over it.
         public ItemCatalogEditorWorkspace Load()
         {
             RequireFile(paths.RuntimePath, "runtime catalog");
 
             ValidateCanonicalAuthoringBeforeLoad();
+            var diskState = ReadDiskState();
             var authoring = ItemCatalogEditorContent.Load(paths.ItemsDirectory);
             var runtime = ItemCatalogEditorJson.DeserializeRuntime(
                 File.ReadAllText(paths.RuntimePath));
@@ -166,15 +170,24 @@ namespace Mmorpg.WorldData.Editor.Items
                     entries = Array.Empty<ItemPresentationEntry>()
                 };
 
-            return new ItemCatalogEditorWorkspace(authoring, runtime, presentation);
+            return new ItemCatalogEditorWorkspace(authoring, runtime, presentation, diskState);
         }
 
+        // Item files that changed on disk since the workspace read them stop the validation,
+        // because the save would delete or write over them.
         public ItemCatalogEditorValidationResult Validate(
             ItemCatalogEditorWorkspace workspace)
         {
             if (workspace == null)
             {
                 throw new ArgumentNullException(nameof(workspace));
+            }
+
+            var changedOnDisk = workspace.DiskState?.Changes() ?? Array.Empty<string>();
+            if (changedOnDisk.Count > 0)
+            {
+                return ItemCatalogEditorValidationResult.Failed(
+                    ContentDiskState.ChangedMessage(changedOnDisk, paths.ContentRoot, "the item catalog editor"));
             }
 
             var temporaryDirectory = CreateTemporaryDirectory();
@@ -251,7 +264,7 @@ namespace Mmorpg.WorldData.Editor.Items
             ItemCatalogEditorValidationResult validation)
         {
             RequireSuccessfulValidation(validation);
-            Commit(validation, false);
+            Commit(workspace, validation, false);
             ApplyPresentation(workspace, validation.CandidatePresentation);
         }
 
@@ -260,16 +273,32 @@ namespace Mmorpg.WorldData.Editor.Items
             ItemCatalogEditorValidationResult validation)
         {
             RequireSuccessfulValidation(validation);
-            Commit(validation, true);
+            Commit(workspace, validation, true);
             ApplyRuntime(workspace, validation.CandidateRuntime);
             ApplyPresentation(workspace, validation.CandidatePresentation);
         }
 
+        private ContentDiskState ReadDiskState()
+        {
+            return ContentDiskState.Read(new[] { paths.ItemsDirectory });
+        }
+
         // Writes authored files first and generated files last, then deletes definition
         // files for drafts that were removed and files of removed vendor profiles. A failure
-        // restores every file.
-        private void Commit(ItemCatalogEditorValidationResult validation, bool includeRuntime)
+        // restores every file. Item files that changed on disk since the workspace read them
+        // stop it before anything is written.
+        private void Commit(
+            ItemCatalogEditorWorkspace workspace,
+            ItemCatalogEditorValidationResult validation,
+            bool includeRuntime)
         {
+            var changedOnDisk = workspace?.DiskState?.Changes() ?? Array.Empty<string>();
+            if (changedOnDisk.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    ContentDiskState.ChangedMessage(changedOnDisk, paths.ContentRoot, "the item catalog editor"));
+            }
+
             var writes = validation.AuthoringFiles
                 .OrderBy(file => file.Key, StringComparer.Ordinal)
                 .Select(file => new KeyValuePair<string, string>(
@@ -295,6 +324,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 .Where(path => !written.Contains(path))
                 .ToArray();
             ContentFileTransaction.Commit(writes, removed);
+            workspace?.MarkFilesWritten(ReadDiskState());
         }
 
         private IEnumerable<string> ExistingDefinitionPaths()

@@ -45,6 +45,10 @@ namespace Mmorpg.WorldData.Editor.Quests
 
         private static readonly Regex ControlCharacters = new Regex(@"\p{Cc}+", RegexOptions.CultureInvariant);
 
+        private static readonly string MaximumActiveQuestsTooltip =
+            "How many quests a character can have active at once, between "
+            + QuestContentRules.MinimumActiveQuestLimit + " and " + QuestContentRules.MaximumActiveQuestLimit + ".";
+
         private readonly QuestEditorService service;
         private readonly ContentUndoState undoState;
         private readonly Func<QuestEditorWorkspace> loadWorkspace;
@@ -57,6 +61,8 @@ namespace Mmorpg.WorldData.Editor.Quests
         private ContentForm<QuestEditorDefinition> form;
         private QuestEditorWorkspace workspace;
         private IReadOnlyList<ContentIssue> issues = Array.Empty<ContentIssue>();
+        private IReadOnlyList<string> nonCanonicalFiles = Array.Empty<string>();
+        private IntegerField maximumActiveQuestsField;
         private string detailShape = string.Empty;
         private string npcViewActorId = string.Empty;
 
@@ -72,7 +78,11 @@ namespace Mmorpg.WorldData.Editor.Quests
 
             toolLayout = new ContentToolLayout(300f);
             Add(toolLayout);
-            toolLayout.Toolbar.Add(new ToolbarButton(Reload) { text = "Reload", tooltip = "Load the quests and the compiled items and actors from disk again." });
+            toolLayout.Toolbar.Add(new ToolbarButton(() => Reload())
+            {
+                text = "Reload",
+                tooltip = "Load the quests and the compiled items and actors from disk again; unsaved edits can stay on top of them."
+            });
             toolLayout.Toolbar.Add(new ToolbarButton(RefreshReferences)
             {
                 text = "Reload References",
@@ -132,7 +142,9 @@ namespace Mmorpg.WorldData.Editor.Quests
 
         public event Action UnsavedChangesChanged;
 
-        public bool HasUnsavedChanges => session != null && session.HasUnsavedChanges;
+        // Also edits from before a script reload whose content could not be loaded again, which
+        // the undo state still holds for a later load.
+        public bool HasUnsavedChanges => session != null ? session.HasUnsavedChanges : undoState.HasPendingEdits;
 
         public QuestEditorWorkspace Workspace => workspace;
 
@@ -157,21 +169,25 @@ namespace Mmorpg.WorldData.Editor.Quests
         }
 
         // Loads quest content from disk. With keepPendingEdits, edits that were not saved
-        // before a script reload are applied again.
+        // before a script reload are applied again, on top of quest files that changed on disk
+        // since, such as after a git pull, quest by quest.
         public void Load(bool keepPendingEdits)
         {
             try
             {
                 session?.Dispose();
+                session = null;
                 workspace = loadWorkspace();
                 session = new ContentEditSession<QuestEditorCatalog>(
                     undoState,
                     () => workspace.Catalog,
-                    catalog => workspace.RestoreContent(catalog));
+                    catalog => workspace.RestoreContent(catalog),
+                    QuestEditorMerge.Merge);
                 form = new ContentForm<QuestEditorDefinition>(session, Key);
                 detailShape = string.Empty;
                 session.Changed += OnContentChanged;
                 session.Load(keepPendingEdits);
+                nonCanonicalFiles = ReadNonCanonicalFiles();
                 var quests = Quests();
                 if (list.Selection.Count == 0 && quests.Length > 0)
                 {
@@ -179,9 +195,8 @@ namespace Mmorpg.WorldData.Editor.Quests
                 }
 
                 toolLayout.SetStatus(
-                    "Loaded " + quests.Length + " quests."
-                        + (HasUnsavedChanges ? " Unsaved edits from before the script reload were restored." : string.Empty),
-                    HelpBoxMessageType.Info);
+                    "Loaded " + quests.Length + " quests." + session.PendingEditsMessage,
+                    session.PendingEditsGaveWay ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info);
                 RunLiveValidation();
             }
             catch (Exception exception)
@@ -189,27 +204,50 @@ namespace Mmorpg.WorldData.Editor.Quests
                 workspace = null;
                 session?.Dispose();
                 session = null;
+                nonCanonicalFiles = Array.Empty<string>();
                 list.SetItems(Array.Empty<QuestEditorDefinition>());
                 ShowDetailHint("Quest content could not be loaded.");
-                toolLayout.SetStatus(exception.Message, HelpBoxMessageType.Error);
+                toolLayout.SetStatus(
+                    exception.Message
+                        + (undoState.HasPendingEdits ? " Unsaved edits from before the script reload are kept for the next load." : string.Empty),
+                    HelpBoxMessageType.Error);
             }
 
             UnsavedChangesChanged?.Invoke();
         }
 
-        public void Reload()
+        // Loads the files on disk again. Unsaved edits either apply on top of them, quest by
+        // quest, or are discarded, as the dialog or chooseKeep decides.
+        public void Reload(Func<bool?> chooseKeep = null)
         {
-            if (HasUnsavedChanges
-                && !EditorUtility.DisplayDialog(
-                    "Discard Unsaved Quest Changes",
-                    "Quest Studio has unsaved changes. Reloading discards them.",
-                    "Discard and reload",
-                    "Cancel"))
+            if (!HasUnsavedChanges)
             {
+                Load(false);
                 return;
             }
 
-            Load(false);
+            var keep = chooseKeep != null ? chooseKeep() : AskKeepEdits();
+            if (keep.HasValue)
+            {
+                Load(keep.Value);
+            }
+        }
+
+        private static bool? AskKeepEdits()
+        {
+            var choice = EditorUtility.DisplayDialogComplex(
+                "Reload Quests",
+                "Quest Studio has unsaved changes. Keep them on top of the quest files on disk, where the files did not change the "
+                    + "same quests, or discard them?",
+                "Keep my edits",
+                "Cancel",
+                "Discard my edits");
+            return choice switch
+            {
+                0 => true,
+                2 => false,
+                _ => null
+            };
         }
 
         // Reads the compiled items and actors again and keeps the quest edits.
@@ -260,12 +298,15 @@ namespace Mmorpg.WorldData.Editor.Quests
 
             try
             {
-                service.Save(validation);
+                service.Save(workspace, validation);
                 AssetDatabase.Refresh();
 
-                // The save may retire more ids than the edits did, such as after undo across a save.
+                // The save may retire more ids than the edits did, such as after undo across a
+                // save.
                 workspace.Catalog.retiredQuestIds = validation.RetiredQuestIds;
                 session.MarkSaved();
+                nonCanonicalFiles = Array.Empty<string>();
+                RunLiveValidation();
 
                 // A saved quest's id is permanent from now on.
                 detailShape = string.Empty;
@@ -292,9 +333,9 @@ namespace Mmorpg.WorldData.Editor.Quests
             {
                 quest = QuestEditorTemplates.Create(
                     template,
-                    QuestEditorTemplates.UniqueId("quest.new_" + template, workspace.Catalog),
+                    QuestEditorTemplates.UniqueId("quest.new_" + template, workspace.Catalog, workspace.IsReserved),
                     workspace.References);
-                workspace.Catalog.quests = Quests().Append(quest).ToArray();
+                workspace.Catalog.quests = ById(Quests().Append(quest));
             });
             list.Select(new[] { Key(quest) });
         }
@@ -313,9 +354,9 @@ namespace Mmorpg.WorldData.Editor.Quests
                 foreach (var source in selection)
                 {
                     var copy = QuestEditorJson.Clone(source);
-                    copy.id = QuestEditorTemplates.UniqueId(source.id + "_copy", workspace.Catalog);
+                    copy.id = QuestEditorTemplates.UniqueId(source.id + "_copy", workspace.Catalog, workspace.IsReserved);
                     copy.title = source.title + " Copy";
-                    workspace.Catalog.quests = Quests().Append(copy).ToArray();
+                    workspace.Catalog.quests = ById(Quests().Append(copy));
                     copies.Add(copy);
                 }
             });
@@ -402,10 +443,10 @@ namespace Mmorpg.WorldData.Editor.Quests
                 return false;
             }
 
-            if (Quests().Any(entry => !ReferenceEquals(entry, quest) && entry.id == newId)
-                || (workspace.Catalog.retiredQuestIds ?? Array.Empty<string>()).Contains(newId, StringComparer.Ordinal))
+            // A saved quest's id stays its own even while undo took the quest out of the catalog.
+            if (workspace.IsReserved(newId))
             {
-                toolLayout.SetStatus("The id '" + newId + "' is already used or retired.", HelpBoxMessageType.Error);
+                toolLayout.SetStatus("The id '" + newId + "' is already used, saved, or retired.", HelpBoxMessageType.Error);
                 form?.Refresh();
                 return false;
             }
@@ -433,6 +474,8 @@ namespace Mmorpg.WorldData.Editor.Quests
                         .Select(id => id == currentId ? newId : id)
                         .ToArray();
                 }
+
+                workspace.Catalog.quests = ById(Quests());
 
                 if (retire)
                 {
@@ -703,13 +746,64 @@ namespace Mmorpg.WorldData.Editor.Quests
         }
 
         // Validates the catalog as a save would write it, so a retired id that undo brought back
-        // shows as a problem at once.
+        // shows as a problem at once, together with the quest files that are not in the form a
+        // save writes.
         private void RunLiveValidation()
         {
-            issues = QuestEditorIssues.Collect(SavedForm(), workspace?.References);
+            issues = QuestEditorIssues.Collect(SavedForm(), workspace?.References)
+                .Concat(nonCanonicalFiles.Select(NonCanonicalIssue))
+                .ToArray();
             list.SetIssueState(IssueState);
             toolLayout.Issues.SetIssues(issues, issue => QuestEditorIssues.Describe(issue, workspace?.Catalog));
             form?.ApplyIssues(issues);
+            MarkCatalogFields();
+        }
+
+        // The catalog settings belong to no quest, so the form leaves their findings to this.
+        private void MarkCatalogFields()
+        {
+            if (maximumActiveQuestsField == null)
+            {
+                return;
+            }
+
+            var related = issues
+                .Where(issue => issue.EntityKey.Length == 0 && issue.Concerns(QuestEditorIssues.MaximumActiveQuests))
+                .ToArray();
+            maximumActiveQuestsField.EnableInClassList(ContentToolStyles.FieldError, related.Length > 0);
+            maximumActiveQuestsField.tooltip = related.Length == 0
+                ? MaximumActiveQuestsTooltip
+                : string.Join("\n", related.Select(issue => issue.Message));
+        }
+
+        // A definition file names its quest; the catalog file belongs to the whole catalog.
+        private static ContentIssue NonCanonicalIssue(string file)
+        {
+            var prefix = ContentLayout.DefinitionsDirectoryName + "/";
+            var questId = file.StartsWith(prefix, StringComparison.Ordinal) && file.EndsWith(".json", StringComparison.Ordinal)
+                ? file.Substring(prefix.Length, file.Length - prefix.Length - ".json".Length)
+                : string.Empty;
+            return new ContentIssue(
+                questId,
+                string.Empty,
+                file + " is not in the form Quest Studio writes, for example because of a field it does not know, which the quest "
+                    + "compiler rejects. Saving writes it in that form.",
+                ContentIssueSeverity.Warning);
+        }
+
+        private IReadOnlyList<string> ReadNonCanonicalFiles()
+        {
+            try
+            {
+                return service.NonCanonicalFiles();
+            }
+            catch (Exception exception) when (exception is IOException
+                || exception is InvalidDataException
+                || exception is UnauthorizedAccessException)
+            {
+                // The load itself reports unreadable files.
+                return Array.Empty<string>();
+            }
         }
 
         private void OnSelectionChanged()
@@ -732,6 +826,7 @@ namespace Mmorpg.WorldData.Editor.Quests
             }
 
             form.ApplyIssues(issues);
+            MarkCatalogFields();
             duplicateButton.SetEnabled(selection.Count > 0);
             deleteButton.SetEnabled(selection.Count > 0);
         }
@@ -1041,7 +1136,7 @@ namespace Mmorpg.WorldData.Editor.Quests
 
                     break;
                 case QuestObjectiveKindIds.Collect:
-                    box.Add(form.Choice("Item", path + ".itemId", AllItemOptions, entry => ObjectiveAt(entry, step, position)?.itemId, (entry, value) => EditObjective(entry, step, position, target => target.itemId = value)));
+                    box.Add(form.Choice("Item", path + ".itemId", () => ObjectiveItemOptions(SingleTarget()), entry => ObjectiveAt(entry, step, position)?.itemId, (entry, value) => EditObjective(entry, step, position, target => target.itemId = value)));
                     if (ShowsDrops(objective))
                     {
                         box.Add(BuildDropSources(objective, step, position));
@@ -1049,7 +1144,7 @@ namespace Mmorpg.WorldData.Editor.Quests
 
                     break;
                 case QuestObjectiveKindIds.Deliver:
-                    box.Add(form.Choice("Item", path + ".itemId", AllItemOptions, entry => ObjectiveAt(entry, step, position)?.itemId, (entry, value) => EditObjective(entry, step, position, target => target.itemId = value)));
+                    box.Add(form.Choice("Item", path + ".itemId", () => ObjectiveItemOptions(SingleTarget()), entry => ObjectiveAt(entry, step, position)?.itemId, (entry, value) => EditObjective(entry, step, position, target => target.itemId = value)));
                     box.Add(form.Choice("Deliver To", path + ".npcActorId", QuestNpcOptions, entry => ObjectiveAt(entry, step, position)?.npcActorId, (entry, value) => EditObjective(entry, step, position, target => target.npcActorId = value)));
                     break;
                 case QuestObjectiveKindIds.TalkTo:
@@ -1240,9 +1335,9 @@ namespace Mmorpg.WorldData.Editor.Quests
             var limit = new IntegerField("Maximum Active Quests")
             {
                 isDelayed = true,
-                tooltip = "How many quests a character can have active at once, between "
-                    + QuestContentRules.MinimumActiveQuestLimit + " and " + QuestContentRules.MaximumActiveQuestLimit + "."
+                tooltip = MaximumActiveQuestsTooltip
             };
+            maximumActiveQuestsField = limit;
             limit.RegisterValueChangedCallback(change => SetMaximumActiveQuests(change.newValue));
             var retired = ContentToolStyles.CreateHint(string.Empty);
             form.Watch(() =>
@@ -1324,10 +1419,10 @@ namespace Mmorpg.WorldData.Editor.Quests
                     objective.actorIds = FirstOf(MobOptions());
                     break;
                 case QuestObjectiveKindIds.Collect:
-                    objective.itemId = item.Length > 0 ? item : FirstValue(AllItemOptions());
+                    objective.itemId = item.Length > 0 ? item : FirstValue(ObjectiveItemOptions(quest));
                     break;
                 case QuestObjectiveKindIds.Deliver:
-                    objective.itemId = item.Length > 0 ? item : FirstValue(ItemOptions(StartItems));
+                    objective.itemId = item.Length > 0 ? item : FirstValue(ItemOptions(StartItems, quest));
                     objective.npcActorId = npc.Length > 0 ? npc : OtherNpc(quest);
                     break;
                 case QuestObjectiveKindIds.TalkTo:
@@ -1404,13 +1499,13 @@ namespace Mmorpg.WorldData.Editor.Quests
                 .ToArray();
         }
 
-        // A quest that has a definition file on disk, whose id characters and the services
-        // may already know.
+        // A quest that had a definition file when the workspace last read or wrote the files,
+        // whose id characters and the services may already know.
         private bool IsSaved(string questId)
         {
             return !string.IsNullOrEmpty(questId)
-                && ContentLayout.IsValidDefinitionId(questId)
-                && File.Exists(ContentLayout.DefinitionPath(service.Paths.QuestsDirectory, questId));
+                && workspace != null
+                && workspace.SavedQuestIds.Contains(questId, StringComparer.Ordinal);
         }
 
         private bool ShowsDrops(QuestEditorObjective objective)
@@ -1456,6 +1551,13 @@ namespace Mmorpg.WorldData.Editor.Quests
             return workspace?.Catalog.quests ?? Array.Empty<QuestEditorDefinition>();
         }
 
+        // The quests in the order a load lists their files, so the edited content and a fresh
+        // load of the saved files take the same form.
+        private static QuestEditorDefinition[] ById(IEnumerable<QuestEditorDefinition> quests)
+        {
+            return quests.OrderBy(quest => quest?.id ?? string.Empty, StringComparer.Ordinal).ToArray();
+        }
+
         private QuestEditorCatalog SavedForm()
         {
             if (workspace == null)
@@ -1465,7 +1567,7 @@ namespace Mmorpg.WorldData.Editor.Quests
 
             try
             {
-                return service.Reconcile(workspace.Catalog);
+                return service.Reconcile(workspace);
             }
             catch (Exception exception) when (exception is IOException
                 || exception is InvalidDataException
@@ -1559,15 +1661,50 @@ namespace Mmorpg.WorldData.Editor.Quests
             return kind == QuestObjectiveKindIds.Gather ? ResourceNodeOptions() : MobOptions();
         }
 
-        private IEnumerable<(string Value, string Label)> AllItemOptions()
+        // Every item an objective may collect or deliver: a quest item that another quest already
+        // gives, collects, delivers, or drops is left out, because a quest item belongs to one
+        // quest.
+        private IEnumerable<(string Value, string Label)> ObjectiveItemOptions(QuestEditorDefinition quest)
         {
-            return Items(item => true);
+            var taken = QuestItemsOfOtherQuests(quest);
+            return Items(item => !taken.Contains(item.Id));
         }
 
-        // Start items are protected quest items; rewards are ordinary items without policies.
-        private IEnumerable<(string Value, string Label)> ItemOptions(string field)
+        // Start items are protected quest items that no other quest uses; rewards are ordinary
+        // items without policies.
+        private IEnumerable<(string Value, string Label)> ItemOptions(string field, QuestEditorDefinition quest = null)
         {
-            return field == StartItems ? Items(item => item.ProtectedQuestItem) : Items(item => item.Rewardable);
+            if (field != StartItems)
+            {
+                return Items(item => item.Rewardable);
+            }
+
+            var taken = QuestItemsOfOtherQuests(quest ?? SingleTarget());
+            return Items(item => item.ProtectedQuestItem && !taken.Contains(item.Id));
+        }
+
+        private HashSet<string> QuestItemsOfOtherQuests(QuestEditorDefinition quest)
+        {
+            var questItems = new HashSet<string>(
+                (workspace?.References.ItemChoices ?? Array.Empty<QuestEditorItemChoice>())
+                    .Where(item => item.ProtectedQuestItem)
+                    .Select(item => item.Id),
+                StringComparer.Ordinal);
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var other in Quests().Where(entry => entry != null && !ReferenceEquals(entry, quest)))
+            {
+                foreach (var id in (other.startItems ?? Array.Empty<QuestEditorItemQuantity>())
+                             .Select(item => item?.definitionId)
+                             .Concat(other.Objectives().Select(objective => objective.itemId)))
+                {
+                    if (id != null && questItems.Contains(id))
+                    {
+                        taken.Add(id);
+                    }
+                }
+            }
+
+            return taken;
         }
 
         private IEnumerable<(string Value, string Label)> Items(Func<QuestEditorItemChoice, bool> include)
@@ -1577,10 +1714,13 @@ namespace Mmorpg.WorldData.Editor.Quests
                 .Select(item => (item.Id, item.DisplayName + " (" + item.Id + ")"));
         }
 
+        // Every other quest, except those that already require this one, directly or through
+        // others, which would form a cycle.
         private IEnumerable<(string Value, string Label)> RequirementOptions(QuestEditorDefinition quest)
         {
+            var followUps = QuestEditorRelations.AllFollowUpIds(workspace?.Catalog, quest?.id);
             return Quests()
-                .Where(entry => !ReferenceEquals(entry, quest) && !string.IsNullOrEmpty(entry.id))
+                .Where(entry => !ReferenceEquals(entry, quest) && !string.IsNullOrEmpty(entry.id) && !followUps.Contains(entry.id))
                 .Select(entry => (entry.id, (string.IsNullOrEmpty(entry.title) ? entry.id : entry.title) + " (" + entry.id + ")"));
         }
 

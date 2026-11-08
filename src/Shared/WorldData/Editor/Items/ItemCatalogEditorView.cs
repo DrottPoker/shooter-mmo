@@ -150,8 +150,8 @@ namespace Mmorpg.WorldData.Editor.Items
                 toolLayout.SetStatus(
                     "Loaded " + workspace.Authoring.definitions.Length
                         + " item definitions. Canonical authoring passed strict validation."
-                        + (HasUnsavedChanges ? " Unsaved edits from before the script reload were restored." : string.Empty),
-                    HelpBoxMessageType.Info);
+                        + session.PendingEditsMessage,
+                    session.PendingEditsGaveWay ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info);
                 RunLiveValidation();
             }
             catch (Exception exception)

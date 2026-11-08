@@ -6,6 +6,7 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Xml;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
@@ -485,14 +486,18 @@ namespace Mmorpg.WorldData.Editor.Items
     {
         private readonly HashSet<string> bakedDefinitionIds;
 
+        // diskState is the item files as they were when the authoring was read from them, or
+        // null for a workspace that no files back.
         public ItemCatalogEditorWorkspace(
             ItemCatalogJsonDocument authoring,
             ItemCatalogEditorRuntimeDocument runtime,
-            ItemPresentationCatalogDocument presentation)
+            ItemPresentationCatalogDocument presentation,
+            ContentDiskState diskState = null)
         {
             Authoring = authoring ?? throw new ArgumentNullException(nameof(authoring));
             CurrentRuntime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
+            DiskState = diskState;
             Authoring.definitions = Authoring.definitions
                 ?? Array.Empty<ItemCatalogJsonDefinition>();
             Authoring.vendors = Authoring.vendors ?? Array.Empty<ItemCatalogJsonVendor>();
@@ -509,6 +514,14 @@ namespace Mmorpg.WorldData.Editor.Items
         public ItemCatalogEditorRuntimeDocument CurrentRuntime { get; }
 
         public ItemPresentationCatalogDocument Presentation { get; }
+
+        // The item files as the workspace last read or wrote them.
+        public ContentDiskState DiskState { get; private set; }
+
+        public void MarkFilesWritten(ContentDiskState diskState)
+        {
+            DiskState = diskState;
+        }
 
         public void ApplyBakedRuntime(ItemCatalogEditorRuntimeDocument runtime)
         {

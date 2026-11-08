@@ -69,8 +69,13 @@ public sealed class RealtimeMobAiTests
         var killer = Assert.Single(harness.GameService.PlayerDeaths).Killer;
         Assert.Equal("mob", killer!.Kind);
         Assert.Equal("mob.feral_wolf", killer.Id);
-        Assert.Contains(Events(client), value => value.Kind == RealtimeCombatEventKind.Died
-            && value.SourceEntityId == wolf.EntityId);
+
+        // A tick sends the owner state before its combat events, so the events may still be on
+        // their way when the death is known.
+        await harness.PollUntilAsync(
+            () => Events(client).Any(value => value.Kind == RealtimeCombatEventKind.Died
+                && value.SourceEntityId == wolf.EntityId),
+            "the death event that names the wolf");
         // With its only target dead the wolf walks home.
         await harness.PollUntilAsync(
             () => States(client).Any(value => value.EntityId == wolf.EntityId

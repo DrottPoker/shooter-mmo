@@ -125,7 +125,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var addition = service.Validate(workspace);
                 Assert.That(addition.Success, Is.True, addition.Message);
                 Assert.That(addition.Changes, Is.EqualTo(new[] { "Added quest: quest.editor_test_hunt" }));
-                service.Save(addition);
+                service.Save(workspace, addition);
 
                 var addedPath = ContentLayout.DefinitionPath(paths.QuestsDirectory, "quest.editor_test_hunt");
                 Assert.That(File.Exists(addedPath), Is.True);
@@ -140,7 +140,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     removal.Changes,
                     Is.EqualTo(new[] { "Removed quest: quest.editor_test_hunt", "Retired quest id: quest.editor_test_hunt" }));
-                service.Save(removal);
+                service.Save(workspace, removal);
 
                 Assert.That(File.Exists(addedPath), Is.False);
                 Assert.That(service.VerifyCanonical().Success, Is.True);
@@ -162,7 +162,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var original = QuestEditorJson.Clone(workspace.Catalog);
                 var hunt = QuestEditorTemplates.Create(QuestEditorTemplates.Kill, "quest.editor_test_hunt", workspace.References);
                 workspace.Catalog.quests = workspace.Catalog.quests.Append(hunt).ToArray();
-                service.Save(service.Validate(workspace));
+                service.Save(workspace, service.Validate(workspace));
 
                 workspace.RestoreContent(QuestEditorJson.Clone(original));
                 var removal = service.Validate(workspace);
@@ -172,7 +172,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     removal.Changes,
                     Is.EqualTo(new[] { "Removed quest: quest.editor_test_hunt", "Retired quest id: quest.editor_test_hunt" }));
                 Assert.That(removal.RetiredQuestIds, Is.EqualTo(new[] { "quest.editor_test_hunt" }));
-                service.Save(removal);
+                service.Save(workspace, removal);
                 Assert.That(
                     QuestEditorContent.Load(content.Paths.QuestsDirectory).retiredQuestIds,
                     Is.EqualTo(new[] { "quest.editor_test_hunt" }));
@@ -182,7 +182,110 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(revival.Success, Is.False);
                 Assert.That(revival.Message, Does.Contain("'quest.editor_test_hunt' is retired"));
-                Assert.That(service.Reconcile(workspace.Catalog).retiredQuestIds, Is.EqualTo(new[] { "quest.editor_test_hunt" }));
+                Assert.That(service.Reconcile(workspace).retiredQuestIds, Is.EqualTo(new[] { "quest.editor_test_hunt" }));
+            }
+        }
+
+        // A quest file that a git pull adds after the load is neither deleted nor retired: the
+        // validation and the save stop until a load reads it.
+        [Test]
+        public void QuestFilesThatChangedOnDiskSinceTheLoadStopTheSave()
+        {
+            using (var content = new FixtureQuestContent())
+            {
+                var service = new QuestEditorService(content.Paths);
+                var workspace = service.Load();
+                var validated = service.Validate(workspace);
+                Assert.That(validated.Success, Is.True, validated.Message);
+                var pulledPath = ContentLayout.DefinitionPath(content.Paths.QuestsDirectory, "quest.pulled_hunt");
+                File.WriteAllText(
+                    pulledPath,
+                    File.ReadAllText(ContentLayout.DefinitionPath(content.Paths.QuestsDirectory, "quest.wolves_at_the_gate"))
+                        .Replace("quest.wolves_at_the_gate", "quest.pulled_hunt"));
+
+                var stopped = service.Validate(workspace);
+
+                Assert.That(stopped.Success, Is.False);
+                Assert.That(stopped.Message, Does.Contain("changed on disk").And.Contain("quests/definitions/quest.pulled_hunt.json"));
+                Assert.Throws<System.InvalidOperationException>(() => service.Save(workspace, validated));
+                Assert.That(File.Exists(pulledPath), Is.True);
+                Assert.That(QuestEditorContent.Load(content.Paths.QuestsDirectory).retiredQuestIds, Is.Empty);
+
+                var reloaded = service.Load();
+                Assert.That(service.Validate(reloaded).Success, Is.True);
+            }
+        }
+
+        // A cycle among requirements names the quest it starts from and its requirements, so
+        // Quest Studio marks that field.
+        [Test]
+        public void ARequirementCycleIsAFindingAboutTheRequirementsOfAQuest()
+        {
+            var workspace = new QuestEditorService(QuestEditorPaths.CreateDefault()).Load();
+            var catalog = QuestEditorJson.Clone(workspace.Catalog);
+            var wolves = catalog.quests.Single(quest => quest.id == "quest.wolves_at_the_gate");
+            wolves.requiredQuestIds = new[] { "quest.pelts_and_fangs" };
+
+            var issues = QuestEditorIssues.Collect(catalog, workspace.References);
+
+            Assert.That(issues, Has.Some.Matches<ContentIssue>(issue =>
+                issue.Field == "requiredQuestIds"
+                && issue.Message.Contains("form a cycle")
+                && (issue.EntityKey == "quest.wolves_at_the_gate" || issue.EntityKey == "quest.pelts_and_fangs")));
+        }
+
+        [Test]
+        public void TheMaximumOfActiveQuestsIsAFindingAboutItsSetting()
+        {
+            var workspace = new QuestEditorService(QuestEditorPaths.CreateDefault()).Load();
+            var catalog = QuestEditorJson.Clone(workspace.Catalog);
+            catalog.maximumActiveQuests = 0;
+
+            var issue = QuestEditorIssues.Collect(catalog, workspace.References).Single();
+
+            Assert.That((issue.EntityKey, issue.Field), Is.EqualTo((string.Empty, QuestEditorIssues.MaximumActiveQuests)));
+        }
+
+        // A changed setting shows also when quests changed, and a committed catalog that cannot
+        // be read, such as one with merge markers, is written again.
+        [Test]
+        public void ASaveListsChangedSettingsAndRepairsAnUnreadableCatalog()
+        {
+            using (var content = new FixtureQuestContent())
+            {
+                var service = new QuestEditorService(content.Paths);
+                var workspace = service.Load();
+                workspace.Catalog.maximumActiveQuests = 20;
+                workspace.Catalog.quests.Single(quest => quest.id == "quest.wolves_at_the_gate").title = "Wolves at the Old Gate";
+
+                var changes = service.Validate(workspace).Changes;
+
+                Assert.That(changes, Is.EqualTo(new[] { "Changed quest: quest.wolves_at_the_gate", "Changed quest catalog settings" }));
+
+                File.WriteAllText(content.Paths.RuntimePath, "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> main\n");
+                var repair = service.Validate(workspace);
+                Assert.That(repair.Success, Is.True, repair.Message);
+                Assert.That(repair.Changes, Is.EqualTo(new[] { "Wrote the committed quest catalog again, which could not be read" }));
+                service.Save(workspace, repair);
+                Assert.That(service.VerifyCanonical().Success, Is.True);
+            }
+        }
+
+        // The quest compiler rejects a field the content model does not know, which the editor's
+        // own load drops, so Verify Canonical names the file.
+        [Test]
+        public void VerifyCanonicalNamesAQuestFileWithAnUnknownField()
+        {
+            using (var content = new FixtureQuestContent())
+            {
+                var path = ContentLayout.DefinitionPath(content.Paths.QuestsDirectory, "quest.wolves_at_the_gate");
+                File.WriteAllText(path, File.ReadAllText(path).Replace("\"title\":", "\"titel\": \"Typo\",\n    \"title\":"));
+                var service = new QuestEditorService(content.Paths);
+
+                Assert.That(service.NonCanonicalFiles(), Is.EqualTo(new[] { "definitions/quest.wolves_at_the_gate.json" }));
+                var verify = service.VerifyCanonical();
+                Assert.That(verify.Success, Is.False);
+                Assert.That(verify.Output, Does.Contain("definitions/quest.wolves_at_the_gate.json"));
             }
         }
 
