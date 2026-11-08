@@ -1,6 +1,8 @@
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
+using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.GameService.Items;
 
@@ -10,7 +12,8 @@ namespace Mmorpg.GameService.Items;
 internal sealed class SimulationQuestMutationService(
     ItemTransactionService transactionService,
     SimulationCharacterStates characterStates,
-    ItemsModuleOptions options)
+    ItemsModuleOptions options,
+    IQuestDefinitions questDefinitions)
 {
     public async Task<ServiceResult<SimulationItemOperationResponse>> ExecuteAsync(
         string authenticatedWorkerId,
@@ -39,9 +42,18 @@ internal sealed class SimulationQuestMutationService(
             || !IsOptionalContentIdentifier(request.QuestNpcActorId)
             || !IsOptionalContentIdentifier(request.ObjectiveId)
             || !IsOptionalContentIdentifier(request.RewardChoiceDefinitionId)
-            || !IsOptionalContentIdentifier(request.MobActorId))
+            || !IsOptionalContentIdentifier(request.MobActorId)
+            || request.MobTags is { Count: > WorldActorCompiler.MaximumTagsPerActor }
+            || request.MobTags?.Any(tag => !Identifiers.IsContentIdentifier(tag)) == true)
         {
             return Invalid("The simulation quest operation is incomplete or invalid.");
+        }
+
+        if (!QuestCatalogFence.Admits(questDefinitions, request.QuestCatalogRevision))
+        {
+            return ServiceResult<SimulationItemOperationResponse>.Conflict(
+                QuestCatalogFence.MismatchCode,
+                QuestCatalogFence.MismatchMessage);
         }
 
         var actor = ItemTransactionActor.ForSimulationWorker(

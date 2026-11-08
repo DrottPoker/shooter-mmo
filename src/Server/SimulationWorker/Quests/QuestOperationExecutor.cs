@@ -2,6 +2,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Quests;
 
@@ -75,7 +76,8 @@ public sealed class QuestOperationExecutor(
     GameServiceClient gameServiceClient,
     CharacterItemStateStore itemStateStore,
     ActiveSimulationSessionStore sessionStore,
-    CharacterQuestLogStore questLogs)
+    CharacterQuestLogStore questLogs,
+    QuestCatalogRuntimeDocument questCatalog)
 {
     private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
 
@@ -97,7 +99,13 @@ public sealed class QuestOperationExecutor(
         long? reloadFrom = null;
         if (questLogs.IsStale(session.CharacterId, session.SimulationSessionId))
         {
-            reloadFrom = await ReadAgainAsync(session, cancellationToken);
+            var reread = await ReadAgainAsync(session, cancellationToken);
+            if (reread.Error is { } error && GameServiceOutcome.EndsItemSession(error.Code))
+            {
+                return QuestOperationOutcome.Rejected(error.Code, error.Message, shouldDisconnect: true);
+            }
+
+            reloadFrom = reread.ReplacedRevision;
             if (reloadFrom is null)
             {
                 return QuestOperationOutcome.Rejected(
@@ -117,6 +125,7 @@ public sealed class QuestOperationExecutor(
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
+            questCatalog.Revision,
             operation.OperationKind,
             operation.QuestId,
             operation.QuestNpcActorId,
@@ -214,7 +223,7 @@ public sealed class QuestOperationExecutor(
             return null;
         }
 
-        var reloadFrom = await ReadAgainAsync(session, cancellationToken);
+        var reloadFrom = (await ReadAgainAsync(session, cancellationToken)).ReplacedRevision;
         return ReloadNotice(session, Guid.Empty, reloadFrom);
     }
 
@@ -241,9 +250,9 @@ public sealed class QuestOperationExecutor(
         return !result.Succeeded && GameServiceOutcome.MayHaveCommitted(result.Error!.Code, result.StatusCode);
     }
 
-    // Replaces a stale log with GameService's and returns the revision it replaced, or null when
-    // GameService could not be read and the log stays stale.
-    private async Task<long?> ReadAgainAsync(ActiveSimulationSession session, CancellationToken cancellationToken)
+    // Replaces a stale log with GameService's and returns the revision it replaced, which is null
+    // when GameService could not be read and the log stays stale, with GameService's error.
+    private async Task<QuestLogReread> ReadAgainAsync(ActiveSimulationSession session, CancellationToken cancellationToken)
     {
         var result = await gameServiceClient.ReadSimulationQuestLogAsync(
             session.SimulationSessionId,
@@ -253,16 +262,23 @@ public sealed class QuestOperationExecutor(
                 session.WorkerId,
                 session.WorkerRuntimeId,
                 session.ShardId,
-                session.SimulationSessionToken),
+                session.SimulationSessionToken,
+                questCatalog.Revision),
             cancellationToken);
-        return result.Succeeded
-            && questLogs.TryReplace(
+        if (!result.Succeeded)
+        {
+            return new QuestLogReread(null, result.Error);
+        }
+
+        return new QuestLogReread(
+            questLogs.TryReplace(
                 session.CharacterId,
                 session.SimulationSessionId,
                 CharacterQuestLog.From(result.Value!),
                 out var replaced)
                 ? replaced
-                : null;
+                : null,
+            null);
     }
 
     private long CurrentRevision(ActiveSimulationSession session)
@@ -279,6 +295,8 @@ public sealed class QuestOperationExecutor(
             ? new RealtimeQuestLogChanged(operationId, previous, current, true, [])
             : null;
     }
+
+    private sealed record QuestLogReread(long? ReplacedRevision, SimulationWorkerErrorResponse? Error);
 
     private static QuestOperationOutcome Diverged()
     {

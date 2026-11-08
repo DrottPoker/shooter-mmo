@@ -1,0 +1,20 @@
+{
+  "ammunition": null,
+  "bag": null,
+  "blockedEquipmentSlots": [ ],
+  "category": "quest_item",
+  "defaultPolicies": [
+    "protected_on_death"
+  ],
+  "displayName": "Fixture Trophy",
+  "equipmentSlots": [ ],
+  "id": "fixture.trophy",
+  "maximumStackSize": 1,
+  "playerDestroyable": false,
+  "requiredCharacterLevel": 1,
+  "tags": [ ],
+  "toolKinds": [ ],
+  "unitWeight": 1,
+  "value": 0,
+  "weapon": null
+}

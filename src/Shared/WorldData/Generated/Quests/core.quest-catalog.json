@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "catalogId": "core",
-  "revision": "e59512805c8dfc004bf8aa9d30646f9f4a90141a8fd34e9efb033e450b639ae0",
+  "revision": "2119ae2e76347a974cd8f55cf1186c5b4ba3f2f1b45073271373d371c66ddc02",
   "maximumActiveQuests": 25,
   "retiredQuestIds": [],
   "quests": [
@@ -48,6 +48,47 @@
       "rewardItems": [],
       "rewardChoiceItems": [],
       "structuralFingerprint": "4603ca70035801525dc1a980735b807f9829cb22fcd8430c8472b7fd66d0b730"
+    },
+    {
+      "id": "quest.ore_for_the_quartermaster",
+      "title": "Ore for the Quartermaster",
+      "giverActorId": "npc.outpost_sergeant",
+      "turnInActorId": "npc.outpost_sergeant",
+      "minimumLevel": 1,
+      "requiredQuestIds": [
+        "quest.sergeants_request"
+      ],
+      "repeatable": false,
+      "tags": [
+        "development"
+      ],
+      "offerText": "The Quartermaster wants to see the ore before she sends her smith out here. Take her three Iron Ore, then come back and tell me what she said.",
+      "progressText": "Has the Quartermaster seen the ore yet?",
+      "completionText": "She liked it? Then the smith is on his way. Good work.",
+      "startItems": [],
+      "steps": [
+        {
+          "id": "deliver",
+          "objectives": [
+            {
+              "id": "iron_ore",
+              "kind": "deliver",
+              "text": "Iron Ore handed to the Quartermaster",
+              "count": 3,
+              "actorIds": [],
+              "actorTag": "",
+              "itemId": "material.iron_ore",
+              "npcActorId": "npc.city_services",
+              "line": "",
+              "dropSources": []
+            }
+          ]
+        }
+      ],
+      "rewardGold": 15,
+      "rewardItems": [],
+      "rewardChoiceItems": [],
+      "structuralFingerprint": "efa8b408fa0c0f5b8c6e0d8e7fdcc24832b5e1a2c91dde2f708797249b1497c5"
     },
     {
       "id": "quest.pelts_and_fangs",

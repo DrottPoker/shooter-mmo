@@ -62,14 +62,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 },
                 completedQuests = Array.Empty<CompletedQuestResponse>()
             }, out var error), Is.True, error);
-            tracker.Refresh(state, id => id == "fixture.letter" ? 1 : 0);
+            tracker.Refresh(state, id => id == "fixture.trophy" ? 1 : 0);
 
             Assert.That(tracker.Panel.gameObject.activeSelf, Is.True);
             var lines = tracker.Text.Split('\n').Select(Plain).ToArray();
             Assert.That(lines, Is.EqualTo(new[]
             {
                 "Fixture Trophies",
-                "  Stolen letters 1/2",
+                "  Stolen trophies 1/2",
                 "Fixture Wolves",
                 "  Ready to turn in"
             }));

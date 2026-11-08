@@ -172,6 +172,99 @@ public sealed class QuestCatalogCompilerTests
         Assert.Contains(errors, error => error.Contains("dropSources may only drop protected quest items", StringComparison.Ordinal));
     }
 
+    // What a quest counts must be able to count, and what it asks to kill must be able to die.
+    [Fact]
+    public void CountedItemsMustCountAndKillTargetsMustBeAbleToDie()
+    {
+        var items = ItemCatalogTestData.Compile();
+        items.Definitions.Single(definition => definition.Id == "armor.leather_gloves").DefaultPolicies = [ItemPolicyIds.Insured];
+        items.Definitions.Single(definition => definition.Id == "quest_item.sealed_letter").EquipmentSlots = [ItemEquipmentSlotIds.MainHand];
+        items.Definitions.Single(definition => definition.Id == "quest_item.wolf_fang").EquipmentSlots = [ItemEquipmentSlotIds.MainHand];
+        var insuredCollect = KillQuest("quest.insured_collect");
+        insuredCollect.Steps[0].Objectives = [Objective("gloves", QuestObjectiveKindIds.Collect, 1, itemId: "armor.leather_gloves")];
+        var insuredDelivery = KillQuest("quest.insured_delivery");
+        insuredDelivery.Steps =
+        [
+            Step("hand", Objective("gloves", QuestObjectiveKindIds.Deliver, 1, itemId: "armor.leather_gloves", npcActorId: "npc.outpost_sergeant"))
+        ];
+        var equippableStart = KillQuest("quest.equippable_start");
+        equippableStart.StartItems = [Item("quest_item.sealed_letter", 1)];
+        equippableStart.Steps[0].Objectives = [Objective("letter", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter")];
+        var equippableDrop = KillQuest("quest.equippable_drop");
+        equippableDrop.Steps[0].Objectives =
+        [
+            Objective("fangs", QuestObjectiveKindIds.Collect, 2, itemId: "quest_item.wolf_fang", dropSources: [Drop("mob.feral_wolf", 5000)])
+        ];
+        var world = WorldActorTestData.Compile();
+        foreach (var mob in world.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob))
+        {
+            mob.DamagePolicy = WorldActorDamagePolicyIds.Invulnerable;
+        }
+
+        var immortalTarget = KillQuest("quest.immortal_target");
+        var immortalTag = KillQuest("quest.immortal_tag");
+        immortalTag.Steps[0].Objectives[0].ActorIds = [];
+        immortalTag.Steps[0].Objectives[0].ActorTag = "wild";
+        var immortalDrop = KillQuest("quest.immortal_drop");
+        immortalDrop.Steps[0].Objectives =
+        [
+            Objective("fangs", QuestObjectiveKindIds.Collect, 2, itemId: "quest_item.wolf_fang", dropSources: [Drop("mob.feral_wolf", 5000)])
+        ];
+
+        var itemErrors = Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.Compile(
+            Catalog(insuredCollect, insuredDelivery, equippableStart, equippableDrop),
+            items,
+            [World.Value])).Errors;
+        var mobErrors = Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.Compile(
+            Catalog(immortalTarget, immortalTag, immortalDrop),
+            Items.Value,
+            [world])).Errors;
+
+        Assert.Contains(itemErrors, error => error.StartsWith("quests[0].steps[0].objectives[0].itemId 'armor.leather_gloves' has default policies", StringComparison.Ordinal));
+        Assert.Contains(itemErrors, error => error.StartsWith("quests[1].steps[0].objectives[0].itemId 'armor.leather_gloves' has default policies", StringComparison.Ordinal));
+        Assert.Contains(itemErrors, error => error.Contains("quests[2].startItems[0].definitionId 'quest_item.sealed_letter' must be a protected quest item that cannot be equipped", StringComparison.Ordinal));
+        Assert.Contains(itemErrors, error => error.StartsWith("quests[3].steps[0].objectives[0].dropSources may only drop protected quest items that cannot be equipped", StringComparison.Ordinal));
+        Assert.Contains(mobErrors, error => error.StartsWith("quests[0].steps[0].objectives[0].actorIds[0] names 'mob.feral_wolf', which is invulnerable", StringComparison.Ordinal));
+        Assert.Contains(mobErrors, error => error.Contains("'wild' is carried by no Mob that a World places and that can die", StringComparison.Ordinal));
+        Assert.Contains(mobErrors, error => error.StartsWith("quests[2].steps[0].objectives[0].dropSources[0].actorId names 'mob.feral_wolf', which is invulnerable", StringComparison.Ordinal));
+    }
+
+    // A quest item's stacks carry one quest's lineage, so two quests never share a quest item.
+    [Fact]
+    public void AQuestItemBelongsToOneQuest()
+    {
+        var first = KillQuest("quest.first");
+        first.StartItems = [Item("quest_item.sealed_letter", 1)];
+        first.Steps[0].Objectives = [Objective("letter", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter")];
+        var second = KillQuest("quest.second");
+        second.Steps[0].Objectives =
+        [
+            Objective("letters", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter", dropSources: [Drop("mob.feral_wolf", 5000)])
+        ];
+        var ordinary = KillQuest("quest.third");
+        ordinary.Steps[0].Objectives = [Objective("pelts", QuestObjectiveKindIds.Collect, 2, itemId: "material.wolf_pelt")];
+        var alsoOrdinary = KillQuest("quest.fourth");
+        alsoOrdinary.Steps[0].Objectives = [Objective("pelts", QuestObjectiveKindIds.Collect, 3, itemId: "material.wolf_pelt")];
+
+        var errors = Assert.Throws<QuestValidationException>(() => Compile(first, second, ordinary, alsoOrdinary)).Errors;
+
+        Assert.Equal(
+            ["quests[1] names quest item 'quest_item.sealed_letter', which belongs to quest 'quest.first'. A quest item belongs to one quest."],
+            errors);
+    }
+
+    [Fact]
+    public void QuestTextsAreOneParagraphWithoutLineSeparators()
+    {
+        var lineSeparator = KillQuest();
+        lineSeparator.OfferText = "First line.\u2028Second line.";
+        var paragraphSeparator = KillQuest();
+        paragraphSeparator.CompletionText = "First paragraph.\u2029Second paragraph.";
+
+        Assert.Contains(Errors(lineSeparator), error => error.StartsWith("quests[0].offerText must be one trimmed line", StringComparison.Ordinal));
+        Assert.Contains(Errors(paragraphSeparator), error => error.StartsWith("quests[0].completionText must be one trimmed line", StringComparison.Ordinal));
+    }
+
     // Collect objectives count the same carried items, and every quest item that the quest
     // takes must come from its start items or its drops.
     [Fact]
@@ -368,6 +461,67 @@ public sealed class QuestCatalogCompilerTests
         Assert.Contains(
             Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(duplicate)).Errors,
             error => error.Contains("duplicate quest 'quest.first'", StringComparison.Ordinal));
+    }
+
+    // The services and the client use a loaded catalog's values without checking them again, so
+    // the runtime validation checks them before the hashes.
+    [Fact]
+    public void ARuntimeCatalogWithValuesOutsideTheContentRulesFailsItsValidation()
+    {
+        var negativeGold = Compile(KillQuest());
+        negativeGold.Quests[0].RewardGold = -1;
+        var emptyReward = Compile(KillQuest());
+        emptyReward.Quests[0].RewardItems = [new QuestItemQuantityDefinition { DefinitionId = "weapon.iron_sword", Quantity = 0 }];
+        var killWithItem = Compile(KillQuest());
+        killWithItem.Quests[0].Steps[0].Objectives[0].ItemId = "material.wolf_pelt";
+        var collectWithoutItem = Compile(KillQuest());
+        collectWithoutItem.Quests[0].Steps[0].Objectives[0] = new QuestObjectiveDefinition
+        {
+            Id = "pelts",
+            Kind = QuestObjectiveKindIds.Collect,
+            Text = "Pelts",
+            Count = 2,
+            ActorIds = [],
+            ActorTag = string.Empty,
+            ItemId = string.Empty,
+            NpcActorId = string.Empty,
+            Line = string.Empty,
+            DropSources = []
+        };
+
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(negativeGold)).Errors,
+            error => error.Contains("a Gold reward out of range", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(emptyReward)).Errors,
+            error => error.Contains("an item without an id or a quantity", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(killWithItem)).Errors,
+            error => error.Contains("objective wolves lacks a text or a field", StringComparison.Ordinal));
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(collectWithoutItem)).Errors,
+            error => error.Contains("objective pelts lacks a text or a field", StringComparison.Ordinal));
+    }
+
+    // A loaded quest catalog names items of the item catalog that a service loads, in the form the
+    // quest needs them.
+    [Fact]
+    public void TheQuestItemReferencesMustMatchTheLoadedItemCatalog()
+    {
+        var quest = KillQuest();
+        quest.StartItems = [Item("quest_item.sealed_letter", 1)];
+        quest.Steps[0].Objectives = [Objective("letter", QuestObjectiveKindIds.Collect, 1, itemId: "quest_item.sealed_letter")];
+        quest.RewardItems = [Item("weapon.iron_sword", 1)];
+        var runtime = Compile(quest);
+        var items = ItemCatalogTestData.Compile();
+        items.Definitions.Single(definition => definition.Id == "quest_item.sealed_letter").EquipmentSlots = [ItemEquipmentSlotIds.MainHand];
+        items.Definitions = items.Definitions.Where(definition => definition.Id != "weapon.iron_sword").ToArray();
+
+        QuestItemReferences.Validate(runtime.Quests, Items.Value);
+        var errors = Assert.Throws<QuestValidationException>(() => QuestItemReferences.Validate(runtime.Quests, items)).Errors;
+
+        Assert.Contains(errors, error => error == "quest quest.test_wolves start item 'quest_item.sealed_letter' is the wrong kind of item or more than one stack.");
+        Assert.Contains(errors, error => error == "quest quest.test_wolves reward names unknown item definition 'weapon.iron_sword'.");
     }
 
     // The catalog size bounds every list of a character's quests, such as a reset of all of them.

@@ -146,7 +146,8 @@ public sealed class GameServiceClientTests
             "local-simulation-worker-1",
             "runtime-1",
             "local-shard-1",
-            "simulation-session-token");
+            "simulation-session-token",
+            new string('c', 64));
         var wolves = new
         {
             questId = "quest.wolves",
@@ -182,6 +183,7 @@ public sealed class GameServiceClientTests
         using var body = JsonDocument.Parse(request.Body);
         Assert.Equal(characterId, body.RootElement.GetProperty("characterId").GetGuid());
         Assert.Equal("simulation-session-token", body.RootElement.GetProperty("sessionToken").GetString());
+        Assert.Equal(new string('c', 64), body.RootElement.GetProperty("questCatalogRevision").GetString());
         Assert.False(rejected.Succeeded);
         Assert.Equal("invalid_auth_response", rejected.Error!.Code);
     }
@@ -205,6 +207,7 @@ public sealed class GameServiceClientTests
             "runtime-1",
             "local-shard-1",
             "simulation-session-token",
+            new string('c', 64),
             "mob.feral_wolf",
             [new("quest.trophies", "quest_item.letter", 2), new("quest.trophies", "quest_item.seal", 1)]);
         object[] drops = variant switch
@@ -247,6 +250,7 @@ public sealed class GameServiceClientTests
             "runtime-1",
             "local-shard-1",
             "simulation-session-token",
+            new string('c', 64),
             "talk_to_quest_npc",
             "quest.wolves",
             "npc.city_services",

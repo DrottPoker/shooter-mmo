@@ -12,14 +12,16 @@ using Npgsql;
 namespace Mmorpg.GameService.Quests;
 
 // The worker's read of a live character's quest log when the character joins its Shard. The
-// credentials must name the active simulation session, as for every other worker read.
+// credentials must name the active simulation session, as for every other worker read, and the
+// worker names the revision of the quest catalog it runs.
 internal sealed record SimulationQuestLogRequest(
     Guid AccountId,
     Guid CharacterId,
     string? WorkerId,
     string? WorkerRuntimeId,
     string? ShardId,
-    string? SessionToken);
+    string? SessionToken,
+    string? QuestCatalogRevision = null);
 
 internal sealed class SimulationQuestLogService(
     NpgsqlDataSource dataSource,
@@ -57,6 +59,13 @@ internal sealed class SimulationQuestLogService(
             return ServiceResult<CharacterQuestLogResponse>.BadRequest(
                 "invalid_simulation_session_request",
                 "The quest log request is incomplete or invalid.");
+        }
+
+        if (!QuestCatalogFence.Admits(questDefinitions, request.QuestCatalogRevision))
+        {
+            return ServiceResult<CharacterQuestLogResponse>.Conflict(
+                QuestCatalogFence.MismatchCode,
+                QuestCatalogFence.MismatchMessage);
         }
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

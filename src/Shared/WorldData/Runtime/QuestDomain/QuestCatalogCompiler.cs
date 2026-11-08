@@ -56,6 +56,7 @@ namespace Mmorpg.WorldData.Quests
             }
 
             ValidateRequirementCycles(quests, errors);
+            ValidateQuestItemOwners(quests, references, errors);
             if (errors.Count > 0)
             {
                 throw new QuestValidationException(errors);
@@ -179,12 +180,86 @@ namespace Mmorpg.WorldData.Quests
                 {
                     errors.Add(path + " is missing a list or a list entry.");
                 }
-                else if (quest.RequiredQuestIds.Any(required => required == null || !ids.Contains(required)))
+                else
                 {
-                    errors.Add(path + " requires a quest that the catalog does not hold.");
+                    if (quest.RequiredQuestIds.Any(required => required == null || !ids.Contains(required)))
+                    {
+                        errors.Add(path + " requires a quest that the catalog does not hold.");
+                    }
+
+                    ValidateRuntimeValues(quest, path, errors);
                 }
 
                 ValidateRuntimeSteps(quest, path, errors);
+            }
+        }
+
+        // The values the services and the client use without checking them again: texts, the
+        // NPCs, the level, the Gold, and every item quantity within the content limits.
+        private static void ValidateRuntimeValues(QuestDefinition quest, string path, List<string> errors)
+        {
+            if (string.IsNullOrEmpty(quest.Title)
+                || string.IsNullOrEmpty(quest.OfferText)
+                || string.IsNullOrEmpty(quest.ProgressText)
+                || string.IsNullOrEmpty(quest.CompletionText)
+                || !IsIdentifier(quest.GiverActorId)
+                || !IsIdentifier(quest.TurnInActorId)
+                || quest.MinimumLevel < 1
+                || quest.RewardGold < 0
+                || quest.RewardGold > QuestContentRules.MaximumRewardGold)
+            {
+                errors.Add(path + " has an empty text, an invalid NPC, a level below 1, or a Gold reward out of range.");
+            }
+
+            if (quest.StartItems.Length > QuestContentRules.MaximumStartItems
+                || quest.RewardItems.Length > QuestContentRules.MaximumRewardItems
+                || quest.RewardChoiceItems.Length > QuestContentRules.MaximumRewardChoices
+                || (quest.RewardChoiceItems.Length > 0 && quest.RewardChoiceItems.Length < QuestContentRules.MinimumRewardChoices)
+                || quest.StartItems.Concat(quest.RewardItems).Concat(quest.RewardChoiceItems)
+                    .Any(item => !IsIdentifier(item.DefinitionId) || item.Quantity < 1))
+            {
+                errors.Add(path + " holds too many items, a reward choice of one, or an item without an id or a quantity.");
+            }
+        }
+
+        // The fields each objective kind uses, which the services read without checking again.
+        private static bool HasRuntimeKindFields(QuestObjectiveDefinition objective)
+        {
+            if (string.IsNullOrEmpty(objective.Text)
+                || objective.ActorTag == null
+                || objective.ItemId == null
+                || objective.NpcActorId == null
+                || objective.Line == null
+                || objective.ActorIds.Any(actorId => !IsIdentifier(actorId))
+                || (objective.DropSources.Length > 0 && objective.Kind != QuestObjectiveKindIds.Collect)
+                || objective.DropSources.Any(source =>
+                    !IsIdentifier(source.ActorId)
+                    || source.ChanceBasisPoints < 1
+                    || source.ChanceBasisPoints > QuestContentRules.MaximumDropChanceBasisPoints
+                    || source.Quantity < 1))
+            {
+                return false;
+            }
+
+            var actors = objective.ActorIds.Length > 0;
+            var tag = objective.ActorTag.Length > 0;
+            var item = objective.ItemId.Length > 0;
+            var npc = objective.NpcActorId.Length > 0;
+            var line = objective.Line.Length > 0;
+            switch (objective.Kind)
+            {
+                case QuestObjectiveKindIds.Kill:
+                    return actors != tag && !item && !npc && !line;
+                case QuestObjectiveKindIds.Gather:
+                    return actors && !tag && !item && !npc && !line;
+                case QuestObjectiveKindIds.Collect:
+                    return IsIdentifier(objective.ItemId) && !actors && !tag && !npc && !line;
+                case QuestObjectiveKindIds.Deliver:
+                    return IsIdentifier(objective.ItemId) && IsIdentifier(objective.NpcActorId) && !actors && !tag && !line;
+                case QuestObjectiveKindIds.TalkTo:
+                    return IsIdentifier(objective.NpcActorId) && line && objective.Count == 1 && !actors && !tag && !item;
+                default:
+                    return false;
             }
         }
 
@@ -224,6 +299,10 @@ namespace Mmorpg.WorldData.Quests
                         || objective.DropSources.Any(source => source == null))
                     {
                         errors.Add(path + " step " + step.Id + " holds an objective without a unique id, a known kind, a valid count, or its lists.");
+                    }
+                    else if (!HasRuntimeKindFields(objective))
+                    {
+                        errors.Add(path + " objective " + objective.Id + " lacks a text or a field that its kind needs, or has one its kind does not use.");
                     }
                 }
             }
@@ -550,9 +629,8 @@ namespace Mmorpg.WorldData.Quests
                 references.ValidateMobTag(objective.ActorTag, path + ".actorTag", errors);
             }
 
-            ValidateActorIds(actorIds, path, errors, (actorId, actorPath) => references.ValidatePlacedActor(
+            ValidateActorIds(actorIds, path, errors, (actorId, actorPath) => references.ValidateKillableMob(
                 actorId,
-                WorldActorKindIds.Mob,
                 actorPath,
                 errors));
             RequireEmpty(objective.ItemId, path + ".itemId", errors);
@@ -579,19 +657,34 @@ namespace Mmorpg.WorldData.Quests
             RequireNoActors(actorIds, objective.ActorTag, path, errors);
             RequireEmpty(objective.NpcActorId, path + ".npcActorId", errors);
             RequireEmpty(objective.Line, path + ".line", errors);
+            ValidateCountedItem(item, path, errors);
             if (item == null || dropSources.Length == 0)
             {
                 return;
             }
 
-            // A quest drop is looted with the quest's lineage, which only a protected quest item keeps.
-            if (!QuestReferences.IsProtectedQuestItem(item))
+            // A quest drop is looted with the quest's lineage, which only a protected quest item keeps,
+            // and never into equipment, which counts for no collect objective.
+            if (!QuestReferences.IsProtectedQuestItem(item) || QuestReferences.IsEquippable(item))
             {
-                errors.Add(path + ".dropSources may only drop protected quest items.");
+                errors.Add(path + ".dropSources may only drop protected quest items that cannot be equipped.");
                 return;
             }
 
             ValidateDropSources(dropSources, item, path, references, errors);
+        }
+
+        // Collect and deliver objectives count a quest item with the quest's lineage and an
+        // ordinary item without an active policy. An ordinary item with default policies always
+        // carries one, so it would never count.
+        private static void ValidateCountedItem(ItemDefinition item, string path, List<string> errors)
+        {
+            if (item != null
+                && !QuestReferences.IsQuestItem(item)
+                && (item.DefaultPolicies ?? Array.Empty<string>()).Length > 0)
+            {
+                errors.Add(path + ".itemId '" + item.Id + "' has default policies, so it would never count.");
+            }
         }
 
         private static void ValidateDeliver(
@@ -604,7 +697,7 @@ namespace Mmorpg.WorldData.Quests
             QuestReferences references,
             List<string> errors)
         {
-            references.ValidateItem(objective.ItemId, path + ".itemId", errors);
+            ValidateCountedItem(references.ValidateItem(objective.ItemId, path + ".itemId", errors), path, errors);
             references.ValidateQuestNpc(objective.NpcActorId, path + ".npcActorId", errors);
             if (lastStep && string.Equals(objective.NpcActorId, quest.TurnInActorId, StringComparison.Ordinal))
             {
@@ -781,7 +874,7 @@ namespace Mmorpg.WorldData.Quests
                     continue;
                 }
 
-                references.ValidatePlacedActor(source.ActorId, WorldActorKindIds.Mob, sourcePath + ".actorId", errors);
+                references.ValidateKillableMob(source.ActorId, sourcePath + ".actorId", errors);
                 if (source.ActorId != null && !seen.Add(source.ActorId))
                 {
                     errors.Add(path + ".dropSources contains duplicate id '" + source.ActorId + "'.");
@@ -920,6 +1013,44 @@ namespace Mmorpg.WorldData.Quests
 
                 state[id] = 2;
                 trail.RemoveAt(trail.Count - 1);
+            }
+        }
+
+        // A quest item belongs to one quest: its stacks carry that quest's lineage, so they never
+        // merge with another quest's, and the client, which sees only that an item is a quest
+        // grant, counts exactly what GameService counts.
+        private static void ValidateQuestItemOwners(
+            QuestAuthoringEntry[] quests,
+            QuestReferences references,
+            List<string> errors)
+        {
+            var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (var index = 0; index < quests.Length; index++)
+            {
+                var quest = quests[index];
+                if (quest?.Id == null)
+                {
+                    continue;
+                }
+
+                var named = (quest.StartItems ?? Array.Empty<QuestItemQuantityAuthoringEntry>())
+                    .Select(item => item?.DefinitionId)
+                    .Concat(EnumerateObjectives(quest, Path(index)).Select(entry => entry.Objective.ItemId))
+                    .Where(itemId => references.IsQuestItem(itemId))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(id => id, StringComparer.Ordinal);
+                foreach (var itemId in named)
+                {
+                    if (owners.TryGetValue(itemId, out var owner))
+                    {
+                        errors.Add(Path(index) + " names quest item '" + itemId + "', which belongs to quest '" + owner
+                            + "'. A quest item belongs to one quest.");
+                    }
+                    else
+                    {
+                        owners.Add(itemId, quest.Id);
+                    }
+                }
             }
         }
 
@@ -1076,10 +1207,23 @@ namespace Mmorpg.WorldData.Quests
 
             if (!string.Equals(value, value.Trim(), StringComparison.Ordinal)
                 || value.Length > maximumLength
-                || value.Any(char.IsControl))
+                || value.Any(BreaksLine))
             {
                 errors.Add(path + " must be one trimmed line of at most " + maximumLength + " characters.");
             }
+        }
+
+        // Control characters and the Unicode line and paragraph separators, which would break the
+        // one paragraph that every quest text is.
+        private static bool BreaksLine(char value)
+        {
+            if (char.IsControl(value))
+            {
+                return true;
+            }
+
+            var category = char.GetUnicodeCategory(value);
+            return category == UnicodeCategory.LineSeparator || category == UnicodeCategory.ParagraphSeparator;
         }
 
         private static void ValidateIdentifierSet(string[] values, int maximum, string path, List<string> errors)
@@ -1194,6 +1338,11 @@ namespace Mmorpg.WorldData.Quests
                     && (item.DefaultPolicies ?? Array.Empty<string>()).Contains(ItemPolicyIds.ProtectedOnDeath);
             }
 
+            public static bool IsEquippable(ItemDefinition item)
+            {
+                return (item.EquipmentSlots ?? Array.Empty<string>()).Length > 0;
+            }
+
             // False for a missing item, which the objective already reports.
             public bool IsQuestItem(string definitionId)
             {
@@ -1242,6 +1391,17 @@ namespace Mmorpg.WorldData.Quests
                 RequirePlaced(actorId, path, errors);
             }
 
+            // A Mob that a quest asks to kill, or that drops for it, can die.
+            public void ValidateKillableMob(string actorId, string path, List<string> errors)
+            {
+                var before = errors.Count;
+                ValidatePlacedActor(actorId, WorldActorKindIds.Mob, path, errors);
+                if (errors.Count == before && !IsDamageable(actors[actorId]))
+                {
+                    errors.Add(path + " names '" + actorId + "', which is invulnerable, so it could never die.");
+                }
+            }
+
             public void ValidateMobTag(string tag, string path, List<string> errors)
             {
                 if (!IsIdentifier(tag))
@@ -1252,11 +1412,17 @@ namespace Mmorpg.WorldData.Quests
 
                 if (!actors.Values.Any(actor =>
                         string.Equals(actor.Kind, WorldActorKindIds.Mob, StringComparison.Ordinal)
+                        && IsDamageable(actor)
                         && placedActorIds.Contains(actor.Id)
                         && (actor.Tags ?? Array.Empty<string>()).Contains(tag)))
                 {
-                    errors.Add(path + " '" + tag + "' is carried by no Mob that a World places.");
+                    errors.Add(path + " '" + tag + "' is carried by no Mob that a World places and that can die.");
                 }
+            }
+
+            private static bool IsDamageable(WorldActorDefinition actor)
+            {
+                return !string.Equals(actor.DamagePolicy, WorldActorDamagePolicyIds.Invulnerable, StringComparison.Ordinal);
             }
 
             public ItemDefinition ValidateItem(string definitionId, string path, List<string> errors)
@@ -1270,7 +1436,8 @@ namespace Mmorpg.WorldData.Quests
                 return item;
             }
 
-            // A start item is a protected quest item that the quest's abandonment removes again.
+            // A start item is a protected quest item that the quest's abandonment removes again. It
+            // cannot be equipped, because equipment counts for no collect objective.
             public void ValidateQuestItem(QuestItemQuantityAuthoringEntry entry, string path, List<string> errors)
             {
                 var item = ValidateItem(entry.DefinitionId, path + ".definitionId", errors);
@@ -1279,9 +1446,9 @@ namespace Mmorpg.WorldData.Quests
                     return;
                 }
 
-                if (!IsProtectedQuestItem(item))
+                if (!IsProtectedQuestItem(item) || IsEquippable(item))
                 {
-                    errors.Add(path + ".definitionId '" + item.Id + "' must be a protected quest item.");
+                    errors.Add(path + ".definitionId '" + item.Id + "' must be a protected quest item that cannot be equipped.");
                 }
 
                 ValidateQuantity(entry, item, path, errors);

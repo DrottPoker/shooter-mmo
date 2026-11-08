@@ -28,6 +28,46 @@ public sealed class QuestRulesTests
         Assert.Equal(QuestAvailability.BelowMinimumLevel, Evaluate(quest, level: 1, completed: ["quest.first"], activeCount: 25));
     }
 
+    // A delivery hands over what its objective still lacks, so a count raised after a part was
+    // handed over asks only for the rest.
+    [Fact]
+    public void ADeliveryHandsOverOnlyWhatItsObjectiveStillLacks()
+    {
+        var objective = Objective("letters", 5);
+
+        Assert.Equal(5, QuestRules.RemainingDeliveryQuantity(objective, 0));
+        Assert.Equal(2, QuestRules.RemainingDeliveryQuantity(objective, 3));
+        Assert.Equal(0, QuestRules.RemainingDeliveryQuantity(objective, 7));
+    }
+
+    // The giver grants a start item again only for what the quest still needs after its
+    // deliveries took their part, and never what the character still owns.
+    [Fact]
+    public void AStartItemIsGrantedAgainOnlyForWhatTheDeliveriesHaveNotTaken()
+    {
+        var quest = Quest(steps:
+        [
+            new QuestStepDefinition { Id = "show", Objectives = [Deliver("show", "quest_item.letter", 1)] },
+            new QuestStepDefinition
+            {
+                Id = "send",
+                Objectives = [Deliver("send", "quest_item.letter", 2), Deliver("pelts", "material.wolf_pelt", 3)]
+            }
+        ]);
+        quest.StartItems = [new QuestItemQuantityDefinition { DefinitionId = "quest_item.letter", Quantity = 4 }];
+        var progress = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        Assert.Equal(0, QuestRules.DeliveredQuantity(quest, 0, id => progress.GetValueOrDefault(id), "quest_item.letter"));
+        Assert.Equal(1, QuestRules.DeliveredQuantity(quest, 1, id => progress.GetValueOrDefault(id), "quest_item.letter"));
+        progress["send"] = 2;
+        Assert.Equal(3, QuestRules.DeliveredQuantity(quest, 1, id => progress.GetValueOrDefault(id), "quest_item.letter"));
+        Assert.Equal(0, QuestRules.DeliveredQuantity(quest, 1, id => progress.GetValueOrDefault(id), "material.ore"));
+
+        Assert.Equal(1, QuestRules.MissingStartItemQuantity(quest, quest.StartItems[0], 1, id => progress.GetValueOrDefault(id), 0));
+        Assert.Equal(0, QuestRules.MissingStartItemQuantity(quest, quest.StartItems[0], 1, id => progress.GetValueOrDefault(id), 1));
+        Assert.Equal(4, QuestRules.MissingStartItemQuantity(quest, quest.StartItems[0], 0, id => progress.GetValueOrDefault(id), 0));
+    }
+
     [Fact]
     public void ARepeatableQuestIsAvailableAgainAfterItsTurnIn()
     {
@@ -166,5 +206,17 @@ public sealed class QuestRulesTests
     private static QuestObjectiveDefinition Objective(string id, int count)
     {
         return new QuestObjectiveDefinition { Id = id, Kind = QuestObjectiveKindIds.Kill, Count = count };
+    }
+
+    private static QuestObjectiveDefinition Deliver(string id, string itemId, int count)
+    {
+        return new QuestObjectiveDefinition
+        {
+            Id = id,
+            Kind = QuestObjectiveKindIds.Deliver,
+            Count = count,
+            ItemId = itemId,
+            NpcActorId = "npc.city_guard"
+        };
     }
 }

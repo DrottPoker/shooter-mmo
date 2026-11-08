@@ -118,6 +118,73 @@ public sealed class QuestCatalogSeederIntegrationTests
         Assert.Contains("Retired quest id 'quest.fixture.legacy' cannot be reused", reused.Message, StringComparison.Ordinal);
     }
 
+    // Only new progress moves a quest on, so the start moves a quest whose step a lowered count
+    // completes, which no later kill or talk would do.
+    [PostgresIntegrationFact]
+    public async Task ALoweredCountMovesAQuestPastTheStepItCompletes()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var questLog = context.Services.GetRequiredService<ICharacterQuestLog>();
+        var characterId = await AcceptErrandAsync(context, questLog, ore: 1);
+        var revisionBefore = (await QuestLogTestDatabase.ReadAsync(context, questLog, characterId)).Revision;
+        var catalog = FixtureCatalog();
+        Objective(catalog, "quest.fixture.errand", "ore").Count = 1;
+        catalog.Revision = new string('c', 64);
+
+        await SeedAsync(context, catalog);
+
+        var state = await QuestLogTestDatabase.ReadAsync(context, questLog, characterId);
+        var errand = Assert.Single(state.ActiveQuests);
+        Assert.Equal("return", errand.StepId);
+        Assert.Empty(errand.Progress);
+        Assert.True(state.Revision > revisionBefore);
+    }
+
+    [PostgresIntegrationFact]
+    public async Task AStepThatTheChangedCatalogLeavesOpenKeepsItsProgress()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var questLog = context.Services.GetRequiredService<ICharacterQuestLog>();
+        var characterId = await AcceptErrandAsync(context, questLog, ore: 1);
+        var before = await QuestLogTestDatabase.ReadAsync(context, questLog, characterId);
+        var catalog = FixtureCatalog();
+        Objective(catalog, "quest.fixture.errand", "report").Text = "Report the mining to the Quartermaster";
+        catalog.Revision = new string('c', 64);
+
+        await SeedAsync(context, catalog);
+
+        var state = await QuestLogTestDatabase.ReadAsync(context, questLog, characterId);
+        var errand = Assert.Single(state.ActiveQuests);
+        Assert.Equal("work", errand.StepId);
+        Assert.Equal(1, errand.Progress["ore"]);
+        Assert.Equal(before.Revision, state.Revision);
+    }
+
+    private static async Task<Guid> AcceptErrandAsync(
+        PostgresIntegrationTestContext context,
+        ICharacterQuestLog questLog,
+        int ore)
+    {
+        var characterId = (await context.RegisterPlayerAsync()).Character.Id;
+        await QuestLogTestDatabase.WriteAsync(context, scope => questLog.AcceptAsync(
+            scope, characterId, "quest.fixture.errand", "work", ["ore", "hand_over", "report"], None));
+        await QuestLogTestDatabase.WriteAsync(context, scope => questLog.SetProgressAsync(
+            scope,
+            characterId,
+            "quest.fixture.errand",
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["ore"] = ore, ["hand_over"] = 1, ["report"] = 1 },
+            None));
+        return characterId;
+    }
+
+    private static QuestObjectiveDefinition Objective(
+        QuestCatalogRuntimeDocument catalog,
+        string questId,
+        string objectiveId)
+    {
+        return Quest(catalog, questId).Steps.SelectMany(step => step.Objectives).Single(objective => objective.Id == objectiveId);
+    }
+
     private static QuestCatalogRuntimeDocument FixtureCatalog()
     {
         return QuestCatalogFileLoader.Load(RepositoryPaths.QuestCatalogFixtureRuntimePath);
@@ -134,6 +201,7 @@ public sealed class QuestCatalogSeederIntegrationTests
         return new QuestCatalogSeeder(
             context.DataSource,
             new QuestDefinitions(catalog),
+            new CharacterQuestLog(),
             NullLogger<QuestCatalogSeeder>.Instance).SeedAsync(None);
     }
 

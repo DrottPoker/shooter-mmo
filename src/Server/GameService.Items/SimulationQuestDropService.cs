@@ -14,7 +14,8 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-// The quest drops that a dying Mob rolled for one credited character of a live corpse.
+// The quest drops that a dying Mob rolled for one credited character of a live corpse, with the
+// revision of the quest catalog the worker rolled them by.
 internal sealed record SimulationQuestDropRequest(
     Guid AccountId,
     Guid CharacterId,
@@ -23,7 +24,8 @@ internal sealed record SimulationQuestDropRequest(
     string? ShardId,
     string? SessionToken,
     string? SourceActorDefinitionId,
-    IReadOnlyList<SimulationQuestDrop>? Drops);
+    IReadOnlyList<SimulationQuestDrop>? Drops,
+    string? QuestCatalogRevision = null);
 
 internal sealed record SimulationQuestDrop(string? QuestId, string? DefinitionId, int Quantity);
 
@@ -68,6 +70,13 @@ internal sealed class SimulationQuestDropService(
             return ServiceResult<SimulationQuestDropResponse>.BadRequest(
                 ItemApiErrorCodes.SimulationOperationInvalid,
                 "The quest drop request is incomplete or invalid.");
+        }
+
+        if (!QuestCatalogFence.Admits(questDefinitions, request.QuestCatalogRevision))
+        {
+            return ServiceResult<SimulationQuestDropResponse>.Conflict(
+                QuestCatalogFence.MismatchCode,
+                QuestCatalogFence.MismatchMessage);
         }
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

@@ -51,7 +51,8 @@ public sealed class MobCorpseLifecycleServiceTests
             new ActiveSimulationSessionStore(),
             LoadConfig(),
             identity,
-            timeProvider);
+            timeProvider,
+            RealtimeServerHarness.QuestCatalog);
         var deathEventId = Guid.NewGuid();
         var corpseId = Guid.NewGuid();
         var request = new CreateMobCorpseRequest(
@@ -108,7 +109,8 @@ public sealed class MobCorpseLifecycleServiceTests
             sessions,
             LoadConfig(),
             identity,
-            timeProvider);
+            timeProvider,
+            RealtimeServerHarness.QuestCatalog);
         var tagger = Guid.NewGuid();
 
         var lootGroupId = Guid.NewGuid();
@@ -134,7 +136,7 @@ public sealed class MobCorpseLifecycleServiceTests
     public async Task ALiveCorpseHoldsTheQuestDropsItsOwnerStillNeeds()
     {
         var handler = new ScriptedHttpHandler(_ => Json(new SimulationQuestDropResponse(
-            [new SimulationQuestDrop(Trophies, Letter, 1)])));
+            [new SimulationQuestDrop(Trophies, Trophy, 1)])));
         var (service, wolf, liveStore, sessions) = CreateService(handler, "live");
         var owner = RealtimeTestSessions.Create();
         sessions.Register(owner);
@@ -143,29 +145,29 @@ public sealed class MobCorpseLifecycleServiceTests
         var corpseId = Guid.NewGuid();
 
         var result = await service.CreateAsync(
-            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], TrophyDrops(2)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Equal(
-            [("fixture.ore", 2, 0, (string?)null), (Letter, 1, 1, Trophies)],
+            [("fixture.ore", 2, 0, (string?)null), (Trophy, 1, 1, Trophies)],
             result.LiveCorpse!.Loot.Select(entry => (entry.DefinitionId, entry.Quantity, entry.SlotIndex, entry.QuestId)));
         Assert.Equal(
             ScopedGuid.Create("mob-loot-grant:1", corpseId),
             result.LiveCorpse.Loot[1].GrantId);
         Assert.Equal(owner.CharacterId, result.LiveCorpse.OwnerCharacterId);
-        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Letter, 1)], result.QuestDrops);
+        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Trophy, 1)], result.QuestDrops);
         var (path, body) = Assert.Single(handler.Requests);
         Assert.Equal($"/api/simulation-sessions/{owner.SimulationSessionId}/quest-drops", path);
         var read = ReadQuestDrops(body);
         Assert.Equal(
             (owner.AccountId, owner.CharacterId, owner.WorkerId, owner.WorkerRuntimeId, owner.ShardId, "reconnected-session-token", "mob.feral_wolf"),
             (read.AccountId, read.CharacterId, read.WorkerId, read.WorkerRuntimeId, read.ShardId, read.SessionToken, read.SourceActorDefinitionId));
-        Assert.Equal(Letters(2).Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity)), read.Drops);
+        Assert.Equal(TrophyDrops(2).Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity)), read.Drops);
 
         // A replay finds the corpse as it was laid out and asks nothing.
         var replay = await service.CreateAsync(
-            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            OwnedRequest(corpseId, wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 2)], TrophyDrops(2)),
             CancellationToken.None);
         Assert.Same(result.LiveCorpse, replay.LiveCorpse);
         Assert.Equal(result.QuestDrops, replay.QuestDrops);
@@ -179,12 +181,12 @@ public sealed class MobCorpseLifecycleServiceTests
     public async Task NeededQuestDropsFillTheRoomThatTheMobsOwnLootLeaves()
     {
         var handler = new ScriptedHttpHandler(_ => Json(new SimulationQuestDropResponse(
-            [new SimulationQuestDrop(Trophies, Letter, 1), new SimulationQuestDrop(Trophies, Letter, 1)])));
+            [new SimulationQuestDrop(Trophies, Trophy, 1), new SimulationQuestDrop(Trophies, Trophy, 1)])));
         var (service, wolf, _, sessions) = CreateService(handler, "live");
         var owner = RealtimeTestSessions.Create();
         sessions.Register(owner);
         var ownLoot = Enumerable.Range(0, 23).Select(_ => new MobCorpseLootSeed("fixture.ore", 1)).ToArray();
-        MobCorpseQuestDropSeed[] rolled = [new("quest.fixture.wolves", Letter, 1), .. Letters(2)];
+        MobCorpseQuestDropSeed[] rolled = [new("quest.fixture.wolves", Trophy, 1), .. TrophyDrops(2)];
 
         var result = await service.CreateAsync(
             OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, ownLoot, rolled),
@@ -192,7 +194,7 @@ public sealed class MobCorpseLifecycleServiceTests
 
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Equal(24, result.LiveCorpse!.Loot.Count);
-        Assert.Equal((Letter, Trophies, 23), (result.LiveCorpse.Loot[23].DefinitionId, result.LiveCorpse.Loot[23].QuestId, result.LiveCorpse.Loot[23].SlotIndex));
+        Assert.Equal((Trophy, Trophies, 23), (result.LiveCorpse.Loot[23].DefinitionId, result.LiveCorpse.Loot[23].QuestId, result.LiveCorpse.Loot[23].SlotIndex));
         Assert.Equal(3, ReadQuestDrops(Assert.Single(handler.Requests).Body).Drops.Count);
     }
 
@@ -205,7 +207,7 @@ public sealed class MobCorpseLifecycleServiceTests
         sessions.Register(owner);
 
         var result = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [], Letters(1)),
+            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [], TrophyDrops(1)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -232,13 +234,13 @@ public sealed class MobCorpseLifecycleServiceTests
         var (service, wolf, _, sessions) = CreateService(handler, "live");
         var owner = RealtimeTestSessions.Create();
         sessions.Register(owner);
-        var request = OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1));
+        var request = OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], TrophyDrops(1));
 
         var lost = await service.CreateAsync(request, CancellationToken.None);
         var ended = await service.CreateAsync(request, CancellationToken.None);
         sessions.Remove(owner.CharacterId, owner.SimulationSessionId, owner.SimulationSessionToken);
         var left = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], Letters(1)),
+            OwnedRequest(Guid.NewGuid(), wolf, owner.CharacterId, [new MobCorpseLootSeed("fixture.ore", 1)], TrophyDrops(1)),
             CancellationToken.None);
 
         Assert.Equal("auth_service_unavailable", lost.Error?.Code);
@@ -263,7 +265,7 @@ public sealed class MobCorpseLifecycleServiceTests
         var ownLoot = Enumerable.Range(0, 23).Select(_ => new MobCorpseLootSeed("fixture.ore", 1)).ToArray();
 
         var result = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, owner, ownLoot, Letters(3)),
+            OwnedRequest(Guid.NewGuid(), wolf, owner, ownLoot, TrophyDrops(3)),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -275,15 +277,15 @@ public sealed class MobCorpseLifecycleServiceTests
         Assert.Equal(26, loot.Length);
         Assert.False(loot[22].TryGetProperty("questId", out _));
         Assert.All(loot[23..], entry => Assert.Equal(Trophies, entry.GetProperty("questId").GetString()));
-        Assert.Equal(Letter, loot[23].GetProperty("definitionId").GetString());
+        Assert.Equal(Trophy, loot[23].GetProperty("definitionId").GetString());
         Assert.Equal(owner, document.RootElement.GetProperty("ownerCharacterId").GetGuid());
     }
 
     // GameService names the quest drops that a durable corpse kept, which its owner is then told
     // about. An answer that names a drop the worker never asked for is refused.
     [Theory]
-    [InlineData(Trophies, Letter, true)]
-    [InlineData("quest.fixture.wolves", Letter, false)]
+    [InlineData(Trophies, Trophy, true)]
+    [InlineData("quest.fixture.wolves", Trophy, false)]
     [InlineData(Trophies, "fixture.ore", false)]
     public async Task ADurableCorpseReportsTheQuestDropsGameServiceKept(string questId, string definitionId, bool valid)
     {
@@ -294,14 +296,14 @@ public sealed class MobCorpseLifecycleServiceTests
         var (service, wolf, _, _) = CreateService(handler, "durable");
 
         var result = await service.CreateAsync(
-            OwnedRequest(Guid.NewGuid(), wolf, Guid.NewGuid(), [new MobCorpseLootSeed("fixture.ore", 2)], Letters(2)),
+            OwnedRequest(Guid.NewGuid(), wolf, Guid.NewGuid(), [new MobCorpseLootSeed("fixture.ore", 2)], TrophyDrops(2)),
             CancellationToken.None);
 
         if (valid)
         {
             Assert.True(result.Succeeded, result.Error?.Message);
             Assert.NotNull(result.DurableCorpse);
-            Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Letter, 1)], result.QuestDrops);
+            Assert.Equal([new MobCorpseQuestDropSeed(Trophies, Trophy, 1)], result.QuestDrops);
         }
         else
         {
@@ -311,7 +313,7 @@ public sealed class MobCorpseLifecycleServiceTests
     }
 
     private const string Trophies = "quest.fixture.trophies";
-    private const string Letter = "fixture.letter";
+    private const string Trophy = "fixture.trophy";
 
     // GameService's answer to a durable corpse request: the corpse as asked for, holding every
     // requested entry, and the given kept quest drops.
@@ -354,9 +356,9 @@ public sealed class MobCorpseLifecycleServiceTests
         };
     }
 
-    private static MobCorpseQuestDropSeed[] Letters(int count)
+    private static MobCorpseQuestDropSeed[] TrophyDrops(int count)
     {
-        return Enumerable.Range(0, count).Select(_ => new MobCorpseQuestDropSeed(Trophies, Letter, 1)).ToArray();
+        return Enumerable.Range(0, count).Select(_ => new MobCorpseQuestDropSeed(Trophies, Trophy, 1)).ToArray();
     }
 
     private static CreateMobCorpseRequest OwnedRequest(
@@ -405,7 +407,8 @@ public sealed class MobCorpseLifecycleServiceTests
             sessions,
             LoadConfig(),
             identity,
-            timeProvider);
+            timeProvider,
+            RealtimeServerHarness.QuestCatalog);
         return (service, wolf, liveStore, sessions);
     }
 

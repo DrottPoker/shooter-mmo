@@ -207,6 +207,75 @@ namespace Mmorpg.WorldData.Quests
             return null;
         }
 
+        // A delivery hands over what the objective still lacks, so a count raised after the
+        // stored progress asks only for the difference.
+        public static int RemainingDeliveryQuantity(QuestObjectiveDefinition objective, int progress)
+        {
+            if (objective == null)
+            {
+                throw new ArgumentNullException(nameof(objective));
+            }
+
+            return Math.Max(0, objective.Count - Math.Max(0, progress));
+        }
+
+        // The quantity of an item that the quest's deliveries took so far: each delivery of an
+        // earlier step its count, and each delivery of the current step its stored progress,
+        // which is what it handed over.
+        public static int DeliveredQuantity(
+            QuestDefinition quest,
+            int currentStepIndex,
+            Func<string, int> progressOf,
+            string definitionId)
+        {
+            if (quest == null)
+            {
+                throw new ArgumentNullException(nameof(quest));
+            }
+
+            if (progressOf == null)
+            {
+                throw new ArgumentNullException(nameof(progressOf));
+            }
+
+            var delivered = 0;
+            for (var stepIndex = 0; stepIndex <= currentStepIndex && stepIndex < quest.Steps.Length; stepIndex++)
+            {
+                foreach (var objective in quest.Steps[stepIndex].Objectives)
+                {
+                    if (string.Equals(objective.Kind, QuestObjectiveKindIds.Deliver, StringComparison.Ordinal)
+                        && string.Equals(objective.ItemId, definitionId, StringComparison.Ordinal))
+                    {
+                        delivered += stepIndex < currentStepIndex
+                            ? objective.Count
+                            : Math.Max(0, progressOf(objective.Id));
+                    }
+                }
+            }
+
+            return delivered;
+        }
+
+        // The part of a start item that the giver grants again: what the quest still needs after
+        // its deliveries, less what the character owns with the quest's lineage.
+        public static int MissingStartItemQuantity(
+            QuestDefinition quest,
+            QuestItemQuantityDefinition startItem,
+            int currentStepIndex,
+            Func<string, int> progressOf,
+            int ownedQuantity)
+        {
+            if (startItem == null)
+            {
+                throw new ArgumentNullException(nameof(startItem));
+            }
+
+            var needed = Math.Max(
+                0,
+                startItem.Quantity - DeliveredQuantity(quest, currentStepIndex, progressOf, startItem.DefinitionId));
+            return Math.Max(0, needed - Math.Max(0, ownedQuantity));
+        }
+
         // Collect objectives count the carried items, so only the other kinds store progress.
         public static bool StoresProgress(QuestObjectiveDefinition objective)
         {

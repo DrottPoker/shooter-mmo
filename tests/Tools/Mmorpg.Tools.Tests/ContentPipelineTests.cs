@@ -66,6 +66,7 @@ public sealed class ContentPipelineTests
         Assert.Equal(
             [
                 "quest.letter_for_the_outpost",
+                "quest.ore_for_the_quartermaster",
                 "quest.pelts_and_fangs",
                 "quest.sergeants_request",
                 "quest.the_alpha",

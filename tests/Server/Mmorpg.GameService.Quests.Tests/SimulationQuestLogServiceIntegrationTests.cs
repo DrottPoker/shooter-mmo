@@ -82,6 +82,26 @@ public sealed class SimulationQuestLogServiceIntegrationTests
             "wrong_simulation_worker");
     }
 
+    // A worker that runs another quest catalog would count by other rules, so even the worker
+    // that hosts the session reads nothing until it runs the catalog GameService runs.
+    [PostgresIntegrationFact]
+    public async Task AWorkerThatRunsAnotherQuestCatalogReadsNoQuestLog()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        var session = await JoinAsync(context, player);
+        var request = Request(session);
+
+        AssertRejected(
+            await ReadAsync(context, WorkerId, session.SimulationSessionId, request with { QuestCatalogRevision = new string('a', 64) }),
+            StatusCodes.Status409Conflict,
+            QuestCatalogFence.MismatchCode);
+        AssertRejected(
+            await ReadAsync(context, WorkerId, session.SimulationSessionId, request with { QuestCatalogRevision = null }),
+            StatusCodes.Status409Conflict,
+            QuestCatalogFence.MismatchCode);
+    }
+
     [PostgresIntegrationFact]
     public async Task PlacementReadsTheMirroredQuestCatalogRevision()
     {
@@ -120,7 +140,8 @@ public sealed class SimulationQuestLogServiceIntegrationTests
             session.WorkerId,
             session.WorkerRuntimeId,
             session.ShardId,
-            session.SimulationSessionToken);
+            session.SimulationSessionToken,
+            PostgresIntegrationTestContext.FixtureQuestCatalogRevision);
     }
 
     private static void AssertRejected(

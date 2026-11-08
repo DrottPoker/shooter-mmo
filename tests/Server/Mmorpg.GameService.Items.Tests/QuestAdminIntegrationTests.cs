@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items.Tests.ItemTransactions;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using static Mmorpg.GameService.Items.Tests.QuestScenario;
@@ -145,7 +146,8 @@ public sealed class QuestAdminIntegrationTests
         var release = new SimulationQuestMutationService(
             provider.GetRequiredService<ItemTransactionService>(),
             provider.GetRequiredService<SimulationCharacterStates>(),
-            provider.GetRequiredService<ItemsModuleOptions>() with { DevelopmentQuestTools = false });
+            provider.GetRequiredService<ItemsModuleOptions>() with { DevelopmentQuestTools = false },
+            provider.GetRequiredService<IQuestDefinitions>());
 
         var refused = await release.ExecuteAsync(
             session.WorkerId,
@@ -159,7 +161,8 @@ public sealed class QuestAdminIntegrationTests
                 session.ShardId,
                 session.SimulationSessionToken,
                 "admin_accept_quest",
-                Wolves),
+                Wolves,
+                QuestCatalogRevision: PostgresIntegrationTestContext.FixtureQuestCatalogRevision),
             CancellationToken.None);
         var resetAllWithAQuest = await RouteAsync(context, session, "admin_reset_quests", Wolves, null);
 

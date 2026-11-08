@@ -10,13 +10,15 @@ public static class GameServiceOutcome
     }
 
     // The worker no longer holds a valid session or runtime for the player, who must
-    // reconnect through a fresh join.
+    // reconnect through a fresh join. A worker that runs another quest catalog than GameService
+    // can host no quest progress until it runs the same content.
     public static bool EndsSession(string code)
     {
         return code is "worker_runtime_changed"
             or "simulation_session_invalid"
             or "auth_service_authentication_failed"
-            or "invalid_auth_response";
+            or "invalid_auth_response"
+            or "simulation_worker_quest_catalog_mismatch";
     }
 
     // Item and NPC lifecycle operations act for the session, so a worker mismatch also

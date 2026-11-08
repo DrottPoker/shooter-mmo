@@ -7,8 +7,8 @@ using Mmorpg.SimulationWorker.Tests.Realtime;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
-// A dying Feral Wolf drops a stolen letter for quest.fixture.trophies at 5000 basis points: the
-// worker rolls it once for a character whose current step collects the letters, and for every
+// A dying Feral Wolf drops a stolen trophy for quest.fixture.trophies at 5000 basis points: the
+// worker rolls it once for a character whose current step collects the trophies, and for every
 // quest that the Mob drops for while its quest log is stale.
 public sealed class QuestDropRollerTests
 {
@@ -26,7 +26,7 @@ public sealed class QuestDropRollerTests
 
         var drops = roller.Roll(session, Wolf, success);
 
-        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, "fixture.letter", 1)], drops);
+        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, "fixture.trophy", 1)], drops);
         Assert.Equal([(0, 9999)], success.Calls);
         Assert.Empty(roller.Roll(session, Wolf, new ScriptedRoll(5000)));
         Assert.Empty(roller.Roll(session, "mob.grey_wolf", new ScriptedRoll(0)));
@@ -64,7 +64,7 @@ public sealed class QuestDropRollerTests
 
         var drops = roller.Roll(session, Wolf, new ScriptedRoll(0));
 
-        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, "fixture.letter", 1)], drops);
+        Assert.Equal([new MobCorpseQuestDropSeed(Trophies, "fixture.trophy", 1)], drops);
     }
 
     [Fact]

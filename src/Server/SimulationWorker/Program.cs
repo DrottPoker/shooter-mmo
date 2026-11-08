@@ -25,6 +25,7 @@ using Mmorpg.SimulationWorker.Telemetry;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Quests;
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
@@ -67,6 +68,7 @@ WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
 WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
 var questCatalog = QuestCatalogFileLoader.Load(config.QuestCatalogPath);
+QuestItemReferences.Validate(questCatalog.Quests, itemCatalog);
 var combatRules = CombatRulesLoader.Load(config.CombatRulesPath);
 var appearanceCatalog = CharacterAppearanceFileLoader.Load(config.CharacterAppearancePath);
 var developmentItemInteractionOptions =

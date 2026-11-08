@@ -309,7 +309,9 @@ fixture World layout. `quest.fixture.wolves` kills two Feral Wolves and offers a
 reward choice, `quest.fixture.errand` requires it and has a gather, deliver, and
 talk-to step before it collects its start item, `quest.fixture.ore_run` is a
 repeatable collect quest, and `quest.fixture.trophies` collects two
-`fixture.letter` quest drops that Feral Wolves drop at 50 %. `RepositoryPaths.QuestCatalogFixtureContent` and
+`fixture.trophy` quest drops that Feral Wolves drop at 50 %. A quest item
+belongs to one quest, so the errand's `fixture.letter` and the trophies'
+`fixture.trophy` are separate items. `RepositoryPaths.QuestCatalogFixtureContent` and
 `QuestCatalogFixtureRuntimePath` name the authoring and the compiled catalog,
 and `QuestCatalogTestData.CompileFixture` compiles it.
 

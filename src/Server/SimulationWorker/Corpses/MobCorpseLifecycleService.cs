@@ -5,6 +5,7 @@ using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Corpses;
 
@@ -84,7 +85,8 @@ public sealed class MobCorpseLifecycleService(
     ActiveSimulationSessionStore sessionStore,
     SimulationWorkerConfig config,
     SimulationWorkerIdentity identity,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    QuestCatalogRuntimeDocument questCatalog)
 {
     // The remains of a Mob without its own corpse model. A Mob's corpse uses its own key, such as
     // corpse.mob.feral_wolf, and keeps the yaw it died at, so the client lays the Mob down as it
@@ -261,6 +263,7 @@ public sealed class MobCorpseLifecycleService(
                 owner.WorkerRuntimeId,
                 owner.ShardId,
                 owner.SimulationSessionToken,
+                questCatalog.Revision,
                 sourceActorDefinitionId,
                 request.QuestDrops
                     .Select(drop => new SimulationQuestDrop(drop.QuestId, drop.DefinitionId, drop.Quantity))

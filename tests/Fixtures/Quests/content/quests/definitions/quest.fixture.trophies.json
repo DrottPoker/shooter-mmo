@@ -9,22 +9,22 @@
     "tags": [
         "fixture"
     ],
-    "offerText": "The wolves carry stolen letters. Bring me two of them.",
-    "progressText": "Two letters, from the wolves.",
-    "completionText": "Both letters. Thank you.",
+    "offerText": "The wolves carry stolen trophies. Bring me two of them.",
+    "progressText": "Two trophies, from the wolves.",
+    "completionText": "Both trophies. Thank you.",
     "startItems": [],
     "steps": [
         {
             "id": "collect",
             "objectives": [
                 {
-                    "id": "letters",
+                    "id": "trophies",
                     "kind": "collect",
-                    "text": "Stolen letters",
+                    "text": "Stolen trophies",
                     "count": 2,
                     "actorIds": [],
                     "actorTag": "",
-                    "itemId": "fixture.letter",
+                    "itemId": "fixture.trophy",
                     "npcActorId": "",
                     "line": "",
                     "dropSources": [

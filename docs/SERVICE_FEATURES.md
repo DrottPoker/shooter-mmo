@@ -1227,12 +1227,15 @@ how to run them.
 module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
 
 - GameService loads the compiled quest catalog from `Quests:CatalogPath`,
-  revalidates its structure, structural fingerprints, and revision, and mirrors
-  the revision, every quest id with its fingerprint, and every retired id into
-  PostgreSQL before it accepts traffic. It refuses to start when a quest left the catalog without
+  revalidates its structure, values, structural fingerprints, and revision,
+  checks every item it names against the item catalog, and mirrors the revision,
+  every quest id with its fingerprint, and every retired id into PostgreSQL
+  before it accepts traffic. It refuses to start when a quest left the catalog without
   being listed as retired, a retired id returns, or a quest that characters have
   active was retired or changed its steps or objectives; such a change needs an
-  explicit data migration.
+  explicit data migration. When the revision changed, the same transaction moves
+  every active quest whose current step, not the last, the changed counts
+  complete on to its next step and raises its quest log revision.
 - `GET /api/characters/{characterId}/quests` verifies exact account and
   active-character ownership and returns, from one repeatable-read snapshot,
   the quest catalog revision, the quest log revision, every active quest with its
@@ -1252,6 +1255,10 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   `worker_runtime_changed` for another runtime or a stale registry lease, and
   `403` `wrong_simulation_worker` for another authenticated worker or a lost
   Shard assignment.
+- Every worker quest route, this read, the quest operations, and the quest drops
+  below, takes `questCatalogRevision`, the revision of the quest catalog the
+  worker runs, and refuses one other than GameService's with `409`
+  `simulation_worker_quest_catalog_mismatch` before anything else happens.
 - `POST /api/simulation-sessions/{id}/quest-operations` runs one quest action
   of the session's character as an item transaction, with the operation id and
   replay rules of [Item Transactions](#item-transactions). `operationKind` names
@@ -1270,8 +1277,8 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
     owns them.
   - `talk_to_quest_npc` and `deliver_quest_items` at the objective's NPC
     complete the talk-to or deliver objective `objectiveId` of the current step;
-    a delivery takes the objective's count from carried storage, or rejects with
-    `quest_items_missing`. A complete current step moves the quest on. An
+    a delivery takes what the objective still lacks from carried storage, its
+    count less its stored progress, or rejects with `quest_items_missing`. A complete current step moves the quest on. An
     objective outside the current step, or of another kind, rejects with
     `quest_objective_invalid`, and a complete one with
     `quest_objective_complete`.
@@ -1282,8 +1289,10 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
     `quest_not_ready`, `quest_reward_choice_required`,
     `quest_reward_choice_invalid`, or `inventory_full` and changes nothing.
   - `credit_quest_kill` counts one credited kill of the Mob that `mobActorId`
-    and `mobTags` describe for every matching kill objective of the character's
-    current steps; a kill that no step asks for changes nothing.
+    and at most 32 `mobTags` describe for every matching kill objective of the
+    character's current steps; a kill that no step asks for changes nothing,
+    and an active quest that the catalog does not hold gets no credit without
+    holding back the others.
   - The Admin menu's quest tools, which only a Development GameService runs:
     `admin_accept_quest` accepts any quest that is not active, and not
     completed unless it repeats, around its giver, level, and required quests,
@@ -1339,7 +1348,9 @@ the quest actions of the realtime protocol through these routes:
 - After every committed action the worker applies the carry state and the
   quest log change, sends the item change and then a `QuestLogChanged` from
   the revision it held, and then the result. A rejection keeps the session
-  unless its code ends it, as `simulation_session_invalid` does.
+  unless its code ends it, as `simulation_session_invalid` and
+  `simulation_worker_quest_catalog_mismatch` do, also when a read of a stale
+  quest log answers with one.
 - An answer that may have been lost after the commit, a timeout, an unreachable
   GameService, or a 5xx answer, asks once more with the same operation id,
   which replays a committed result. When that answer is uncertain too, the
