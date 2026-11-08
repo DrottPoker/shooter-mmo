@@ -662,7 +662,8 @@ which [Game Content](../content/README.md#quests) lists. Every quest is
 personal, and its progress survives death, leaving, and Shard switches.
 
 - Left-clicking a quest NPC opens the quest dialog at the left edge of the
-  screen, titled with the NPC's name. It lists what the NPC has for the player
+  screen, or beside the Equipment window while that is open, titled with the
+  NPC's name. It lists what the NPC has for the player
   now: `? <quest> (Complete)` for a quest ready to turn in there, a talk-to or
   hand-over objective that names the NPC, `! <quest>` for each quest the player
   may accept, `<quest>: lost items` when the player no longer has a start item
@@ -673,7 +674,9 @@ personal, and its progress survives death, leaving, and Shard switches.
   progress, such as `Feral Wolves slain 3/5`, and the rewards: Gold, items, and
   the items to choose one of. An offer already counts the carried items of a
   collect objective, such as `Wolf Pelts 1/3`. `Accept` takes the quest and gives its start items,
-  `Complete` turns it in once a reward is chosen, `Continue` finishes a talk,
+  `Complete` turns it in once a reward is chosen and the rewards fit, which the
+  dialog otherwise explains in red, such as
+  `Make room in your bags for the rewards first.`, `Continue` finishes a talk,
   `Hand over` gives the asked-for items once the player carries them, and
   `Ask again` gives back lost start items. `Back` returns to the list. A refused
   action shows its reason in red, and the dialog closes when the interaction
@@ -701,7 +704,8 @@ personal, and its progress survives death, leaving, and Shard switches.
   can be accepted again. A refusal shows its reason in red in the log.
 - The tracker at the right edge of the screen shows up to six active quests by
   title with their current objectives, or `Ready to turn in`, and how many more
-  the quest log holds. It hides without active quests and takes no clicks.
+  the quest log holds. It hides without active quests, stays while the quest
+  log is read again, and takes no clicks.
 - A marker over each quest NPC within 40 m tells what waits there: a yellow `!`
   for a quest to accept or lost start items to ask for again, a grey `!` for a
   quest that only needs a higher level, a yellow `?` for a quest to turn in,

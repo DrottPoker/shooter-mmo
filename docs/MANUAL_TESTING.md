@@ -793,7 +793,10 @@ Join Development World 2 with a new character, as
    with `ACTIVE 1 / 25` and `A Letter for the Outpost (Ready)`, and lists
    `Wolves at the Gate` under `COMPLETED`. Choose the letter quest. Expected
    result: `Sealed Letter delivered 1/1`, `Ready to turn in.`, its text, and
-   `Abandon` below.
+   `Abandon` below. Press `C`. Expected result: the Equipment window opens at
+   the left edge, and the quest log moves right so the paper doll covers
+   nothing; open Mira's quests again and the dialog stands beside the Equipment
+   window too. Press `C` again. Expected result: both move back.
 10. Press `I` to open the inventory, press `Abandon`, and press Escape.
     Expected result: only the question closes; the inventory and the log stay
     open. Press `Abandon`, then `Abandon` in the question. Expected result: the
@@ -1067,19 +1070,25 @@ timeout or an unreachable GameService retries the corpse.
 Then run the client's quest state and dialog rules in the Unity Editor:
 
 ```powershell
-./tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter QuestClientTests
+./tools/Run-UnityEditorTests.ps1 -Mode EditMode -Filter QuestClientTests,QuestRewardFitTests,QuestTrackerTests,TemporaryAdminQuestTabTests
+./tools/Run-UnityEditorTests.ps1 -Mode PlayMode -Filter QuestWindowsPlayModeTests
 ```
 
-Run them with `-Filter QuestClientTests,QuestTrackerTests` to include the
-tracker. Expected result: every test passes. The quest log loads for the character and
-its catalog and refuses another catalog revision, realtime changes apply in
-revision order and a gap asks for a reload, Mira lists her offers, the ready
-turn-in, the errand's talk, delivery, and lost letter, a change writes the
-accepted, progress, completed, and abandoned notices, carried letters write the
-trophies' progress and readiness once, a failed read is tried again after a
-growing delay, the quest log lists the active quests with their objectives and
-the completed ones, and the tracker shows each quest's objectives or that it is
-ready.
+Expected result: every test passes. The quest log loads for the character and
+its catalog and refuses another catalog revision, an invalid bundled catalog
+keeps its reason for every character, realtime changes apply in revision order
+and a gap asks for a reload, Mira lists her offers by title, the ready turn-in,
+the errand's talk, delivery, and lost letter, a change writes the accepted,
+progress, completed, and abandoned notices, carried letters write the trophies'
+progress and readiness once, the first change after the notices start tells a
+quest's readiness, and trophies that the inventory loads after the log tell
+nothing. A failed read is tried again after a growing delay, the quest log lists
+the active quests with their objectives and the completed ones, and the tracker
+shows each quest's objectives or that it is ready. Rewards top up stacks and
+take free slots, the trophies and a stack of ore that a turn-in takes make room,
+and a reward past the hard cap or the balance limit is refused with its reason.
+The Admin menu's Quests tab rebuilds only while it shows, and in a loaded World
+the quest dialog and the quest log stand beside an open Equipment window.
 
 ## Debug Menu (F2)
 

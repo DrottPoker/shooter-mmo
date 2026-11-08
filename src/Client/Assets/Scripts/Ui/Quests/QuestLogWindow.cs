@@ -55,9 +55,7 @@ namespace Mmorpg.Client.Ui
             UiFactory.ClearChildren(Window.Footer);
             if (state == null || !state.IsReady)
             {
-                AddParagraph(state == null || state.Status != QuestClientStatus.UpdateRequired
-                    ? "Reading your quests..."
-                    : "This client build requires a quest catalog update.", theme.MutedTextColor);
+                AddParagraph(StatusText(state), theme.MutedTextColor);
                 Window.FitBody();
                 return;
             }
@@ -129,6 +127,24 @@ namespace Mmorpg.Client.Ui
             }
 
             Window.FitBody();
+        }
+
+        // What the quest windows show until the quest log is ready, with the reason a log or
+        // the bundled catalog failed.
+        internal static string StatusText(QuestClientState state)
+        {
+            switch (state?.Status ?? QuestClientStatus.Unavailable)
+            {
+                case QuestClientStatus.Loading:
+                case QuestClientStatus.Unavailable:
+                    return "Reading your quests...";
+                case QuestClientStatus.UpdateRequired:
+                    return "This client build requires a quest catalog update.";
+                default:
+                    return string.IsNullOrWhiteSpace(state.ErrorMessage)
+                        ? "Your quests are unavailable."
+                        : "Your quests are unavailable: " + state.ErrorMessage;
+            }
         }
 
         // Choosing the selected quest again hides its details.

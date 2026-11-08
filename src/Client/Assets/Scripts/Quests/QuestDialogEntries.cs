@@ -107,12 +107,12 @@ namespace Mmorpg.Client.Quests
                 }
             }
 
-            foreach (var quest in state.Catalog.Quests
-                         .Where(quest => IsNpc(quest.GiverActorId, npcActorId)
-                             && state.AvailabilityOf(quest) == QuestAvailability.Available)
-                         .OrderBy(quest => quest.Title, StringComparer.Ordinal))
+            foreach (var quest in state.Catalog.QuestsGivenBy(npcActorId))
             {
-                entries.Add(new QuestDialogEntry(QuestDialogEntryKind.Offer, quest, null));
+                if (state.AvailabilityOf(quest) == QuestAvailability.Available)
+                {
+                    entries.Add(new QuestDialogEntry(QuestDialogEntryKind.Offer, quest, null));
+                }
             }
 
             foreach (var pair in active)

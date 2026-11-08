@@ -97,6 +97,13 @@ namespace Mmorpg.Client.Ui
             get { return equipment != null && equipment.Window.IsOpen; }
         }
 
+        // The Equipment window at the left screen edge, which the quest windows keep clear, or
+        // null before the windows are built.
+        public UiWindow Equipment
+        {
+            get { return equipment?.Window; }
+        }
+
         public bool IsInventoryOpen
         {
             get { return inventory != null && inventory.Window.IsOpen; }

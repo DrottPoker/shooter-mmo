@@ -51,8 +51,18 @@ namespace Mmorpg.Client.Quests
             get { return pendingIntentId != Guid.Empty; }
         }
 
-        // Why the last abandon was refused, or empty.
+        // The kind of the last quest intent that was sent, and why it was refused, or empty. Both
+        // belong to the session that sent it.
+        public RealtimeQuestIntentKind LastIntentKind { get; private set; }
+
         public string LastIntentError { get; private set; } = string.Empty;
+
+        // Why the last abandon was refused, or empty: the quest log shows it, while the Admin
+        // menu reports the refusals of its tools itself.
+        public string LastAbandonError
+        {
+            get { return LastIntentKind == RealtimeQuestIntentKind.Abandon ? LastIntentError : string.Empty; }
+        }
 
         public void Initialize(
             ApiClient client,
@@ -136,6 +146,7 @@ namespace Mmorpg.Client.Quests
             }
 
             pendingIntentId = intent.OperationId;
+            LastIntentKind = intent.Kind;
             LastIntentError = string.Empty;
             IntentChanged?.Invoke();
             return true;
@@ -210,6 +221,13 @@ namespace Mmorpg.Client.Quests
 
         private void OnQuestLogChanged(RealtimeQuestLogChanged change)
         {
+            // A change that committed behind lost answers may have moved items too, such as the
+            // rewards of a turn-in, so the inventory is read again with the log.
+            if (change != null && change.ReloadRequired)
+            {
+                inventory?.RefreshFullState();
+            }
+
             if (loading || State.Status == QuestClientStatus.Loading)
             {
                 waitingChanges.Add(change);
@@ -258,11 +276,20 @@ namespace Mmorpg.Client.Quests
             reloadQueued = false;
             waitingChanges.Clear();
             observedJoin = false;
-            if (pendingIntentId != Guid.Empty)
+            ForgetIntent();
+        }
+
+        // A pending intent and the refusal of the last one end with their session.
+        private void ForgetIntent()
+        {
+            if (pendingIntentId == Guid.Empty && string.IsNullOrEmpty(LastIntentError))
             {
-                pendingIntentId = Guid.Empty;
-                IntentChanged?.Invoke();
+                return;
             }
+
+            pendingIntentId = Guid.Empty;
+            LastIntentError = string.Empty;
+            IntentChanged?.Invoke();
         }
 
         private IEnumerator LoadRoutine(int generation)
@@ -375,6 +402,7 @@ namespace Mmorpg.Client.Quests
             reloadQueued = false;
             waitingChanges.Clear();
             retry.Reset();
+            ForgetIntent();
             State.PrepareCharacter(
                 Guid.TryParse(characterId, out var parsed) ? parsed : Guid.Empty,
                 character?.level ?? 1);

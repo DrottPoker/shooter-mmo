@@ -737,9 +737,10 @@ scrolling page per tab, and a footer with a status line. Pages are built once an
 keep the `Text`, `Toggle`, and `Button` components that change, so a refresh sets
 text and lays nothing out, and a closed menu draws nothing. Both start closed.
 The Admin menu's Quests tab, `TemporaryAdminQuestTab`, is the exception: it
-builds its rows again on every quest state change, and sends its tools through
-`QuestClientController.TryRunAdminTool`, which shares the one pending quest
-intent with abandoning.
+builds its rows again on a quest state change while the open menu shows the
+tab, and once it shows after a change while it was hidden. It sends its tools
+through `QuestClientController.TryRunAdminTool`, which shares the one pending
+quest intent with abandoning, and reports their refusals itself.
 What they show is in [Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
 [Admin Menu (F3)](GAME_FEATURES.md#admin-menu-f3).
 
@@ -2814,25 +2815,34 @@ windows in `Mmorpg.Client.Ui` present it.
 - `ClientQuestCatalog` reads the bundled `core.quest-catalog.json` through the
   camelCase `QuestCatalogJsonDocument` of the WorldData package, which Unity's
   `JsonUtility` needs, and accepts it only when `QuestCatalogCompiler.ValidateRuntime`
-  computes the same fingerprints and revision.
+  computes the same fingerprints and revision. `QuestsGivenBy` lists the quests
+  of one giver by title, so the dialog and the marker of an NPC never walk the
+  whole catalog.
 - `QuestClientController` reads `GET /api/characters/{characterId}/quests` when
   the character joins, up to three times, and refuses a log of another quest
   catalog revision with `quest_catalog_update_required`. It applies every
   `QuestLogChanged` whose previous revision is the log's; a change the log
   already holds is stale, and one after a gap, or one with `ReloadRequired`,
-  reads the log again. Changes that arrive during a read wait and follow it in
+  reads the log again. A change with `ReloadRequired` also reads the whole
+  inventory again through `IInventoryOperationQueue.RefreshFullState`, because
+  the change it stands for, such as a turn-in behind lost answers, may have
+  moved items. Changes that arrive during a read wait and follow it in
   revision order. When all three tries of a read fail, `QuestLogRetry` reads it
   again after 2 s, doubling up to 30 s; a quest change or an opened quest dialog
-  reads it at once.
+  reads it at once. The pending quest intent and the refusal of the last one end
+  with the session and with a change of character.
 - `QuestClientState` keeps the active quests with their current step and the
   stored progress of the step's counted objectives, the completion counts, and
   the character's level from the character list. It raises `QuestsChanged` with
-  each quest a change touched, before and after.
+  each quest a change touched, before and after. A bundled catalog that is
+  invalid leaves it `Failed` with the reason for every character, and the quest
+  windows show that reason instead of reading quests.
 - `QuestProgress` counts a collect objective by the carried items, as
   `QuestCarriedItems` counts them from the confirmed inventory: the permanent
   inventory and the equipped Bag, an ordinary item without an active policy and
   a quest item with a `quest_grant` policy. The client does not see which quest
-  a lineage names.
+  a lineage names, but a quest item belongs to one quest, so each of its quest
+  grants carries that quest's lineage.
 - `QuestDialogEntries` lists what an NPC can do for the player now: ready quests
   it completes, talk-to and deliver objectives that name it, the quests it gives
   that `QuestRules.Evaluate` allows, start items of its quests that the player
@@ -2840,6 +2850,15 @@ windows in `Mmorpg.Client.Ui` present it.
   Recovery Storage, and active quests it completes later.
   `QuestDialogEntries.CanHandOver` holds a delivery back until the player
   carries the whole count, which the dialog's `Hand over` hands over at once.
+- `QuestRewardFit` checks a turn-in's rewards by the rules GameService places
+  them with: the turn-in takes the collect objectives' items and removes the
+  quest's other quest items first, then each reward tops up carried stacks
+  without a policy and takes a free slot that accepts it, matching specialized
+  Bag slots, the permanent inventory, then general Bag slots; the carried weight
+  must end within the hard cap and the balance within its maximum. Which stacks
+  a collect objective empties is GameService's choice, so every slot that one
+  could empty counts as free for any reward, and the check refuses only what
+  GameService would refuse too.
 - `QuestMarkers` derives the marker over an NPC from its dialog entries, the
   most urgent first: a yellow `?` for a ready quest, a talk-to objective, or a
   delivery the player can hand over, a yellow `!` for an offer or lost start
@@ -2855,7 +2874,11 @@ windows in `Mmorpg.Client.Ui` present it.
   quest change and every inventory change and writes the progress that carried
   items make, such as `Wolf Pelts 2/3`, and a quest that became ready to turn in,
   whatever made it ready, once. A load of the quest log starts it over without
-  messages.
+  messages, and so do the carried items of an inventory that loads after the
+  log, since the player carried them before. `QuestNoticeFeed` connects both to
+  the quest state and the inventory and starts from them as they are when it is
+  created, which the quest windows do after a login loaded the log, so the first
+  change after that tells as much as any later one.
 
 `QuestLogModel` lists the active quests by title with the current step's
 objectives and whether each is ready, and the completed quests with their
@@ -2867,21 +2890,28 @@ it.
 
 Choosing the `quests` capability raises
 `WorldInteractionClientController.QuestCapabilityOpened`, and `QuestWindows`
-opens the quest dialog at the screen's left edge for the NPC of the open
-interaction. Its canvas has sorting order 90, above the interaction panel and
-below the inventory. The dialog lists the entries; an entry shows its text, the
+opens the quest dialog for the NPC of the open interaction and clears the
+message of an earlier interaction action. The dialog stands at the screen's
+left edge, or beside the Equipment window while that is open, because the
+Equipment window stands there too: the quest canvas has sorting order 90, above
+the interaction panel and below the inventory, whose windows would cover it.
+The dialog lists the entries; an entry shows its text, the
 current step's objectives, an offer through `QuestProgress.OfferedObjectives`
 with the carried items of its collect objectives, and the rewards, with `Accept`, `Complete` after a
 reward choice, `Continue`, `Hand over` once enough is carried, or `Ask again`.
-Each action goes through `TryExecuteQuestAction` with the quest, objective, and
-reward choice, and the dialog follows the quest log the change patches. A
-rejection shows its message in the dialog, and the dialog closes with its
-interaction. The temporary interaction panel's `Quests` button opens it again.
+`Complete` also waits while `QuestRewardFit` says the rewards cannot fit, and
+the dialog says why in red. Each action goes through `TryExecuteQuestAction`
+with the quest, objective, and reward choice, and the dialog follows the quest
+log the change patches. A rejection shows its message in the dialog, and the
+dialog closes with its interaction. The temporary interaction panel's `Quests`
+button opens it again.
 
 `QuestWindows` also owns the quest log, `QuestLogWindow` beside the dialog,
 which the `ToggleQuestLog` action on `L` opens and closes unless a text field
-has focus, and `QuestTracker`, a panel at the right edge of the screen that
-takes no raycasts. `Abandon` asks through a `UiDialog`, and its
+has focus and which shows only the refusals of abandoning, and `QuestTracker`,
+a panel at the right edge of the screen that takes no raycasts and keeps its
+lines while the same character's log is read again. `Abandon` asks through a
+`UiDialog`, and its
 `UiDialogEscape` closes that dialog alone on Escape, before the inventory
 windows see the key. Otherwise an Escape closes the log with the other windows.
 The quest windows run right after the inventory windows, so an Escape that an

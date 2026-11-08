@@ -8,19 +8,24 @@ namespace Mmorpg.Client.Quests
     // The notices of progress that the carried items make rather than a quest change: a collect
     // objective whose count grew, such as "Wolf Pelts 2/3", and a quest that became ready to turn
     // in, whatever made it ready. It remembers what it told for every active quest, so a quest
-    // change or an inventory change tells each step once. A load of the quest log or another
-    // character starts over without notices.
+    // change or an inventory change tells each step once. A load of the quest log, another
+    // character, and the first carried items of an inventory that had none loaded start over
+    // without notices, since nothing changed for the player.
     public sealed class QuestProgressWatcher
     {
         private readonly Dictionary<string, WatchedQuest> watched =
             new Dictionary<string, WatchedQuest>(StringComparer.Ordinal);
         private int seenLoad = -1;
 
-        // The notices since the last call, oldest first.
-        public IReadOnlyList<string> Update(QuestClientState state, Func<string, int> carriedCount)
+        // The notices since the last call, oldest first. carriedItemsKnown is false while the
+        // inventory has not loaded the carried items that carriedCount counts.
+        public IReadOnlyList<string> Update(
+            QuestClientState state,
+            Func<string, int> carriedCount,
+            bool carriedItemsKnown = true)
         {
             var notices = new List<string>();
-            if (state == null || !state.IsReady)
+            if (state == null || !state.IsReady || !carriedItemsKnown)
             {
                 watched.Clear();
                 seenLoad = -1;

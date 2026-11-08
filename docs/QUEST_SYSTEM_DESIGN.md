@@ -176,7 +176,8 @@ reputation, and item requirements are planned.
   turn-in. The turn-in names the choice, and the servers check it against the
   quest.
 - When the reward items do not fit carried storage, the turn-in is refused with
-  a clear message and nothing changes, so no reward is ever lost.
+  a clear message and nothing changes, so no reward is ever lost. The quest
+  dialog tells it ahead and holds the turn-in back when the client can see it.
 - Experience rewards join once experience exists, with no change to the quest
   model beyond a reward field.
 
@@ -474,9 +475,17 @@ New quest items are made in the Item Catalog window like every other item.
 ### Content And Shared Rules
 
 WorldData owns the quest content model, the compiler, its runtime validator,
-and the shared quest rules: availability, step progression, objective
-completion, the carried count of collect objectives, and the check that rewards
-fit. GameService, SimulationWorker, and Unity run the same rules.
+and the shared quest rules that GameService, SimulationWorker, and Unity run:
+availability, step progression, objective completion, what a delivery still
+takes, and which start items a giver grants again. Two rules work on the
+inventory, which GameService reads from its tables and the client from its
+snapshot, so each side states them in its own terms: the carried count of a
+collect objective, stacks without an active policy and the quest's quest
+grants in carried storage, and the placement of rewards by
+[carried acquisition](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carried-acquisition)
+within the weight and balance limits. GameService decides with them; the client
+counts with them and checks ahead whether the rewards fit, refusing only what
+GameService would refuse too.
 
 ### GameService
 

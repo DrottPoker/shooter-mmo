@@ -29,6 +29,10 @@ namespace Mmorpg.Client.Items
             long itemStateRevision);
 
         void EnsureFullState(long minimumRevision);
+
+        // Reads the whole inventory again even when the state looks current, such as after an
+        // action whose answer was lost and that may have moved items.
+        void RefreshFullState();
     }
 
     [DisallowMultipleComponent]
@@ -178,6 +182,11 @@ namespace Mmorpg.Client.Items
                 InventoryRefreshScope.Full,
                 false,
                 Math.Max(State.KnownItemStateRevision, minimumRevision));
+        }
+
+        public void RefreshFullState()
+        {
+            BeginRefresh(InventoryRefreshScope.Full, false, State.KnownItemStateRevision);
         }
 
         public void RefreshContext(InventoryContextKind context)

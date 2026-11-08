@@ -60,8 +60,15 @@ namespace Mmorpg.Client.Ui
             get { return text.text; }
         }
 
+        // A read of the same character's log again keeps the lines until it answers, so the
+        // tracker does not blink.
         public void Refresh(QuestClientState state, Func<string, int> carriedCount)
         {
+            if (state != null && state.Status == QuestClientStatus.Loading && state.Revision >= 0)
+            {
+                return;
+            }
+
             var active = QuestLogModel.Active(state, carriedCount);
             panel.gameObject.SetActive(active.Count > 0);
             if (active.Count == 0)

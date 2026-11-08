@@ -141,7 +141,9 @@ namespace Mmorpg.Client.Quests
             Changed?.Invoke();
         }
 
-        // Forgets the previous character's log; the next load reads this one's.
+        // Forgets the previous character's log; the next load reads this one's. A client build
+        // whose bundled catalog is invalid, or another than GameService's, stays so for every
+        // character, with its reason.
         public void PrepareCharacter(Guid characterId, int level)
         {
             activeQuests.Clear();
@@ -150,11 +152,11 @@ namespace Mmorpg.Client.Quests
             CharacterLevel = Math.Max(1, level);
             Revision = -1;
             LoadCount++;
-            ErrorCode = string.Empty;
-            ErrorMessage = string.Empty;
-            if (Status != QuestClientStatus.UpdateRequired)
+            if (Catalog != null && Status != QuestClientStatus.UpdateRequired)
             {
                 Status = QuestClientStatus.Unavailable;
+                ErrorCode = string.Empty;
+                ErrorMessage = string.Empty;
             }
 
             Changed?.Invoke();

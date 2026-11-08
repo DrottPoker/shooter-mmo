@@ -45,6 +45,7 @@ namespace Mmorpg.Client.Ui
         private InventoryWindowRequests inventoryWindowRequests;
         private QuestClientController quests;
         private TemporaryAdminQuestTab questTab;
+        private int questTabIndex = -1;
         private LocalPlayerController localPlayer;
         private TemporaryMenuWindow window;
         private RectTransform lookPage;
@@ -110,6 +111,7 @@ namespace Mmorpg.Client.Ui
                 SetPicking(false);
             }
 
+            ShowQuestTabWhenSelected();
             RefreshAll();
         }
 
@@ -263,6 +265,14 @@ namespace Mmorpg.Client.Ui
             var questPage = window.AddTab("Quests");
             toolPages.Add(questPage.gameObject.AddComponent<CanvasGroup>());
             questTab = new TemporaryAdminQuestTab(questPage, quests, ShowResult);
+            questTabIndex = window.TabCount - 1;
+            window.TabSelected += _ => ShowQuestTabWhenSelected();
+        }
+
+        // The Quests tab rebuilds from the quest state only while the menu shows it.
+        private void ShowQuestTabWhenSelected()
+        {
+            questTab?.SetShown(IsOpen && window.SelectedTab == questTabIndex);
         }
 
         // The development worker opens the Bank and Recovery Storage everywhere, so their window
