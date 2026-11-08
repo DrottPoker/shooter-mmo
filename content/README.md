@@ -533,7 +533,10 @@ and actors, so after a save in the Item Catalog or Actor Studio, click
    `Talk-To Quest`, `Gathering Quest`, and `Several Steps`, or select quests and
    click `Duplicate`, which copies each with a new id, such as
    `quest.wolves_at_the_gate_copy`. A template names the first quest NPCs, Mob,
-   resource node, and items, and compiles as it is.
+   resource node, and material, and compiles as it is; `Delivery` hands three of
+   the material to the second quest NPC. A quest item belongs to one quest, so a
+   quest that needs its own start item gets a new quest item from the Item
+   Catalog window.
 2. Under `Quest`, set the `Stable Quest Id`, `Title`, `Giver`, `Turn-In NPC`,
    `Minimum Level`, and `Repeatable`. Under `Dialog`, write the `Offer Text`,
    `Progress Text`, and `Completion Text`; a line break typed into a text becomes

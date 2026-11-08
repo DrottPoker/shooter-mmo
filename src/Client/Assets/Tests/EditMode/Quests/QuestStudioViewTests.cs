@@ -23,6 +23,7 @@ namespace Mmorpg.Client.Tests.EditMode
         private const string Letter = "quest.letter_for_the_outpost";
         private const string Request = "quest.sergeants_request";
         private const string Alpha = "quest.the_alpha";
+        private const string Ore = "quest.ore_for_the_quartermaster";
 
         private ContentUndoState undoState;
         private FixtureQuestContent content;
@@ -50,9 +51,9 @@ namespace Mmorpg.Client.Tests.EditMode
         public void LoadingShowsTheCheckedInQuestsWithoutProblems()
         {
             Assert.That(view.Issues, Is.Empty, string.Join("\n", view.Issues.Select(issue => issue.Message)));
-            Assert.That(view.List.Shown.Select(QuestStudioView.Key), Is.EquivalentTo(new[] { Wolves, Pelts, Letter, Request, Alpha }));
+            Assert.That(view.List.Shown.Select(QuestStudioView.Key), Is.EquivalentTo(new[] { Wolves, Pelts, Letter, Request, Ore, Alpha }));
             Assert.That(view.List.Selection.Count, Is.EqualTo(1));
-            Assert.That(view.StatusText, Does.Contain("Loaded 5 quests"));
+            Assert.That(view.StatusText, Does.Contain("Loaded 6 quests"));
             Assert.That(view.HasUnsavedChanges, Is.False);
         }
 
@@ -229,13 +230,13 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 new[] { Letter, Wolves },
                 new[] { Pelts, Request },
-                new[] { Alpha }
+                new[] { Ore, Alpha }
             }));
 
             var mira = QuestEditorRelations.ForNpc(view.Workspace.Catalog, Mira);
             Assert.That(mira.Gives.Select(QuestStudioView.Key), Is.EquivalentTo(new[] { Wolves, Pelts, Letter }));
             Assert.That(mira.Receives.Select(QuestStudioView.Key), Is.EquivalentTo(new[] { Wolves, Pelts }));
-            Assert.That(mira.AppearsIn.Select(QuestStudioView.Key), Is.EqualTo(new[] { Request }));
+            Assert.That(mira.AppearsIn.Select(QuestStudioView.Key), Is.EqualTo(new[] { Ore, Request }));
 
             Select(Pelts);
             Assert.That(view.NpcViewActorId, Is.EqualTo(Mira));
