@@ -5,6 +5,7 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -47,6 +48,17 @@ internal sealed class QuestIntentHandler(
         if (!RealtimeProtocol.TryDecodeQuestIntent(message.Packet, out var intent, out var error))
         {
             sender.RejectProtocol(peer, context, "invalid_quest_intent", error);
+            return;
+        }
+
+        // Quest intents share the peer's interaction rate limit with the NPC quest actions.
+        if (!context.WorldInteractionIntentQuota.TryConsume())
+        {
+            SendRejection(
+                peer,
+                intent,
+                WorldInteractionIntentLimiter.RejectionCode,
+                "Quest intents exceeded the per-peer rate limit.");
             return;
         }
 

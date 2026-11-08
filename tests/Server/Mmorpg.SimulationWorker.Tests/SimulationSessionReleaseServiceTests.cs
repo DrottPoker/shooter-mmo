@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Tests;
@@ -66,6 +67,35 @@ public sealed class SimulationSessionReleaseServiceTests
         Assert.True(currentRelease.Succeeded);
         Assert.False(sessionStore.TryGet(characterId, out _));
         Assert.False(itemStateStore.TryGet(characterId, simulationSessionId, out _));
+    }
+
+    // A join whose peer left before it bound releases its session, and the quest log that the
+    // join read goes with it instead of waiting for the character to join again.
+    [Fact]
+    public async Task ADetachedReleaseRemovesTheQuestLogOfTheSession()
+    {
+        using var httpClient = new HttpClient(new ConflictReleaseHandler())
+        {
+            BaseAddress = new Uri("http://game-service.test")
+        };
+        var sessionStore = new ActiveSimulationSessionStore();
+        var questLogs = new CharacterQuestLogStore();
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            sessionStore,
+            new CharacterItemStateStore(),
+            [],
+            questLogs: questLogs);
+        var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "session-token", PlayerCarryState.Default);
+        sessionStore.Register(session);
+        questLogs.Register(
+            session.CharacterId,
+            session.SimulationSessionId,
+            CharacterQuestLog.From(new SimulationQuestLogResponse(session.CharacterId, "catalog-revision", 3, [], [])));
+
+        await service.ReleaseDetachedAsync(session, CancellationToken.None);
+
+        Assert.False(questLogs.TryGet(session.CharacterId, session.SimulationSessionId, out _));
     }
 
     [Fact]

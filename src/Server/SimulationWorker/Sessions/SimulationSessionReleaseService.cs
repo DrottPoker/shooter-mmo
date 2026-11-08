@@ -1,6 +1,8 @@
 using System.Net;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
 
 namespace Mmorpg.SimulationWorker.Sessions;
 
@@ -8,7 +10,9 @@ public sealed class SimulationSessionReleaseService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
-    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null)
+    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
+    CharacterLookStore? lookStore = null,
+    CharacterQuestLogStore? questLogs = null)
 {
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
     [
@@ -21,7 +25,8 @@ public sealed class SimulationSessionReleaseService(
 
     // Releases a session that no connected peer owns any more. The local lease is dropped
     // first, so the heartbeat stops renewing it even when GameService stays unavailable
-    // and the database lease then expires on its own.
+    // and the database lease then expires on its own. The state the join kept for the session
+    // goes with it.
     public async Task<SimulationSessionReleaseResult> ReleaseDetachedAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)
@@ -32,6 +37,8 @@ public sealed class SimulationSessionReleaseService(
                 session.SimulationSessionToken))
         {
             itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+            lookStore?.Remove(session.CharacterId, session.SimulationSessionId);
+            questLogs?.Remove(session.CharacterId, session.SimulationSessionId);
         }
 
         var result = await ReleaseAsync(session, cancellationToken);

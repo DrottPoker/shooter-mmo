@@ -171,7 +171,9 @@ internal sealed class PlayerCombatAuthority(
     // its place in the player's lane at the kill, so no operation that the player sends after the
     // kill, such as abandoning and accepting the quest again, overtakes it. Whether the kill
     // counts is decided once the credit's turn comes, by the quest log that every operation
-    // before it left, so a kill during an accept still counts for the accepted quest.
+    // before it left, so a kill during an accept still counts for the accepted quest. A player
+    // who already started to leave left before the kill, so it counts for nobody, as the lane
+    // ends with the leave.
     public void CreditQuestKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
     {
         ArgumentNullException.ThrowIfNull(mob);
@@ -188,7 +190,8 @@ internal sealed class PlayerCombatAuthority(
             if (!entityRegistry.TryGetPlayerByCharacterId(credit.CharacterId, out var player)
                 || player is null
                 || !sessions.TryGetValue(player.Session.SimulationSessionId, out var combatSession)
-                || combatSession.Detached)
+                || combatSession.Detached
+                || combatSession.Context.LeaveStarted)
             {
                 continue;
             }

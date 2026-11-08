@@ -587,8 +587,8 @@ them as follows:
 - Start range is `3.0` metres and maintain range is `3.5` metres. Open sessions
   are revalidated at 5 Hz and close on target invalidation, range, line of
   sight, disconnect, or assignment lifecycle changes.
-- World interaction intents share a per-peer budget of 8 per second with a burst
-  of 12; more return `world_interaction_rate_limited`.
+- World interaction intents and quest intents share a per-peer budget of 8 per
+  second with a burst of 12; more return `world_interaction_rate_limited`.
 - Capability summaries are returned only after a successful interaction open
   and are independently revisioned for each player. Multiple players may
   interact with the same actor, but one player cannot overlap an actor
@@ -777,9 +777,11 @@ the actor catalog. The combat model is in
   live corpse in worker memory, or for a Mob whose content selects durable
   custody a durable corpse in GameService. A creation that fails retries with
   the same corpse id and a backoff from 0.5 seconds that doubles up to 10
-  seconds until it succeeds, while the dead Mob stays in view. When GameService
-  answers that the corpse can never be created, or that its owner needs none of
-  the quest drops that were its only loot, the Mob leaves without one. The Mob
+  seconds until it succeeds, while the dead Mob stays in view. When the corpse
+  can never be created, because its source, authority, persistence mode, or
+  content is invalid, such as a quest drop that is not a protected quest item,
+  or when GameService answers that its owner needs none of the quest drops that
+  were its only loot, the Mob leaves without one. The Mob
   then leaves every view with the
   despawn reason `died`, a Mob without a corpse at the end of its death tick,
   after its death reached the viewers, and its spawn instance returns after its
@@ -1336,7 +1338,14 @@ the quest actions of the realtime protocol through these routes:
   worker route. When the read fails, or GameService answers with another quest
   catalog revision than the worker runs, which is
   `simulation_worker_quest_catalog_mismatch`, it releases the session and
-  rejects the join. A development bot never takes part in quests.
+  rejects the join. A reconnect of a session that the worker still hosts keeps
+  the quest log it holds instead when the read fails for a moment, with a
+  timeout, an unreachable GameService, or a 5xx answer, because releasing the
+  session would lose the death or the kill credits it may still have to
+  commit; the log turns stale, so the next quest action reads it first. A read
+  older than the log that the same session already holds never takes the log
+  back, and a session released before its peer took it over drops its log. A
+  development bot never takes part in quests.
 - The `quests` capability opens without GameService. Its actions,
   `AcceptQuest`, `RegrantQuestItems`, `TalkToQuestNpc`, `DeliverQuestItems`, and
   `TurnInQuest`, run through the open interaction, so range, line of sight, and
@@ -1344,7 +1353,15 @@ the quest actions of the realtime protocol through these routes:
   `questNpcActorId`, which GameService checks against the quest.
 - A `QuestIntent` abandons a quest from anywhere. It queues behind the player's
   other authority work, like every quest action, so the worker applies the
-  committed changes in order, and a dead character cannot send one.
+  committed changes in order, and a dead character cannot send one. Quest
+  intents share the peer's interaction rate limit with the NPC actions, and an
+  intent beyond it fails with `world_interaction_rate_limited`.
+- A quest action that the worker's own catalog and quest log already refuse
+  fails with GameService's code without a GameService call: a quest that the
+  catalog does not hold with `quest_not_found`, an action on a quest that the
+  log does not have active with `quest_not_active`, an objective of another
+  quest or kind with `quest_objective_invalid`, and a reward that the quest
+  does not offer with `quest_reward_choice_invalid`.
 - After every committed action the worker applies the carry state and the
   quest log change, sends the item change and then a `QuestLogChanged` from
   the revision it held, and then the result. A rejection keeps the session
@@ -1352,9 +1369,10 @@ the quest actions of the realtime protocol through these routes:
   `simulation_worker_quest_catalog_mismatch` do, also when a read of a stale
   quest log answers with one.
 - An answer that may have been lost after the commit, a timeout, an unreachable
-  GameService, or a 5xx answer, asks once more with the same operation id,
-  which replays a committed result. When that answer is uncertain too, the
-  worker reads the quest log again, and a `QuestLogChanged` with
+  GameService, or a 5xx answer, and `item_transaction_timeout`, a transaction
+  that concurrent database work rolled back, ask once more with the same
+  operation id, which replays a committed result. When that answer is uncertain
+  too, the worker reads the quest log again, and a `QuestLogChanged` with
   `ReloadRequired` tells the client to read its own when it changed. A log that
   cannot be read stays stale: the next quest action reads it first and fails
   with `quest_log_unavailable` while GameService cannot answer, so no change
@@ -1370,12 +1388,13 @@ the quest actions of the realtime protocol through these routes:
   before it left, or if that log is stale, so a kill during an accept counts for
   the accepted quest; a kill that no quest asks for costs no GameService call.
   The changed quests reach the player as a `QuestLogChanged` without an
-  operation id. An
-  uncertain answer keeps the player's lane and asks again with the same
+  operation id. An uncertain answer, or a transaction that concurrent database
+  work rolled back, keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
   a death; a rejection drops the credit with a warning, and a code that ends the
-  session ends it. A leave or a disconnect waits for the pending credits, and a
-  stopping worker gives every credit that has not committed one more attempt.
+  session ends it. A leave or a disconnect waits for the pending credits, a
+  player who started to leave before the kill gets none, and a stopping worker
+  gives every credit that has not committed one more attempt.
 - A Mob's death rolls its quest drops for the owner of each corpse it leaves,
   with the corpse's loot roll: once for every collect objective of a current
   step that names the Mob as a drop source, with the source's chance and
@@ -1472,7 +1491,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
 | Corpse view closures | `corpse_view_closed` when the viewer closed the view, `corpse_emptied` when the last item of a live Mob corpse was taken, `corpse_expired` at the deadline, `corpse_invalidated` when the corpse disappeared or its state can no longer be trusted, `corpse_not_found` when the worker or GameService no longer knows it, and `corpse_not_lootable` when the corpse belongs to the player who tagged its Mob; a view also closes with `combat_character_dead` when its viewer dies, and with the code of a rejection that ends it, such as `wrong_simulation_worker` |
 | World interaction | `world_actor_not_found`, `world_actor_unavailable`, `world_interaction_invalid`, `world_interaction_active`, `world_interaction_out_of_range`, `world_interaction_line_of_sight_blocked`, `world_interaction_target_changed`, `world_interaction_capability_unavailable`, `world_interaction_capability_deferred`, `world_interaction_session_invalid`, `world_interaction_closed`, `world_interaction_failed`, `world_interaction_unavailable`, `world_interaction_queue_full`, `world_interaction_rate_limited`, `npc_lifecycle_action_invalid`, `npc_lifecycle_unavailable`, `quest_action_invalid` |
-| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `quest_log_unavailable`, `simulation_worker_quest_catalog_mismatch`, `admin_tools_disabled` for a quest tool on a worker without the admin tools, and the GameService rejection of a quest action, such as `quest_not_active` or `development_tools_disabled` |
+| Quests | `quests_unavailable`, `quest_intent_unavailable`, `invalid_quest_intent`, `quest_intent_queue_full`, `quest_intent_failed`, `quest_log_unavailable`, `simulation_worker_quest_catalog_mismatch`, `world_interaction_rate_limited` for a quest intent beyond the shared rate limit, `admin_tools_disabled` for a quest tool on a worker without the admin tools, and the GameService rejection of a quest action, such as `quest_not_active` or `development_tools_disabled`, which the worker also answers itself for what its catalog and quest log already refuse |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required` |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
 | Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
