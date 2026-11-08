@@ -44,6 +44,31 @@ public sealed class CharacterQuestLogStoreTests
         Assert.False(log.CompletionCounts.ContainsKey("quest.ore_run"));
     }
 
+    // A reconnect reads the log while an operation of the same session may commit after the read,
+    // so a read older than the change already applied keeps the newer log; a new session starts
+    // from its own read.
+    [Fact]
+    public void AReadOlderThanTheLogOfTheSameSessionNeverTakesItBack()
+    {
+        var store = new CharacterQuestLogStore();
+        store.Register(CharacterId, SessionId, Empty(3));
+        Assert.True(store.TryApply(CharacterId, SessionId, Change(4, Quest("quest.wolves", "hunt", 0, ("wolves", 1))), out _));
+
+        store.Register(CharacterId, SessionId, Empty(3));
+        Assert.True(store.TryGet(CharacterId, SessionId, out var kept));
+        Assert.Equal(4, kept!.Revision);
+        Assert.Single(kept.ActiveQuests);
+
+        store.Register(CharacterId, SessionId, Empty(5));
+        Assert.True(store.TryGet(CharacterId, SessionId, out var newer));
+        Assert.Equal(5, newer!.Revision);
+
+        var nextSession = Guid.NewGuid();
+        store.Register(CharacterId, nextSession, Empty(2));
+        Assert.True(store.TryGet(CharacterId, nextSession, out var fresh));
+        Assert.Equal(2, fresh!.Revision);
+    }
+
     [Fact]
     public void OnlyTheRegisteringSessionRemovesTheLog()
     {

@@ -78,11 +78,20 @@ public sealed class CharacterQuestLogStore
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, Entry> logsByCharacterId = [];
 
+    // A reconnect reads the log while an operation of the same session may still commit, so a log
+    // of that session that already holds a newer change than the read stays as it is.
     public void Register(Guid characterId, Guid simulationSessionId, CharacterQuestLog log)
     {
         ArgumentNullException.ThrowIfNull(log);
         lock (syncRoot)
         {
+            if (logsByCharacterId.TryGetValue(characterId, out var entry)
+                && entry.SimulationSessionId == simulationSessionId
+                && entry.Log.Revision > log.Revision)
+            {
+                return;
+            }
+
             logsByCharacterId[characterId] = new Entry(simulationSessionId, log);
         }
     }

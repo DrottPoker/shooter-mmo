@@ -990,7 +990,7 @@ Then run the worker's side of the same actions:
 
 ```powershell
 dotnet test tests/Integration/Mmorpg.Integration.Tests --configuration Release --filter "FullyQualifiedName~QuestFlowIntegrationTests"
-dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestTests|FullyQualifiedName~CharacterQuestLogStoreTests"
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestTests|FullyQualifiedName~CharacterQuestLogStoreTests|FullyQualifiedName~SimulationSessionReleaseServiceTests"
 ```
 
 Expected result: every test passes. The worker reads the joining character's
@@ -1006,7 +1006,15 @@ answers two, a trophy looted with the quest's lineage counts, and the next
 read answers one. A join whose
 quest log cannot be read, or that GameService answers with another quest
 catalog, is rejected and released, and a development bot never reads a quest
-log.
+log. A reconnect whose read fails for a moment keeps the quest log it holds,
+marked stale, a read older than that log never takes it back, and a session
+released before its peer took it over drops its log. Of a burst of 20 quest
+intents, the first twelve pass the shared rate limit and the ones beyond it
+fail with `world_interaction_rate_limited`, and an abandon of an unknown or
+inactive quest or an objective the quest lacks fails with GameService's code
+without reaching GameService. An abandon that committed behind lost answers is
+refused when sent again, after a `QuestLogChanged` with `ReloadRequired` from
+revision 3 to 4.
 
 Then run the worker's kill and gathering credits:
 
@@ -1018,11 +1026,15 @@ Expected result: every test passes. An archer on the wolves hunt kills a Feral
 Wolf, and the worker sends one `credit_quest_kill` for `mob.feral_wolf` with its
 tags; the player gets a `QuestLogChanged` without an operation id that moves
 `wolves` to 1. A kill that no quest asks for sends nothing. A credit whose
-answers are lost asks again with the same operation id until it commits, and an
+answers are lost, or whose transaction the database rolled back with
+`item_transaction_timeout`, asks again with the same operation id until it
+commits, and an
 abandon sent after two kills waits for both credits, also after a reconnect
 from another client. A kill while the hunt's accept is in flight counts once the
 accept committed. A leave waits for the credit of the last kill and survives
-a death while it waits, and a stopping worker counts the kills that still wait
+a death while it waits, a wolf that a player tagged and another player killed
+after the tagger started to leave credits nobody, and a stopping worker counts
+the kills that still wait
 in the lane, deciding each one after the one before it, so a Grey Wolf behind
 the Feral Wolf that finishes a step counts for the next step. An Iron Vein yield names `resource.iron_vein`
 while the errand needs ore and none once the ore is done, a retry sends the same
@@ -1031,7 +1043,7 @@ request, and a lost answer makes the worker read the quest log again.
 Then run the worker's quest drops:
 
 ```powershell
-dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestDropTests|FullyQualifiedName~QuestDropRollerTests|FullyQualifiedName~MobCorpseLifecycleServiceTests"
+dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~RealtimeQuestDropTests|FullyQualifiedName~QuestDropRollerTests|FullyQualifiedName~MobCorpseLifecycleServiceTests|FullyQualifiedName~MobDeathCorpseRejectionTests"
 ```
 
 Expected result: every test passes. An archer on `quest.fixture.trophies` kills
@@ -1047,7 +1059,10 @@ corpse, which the Mob retries, an owner whose session ended or who has none
 on the worker gets no trophy, and a durable corpse sends every rolled trophy
 to GameService with the quest. The quest drops that GameService says a durable
 corpse kept become the drops its owner hears of, and an answer that names a
-drop the worker never asked for is refused.
+drop the worker never asked for is refused. A corpse that GameService can
+never create, such as one refused with `mob_corpse_invalid` for a quest drop
+that is not a protected quest item, lets the Mob leave without it, while a
+timeout or an unreachable GameService retries the corpse.
 
 Then run the client's quest state and dialog rules in the Unity Editor:
 

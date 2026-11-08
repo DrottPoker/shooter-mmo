@@ -120,6 +120,19 @@ internal sealed class MobDeathProcessor(
         return ScopedGuid.Create("mob-corpse", deathEventId);
     }
 
+    // A rejection that the same corpse request can never get past: its source, authority, or
+    // persistence is invalid, GameService refused its content, such as a quest drop that is not
+    // a protected quest item, or the request itself is malformed. Every other answer retries,
+    // because it may pass once the worker's lease or the database recovers.
+    public static bool IsFinalCorpseRejection(string code)
+    {
+        return code is "mob_corpse_source_invalid"
+            or "mob_corpse_authority_invalid"
+            or "mob_corpse_persistence_invalid"
+            or "mob_corpse_invalid"
+            or "item_simulation_operation_invalid";
+    }
+
     public void Begin(Combatant combatant, IReadOnlyList<MobKillCredit> credits)
     {
         var actor = combatant.Actor!;
@@ -229,7 +242,7 @@ internal sealed class MobDeathProcessor(
                 death.Actor.RuntimeActorId,
                 corpse.Attempts,
                 error.Code);
-            if (error.Code is "mob_corpse_source_invalid" or "mob_corpse_authority_invalid" or "mob_corpse_persistence_invalid")
+            if (IsFinalCorpseRejection(error.Code))
             {
                 // The Mob can never get this corpse, so it leaves without it.
                 corpse.Finished = true;

@@ -43,4 +43,18 @@ public static class GameServiceOutcome
     {
         return !EndsItemSession(code) && (IsUncertain(code) || statusCode >= 500);
     }
+
+    // The item kernel rolled the transaction back because of concurrent database work, such as a
+    // lock timeout or a deadlock, and released the operation, so the same operation may run again.
+    public static bool IsRolledBack(string code)
+    {
+        return code is "item_transaction_timeout";
+    }
+
+    // A failure that asking again with the same operation id may get past: one that may have
+    // committed, and one that rolled back. A retry of a committed operation replays its result.
+    public static bool IsRetryable(string code, int statusCode)
+    {
+        return IsTransient(code, statusCode) || IsRolledBack(code);
+    }
 }

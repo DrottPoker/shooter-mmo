@@ -80,7 +80,14 @@ public sealed class SimulationJoinService(
 
         var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);
         var questLog = await ReadQuestLogAsync(session, cancellationToken);
-        if (!questLog.Succeeded)
+
+        // A reconnect of a session that the worker hosts keeps the quest log it holds when the read
+        // fails for a moment, and reads it again before the next quest action, because releasing
+        // the session would lose the death or the kill credits it may still have to commit.
+        var keepsQuestLog = !questLog.Succeeded
+            && GameServiceOutcome.IsTransient(questLog.Error!.Code, questLog.StatusCode)
+            && HoldsQuestLogOf(session);
+        if (!questLog.Succeeded && !keepsQuestLog)
         {
             await gameServiceClient.ReleaseSimulationSessionAsync(
                 session.SimulationSessionId,
@@ -153,7 +160,11 @@ public sealed class SimulationJoinService(
             lookStore?.Register(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, look);
         }
 
-        if (questLog.Value is not null)
+        if (keepsQuestLog)
+        {
+            questLogs!.MarkStale(session.CharacterId, session.SimulationSessionId);
+        }
+        else if (questLog.Value is not null)
         {
             questLogs?.Register(session.CharacterId, session.SimulationSessionId, questLog.Value);
         }
@@ -161,6 +172,14 @@ public sealed class SimulationJoinService(
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 
         return SimulationJoinResult<ActiveSimulationSession>.Success(registeredSession!);
+    }
+
+    private bool HoldsQuestLogOf(ActiveSimulationSession session)
+    {
+        return questLogs is not null
+            && sessionStore.TryGet(session.CharacterId, out var current)
+            && current!.SimulationSessionId == session.SimulationSessionId
+            && questLogs.TryGet(session.CharacterId, session.SimulationSessionId, out _);
     }
 
     // The worker keeps the quest log of every player while it plays, so it counts quest progress

@@ -89,6 +89,38 @@ public sealed class RealtimeQuestCreditTests
         Assert.Equal(1, log!.ActiveQuests[Wolves].Progress["wolves"]);
     }
 
+    // GameService rolls a transaction back when concurrent database work times it out and
+    // releases the operation, so the credit asks again with the same operation until it commits.
+    [Fact]
+    public async Task ACreditThatTheDatabaseRolledBackAsksAgainUntilItCommits()
+    {
+        await using var harness = Create();
+        var archer = AddArcher(harness, "Contended Hunter");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, Hunting(0)));
+        var calls = 0;
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(
+            Interlocked.Increment(ref calls) <= 3
+                ? ScriptedGameServiceHandler.Problem(
+                    HttpStatusCode.Conflict,
+                    "item_transaction_timeout",
+                    "The item transaction was aborted by concurrent database work. Retry it.")
+                : KillCounted(request, 4, 1));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(archer);
+        var wolf = await WaitForWolfAsync(harness, client);
+
+        client.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+        await harness.PollUntilAsync(
+            () => QuestChanges(client).Any(change => !change.ReloadRequired),
+            "the kill to count after the rolled back attempts");
+
+        Assert.Equal(4, harness.GameService.QuestOperations.Count);
+        Assert.Single(harness.GameService.QuestOperations.Select(operation => operation.OperationId).Distinct());
+        Assert.True(harness.QuestLogs!.TryGet(archer.CharacterId, archer.SimulationSessionId, out var log));
+        Assert.Equal(1, log!.ActiveQuests[Wolves].Progress["wolves"]);
+    }
+
     [Fact]
     public async Task ALeaveWaitsForTheCreditOfTheLastKill()
     {
@@ -121,6 +153,70 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => client.Has(RealtimeMessageType.LeaveAccepted), "the leave");
             Assert.Equal(0, releasesAtCredit);
             Assert.Single(harness.GameService.QuestOperations);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    // A player who started to leave left before the kill, so a wolf that the player tagged and
+    // another player killed while the leave waited credits nobody, and the leave goes through.
+    [Fact]
+    public async Task AKillAfterTheTaggerStartedToLeaveCountsForNobody()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableWorldActors = true,
+            EnableQuests = true,
+            WorldActorDocument = WolfNextToTheSpawn(respawnSeconds: 30f),
+            ItemCatalog = TestCatalog(minimumDamage: 10, maximumDamage: 10, attackIntervalSeconds: 1f),
+            CombatRules = TestRules(respawnSeconds: 30f),
+            CombatRandom = new LowestRoll()
+        });
+        var tagger = AddArcher(harness, "Departing Tagger");
+        var finisher = AddArcher(harness, "Staying Finisher");
+        var gate = new TestGate();
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, Hunting(0)));
+        harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(KillCounted(request, 4, 1));
+
+        // The tagger's spent arrows commit only once the gate opens, so its leave waits for them.
+        harness.GameService.OnAmmunitionConsumption = async (simulationSessionId, request, _) =>
+        {
+            if (simulationSessionId == tagger.SimulationSessionId)
+            {
+                await gate.WaitAsync();
+            }
+
+            return harness.GameService.DefaultAmmunitionConsumption(request);
+        };
+        await harness.StartAsync();
+        try
+        {
+            var taggerClient = await harness.JoinAsync(tagger);
+            var finisherClient = await harness.JoinAsync(finisher);
+            var wolf = await WaitForWolfAsync(harness, taggerClient);
+            var taggerEntityId = taggerClient.JoinAccepted!.ControlledEntityId;
+
+            taggerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+            await harness.PollUntilAsync(
+                () => States(finisherClient).Any(value => value.EntityId == wolf.EntityId && value.TaggedByEntityId == taggerEntityId),
+                "the tagger to tag the wolf");
+            taggerClient.SendLeave(taggerClient.JoinAccepted!.SimulationSessionId);
+            await harness.PollUntilAsync(() => gate.HasEntered, "the leave to wait for the tagger's arrows");
+
+            finisherClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
+            await harness.PollUntilAsync(
+                () => Events(finisherClient).Any(value => value.Kind == RealtimeCombatEventKind.Died && value.TargetEntityId == wolf.EntityId),
+                "the finisher to kill the wolf");
+            Assert.False(taggerClient.Has(RealtimeMessageType.LeaveAccepted));
+
+            gate.Release();
+            await harness.PollUntilAsync(() => taggerClient.Has(RealtimeMessageType.LeaveAccepted), "the leave");
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+
+            Assert.Empty(harness.GameService.QuestOperations);
         }
         finally
         {

@@ -1,6 +1,7 @@
 using System.Net;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -162,6 +163,8 @@ public sealed class RealtimeQuestTests
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
         var character = harness.AddCharacter("Quest Stubborn");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
         harness.GameService.OnQuestOperation = (_, _, _) => Task.FromResult(
             ScriptedGameServiceHandler.Problem(HttpStatusCode.Conflict, "quest_not_active", "The quest is not active."));
         await harness.StartAsync();
@@ -171,13 +174,14 @@ public sealed class RealtimeQuestTests
             RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
         await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the refused abandon");
 
+        Assert.Single(harness.GameService.QuestOperations);
         var result = Assert.Single(QuestResults(client));
         Assert.False(result.Succeeded);
         Assert.Equal("quest_not_active", result.Error!.Code);
         Assert.Empty(QuestChanges(client));
         Assert.Null(client.ServerDisconnect);
         Assert.True(harness.QuestLogs!.TryGet(character.CharacterId, character.SimulationSessionId, out var log));
-        Assert.Equal(0, log!.Revision);
+        Assert.Equal(3, log!.Revision);
     }
 
     // Every quest operation names the quest catalog the worker runs, and GameService refusing it
@@ -187,6 +191,8 @@ public sealed class RealtimeQuestTests
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
         var character = harness.AddCharacter("Quest Outdated");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
         harness.GameService.OnQuestOperation = (_, _, _) => Task.FromResult(
             ScriptedGameServiceHandler.Problem(
                 HttpStatusCode.Conflict,
@@ -201,6 +207,141 @@ public sealed class RealtimeQuestTests
         var operation = Assert.Single(harness.GameService.QuestOperations);
         Assert.Equal(RealtimeServerHarness.QuestCatalog.Revision, operation.QuestCatalogRevision);
         Assert.Equal("simulation_worker_quest_catalog_mismatch", client.ServerDisconnect!.Code);
+    }
+
+    // A reconnect of a hosted session keeps the quest log the worker holds when GameService cannot
+    // answer the read for a moment, so the session survives with what it still has to commit, and
+    // the next quest action reads the log first.
+    [Fact]
+    public async Task AReconnectKeepsItsQuestLogWhenTheReadFailsForAMoment()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Returner");
+        var reads = 0;
+        harness.GameService.OnQuestLog = (_, request, _) => Interlocked.Increment(ref reads) == 1
+            ? Task.FromResult(ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)))
+            : throw new HttpRequestException("GameService is busy for a moment.");
+        await harness.StartAsync();
+        await harness.JoinAsync(character, "first");
+        var reconnect = character with
+        {
+            Ticket = "ticket-reconnect",
+            SimulationSessionToken = "reconnected-session-token"
+        };
+        harness.GameService.AddCharacter(reconnect);
+
+        var second = await harness.JoinAsync(reconnect, "second");
+
+        Assert.Null(second.JoinRejected);
+        Assert.Equal(0, harness.GameService.ReleaseCount);
+        Assert.True(harness.QuestLogs!.TryGet(character.CharacterId, character.SimulationSessionId, out var kept));
+        Assert.Equal(3, kept!.Revision);
+        Assert.True(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
+    }
+
+    // Quest intents share the peer's interaction rate limit, so a burst beyond its twelve intents
+    // is refused before anything is queued.
+    [Fact]
+    public async Task QuestIntentsShareTheInteractionRateLimit()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Spammer");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+        var intents = Enumerable.Range(0, 20)
+            .Select(_ => RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), "quest.fixture.unknown"))
+            .ToArray();
+
+        foreach (var intent in intents)
+        {
+            client.Send(RealtimeProtocol.EncodeQuestIntent(intent));
+        }
+
+        await harness.PollUntilAsync(() => QuestResults(client).Count == intents.Length, "a result for every intent");
+
+        var results = QuestResults(client).ToDictionary(result => result.OperationId);
+        var limited = intents
+            .Select((intent, index) => (Index: index, Result: results[intent.OperationId]))
+            .Where(value => value.Result.Error?.Code == WorldInteractionIntentLimiter.RejectionCode)
+            .ToArray();
+        Assert.NotEmpty(limited);
+        Assert.All(limited, value => Assert.True(value.Index >= 12, "The burst capacity admits the first twelve intents."));
+        Assert.All(
+            results.Values.Where(result => result.Error?.Code != WorldInteractionIntentLimiter.RejectionCode),
+            result => Assert.Contains(result.Error!.Code, new[] { "quest_not_found", "quest_intent_queue_full" }));
+        Assert.Empty(harness.GameService.QuestOperations);
+        Assert.Null(client.ServerDisconnect);
+    }
+
+    // What the worker's own catalog and quest log refuse never reaches GameService.
+    [Fact]
+    public async Task AQuestIntentThatTheWorkersLogRefusesNeverReachesGameService()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            EnableQuests = true,
+            EnableAdminTools = true
+        });
+        var character = harness.AddCharacter("Quest Mistaken");
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(
+            ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), "quest.fixture.unknown")));
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), "quest.fixture.ore_run")));
+        client.Send(RealtimeProtocol.EncodeQuestIntent(
+            RealtimeQuestIntent.CreateAdminCompleteObjective(Guid.NewGuid(), Wolves, "no_such_objective")));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 3, "the three refusals");
+
+        Assert.Equal(
+            ["quest_not_found", "quest_not_active", "quest_objective_invalid"],
+            QuestResults(client).Select(result => result.Error!.Code));
+        Assert.Empty(harness.GameService.QuestOperations);
+        Assert.Null(client.ServerDisconnect);
+    }
+
+    // An abandon that committed behind lost answers leaves a stale log that the next action reads
+    // again. The worker's own log then refuses that action, and the refusal still tells the
+    // client to read its log, which still shows the abandoned quest.
+    [Fact]
+    public async Task ARefusalAfterAStaleLogWasReadAgainTellsTheClientToReload()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableQuests = true });
+        var character = harness.AddCharacter("Quest Doubter");
+        var abandoned = false;
+        var logAvailable = true;
+        harness.GameService.OnQuestLog = (_, request, _) => Task.FromResult(!logAvailable
+            ? ScriptedGameServiceHandler.Problem(HttpStatusCode.ServiceUnavailable, "database_unavailable", "Try again.")
+            : abandoned
+                ? ScriptedGameServiceHandler.QuestLog(request.CharacterId, 4)
+                : ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, ActiveWolves(1)));
+        harness.GameService.OnQuestOperation = (_, _, _) =>
+        {
+            abandoned = true;
+            throw new HttpRequestException("The answer was lost.");
+        };
+        await harness.StartAsync();
+        var client = await harness.JoinAsync(character);
+
+        logAvailable = false;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 1, "the uncertain abandon");
+        Assert.True(harness.QuestLogs!.IsStale(character.CharacterId, character.SimulationSessionId));
+        Assert.Empty(QuestChanges(client));
+        var operations = harness.GameService.QuestOperations.Count;
+
+        logAvailable = true;
+        client.Send(RealtimeProtocol.EncodeQuestIntent(RealtimeQuestIntent.CreateAbandon(Guid.NewGuid(), Wolves)));
+        await harness.PollUntilAsync(() => QuestResults(client).Count == 2, "the refused abandon");
+
+        Assert.Equal("quest_not_active", QuestResults(client)[1].Error!.Code);
+        Assert.Equal(operations, harness.GameService.QuestOperations.Count);
+        var reload = Assert.Single(QuestChanges(client));
+        Assert.Equal((3L, 4L, true), (reload.PreviousQuestLogRevision, reload.QuestLogRevision, reload.ReloadRequired));
+        Assert.False(harness.QuestLogs.IsStale(character.CharacterId, character.SimulationSessionId));
     }
 
     // A lost answer asks again with the same operation, which replays a committed result.

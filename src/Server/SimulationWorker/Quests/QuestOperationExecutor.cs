@@ -80,6 +80,8 @@ public sealed class QuestOperationExecutor(
     QuestCatalogRuntimeDocument questCatalog)
 {
     private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
+    private readonly Dictionary<string, QuestDefinition> questsById =
+        questCatalog.Quests.ToDictionary(quest => quest.Id, StringComparer.Ordinal);
 
     public async Task<QuestOperationOutcome> ExecuteAsync(
         ActiveSimulationSession session,
@@ -115,6 +117,17 @@ public sealed class QuestOperationExecutor(
                     Uncertain = true
                 };
             }
+        }
+
+        // What the worker's own catalog and log already refuse never reaches GameService, so a
+        // client intent with any id costs no stored operation. A log that the read above moved on
+        // may hold a change the client missed, so the client reads its own again.
+        if (operation.ClientIntent && Refuse(session, operation) is { } refused)
+        {
+            return refused with
+            {
+                QuestLogChange = ReloadNotice(session, operation.ReportedOperationId, reloadFrom)
+            };
         }
 
         var request = new SimulationQuestOperationRequest(
@@ -244,10 +257,12 @@ public sealed class QuestOperationExecutor(
         return ReloadNotice(session, Guid.Empty, log!.Revision);
     }
 
-    // A lost answer, or a failure after the commit such as a read of the committed state.
+    // A lost answer, a failure after the commit such as a read of the committed state, or a
+    // transaction that concurrent database work rolled back. The same operation id asks again, and
+    // after a second such answer the action is uncertain, since the first may have committed.
     private static bool IsUncertain(GameServiceResult<SimulationItemTransactionResponse> result)
     {
-        return !result.Succeeded && GameServiceOutcome.MayHaveCommitted(result.Error!.Code, result.StatusCode);
+        return !result.Succeeded && GameServiceOutcome.IsRetryable(result.Error!.Code, result.StatusCode);
     }
 
     // Replaces a stale log with GameService's and returns the revision it replaced, which is null
@@ -294,6 +309,63 @@ public sealed class QuestOperationExecutor(
         return reloadFrom is { } previous && current > previous
             ? new RealtimeQuestLogChanged(operationId, previous, current, true, [])
             : null;
+    }
+
+    // The refusals GameService would answer for an id the quest catalog does not hold, an action on
+    // a quest the read log does not have active, an objective of another quest or kind, and a
+    // reward the quest does not offer, with GameService's codes.
+    private QuestOperationOutcome? Refuse(ActiveSimulationSession session, QuestOperation operation)
+    {
+        if (operation.OperationKind == QuestOperationKinds.AdminResetAll)
+        {
+            return null;
+        }
+
+        if (operation.QuestId is null || !questsById.TryGetValue(operation.QuestId, out var quest))
+        {
+            return QuestOperationOutcome.Rejected("quest_not_found", "The quest catalog holds no such quest.");
+        }
+
+        if (RequiresActiveQuest(operation.OperationKind)
+            && questLogs.TryGet(session.CharacterId, session.SimulationSessionId, out var log)
+            && !log!.ActiveQuests.ContainsKey(quest.Id))
+        {
+            return QuestOperationOutcome.Rejected("quest_not_active", "The character does not have this quest active.");
+        }
+
+        var objectiveKind = operation.OperationKind switch
+        {
+            QuestOperationKinds.TalkTo => QuestObjectiveKindIds.TalkTo,
+            QuestOperationKinds.Deliver => QuestObjectiveKindIds.Deliver,
+            _ => null
+        };
+        if (operation.ObjectiveId is { } objectiveId
+            && !quest.Steps.SelectMany(step => step.Objectives).Any(objective =>
+                string.Equals(objective.Id, objectiveId, StringComparison.Ordinal)
+                && (objectiveKind is null || string.Equals(objective.Kind, objectiveKind, StringComparison.Ordinal))))
+        {
+            return QuestOperationOutcome.Rejected("quest_objective_invalid", "The quest has no such objective of this kind.");
+        }
+
+        if (operation.RewardChoiceDefinitionId is { } choice
+            && !quest.RewardChoiceItems.Any(item => string.Equals(item.DefinitionId, choice, StringComparison.Ordinal)))
+        {
+            return QuestOperationOutcome.Rejected("quest_reward_choice_invalid", "The quest does not offer this reward.");
+        }
+
+        return null;
+    }
+
+    private static bool RequiresActiveQuest(string operationKind)
+    {
+        return operationKind is QuestOperationKinds.Abandon
+            or QuestOperationKinds.RegrantItems
+            or QuestOperationKinds.TalkTo
+            or QuestOperationKinds.Deliver
+            or QuestOperationKinds.TurnIn
+            or QuestOperationKinds.AdminCompleteObjective
+            or QuestOperationKinds.AdminCompleteStep
+            or QuestOperationKinds.AdminMakeReady;
     }
 
     private sealed record QuestLogReread(long? ReplacedRevision, SimulationWorkerErrorResponse? Error);
