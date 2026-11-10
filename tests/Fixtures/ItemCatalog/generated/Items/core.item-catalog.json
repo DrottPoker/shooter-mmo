@@ -1,14 +1,13 @@
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "catalogId": "core",
-  "revision": "9db3924f0a6cf164f3a1e9448c50b5a45b324248c3b1682e5137ce7e4adac10a",
+  "revision": "9a838d23e3b7ad69303afd606ab685c846899d35512ebe85e12260c68b2104e8",
   "character": {
     "baseCarryCapacity": 200,
     "inventorySlotCount": 20,
     "bankSlotCount": 40
   },
   "economy": {
-    "currencyDisplayName": "Fixture Coins",
     "startingBalance": 0
   },
   "progression": {
@@ -16,113 +15,90 @@
   },
   "categories": [
     {
-      "id": "ammunition",
-      "displayName": "Ammunition"
+      "id": "ammunition"
     },
     {
-      "id": "armor",
-      "displayName": "Armor"
+      "id": "armor"
     },
     {
-      "id": "bag",
-      "displayName": "Bag"
+      "id": "bag"
     },
     {
-      "id": "jewelry",
-      "displayName": "Jewelry"
+      "id": "jewelry"
     },
     {
-      "id": "material",
-      "displayName": "Material"
+      "id": "material"
     },
     {
-      "id": "potion",
-      "displayName": "Potion"
+      "id": "potion"
     },
     {
-      "id": "quest_item",
-      "displayName": "Quest Item"
+      "id": "quest_item"
     },
     {
-      "id": "tool",
-      "displayName": "Tool"
+      "id": "tool"
     },
     {
-      "id": "weapon",
-      "displayName": "Weapon"
+      "id": "weapon"
     }
   ],
   "tags": [
     {
-      "id": "ammunition",
-      "displayName": "Ammunition"
+      "id": "ammunition"
     },
     {
-      "id": "material",
-      "displayName": "Material"
+      "id": "material"
     },
     {
-      "id": "potion",
-      "displayName": "Potion"
+      "id": "potion"
     }
   ],
   "toolKinds": [
     {
-      "id": "pickaxe",
-      "displayName": "Pickaxe"
+      "id": "pickaxe"
     }
   ],
   "equipmentSlots": [
     {
       "id": "head",
-      "displayName": "Head",
       "maximumQuantity": 1
     },
     {
       "id": "body",
-      "displayName": "Body",
       "maximumQuantity": 1
     },
     {
       "id": "main_hand",
-      "displayName": "Main Hand",
       "maximumQuantity": 1
     },
     {
       "id": "off_hand",
-      "displayName": "Off Hand",
       "maximumQuantity": 1
     },
     {
       "id": "ammunition",
-      "displayName": "Ammunition",
       "maximumQuantity": 50
     },
     {
       "id": "tool",
-      "displayName": "Tool",
       "maximumQuantity": 1
     },
     {
       "id": "ring_1",
-      "displayName": "Ring 1",
       "maximumQuantity": 1
     },
     {
       "id": "ring_2",
-      "displayName": "Ring 2",
       "maximumQuantity": 1
     },
     {
       "id": "bag",
-      "displayName": "Bag",
       "maximumQuantity": 1
     }
   ],
   "weaponFamilies": [
     {
       "id": "blade",
-      "displayName": "Blade",
       "combatStyle": "melee",
       "ammunitionFamily": "",
       "projectileSpeed": 0,
@@ -130,7 +106,6 @@
     },
     {
       "id": "bow",
-      "displayName": "Bow",
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
       "projectileSpeed": 30,
@@ -139,14 +114,12 @@
   ],
   "ammunitionFamilies": [
     {
-      "id": "arrow",
-      "displayName": "Arrow"
+      "id": "arrow"
     }
   ],
   "definitions": [
     {
       "id": "fixture.arrow",
-      "displayName": "Fixture Arrow",
       "category": "ammunition",
       "tags": [
         "ammunition"
@@ -170,7 +143,6 @@
     },
     {
       "id": "fixture.bow",
-      "displayName": "Fixture Bow",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -199,7 +171,6 @@
     },
     {
       "id": "fixture.helm",
-      "displayName": "Fixture Helm",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -217,7 +188,6 @@
     },
     {
       "id": "fixture.letter",
-      "displayName": "Fixture Letter",
       "category": "quest_item",
       "tags": [],
       "toolKinds": [],
@@ -235,7 +205,6 @@
     },
     {
       "id": "fixture.ore",
-      "displayName": "Fixture Ore",
       "category": "material",
       "tags": [
         "material"
@@ -253,7 +222,6 @@
     },
     {
       "id": "fixture.pack",
-      "displayName": "Fixture Pack",
       "category": "bag",
       "tags": [],
       "toolKinds": [],
@@ -317,7 +285,6 @@
     },
     {
       "id": "fixture.pickaxe",
-      "displayName": "Fixture Pickaxe",
       "category": "tool",
       "tags": [],
       "toolKinds": [
@@ -337,7 +304,6 @@
     },
     {
       "id": "fixture.potion",
-      "displayName": "Fixture Potion",
       "category": "potion",
       "tags": [
         "potion"
@@ -355,7 +321,6 @@
     },
     {
       "id": "fixture.ring",
-      "displayName": "Fixture Ring",
       "category": "jewelry",
       "tags": [],
       "toolKinds": [],
@@ -374,7 +339,6 @@
     },
     {
       "id": "fixture.shield",
-      "displayName": "Fixture Shield",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -392,7 +356,6 @@
     },
     {
       "id": "fixture.sword",
-      "displayName": "Fixture Sword",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -420,7 +383,6 @@
     },
     {
       "id": "fixture.trophy",
-      "displayName": "Fixture Trophy",
       "category": "quest_item",
       "tags": [],
       "toolKinds": [],
@@ -438,7 +400,6 @@
     },
     {
       "id": "fixture.tunic",
-      "displayName": "Fixture Tunic",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -458,7 +419,6 @@
   "vendors": [
     {
       "id": "vendor.fixture_store",
-      "displayName": "Fixture Store",
       "offers": [
         {
           "definitionId": "fixture.arrow"

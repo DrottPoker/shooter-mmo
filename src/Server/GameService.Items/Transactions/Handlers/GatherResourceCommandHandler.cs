@@ -69,14 +69,10 @@ internal sealed class GatherResourceCommandHandler(
         if (!hasTool)
         {
             // Names the missing kind, because another tool in the slot looks like the right one.
-            var toolKindName = await context.Connection.ExecuteScalarAsync<string?>(new CommandDefinition(
-                "select display_name from item_tool_kinds where id = @ToolKind;",
-                new { ToolKind = command.RequiredToolKind },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+            // The worker adds the kind to the code, so the client shows its name.
             ItemTransactionContext.Reject(
                 ItemTransactionErrorCodes.GatheringToolRequired,
-                (toolKindName ?? command.RequiredToolKind) + " required in the Tool slot.");
+                "A tool of the kind '" + command.RequiredToolKind + "' is required in the Tool slot.");
         }
 
         var definition = await context.State.LoadDefinitionAsync(

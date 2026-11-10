@@ -9,19 +9,15 @@ internal sealed record ItemCatalogResponse(
     IReadOnlyList<ItemCatalogEquipmentSlotResponse> EquipmentSlots,
     IReadOnlyList<ItemCatalogDefinitionResponse> Definitions);
 
-internal sealed record ItemCatalogIdentityResponse(
-    string Id,
-    string DisplayName);
+internal sealed record ItemCatalogIdentityResponse(string Id);
 
 internal sealed record ItemCatalogEquipmentSlotResponse(
     string Id,
-    string DisplayName,
     int SortOrder,
     int MaximumQuantity);
 
 internal sealed record ItemCatalogDefinitionResponse(
     string Id,
-    string DisplayName,
     string CategoryId,
     long UnitWeight,
     int MaximumStackSize,

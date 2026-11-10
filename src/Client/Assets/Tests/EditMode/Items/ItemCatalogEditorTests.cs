@@ -208,27 +208,27 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void DisplayOnlyAndStructuralChangesAreClassifiedCorrectly()
+        public void ARenameChangesNoCatalogAndAStructuralChangeIsClassified()
         {
             var workspace = LoadCheckedInWorkspace();
             var baseline = ItemCatalogCompiler.Compile(workspace.Authoring.ToAuthoringDocument());
             var definitionId = workspace.Authoring.definitions[0].id;
             var baselineDefinition = FindDefinition(baseline, definitionId);
 
+            // A name is text, which the compiled catalog does not carry: only the item text
+            // table follows a rename.
             var displayDocument = ItemCatalogEditorJson.Clone(workspace.Authoring);
             displayDocument.definitions[0].displayName += " Updated";
             var displayCatalog = ItemCatalogCompiler.Compile(displayDocument.ToAuthoringDocument());
-            var displayDefinition = FindDefinition(displayCatalog, definitionId);
             var displayChanges = ItemCatalogChangeClassifier.Compare(
                 ItemCatalogEditorRuntimeDocument.FromDomain(baseline),
                 ItemCatalogEditorRuntimeDocument.FromDomain(displayCatalog));
 
-            Assert.That(displayCatalog.Revision, Is.Not.EqualTo(baseline.Revision));
+            Assert.That(displayCatalog.Revision, Is.EqualTo(baseline.Revision));
+            Assert.That(displayChanges, Is.Empty);
             Assert.That(
-                displayDefinition.StructuralFingerprint,
-                Is.EqualTo(baselineDefinition.StructuralFingerprint));
-            Assert.That(displayChanges.Single().Kind,
-                Is.EqualTo(ItemCatalogDefinitionChangeKind.DisplayOnly));
+                ContentText.FromItemCatalog(displayDocument.ToAuthoringDocument()).Revision,
+                Is.Not.EqualTo(ContentText.FromItemCatalog(workspace.Authoring.ToAuthoringDocument()).Revision));
 
             var structuralDocument = ItemCatalogEditorJson.Clone(workspace.Authoring);
             structuralDocument.definitions[0].unitWeight++;
@@ -538,8 +538,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     {
                         definitionId = "unknown.definition",
                         iconAddress = string.Empty,
-                        localizationKey = "items.unknown.definition.name",
-                        fallbackDisplayName = "Unknown",
                         prefabPresentationKey = string.Empty
                     }
                 }).ToArray(),
@@ -618,7 +616,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 new ItemCatalogEditorRuntimeDefinition
                 {
                     id = draft.id,
-                    displayName = draft.displayName,
                     structuralFingerprint = new string('a', 64)
                 }
             }).ToArray();
@@ -649,8 +646,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     definitionId = "retired.definition",
                     iconAddress = string.Empty,
-                    localizationKey = "items.retired.definition.name",
-                    fallbackDisplayName = "Retired Definition",
                     prefabPresentationKey = string.Empty
                 }
             }).ToArray();
@@ -720,8 +715,6 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 definitionId = entry.definitionId,
                 iconAddress = entry.iconAddress,
-                localizationKey = entry.localizationKey,
-                fallbackDisplayName = entry.fallbackDisplayName,
                 prefabPresentationKey = entry.prefabPresentationKey
             };
         }

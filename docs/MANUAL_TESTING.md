@@ -136,6 +136,9 @@ describes how the window works.
    shows `Building GameService...` and then `GameService command running...`,
    and `Target` lists every local character with its account, online state,
    item count, weight, and capacity.
+   The item list under `Give Individual Item` names every item as the game
+   does, such as `Iron Sword (weapon.iron_sword)`: GameService lists ids, and
+   the window reads the names from the item text table.
 4. Select the offline character. To give one item, choose it under `Give
    Individual Item` with a quantity and the destination `Permanent Inventory`
    or `Bank`, and click `Give Item`. Expected result: the
@@ -413,6 +416,21 @@ The client shows item, quest, and actor text from the text tables, as
    the table no longer matches its revision, and every item, quest, and actor
    shows its key in brackets, such as `[item/tool.starter_pickaxe/name]`. Restore the
    file with `git restore src/Shared/WorldData/Generated/Text`.
+
+### A Rename Changes Only The Text Table
+
+The compiled item catalog and the item tables of GameService carry no text, as
+[Text Tables](../content/README.md#text-tables) describes.
+
+1. Note the output of `git status --short`. Open `MMORPG > Tools > Item Catalog`,
+   change the display name of the Iron Sword, and bake. Expected result:
+   `git status --short` lists `content/items/` and
+   `src/Shared/WorldData/Generated/Text/en/items.text-table.json` as changed,
+   and not `src/Shared/WorldData/Generated/Items/core.item-catalog.json`.
+2. Start Play Mode without restarting GameService or the worker and open the
+   inventory. Expected result: the sword shows its new name, and the client
+   joins as before, because the catalog revision did not change. Restore the
+   files with `git restore content/items src/Shared/WorldData/Generated/Text`.
 
 ### Messages By Code
 

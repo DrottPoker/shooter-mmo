@@ -1,0 +1,168 @@
+{
+  "formatVersion": 1,
+  "tableId": "items",
+  "locale": "en",
+  "revision": "02ab89c7ec46b879b03cd53194ccf01cdb2741eeba86173feda192a9bbe32fad",
+  "entries": [
+    {
+      "key": "ammunition-family/arrow/name",
+      "text": "Arrow"
+    },
+    {
+      "key": "currency/name",
+      "text": "Fixture Coins"
+    },
+    {
+      "key": "equipment-slot/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "equipment-slot/bag/name",
+      "text": "Bag"
+    },
+    {
+      "key": "equipment-slot/body/name",
+      "text": "Body"
+    },
+    {
+      "key": "equipment-slot/head/name",
+      "text": "Head"
+    },
+    {
+      "key": "equipment-slot/main_hand/name",
+      "text": "Main Hand"
+    },
+    {
+      "key": "equipment-slot/off_hand/name",
+      "text": "Off Hand"
+    },
+    {
+      "key": "equipment-slot/ring_1/name",
+      "text": "Ring 1"
+    },
+    {
+      "key": "equipment-slot/ring_2/name",
+      "text": "Ring 2"
+    },
+    {
+      "key": "equipment-slot/tool/name",
+      "text": "Tool"
+    },
+    {
+      "key": "item-category/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "item-category/armor/name",
+      "text": "Armor"
+    },
+    {
+      "key": "item-category/bag/name",
+      "text": "Bag"
+    },
+    {
+      "key": "item-category/jewelry/name",
+      "text": "Jewelry"
+    },
+    {
+      "key": "item-category/material/name",
+      "text": "Material"
+    },
+    {
+      "key": "item-category/potion/name",
+      "text": "Potion"
+    },
+    {
+      "key": "item-category/quest_item/name",
+      "text": "Quest Item"
+    },
+    {
+      "key": "item-category/tool/name",
+      "text": "Tool"
+    },
+    {
+      "key": "item-category/weapon/name",
+      "text": "Weapon"
+    },
+    {
+      "key": "item-tag/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "item-tag/material/name",
+      "text": "Material"
+    },
+    {
+      "key": "item-tag/potion/name",
+      "text": "Potion"
+    },
+    {
+      "key": "item/fixture.arrow/name",
+      "text": "Fixture Arrow"
+    },
+    {
+      "key": "item/fixture.bow/name",
+      "text": "Fixture Bow"
+    },
+    {
+      "key": "item/fixture.helm/name",
+      "text": "Fixture Helm"
+    },
+    {
+      "key": "item/fixture.letter/name",
+      "text": "Fixture Letter"
+    },
+    {
+      "key": "item/fixture.ore/name",
+      "text": "Fixture Ore"
+    },
+    {
+      "key": "item/fixture.pack/name",
+      "text": "Fixture Pack"
+    },
+    {
+      "key": "item/fixture.pickaxe/name",
+      "text": "Fixture Pickaxe"
+    },
+    {
+      "key": "item/fixture.potion/name",
+      "text": "Fixture Potion"
+    },
+    {
+      "key": "item/fixture.ring/name",
+      "text": "Fixture Ring"
+    },
+    {
+      "key": "item/fixture.shield/name",
+      "text": "Fixture Shield"
+    },
+    {
+      "key": "item/fixture.sword/name",
+      "text": "Fixture Sword"
+    },
+    {
+      "key": "item/fixture.trophy/name",
+      "text": "Fixture Trophy"
+    },
+    {
+      "key": "item/fixture.tunic/name",
+      "text": "Fixture Tunic"
+    },
+    {
+      "key": "tool-kind/pickaxe/name",
+      "text": "Pickaxe"
+    },
+    {
+      "key": "vendor/vendor.fixture_store/name",
+      "text": "Fixture Store"
+    },
+    {
+      "key": "weapon-family/blade/name",
+      "text": "Blade"
+    },
+    {
+      "key": "weapon-family/bow/name",
+      "text": "Bow"
+    }
+  ]
+}

@@ -342,7 +342,6 @@ public sealed class CorpseLootAllPlannerTests
         return new ItemDefinition
         {
             Id = id,
-            DisplayName = id,
             Category = "material",
             Tags = tags ?? [],
             ToolKinds = [],

@@ -344,10 +344,17 @@ line feed; the content rules of each field are stricter.
 
 The client shows item, quest, and actor text and the messages from the tables,
 as [Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes,
-so a table that is not current shows a stale or missing text in the game. The
-compiled catalogs still hold the same texts. English, `en`, is the
-only locale; a table names its locale so that translated tables can sit beside
-it in `Text/<locale>/`.
+so a table that is not current shows a stale or missing text in the game.
+English, `en`, is the only locale; a table names its locale so that translated
+tables can sit beside it in `Text/<locale>/`.
+
+The compiled item catalog carries no text. A name is required in `items/` and
+goes only into the item text table, so renaming an item, a category, a tag, a
+tool kind, an equipment slot, a weapon or ammunition family, a vendor, or the
+currency changes the text table and nothing else: not the compiled catalog, not
+its revision, and nothing that a server reads. A compiled item catalog that
+holds a name is refused. The compiled actor and quest data still hold their
+texts.
 
 ### Messages
 

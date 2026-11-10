@@ -738,8 +738,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 "The presentation entry is missing. Reload to synchronize entries.",
                 HelpBoxMessageType.Error);
             section.Add(missing);
-            section.Add(form.Text("Localization Key", "presentation.localizationKey", entry => PresentationOf(entry)?.localizationKey, (entry, value) => SetPresentation(entry, presentation => presentation.localizationKey = value)));
-            section.Add(form.Text("Fallback Display Name", "presentation.fallbackDisplayName", entry => PresentationOf(entry)?.fallbackDisplayName, (entry, value) => SetPresentation(entry, presentation => presentation.fallbackDisplayName = value)));
             section.Add(form.Text("Prefab Presentation Key", "presentation.prefabPresentationKey", entry => PresentationOf(entry)?.prefabPresentationKey, (entry, value) => SetPresentation(entry, presentation => presentation.prefabPresentationKey = value)));
             // Lists separated by commas: the garment textures the item shows, those it shows
             // lowered, and the colors of their dye channels.
@@ -796,18 +794,9 @@ namespace Mmorpg.WorldData.Editor.Items
             list.Select(new[] { newId });
         }
 
-        // The fallback display name follows the display name until it is edited on its own.
         private void SetDisplayName(ItemCatalogJsonDefinition definition, string value)
         {
-            var previous = definition.displayName;
             definition.displayName = value;
-            var presentation = workspace.FindPresentation(definition.id);
-            if (presentation != null
-                && (string.IsNullOrWhiteSpace(presentation.fallbackDisplayName)
-                    || string.Equals(presentation.fallbackDisplayName, previous, StringComparison.Ordinal)))
-            {
-                presentation.fallbackDisplayName = value;
-            }
         }
 
         private void AddBagSlot()

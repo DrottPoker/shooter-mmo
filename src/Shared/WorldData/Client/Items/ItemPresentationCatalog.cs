@@ -13,7 +13,7 @@ namespace Mmorpg.WorldData.Items.Presentation
         // Version 2 replaced the Resources icon path with an Addressables icon address, version 3
         // added the garments an item shows and its dye colors, and version 4 the attachment it
         // holds on a socket.
-        public const int Version = 4;
+        public const int Version = 5;
 
         // The dye channels a garment texture may have, and so the most dye colors of an item.
         public const int MaximumDyes = 3;
@@ -39,8 +39,6 @@ namespace Mmorpg.WorldData.Items.Presentation
     {
         public string definitionId;
         public string iconAddress;
-        public string localizationKey;
-        public string fallbackDisplayName;
         public string prefabPresentationKey;
 
         // The garments the item shows on a body when it is worn, by the name of their garment
@@ -206,15 +204,6 @@ namespace Mmorpg.WorldData.Items.Presentation
 
                 var iconAddress = NormalizeOptional(entry.iconAddress);
                 ValidateIconAddress(iconAddress, path + ".iconAddress", errors);
-                var localizationKey = NormalizeRequired(
-                    entry.localizationKey,
-                    path + ".localizationKey",
-                    errors);
-                var fallbackDisplayName = NormalizeRequired(
-                    entry.fallbackDisplayName,
-                    path + ".fallbackDisplayName",
-                    errors);
-
                 var garments = NormalizeNames(entry.garments, path + ".garments", errors);
                 var loweredGarments = NormalizeNames(entry.loweredGarments, path + ".loweredGarments", errors);
                 var dyes = NormalizeDyes(entry.dyes, path + ".dyes", errors);
@@ -233,8 +222,6 @@ namespace Mmorpg.WorldData.Items.Presentation
                 {
                     definitionId = definitionId,
                     iconAddress = iconAddress,
-                    localizationKey = localizationKey,
-                    fallbackDisplayName = fallbackDisplayName,
                     prefabPresentationKey = NormalizeOptional(entry.prefabPresentationKey),
                     garments = garments,
                     loweredGarments = loweredGarments,
@@ -318,20 +305,6 @@ namespace Mmorpg.WorldData.Items.Presentation
             return dyes;
         }
 
-        private static string NormalizeRequired(
-            string value,
-            string path,
-            ICollection<string> errors)
-        {
-            var normalized = NormalizeOptional(value);
-            if (normalized.Length == 0)
-            {
-                errors.Add(path + " is required.");
-            }
-
-            return normalized;
-        }
-
         private static string NormalizeOptional(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
@@ -349,8 +322,6 @@ namespace Mmorpg.WorldData.Items.Presentation
                 {
                     writer.Write(entry.definitionId);
                     writer.Write(entry.iconAddress);
-                    writer.Write(entry.localizationKey);
-                    writer.Write(entry.fallbackDisplayName);
                     writer.Write(entry.prefabPresentationKey);
                     WriteList(writer, entry.garments);
                     WriteList(writer, entry.loweredGarments);

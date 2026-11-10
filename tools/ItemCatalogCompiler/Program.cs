@@ -28,7 +28,7 @@ try
         catalog.Definitions.Length);
     TextTableOutput.WriteOrVerify(
         options.GeneratedRoot,
-        ContentText.FromItemCatalog(catalog),
+        ContentText.FromItemCatalog(authoring),
         options.VerifyOnly);
     return 0;
 }

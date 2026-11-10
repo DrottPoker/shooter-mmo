@@ -10,7 +10,8 @@ namespace Mmorpg.WorldData.Text
     // in the source locale. A text that content leaves empty has no entry.
     public static class ContentText
     {
-        public static TextTableDocument FromItemCatalog(ItemCatalogRuntimeDocument catalog)
+        // The names of the authored item catalog. The compiled catalog carries none.
+        public static TextTableDocument FromItemCatalog(ItemCatalogAuthoringDocument catalog)
         {
             if (catalog == null)
             {
@@ -18,7 +19,7 @@ namespace Mmorpg.WorldData.Text
             }
 
             var entries = new List<TextTableEntry>();
-            foreach (var definition in catalog.Definitions ?? Array.Empty<ItemDefinition>())
+            foreach (var definition in catalog.Definitions ?? Array.Empty<ItemDefinitionAuthoringEntry>())
             {
                 Add(entries, TextKeys.ItemName(definition.Id), definition.DisplayName);
             }
@@ -53,7 +54,7 @@ namespace Mmorpg.WorldData.Text
                 Add(entries, TextKeys.AmmunitionFamilyName(family.Id), family.DisplayName);
             }
 
-            foreach (var vendor in catalog.Vendors ?? Array.Empty<VendorProfileDefinition>())
+            foreach (var vendor in catalog.Vendors ?? Array.Empty<VendorProfileAuthoringEntry>())
             {
                 Add(entries, TextKeys.VendorName(vendor.Id), vendor.DisplayName);
             }

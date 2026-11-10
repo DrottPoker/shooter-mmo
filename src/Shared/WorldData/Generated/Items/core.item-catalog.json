@@ -1,14 +1,13 @@
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "catalogId": "core",
-  "revision": "592ba26fbd987ce37671f8e96d91f16138b64fb33bff129cdb6b0305343db5c0",
+  "revision": "cc4929be3710c5a696515d438df95c2efedc32462c2a4956e1f9d95138984ea9",
   "character": {
     "baseCarryCapacity": 2000,
     "inventorySlotCount": 20,
     "bankSlotCount": 40
   },
   "economy": {
-    "currencyDisplayName": "Gold",
     "startingBalance": 100
   },
   "progression": {
@@ -16,159 +15,126 @@
   },
   "categories": [
     {
-      "id": "ammunition",
-      "displayName": "Ammunition"
+      "id": "ammunition"
     },
     {
-      "id": "armor",
-      "displayName": "Armor"
+      "id": "armor"
     },
     {
-      "id": "bag",
-      "displayName": "Bag"
+      "id": "bag"
     },
     {
-      "id": "clothing",
-      "displayName": "Clothing"
+      "id": "clothing"
     },
     {
-      "id": "food",
-      "displayName": "Food"
+      "id": "food"
     },
     {
-      "id": "jewelry",
-      "displayName": "Jewelry"
+      "id": "jewelry"
     },
     {
-      "id": "material",
-      "displayName": "Material"
+      "id": "material"
     },
     {
-      "id": "potion",
-      "displayName": "Potion"
+      "id": "potion"
     },
     {
-      "id": "quest_item",
-      "displayName": "Quest Item"
+      "id": "quest_item"
     },
     {
-      "id": "tool",
-      "displayName": "Tool"
+      "id": "tool"
     },
     {
-      "id": "weapon",
-      "displayName": "Weapon"
+      "id": "weapon"
     }
   ],
   "tags": [
     {
-      "id": "ammunition",
-      "displayName": "Ammunition"
+      "id": "ammunition"
     },
     {
-      "id": "food",
-      "displayName": "Food"
+      "id": "food"
     },
     {
-      "id": "material",
-      "displayName": "Material"
+      "id": "material"
     },
     {
-      "id": "potion",
-      "displayName": "Potion"
+      "id": "potion"
     }
   ],
   "toolKinds": [
     {
-      "id": "pickaxe",
-      "displayName": "Pickaxe"
+      "id": "pickaxe"
     },
     {
-      "id": "woodcutting_axe",
-      "displayName": "Woodcutting Axe"
+      "id": "woodcutting_axe"
     }
   ],
   "equipmentSlots": [
     {
       "id": "head",
-      "displayName": "Head",
       "maximumQuantity": 1
     },
     {
       "id": "neck",
-      "displayName": "Neck",
       "maximumQuantity": 1
     },
     {
       "id": "shoulders",
-      "displayName": "Shoulders",
       "maximumQuantity": 1
     },
     {
       "id": "back",
-      "displayName": "Back",
       "maximumQuantity": 1
     },
     {
       "id": "body",
-      "displayName": "Body",
       "maximumQuantity": 1
     },
     {
       "id": "legs",
-      "displayName": "Legs",
       "maximumQuantity": 1
     },
     {
       "id": "hands",
-      "displayName": "Hands",
       "maximumQuantity": 1
     },
     {
       "id": "feet",
-      "displayName": "Feet",
       "maximumQuantity": 1
     },
     {
       "id": "main_hand",
-      "displayName": "Main Hand",
       "maximumQuantity": 1
     },
     {
       "id": "off_hand",
-      "displayName": "Off Hand",
       "maximumQuantity": 1
     },
     {
       "id": "ammunition",
-      "displayName": "Ammunition",
       "maximumQuantity": 1000
     },
     {
       "id": "ring_1",
-      "displayName": "Ring 1",
       "maximumQuantity": 1
     },
     {
       "id": "ring_2",
-      "displayName": "Ring 2",
       "maximumQuantity": 1
     },
     {
       "id": "tool",
-      "displayName": "Tool",
       "maximumQuantity": 1
     },
     {
       "id": "bag",
-      "displayName": "Bag",
       "maximumQuantity": 1
     }
   ],
   "weaponFamilies": [
     {
       "id": "axe",
-      "displayName": "Axe",
       "combatStyle": "melee",
       "ammunitionFamily": "",
       "projectileSpeed": 0,
@@ -176,7 +142,6 @@
     },
     {
       "id": "bow",
-      "displayName": "Bow",
       "combatStyle": "ranged",
       "ammunitionFamily": "arrow",
       "projectileSpeed": 30,
@@ -184,7 +149,6 @@
     },
     {
       "id": "staff",
-      "displayName": "Staff",
       "combatStyle": "magic",
       "ammunitionFamily": "",
       "projectileSpeed": 20,
@@ -192,7 +156,6 @@
     },
     {
       "id": "sword",
-      "displayName": "Sword",
       "combatStyle": "melee",
       "ammunitionFamily": "",
       "projectileSpeed": 0,
@@ -201,14 +164,12 @@
   ],
   "ammunitionFamilies": [
     {
-      "id": "arrow",
-      "displayName": "Arrow"
+      "id": "arrow"
     }
   ],
   "definitions": [
     {
       "id": "ammunition.bronze_arrow",
-      "displayName": "Bronze Arrow",
       "category": "ammunition",
       "tags": [
         "ammunition"
@@ -232,7 +193,6 @@
     },
     {
       "id": "armor.heater_shield",
-      "displayName": "Heater Shield",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -250,7 +210,6 @@
     },
     {
       "id": "armor.leather_boots",
-      "displayName": "Leather Boots",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -268,7 +227,6 @@
     },
     {
       "id": "armor.leather_gloves",
-      "displayName": "Leather Gloves",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -286,7 +244,6 @@
     },
     {
       "id": "armor.leather_jerkin",
-      "displayName": "Leather Jerkin",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -304,7 +261,6 @@
     },
     {
       "id": "armor.nasal_helm",
-      "displayName": "Nasal Helm",
       "category": "armor",
       "tags": [],
       "toolKinds": [],
@@ -322,7 +278,6 @@
     },
     {
       "id": "bag.travelers_pack",
-      "displayName": "Traveler\u0027s Pack",
       "category": "bag",
       "tags": [],
       "toolKinds": [],
@@ -387,7 +342,6 @@
     },
     {
       "id": "clothing.blue_wool_cloak",
-      "displayName": "Blue Wool Cloak",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -403,7 +357,6 @@
     },
     {
       "id": "clothing.blue_wool_hood",
-      "displayName": "Blue Wool Hood",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -421,7 +374,6 @@
     },
     {
       "id": "clothing.blue_wool_robe",
-      "displayName": "Blue Wool Robe",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -439,7 +391,6 @@
     },
     {
       "id": "clothing.linen_shirt",
-      "displayName": "Linen Shirt",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -457,7 +408,6 @@
     },
     {
       "id": "clothing.long_linen_shirt",
-      "displayName": "Long-Sleeved Linen Shirt",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -475,7 +425,6 @@
     },
     {
       "id": "clothing.net_shirt",
-      "displayName": "Net Shirt",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -493,7 +442,6 @@
     },
     {
       "id": "clothing.red_wool_cloak",
-      "displayName": "Red Wool Cloak",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -509,7 +457,6 @@
     },
     {
       "id": "clothing.red_wool_hood",
-      "displayName": "Red Wool Hood",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -527,7 +474,6 @@
     },
     {
       "id": "clothing.red_wool_robe",
-      "displayName": "Red Wool Robe",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -545,7 +491,6 @@
     },
     {
       "id": "clothing.wool_cloak",
-      "displayName": "Wool Cloak",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -561,7 +506,6 @@
     },
     {
       "id": "clothing.wool_hood",
-      "displayName": "Wool Hood",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -579,7 +523,6 @@
     },
     {
       "id": "clothing.wool_robe",
-      "displayName": "Wool Robe",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -597,7 +540,6 @@
     },
     {
       "id": "clothing.wool_trousers",
-      "displayName": "Wool Trousers",
       "category": "clothing",
       "tags": [],
       "toolKinds": [],
@@ -615,7 +557,6 @@
     },
     {
       "id": "food.cooked_trout",
-      "displayName": "Cooked Trout",
       "category": "food",
       "tags": [
         "food"
@@ -633,7 +574,6 @@
     },
     {
       "id": "jewelry.copper_ring",
-      "displayName": "Copper Ring",
       "category": "jewelry",
       "tags": [],
       "toolKinds": [],
@@ -652,7 +592,6 @@
     },
     {
       "id": "material.iron_ore",
-      "displayName": "Iron Ore",
       "category": "material",
       "tags": [
         "material"
@@ -670,7 +609,6 @@
     },
     {
       "id": "material.oak_log",
-      "displayName": "Oak Log",
       "category": "material",
       "tags": [
         "material"
@@ -688,7 +626,6 @@
     },
     {
       "id": "material.wolf_pelt",
-      "displayName": "Wolf Pelt",
       "category": "material",
       "tags": [
         "material"
@@ -706,7 +643,6 @@
     },
     {
       "id": "potion.minor_healing",
-      "displayName": "Minor Healing Potion",
       "category": "potion",
       "tags": [
         "potion"
@@ -724,7 +660,6 @@
     },
     {
       "id": "quest_item.alpha_fang",
-      "displayName": "Alpha\u0027s Fang",
       "category": "quest_item",
       "tags": [],
       "toolKinds": [],
@@ -742,7 +677,6 @@
     },
     {
       "id": "quest_item.sealed_letter",
-      "displayName": "Sealed Letter",
       "category": "quest_item",
       "tags": [],
       "toolKinds": [],
@@ -760,7 +694,6 @@
     },
     {
       "id": "quest_item.wolf_fang",
-      "displayName": "Wolf Fang",
       "category": "quest_item",
       "tags": [],
       "toolKinds": [],
@@ -778,7 +711,6 @@
     },
     {
       "id": "tool.starter_pickaxe",
-      "displayName": "Starter Pickaxe",
       "category": "tool",
       "tags": [],
       "toolKinds": [
@@ -798,7 +730,6 @@
     },
     {
       "id": "tool.woodcutting_axe",
-      "displayName": "Woodcutting Axe",
       "category": "tool",
       "tags": [],
       "toolKinds": [
@@ -818,7 +749,6 @@
     },
     {
       "id": "weapon.iron_greataxe",
-      "displayName": "Iron Greataxe",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -847,7 +777,6 @@
     },
     {
       "id": "weapon.iron_sword",
-      "displayName": "Iron Sword",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -874,7 +803,6 @@
     },
     {
       "id": "weapon.oak_staff",
-      "displayName": "Oak Staff",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -903,7 +831,6 @@
     },
     {
       "id": "weapon.training_shortbow",
-      "displayName": "Training Shortbow",
       "category": "weapon",
       "tags": [],
       "toolKinds": [],
@@ -934,7 +861,6 @@
   "vendors": [
     {
       "id": "vendor.city_general_store",
-      "displayName": "General Store",
       "offers": [
         {
           "definitionId": "ammunition.bronze_arrow"

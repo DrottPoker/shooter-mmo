@@ -26,6 +26,7 @@ internal static class ItemsSchemaMigrations
         new(PermanentInventoryReductionMigration.Id, PermanentInventoryReductionMigration.Sql),
         new(MobCorpseOwnershipMigration.Id, MobCorpseOwnershipMigration.Sql),
         new(PlaceholderQuestItemRemovalMigration.Id, PlaceholderQuestItemRemovalMigration.Sql),
-        new(CorpseSourceCharacterNameMigration.Id, CorpseSourceCharacterNameMigration.Sql)
+        new(CorpseSourceCharacterNameMigration.Id, CorpseSourceCharacterNameMigration.Sql),
+        new(ItemCatalogNamesRemovalMigration.Id, ItemCatalogNamesRemovalMigration.Sql)
     ];
 }

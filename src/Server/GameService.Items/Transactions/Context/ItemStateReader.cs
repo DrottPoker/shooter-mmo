@@ -180,7 +180,6 @@ internal sealed class ItemStateReader(
             """
             select
                 definition.id as "Id",
-                definition.display_name as "DisplayName",
                 definition.category_id as "Category",
                 definition.unit_weight as "UnitWeight",
                 definition.value as "Value",
@@ -237,7 +236,6 @@ internal sealed class ItemStateReader(
         var definition = new ItemDefinition
         {
             Id = row.Id,
-            DisplayName = row.DisplayName,
             Category = row.Category,
             Tags = tags,
             ToolKinds = toolKinds,
@@ -271,7 +269,6 @@ internal sealed class ItemStateReader(
             """
             select
                 id as "Id",
-                display_name as "DisplayName",
                 purchase_price_basis_points as "PurchasePriceBasisPoints",
                 sale_price_basis_points as "SalePriceBasisPoints"
             from vendor_profiles
@@ -304,7 +301,6 @@ internal sealed class ItemStateReader(
         return new VendorProfileDefinition
         {
             Id = vendor.Id,
-            DisplayName = vendor.DisplayName,
             Offers = offers,
             PurchasePriceBasisPoints = vendor.PurchasePriceBasisPoints,
             SalePriceBasisPoints = vendor.SalePriceBasisPoints,
@@ -387,7 +383,6 @@ internal sealed class ItemStateReader(
     {
         public string Id { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
 
         public string Category { get; set; } = string.Empty;
 
@@ -410,7 +405,6 @@ internal sealed class ItemStateReader(
     {
         public string Id { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
 
         public int PurchasePriceBasisPoints { get; set; }
 

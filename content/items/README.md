@@ -188,10 +188,13 @@ is their display order.
   rule-affecting fields: category, tags, weight, stack limit, equipment
   compatibility, blocked equipment slots, player destroyability, default
   policies, and Bag layout.
-- Display-only changes, combat data, level requirements, values, tool kinds,
-  vendor profiles, economy settings, and equipment slot reordering alter the
-  catalog revision but do not alter an item's structural fingerprint, because
-  none of them changes custody.
+- Combat data, level requirements, values, tool kinds, vendor profiles, economy
+  settings, and equipment slot reordering alter the catalog revision but do not
+  alter an item's structural fingerprint, because none of them changes custody.
+- A name alters neither. Every `displayName` and the `currencyDisplayName` are
+  required here, but the compiler writes them only into the item text table, as
+  [Text Tables](../README.md#text-tables) describes, so a rename leaves the
+  compiled catalog and its revision as they are.
 - Structural fingerprints hash their own version,
   `ItemCatalogFormat.StructuralFingerprintVersion`, instead of the catalog format
   version. A new format that only adds non-structural fields, such as values,
@@ -275,9 +278,10 @@ there once.
    vendor profiles are deleted.
 8. Select `Save And Bake` to validate and atomically write the authoring files,
    the deterministic runtime gameplay catalog, and the client presentation
-   file. Unchanged files are not rewritten. Display-only, structural, added, and
-   removed definitions are reported against the previous runtime catalog, and
-   structural changes require explicit confirmation.
+   file, and the item text table. Unchanged files are not rewritten, so a
+   rename rewrites only the authoring file and the text table. Structural,
+   added, and removed definitions are reported against the previous runtime
+   catalog, and structural changes require explicit confirmation.
 
 Expected result: before a write the window shows which gameplay and
 presentation revisions the change produces, the status then reports `Item
@@ -312,8 +316,9 @@ is updated in Actor Studio.
 Client presentation JSON is bundled through Addressables at
 `src/Client/Assets/Content/Items/Presentation/item-presentation-catalog.json`.
 It maps every gameplay definition id to an optional icon address below
-`Items/Icons/`, a localization key, fallback text, an optional prefab
-presentation key, and the look of the item on a body:
+`Items/Icons/`, an optional prefab presentation key, and the look of the item
+on a body. It holds no name: the client reads an item's name from the item
+text table, as [Text Tables](../README.md#text-tables) describes.
 
 - `garments` names the garment textures the item shows when worn, such as
   `WoolRobe`, at most four. `loweredGarments` names those it shows instead

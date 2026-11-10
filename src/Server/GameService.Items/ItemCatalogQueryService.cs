@@ -48,14 +48,14 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
 
             using var grid = await connection.QueryMultipleAsync(new CommandDefinition(
                 """
-                select id as "Id", display_name as "DisplayName"
+                select id as "Id"
                 from item_categories
                 where catalog_id = @CatalogId
                   and catalog_revision = @Revision
                   and is_active
                 order by id;
 
-                select id as "Id", display_name as "DisplayName"
+                select id as "Id"
                 from item_tags
                 where catalog_id = @CatalogId
                   and catalog_revision = @Revision
@@ -64,7 +64,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
 
                 select
                     id as "Id",
-                    display_name as "DisplayName",
                     display_order as "SortOrder",
                     maximum_quantity as "MaximumQuantity"
                 from equipment_slots
@@ -75,7 +74,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
 
                 select
                     id as "Id",
-                    display_name as "DisplayName",
                     category_id as "CategoryId",
                     unit_weight as "UnitWeight",
                     maximum_stack_size as "MaximumStackSize",
@@ -201,20 +199,14 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
                 catalog.CatalogId,
                 catalog.Revision,
                 catalog.FormatVersion,
-                categories.Select(row => new ItemCatalogIdentityResponse(
-                    row.Id,
-                    row.DisplayName)).ToArray(),
-                tags.Select(row => new ItemCatalogIdentityResponse(
-                    row.Id,
-                    row.DisplayName)).ToArray(),
+                categories.Select(row => new ItemCatalogIdentityResponse(row.Id)).ToArray(),
+                tags.Select(row => new ItemCatalogIdentityResponse(row.Id)).ToArray(),
                 equipmentSlots.Select(row => new ItemCatalogEquipmentSlotResponse(
                     row.Id,
-                    row.DisplayName,
                     row.SortOrder,
                     row.MaximumQuantity)).ToArray(),
                 definitions.Select(definition => new ItemCatalogDefinitionResponse(
                     definition.Id,
-                    definition.DisplayName,
                     definition.CategoryId,
                     definition.UnitWeight,
                     definition.MaximumStackSize,
@@ -274,7 +266,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
     {
         public string Id { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
     }
 
     private sealed class EquipmentSlotRow : IdentityRow
@@ -288,7 +279,6 @@ internal sealed class ItemCatalogQueryService(NpgsqlDataSource dataSource)
     {
         public string Id { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
 
         public string CategoryId { get; set; } = string.Empty;
 

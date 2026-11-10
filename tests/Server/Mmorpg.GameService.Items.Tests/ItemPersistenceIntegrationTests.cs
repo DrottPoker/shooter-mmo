@@ -1021,27 +1021,29 @@ public sealed class ItemPersistenceIntegrationTests
                 ContainerId = inventoryId
             });
 
-        var displayOnlyCatalog = CompileCatalogVariant(
+        // A new value changes the catalog but not what a stored item is, so it seeds.
+        var repricedCatalog = CompileCatalogVariant(
             catalog,
             sourceDefinition.Id,
-            sourceDefinition.DisplayName + " Display Test",
+            sourceDefinition.Value + 1,
             sourceDefinition.UnitWeight);
-        var displayOnlyDefinition = displayOnlyCatalog.Definitions.Single(
+        var repricedDefinition = repricedCatalog.Definitions.Single(
             definition => definition.Id == sourceDefinition.Id);
+        Assert.NotEqual(catalog.Revision, repricedCatalog.Revision);
         Assert.Equal(
             sourceDefinition.StructuralFingerprint,
-            displayOnlyDefinition.StructuralFingerprint);
+            repricedDefinition.StructuralFingerprint);
 
-        await context.ItemCatalogSeeder.SeedAsync(displayOnlyCatalog, CancellationToken.None);
+        await context.ItemCatalogSeeder.SeedAsync(repricedCatalog, CancellationToken.None);
         Assert.Equal(
-            displayOnlyCatalog.Revision,
+            repricedCatalog.Revision,
             await connection.ExecuteScalarAsync<string>(
                 "select revision from item_catalog_revisions where is_current;"));
 
         var structuralCatalog = CompileCatalogVariant(
-            displayOnlyCatalog,
+            repricedCatalog,
             sourceDefinition.Id,
-            displayOnlyDefinition.DisplayName,
+            repricedDefinition.Value,
             sourceDefinition.UnitWeight + 1);
         var exception = await Assert.ThrowsAsync<ItemCatalogCompatibilityException>(() =>
             context.ItemCatalogSeeder.SeedAsync(structuralCatalog, CancellationToken.None));
@@ -1049,7 +1051,7 @@ public sealed class ItemPersistenceIntegrationTests
         Assert.Contains(sourceDefinition.Id, exception.Message, StringComparison.Ordinal);
         Assert.Contains("explicit data migration", exception.Message, StringComparison.Ordinal);
         Assert.Equal(
-            displayOnlyCatalog.Revision,
+            repricedCatalog.Revision,
             await connection.ExecuteScalarAsync<string>(
                 "select revision from item_catalog_revisions where is_current;"));
         Assert.Equal(
@@ -1105,14 +1107,15 @@ public sealed class ItemPersistenceIntegrationTests
     private static ItemCatalogRuntimeDocument CompileCatalogVariant(
         ItemCatalogRuntimeDocument source,
         string changedDefinitionId,
-        string displayName,
+        long value,
         long unitWeight)
     {
-        var authoring = ItemCatalogRuntimeVerifier.ToAuthoring(source);
-        var changed = authoring.Definitions.Single(definition => definition.Id == changedDefinitionId);
-        changed.DisplayName = displayName;
+        // A compiled catalog carries no text, so it compiles again as a compiled catalog.
+        var compiled = ItemCatalogRuntimeVerifier.ToAuthoring(source);
+        var changed = compiled.Definitions.Single(definition => definition.Id == changedDefinitionId);
+        changed.Value = value;
         changed.UnitWeight = unitWeight;
-        return ItemCatalogCompiler.Compile(authoring);
+        return ItemCatalogCompiler.CompileCompiled(compiled);
     }
 
     private static void AssertConstraint(PostgresException exception, string constraintName)

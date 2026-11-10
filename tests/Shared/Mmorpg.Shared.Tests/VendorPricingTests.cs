@@ -7,7 +7,6 @@ public sealed class VendorPricingTests
     private static readonly VendorProfileDefinition Vendor = new()
     {
         Id = "vendor.test",
-        DisplayName = "Test Vendor",
         Offers = [new VendorOfferEntry { DefinitionId = "material.ore" }],
         PurchasePriceBasisPoints = 10000,
         SalePriceBasisPoints = 4000,
@@ -92,7 +91,6 @@ public sealed class VendorPricingTests
         return new ItemDefinition
         {
             Id = "material.ore",
-            DisplayName = "Ore",
             Category = "material",
             Value = value,
             MaximumStackSize = 100
@@ -104,7 +102,6 @@ public sealed class VendorPricingTests
         return new VendorProfileDefinition
         {
             Id = vendor.Id,
-            DisplayName = vendor.DisplayName,
             Offers = vendor.Offers,
             PurchasePriceBasisPoints = vendor.PurchasePriceBasisPoints,
             SalePriceBasisPoints = vendor.SalePriceBasisPoints,

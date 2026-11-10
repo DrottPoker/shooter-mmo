@@ -1,7 +1,9 @@
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -29,6 +31,29 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The names of the fixture items, which the item compiler writes next to the catalog.
+        public static string TextTablePath
+        {
+            get
+            {
+                return Path.GetFullPath(Path.Combine(
+                    Path.GetDirectoryName(RuntimePath),
+                    "..",
+                    "Text",
+                    "en",
+                    "items.text-table.json"));
+            }
+        }
+
+        public static TextCatalog Texts()
+        {
+            Assert.That(
+                ClientTexts.TryParse(File.ReadAllText(TextTablePath), out var table, out var error),
+                Is.True,
+                error);
+            return TextCatalog.Create(new[] { table });
+        }
+
         public static ClientItemCatalog Load()
         {
             Assert.That(
@@ -45,8 +70,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 {
                     definitionId = definition.Id,
                     iconAddress = string.Empty,
-                    localizationKey = "items." + definition.Id + ".name",
-                    fallbackDisplayName = definition.DisplayName,
                     prefabPresentationKey = string.Empty
                 }));
             Assert.That(
@@ -59,7 +82,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 error);
             Assert.That(
-                ClientItemCatalog.TryCreate(gameplay, index, FixtureTexts.For(gameplay), out var catalog, out error),
+                ClientItemCatalog.TryCreate(gameplay, index, Texts(), out var catalog, out error),
                 Is.True,
                 error);
             return catalog;

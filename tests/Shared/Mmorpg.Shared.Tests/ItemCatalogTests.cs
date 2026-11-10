@@ -2,6 +2,7 @@ using Mmorpg.Testing.Content;
 using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Shared.Tests;
 
@@ -203,19 +204,73 @@ public sealed class ItemCatalogTests
     }
 
     [Fact]
-    public void DisplayOnlyChangePreservesStructuralFingerprint()
+    public void ATextChangeChangesNeitherTheCompiledCatalogNorItsRevision()
     {
         var authoring = ItemCatalogTestData.LoadAuthoring();
         var original = ItemCatalogCompiler.Compile(authoring);
+        var originalTexts = ContentText.FromItemCatalog(authoring);
         authoring.Definitions.Single(definition => definition.Id == "material.iron_ore")
             .DisplayName = "Iron Ore Sample";
+        authoring.Categories[0].DisplayName = "Renamed Category";
+        authoring.Tags[0].DisplayName = "Renamed Tag";
+        authoring.ToolKinds[0].DisplayName = "Renamed Tool Kind";
+        authoring.EquipmentSlots[0].DisplayName = "Renamed Slot";
+        authoring.WeaponFamilies[0].DisplayName = "Renamed Weapon Family";
+        authoring.AmmunitionFamilies[0].DisplayName = "Renamed Ammunition Family";
+        authoring.Vendors[0].DisplayName = "Renamed Vendor";
+        authoring.Economy.CurrencyDisplayName = "Renamed Coin";
 
         var changed = ItemCatalogCompiler.Compile(authoring);
 
-        Assert.NotEqual(original.Revision, changed.Revision);
-        Assert.Equal(
-            Definition(original, "material.iron_ore").StructuralFingerprint,
-            Definition(changed, "material.iron_ore").StructuralFingerprint);
+        // Only the text table follows the names.
+        Assert.Equal(original.Revision, changed.Revision);
+        Assert.Equal(ItemCatalogJson.SerializeRuntime(original), ItemCatalogJson.SerializeRuntime(changed));
+        Assert.NotEqual(originalTexts.Revision, ContentText.FromItemCatalog(authoring).Revision);
+    }
+
+    // The compiled catalog holds rules only, so no server and no revision depends on a name.
+    [Fact]
+    public void TheCompiledCatalogCarriesNoText()
+    {
+        var catalog = ItemCatalogTestData.Compile();
+
+        Assert.Null(catalog.Economy.CurrencyDisplayName);
+        Assert.All(catalog.Categories, entry => Assert.Null(entry.DisplayName));
+        Assert.All(catalog.Tags, entry => Assert.Null(entry.DisplayName));
+        Assert.All(catalog.ToolKinds, entry => Assert.Null(entry.DisplayName));
+        Assert.All(catalog.EquipmentSlots, entry => Assert.Null(entry.DisplayName));
+        Assert.All(catalog.WeaponFamilies, entry => Assert.Null(entry.DisplayName));
+        Assert.All(catalog.AmmunitionFamilies, entry => Assert.Null(entry.DisplayName));
+        Assert.DoesNotContain("isplayName", ItemCatalogJson.SerializeRuntime(catalog), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACompiledCatalogWithTextIsRefused()
+    {
+        var catalog = ItemCatalogTestData.Compile();
+        Assert.Equal(catalog.Revision, ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(catalog).Revision);
+
+        catalog.Categories[0].DisplayName = "Smuggled Name";
+        catalog.Economy.CurrencyDisplayName = "Smuggled Coin";
+
+        var errors = Assert.Throws<ItemCatalogValidationException>(
+            () => ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(catalog)).Errors;
+        Assert.Contains(errors, error => error.StartsWith("categories[0].displayName must be absent", StringComparison.Ordinal));
+        Assert.Contains(errors, error => error.StartsWith("economy.currencyDisplayName must be absent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AuthoredContentNeedsEveryName()
+    {
+        var authoring = ItemCatalogTestData.LoadAuthoring();
+        authoring.Definitions[0].DisplayName = null;
+        authoring.Vendors[0].DisplayName = " ";
+        authoring.Economy.CurrencyDisplayName = new string('c', ItemCatalogFormat.MaximumCurrencyDisplayNameLength + 1);
+
+        var errors = Assert.Throws<ItemCatalogValidationException>(() => ItemCatalogCompiler.Compile(authoring)).Errors;
+        Assert.Contains(errors, error => error.StartsWith("definitions[0].displayName is required", StringComparison.Ordinal));
+        Assert.Contains(errors, error => error.StartsWith("vendors[0].displayName is required", StringComparison.Ordinal));
+        Assert.Contains(errors, error => error.StartsWith("economy.currencyDisplayName is required", StringComparison.Ordinal));
     }
 
     [Fact]

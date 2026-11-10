@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Items
 {
     public static class ItemCatalogFormat
     {
-        public const int Version = 8;
+        public const int Version = 9;
 
         // Hashed into every structural fingerprint instead of the format version, so a new
         // format that adds non-structural fields leaves persisted definitions compatible. It
@@ -240,6 +240,9 @@ namespace Mmorpg.WorldData.Items
         public string DefinitionId;
     }
 
+    // The compiled catalog carries no text: every DisplayName and the CurrencyDisplayName of
+    // the entries it shares with the authoring document are null here, and the names are in
+    // the item text table.
     [Serializable]
     public sealed class ItemCatalogRuntimeDocument
     {
@@ -264,7 +267,6 @@ namespace Mmorpg.WorldData.Items
     public sealed class ItemDefinition
     {
         public string Id;
-        public string DisplayName;
         public string Category;
         public string[] Tags;
         public string[] ToolKinds;
@@ -301,7 +303,6 @@ namespace Mmorpg.WorldData.Items
     public sealed class VendorProfileDefinition
     {
         public string Id;
-        public string DisplayName;
         public VendorOfferEntry[] Offers;
         public int PurchasePriceBasisPoints;
         public int SalePriceBasisPoints;
