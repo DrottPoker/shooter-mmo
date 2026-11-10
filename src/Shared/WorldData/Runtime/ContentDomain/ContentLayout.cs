@@ -170,6 +170,29 @@ namespace Mmorpg.WorldData.Content
                 WorldActorsFileName);
         }
 
+        // The text tables of one locale: "Text/<locale>/<table>.text-table.json".
+        public static string GeneratedTextDirectory(string generatedRoot, string locale)
+        {
+            if (!Text.TextTable.IsValidLocale(locale))
+            {
+                throw new InvalidDataException("Locale '" + locale + "' is invalid.");
+            }
+
+            return Path.Combine(generatedRoot, Text.TextTableFormat.DirectoryName, locale);
+        }
+
+        public static string GeneratedTextTablePath(string generatedRoot, string locale, string tableId)
+        {
+            if (!Text.TextTableIds.All.Contains(tableId, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException("Text table '" + tableId + "' is not a known table.");
+            }
+
+            return Path.Combine(
+                GeneratedTextDirectory(generatedRoot, locale),
+                tableId + Text.TextTableFormat.FileSuffix);
+        }
+
         public static string GeneratedCollisionRoot(string generatedRoot)
         {
             return Path.Combine(generatedRoot, CollisionDirectoryName);

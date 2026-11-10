@@ -31,7 +31,9 @@ These run in CI and, when the changes call for them, in `Test-Changes.ps1`.
 
 The content compilers turn the authored files in `content/` into the deterministic data in
 `src/Shared/WorldData/Generated`, in this order, and `--verify` checks that the committed data
-is current. See [Game Content](../content/README.md).
+is current. The item, actor, and quest compilers also write the
+[text table](../content/README.md#text-tables) of their domain. See
+[Game Content](../content/README.md).
 
 | Tool | Does |
 | --- | --- |

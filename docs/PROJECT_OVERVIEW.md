@@ -102,7 +102,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Module and assembly boundaries with their guard tests, and the quality gate | Foundation | |
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
 | Content delivery to the client | Provisional | The catalogs ship inside the client build and must match exactly |
-| Player-facing text | Provisional | English text in content and in protocol fields, no localization |
+| Player-facing text | Provisional | The text tables exist, but the client still reads English text from the catalogs and protocol fields |
 | Player presence: join, leave, and disconnect | Provisional | Nothing about a live character but its items is stored |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |

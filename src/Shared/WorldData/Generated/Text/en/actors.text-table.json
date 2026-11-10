@@ -1,0 +1,180 @@
+{
+  "formatVersion": 1,
+  "tableId": "actors",
+  "locale": "en",
+  "revision": "72cbefcbc59d3e2f8a89c0396f4dc8ee8a74d79075f71839660176f4e6e3668d",
+  "entries": [
+    {
+      "key": "actor/mob.feral_alpha/examine",
+      "text": "The leader of the pack, scarred and heavy. The other wolves follow its lead."
+    },
+    {
+      "key": "actor/mob.feral_alpha/name",
+      "text": "Feral Alpha"
+    },
+    {
+      "key": "actor/mob.feral_wolf/examine",
+      "text": "A lean, hungry wolf. It eyes you like a meal."
+    },
+    {
+      "key": "actor/mob.feral_wolf/name",
+      "text": "Feral Wolf"
+    },
+    {
+      "key": "actor/mob.grey_wolf/examine",
+      "text": "A shy grey wolf. It keeps its distance unless provoked."
+    },
+    {
+      "key": "actor/mob.grey_wolf/name",
+      "text": "Grey Wolf"
+    },
+    {
+      "key": "actor/npc.city_guard/capability/guard.dialogue/menu",
+      "text": "Talk-to"
+    },
+    {
+      "key": "actor/npc.city_guard/capability/guard.dialogue/name",
+      "text": "Talk"
+    },
+    {
+      "key": "actor/npc.city_guard/capability/guard.trainer/menu",
+      "text": "Train"
+    },
+    {
+      "key": "actor/npc.city_guard/capability/guard.trainer/name",
+      "text": "Training"
+    },
+    {
+      "key": "actor/npc.city_guard/examine",
+      "text": "A guard of the city watch. Bored, but watching."
+    },
+    {
+      "key": "actor/npc.city_guard/name",
+      "text": "City Guard"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.bank/menu",
+      "text": "Bank"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.bank/name",
+      "text": "Character Bank"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.crafting/menu",
+      "text": "Craft"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.crafting/name",
+      "text": "Crafting"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.dialogue/menu",
+      "text": "Talk-to"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.dialogue/name",
+      "text": "Talk"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.insurance/menu",
+      "text": "Insure"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.insurance/name",
+      "text": "Insurance"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.quests/menu",
+      "text": "Quests"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.quests/name",
+      "text": "Quests"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.recovery/menu",
+      "text": "Recover"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.recovery/name",
+      "text": "Recovery Storage"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.vendor/menu",
+      "text": "Trade"
+    },
+    {
+      "key": "actor/npc.city_services/capability/services.vendor/name",
+      "text": "Trade"
+    },
+    {
+      "key": "actor/npc.city_services/examine",
+      "text": "She keeps the city\u0027s stores, its accounts, and whatever the dead leave behind."
+    },
+    {
+      "key": "actor/npc.city_services/name",
+      "text": "Mira the Quartermaster"
+    },
+    {
+      "key": "actor/npc.outpost_sergeant/capability/sergeant.quests/menu",
+      "text": "Quests"
+    },
+    {
+      "key": "actor/npc.outpost_sergeant/capability/sergeant.quests/name",
+      "text": "Quests"
+    },
+    {
+      "key": "actor/npc.outpost_sergeant/examine",
+      "text": "The sergeant of the western outpost, weathered and watchful."
+    },
+    {
+      "key": "actor/npc.outpost_sergeant/name",
+      "text": "Sergeant Hale"
+    },
+    {
+      "key": "actor/resource.iron_vein/capability/resource.mine/menu",
+      "text": "Mine"
+    },
+    {
+      "key": "actor/resource.iron_vein/capability/resource.mine/name",
+      "text": "Mine"
+    },
+    {
+      "key": "actor/resource.iron_vein/examine",
+      "text": "A seam of iron ore runs through the rock. A pickaxe would free it."
+    },
+    {
+      "key": "actor/resource.iron_vein/name",
+      "text": "Iron Vein"
+    },
+    {
+      "key": "actor/resource.oak_tree/capability/resource.chop/menu",
+      "text": "Chop down"
+    },
+    {
+      "key": "actor/resource.oak_tree/capability/resource.chop/name",
+      "text": "Chop"
+    },
+    {
+      "key": "actor/resource.oak_tree/examine",
+      "text": "An old oak with a twisted trunk and a crown like a storm cloud. A woodcutting axe would bring it down."
+    },
+    {
+      "key": "actor/resource.oak_tree/name",
+      "text": "Oak Tree"
+    },
+    {
+      "key": "faction/city/name",
+      "text": "City"
+    },
+    {
+      "key": "faction/wild/name",
+      "text": "Wild Creatures"
+    },
+    {
+      "key": "faction/world/name",
+      "text": "World"
+    }
+  ]
+}

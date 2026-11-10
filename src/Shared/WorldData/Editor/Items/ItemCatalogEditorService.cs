@@ -6,6 +6,7 @@ using System.Text;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Items
@@ -59,6 +60,7 @@ namespace Mmorpg.WorldData.Editor.Items
             string message,
             IReadOnlyDictionary<string, string> authoringFiles,
             string runtimeJson,
+            string textTableJson,
             string presentationJson,
             ItemCatalogEditorRuntimeDocument candidateRuntime,
             ItemPresentationCatalogDocument candidatePresentation,
@@ -68,6 +70,7 @@ namespace Mmorpg.WorldData.Editor.Items
             Message = message ?? string.Empty;
             AuthoringFiles = authoringFiles;
             RuntimeJson = runtimeJson;
+            TextTableJson = textTableJson;
             PresentationJson = presentationJson;
             CandidateRuntime = candidateRuntime;
             CandidatePresentation = candidatePresentation;
@@ -82,6 +85,10 @@ namespace Mmorpg.WorldData.Editor.Items
         public IReadOnlyDictionary<string, string> AuthoringFiles { get; }
 
         public string RuntimeJson { get; }
+
+        // The item text table that the compiler wrote with the runtime catalog. It is baked
+        // with the runtime catalog, so the two never drift apart.
+        public string TextTableJson { get; }
 
         public string PresentationJson { get; }
 
@@ -105,6 +112,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 null,
                 null,
                 null,
+                null,
                 null);
         }
 
@@ -112,6 +120,7 @@ namespace Mmorpg.WorldData.Editor.Items
             string message,
             IReadOnlyDictionary<string, string> authoringFiles,
             string runtimeJson,
+            string textTableJson,
             string presentationJson,
             ItemCatalogEditorRuntimeDocument candidateRuntime,
             ItemPresentationCatalogDocument candidatePresentation,
@@ -122,6 +131,7 @@ namespace Mmorpg.WorldData.Editor.Items
                 message,
                 authoringFiles,
                 runtimeJson,
+                textTableJson,
                 presentationJson,
                 candidateRuntime,
                 candidatePresentation,
@@ -215,7 +225,15 @@ namespace Mmorpg.WorldData.Editor.Items
                         CompilerToolName + " did not produce candidate runtime JSON.");
                 }
 
+                var textTablePath = TextTablePath(generatedRoot);
+                if (!File.Exists(textTablePath))
+                {
+                    return ItemCatalogEditorValidationResult.Failed(
+                        CompilerToolName + " did not produce the item text table.");
+                }
+
                 var runtimeJson = NormalizeLineEndings(File.ReadAllText(runtimePath));
+                var textTableJson = NormalizeLineEndings(File.ReadAllText(textTablePath));
                 var candidateRuntime = ItemCatalogEditorJson.DeserializeRuntime(runtimeJson);
                 ItemPresentationCatalogDocument candidatePresentation;
                 try
@@ -244,6 +262,7 @@ namespace Mmorpg.WorldData.Editor.Items
                     message,
                     authoringFiles,
                     runtimeJson,
+                    textTableJson,
                     presentationJson,
                     candidateRuntime,
                     candidatePresentation,
@@ -283,6 +302,14 @@ namespace Mmorpg.WorldData.Editor.Items
             return ContentDiskState.Read(new[] { paths.ItemsDirectory });
         }
 
+        private static string TextTablePath(string generatedRoot)
+        {
+            return ContentLayout.GeneratedTextTablePath(
+                generatedRoot,
+                TextTableFormat.SourceLocale,
+                TextTableIds.Items);
+        }
+
         // Writes authored files first and generated files last, then deletes definition
         // files for drafts that were removed and files of removed vendor profiles. A failure
         // restores every file. Item files that changed on disk since the workspace read them
@@ -310,6 +337,9 @@ namespace Mmorpg.WorldData.Editor.Items
                 writes.Add(new KeyValuePair<string, string>(
                     paths.RuntimePath,
                     validation.RuntimeJson));
+                writes.Add(new KeyValuePair<string, string>(
+                    TextTablePath(paths.GeneratedRoot),
+                    validation.TextTableJson));
             }
 
             writes.Add(new KeyValuePair<string, string>(

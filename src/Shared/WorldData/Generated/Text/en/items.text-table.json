@@ -1,0 +1,304 @@
+{
+  "formatVersion": 1,
+  "tableId": "items",
+  "locale": "en",
+  "revision": "73ab933ec7ca4e9cb2457565f4101f9b85cb5631b6fd8a1acf50075a89cc02bd",
+  "entries": [
+    {
+      "key": "ammunition-family/arrow/name",
+      "text": "Arrow"
+    },
+    {
+      "key": "currency/name",
+      "text": "Gold"
+    },
+    {
+      "key": "equipment-slot/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "equipment-slot/back/name",
+      "text": "Back"
+    },
+    {
+      "key": "equipment-slot/bag/name",
+      "text": "Bag"
+    },
+    {
+      "key": "equipment-slot/body/name",
+      "text": "Body"
+    },
+    {
+      "key": "equipment-slot/feet/name",
+      "text": "Feet"
+    },
+    {
+      "key": "equipment-slot/hands/name",
+      "text": "Hands"
+    },
+    {
+      "key": "equipment-slot/head/name",
+      "text": "Head"
+    },
+    {
+      "key": "equipment-slot/legs/name",
+      "text": "Legs"
+    },
+    {
+      "key": "equipment-slot/main_hand/name",
+      "text": "Main Hand"
+    },
+    {
+      "key": "equipment-slot/neck/name",
+      "text": "Neck"
+    },
+    {
+      "key": "equipment-slot/off_hand/name",
+      "text": "Off Hand"
+    },
+    {
+      "key": "equipment-slot/ring_1/name",
+      "text": "Ring 1"
+    },
+    {
+      "key": "equipment-slot/ring_2/name",
+      "text": "Ring 2"
+    },
+    {
+      "key": "equipment-slot/shoulders/name",
+      "text": "Shoulders"
+    },
+    {
+      "key": "equipment-slot/tool/name",
+      "text": "Tool"
+    },
+    {
+      "key": "item-category/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "item-category/armor/name",
+      "text": "Armor"
+    },
+    {
+      "key": "item-category/bag/name",
+      "text": "Bag"
+    },
+    {
+      "key": "item-category/clothing/name",
+      "text": "Clothing"
+    },
+    {
+      "key": "item-category/food/name",
+      "text": "Food"
+    },
+    {
+      "key": "item-category/jewelry/name",
+      "text": "Jewelry"
+    },
+    {
+      "key": "item-category/material/name",
+      "text": "Material"
+    },
+    {
+      "key": "item-category/potion/name",
+      "text": "Potion"
+    },
+    {
+      "key": "item-category/quest_item/name",
+      "text": "Quest Item"
+    },
+    {
+      "key": "item-category/tool/name",
+      "text": "Tool"
+    },
+    {
+      "key": "item-category/weapon/name",
+      "text": "Weapon"
+    },
+    {
+      "key": "item-tag/ammunition/name",
+      "text": "Ammunition"
+    },
+    {
+      "key": "item-tag/food/name",
+      "text": "Food"
+    },
+    {
+      "key": "item-tag/material/name",
+      "text": "Material"
+    },
+    {
+      "key": "item-tag/potion/name",
+      "text": "Potion"
+    },
+    {
+      "key": "item/ammunition.bronze_arrow/name",
+      "text": "Bronze Arrow"
+    },
+    {
+      "key": "item/armor.heater_shield/name",
+      "text": "Heater Shield"
+    },
+    {
+      "key": "item/armor.leather_boots/name",
+      "text": "Leather Boots"
+    },
+    {
+      "key": "item/armor.leather_gloves/name",
+      "text": "Leather Gloves"
+    },
+    {
+      "key": "item/armor.leather_jerkin/name",
+      "text": "Leather Jerkin"
+    },
+    {
+      "key": "item/armor.nasal_helm/name",
+      "text": "Nasal Helm"
+    },
+    {
+      "key": "item/bag.travelers_pack/name",
+      "text": "Traveler\u0027s Pack"
+    },
+    {
+      "key": "item/clothing.blue_wool_cloak/name",
+      "text": "Blue Wool Cloak"
+    },
+    {
+      "key": "item/clothing.blue_wool_hood/name",
+      "text": "Blue Wool Hood"
+    },
+    {
+      "key": "item/clothing.blue_wool_robe/name",
+      "text": "Blue Wool Robe"
+    },
+    {
+      "key": "item/clothing.linen_shirt/name",
+      "text": "Linen Shirt"
+    },
+    {
+      "key": "item/clothing.long_linen_shirt/name",
+      "text": "Long-Sleeved Linen Shirt"
+    },
+    {
+      "key": "item/clothing.net_shirt/name",
+      "text": "Net Shirt"
+    },
+    {
+      "key": "item/clothing.red_wool_cloak/name",
+      "text": "Red Wool Cloak"
+    },
+    {
+      "key": "item/clothing.red_wool_hood/name",
+      "text": "Red Wool Hood"
+    },
+    {
+      "key": "item/clothing.red_wool_robe/name",
+      "text": "Red Wool Robe"
+    },
+    {
+      "key": "item/clothing.wool_cloak/name",
+      "text": "Wool Cloak"
+    },
+    {
+      "key": "item/clothing.wool_hood/name",
+      "text": "Wool Hood"
+    },
+    {
+      "key": "item/clothing.wool_robe/name",
+      "text": "Wool Robe"
+    },
+    {
+      "key": "item/clothing.wool_trousers/name",
+      "text": "Wool Trousers"
+    },
+    {
+      "key": "item/food.cooked_trout/name",
+      "text": "Cooked Trout"
+    },
+    {
+      "key": "item/jewelry.copper_ring/name",
+      "text": "Copper Ring"
+    },
+    {
+      "key": "item/material.iron_ore/name",
+      "text": "Iron Ore"
+    },
+    {
+      "key": "item/material.oak_log/name",
+      "text": "Oak Log"
+    },
+    {
+      "key": "item/material.wolf_pelt/name",
+      "text": "Wolf Pelt"
+    },
+    {
+      "key": "item/potion.minor_healing/name",
+      "text": "Minor Healing Potion"
+    },
+    {
+      "key": "item/quest_item.alpha_fang/name",
+      "text": "Alpha\u0027s Fang"
+    },
+    {
+      "key": "item/quest_item.sealed_letter/name",
+      "text": "Sealed Letter"
+    },
+    {
+      "key": "item/quest_item.wolf_fang/name",
+      "text": "Wolf Fang"
+    },
+    {
+      "key": "item/tool.starter_pickaxe/name",
+      "text": "Starter Pickaxe"
+    },
+    {
+      "key": "item/tool.woodcutting_axe/name",
+      "text": "Woodcutting Axe"
+    },
+    {
+      "key": "item/weapon.iron_greataxe/name",
+      "text": "Iron Greataxe"
+    },
+    {
+      "key": "item/weapon.iron_sword/name",
+      "text": "Iron Sword"
+    },
+    {
+      "key": "item/weapon.oak_staff/name",
+      "text": "Oak Staff"
+    },
+    {
+      "key": "item/weapon.training_shortbow/name",
+      "text": "Training Shortbow"
+    },
+    {
+      "key": "tool-kind/pickaxe/name",
+      "text": "Pickaxe"
+    },
+    {
+      "key": "tool-kind/woodcutting_axe/name",
+      "text": "Woodcutting Axe"
+    },
+    {
+      "key": "vendor/vendor.city_general_store/name",
+      "text": "General Store"
+    },
+    {
+      "key": "weapon-family/axe/name",
+      "text": "Axe"
+    },
+    {
+      "key": "weapon-family/bow/name",
+      "text": "Bow"
+    },
+    {
+      "key": "weapon-family/staff/name",
+      "text": "Staff"
+    },
+    {
+      "key": "weapon-family/sword/name",
+      "text": "Sword"
+    }
+  ]
+}

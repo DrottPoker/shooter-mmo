@@ -4,6 +4,7 @@ using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
@@ -30,6 +31,10 @@ try
         runtime.CatalogId,
         runtime.Revision,
         runtime.Quests.Length);
+    TextTableOutput.WriteOrVerify(
+        options.GeneratedRoot,
+        ContentText.FromQuestCatalog(runtime),
+        options.VerifyOnly);
     return 0;
 }
 catch (Exception exception)

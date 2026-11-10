@@ -2,12 +2,13 @@ using System;
 using System.IO;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor.Quests;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
-    // A temporary copy of what the quest compiler reads: the checked-in quests, every World,
-    // the compiled items and actors, and the committed quest catalog. Editor tests save into
-    // the copy, never into the repository.
+    // A temporary copy of what the quest compiler reads and verifies: the checked-in quests,
+    // every World, the compiled items and actors, and the committed quest catalog and quest
+    // text table. Editor tests save into the copy, never into the repository.
     internal sealed class FixtureQuestContent : IDisposable
     {
         private readonly string temporaryDirectory;
@@ -41,6 +42,17 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Copy(ContentLayout.GeneratedItemCatalogPath(source.GeneratedRoot), ContentLayout.GeneratedItemCatalogPath(Paths.GeneratedRoot));
             Copy(source.RuntimePath, Paths.RuntimePath);
+
+            // The quest compiler verifies the quest text table with the catalog.
+            Copy(
+                ContentLayout.GeneratedTextTablePath(
+                    source.GeneratedRoot,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Quests),
+                ContentLayout.GeneratedTextTablePath(
+                    Paths.GeneratedRoot,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Quests));
         }
 
         public QuestEditorPaths Paths { get; }

@@ -8,6 +8,7 @@ using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.Items;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEditor.Compilation;
 using UnityEngine.Assemblies;
@@ -243,6 +244,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 "valid",
                 new Dictionary<string, string>(),
                 "runtime",
+                "text table",
                 "presentation",
                 structuralRuntime,
                 workspace.Presentation,
@@ -289,6 +291,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(
                     File.ReadAllText(firstRuntimePath),
                     Is.EqualTo(File.ReadAllText(paths.RuntimePath).Replace("\r\n", "\n")));
+                Assert.That(
+                    File.ReadAllBytes(ItemTextTablePath(secondGeneratedRoot)),
+                    Is.EqualTo(File.ReadAllBytes(ItemTextTablePath(firstGeneratedRoot))));
+                Assert.That(
+                    File.ReadAllText(ItemTextTablePath(firstGeneratedRoot)),
+                    Is.EqualTo(File.ReadAllText(ItemTextTablePath(paths.GeneratedRoot)).Replace("\r\n", "\n")));
             }
             finally
             {
@@ -347,6 +355,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 WriteText(catalogPath, "original authoring");
                 WriteText(removedDefinitionPath, "original definition");
                 WriteText(paths.RuntimePath, "original runtime");
+                WriteText(ItemTextTablePath(paths.GeneratedRoot), "original text table");
                 Directory.CreateDirectory(paths.PresentationPath);
                 var service = new ItemCatalogEditorService(paths, new FailingCompilerRunner());
                 var validation = ItemCatalogEditorValidationResult.Passed(
@@ -359,6 +368,7 @@ namespace Mmorpg.Client.Tests.EditMode
                             "material.new_ore.json")] = "new definition"
                     },
                     "new runtime",
+                    "new text table",
                     "new presentation",
                     workspace.CurrentRuntime,
                     workspace.Presentation,
@@ -372,6 +382,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     Is.EqualTo("original definition"));
                 Assert.That(File.Exists(addedDefinitionPath), Is.False);
                 Assert.That(File.ReadAllText(paths.RuntimePath), Is.EqualTo("original runtime"));
+                Assert.That(
+                    File.ReadAllText(ItemTextTablePath(paths.GeneratedRoot)),
+                    Is.EqualTo("original text table"));
                 Assert.That(Directory.Exists(paths.PresentationPath), Is.True);
             }
             finally
@@ -399,6 +412,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "valid",
                     authoringFiles,
                     "new runtime",
+                    "new text table",
                     "new presentation",
                     workspace.CurrentRuntime,
                     workspace.Presentation,
@@ -408,6 +422,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 Assert.That(File.Exists(removedDefinitionPath), Is.False);
                 Assert.That(File.ReadAllText(paths.RuntimePath), Is.EqualTo("original runtime"));
+                Assert.That(File.Exists(ItemTextTablePath(paths.GeneratedRoot)), Is.False);
                 Assert.That(File.ReadAllText(paths.PresentationPath), Is.EqualTo("new presentation"));
                 var reloaded = ItemCatalogEditorContent.Load(paths.ItemsDirectory);
                 Assert.That(
@@ -742,6 +757,14 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, text);
+        }
+
+        private static string ItemTextTablePath(string generatedRoot)
+        {
+            return ContentLayout.GeneratedTextTablePath(
+                generatedRoot,
+                TextTableFormat.SourceLocale,
+                TextTableIds.Items);
         }
 
         private static void WriteFiles(

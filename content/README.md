@@ -294,6 +294,9 @@ at `src/Shared/WorldData/Generated/`:
 | `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json`, with loot, vendor capabilities, and resource profiles checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
 | `WorldCollision/<world-id>/` | the World's `collision.json` and the boxes of its placed resource nodes from `world-actors.json` | `tools/WorldCollisionCompiler` |
 | `Quests/core.quest-catalog.json` | `quests/`, checked against `Items/core.item-catalog.json` and every World's `world-actors.json` | `tools/QuestCatalogCompiler` |
+| `Text/en/items.text-table.json` | the names in `items/` | `tools/ItemCatalogCompiler` |
+| `Text/en/actors.text-table.json` | the names, examine texts, and capability texts in `actors/` | `tools/WorldActorCompiler` |
+| `Text/en/quests.text-table.json` | the texts in `quests/` | `tools/QuestCatalogCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
@@ -310,6 +313,38 @@ chunks to plan its walks.
 
 Every World's `world-actors.json` embeds the shared actor catalog, so an actor
 change recompiles every World. The Unity Actor Studio does this on save.
+
+## Text Tables
+
+Player-facing text is written where it is today: the `displayName`, the
+`examineText`, the `menuOption`, and the quest texts stay in the content files,
+in English. Each content compiler also collects the text of its domain into a
+text table, a sorted list of keys and texts with a revision over all of them.
+A change to one domain rewrites only that domain's table.
+
+Nobody writes a key. The compiler derives it from the id of what the text
+describes, as a path whose segments are separated by `/`:
+
+| Text | Key |
+| --- | --- |
+| An item's name | `item/<definition-id>/name` |
+| A category, tag, tool kind, equipment slot, weapon family, or ammunition family name | `item-category/<id>/name`, `item-tag/<id>/name`, `tool-kind/<id>/name`, `equipment-slot/<id>/name`, `weapon-family/<id>/name`, `ammunition-family/<id>/name` |
+| A vendor's name and the currency's name | `vendor/<vendor-id>/name`, `currency/name` |
+| An actor's name and examine text | `actor/<actor-id>/name`, `actor/<actor-id>/examine` |
+| A capability's name and menu option | `actor/<actor-id>/capability/<capability-id>/name` and `.../menu` |
+| A faction's name | `faction/<faction-id>/name` |
+| A quest's title, offer, progress, and completion text | `quest/<quest-id>/title`, `.../offer`, `.../progress`, `.../completion` |
+| An objective's text and the line of a talk-to objective | `quest/<quest-id>/step/<step-id>/objective/<objective-id>/text` and `.../line` |
+
+A text that content leaves empty has no entry. A text is at most 2000
+characters, has no whitespace around it, and holds no control character but a
+line feed; the content rules of each field are stricter.
+
+The tables are the first step toward text that the gameplay data does not
+carry. Today the compiled catalogs and the realtime protocol still hold the
+same texts, and the client still reads them from there. English, `en`, is the
+only locale; a table names its locale so that translated tables can sit beside
+it in `Text/<locale>/`.
 
 ## Compile And Verify
 
@@ -342,7 +377,9 @@ Expected result: the item compiler prints the catalog revision with its number
 of definitions, the actor compiler prints every World
 with its revision and its numbers of definitions and runtime instances, the
 collision compiler prints every World with its revision and chunk count, and the
-quest compiler prints the quest catalog revision with its number of quests.
+quest compiler prints the quest catalog revision with its number of quests. The
+item, actor, and quest compilers each also print their text table with its
+revision and its number of texts.
 
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate

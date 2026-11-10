@@ -6,6 +6,7 @@ using System.Text;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor.ContentTools;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Actors
@@ -392,6 +393,22 @@ namespace Mmorpg.WorldData.Editor.Actors
                     file.Key,
                     ContentLayout.GeneratedWorldActorsPath(string.Empty, paths.WorldId),
                     StringComparison.Ordinal)).Value;
+
+                // The compiler writes the actor text table with the runtimes, and a save keeps
+                // it current with them.
+                var textTablePath = ContentLayout.GeneratedTextTablePath(
+                    string.Empty,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Actors);
+                if (!File.Exists(Path.Combine(generatedRoot, textTablePath)))
+                {
+                    return WorldActorEditorValidationResult.Failed(
+                        CompilerToolName + " did not produce the actor text table.");
+                }
+
+                generatedFiles.Add(new KeyValuePair<string, string>(
+                    textTablePath,
+                    Normalize(File.ReadAllText(Path.Combine(generatedRoot, textTablePath)))));
                 var parsedRuntime = WorldActorEditorJson.DeserializeRuntime(runtimeJson);
                 if (!string.Equals(
                         candidate.Revision,

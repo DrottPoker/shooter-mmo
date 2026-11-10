@@ -5,6 +5,7 @@ using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.Tools.QuestCatalogCompiler;
 using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Text;
 using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.Tools.Tests;
@@ -260,6 +261,34 @@ public sealed class ContentPipelineTests
         Assert.Equal(contentRoot, options!.ContentRoot);
         Assert.Equal(generatedRoot, options.GeneratedRoot);
         Assert.True(options.VerifyOnly);
+    }
+
+    // Every content compiler writes its text table through this, so --verify fails for a
+    // missing or stale table exactly as it does for stale compiled data.
+    [Fact]
+    public void ATextTableIsWrittenWhereItsLocaleAndIdSayAndVerifiedLikeCompiledData()
+    {
+        using var generated = TemporaryContent.Empty();
+        var table = TextTable.Create(
+            TextTableIds.Items,
+            TextTableFormat.SourceLocale,
+            [new TextTableEntry { Key = TextKeys.ItemName("fixture.sword"), Text = "Fixture Sword" }]);
+        var path = ContentLayout.GeneratedTextTablePath(generated.Path, "en", TextTableIds.Items);
+
+        Assert.Throws<InvalidDataException>(() => TextTableOutput.WriteOrVerify(generated.Path, table, true));
+        TextTableOutput.WriteOrVerify(generated.Path, table, false);
+        TextTableOutput.WriteOrVerify(generated.Path, table, true);
+
+        Assert.EndsWith(
+            Path.Combine("Text", "en", "items.text-table.json"),
+            path,
+            StringComparison.Ordinal);
+        Assert.Equal(table.Revision, TextTableOutput.Deserialize(File.ReadAllText(path)).Revision);
+        File.WriteAllText(path, File.ReadAllText(path).Replace("Fixture Sword", "Fixture Blade", StringComparison.Ordinal));
+        var stale = Assert.Throws<InvalidDataException>(
+            () => TextTableOutput.WriteOrVerify(generated.Path, table, true));
+        Assert.Contains("is stale", stale.Message, StringComparison.Ordinal);
+        Assert.Throws<TextTableValidationException>(() => TextTableOutput.Deserialize(File.ReadAllText(path)));
     }
 
     [Theory]
