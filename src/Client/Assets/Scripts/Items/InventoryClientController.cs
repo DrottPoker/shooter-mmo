@@ -5,6 +5,7 @@ using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
@@ -74,7 +75,8 @@ namespace Mmorpg.Client.Items
         public void Initialize(
             ApiClient client,
             RealtimeSimulationClient realtimeClient,
-            TextAsset gameplayCatalog)
+            TextAsset gameplayCatalog,
+            TextCatalog texts)
         {
             if (initialized)
             {
@@ -84,7 +86,7 @@ namespace Mmorpg.Client.Items
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             simulationClient = realtimeClient
                 ?? throw new ArgumentNullException(nameof(realtimeClient));
-            if (ClientItemCatalog.TryLoad(gameplayCatalog, out var catalog, out var error))
+            if (ClientItemCatalog.TryLoad(gameplayCatalog, texts, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
             }

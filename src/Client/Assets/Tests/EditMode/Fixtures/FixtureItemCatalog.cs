@@ -59,7 +59,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 error);
             Assert.That(
-                ClientItemCatalog.TryCreate(gameplay, index, out var catalog, out error),
+                ClientItemCatalog.TryCreate(gameplay, index, FixtureTexts.For(gameplay), out var catalog, out error),
                 Is.True,
                 error);
             return catalog;

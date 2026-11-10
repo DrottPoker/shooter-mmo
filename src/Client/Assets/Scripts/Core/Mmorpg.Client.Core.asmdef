@@ -3,6 +3,7 @@
   "rootNamespace": "Mmorpg.Client.Core",
   "references": [
     "Mmorpg.Client.Api",
+    "Mmorpg.WorldData",
     "Unity.Addressables",
     "Unity.ResourceManager"
   ],

@@ -13,6 +13,7 @@
     "Mmorpg.Client.Combat",
     "Mmorpg.Client.Ui",
     "Unity.ResourceManager",
+    "Mmorpg.WorldData",
     "Mmorpg.WorldData.Client"
   ],
   "includePlatforms": [],

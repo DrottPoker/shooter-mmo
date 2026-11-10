@@ -327,16 +327,12 @@ namespace Mmorpg.Client.Ui
 
             return string.Join(
                 "/",
-                acceptedTags.Select(tag => IdentityName(catalog?.Gameplay?.Tags, tag)));
+                acceptedTags.Select(tag => catalog != null ? catalog.GetTagName(tag) : tag ?? string.Empty));
         }
 
         public static string EquipmentSlotName(ClientItemCatalog catalog, string slotId)
         {
-            return catalog != null
-                && catalog.TryGetEquipmentSlot(slotId, out var slot)
-                && !string.IsNullOrWhiteSpace(slot.DisplayName)
-                    ? slot.DisplayName
-                    : slotId ?? string.Empty;
+            return catalog != null ? catalog.GetEquipmentSlotName(slotId) : slotId ?? string.Empty;
         }
 
         // The first equipped item whose presentation has lowered garments, such as a hood that
@@ -374,7 +370,7 @@ namespace Mmorpg.Client.Ui
         {
             var categoryId = CategoryId(catalog, definitionId);
             return categoryId.Length > 0
-                ? IdentityName(catalog.Gameplay?.Categories, categoryId)
+                ? catalog.GetCategoryName(categoryId)
                 : string.Empty;
         }
 
@@ -500,7 +496,7 @@ namespace Mmorpg.Client.Ui
                 return text.ToString();
             }
 
-            var category = IdentityName(catalog.Gameplay?.Categories, definition.Category);
+            var category = catalog.GetCategoryName(definition.Category);
             AppendLine(
                 text,
                 category
@@ -596,15 +592,6 @@ namespace Mmorpg.Client.Ui
         {
             return policy != null
                 && string.Equals(policy.Status, ItemPolicyRules.ActiveStatus, StringComparison.Ordinal);
-        }
-
-        private static string IdentityName(IEnumerable<ItemCatalogIdentityEntry> entries, string id)
-        {
-            var entry = entries?.FirstOrDefault(candidate =>
-                candidate != null && string.Equals(candidate.Id, id, StringComparison.Ordinal));
-            return entry != null && !string.IsNullOrWhiteSpace(entry.DisplayName)
-                ? entry.DisplayName
-                : id ?? string.Empty;
         }
     }
 }

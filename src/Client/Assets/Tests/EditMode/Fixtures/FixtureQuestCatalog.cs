@@ -1,5 +1,6 @@
 using System.IO;
 using Mmorpg.Client.Quests;
+using Mmorpg.WorldData.Quests;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -36,8 +37,12 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public static ClientQuestCatalog Load()
         {
+            // The fixture quests are not in the bundled text tables, so their own texts make
+            // the text catalog, as the quest compiler builds the real table.
+            var json = File.ReadAllText(RuntimePath);
+            var texts = FixtureTexts.For(JsonUtility.FromJson<QuestCatalogJsonDocument>(json).ToRuntime());
             Assert.That(
-                ClientQuestCatalog.TryParse(File.ReadAllText(RuntimePath), out var catalog, out var error),
+                ClientQuestCatalog.TryParse(json, texts, out var catalog, out var error),
                 Is.True,
                 error);
             return catalog;

@@ -340,9 +340,11 @@ A text that content leaves empty has no entry. A text is at most 2000
 characters, has no whitespace around it, and holds no control character but a
 line feed; the content rules of each field are stricter.
 
-The tables are the first step toward text that the gameplay data does not
-carry. Today the compiled catalogs and the realtime protocol still hold the
-same texts, and the client still reads them from there. English, `en`, is the
+The client shows item and quest text from the tables, as
+[Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes, so
+a table that is not current shows a stale or missing text in the game. The
+compiled catalogs and the realtime protocol still hold the same texts, and
+actor text still reaches the client through the protocol. English, `en`, is the
 only locale; a table names its locale so that translated tables can sit beside
 it in `Text/<locale>/`.
 

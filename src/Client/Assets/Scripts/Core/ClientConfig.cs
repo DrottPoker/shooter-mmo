@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
@@ -12,9 +13,12 @@ namespace Mmorpg.Client.Core
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
         [SerializeField] private TextAsset itemGameplayCatalog;
 
-        // The compiled quest catalog, core.quest-catalog.json, whose texts and rules the quest
-        // windows read.
+        // The compiled quest catalog, core.quest-catalog.json, whose rules the quest windows read.
         [SerializeField] private TextAsset questCatalog;
+
+        // The text tables of the client's locale, such as items.text-table.json, which hold
+        // every content text that the client shows.
+        [SerializeField] private TextAsset[] textTables = new TextAsset[0];
 
         // The material of primitives that runtime presentation creates itself. Referencing it
         // here puts it and its URP shader into the client content.
@@ -61,6 +65,11 @@ namespace Mmorpg.Client.Core
         public TextAsset QuestCatalog
         {
             get { return questCatalog; }
+        }
+
+        public IReadOnlyList<TextAsset> TextTables
+        {
+            get { return textTables; }
         }
 
         public Material RuntimePrimitiveMaterial

@@ -72,7 +72,7 @@ namespace Mmorpg.Client.Tests.EditMode
             ClientItemCatalog catalog;
             try
             {
-                Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out catalog, out var error), Is.True, error);
+                Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out catalog, out var error), Is.True, error);
             }
             finally
             {

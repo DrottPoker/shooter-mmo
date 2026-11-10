@@ -231,7 +231,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var config = ClientConfig.Load(out AsyncOperationHandle<ClientConfig> handle);
             try
             {
-                Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var items, out var error), Is.True, error);
+                Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out var items, out var error), Is.True, error);
                 test(items);
             }
             finally

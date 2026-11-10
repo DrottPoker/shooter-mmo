@@ -89,8 +89,7 @@ namespace Mmorpg.Client.Items
 
         public static string CurrencyName(ClientItemCatalog catalog)
         {
-            var name = catalog?.Gameplay.Economy?.CurrencyDisplayName;
-            return string.IsNullOrWhiteSpace(name) ? DefaultCurrencyName : name;
+            return catalog != null ? catalog.CurrencyName : DefaultCurrencyName;
         }
 
         public static string FormatAmount(ClientItemCatalog catalog, long amount)

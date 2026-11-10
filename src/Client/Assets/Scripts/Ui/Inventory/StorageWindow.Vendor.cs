@@ -130,7 +130,8 @@ namespace Mmorpg.Client.Ui
                 pendingItem = null;
             }
 
-            Window.SetTitle(vendor.DisplayName);
+            var vendorName = state.Catalog.GetVendorName(vendor.Id);
+            Window.SetTitle(vendorName);
             Window.SetDetail(string.Empty);
             ShowMessage(string.Empty, false);
             var offers = VendorClientRules.ListOffers(state.Catalog, vendor);
@@ -152,8 +153,8 @@ namespace Mmorpg.Client.Ui
                 owner.Interactions.CanOfferToVendor(vendor, candidate, out reason);
             sellSpec.OnDrop = OfferForSale;
             sellSpec.Tooltip = pendingItem != null
-                ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, pendingItem, "Offered to " + vendor.DisplayName)
-                : "<b>Sell</b>\nDrop a carried item here to see what " + vendor.DisplayName + " pays for it.";
+                ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, pendingItem, "Offered to " + vendorName)
+                : "<b>Sell</b>\nDrop a carried item here to see what " + vendorName + " pays for it.";
             sellGrid.Bind(new[] { sellSpec });
 
             sellRow.gameObject.SetActive(pendingItem != null);

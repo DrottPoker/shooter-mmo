@@ -11,6 +11,7 @@ using Mmorpg.Client.Quests;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.Client.Worlds;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.SceneManagement;
@@ -124,12 +125,13 @@ namespace Mmorpg.Client.App
             lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages);
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
-            inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog);
+            var texts = LoadTexts(config);
+            inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog, texts);
             inventoryController.State.Changed += UpdatePlayerEquipment;
             UpdatePlayerEquipment();
 
             questController = GetOrAddComponent<QuestClientController>();
-            questController.Initialize(apiClient, simulationClient, config.QuestCatalog, inventoryController);
+            questController.Initialize(apiClient, simulationClient, config.QuestCatalog, texts, inventoryController);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient, inventoryController);
@@ -152,6 +154,21 @@ namespace Mmorpg.Client.App
 
             simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
+        }
+
+        // Without readable text tables the client still runs, and every content text shows as
+        // its key in brackets.
+        private static TextCatalog LoadTexts(ClientConfig config)
+        {
+            if (ClientTexts.TryLoad(config.TextTables, out var texts, out var error))
+            {
+                return texts;
+            }
+
+            ClientLog.Error(
+                ClientLogCategory.Client,
+                "The text tables are unavailable, so content text shows as keys: " + error);
+            return TextCatalog.Empty(TextTableFormat.SourceLocale);
         }
 
         private void OnEnable()

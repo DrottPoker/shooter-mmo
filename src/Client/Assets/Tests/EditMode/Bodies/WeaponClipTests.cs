@@ -37,7 +37,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             ItemPresentationCatalogLoader.ResetCache();
             config = ClientConfig.Load(out configHandle);
-            Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out bundled, out var error), Is.True, error);
+            Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out bundled, out var error), Is.True, error);
         }
 
         [TearDown]

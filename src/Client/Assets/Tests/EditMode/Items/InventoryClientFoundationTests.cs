@@ -38,11 +38,11 @@ namespace Mmorpg.Client.Tests.EditMode
         public void BundledCatalogLoadsGameplayAndPresentationOnceByDefinitionId()
         {
             Assert.That(
-                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var bundled, out var error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out var bundled, out var error),
                 Is.True,
                 error);
             Assert.That(
-                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var secondCatalog, out error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out var secondCatalog, out error),
                 Is.True,
                 error);
 
@@ -50,7 +50,6 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(secondCatalog.Revision, Is.EqualTo(bundled.Revision));
             Assert.That(secondCatalog.Presentation, Is.SameAs(bundled.Presentation));
             Assert.That(bundled.GetDisplayName(definition.Id), Is.Not.Empty);
-            Assert.That(bundled.GetLocalizationKey(definition.Id), Is.Not.Empty);
             Assert.That(bundled.LoadIcon(definition.Id), Is.SameAs(bundled.LoadIcon(definition.Id)));
         }
 
@@ -59,7 +58,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void EveryItemWithoutItsOwnIconShowsThePlaceholder()
         {
             Assert.That(
-                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, out var bundled, out var error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out var bundled, out var error),
                 Is.True,
                 error);
             var placeholder = ItemPresentationCatalogLoader.LoadIcon(

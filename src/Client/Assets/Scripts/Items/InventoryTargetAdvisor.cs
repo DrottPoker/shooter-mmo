@@ -890,10 +890,7 @@ namespace Mmorpg.Client.Items
 
         private static string EquipmentSlotName(ClientItemCatalog catalog, string equipmentSlotId)
         {
-            return catalog.TryGetEquipmentSlot(equipmentSlotId, out var slot)
-                && !string.IsNullOrWhiteSpace(slot.DisplayName)
-                    ? slot.DisplayName
-                    : equipmentSlotId;
+            return catalog.GetEquipmentSlotName(equipmentSlotId);
         }
 
         private static ItemStackState ToStackState(
