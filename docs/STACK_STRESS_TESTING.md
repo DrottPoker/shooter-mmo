@@ -511,8 +511,9 @@ Run each steady tier for at least five minutes. After a clean 100-bot result,
 try 150, 250, and 500 bots. The checked-in worker connection ceiling is 1000,
 but that ceiling is not a supported capacity claim. Do not change a production
 default based on a single local machine. The tiers work toward the
-[Scale Target](PROJECT_ARCHITECTURE.md#scale-target), which no tier has
-reached yet.
+[Scale Target](PROJECT_ARCHITECTURE.md#scale-target). A run counts toward it
+only when it passes the [Quality Boundary](#quality-boundary) with the
+workloads that the target names, which no run has done yet.
 
 Use worker-only mode first to establish the realtime boundary. Repeat accepted
 tiers in full-stack mode to identify when GameService, HTTP admission, or

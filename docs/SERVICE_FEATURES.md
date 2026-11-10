@@ -1685,13 +1685,10 @@ content fail before UDP admission.
 - Profession experience and levels, gathering success chances, other
   professions, durable resource node state, limited vendor stock, dynamic
   prices, buyback, and player trading.
-- Quest progression and quest completion, and the dialogue, crafting, and
-  trainer capability business operations.
+- The dialogue, crafting, and trainer capability business operations.
 - A threat table, Mob abilities beyond one attack, Mob groups that assist each
   other, armor, defense, resistances, and the combat triangle.
 - Durable unique actor state.
-- Zones, cross-zone handoff, or layers.
-- Multiple workers cooperating on one shard.
 - A production scheduler or fleet autoscaler.
 - Alert notifications to a chat or paging service, and a shared or staging
   deployment of the monitoring stack.

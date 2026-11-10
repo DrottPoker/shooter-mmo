@@ -106,9 +106,9 @@ How to work on a part of the project.
   mention another document's area, link to it without saying whether it is implemented, so a
   finished feature never leaves a stale "planned" behind. A change that implements or defers
   something updates both places.
-- Use World, Fleet, Node, SimulationWorker, SimulationAssignment, Shard, Zone, and Layer exactly
-  as [Project Architecture](PROJECT_ARCHITECTURE.md#canonical-terminology) defines them. There
-  are no realms, and World never names a process.
+- Use World, Fleet, Node, SimulationWorker, SimulationAssignment, and Shard exactly as
+  [Project Architecture](PROJECT_ARCHITECTURE.md#canonical-terminology) defines them. There are
+  no realms, Zones, or Layers, and World never names a process.
 - Every change states how to test it by hand, with commands and the expected result, and whether
   it needs manual Unity Editor steps. Lasting manual checks belong in
   [Manual Testing](MANUAL_TESTING.md); exact Unity Editor steps belong in the guide of the area.

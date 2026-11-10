@@ -185,8 +185,8 @@ and one active session per character.
 - A character can play on every Shard, but only on one at a time, and switches
   only after it fully left its current Shard.
 - The canonical terms and the topology are in
-  [Project Architecture](PROJECT_ARCHITECTURE.md#topology-model). Zones and
-  Layers are future scaling systems inside a Shard, never gameplay areas.
+  [Project Architecture](PROJECT_ARCHITECTURE.md#topology-model). A Shard is
+  never split into Zones or copied into Layers.
 - Deep sea is the edge of the World map instead of walls. The sea reaches past
   the playable bounds to the horizon, and its deep water stops characters well
   before the bounds. Development World 2 tries this in its northwest corner.
@@ -896,8 +896,7 @@ and the death rules are the same everywhere.
 ### Decided
 
 - Gameplay rule areas are authored content policies inside the World. They are
-  not the future topological Zone and must never be represented as Zones,
-  SimulationAssignments, or worker ownership boundaries.
+  never represented as SimulationAssignments or worker ownership boundaries.
 - The first version keeps two areas: the Safe City Rule Area and the Open Risk
   Rule Area. Everything outside the safe city is unsafe. Civilized and
   wilderness areas can be split into separate policies later.
@@ -1170,14 +1169,13 @@ The MVP is built in named slices:
 | Vendor and gathering | Complete | One NPC vendor, persistent Gold, shared resource nodes gathered with a tool in the Tool slot, gathering through the item transaction service, and buying from and selling to the vendor |
 | Target-based combat and simple Mob | Complete | Ranged, Melee, and Magic weapons with consumed ammunition or mana, target selection and auto attack, health and Normal damage, authoritative death events, aggressive Mobs with live loot, and a boss with a durable corpse |
 | Death, Recovery, and corpse looting | Complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
-| Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after a disconnect in the Open Risk area, and reconnect to the same body |
+| Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas, instant logout in the Safe City, a five-minute body after a disconnect in the Open Risk area, and reconnect to the same body |
 
 ## Deferred Features
 
 These do not block the first playable MVP:
 
 - The civilized and wilderness rule-area split.
-- Topological Zones, cross-zone handoff, and Layers.
 - The hostile flag, criminal reputation, and bounty hunting.
 - Guilds and social systems: chat, friends, party and guild chat, private
   messages, presence, cross-Shard communication, and basic moderation. They
