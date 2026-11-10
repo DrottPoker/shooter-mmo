@@ -52,8 +52,8 @@ public sealed class RealtimeQuestDropTests
         await harness.PollUntilAsync(() => QuestDrops(client).Count == 1, "the quest drop notice");
         var notice = Assert.Single(QuestDrops(client));
         Assert.Equal(
-            (corpse.CorpseId, "Feral Wolf", Trophies, Trophy, 1),
-            (notice.CorpseId, notice.SourceDisplayName, notice.QuestId, notice.DefinitionId, notice.Quantity));
+            (corpse.CorpseId, "mob.feral_wolf", Trophies, Trophy, 1),
+            (notice.CorpseId, notice.SourceActorDefinitionId, notice.QuestId, notice.DefinitionId, notice.Quantity));
 
         client.SendCorpseIntent(RealtimeCorpseInteractionIntent.CreateOpen(Guid.NewGuid(), corpse.CorpseId));
         await harness.PollUntilAsync(() => client.CorpseResults.Count == 1, "the open");

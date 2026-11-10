@@ -6,6 +6,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Health;
 using Mmorpg.Server.Common.Identity;
+using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Telemetry;
 using Mmorpg.WorldData.Quests;
 
@@ -155,8 +156,8 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && response.Corpse.CorpseId == request.CorpseId
                 && response.Corpse.SourceCharacterId is null
                 && string.Equals(
-                    response.Corpse.SourceDisplayName,
-                    request.SourceDisplayName.Trim(),
+                    response.Corpse.SourceActorDefinitionId,
+                    request.SourceActorDefinitionId.Trim(),
                     StringComparison.Ordinal)
                 && Math.Abs(((response.Corpse.ExpiresAt - response.Corpse.CreatedAt)
                         - TimeSpan.FromSeconds(request.LifetimeSeconds)).TotalMilliseconds)
@@ -994,7 +995,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
         if (response is null
             || response.CorpseId != expectedCorpseId
             || response.SourceCharacterId == Guid.Empty
-            || string.IsNullOrWhiteSpace(response.SourceDisplayName)
+            || !CorpseSources.IsValid(response.SourceCharacterName, response.SourceActorDefinitionId)
             || !string.Equals(response.ShardId, expectedShardId, StringComparison.Ordinal)
             || !IsFinitePosition(response.PositionX)
             || !IsFinitePosition(response.PositionY)
@@ -1123,7 +1124,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
     {
         if (corpse.CorpseId == Guid.Empty
             || corpse.SourceCharacterId == Guid.Empty
-            || string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
+            || !CorpseSources.IsValid(corpse.SourceCharacterName, corpse.SourceActorDefinitionId)
             || !string.Equals(corpse.ShardId, expectedShardId, StringComparison.Ordinal)
             || !IsFinitePosition(corpse.PositionX)
             || !IsFinitePosition(corpse.PositionY)

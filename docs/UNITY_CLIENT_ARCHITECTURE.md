@@ -424,7 +424,7 @@ one `TextCatalog`, never from the gameplay catalogs or the realtime protocol. `C
 the text tables that `ClientConfig` lists, checks each against its revision,
 and joins them; [Text Tables](../content/README.md#text-tables) describes the
 tables and their keys. The bootstrap loads the catalog once and passes it to
-the inventory, quest, and world actor controllers.
+the inventory, quest, world actor, and corpse controllers.
 
 - `ClientItemCatalog` answers every name from it: `GetDisplayName`,
   `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
@@ -441,15 +441,20 @@ the inventory, quest, and world actor controllers.
   `ActiveTarget`, so the panels ask it for `ActiveDisplayName` and
   `CapabilityName`. An id from the network that cannot be part of a key is
   shown as it is.
+- `CorpseSourceText.Name` names who left a corpse: the character name that a
+  character's corpse carries, or the Mob's name by the actor definition that a
+  Mob's corpse carries. `CorpseClientState` names the corpses near the player
+  and the open corpse view with it, and `ClientQuestCatalog.ActorName` names
+  the Mob of a quest drop message.
 - A text that the catalog lacks shows its key in brackets, such as
   `[item/weapon.iron_sword/name]`, so a missing text is seen on screen. When
   the tables cannot be read at all, the client logs an error and runs with an
   empty catalog.
 
 `ClientTextsTests` fails when the configuration does not list every table of
-`TextTableIds.All`, so a new table cannot be forgotten. The name on a Mob's
-corpse still comes from the realtime protocol, and the panels' own labels are
-still literals in the code.
+`TextTableIds.All`, so a new table cannot be forgotten. The messages that the
+servers send with a result or a closure are still English text, and the
+panels' own labels are still literals in the code.
 
 ## Client Session State
 

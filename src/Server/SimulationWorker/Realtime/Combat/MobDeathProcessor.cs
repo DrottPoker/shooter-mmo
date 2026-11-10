@@ -18,7 +18,7 @@ internal sealed record MobCorpseCreated(MobDeath Death, MobDeathCorpse Corpse, M
 internal sealed record MobCorpseQuestDrops(
     Guid OwnerCharacterId,
     Guid CorpseId,
-    string SourceDisplayName,
+    string SourceActorDefinitionId,
     IReadOnlyList<MobCorpseQuestDropSeed> Drops);
 
 // One corpse that a Mob death leaves: the loot of one credited player, or loot for everyone,
@@ -228,7 +228,7 @@ internal sealed class MobDeathProcessor(
                 QuestDropsPlaced?.Invoke(new MobCorpseQuestDrops(
                     ownerCharacterId,
                     corpse.CorpseId,
-                    death.Actor.Definition.DisplayName,
+                    death.Actor.Definition.Id,
                     created.Result.QuestDrops));
             }
         }

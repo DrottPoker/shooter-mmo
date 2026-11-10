@@ -159,7 +159,6 @@ public sealed class ItemCommandValidationTests
             "runtime-1",
             "shard-1",
             "mob.feral_wolf",
-            "Feral Wolf",
             1d,
             0d,
             -1d,

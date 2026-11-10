@@ -210,12 +210,12 @@ namespace Mmorpg.Client.Tests.EditMode
             Func<string, string> names = id => id == "fixture.trophy" ? "Stolen Trophy" : null;
 
             Assert.That(
-                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Wolf", FixtureQuestCatalog.Trophies, "fixture.trophy", 1), catalog, names),
+                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "mob.feral_wolf", FixtureQuestCatalog.Trophies, "fixture.trophy", 1), catalog, names),
                 Is.EqualTo("Feral Wolf dropped Stolen Trophy for Fixture Trophies."));
             Assert.That(
-                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "Feral Alpha", "quest.unknown", "fixture.fang", 2), catalog, names),
-                Is.EqualTo("Feral Alpha dropped 2 x fixture.fang for quest.unknown."),
-                "An unknown item or quest shows its id.");
+                QuestNotices.ForDrop(new RealtimeQuestDropInCorpse(Guid.NewGuid(), "mob.unknown", "quest.unknown", "fixture.fang", 2), catalog, names),
+                Is.EqualTo("[actor/mob.unknown/name] dropped 2 x fixture.fang for quest.unknown."),
+                "An unknown item or quest shows its id, and an unknown Mob the key of its name.");
         }
 
         [Test]

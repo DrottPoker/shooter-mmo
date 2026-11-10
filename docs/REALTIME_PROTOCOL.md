@@ -488,7 +488,7 @@ the carry state and the result of the operation that caused it.
 - `CorpsePresenceSnapshotChunk` (15) carries the nearby corpses in chunks of up
   to `MaximumCorpsePresencePerChunk` (6) `CorpsePresence` structs, each with its
   id, position, facing, absolute expiry, whether it is empty, whether the
-  recipient may loot it, source name, presentation key, and optional look. A
+  recipient may loot it, source, presentation key, and optional look. A
   Mob's corpse belongs to the player the Mob credited, so `IsLootable` differs
   between recipients.
 - `CorpseInteractionIntent` (16) carries an operation id, a
@@ -502,6 +502,17 @@ the carry state and the result of the operation that caused it.
   canonical equipment-slot id.
 - Corpse chunks are packed by encoded UTF-8 size under the 1,200 byte limit, and
   one chunked update has at most `MaximumCorpseChunkCount` (256) chunks.
+
+### Corpse Source
+
+`CorpsePresence` and `CorpseViewStateChunk` carry a `CorpseSource`, which says
+who left the corpse with exactly one of two optional texts: `CharacterName`,
+the name the dead character had, or `ActorDefinitionId`, the actor definition
+of the dead Mob. The messages carry no name of a Mob: the client finds it in
+its text tables by the definition, as
+[Text Tables](../content/README.md#text-tables) describes. A source with both
+texts or with neither is rejected in both directions. `QuestDropInCorpse`
+names its Mob by `SourceActorDefinitionId` in the same way.
 
 ### Corpse Sections
 

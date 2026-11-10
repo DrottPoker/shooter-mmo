@@ -34,6 +34,13 @@ namespace Mmorpg.GameProtocol
             return item.BagContentsContainerId != Guid.Empty || item.BagContentsRevision == 0;
         }
 
+        // A corpse comes from a character or from a Mob, never from both or from neither.
+        private static bool SatisfiesRules(RealtimeCorpseSource source)
+        {
+            return string.IsNullOrWhiteSpace(source.CharacterName)
+                != string.IsNullOrWhiteSpace(source.ActorDefinitionId);
+        }
+
         // A snapshot replaces its section from nothing, a delta never goes back in revision,
         // every slot lies inside its section, and only equipment slots name an equipment slot.
         private static bool SatisfiesRules(RealtimeCorpseViewStateChunk chunk)
@@ -56,6 +63,25 @@ namespace Mmorpg.GameProtocol
             }
 
             return true;
+        }
+    }
+
+    // A source is built for one of its two cases, so it never names both or neither.
+    public sealed partial class RealtimeCorpseSource
+    {
+        public static RealtimeCorpseSource Character(string characterName)
+        {
+            return new RealtimeCorpseSource(characterName, string.Empty);
+        }
+
+        public static RealtimeCorpseSource Actor(string actorDefinitionId)
+        {
+            return new RealtimeCorpseSource(string.Empty, actorDefinitionId);
+        }
+
+        public bool IsActor
+        {
+            get { return !string.IsNullOrWhiteSpace(ActorDefinitionId); }
         }
     }
 

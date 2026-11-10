@@ -109,7 +109,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             "persistent_npc",
             null,
             command.SourceActorDefinitionId,
-            command.SourceDisplayName,
+            null,
             command.ShardId,
             command.PositionX,
             command.PositionY,
@@ -260,8 +260,6 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             || !Identifiers.IsServiceIdentifier(command.WorkerRuntimeId)
             || !Identifiers.IsServiceIdentifier(command.ShardId)
             || !Identifiers.IsContentIdentifier(command.SourceActorDefinitionId)
-            || string.IsNullOrWhiteSpace(command.SourceDisplayName)
-            || command.SourceDisplayName.Length > 128
             || !CorpseTransformRules.IsMobCorpsePresentationKey(command.PresentationKey)
             || !double.IsFinite(command.LifetimeSeconds)
             || command.LifetimeSeconds

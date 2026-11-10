@@ -425,9 +425,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 2_000_000_000_000L,
                 false,
                 isLootable,
-                sourceName,
+                RealtimeCorpseSource.Character(sourceName),
                 "corpse.remains",
-                null)));
+                null),
+                FixtureTexts.DevelopmentActors()));
             return corpse;
         }
 

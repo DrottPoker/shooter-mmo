@@ -344,8 +344,7 @@ line feed; the content rules of each field are stricter.
 The client shows item, quest, and actor text from the tables, as
 [Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes, so
 a table that is not current shows a stale or missing text in the game. The
-compiled catalogs still hold the same texts, and the name on a Mob's corpse
-still reaches the client through the protocol. English, `en`, is the
+compiled catalogs still hold the same texts. English, `en`, is the
 only locale; a table names its locale so that translated tables can sit beside
 it in `Text/<locale>/`.
 

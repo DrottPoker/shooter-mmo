@@ -130,7 +130,6 @@ internal sealed partial class CorpseService(
                     request.WorkerRuntimeId.Trim(),
                     request.ShardId.Trim(),
                     request.SourceActorDefinitionId.Trim(),
-                    request.SourceDisplayName.Trim(),
                     request.PositionX,
                     request.PositionY,
                     request.PositionZ,
@@ -504,7 +503,8 @@ internal sealed partial class CorpseService(
                         corpse.source_character_id as "SourceCharacterId",
                         corpse.owner_character_id as "OwnerCharacterId",
                         corpse.loot_group_id as "LootGroupId",
-                        corpse.source_display_name as "SourceDisplayName",
+                        corpse.source_character_name as "SourceCharacterName",
+                        corpse.source_npc_definition_id as "SourceActorDefinitionId",
                         corpse.shard_id as "ShardId",
                         corpse.position_x as "PositionX",
                         corpse.position_y as "PositionY",
@@ -593,7 +593,8 @@ internal sealed partial class CorpseService(
                 corpse.source_character_id as "SourceCharacterId",
                 corpse.owner_character_id as "OwnerCharacterId",
                 corpse.loot_group_id as "LootGroupId",
-                corpse.source_display_name as "SourceDisplayName",
+                corpse.source_character_name as "SourceCharacterName",
+                corpse.source_npc_definition_id as "SourceActorDefinitionId",
                 corpse.shard_id as "ShardId",
                 corpse.position_x as "PositionX",
                 corpse.position_y as "PositionY",
@@ -654,7 +655,8 @@ internal sealed partial class CorpseService(
                         corpse.source_character_id as "SourceCharacterId",
                         corpse.owner_character_id as "OwnerCharacterId",
                         corpse.loot_group_id as "LootGroupId",
-                        corpse.source_display_name as "SourceDisplayName",
+                        corpse.source_character_name as "SourceCharacterName",
+                        corpse.source_npc_definition_id as "SourceActorDefinitionId",
                         corpse.shard_id as "ShardId",
                         corpse.position_x as "PositionX",
                         corpse.position_y as "PositionY",
@@ -819,7 +821,7 @@ internal sealed partial class CorpseService(
         return new DurableCorpseResponse(
             row.CorpseId,
             row.SourceCharacterId,
-            row.SourceDisplayName,
+            row.SourceCharacterName,
             row.ShardId,
             row.PositionX,
             row.PositionY,
@@ -835,6 +837,7 @@ internal sealed partial class CorpseService(
             sections.Sum(section => section.ItemCount) == 0,
             sections)
         {
+            SourceActorDefinitionId = row.SourceActorDefinitionId,
             OwnerCharacterId = row.OwnerCharacterId,
             LootGroupId = row.LootGroupId
         };
@@ -940,8 +943,6 @@ internal sealed partial class CorpseService(
             && Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
             && Identifiers.IsServiceIdentifier(request.ShardId)
             && Identifiers.IsContentIdentifier(request.SourceActorDefinitionId)
-            && !string.IsNullOrWhiteSpace(request.SourceDisplayName)
-            && request.SourceDisplayName.Length <= 128
             && CorpseTransformRules.IsMobCorpsePresentationKey(request.PresentationKey)
             && request.LifetimeSeconds
                 is >= Mmorpg.WorldData.Actors.WorldActorCorpseRules.MinimumLifetimeSeconds
@@ -1038,7 +1039,9 @@ internal sealed partial class CorpseService(
 
         Guid? SourceCharacterId { get; }
 
-        string SourceDisplayName { get; }
+        string? SourceCharacterName { get; }
+
+        string? SourceActorDefinitionId { get; }
 
         string ShardId { get; }
 
@@ -1075,7 +1078,9 @@ internal sealed partial class CorpseService(
 
         public Guid? SourceCharacterId { get; set; }
 
-        public string SourceDisplayName { get; set; } = string.Empty;
+        public string? SourceCharacterName { get; set; }
+
+        public string? SourceActorDefinitionId { get; set; }
 
         public string ShardId { get; set; } = string.Empty;
 

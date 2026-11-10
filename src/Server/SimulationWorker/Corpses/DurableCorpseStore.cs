@@ -1,3 +1,4 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -6,7 +7,9 @@ namespace Mmorpg.SimulationWorker.Corpses;
 public interface ICorpseRuntimePresence
 {
     Guid CorpseId { get; }
-    string SourceDisplayName { get; }
+
+    // Who left the corpse: a character by name, or a Mob by its actor definition.
+    RealtimeCorpseSource Source { get; }
     double PositionX { get; }
     double PositionY { get; }
     double PositionZ { get; }
@@ -74,7 +77,7 @@ public sealed record CorpseLook(
 public sealed record DurableCorpseState(
     Guid CorpseId,
     Guid? SourceCharacterId,
-    string SourceDisplayName,
+    RealtimeCorpseSource Source,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -156,7 +159,7 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
             var state = new DurableCorpseState(
                 corpse.CorpseId,
                 corpse.SourceCharacterId,
-                corpse.SourceDisplayName,
+                CorpseSources.Create(corpse.SourceCharacterName, corpse.SourceActorDefinitionId),
                 corpse.ShardId,
                 corpse.PositionX,
                 corpse.PositionY,
@@ -266,7 +269,7 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
         var state = new DurableCorpseState(
             snapshot.CorpseId,
             snapshot.SourceCharacterId,
-            snapshot.SourceDisplayName,
+            CorpseSources.Create(snapshot.SourceCharacterName, snapshot.SourceActorDefinitionId),
             snapshot.ShardId,
             snapshot.PositionX,
             snapshot.PositionY,
@@ -301,7 +304,7 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
         ApplyState(new DurableCorpseState(
             corpse.CorpseId,
             corpse.SourceCharacterId,
-            corpse.SourceDisplayName,
+            CorpseSources.Create(corpse.SourceCharacterName, corpse.SourceActorDefinitionId),
             corpse.ShardId,
             corpse.PositionX,
             corpse.PositionY,

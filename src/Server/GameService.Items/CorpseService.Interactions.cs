@@ -474,7 +474,8 @@ internal sealed partial class CorpseService
                 select
                     id as "CorpseId",
                     source_character_id as "SourceCharacterId",
-                    source_display_name as "SourceDisplayName",
+                    source_character_name as "SourceCharacterName",
+                    source_npc_definition_id as "SourceActorDefinitionId",
                     shard_id as "ShardId",
                     position_x as "PositionX",
                     position_y as "PositionY",
@@ -655,7 +656,7 @@ internal sealed partial class CorpseService
         return SnapshotLoadResult.Loaded(new CorpseViewSnapshotResponse(
             corpse.CorpseId,
             corpse.SourceCharacterId,
-            corpse.SourceDisplayName,
+            corpse.SourceCharacterName,
             corpse.ShardId,
             corpse.PositionX,
             corpse.PositionY,
@@ -667,6 +668,7 @@ internal sealed partial class CorpseService
             sections,
             presentations)
         {
+            SourceActorDefinitionId = corpse.SourceActorDefinitionId,
             OwnerCharacterId = corpse.OwnerCharacterId,
             LootGroupId = corpse.LootGroupId
         });
@@ -841,7 +843,9 @@ internal sealed partial class CorpseService
 
         public Guid? SourceCharacterId { get; set; }
 
-        public string SourceDisplayName { get; set; } = string.Empty;
+        public string? SourceCharacterName { get; set; }
+
+        public string? SourceActorDefinitionId { get; set; }
 
         public string ShardId { get; set; } = string.Empty;
 

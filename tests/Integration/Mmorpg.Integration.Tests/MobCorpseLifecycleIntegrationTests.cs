@@ -161,7 +161,6 @@ public sealed class MobCorpseLifecycleIntegrationTests
             WorkerRuntimeId,
             ShardId,
             "mob.feral_alpha",
-            "Feral Alpha",
             4d,
             0d,
             -3d,
@@ -211,7 +210,7 @@ public sealed class MobCorpseLifecycleIntegrationTests
                     new Mmorpg.SimulationWorker.GameServiceApi.DurableCorpseResponse(
                         corpse.CorpseId,
                         corpse.SourceCharacterId,
-                        corpse.SourceDisplayName,
+                        corpse.SourceCharacterName,
                         corpse.ShardId,
                         corpse.PositionX,
                         corpse.PositionY,
@@ -231,7 +230,10 @@ public sealed class MobCorpseLifecycleIntegrationTests
                                 section.ContainerId,
                                 section.ContainerRevision,
                                 section.ItemCount))
-                            .ToArray()))
+                            .ToArray())
+                    {
+                        SourceActorDefinitionId = corpse.SourceActorDefinitionId
+                    })
                     .ToArray()),
             ShardId);
         var inMemoryAfterRestart = Assert.Single(
@@ -311,7 +313,6 @@ public sealed class MobCorpseLifecycleIntegrationTests
                 WorkerRuntimeId,
                 ShardId,
                 "mob.feral_alpha",
-                "Feral Alpha",
                 4d,
                 0d,
                 -3d,
@@ -412,7 +413,6 @@ public sealed class MobCorpseLifecycleIntegrationTests
                 WorkerRuntimeId,
                 ShardId,
                 "mob.feral_alpha",
-                "Feral Alpha",
                 4d,
                 0d,
                 -3d,

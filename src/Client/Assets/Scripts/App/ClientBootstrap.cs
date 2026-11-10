@@ -134,7 +134,7 @@ namespace Mmorpg.Client.App
             questController.Initialize(apiClient, simulationClient, config.QuestCatalog, texts, inventoryController);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
-            corpseController.Initialize(simulationClient, inventoryController);
+            corpseController.Initialize(simulationClient, inventoryController, texts);
 
             worldActorController = GetOrAddComponent<WorldActorClientController>();
             worldActorController.Initialize(simulationClient, texts);

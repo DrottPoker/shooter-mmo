@@ -913,7 +913,7 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
         {
             sender.SendControl(peer, RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
                 placed.CorpseId,
-                placed.SourceDisplayName,
+                placed.SourceActorDefinitionId,
                 drop.QuestId,
                 drop.DefinitionId,
                 drop.Quantity)));

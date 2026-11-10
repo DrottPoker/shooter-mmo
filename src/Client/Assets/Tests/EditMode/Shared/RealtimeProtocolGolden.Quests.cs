@@ -130,7 +130,7 @@ namespace Mmorpg.SharedTests
                 drop,
                 () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
                     G(1),
-                    "Feral Wolf",
+                    "mob.feral_wolf",
                     "quest.pelts_and_fangs",
                     "quest_item.wolf_fang",
                     2)));
@@ -313,7 +313,7 @@ namespace Mmorpg.SharedTests
                 "Quests/QuestDropInCorpse/quantity 0",
                 () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
                     G(1),
-                    "Feral Wolf",
+                    "mob.feral_wolf",
                     "quest.pelts_and_fangs",
                     "quest_item.wolf_fang",
                     0)));
@@ -321,7 +321,7 @@ namespace Mmorpg.SharedTests
                 "Quests/QuestDropInCorpse/empty corpse id",
                 () => RealtimeProtocol.EncodeQuestDropInCorpse(new RealtimeQuestDropInCorpse(
                     Guid.Empty,
-                    "Feral Wolf",
+                    "mob.feral_wolf",
                     "quest.pelts_and_fangs",
                     "quest_item.wolf_fang",
                     1)));
@@ -412,7 +412,7 @@ namespace Mmorpg.SharedTests
         {
             return Wire.Message(RealtimeMessageType.QuestDropInCorpse)
                 .Guid(corpseId ?? G(1))
-                .Text(source ?? "Feral Wolf")
+                .Text(source ?? "mob.feral_wolf")
                 .Text(quest ?? "quest.pelts_and_fangs")
                 .Text(definition ?? "quest_item.wolf_fang")
                 .I32(quantity);

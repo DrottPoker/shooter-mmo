@@ -345,7 +345,6 @@ internal sealed record CreatePersistentMobCorpseCommand(
     string WorkerRuntimeId,
     string ShardId,
     string SourceActorDefinitionId,
-    string SourceDisplayName,
     double PositionX,
     double PositionY,
     double PositionZ,
