@@ -95,7 +95,10 @@ namespace Mmorpg.Client.Quests
                 item = drop.DefinitionId;
             }
 
-            return drop.SourceDisplayName + " dropped "
+            var source = catalog != null
+                ? catalog.ActorName(drop.SourceActorDefinitionId)
+                : drop.SourceActorDefinitionId;
+            return source + " dropped "
                 + (drop.Quantity > 1 ? drop.Quantity + " x " + item : item)
                 + " for " + quest + ".";
         }

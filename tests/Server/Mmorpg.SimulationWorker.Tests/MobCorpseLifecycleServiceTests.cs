@@ -328,7 +328,7 @@ public sealed class MobCorpseLifecycleServiceTests
             new DurableCorpseResponse(
                 request.CorpseId,
                 null,
-                request.SourceDisplayName,
+                null,
                 request.ShardId,
                 request.PositionX,
                 request.PositionY,
@@ -348,6 +348,7 @@ public sealed class MobCorpseLifecycleServiceTests
                     new CorpseSectionResponse("bag", Guid.NewGuid(), 1, 0)
                 ])
             {
+                SourceActorDefinitionId = request.SourceActorDefinitionId,
                 OwnerCharacterId = request.OwnerCharacterId,
                 LootGroupId = request.LootGroupId
             })

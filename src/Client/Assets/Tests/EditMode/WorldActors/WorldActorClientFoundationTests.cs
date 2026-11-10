@@ -354,9 +354,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     2_000_000_000_000L,
                     false,
                     true,
-                    "Fallen Hero",
+                    RealtimeCorpseSource.Character("Fallen Hero"),
                     "corpse.remains",
-                    null)));
+                    null),
+                    FixtureTexts.DevelopmentActors()));
 
                 Assert.That(
                     target.TargetKind,

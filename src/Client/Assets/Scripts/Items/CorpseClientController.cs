@@ -5,6 +5,7 @@ using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
@@ -28,12 +29,15 @@ namespace Mmorpg.Client.Items
 
         public void Initialize(
             IRealtimeCorpseChannel realtimeClient,
-            IInventoryOperationQueue inventory)
+            IInventoryOperationQueue inventory,
+            TextCatalog texts)
         {
             if (realtimeClient == null)
             {
                 throw new ArgumentNullException(nameof(realtimeClient));
             }
+
+            State.UseTexts(texts);
 
             if (initialized)
             {

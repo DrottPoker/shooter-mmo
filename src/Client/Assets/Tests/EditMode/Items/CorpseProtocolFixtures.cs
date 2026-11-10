@@ -56,7 +56,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ExpiresAtUnixMilliseconds,
                 false,
                 isLootable,
-                name,
+                RealtimeCorpseSource.Character(name),
                 "corpse.remains",
                 null);
         }
@@ -152,7 +152,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 baseRevision,
                 revision,
                 ExpiresAtUnixMilliseconds,
-                "Fallen Hero",
+                RealtimeCorpseSource.Character("Fallen Hero"),
                 "corpse.remains",
                 chunkIndex,
                 chunkCount,

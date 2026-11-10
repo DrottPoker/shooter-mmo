@@ -197,9 +197,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     2_000_000_000_000L,
                     false,
                     true,
-                    "Feral Wolf",
+                    RealtimeCorpseSource.Actor("mob.feral_wolf"),
                     "corpse.remains",
-                    null)));
+                    null),
+                    FixtureTexts.DevelopmentActors()));
                 var player = playerObject.AddComponent<RemotePlayerView>();
                 player.Initialize(PlayerId, "character", "Ada", RealtimePlayerArchetypeIds.Player, 30, 4, null, CollisionSettings());
 

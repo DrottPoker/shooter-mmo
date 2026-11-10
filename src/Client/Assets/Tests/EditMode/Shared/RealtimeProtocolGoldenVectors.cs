@@ -216,26 +216,34 @@ namespace Mmorpg.SharedTests
                 "d4 c3 b2 a1 00 00 01 00 01 a0 a1 a2 a3 a4 a5 a6 " +
                 "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
                 "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
-                "00 00 01 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 " +
-                "0d 00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72 01 " +
-                "0c 00 48 75 6d 61 6e 5f 46 65 6d 61 6c 65 02 04 " +
-                "00 66 61 63 65 00 08 00 46 72 65 63 6b 6c 65 73 " +
-                "09 00 75 6e 64 65 72 77 65 61 72 01 04 00 6c 65 " +
-                "67 73 06 00 42 72 69 65 66 73 02 04 00 68 65 61 " +
-                "64 17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c 75 65 " +
-                "5f 77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 63 6b " +
-                "13 00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f " +
-                "63 6c 6f 61 6b 01 01 14 00 74 6f 6f 6c 2e 73 74 " +
-                "61 72 74 65 72 5f 70 69 63 6b 61 78 65",
+                "00 00 01 01 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c " +
+                "61 00 0d 00 63 6f 72 70 73 65 2e 70 6c 61 79 65 " +
+                "72 01 0c 00 48 75 6d 61 6e 5f 46 65 6d 61 6c 65 " +
+                "02 04 00 66 61 63 65 00 08 00 46 72 65 63 6b 6c " +
+                "65 73 09 00 75 6e 64 65 72 77 65 61 72 01 04 00 " +
+                "6c 65 67 73 06 00 42 72 69 65 66 73 02 04 00 68 " +
+                "65 61 64 17 00 63 6c 6f 74 68 69 6e 67 2e 62 6c " +
+                "75 65 5f 77 6f 6f 6c 5f 68 6f 6f 64 04 00 62 61 " +
+                "63 6b 13 00 63 6c 6f 74 68 69 6e 67 2e 77 6f 6f " +
+                "6c 5f 63 6c 6f 61 6b 01 01 14 00 74 6f 6f 6c 2e " +
+                "73 74 61 72 74 65 72 5f 70 69 63 6b 61 78 65",
             ["Corpses/CorpsePresenceSnapshotChunk/empty"] =
                 "01 00 00 00 00 00 01 00 00",
+            ["Corpses/CorpsePresenceSnapshotChunk/mob corpse"] =
+                "d4 c3 b2 a1 00 00 01 00 01 a0 a1 a2 a3 a4 a5 a6 " +
+                "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
+                "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
+                "00 00 01 00 01 10 00 6d 6f 62 2e 67 72 65 65 6e " +
+                "5f 6c 69 7a 61 72 64 0d 00 63 6f 72 70 73 65 2e " +
+                "70 6c 61 79 65 72 00",
             ["Corpses/CorpsePresenceSnapshotChunk/one corpse"] =
                 "d4 c3 b2 a1 00 00 01 00 01 a0 a1 a2 a3 a4 a5 a6 " +
                 "a7 a8 a9 aa ab ac ad ae af 00 00 b0 40 00 00 00 " +
                 "00 00 00 e8 c0 00 00 f7 42 00 c0 2c c8 99 01 00 " +
-                "00 00 01 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c 61 " +
-                "0d 00 63 6f 72 70 73 65 2e 70 6c 61 79 65 72 00",
-            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:435:1a81aaa516c9aefdd3b488d50753bc4e12cf027569658e347caba072161dea67",
+                "00 00 01 01 0b 00 47 72 c3 b6 6e 20 c3 96 64 6c " +
+                "61 00 0d 00 63 6f 72 70 73 65 2e 70 6c 61 79 65 " +
+                "72 00",
+            ["Corpses/CorpsePresenceSnapshotChunk/six corpses"] = "sha256:447:c60902c8f008333d7aafd68fe9cb833a6e7df3d879d678d5e5ebc6c0a7cdeb3f",
             ["Corpses/CorpseViewClosed/typical"] =
                 "a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af " +
                 "0e 00 63 6f 72 70 73 65 5f 65 78 70 69 72 65 64 " +
@@ -245,18 +253,18 @@ namespace Mmorpg.SharedTests
                 "b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf " +
                 "02 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae " +
                 "af 03 00 00 00 00 00 00 00 ff ff ff ff ff ff ff " +
-                "7f 00 c0 2c c8 99 01 00 00 0b 00 47 72 c3 b6 6e " +
-                "20 c3 96 64 6c 61 0d 00 63 6f 72 70 73 65 2e 70 " +
-                "6c 61 79 65 72 01 00 02 00 03 00 62 61 67 c0 c1 " +
-                "c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf 06 00 " +
-                "00 00 00 00 00 00 00 00 02 00 00 fc 01 00 00 01 " +
-                "ff 01 00 00 03 00 62 61 67 00 00 01 20 21 22 23 " +
-                "24 25 26 27 28 29 2a 2b 2c 2d 2e 2f 0c 00 69 74 " +
-                "65 6d 2e 62 61 6e 64 61 67 65 ff ff ff 7f 06 00 " +
-                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
-                "00 00 00 00 00 00 00 00 00 00 00 00 00 00",
-            ["Corpses/CorpseViewStateChunk/equipment snapshot"] = "sha256:269:745e237495329398e618fe83e0ae5cc759755f4de4f958f7a39f1f7b0efe1adb",
-            ["Corpses/CorpseViewStateChunk/general snapshot"] = "sha256:369:6d7d6268deac4124f9dad32a4f76b2447c7b537173f0e004e90f60512dea1d30",
+                "7f 00 c0 2c c8 99 01 00 00 01 0b 00 47 72 c3 b6 " +
+                "6e 20 c3 96 64 6c 61 00 0d 00 63 6f 72 70 73 65 " +
+                "2e 70 6c 61 79 65 72 01 00 02 00 03 00 62 61 67 " +
+                "c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf " +
+                "06 00 00 00 00 00 00 00 00 00 02 00 00 fc 01 00 " +
+                "00 01 ff 01 00 00 03 00 62 61 67 00 00 01 20 21 " +
+                "22 23 24 25 26 27 28 29 2a 2b 2c 2d 2e 2f 0c 00 " +
+                "69 74 65 6d 2e 62 61 6e 64 61 67 65 ff ff ff 7f " +
+                "06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+            ["Corpses/CorpseViewStateChunk/equipment snapshot"] = "sha256:271:5e341e8614292f5f55e0e23d5bccb5eb8d78faadd2f53bcb3f4cc8a9d9dbd73f",
+            ["Corpses/CorpseViewStateChunk/general snapshot"] = "sha256:371:0d23baebe28045dab5acfe57477f1d72c7d398c1ec68b973160f246f762d7580",
             ["Items/CarryStateChanged/empty"] =
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 " +
                 "01 00 00 00 00 00 00 00",
@@ -424,10 +432,11 @@ namespace Mmorpg.SharedTests
                 "00 00 08 40 00 40 87 43 01 0d 0c 0b 0a 03 02",
             ["Quests/QuestDropInCorpse/two wolf fangs"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
-                "0a 00 46 65 72 61 6c 20 57 6f 6c 66 15 00 71 75 " +
-                "65 73 74 2e 70 65 6c 74 73 5f 61 6e 64 5f 66 61 " +
-                "6e 67 73 14 00 71 75 65 73 74 5f 69 74 65 6d 2e " +
-                "77 6f 6c 66 5f 66 61 6e 67 02 00 00 00",
+                "0e 00 6d 6f 62 2e 66 65 72 61 6c 5f 77 6f 6c 66 " +
+                "15 00 71 75 65 73 74 2e 70 65 6c 74 73 5f 61 6e " +
+                "64 5f 66 61 6e 67 73 14 00 71 75 65 73 74 5f 69 " +
+                "74 65 6d 2e 77 6f 6c 66 5f 66 61 6e 67 02 00 00 " +
+                "00",
             ["Quests/QuestIntent/abandon"] =
                 "10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f " +
                 "01 18 00 71 75 65 73 74 2e 77 6f 6c 76 65 73 5f " +

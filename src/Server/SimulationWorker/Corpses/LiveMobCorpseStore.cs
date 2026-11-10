@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Mmorpg.GameProtocol;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.WorldData.Actors;
@@ -21,7 +22,6 @@ public sealed record LiveMobCorpseState(
     Guid CorpseId,
     Guid SourceActorRuntimeId,
     string SourceActorDefinitionId,
-    string SourceDisplayName,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -36,6 +36,8 @@ public sealed record LiveMobCorpseState(
     DateTime ExpiresAt,
     IReadOnlyList<LiveMobCorpseLootEntry> Loot) : ICorpseRuntimePresence
 {
+    public RealtimeCorpseSource Source { get; } = RealtimeCorpseSource.Actor(SourceActorDefinitionId);
+
     public bool IsEmpty => Loot.Count == 0;
 
     // A Mob corpse has no character look.
@@ -285,7 +287,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         return new CorpseViewSnapshotResponse(
             corpse.CorpseId,
             null,
-            corpse.SourceDisplayName,
+            null,
             corpse.ShardId,
             corpse.PositionX,
             corpse.PositionY,
@@ -305,7 +307,10 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                 EmptySection("equipment", corpse.EquipmentContainerId, "corpse_equipment"),
                 EmptySection("bag", corpse.BagContainerId, "corpse_bag_contents")
             ],
-            []);
+            [])
+        {
+            SourceActorDefinitionId = corpse.SourceActorDefinitionId
+        };
     }
 
     // A live Mob corpse carries only general loot, so its other sections have no slots.
@@ -342,7 +347,6 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
         if (corpse.CorpseId == Guid.Empty
             || corpse.SourceActorRuntimeId == Guid.Empty
             || string.IsNullOrWhiteSpace(corpse.SourceActorDefinitionId)
-            || string.IsNullOrWhiteSpace(corpse.SourceDisplayName)
             || string.IsNullOrWhiteSpace(corpse.ShardId)
             || !float.IsFinite(corpse.YawDegrees)
             || string.IsNullOrWhiteSpace(corpse.PresentationKey)
@@ -382,7 +386,6 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             corpse.CorpseId.ToString("N"),
             corpse.SourceActorRuntimeId.ToString("N"),
             corpse.SourceActorDefinitionId,
-            corpse.SourceDisplayName,
             corpse.ShardId,
             corpse.PositionX.ToString("R", CultureInfo.InvariantCulture),
             corpse.PositionY.ToString("R", CultureInfo.InvariantCulture),

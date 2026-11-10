@@ -505,9 +505,10 @@ derives from content ids, as [Text Tables](../content/README.md#text-tables)
 describes. A table has its own revision, apart from the revisions of the
 gameplay catalogs. The Unity client shows item, quest, and actor text from the
 tables, as [Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes;
-the servers do not read them, and the world actor messages carry ids only. The
-compiled catalogs still carry the same texts, and the name on a Mob's corpse
-still travels in the protocol.
+the servers do not read them, and the world actor and corpse messages carry ids
+only: a Mob's corpse names its actor definition, and only a character's corpse
+carries a name, the one its player chose. The compiled catalogs still carry the
+same texts.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless
@@ -797,7 +798,7 @@ transaction protocol stay authoritative for corpse contents.
 | `recovery_deliveries`, `recovery_delivery_items` | Per-character system deliveries with source, availability, expiry, and claim state, and their items |
 | `item_operations` | Global idempotency id, canonical request hash, status, and replayable result |
 | `item_operation_changes`, `item_destructions` | The append-only change audit and the destruction records |
-| `corpses` | Durable player and persistent Mob corpses: source snapshot, Shard transform, presentation key, revision, absolute expiry, close lifecycle, the owner of a Mob's corpse, and the loot group that the corpses of one Mob death share |
+| `corpses` | Durable player and persistent Mob corpses: the source, as the name of the dead character or the actor definition of the dead Mob, Shard transform, presentation key, revision, absolute expiry, close lifecycle, the owner of a Mob's corpse, and the loot group that the corpses of one Mob death share |
 | `corpse_sections` | Bindings of the general inventory, equipment, and Bag sections to real item containers |
 | `corpse_snapshots` | Non-interactive insured equipment and protected or insured Bag presentation metadata |
 | `death_events` | One row per authoritative death event with its original operation, canonical request hash, corpse, result correlation, and the optional killer kind and id |

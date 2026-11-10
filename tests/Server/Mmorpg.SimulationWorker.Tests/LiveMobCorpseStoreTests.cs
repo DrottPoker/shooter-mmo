@@ -148,7 +148,6 @@ public sealed class LiveMobCorpseStoreTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "mob.feral_wolf",
-            "Feral Wolf",
             "local-shard-1",
             1d,
             0d,

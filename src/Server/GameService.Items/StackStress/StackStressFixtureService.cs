@@ -164,7 +164,6 @@ internal sealed class StackStressFixtureService(
                     request.WorkerRuntimeId,
                     request.ShardId,
                     MobDefinitionId,
-                    $"Stack Stress {request.RunId}",
                     request.PositionX,
                     request.PositionY,
                     request.PositionZ,

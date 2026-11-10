@@ -81,7 +81,7 @@ public static class CorpseRealtimePacketBuilder
             ToUnixMilliseconds(corpse.ExpiresAt),
             corpse.IsEmpty,
             isLootable,
-            corpse.SourceDisplayName,
+            corpse.Source,
             corpse.PresentationKey,
             appearance);
     }
@@ -98,7 +98,7 @@ public static class CorpseRealtimePacketBuilder
             entry.ExpiresAtUnixMilliseconds,
             entry.IsEmpty,
             entry.IsLootable,
-            entry.SourceDisplayName,
+            entry.Source,
             entry.PresentationKey,
             null);
     }
@@ -301,7 +301,7 @@ public static class CorpseRealtimePacketBuilder
                 baseRevision,
                 snapshot.Revision,
                 expiresAt,
-                snapshot.SourceDisplayName,
+                CorpseSources.Create(snapshot.SourceCharacterName, snapshot.SourceActorDefinitionId),
                 snapshot.PresentationKey,
                 checked((ushort)index),
                 checked((ushort)parts.Count),
@@ -335,7 +335,7 @@ public static class CorpseRealtimePacketBuilder
                     baseRevision,
                     snapshot.Revision,
                     expiresAt,
-                    snapshot.SourceDisplayName,
+                    CorpseSources.Create(snapshot.SourceCharacterName, snapshot.SourceActorDefinitionId),
                     snapshot.PresentationKey,
                     0,
                     1,

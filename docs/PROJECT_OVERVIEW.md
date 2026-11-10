@@ -102,7 +102,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Module and assembly boundaries with their guard tests, and the quality gate | Foundation | |
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
 | Content delivery to the client | Provisional | The catalogs ship inside the client build and must match exactly |
-| Player-facing text | Provisional | Item, quest, and actor text comes from the text tables; the name on a Mob's corpse still travels in a protocol field, the catalogs still carry text, and the panels' labels are literals |
+| Player-facing text | Provisional | Item, quest, and actor text comes from the text tables; the catalogs still carry text, the servers still send English messages, and the panels' labels are literals |
 | Player presence: join, leave, and disconnect | Provisional | Nothing about a live character but its items is stored |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |

@@ -729,7 +729,6 @@ public sealed class ItemTransactionTraceGoldenTests
                     WorkerRuntimeId,
                     ShardId,
                     "mob.feral_wolf",
-                    "Feral Wolf",
                     4d,
                     0d,
                     -2.5d,

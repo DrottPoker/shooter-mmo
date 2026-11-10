@@ -190,7 +190,6 @@ public sealed record CreatePersistentMobCorpseRequest(
     string WorkerRuntimeId,
     string ShardId,
     string SourceActorDefinitionId,
-    string SourceDisplayName,
     double PositionX,
     double PositionY,
     double PositionZ,
@@ -456,7 +455,7 @@ public sealed record CorpseRestoreResponse(
 public sealed record DurableCorpseResponse(
     Guid CorpseId,
     Guid? SourceCharacterId,
-    string SourceDisplayName,
+    string? SourceCharacterName,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -472,6 +471,10 @@ public sealed record DurableCorpseResponse(
     bool IsEmpty,
     IReadOnlyList<CorpseSectionResponse> Sections)
 {
+    // The actor definition of the Mob that left the corpse; null for a character's corpse,
+    // which has SourceCharacterName instead.
+    public string? SourceActorDefinitionId { get; init; }
+
     // How a player corpse looks; null for a Mob corpse.
     public CorpseLookResponse? Look { get; init; }
 
@@ -540,7 +543,7 @@ public sealed record CorpseMutationResponse(
 public sealed record CorpseViewSnapshotResponse(
     Guid CorpseId,
     Guid? SourceCharacterId,
-    string SourceDisplayName,
+    string? SourceCharacterName,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -552,6 +555,10 @@ public sealed record CorpseViewSnapshotResponse(
     IReadOnlyList<CorpseViewSectionResponse> Sections,
     IReadOnlyList<CorpsePresentationSnapshotResponse> PresentationSnapshots)
 {
+    // The actor definition of the Mob that left the corpse; null for a character's corpse,
+    // which has SourceCharacterName instead.
+    public string? SourceActorDefinitionId { get; init; }
+
     // The character that alone may loot a Mob's corpse, or null when everyone may.
     public Guid? OwnerCharacterId { get; init; }
 

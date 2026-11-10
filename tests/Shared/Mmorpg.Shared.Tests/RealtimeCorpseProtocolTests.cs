@@ -188,7 +188,9 @@ public sealed class RealtimeCorpseProtocolTests
                     DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds(),
                     index == 2,
                     index != 1,
-                    "Corpse " + index,
+                    index == 1
+                        ? RealtimeCorpseSource.Actor("mob.feral_wolf")
+                        : RealtimeCorpseSource.Character("Corpse " + index),
                     "player_corpse",
                     index == 1
                         ? null
@@ -260,7 +262,7 @@ public sealed class RealtimeCorpseProtocolTests
             3,
             4,
             DateTimeOffset.UtcNow.AddMinutes(4).ToUnixTimeMilliseconds(),
-            "Fallen Hero",
+            RealtimeCorpseSource.Character("Fallen Hero"),
             "player_corpse",
             0,
             1,

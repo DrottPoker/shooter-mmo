@@ -16,8 +16,11 @@ namespace Mmorpg.Client.Quests
         private readonly Dictionary<string, QuestDefinition> quests;
         private readonly Dictionary<string, QuestDefinition[]> questsByGiver;
 
-        private ClientQuestCatalog(QuestCatalogRuntimeDocument runtime)
+        private readonly TextCatalog texts;
+
+        private ClientQuestCatalog(QuestCatalogRuntimeDocument runtime, TextCatalog texts)
         {
+            this.texts = texts;
             Runtime = runtime;
             quests = runtime.Quests.ToDictionary(quest => quest.Id, quest => quest, StringComparer.Ordinal);
             questsByGiver = runtime.Quests
@@ -108,7 +111,7 @@ namespace Mmorpg.Client.Quests
             }
 
             ApplyTexts(runtime, texts);
-            catalog = new ClientQuestCatalog(runtime);
+            catalog = new ClientQuestCatalog(runtime, texts);
             return true;
         }
 
@@ -131,6 +134,15 @@ namespace Mmorpg.Client.Quests
                     }
                 }
             }
+        }
+
+        // The name of an actor that a quest message names by its definition, such as the Mob
+        // whose corpse holds a quest drop.
+        public string ActorName(string actorDefinitionId)
+        {
+            return TextKeys.IsValidId(actorDefinitionId)
+                ? texts.Get(TextKeys.ActorName(actorDefinitionId))
+                : actorDefinitionId ?? string.Empty;
         }
 
         public bool TryGet(string questId, out QuestDefinition quest)

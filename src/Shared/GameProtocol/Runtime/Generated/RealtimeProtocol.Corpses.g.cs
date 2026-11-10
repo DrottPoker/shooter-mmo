@@ -35,6 +35,30 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// Who left a corpse: a character, by the name it had, or a Mob, by its actor definition. Exactly one of the two is present.
+    /// </summary>
+    public sealed partial class RealtimeCorpseSource
+    {
+        public RealtimeCorpseSource(
+            string characterName,
+            string actorDefinitionId)
+        {
+            CharacterName = characterName ?? string.Empty;
+            ActorDefinitionId = actorDefinitionId ?? string.Empty;
+        }
+
+        /// <summary>
+        /// The name of the character who left the corpse; absent for a Mob's corpse.
+        /// </summary>
+        public string CharacterName { get; }
+
+        /// <summary>
+        /// The actor definition of the Mob that left the corpse, which the client names from its text tables; absent for a character's corpse.
+        /// </summary>
+        public string ActorDefinitionId { get; }
+    }
+
+    /// <summary>
     /// A corpse near the character, as the world shows it before it is opened.
     /// </summary>
     public sealed partial class RealtimeCorpsePresence
@@ -48,7 +72,7 @@ namespace Mmorpg.GameProtocol
             long expiresAtUnixMilliseconds,
             bool isEmpty,
             bool isLootable,
-            string sourceDisplayName,
+            RealtimeCorpseSource source,
             string presentationKey,
             RealtimeCharacterAppearance appearance)
         {
@@ -60,7 +84,7 @@ namespace Mmorpg.GameProtocol
             ExpiresAtUnixMilliseconds = expiresAtUnixMilliseconds;
             IsEmpty = isEmpty;
             IsLootable = isLootable;
-            SourceDisplayName = sourceDisplayName;
+            Source = source;
             PresentationKey = presentationKey;
             Appearance = appearance;
         }
@@ -106,9 +130,9 @@ namespace Mmorpg.GameProtocol
         public bool IsLootable { get; }
 
         /// <summary>
-        /// The name of whoever left the corpse.
+        /// Who left the corpse.
         /// </summary>
-        public string SourceDisplayName { get; }
+        public RealtimeCorpseSource Source { get; }
 
         /// <summary>
         /// The presentation the client renders.
@@ -859,7 +883,7 @@ namespace Mmorpg.GameProtocol
             long baseRevision,
             long revision,
             long expiresAtUnixMilliseconds,
-            string sourceDisplayName,
+            RealtimeCorpseSource source,
             string presentationKey,
             ushort chunkIndex,
             ushort chunkCount,
@@ -877,7 +901,7 @@ namespace Mmorpg.GameProtocol
             BaseRevision = baseRevision;
             Revision = revision;
             ExpiresAtUnixMilliseconds = expiresAtUnixMilliseconds;
-            SourceDisplayName = sourceDisplayName;
+            Source = source;
             PresentationKey = presentationKey;
             ChunkIndex = chunkIndex;
             ChunkCount = chunkCount;
@@ -921,9 +945,9 @@ namespace Mmorpg.GameProtocol
         public long ExpiresAtUnixMilliseconds { get; }
 
         /// <summary>
-        /// The name of whoever left the corpse.
+        /// Who left the corpse.
         /// </summary>
-        public string SourceDisplayName { get; }
+        public RealtimeCorpseSource Source { get; }
 
         /// <summary>
         /// The presentation the client renders.
@@ -1883,7 +1907,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteInt64(value.BaseRevision);
             writer.WriteInt64(value.Revision);
             writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
-            writer.WriteString(value.SourceDisplayName);
+            WriteCorpseSource(ref writer, value.Source);
             writer.WriteString(value.PresentationKey);
             writer.WriteUInt16(value.ChunkIndex);
             writer.WriteUInt16(value.ChunkCount);
@@ -1903,7 +1927,7 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfCorpseViewStateChunk(RealtimeCorpseViewStateChunk value)
         {
             var size = 94;
-            size += StringSize(value.SourceDisplayName);
+            size += SizeOfCorpseSource(value.Source);
             size += StringSize(value.PresentationKey);
             size += StringSize(value.SectionKind);
             size += 1;
@@ -1950,7 +1974,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            if (!TryReadCorpseSource(ref reader, out var source, out error))
             {
                 return false;
             }
@@ -2022,7 +2046,7 @@ namespace Mmorpg.GameProtocol
                 slots[index] = element;
             }
 
-            value = new RealtimeCorpseViewStateChunk(updateId, updateKind, corpseId, baseRevision, revision, expiresAtUnixMilliseconds, sourceDisplayName, presentationKey, chunkIndex, chunkCount, sectionKind, containerId, containerRevision, replaceSection, sectionSlotCapacity, slotOffset, slots);
+            value = new RealtimeCorpseViewStateChunk(updateId, updateKind, corpseId, baseRevision, revision, expiresAtUnixMilliseconds, source, presentationKey, chunkIndex, chunkCount, sectionKind, containerId, containerRevision, replaceSection, sectionSlotCapacity, slotOffset, slots);
             return true;
         }
 
@@ -2035,8 +2059,7 @@ namespace Mmorpg.GameProtocol
                 || value.BaseRevision < -1
                 || value.Revision < 0
                 || value.ExpiresAtUnixMilliseconds < 1
-                || string.IsNullOrWhiteSpace(value.SourceDisplayName)
-                || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
+                || !IsValidCorpseSource(value.Source)
                 || string.IsNullOrWhiteSpace(value.PresentationKey)
                 || value.PresentationKey.Length > MaximumCorpsePresentationKeyLength
                 || value.ChunkIndex >= value.ChunkCount
@@ -2167,6 +2190,87 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        private static void WriteCorpseSource(ref PacketWriter writer, RealtimeCorpseSource value)
+        {
+            var hasCharacterName = !string.IsNullOrWhiteSpace(value.CharacterName);
+            writer.WriteBoolean(hasCharacterName);
+            if (hasCharacterName)
+            {
+                writer.WriteString(value.CharacterName);
+            }
+            var hasActorDefinitionId = !string.IsNullOrWhiteSpace(value.ActorDefinitionId);
+            writer.WriteBoolean(hasActorDefinitionId);
+            if (hasActorDefinitionId)
+            {
+                writer.WriteString(value.ActorDefinitionId);
+            }
+        }
+
+        private static int SizeOfCorpseSource(RealtimeCorpseSource value)
+        {
+            var size = 2;
+            if (!string.IsNullOrWhiteSpace(value.CharacterName))
+            {
+                size += StringSize(value.CharacterName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value.ActorDefinitionId))
+            {
+                size += StringSize(value.ActorDefinitionId);
+            }
+
+            return size;
+        }
+
+        private static bool TryReadCorpseSource(ref PacketReader reader, out RealtimeCorpseSource value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadBoolean(out var hasCharacterName, out error))
+            {
+                return false;
+            }
+
+            string characterName = string.Empty;
+            if (hasCharacterName)
+            {
+                if (!reader.TryReadString(MaximumCorpseSourceNameLength, out characterName, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (!reader.TryReadBoolean(out var hasActorDefinitionId, out error))
+            {
+                return false;
+            }
+
+            string actorDefinitionId = string.Empty;
+            if (hasActorDefinitionId)
+            {
+                if (!reader.TryReadString(MaximumIdentifierLength, out actorDefinitionId, out error))
+                {
+                    return false;
+                }
+            }
+
+            value = new RealtimeCorpseSource(characterName, actorDefinitionId);
+            return true;
+        }
+
+        private static bool IsValidCorpseSource(RealtimeCorpseSource value)
+        {
+            if (value == null
+                || value.CharacterName == null
+                || value.CharacterName.Length > MaximumCorpseSourceNameLength
+                || value.ActorDefinitionId == null
+                || value.ActorDefinitionId.Length > MaximumIdentifierLength)
+            {
+                return false;
+            }
+
+            return SatisfiesRules(value);
+        }
+
         private static void WriteCorpsePresence(ref PacketWriter writer, RealtimeCorpsePresence value)
         {
             writer.WriteGuid(value.CorpseId);
@@ -2177,7 +2281,7 @@ namespace Mmorpg.GameProtocol
             writer.WriteInt64(value.ExpiresAtUnixMilliseconds);
             writer.WriteBoolean(value.IsEmpty);
             writer.WriteBoolean(value.IsLootable);
-            writer.WriteString(value.SourceDisplayName);
+            WriteCorpseSource(ref writer, value.Source);
             writer.WriteString(value.PresentationKey);
             var hasAppearance = value.Appearance != null;
             writer.WriteBoolean(hasAppearance);
@@ -2190,7 +2294,7 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfCorpsePresence(RealtimeCorpsePresence value)
         {
             var size = 43;
-            size += StringSize(value.SourceDisplayName);
+            size += SizeOfCorpseSource(value.Source);
             size += StringSize(value.PresentationKey);
             if (value.Appearance != null)
             {
@@ -2243,7 +2347,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            if (!TryReadCorpseSource(ref reader, out var source, out error))
             {
                 return false;
             }
@@ -2267,7 +2371,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, isLootable, sourceDisplayName, presentationKey, appearance);
+            value = new RealtimeCorpsePresence(corpseId, positionX, positionY, positionZ, yawDegrees, expiresAtUnixMilliseconds, isEmpty, isLootable, source, presentationKey, appearance);
             return true;
         }
 
@@ -2280,8 +2384,7 @@ namespace Mmorpg.GameProtocol
                 || !IsFinite(value.PositionZ)
                 || !IsFinite(value.YawDegrees)
                 || value.ExpiresAtUnixMilliseconds < 1
-                || string.IsNullOrWhiteSpace(value.SourceDisplayName)
-                || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
+                || !IsValidCorpseSource(value.Source)
                 || string.IsNullOrWhiteSpace(value.PresentationKey)
                 || value.PresentationKey.Length > MaximumCorpsePresentationKeyLength
                 || (value.Appearance != null && !IsValidCharacterAppearance(value.Appearance)))

@@ -32,7 +32,7 @@ namespace Mmorpg.Client.Tests.EditMode
             controller = host.AddComponent<CorpseClientController>();
             equippedSword = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 4, Array.Empty<InventoryPolicy>());
             inventory = new ImmediateInventoryQueue(equippedSword);
-            controller.Initialize(channel, inventory);
+            controller.Initialize(channel, inventory, FixtureTexts.DevelopmentActors());
             corpseId = Guid.NewGuid();
             itemId = Guid.NewGuid();
             containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };

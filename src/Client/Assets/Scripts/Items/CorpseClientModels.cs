@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Items
 {
@@ -49,7 +50,8 @@ namespace Mmorpg.Client.Items
 
     public sealed class CorpsePresenceEntry
     {
-        public CorpsePresenceEntry(RealtimeCorpsePresence source)
+        // The texts name a Mob's corpse by the actor definition that the presence carries.
+        public CorpsePresenceEntry(RealtimeCorpsePresence source, TextCatalog texts)
         {
             if (source == null)
             {
@@ -64,7 +66,7 @@ namespace Mmorpg.Client.Items
             ExpiresAtUnixMilliseconds = source.ExpiresAtUnixMilliseconds;
             IsEmpty = source.IsEmpty;
             IsLootable = source.IsLootable;
-            SourceDisplayName = source.SourceDisplayName ?? string.Empty;
+            SourceDisplayName = CorpseSourceText.Name(source.Source, texts);
             PresentationKey = source.PresentationKey ?? string.Empty;
             Appearance = source.Appearance;
         }
@@ -362,9 +364,17 @@ namespace Mmorpg.Client.Items
             presenceChunks = new Dictionary<ushort, RealtimeCorpsePresenceSnapshotChunk>();
         private readonly Dictionary<Guid, ViewAssembly> viewAssemblies =
             new Dictionary<Guid, ViewAssembly>();
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private bool hasPresenceSequence;
         private uint presenceSequence;
         private ushort presenceChunkCount;
+
+        // The texts name the Mob corpses that arrive from now on. Until they are set, a Mob's
+        // corpse shows the key of its name.
+        public void UseTexts(TextCatalog catalog)
+        {
+            texts = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        }
 
         // The corpse whose view the client holds or has asked to open. View state and
         // closures of any other corpse, such as the late state of a closed view, are ignored.
@@ -681,7 +691,7 @@ namespace Mmorpg.Client.Items
                         return CorpseStateApplyResult.Invalid;
                     }
 
-                    entries.Add(new CorpsePresenceEntry(source));
+                    entries.Add(new CorpsePresenceEntry(source, texts));
                 }
             }
 
@@ -726,7 +736,7 @@ namespace Mmorpg.Client.Items
             CorpseLootView next;
             if (chunk.UpdateKind == RealtimeCorpseViewUpdateKind.Snapshot)
             {
-                if (!TryBuildSnapshot(assembly.Chunks, out next))
+                if (!TryBuildSnapshot(assembly.Chunks, texts, out next))
                 {
                     return CorpseStateApplyResult.Invalid;
                 }
@@ -747,7 +757,7 @@ namespace Mmorpg.Client.Items
                     return CorpseStateApplyResult.Stale;
                 }
 
-                if (!TryApplyDelta(ActiveView, assembly.Chunks, out next))
+                if (!TryApplyDelta(ActiveView, assembly.Chunks, texts, out next))
                 {
                     return CorpseStateApplyResult.Invalid;
                 }
@@ -765,6 +775,7 @@ namespace Mmorpg.Client.Items
 
         private static bool TryBuildSnapshot(
             IReadOnlyList<RealtimeCorpseViewStateChunk> chunks,
+            TextCatalog texts,
             out CorpseLootView view)
         {
             view = null;
@@ -797,7 +808,7 @@ namespace Mmorpg.Client.Items
                 first.CorpseId,
                 first.Revision,
                 first.ExpiresAtUnixMilliseconds,
-                first.SourceDisplayName,
+                CorpseSourceText.Name(first.Source, texts),
                 first.PresentationKey,
                 sections);
             return true;
@@ -806,6 +817,7 @@ namespace Mmorpg.Client.Items
         private static bool TryApplyDelta(
             CorpseLootView current,
             IReadOnlyList<RealtimeCorpseViewStateChunk> chunks,
+            TextCatalog texts,
             out CorpseLootView view)
         {
             view = null;
@@ -875,7 +887,7 @@ namespace Mmorpg.Client.Items
                 current.CorpseId,
                 first.Revision,
                 first.ExpiresAtUnixMilliseconds,
-                first.SourceDisplayName,
+                CorpseSourceText.Name(first.Source, texts),
                 first.PresentationKey,
                 nextSections);
             return true;
@@ -978,10 +990,7 @@ namespace Mmorpg.Client.Items
                     || chunk.BaseRevision != first.BaseRevision
                     || chunk.Revision != first.Revision
                     || chunk.ExpiresAtUnixMilliseconds != first.ExpiresAtUnixMilliseconds
-                    || !string.Equals(
-                        chunk.SourceDisplayName,
-                        first.SourceDisplayName,
-                        StringComparison.Ordinal)
+                    || !CorpseSourceText.AreSame(chunk.Source, first.Source)
                     || !string.Equals(
                         chunk.PresentationKey,
                         first.PresentationKey,

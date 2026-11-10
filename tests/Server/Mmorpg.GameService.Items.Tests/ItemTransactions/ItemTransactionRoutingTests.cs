@@ -246,7 +246,7 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new CreatePersistentMobCorpseCommand(
-                    Id, "worker", "runtime", "shard", "mob", "Mob", 0, 0, 0, 0, 0, 0, 1, "corpse", 60, 30, []),
+                    Id, "worker", "runtime", "shard", "mob", 0, 0, 0, 0, 0, 0, 1, "corpse", 60, 30, []),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.GrantMobLoot] = (service, actor) => Run(
                 service,

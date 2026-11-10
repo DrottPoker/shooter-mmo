@@ -45,7 +45,6 @@ public sealed class CorpseRealtimeStateTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "mob.feral_alpha",
-            "Feral Alpha",
             "local-shard-1",
             1d,
             0d,
@@ -236,7 +235,7 @@ public sealed class CorpseRealtimeStateTests
             .Select(index => new DurableCorpseState(
                 Guid.NewGuid(),
                 null,
-                new string('Ö', 128),
+                RealtimeCorpseSource.Character(new string('Ö', 128)),
                 "local-city-1",
                 index,
                 0,
@@ -275,7 +274,7 @@ public sealed class CorpseRealtimeStateTests
         var corpse = new DurableCorpseState(
             Guid.NewGuid(),
             null,
-            "Fallen Hero",
+            RealtimeCorpseSource.Character("Fallen Hero"),
             "local-shard-1",
             1,
             0,
@@ -304,7 +303,7 @@ public sealed class CorpseRealtimeStateTests
         var player = new DurableCorpseState(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "Fallen Hero",
+            RealtimeCorpseSource.Character("Fallen Hero"),
             "local-shard-1",
             1,
             0,
@@ -362,7 +361,7 @@ public sealed class CorpseRealtimeStateTests
             fillEverySlot: true,
             definitionId: new string('d', 128)) with
         {
-            SourceDisplayName = new string('\u754c', 128),
+            SourceCharacterName = new string('\u754c', 128),
             PresentationKey = new string('p', 128)
         };
 

@@ -24,14 +24,24 @@ namespace Mmorpg.Client.Tests.EditMode
             return TextCatalog.Create(new[] { ContentText.FromItemCatalog(items) });
         }
 
+        // The quest texts with the development actors, which name the Mob of a quest drop.
         public static TextCatalog For(QuestCatalogRuntimeDocument quests)
         {
-            return TextCatalog.Create(new[] { ContentText.FromQuestCatalog(quests) });
+            return TextCatalog.Create(new[]
+            {
+                ContentText.FromQuestCatalog(quests),
+                DevelopmentActorTexts().BuildTable()
+            });
         }
 
         // The actors that the client tests spawn, named as the tests expect: Mira of the city
         // services, the Feral Wolf, and the Iron Vein.
         public static TextCatalog DevelopmentActors()
+        {
+            return DevelopmentActorTexts().Build();
+        }
+
+        private static ActorTexts DevelopmentActorTexts()
         {
             return new ActorTexts()
                 .Actor("npc.city_services", "Mira", "She keeps the city's stores.")
@@ -40,8 +50,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 .Capability("npc.city_services", "services.bank", "Character Bank", "Bank")
                 .Actor("mob.feral_wolf", "Feral Wolf", "A lean, hungry wolf.")
                 .Actor("resource.iron_vein", "Iron Vein", "A seam of iron ore runs through the rock.")
-                .Capability("resource.iron_vein", "resource.mine", "Mine", "Mine")
-                .Build();
+                .Capability("resource.iron_vein", "resource.mine", "Mine", "Mine");
         }
 
         // An actor state that names its actors from DevelopmentActors.
@@ -73,7 +82,15 @@ namespace Mmorpg.Client.Tests.EditMode
 
             public TextCatalog Build()
             {
-                return Of(TextTableIds.Actors, entries.ToArray());
+                return TextCatalog.Create(new[] { BuildTable() });
+            }
+
+            public TextTableDocument BuildTable()
+            {
+                return TextTable.Create(
+                    TextTableIds.Actors,
+                    TextTableFormat.SourceLocale,
+                    entries.Select(entry => new TextTableEntry { Key = entry.Key, Text = entry.Text }));
             }
         }
 

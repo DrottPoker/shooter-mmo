@@ -306,13 +306,13 @@ namespace Mmorpg.GameProtocol
     {
         public RealtimeQuestDropInCorpse(
             Guid corpseId,
-            string sourceDisplayName,
+            string sourceActorDefinitionId,
             string questId,
             string definitionId,
             int quantity)
         {
             CorpseId = corpseId;
-            SourceDisplayName = sourceDisplayName;
+            SourceActorDefinitionId = sourceActorDefinitionId;
             QuestId = questId;
             DefinitionId = definitionId;
             Quantity = quantity;
@@ -324,9 +324,9 @@ namespace Mmorpg.GameProtocol
         public Guid CorpseId { get; }
 
         /// <summary>
-        /// The name of the Mob that left the corpse.
+        /// The actor definition of the Mob that left the corpse, which the client names from its text tables.
         /// </summary>
-        public string SourceDisplayName { get; }
+        public string SourceActorDefinitionId { get; }
 
         /// <summary>
         /// The quest that needs the item.
@@ -855,7 +855,7 @@ namespace Mmorpg.GameProtocol
         private static void WriteQuestDropInCorpse(ref PacketWriter writer, RealtimeQuestDropInCorpse value)
         {
             writer.WriteGuid(value.CorpseId);
-            writer.WriteString(value.SourceDisplayName);
+            writer.WriteString(value.SourceActorDefinitionId);
             writer.WriteString(value.QuestId);
             writer.WriteString(value.DefinitionId);
             writer.WriteInt32(value.Quantity);
@@ -864,7 +864,7 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfQuestDropInCorpse(RealtimeQuestDropInCorpse value)
         {
             var size = 20;
-            size += StringSize(value.SourceDisplayName);
+            size += StringSize(value.SourceActorDefinitionId);
             size += StringSize(value.QuestId);
             size += StringSize(value.DefinitionId);
             return size;
@@ -878,7 +878,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadString(MaximumCorpseSourceNameLength, out var sourceDisplayName, out error))
+            if (!reader.TryReadString(MaximumIdentifierLength, out var sourceActorDefinitionId, out error))
             {
                 return false;
             }
@@ -898,7 +898,7 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeQuestDropInCorpse(corpseId, sourceDisplayName, questId, definitionId, quantity);
+            value = new RealtimeQuestDropInCorpse(corpseId, sourceActorDefinitionId, questId, definitionId, quantity);
             return true;
         }
 
@@ -906,8 +906,8 @@ namespace Mmorpg.GameProtocol
         {
             if (value == null
                 || value.CorpseId == Guid.Empty
-                || string.IsNullOrWhiteSpace(value.SourceDisplayName)
-                || value.SourceDisplayName.Length > MaximumCorpseSourceNameLength
+                || string.IsNullOrWhiteSpace(value.SourceActorDefinitionId)
+                || value.SourceActorDefinitionId.Length > MaximumIdentifierLength
                 || string.IsNullOrWhiteSpace(value.QuestId)
                 || value.QuestId.Length > MaximumIdentifierLength
                 || string.IsNullOrWhiteSpace(value.DefinitionId)

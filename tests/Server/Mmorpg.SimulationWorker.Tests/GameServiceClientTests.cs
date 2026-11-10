@@ -390,7 +390,7 @@ public sealed class GameServiceClientTests
             {
                 corpseId = Guid.NewGuid(),
                 sourceCharacterId = characterId,
-                sourceDisplayName = "Fallen Hero",
+                sourceCharacterName = "Fallen Hero",
                 shardId = "local-shard-1",
                 positionX = 1d,
                 positionY = 2d,
@@ -671,7 +671,7 @@ public sealed class GameServiceClientTests
                 {
                     corpseId,
                     sourceCharacterId = Guid.NewGuid(),
-                    sourceDisplayName = "Fallen Hero",
+                    sourceCharacterName = "Fallen Hero",
                     shardId = "local-shard-1",
                     positionX = 1d,
                     positionY = 2d,
@@ -720,7 +720,7 @@ public sealed class GameServiceClientTests
                 {
                     corpseId = Guid.NewGuid(),
                     sourceCharacterId = Guid.NewGuid(),
-                    sourceDisplayName = "Fallen Hero",
+                    sourceCharacterName = "Fallen Hero",
                     shardId = "another-shard",
                     positionX = 0d,
                     positionY = 0d,
@@ -1366,7 +1366,7 @@ public sealed class GameServiceClientTests
         {
             corpseId,
             sourceCharacterId,
-            sourceDisplayName = "Fallen Hero",
+            sourceCharacterName = "Fallen Hero",
             shardId,
             positionX = 1d,
             positionY = 2d,

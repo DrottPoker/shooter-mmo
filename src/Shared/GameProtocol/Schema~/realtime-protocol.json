@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 37,
+    "version": 38,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -211,7 +211,7 @@
       "name": "MaximumCorpseSourceNameLength",
       "value": 128,
       "visibility": "private",
-      "description": "Characters in the display name of the corpse's source."
+      "description": "Characters in the name of the character who left a corpse."
     },
     {
       "name": "MaximumCorpsePresentationKeyLength",
@@ -992,6 +992,30 @@
       ]
     },
     {
+      "name": "CorpseSource",
+      "family": "Corpses",
+      "description": "Who left a corpse: a character, by the name it had, or a Mob, by its actor definition. Exactly one of the two is present.",
+      "rules": true,
+      "fields": [
+        {
+          "name": "CharacterName",
+          "type": "string",
+          "maxLength": "MaximumCorpseSourceNameLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The name of the character who left the corpse; absent for a Mob's corpse."
+        },
+        {
+          "name": "ActorDefinitionId",
+          "type": "string",
+          "maxLength": "MaximumIdentifierLength",
+          "optional": true,
+          "nullAsEmpty": true,
+          "description": "The actor definition of the Mob that left the corpse, which the client names from its text tables; absent for a character's corpse."
+        }
+      ]
+    },
+    {
       "name": "CorpsePresence",
       "family": "Corpses",
       "description": "A corpse near the character, as the world shows it before it is opened.",
@@ -1017,12 +1041,7 @@
           "type": "bool",
           "description": "Whether the recipient may loot the corpse; a Mob's corpse belongs to the players it credits."
         },
-        {
-          "name": "SourceDisplayName",
-          "type": "string",
-          "maxLength": "MaximumCorpseSourceNameLength",
-          "description": "The name of whoever left the corpse."
-        },
+        { "name": "Source", "type": "CorpseSource", "description": "Who left the corpse." },
         {
           "name": "PresentationKey",
           "type": "string",
@@ -1988,12 +2007,7 @@
           "minimum": 1,
           "description": "When the corpse decays."
         },
-        {
-          "name": "SourceDisplayName",
-          "type": "string",
-          "maxLength": "MaximumCorpseSourceNameLength",
-          "description": "The name of whoever left the corpse."
-        },
+        { "name": "Source", "type": "CorpseSource", "description": "Who left the corpse." },
         {
           "name": "PresentationKey",
           "type": "string",
@@ -3188,10 +3202,10 @@
           "description": "The corpse that holds the item."
         },
         {
-          "name": "SourceDisplayName",
+          "name": "SourceActorDefinitionId",
           "type": "string",
-          "maxLength": "MaximumCorpseSourceNameLength",
-          "description": "The name of the Mob that left the corpse."
+          "maxLength": "MaximumIdentifierLength",
+          "description": "The actor definition of the Mob that left the corpse, which the client names from its text tables."
         },
         {
           "name": "QuestId",

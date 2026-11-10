@@ -34,6 +34,14 @@ namespace Mmorpg.SharedTests
                     chunkCount: 1,
                     corpses: new[] { CorpsePresenceModel(G(10)) })));
             r.Vector(
+                "Corpses/CorpsePresenceSnapshotChunk/mob corpse",
+                presence,
+                () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
+                    snapshotSequence: 0xA1B2C3D4,
+                    chunkIndex: 0,
+                    chunkCount: 1,
+                    corpses: new[] { CorpsePresenceModel(G(10), source: RealtimeCorpseSource.Actor("mob.green_lizard")) })));
+            r.Vector(
                 "Corpses/CorpsePresenceSnapshotChunk/corpse with a look",
                 presence,
                 () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
@@ -242,10 +250,22 @@ namespace Mmorpg.SharedTests
                 PresenceWire(corpses: new[] { PresenceEntryWire(yawBits: QuietNaNBits) }));
             r.Rejects(
                 "Corpses/CorpsePresenceSnapshotChunk/whitespace source name",
-                PresenceWire(corpses: new[] { PresenceEntryWire(sourceDisplayName: " ") }));
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire(" ", null)) }));
             r.Rejects(
                 "Corpses/CorpsePresenceSnapshotChunk/129 character source name",
-                PresenceWire(corpses: new[] { PresenceEntryWire(sourceDisplayName: Repeat("n", 129)) }));
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire(Repeat("n", 129), null)) }));
+            r.Accepts(
+                "Corpses/CorpsePresenceSnapshotChunk/actor source",
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire(null, "mob.green_lizard")) }));
+            r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/129 character actor source",
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire(null, Repeat("a", 129))) }));
+            r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/character and actor source",
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire("Grön Ödla", "mob.green_lizard")) }));
+            r.Rejects(
+                "Corpses/CorpsePresenceSnapshotChunk/no source",
+                PresenceWire(corpses: new[] { PresenceEntryWire(source: CorpseSourceWire(null, null)) }));
             r.Rejects(
                 "Corpses/CorpsePresenceSnapshotChunk/whitespace presentation key",
                 PresenceWire(corpses: new[] { PresenceEntryWire(presentationKey: " ") }));
@@ -292,7 +312,14 @@ namespace Mmorpg.SharedTests
                     1,
                     0,
                     1,
-                    new[] { CorpsePresenceModel(G(10), sourceDisplayName: " ") })));
+                    new[] { CorpsePresenceModel(G(10), source: RealtimeCorpseSource.Character(" ")) })));
+            r.RejectsEncode(
+                "Corpses/CorpsePresenceSnapshotChunk/character and actor source",
+                () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
+                    1,
+                    0,
+                    1,
+                    new[] { CorpsePresenceModel(G(10), source: new RealtimeCorpseSource("Grön Ödla", "mob.green_lizard")) })));
             r.RejectsEncode(
                 "Corpses/CorpsePresenceSnapshotChunk/expiry 0",
                 () => RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(
@@ -490,7 +517,10 @@ namespace Mmorpg.SharedTests
             r.Rejects(prefix + "revision -1", CorpseViewWire(revision: -1));
             r.Rejects(prefix + "revision below base", CorpseViewWire(updateKind: 2, baseRevision: 5, revision: 4, replaceSection: 0));
             r.Rejects(prefix + "expiry 0", CorpseViewWire(expiresAt: 0));
-            r.Rejects(prefix + "whitespace source name", CorpseViewWire(sourceDisplayName: " "));
+            r.Rejects(prefix + "whitespace source name", CorpseViewWire(source: CorpseSourceWire(" ", null)));
+            r.Accepts(prefix + "actor source", CorpseViewWire(source: CorpseSourceWire(null, "mob.green_lizard")));
+            r.Rejects(prefix + "character and actor source", CorpseViewWire(source: CorpseSourceWire("Grön Ödla", "mob.green_lizard")));
+            r.Rejects(prefix + "no source", CorpseViewWire(source: CorpseSourceWire(null, null)));
             r.Rejects(prefix + "whitespace presentation key", CorpseViewWire(presentationKey: " "));
             r.Rejects(prefix + "chunk count 0", CorpseViewWire(chunkCount: 0));
             r.Rejects(prefix + "257 chunks", CorpseViewWire(chunkCount: 257));
@@ -639,7 +669,7 @@ namespace Mmorpg.SharedTests
             bool isEmpty = false,
             long expiresAt = CorpseExpiresAt,
             RealtimeCharacterAppearance appearance = null,
-            string sourceDisplayName = "Grön Ödla",
+            RealtimeCorpseSource source = null,
             bool isLootable = true)
         {
             return new RealtimeCorpsePresence(
@@ -651,7 +681,7 @@ namespace Mmorpg.SharedTests
                 expiresAtUnixMilliseconds: expiresAt,
                 isEmpty: isEmpty,
                 isLootable: isLootable,
-                sourceDisplayName: sourceDisplayName,
+                source: source ?? RealtimeCorpseSource.Character("Grön Ödla"),
                 presentationKey: "corpse.player",
                 appearance: appearance);
         }
@@ -715,7 +745,7 @@ namespace Mmorpg.SharedTests
                 baseRevision: baseRevision,
                 revision: revision,
                 expiresAtUnixMilliseconds: CorpseExpiresAt,
-                sourceDisplayName: "Grön Ödla",
+                source: RealtimeCorpseSource.Character("Grön Ödla"),
                 presentationKey: "corpse.player",
                 chunkIndex: chunkIndex,
                 chunkCount: chunkCount,
@@ -759,13 +789,21 @@ namespace Mmorpg.SharedTests
             return values.Select(value => (WireText)value).ToArray();
         }
 
+        // A source as the wire carries it: each of its two texts after its own presence flag.
+        private static Wire CorpseSourceWire(WireText characterName, WireText actorDefinitionId)
+        {
+            var wire = Wire.Fragment();
+            wire = characterName is null ? wire.Bool(false) : wire.Bool(true).Text(characterName);
+            return actorDefinitionId is null ? wire.Bool(false) : wire.Bool(true).Text(actorDefinitionId);
+        }
+
         private static Wire PresenceEntryWire(
             Guid? corpseId = null,
             uint? positionXBits = null,
             uint? yawBits = null,
             long expiresAt = CorpseExpiresAt,
             byte isEmpty = 0,
-            WireText sourceDisplayName = null,
+            Wire source = null,
             WireText presentationKey = null,
             Wire appearance = null,
             bool withoutLookFlag = false,
@@ -780,7 +818,7 @@ namespace Mmorpg.SharedTests
                 .I64(expiresAt)
                 .U8(isEmpty)
                 .U8(isLootable)
-                .Text(sourceDisplayName ?? "Grön Ödla")
+                .Append(source ?? CorpseSourceWire("Grön Ödla", null))
                 .Text(presentationKey ?? "corpse.player");
             if (withoutLookFlag)
             {
@@ -919,7 +957,7 @@ namespace Mmorpg.SharedTests
             long baseRevision = -1,
             long revision = 4,
             long expiresAt = CorpseExpiresAt,
-            WireText sourceDisplayName = null,
+            Wire source = null,
             WireText presentationKey = null,
             ushort chunkIndex = 0,
             ushort chunkCount = 1,
@@ -943,7 +981,7 @@ namespace Mmorpg.SharedTests
                 .I64(baseRevision)
                 .I64(revision)
                 .I64(expiresAt)
-                .Text(sourceDisplayName ?? "Grön Ödla")
+                .Append(source ?? CorpseSourceWire("Grön Ödla", null))
                 .Text(presentationKey ?? "corpse.player")
                 .U16(chunkIndex)
                 .U16(chunkCount)
