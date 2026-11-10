@@ -132,7 +132,7 @@ layers from the bottom up:
 |---|---|---|
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
-| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives` | Api |
+| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, and `ClientTexts`, which reads the text tables | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
@@ -145,7 +145,9 @@ layers from the bottom up:
 
 The client assemblies also reference the shared runtime packages they use:
 `Mmorpg.GameProtocol`, `Mmorpg.GameSimulation`, `Mmorpg.WorldData`, and
-`Mmorpg.WorldData.Client`, the item presentation catalog. Gameplay references
+`Mmorpg.WorldData.Client`, the item presentation catalog. Core and App
+reference `Mmorpg.WorldData` for the text catalog, which Core loads and App
+passes on, as [Content Text](#content-text) describes. Gameplay references
 `Mmorpg.WorldData.Client` so a body reads the garments of the items it wears
 without the inventory's assembly. Cloth references the packages `Unity.Burst`,
 `Unity.Collections`, and `Unity.Mathematics`; Gameplay references Cloth,
@@ -394,6 +396,7 @@ endpoints.
 | Session validation interval | 5 s, clamped to 2 to 60 s | The periodic account-session check |
 | Item gameplay catalog | `core.item-catalog.json` of the local WorldData package | `ClientItemCatalog` |
 | Quest catalog | `core.quest-catalog.json` of the local WorldData package | `ClientQuestCatalog` |
+| Text tables | Every table of `Text/en/` of the local WorldData package | The text catalog, as [Content Text](#content-text) describes |
 | Runtime primitive material | `Assets/Art/Materials/M_RuntimePrimitive.mat`, URP Lit | Primitives that runtime presentation creates |
 | Debug line material | `Assets/Art/Materials/M_DebugLines.mat`, URP Unlit | The Debug menu's collision and path lines |
 | Arrow model | `Assets/Art/Models/Projectiles/BronzeArrow.fbx` | Arrows in flight and on an archer's string |
@@ -413,6 +416,33 @@ SimulationWorker host, runtime, and UDP port come from GameService's short-lived
 shard placement response. They are not part of the public shard list and are not
 duplicated in client configuration. Different environments should use
 build-specific configuration assets or a future build configuration pipeline.
+
+### Content Text
+
+The client shows the names and texts of items and quests from one
+`TextCatalog`, never from the gameplay catalogs. `ClientTexts.TryLoad` reads
+the text tables that `ClientConfig` lists, checks each against its revision,
+and joins them; [Text Tables](../content/README.md#text-tables) describes the
+tables and their keys. The bootstrap loads the catalog once and passes it to
+the inventory and quest controllers.
+
+- `ClientItemCatalog` answers every name from it: `GetDisplayName`,
+  `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
+  `CurrencyName`. An id that the gameplay catalog does not know is shown as it
+  is.
+- `ClientQuestCatalog` owns its copy of the compiled quest catalog. Once the
+  copy validates, it replaces every title, offer, progress, and completion
+  text, objective text, and line in it with the text catalog's, so the quest
+  windows and notices read the quest definitions as before.
+- A text that the catalog lacks shows its key in brackets, such as
+  `[item/weapon.iron_sword/name]`, so a missing text is seen on screen. When
+  the tables cannot be read at all, the client logs an error and runs with an
+  empty catalog.
+
+`ClientTextsTests` fails when the configuration does not list every table of
+`TextTableIds.All`, so a new table cannot be forgotten. Actor names, examine
+texts, menu options, and capability names still come from the realtime
+protocol, and the panels' own labels are still literals in the code.
 
 ## Client Session State
 
@@ -1151,8 +1181,9 @@ per gameplay revision, and indexes definitions and equipment slots by stable id.
 Gameplay and presentation source revisions must match before item UI can render.
 Every HTTP snapshot must also match the bundled gameplay revision. A mismatch
 clears renderable item state and produces `item_catalog_update_required` instead
-of accepting stale definitions. Icons, localization keys, fallback labels, and
-optional prefab presentation keys resolve locally. An icon is a Sprite whose
+of accepting stale definitions. Icons and optional prefab presentation keys
+resolve locally, and every name comes from the text catalog, as
+[Content Text](#content-text) describes. An icon is a Sprite whose
 Addressables address is stored in the catalog's `iconAddress` field, below
 `Items/Icons/`; the client loads each icon once and keeps it for the process
 lifetime. An item without an icon of its own, or whose icon is missing, shows
@@ -2814,9 +2845,10 @@ windows in `Mmorpg.Client.Ui` present it.
 - `ClientQuestCatalog` reads the bundled `core.quest-catalog.json` through the
   camelCase `QuestCatalogJsonDocument` of the WorldData package, which Unity's
   `JsonUtility` needs, and accepts it only when `QuestCatalogCompiler.ValidateRuntime`
-  computes the same fingerprints and revision. `QuestsGivenBy` lists the quests
-  of one giver by title, so the dialog and the marker of an NPC never walk the
-  whole catalog.
+  computes the same fingerprints and revision. It then replaces the texts of
+  its copy with the text catalog's, as [Content Text](#content-text) describes.
+  `QuestsGivenBy` lists the quests of one giver by title, so the dialog and the
+  marker of an NPC never walk the whole catalog.
 - `QuestClientController` reads `GET /api/characters/{characterId}/quests` when
   the character joins, up to three times, and refuses a log of another quest
   catalog revision with `quest_catalog_update_required`. It applies every

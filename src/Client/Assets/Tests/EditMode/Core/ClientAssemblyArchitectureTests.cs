@@ -51,6 +51,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ["Mmorpg.Client.Core"] = new[]
                 {
                     "Mmorpg.Client.Api",
+                    "Mmorpg.WorldData",
                     "Unity.Addressables",
                     "Unity.ResourceManager"
                 },
@@ -165,6 +166,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Combat",
                     "Mmorpg.Client.Ui",
                     "Unity.ResourceManager",
+                    "Mmorpg.WorldData",
                     "Mmorpg.WorldData.Client"
                 },
                 ["Mmorpg.Client.Editor"] = new[]

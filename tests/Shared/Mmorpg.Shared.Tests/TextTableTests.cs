@@ -306,6 +306,110 @@ public sealed class TextTableTests
             () => ContentLayout.GeneratedTextTablePath("generated", "../en", TextTableIds.Items));
     }
 
+    [Fact]
+    public void ACatalogLooksUpEveryTextOfItsTables()
+    {
+        var items = Create(Entry("item/a/name", "Arrow"));
+        var quests = TextTable.Create(TextTableIds.Quests, "en", [Entry("quest/q/title", "A Quest")]);
+
+        var catalog = TextCatalog.Create([quests, items]);
+
+        Assert.Equal("en", catalog.Locale);
+        Assert.Equal(2, catalog.Count);
+        Assert.Equal(64, catalog.Revision.Length);
+        Assert.Equal("Arrow", catalog.Get("item/a/name"));
+        Assert.Equal("A Quest", catalog.Get("quest/q/title"));
+        Assert.True(catalog.TryGet("item/a/name", out var name));
+        Assert.Equal("Arrow", name);
+        Assert.Equal(catalog.Revision, TextCatalog.Create([items, quests]).Revision);
+    }
+
+    // A missing text must be seen, not pass as an empty label.
+    [Fact]
+    public void AMissingTextShowsItsKeyUnlessTheTextIsOptional()
+    {
+        var catalog = TextCatalog.Create([Create(Entry("item/a/name", "Arrow"))]);
+
+        Assert.Equal("[item/b/name]", catalog.Get("item/b/name"));
+        Assert.Equal("[]", catalog.Get(null!));
+        Assert.Equal(string.Empty, catalog.GetOrEmpty("item/b/name"));
+        Assert.Equal("Arrow", catalog.GetOrEmpty("item/a/name"));
+        Assert.False(catalog.TryGet("item/b/name", out _));
+        Assert.False(catalog.TryGet(null!, out _));
+    }
+
+    [Fact]
+    public void TheCatalogRevisionChangesWithAnyTable()
+    {
+        var quests = TextTable.Create(TextTableIds.Quests, "en", [Entry("quest/q/title", "A Quest")]);
+        var baseline = TextCatalog.Create([Create(Entry("item/a/name", "Arrow")), quests]).Revision;
+
+        Assert.NotEqual(baseline, TextCatalog.Create([Create(Entry("item/a/name", "Bolt")), quests]).Revision);
+        Assert.NotEqual(baseline, TextCatalog.Create([Create(Entry("item/a/name", "Arrow"))]).Revision);
+    }
+
+    [Fact]
+    public void ACatalogRefusesTablesThatDoNotBelongTogether()
+    {
+        var items = Create(Entry("item/a/name", "Arrow"));
+        var swedish = TextTable.Create(TextTableIds.Quests, "sv", [Entry("quest/q/title", "Ett uppdrag")]);
+        var sameKey = TextTable.Create(TextTableIds.Quests, "en", [Entry("item/a/name", "Arrow again")]);
+        var tampered = Create(Entry("item/a/name", "Arrow"));
+        tampered.Entries[0].Text = "Bolt";
+
+        Assert.Contains(
+            "at least one",
+            Assert.Throws<TextTableValidationException>(() => TextCatalog.Create([])).Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "locale",
+            Assert.Throws<TextTableValidationException>(() => TextCatalog.Create([items, swedish])).Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "listed twice",
+            Assert.Throws<TextTableValidationException>(() => TextCatalog.Create([items, items])).Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "more than one table",
+            Assert.Throws<TextTableValidationException>(() => TextCatalog.Create([items, sameKey])).Message,
+            StringComparison.Ordinal);
+        Assert.Throws<TextTableValidationException>(() => TextCatalog.Create([tampered]));
+    }
+
+    [Fact]
+    public void AnEmptyCatalogShowsEveryTextAsItsKey()
+    {
+        var catalog = TextCatalog.Empty("en");
+
+        Assert.Equal(0, catalog.Count);
+        Assert.Equal("en", catalog.Locale);
+        Assert.Equal("[item/a/name]", catalog.Get("item/a/name"));
+    }
+
+    // Unity reads the tables through this camelCase shape.
+    [Fact]
+    public void TheUnityFieldShapeReadsEveryTableField()
+    {
+        var table = Create(Entry("item/a/name", "Arrow"), Entry("item/b/name", "Bow"));
+        var json = new TextTableJsonDocument
+        {
+            formatVersion = table.FormatVersion,
+            tableId = table.TableId,
+            locale = table.Locale,
+            revision = table.Revision,
+            entries = table.Entries
+                .Select(entry => new TextTableJsonEntry { key = entry.Key, text = entry.Text })
+                .ToArray()
+        };
+
+        var read = json.ToRuntime();
+
+        TextTable.Validate(read);
+        Assert.Equal(table.Revision, read.Revision);
+        Assert.Equal(["Arrow", "Bow"], read.Entries.Select(entry => entry.Text));
+        Assert.Empty(new TextTableJsonDocument().ToRuntime().Entries);
+    }
+
     private static TextTableDocument Create(params TextTableEntry[] entries)
     {
         return TextTable.Create(TextTableIds.Items, TextTableFormat.SourceLocale, entries);

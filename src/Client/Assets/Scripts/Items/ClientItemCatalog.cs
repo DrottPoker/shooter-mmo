@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Items
@@ -13,12 +14,20 @@ namespace Mmorpg.Client.Items
         private readonly Dictionary<string, ItemDefinition> definitions;
         private readonly Dictionary<string, ItemEquipmentSlotEntry> equipmentSlots;
 
+        private readonly HashSet<string> vendorIds;
+        private readonly TextCatalog texts;
+
         private ClientItemCatalog(
             ItemCatalogRuntimeDocument gameplay,
-            ItemPresentationCatalogIndex presentation)
+            ItemPresentationCatalogIndex presentation,
+            TextCatalog texts)
         {
             Gameplay = gameplay;
             Presentation = presentation;
+            this.texts = texts;
+            vendorIds = new HashSet<string>(
+                (gameplay.Vendors ?? Array.Empty<VendorProfileDefinition>()).Select(vendor => vendor.Id),
+                StringComparer.Ordinal);
             definitions = gameplay.Definitions.ToDictionary(
                 definition => definition.Id,
                 definition => definition,
@@ -43,13 +52,22 @@ namespace Mmorpg.Client.Items
             get { return definitions.Values; }
         }
 
+        // The texts are the client's text catalog, which names every item, slot, category,
+        // vendor, and the currency.
         public static bool TryLoad(
             TextAsset gameplayAsset,
+            TextCatalog texts,
             out ClientItemCatalog catalog,
             out string error)
         {
             catalog = null;
             error = string.Empty;
+            if (texts == null)
+            {
+                error = "The item catalog needs the text catalog.";
+                return false;
+            }
+
             if (gameplayAsset == null)
             {
                 error = "The bundled item gameplay catalog is missing.";
@@ -66,23 +84,24 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            catalog = new ClientItemCatalog(gameplay, presentation);
+            catalog = new ClientItemCatalog(gameplay, presentation, texts);
             return true;
         }
 
-        // Combines a verified gameplay catalog with a presentation index built for it, such as
-        // a test catalog that has no bundled presentation.
+        // Combines a verified gameplay catalog with a presentation index built for it and the
+        // texts that name it, such as a test catalog that has no bundled presentation.
         public static bool TryCreate(
             ItemCatalogRuntimeDocument gameplay,
             ItemPresentationCatalogIndex presentation,
+            TextCatalog texts,
             out ClientItemCatalog catalog,
             out string error)
         {
             catalog = null;
             error = string.Empty;
-            if (gameplay == null || presentation == null)
+            if (gameplay == null || presentation == null || texts == null)
             {
-                error = "A gameplay catalog and its presentation are required.";
+                error = "A gameplay catalog, its presentation, and the text catalog are required.";
                 return false;
             }
 
@@ -95,7 +114,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            catalog = new ClientItemCatalog(gameplay, presentation);
+            catalog = new ClientItemCatalog(gameplay, presentation, texts);
             return true;
         }
 
@@ -151,24 +170,52 @@ namespace Mmorpg.Client.Items
                 out equipmentSlot);
         }
 
+        // Every name comes from the text catalog. An id that the gameplay catalog does not
+        // know is shown as it is.
         public string GetDisplayName(string definitionId)
         {
-            if (Presentation.TryGet(definitionId, out var entry)
-                && !string.IsNullOrWhiteSpace(entry.fallbackDisplayName))
-            {
-                return entry.fallbackDisplayName;
-            }
-
-            return TryGetDefinition(definitionId, out var definition)
-                ? definition.DisplayName
+            return TryGetDefinition(definitionId, out _)
+                ? texts.Get(TextKeys.ItemName(definitionId))
                 : definitionId ?? string.Empty;
         }
 
-        public string GetLocalizationKey(string definitionId)
+        public string GetEquipmentSlotName(string equipmentSlotId)
         {
-            return Presentation.TryGet(definitionId, out var entry)
-                ? entry.localizationKey ?? string.Empty
-                : string.Empty;
+            return TryGetEquipmentSlot(equipmentSlotId, out _)
+                ? texts.Get(TextKeys.EquipmentSlotName(equipmentSlotId))
+                : equipmentSlotId ?? string.Empty;
+        }
+
+        public string GetCategoryName(string categoryId)
+        {
+            return Contains(Gameplay.Categories, categoryId)
+                ? texts.Get(TextKeys.ItemCategoryName(categoryId))
+                : categoryId ?? string.Empty;
+        }
+
+        public string GetTagName(string tagId)
+        {
+            return Contains(Gameplay.Tags, tagId)
+                ? texts.Get(TextKeys.ItemTagName(tagId))
+                : tagId ?? string.Empty;
+        }
+
+        public string GetVendorName(string vendorId)
+        {
+            return vendorIds.Contains(vendorId ?? string.Empty)
+                ? texts.Get(TextKeys.VendorName(vendorId))
+                : vendorId ?? string.Empty;
+        }
+
+        public string CurrencyName
+        {
+            get { return texts.Get(TextKeys.CurrencyName()); }
+        }
+
+        private static bool Contains(ItemCatalogIdentityEntry[] entries, string id)
+        {
+            return entries != null
+                && entries.Any(entry => entry != null && string.Equals(entry.Id, id, StringComparison.Ordinal));
         }
 
         public string GetPrefabPresentationKey(string definitionId)

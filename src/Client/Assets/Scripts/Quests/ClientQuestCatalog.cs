@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Quests
 {
-    // The bundled compiled quest catalog: every quest's texts, steps, objectives, and rewards. It
-    // is accepted only when it validates as the compiler wrote it, and the quest log GameService
-    // returns must name the same revision.
+    // The bundled compiled quest catalog: every quest's steps, objectives, and rewards, with the
+    // texts of the client's text catalog. It is accepted only when it validates as the compiler
+    // wrote it, and the quest log GameService returns must name the same revision.
     public sealed class ClientQuestCatalog
     {
         private readonly Dictionary<string, QuestDefinition> quests;
@@ -45,7 +46,7 @@ namespace Mmorpg.Client.Quests
             get { return Runtime.Quests; }
         }
 
-        public static bool TryLoad(TextAsset asset, out ClientQuestCatalog catalog, out string error)
+        public static bool TryLoad(TextAsset asset, TextCatalog texts, out ClientQuestCatalog catalog, out string error)
         {
             catalog = null;
             if (asset == null)
@@ -54,10 +55,10 @@ namespace Mmorpg.Client.Quests
                 return false;
             }
 
-            return TryParse(asset.text, out catalog, out error);
+            return TryParse(asset.text, texts, out catalog, out error);
         }
 
-        public static bool TryParse(string json, out ClientQuestCatalog catalog, out string error)
+        public static bool TryParse(string json, TextCatalog texts, out ClientQuestCatalog catalog, out string error)
         {
             catalog = null;
             error = string.Empty;
@@ -70,7 +71,7 @@ namespace Mmorpg.Client.Quests
 
                 var document = JsonUtility.FromJson<QuestCatalogJsonDocument>(json)
                     ?? throw new InvalidDataException("The quest catalog JSON has no root object.");
-                return TryCreate(document.ToRuntime(), out catalog, out error);
+                return TryCreate(document.ToRuntime(), texts, out catalog, out error);
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
             {
@@ -79,11 +80,23 @@ namespace Mmorpg.Client.Quests
             }
         }
 
-        // Accepts a runtime catalog, such as a test catalog, that validates as compiled.
-        public static bool TryCreate(QuestCatalogRuntimeDocument runtime, out ClientQuestCatalog catalog, out string error)
+        // Accepts a runtime catalog, such as a test catalog, that validates as compiled. The
+        // catalog is the client's own copy: once it is accepted, every text in it is replaced by
+        // the text catalog's, so the quest windows show nothing but what the text catalog holds.
+        public static bool TryCreate(
+            QuestCatalogRuntimeDocument runtime,
+            TextCatalog texts,
+            out ClientQuestCatalog catalog,
+            out string error)
         {
             catalog = null;
             error = string.Empty;
+            if (texts == null)
+            {
+                error = "The quest catalog needs the text catalog.";
+                return false;
+            }
+
             try
             {
                 QuestCatalogCompiler.ValidateRuntime(runtime);
@@ -94,8 +107,30 @@ namespace Mmorpg.Client.Quests
                 return false;
             }
 
+            ApplyTexts(runtime, texts);
             catalog = new ClientQuestCatalog(runtime);
             return true;
+        }
+
+        private static void ApplyTexts(QuestCatalogRuntimeDocument runtime, TextCatalog texts)
+        {
+            foreach (var quest in runtime.Quests)
+            {
+                quest.Title = texts.Get(TextKeys.QuestTitle(quest.Id));
+                quest.OfferText = texts.Get(TextKeys.QuestOffer(quest.Id));
+                quest.ProgressText = texts.Get(TextKeys.QuestProgress(quest.Id));
+                quest.CompletionText = texts.Get(TextKeys.QuestCompletion(quest.Id));
+                foreach (var step in quest.Steps)
+                {
+                    foreach (var objective in step.Objectives)
+                    {
+                        objective.Text = texts.Get(TextKeys.QuestObjectiveText(quest.Id, step.Id, objective.Id));
+
+                        // Only a talk-to objective has a line.
+                        objective.Line = texts.GetOrEmpty(TextKeys.QuestObjectiveLine(quest.Id, step.Id, objective.Id));
+                    }
+                }
+            }
         }
 
         public bool TryGet(string questId, out QuestDefinition quest)

@@ -394,6 +394,23 @@ the spawn pad in the middle of the walled arena.
    message, and the world menu's hover text have a black outline. The signs and
    floor labels of the World are sharp up close and from afar.
 
+### Content Text From The Text Tables
+
+The client shows item and quest text from the text tables, as
+[Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes.
+
+1. Join the World, open the inventory (I) and the quest log (L), and talk to
+   Mira. Expected result: every item, equipment slot, and vendor name and every
+   quest title and text reads as before, and nothing shows in square brackets.
+2. Stop Play Mode. In
+   `src/Shared/WorldData/Generated/Text/en/items.text-table.json`, delete the
+   entry of `item/tool.starter_pickaxe/name`, start Play Mode, and join.
+   Expected result: the Console shows the error
+   `The text tables are unavailable, so content text shows as keys`, because
+   the table no longer matches its revision, and every item and quest shows its
+   key in brackets, such as `[item/tool.starter_pickaxe/name]`. Restore the
+   file with `git restore src/Shared/WorldData/Generated/Text`.
+
 ### Busy Buttons And Lost Connections
 
 1. Double-click `Create Account`, `Create Character`, `Refresh`, `Enter World`,
