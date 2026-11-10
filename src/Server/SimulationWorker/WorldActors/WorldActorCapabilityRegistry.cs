@@ -141,7 +141,6 @@ public sealed class WorldActorCapabilityRegistry
             .Select((capability, index) => new RealtimeWorldActorCapability(
                 capability.Id,
                 ToProtocolKind(capability.Kind),
-                capability.DisplayName,
                 capability.ProfileId,
                 availabilityPolicy.IsAvailable(session, actor, capability),
                 checked(actor.InteractionRevision + index)))

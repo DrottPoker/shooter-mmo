@@ -12,7 +12,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ActorStateAcceptsOnlyAuthoritativeMonotonicRevisions()
         {
-            var state = new WorldActorClientState();
+            var state = FixtureTexts.ActorState();
             var spawn = CreateSpawn();
 
             Assert.That(state.TryApplySpawn(spawn, out var error), Is.True, error);
@@ -69,7 +69,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var conflictingPresence = CreateSpawn(
                 spawn.RuntimeActorId,
-                "Forged Name");
+                spawnDefinitionId: "local.forged_spawn");
             Assert.That(
                 state.TryApplySpawn(conflictingPresence, out error),
                 Is.False);
@@ -91,20 +91,23 @@ namespace Mmorpg.Client.Tests.EditMode
                 Guid.NewGuid(),
                 3,
                 9,
-                "Mira",
                 new[]
                 {
                     new RealtimeWorldActorCapability(
                         "services.vendor",
                         RealtimeWorldActorCapabilityKind.Vendor,
-                        "Trade",
                         "vendor.city_general_store",
                         true,
                         4)
                 });
+            var mira = new WorldActorClientEntry(CreateSpawn(), FixtureTexts.DevelopmentActors());
 
-            Assert.That(state.TryOpen(opened, out var error), Is.True, error);
+            Assert.That(state.TryOpen(opened, mira, out var error), Is.True, error);
             Assert.That(state.ActiveInteraction.Capabilities[0].Revision, Is.EqualTo(4));
+
+            // The open interaction names its actor and its capabilities from the text catalog.
+            Assert.That(state.ActiveDisplayName, Is.EqualTo("Mira"));
+            Assert.That(state.CapabilityName(state.ActiveInteraction.Capabilities[0]), Is.EqualTo("Trade"));
             Assert.That(
                 state.TryComplete(
                     new RealtimeWorldInteractionResult(
@@ -151,8 +154,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         runtimeActorId,
                         1,
                         2,
-                        "Mira",
                         Array.Empty<RealtimeWorldActorCapability>()),
+                    null,
                     out var error),
                 Is.True,
                 error);
@@ -235,26 +238,34 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void SpawnCarriesExamineTextAndMenuOptionsThatCannotChangeWithoutADespawn()
+        public void AnActorIsNamedFromTheTextCatalogAndItsMenuOptionsCannotChangeWithoutADespawn()
         {
-            var state = new WorldActorClientState();
+            var state = FixtureTexts.ActorState();
             var spawn = CreateSpawn();
             Assert.That(state.TryApplySpawn(spawn, out var error), Is.True, error);
             Assert.That(state.TryGet(spawn.EntityId, out var actor), Is.True);
+            Assert.That(actor.DisplayName, Is.EqualTo("Mira"));
             Assert.That(actor.ExamineText, Is.EqualTo("She keeps the city's stores."));
             Assert.That(actor.MenuOptions.Count, Is.EqualTo(2));
-            Assert.That(actor.MenuOptions[0].Label, Is.EqualTo("Talk-to"));
+            Assert.That(actor.MenuOptionLabel(actor.MenuOptions[0].CapabilityId), Is.EqualTo("Talk-to"));
+            Assert.That(actor.CapabilityName(actor.MenuOptions[0].CapabilityId), Is.EqualTo("Talk"));
             Assert.That(actor.MenuOptions[1].CapabilityId, Is.EqualTo("services.vendor"));
+
+            // A text that the catalog lacks shows its key, and an id that cannot be a key shows
+            // as it is.
+            Assert.That(
+                actor.MenuOptionLabel("services.unknown"),
+                Is.EqualTo("[actor/npc.city_services/capability/services.unknown/menu]"));
+            Assert.That(actor.MenuOptionLabel("Not A Key"), Is.EqualTo("Not A Key"));
+            var unnamed = new WorldActorClientState();
+            Assert.That(unnamed.TryApplySpawn(CreateSpawn(), out error), Is.True, error);
+            Assert.That(unnamed.TryGet(spawn.EntityId, out var unnamedActor), Is.True);
+            Assert.That(unnamedActor.DisplayName, Is.EqualTo("[actor/npc.city_services/name]"));
+            Assert.That(unnamedActor.ExamineText, Is.Empty);
 
             // The same presence again is fine.
             Assert.That(state.TryApplySpawn(CreateSpawn(spawn.RuntimeActorId), out error), Is.True, error);
 
-            Assert.That(
-                state.TryApplySpawn(
-                    CreateSpawn(spawn.RuntimeActorId, examineText: "Someone else."),
-                    out error),
-                Is.False);
-            Assert.That(error, Does.Contain("identity"));
             Assert.That(
                 state.TryApplySpawn(
                     CreateSpawn(
@@ -263,8 +274,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         {
                             new RealtimeWorldActorMenuOption(
                                 "services.vendor",
-                                RealtimeWorldActorCapabilityKind.Vendor,
-                                "Trade")
+                                RealtimeWorldActorCapabilityKind.Vendor)
                         }),
                     out error),
                 Is.False);
@@ -286,7 +296,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(WorldPointerPicker.FindCandidate(unrelatedCollider, 1f).IsEmpty, Is.True);
 
                 var view = actorObject.AddComponent<NpcView>();
-                view.Initialize(new WorldActorClientEntry(CreateSpawn()));
+                view.Initialize(new WorldActorClientEntry(CreateSpawn(), FixtureTexts.DevelopmentActors()));
                 var actorCollider = actorObject.GetComponentInChildren<BoxCollider>();
 
                 Assert.That(actorCollider, Is.Not.Null);
@@ -307,7 +317,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void PresentationReplacementCannotMutateActorAuthorityState()
         {
-            var actor = new WorldActorClientEntry(CreateSpawn());
+            var actor = new WorldActorClientEntry(CreateSpawn(), FixtureTexts.DevelopmentActors());
             var firstPresentation = new GameObject("FirstPresentation");
             var replacementPresentation = new GameObject("ReplacementPresentation");
             try
@@ -362,16 +372,14 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static RealtimeWorldActorSpawn CreateSpawn(
             Guid? runtimeActorId = null,
-            string displayName = "Mira",
-            string examineText = "She keeps the city's stores.",
+            string spawnDefinitionId = "local.city_services",
             RealtimeWorldActorMenuOption[] menuOptions = null)
         {
             return new RealtimeWorldActorSpawn(
                 7,
                 runtimeActorId ?? Guid.NewGuid(),
                 "npc.city_services",
-                "local.city_services",
-                displayName,
+                spawnDefinitionId,
                 RealtimeWorldActorKind.Npc,
                 "city",
                 RealtimeWorldActorDisposition.Friendly,
@@ -392,11 +400,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 0.8f,
                 2f,
                 0.8f,
-                examineText,
                 menuOptions ?? new[]
                 {
-                    new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to"),
-                    new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor, "Trade")
+                    new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue),
+                    new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor)
                 });
         }
 

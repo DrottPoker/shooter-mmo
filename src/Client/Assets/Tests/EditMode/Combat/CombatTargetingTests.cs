@@ -130,7 +130,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void AttackTargetsOnlyWhatCanBeAttackedNow()
         {
-            var actors = new WorldActorClientState();
+            var actors = FixtureTexts.ActorState();
             Assert.That(actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob), out var error), Is.True, error);
             Assert.That(actors.TryGet(MobId, out var mobEntry), Is.True);
             var combat = new CombatClientState();
@@ -171,7 +171,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ClickTargetsAreDescribedByTheirAuthoritativeKind()
         {
-            var actors = new WorldActorClientState();
+            var actors = FixtureTexts.ActorState();
             Assert.That(actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob), out var error), Is.True, error);
             Assert.That(actors.TryApplySpawn(Spawn(NpcId, RealtimeWorldActorKind.Npc), out error), Is.True, error);
             Assert.That(actors.TryGet(MobId, out var mobEntry), Is.True);
@@ -631,7 +631,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Guid.NewGuid(),
                 mob ? "mob.feral_wolf" : "npc.city_services",
                 mob ? "local.feral_wolf" : "local.city_services",
-                mob ? "Feral Wolf" : "Mira",
                 kind,
                 mob ? "wild" : "city",
                 mob ? RealtimeWorldActorDisposition.Hostile : RealtimeWorldActorDisposition.Friendly,
@@ -652,10 +651,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 0.8f,
                 1f,
                 1.4f,
-                mob ? "A lean, hungry wolf." : "She keeps the city's stores.",
                 mob
                     ? new RealtimeWorldActorMenuOption[0]
-                    : new[] { new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to") });
+                    : new[] { new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue) });
         }
 
         private sealed class RecordingProvider : IWorldMenuProvider

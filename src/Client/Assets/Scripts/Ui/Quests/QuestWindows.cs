@@ -134,7 +134,7 @@ namespace Mmorpg.Client.Ui
 
             // A message of an earlier action belongs to that action, not to this dialog.
             interaction.State.ClearMessage();
-            dialog.SetTitle(active.DisplayName);
+            dialog.SetTitle(actor.DisplayName);
             dialog.SetOpen(true);
             quests?.EnsureLoaded();
             Refresh();

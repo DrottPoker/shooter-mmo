@@ -229,7 +229,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var depleted = new GameObject(ResourceNodeView.DepletedModelName);
                 depleted.transform.SetParent(root.transform, false);
                 var view = root.AddComponent<ResourceNodeView>();
-                var state = new WorldActorClientState();
+                var state = FixtureTexts.ActorState();
                 var spawn = CreateNodeSpawn(true);
                 Assert.That(state.TryApplySpawn(spawn, out var error), Is.True, error);
                 Assert.That(state.TryGet(spawn.EntityId, out var actor), Is.True);
@@ -346,7 +346,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Guid.NewGuid(),
                 "resource.iron_vein",
                 "local.iron_vein",
-                "Iron Vein",
                 RealtimeWorldActorKind.ResourceNode,
                 "world",
                 RealtimeWorldActorDisposition.Neutral,
@@ -367,8 +366,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 1.6f,
                 1.2f,
                 1.6f,
-                "A seam of iron ore runs through the rock.",
-                new[] { new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering, "Mine") });
+                new[] { new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering) });
         }
     }
 }

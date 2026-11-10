@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 36,
+    "version": 37,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -148,28 +148,10 @@
       "description": "Characters in a world actor capability id."
     },
     {
-      "name": "MaximumWorldActorCapabilityNameLength",
-      "value": 128,
-      "visibility": "private",
-      "description": "Characters in a world actor capability display name."
-    },
-    {
-      "name": "MaximumWorldActorExamineTextLength",
-      "value": 200,
-      "visibility": "public",
-      "description": "Characters in the examine text of a world actor."
-    },
-    {
       "name": "MaximumWorldActorLevel",
       "value": 10000,
       "visibility": "public",
       "description": "The highest level of a world actor."
-    },
-    {
-      "name": "MaximumWorldActorMenuOptionLength",
-      "value": 32,
-      "visibility": "public",
-      "description": "Characters in the right-click menu option of a world actor capability."
     },
     {
       "name": "MaximumWorldInteractionMessageLength",
@@ -886,12 +868,6 @@
         },
         { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." },
         {
-          "name": "DisplayName",
-          "type": "string",
-          "maxLength": "MaximumWorldActorCapabilityNameLength",
-          "description": "The name the client shows."
-        },
-        {
           "name": "ProfileId",
           "type": "string",
           "maxLength": "MaximumIdentifierLength",
@@ -923,13 +899,7 @@
           "maxLength": "MaximumWorldActorCapabilityIdLength",
           "description": "The capability the option opens."
         },
-        { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." },
-        {
-          "name": "Label",
-          "type": "string",
-          "maxLength": "MaximumWorldActorMenuOptionLength",
-          "description": "The verb the menu shows before the actor's name, such as Trade."
-        }
+        { "name": "Kind", "type": "WorldActorCapabilityKind", "description": "The kind of service." }
       ]
     },
     {
@@ -2135,12 +2105,6 @@
           "maxLength": "MaximumIdentifierLength",
           "description": "The spawn that placed the actor."
         },
-        {
-          "name": "DisplayName",
-          "type": "string",
-          "maxLength": "MaximumNameLength",
-          "description": "The name the client shows."
-        },
         { "name": "Kind", "type": "WorldActorKind", "description": "The kind of actor." },
         {
           "name": "FactionId",
@@ -2211,12 +2175,6 @@
           "type": "f32",
           "exclusiveMinimum": 0,
           "description": "The size of the interaction bounds on the z axis."
-        },
-        {
-          "name": "ExamineText",
-          "type": "string",
-          "maxLength": "MaximumWorldActorExamineTextLength",
-          "description": "What Examine shows for the actor."
         },
         {
           "name": "MenuOptions",
@@ -2508,12 +2466,6 @@
           "type": "i64",
           "minimum": 1,
           "description": "The revision of the capability list."
-        },
-        {
-          "name": "DisplayName",
-          "type": "string",
-          "maxLength": "MaximumNameLength",
-          "description": "The name the client shows."
         },
         {
           "name": "Capabilities",

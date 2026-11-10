@@ -396,19 +396,22 @@ the spawn pad in the middle of the walled arena.
 
 ### Content Text From The Text Tables
 
-The client shows item and quest text from the text tables, as
+The client shows item, quest, and actor text from the text tables, as
 [Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes.
 
-1. Join the World, open the inventory (I) and the quest log (L), and talk to
-   Mira. Expected result: every item, equipment slot, and vendor name and every
-   quest title and text reads as before, and nothing shows in square brackets.
+1. Join the World, open the inventory (I) and the quest log (L), right-click
+   Mira, a wolf, and an Iron Vein, examine each, and talk to Mira. Expected
+   result: every item, equipment slot, and vendor name, every quest title and
+   text, every actor name and nameplate, every menu verb such as `Trade` and
+   `Mine`, every examine text, and every service name in the interaction panel
+   reads as before, and nothing shows in square brackets.
 2. Stop Play Mode. In
    `src/Shared/WorldData/Generated/Text/en/items.text-table.json`, delete the
    entry of `item/tool.starter_pickaxe/name`, start Play Mode, and join.
    Expected result: the Console shows the error
    `The text tables are unavailable, so content text shows as keys`, because
-   the table no longer matches its revision, and every item and quest shows its
-   key in brackets, such as `[item/tool.starter_pickaxe/name]`. Restore the
+   the table no longer matches its revision, and every item, quest, and actor
+   shows its key in brackets, such as `[item/tool.starter_pickaxe/name]`. Restore the
    file with `git restore src/Shared/WorldData/Generated/Text`.
 
 ### Busy Buttons And Lost Connections

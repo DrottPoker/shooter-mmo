@@ -357,7 +357,6 @@ public sealed class WorldInteractionAuthorityService(
                 actor.RuntimeActorId,
                 actor.InteractionRevision,
                 summary.Revision,
-                actor.Definition.DisplayName,
                 summary.Capabilities),
             null,
             null);

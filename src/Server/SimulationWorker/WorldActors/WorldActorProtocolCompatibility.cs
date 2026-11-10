@@ -15,7 +15,6 @@ internal static class WorldActorProtocolMapper
             actor.RuntimeActorId,
             actor.Definition.Id,
             actor.Spawn.SpawnDefinitionId,
-            actor.Definition.DisplayName,
             ToKind(actor.Definition.Kind),
             actor.Definition.FactionId,
             ToDisposition(actor.Definition.Disposition),
@@ -36,12 +35,12 @@ internal static class WorldActorProtocolMapper
             bounds.SizeX,
             bounds.SizeY,
             bounds.SizeZ,
-            actor.Definition.ExamineText,
             ToMenuOptions(actor.Definition.Capabilities));
     }
 
     // The static capability list in authored order, so the client can offer a menu before
-    // the interaction opens. Availability is still checked when the interaction opens.
+    // the interaction opens. Availability is still checked when the interaction opens. The
+    // client names the actor and its options from its text tables by their ids.
     private static RealtimeWorldActorMenuOption[] ToMenuOptions(
         IReadOnlyList<WorldActorCapabilityDefinition> capabilities)
     {
@@ -51,8 +50,7 @@ internal static class WorldActorProtocolMapper
             var capability = capabilities[index];
             options[index] = new RealtimeWorldActorMenuOption(
                 capability.Id,
-                WorldActorCapabilityRegistry.ToProtocolKind(capability.Kind),
-                capability.MenuOption);
+                WorldActorCapabilityRegistry.ToProtocolKind(capability.Kind));
         }
 
         return options;
@@ -83,7 +81,6 @@ internal static class WorldActorProtocolMapper
         return new RealtimeWorldActorCapability(
             capability.Id,
             WorldActorCapabilityRegistry.ToProtocolKind(capability.Kind),
-            capability.DisplayName,
             capability.ProfileId,
             true,
             checked(actor.InteractionRevision + index));
@@ -169,7 +166,6 @@ internal static class WorldActorProtocolCompatibility
                         actor.RuntimeActorId,
                         actor.InteractionRevision,
                         1,
-                        actor.Definition.DisplayName,
                         capabilities));
             }
             catch (Exception exception) when (

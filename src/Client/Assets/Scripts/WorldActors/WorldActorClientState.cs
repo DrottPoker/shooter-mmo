@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.WorldActors
 {
@@ -15,18 +16,26 @@ namespace Mmorpg.Client.WorldActors
 
     public sealed class WorldActorClientEntry
     {
-        public WorldActorClientEntry(RealtimeWorldActorSpawn spawn)
+        private readonly TextCatalog texts;
+
+        // The worker sends ids only. The actor's name, its examine text, and the texts of its
+        // capabilities come from the text catalog, by the actor definition id.
+        public WorldActorClientEntry(RealtimeWorldActorSpawn spawn, TextCatalog texts)
         {
             if (spawn == null)
             {
                 throw new ArgumentNullException(nameof(spawn));
             }
 
+            this.texts = texts ?? throw new ArgumentNullException(nameof(texts));
+
             EntityId = spawn.EntityId;
             RuntimeActorId = spawn.RuntimeActorId;
             ActorDefinitionId = spawn.ActorDefinitionId;
             SpawnDefinitionId = spawn.SpawnDefinitionId;
-            DisplayName = spawn.DisplayName;
+            DisplayName = TextKeys.IsValidId(spawn.ActorDefinitionId)
+                ? texts.Get(TextKeys.ActorName(spawn.ActorDefinitionId))
+                : spawn.ActorDefinitionId;
             Kind = spawn.Kind;
             FactionId = spawn.FactionId;
             Disposition = spawn.Disposition;
@@ -39,7 +48,9 @@ namespace Mmorpg.Client.WorldActors
             BoundsSizeX = spawn.BoundsSizeX;
             BoundsSizeY = spawn.BoundsSizeY;
             BoundsSizeZ = spawn.BoundsSizeZ;
-            ExamineText = spawn.ExamineText;
+            ExamineText = TextKeys.IsValidId(spawn.ActorDefinitionId)
+                ? texts.GetOrEmpty(TextKeys.ActorExamine(spawn.ActorDefinitionId))
+                : string.Empty;
             MenuOptions = spawn.MenuOptions;
             ApplyValues(
                 spawn.StateRevision,
@@ -124,6 +135,25 @@ namespace Mmorpg.Client.WorldActors
             return WorldActorStateApplyResult.Applied;
         }
 
+        // The verb the world menu shows before the actor's name, such as "Trade".
+        public string MenuOptionLabel(string capabilityId)
+        {
+            return CapabilityText(capabilityId, TextKeys.ActorCapabilityMenuOption);
+        }
+
+        // The name of a capability in the interaction panel, such as "Character Bank".
+        public string CapabilityName(string capabilityId)
+        {
+            return CapabilityText(capabilityId, TextKeys.ActorCapabilityName);
+        }
+
+        private string CapabilityText(string capabilityId, Func<string, string, string> key)
+        {
+            return TextKeys.IsValidId(ActorDefinitionId) && TextKeys.IsValidId(capabilityId)
+                ? texts.Get(key(ActorDefinitionId, capabilityId))
+                : capabilityId ?? string.Empty;
+        }
+
         internal bool HasMenuOptions(IReadOnlyList<RealtimeWorldActorMenuOption> options)
         {
             if (options == null || options.Count != MenuOptions.Count)
@@ -136,8 +166,7 @@ namespace Mmorpg.Client.WorldActors
                 var current = MenuOptions[index];
                 var other = options[index];
                 if (!string.Equals(current.CapabilityId, other.CapabilityId, StringComparison.Ordinal)
-                    || current.Kind != other.Kind
-                    || !string.Equals(current.Label, other.Label, StringComparison.Ordinal))
+                    || current.Kind != other.Kind)
                 {
                     return false;
                 }
@@ -182,6 +211,14 @@ namespace Mmorpg.Client.WorldActors
     {
         private readonly Dictionary<ulong, WorldActorClientEntry> actors =
             new Dictionary<ulong, WorldActorClientEntry>();
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
+        // The texts name every actor that spawns from now on. Until they are set, an actor
+        // shows the keys of its texts.
+        public void UseTexts(TextCatalog catalog)
+        {
+            texts = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        }
 
         public event Action Changed;
 
@@ -217,10 +254,6 @@ namespace Mmorpg.Client.WorldActors
                         existing.SpawnDefinitionId,
                         spawn.SpawnDefinitionId,
                         StringComparison.Ordinal)
-                    || !string.Equals(
-                        existing.DisplayName,
-                        spawn.DisplayName,
-                        StringComparison.Ordinal)
                     || existing.Kind != spawn.Kind
                     || !string.Equals(
                         existing.FactionId,
@@ -239,10 +272,6 @@ namespace Mmorpg.Client.WorldActors
                     || !existing.BoundsSizeX.Equals(spawn.BoundsSizeX)
                     || !existing.BoundsSizeY.Equals(spawn.BoundsSizeY)
                     || !existing.BoundsSizeZ.Equals(spawn.BoundsSizeZ)
-                    || !string.Equals(
-                        existing.ExamineText,
-                        spawn.ExamineText,
-                        StringComparison.Ordinal)
                     || !existing.HasMenuOptions(spawn.MenuOptions))
                 {
                     error = "World actor entity identity changed without a despawn.";
@@ -274,7 +303,7 @@ namespace Mmorpg.Client.WorldActors
                 return true;
             }
 
-            actors.Add(spawn.EntityId, new WorldActorClientEntry(spawn));
+            actors.Add(spawn.EntityId, new WorldActorClientEntry(spawn, texts));
             Changed?.Invoke();
             return true;
         }

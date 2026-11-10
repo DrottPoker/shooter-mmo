@@ -15,7 +15,7 @@ namespace Mmorpg.WorldData.Actors
     }
 
     // Player-facing text of an actor: the Examine description and the right-click menu option
-    // of each capability, such as "Trade" or "Mine". Both fit the realtime actor spawn.
+    // of each capability, such as "Trade" or "Mine". Both go into the actor text table.
     public static class WorldActorTextRules
     {
         public const int MaximumExamineTextLength = 200;

@@ -153,13 +153,13 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void NpcsAndResourceNodesOfferTheirCapabilitiesInOrderAndCorpsesOfferLoot()
         {
-            var actors = Create<WorldActorClientController>("Actors");
-            Apply(actors.State, Spawn(NpcId, RealtimeWorldActorKind.Npc, "Mira", MiraOptions()));
-            Apply(actors.State, Spawn(NodeId, RealtimeWorldActorKind.ResourceNode, "Iron Vein", new[]
+            var actors = CreateActors();
+            Apply(actors.State, Spawn(NpcId, RealtimeWorldActorKind.Npc, MiraOptions()));
+            Apply(actors.State, Spawn(NodeId, RealtimeWorldActorKind.ResourceNode, new[]
             {
-                new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering, "Mine")
+                new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering)
             }));
-            Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, "Feral Wolf", Array.Empty<RealtimeWorldActorMenuOption>()));
+            Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, Array.Empty<RealtimeWorldActorMenuOption>()));
             var targeting = Create<WorldInteractionTargetingController>("Targeting");
             targeting.Initialize(null, actors, null, null);
             var menu = new WorldMenuBuilder();
@@ -222,9 +222,9 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void WalkHereIsAlwaysOfferedAndExamineShowsTheContentText()
         {
-            var actors = Create<WorldActorClientController>("Actors");
-            Apply(actors.State, Spawn(NpcId, RealtimeWorldActorKind.Npc, "Mira", MiraOptions()));
-            Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, "Feral Wolf", Array.Empty<RealtimeWorldActorMenuOption>()));
+            var actors = CreateActors();
+            Apply(actors.State, Spawn(NpcId, RealtimeWorldActorKind.Npc, MiraOptions()));
+            Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, Array.Empty<RealtimeWorldActorMenuOption>()));
             var messages = new GameMessageLog();
             var worldMenu = Create<WorldMenuController>("WorldMenu");
             worldMenu.Initialize(actors, messages);
@@ -440,24 +440,44 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             return new[]
             {
-                new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue, "Talk-to"),
-                new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor, "Trade"),
-                new RealtimeWorldActorMenuOption("services.bank", RealtimeWorldActorCapabilityKind.Bank, "Bank")
+                new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue),
+                new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor),
+                new RealtimeWorldActorMenuOption("services.bank", RealtimeWorldActorCapabilityKind.Bank)
             };
+        }
+
+        // The actor controller of a test, whose actors are named as the worker's content
+        // names them: by the actor definition id, here "actor.<entity id>".
+        private WorldActorClientController CreateActors()
+        {
+            var actors = Create<WorldActorClientController>("Actors");
+            actors.State.UseTexts(new FixtureTexts.ActorTexts()
+                .Actor(ActorId(NpcId), "Mira", "Mira examine text.")
+                .Capability(ActorId(NpcId), "services.dialogue", "Talk", "Talk-to")
+                .Capability(ActorId(NpcId), "services.vendor", "Trade", "Trade")
+                .Capability(ActorId(NpcId), "services.bank", "Character Bank", "Bank")
+                .Actor(ActorId(NodeId), "Iron Vein", "Iron Vein examine text.")
+                .Capability(ActorId(NodeId), "resource.mine", "Mine", "Mine")
+                .Actor(ActorId(MobId), "Feral Wolf", "Feral Wolf examine text.")
+                .Build());
+            return actors;
+        }
+
+        private static string ActorId(ulong entityId)
+        {
+            return "actor." + entityId;
         }
 
         private static RealtimeWorldActorSpawn Spawn(
             ulong entityId,
             RealtimeWorldActorKind kind,
-            string displayName,
             RealtimeWorldActorMenuOption[] menuOptions)
         {
             return new RealtimeWorldActorSpawn(
                 entityId,
                 Guid.NewGuid(),
-                "actor." + entityId,
+                ActorId(entityId),
                 "spawn." + entityId,
-                displayName,
                 kind,
                 "faction",
                 RealtimeWorldActorDisposition.Neutral,
@@ -478,7 +498,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 1f,
                 2f,
                 1f,
-                displayName + " examine text.",
                 menuOptions);
         }
 

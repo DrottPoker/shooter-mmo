@@ -321,19 +321,9 @@ namespace Mmorpg.GameProtocol
         public const int MaximumMovementPathWaypoints = 32;
 
         /// <summary>
-        /// Characters in the examine text of a world actor.
-        /// </summary>
-        public const int MaximumWorldActorExamineTextLength = 200;
-
-        /// <summary>
         /// The highest level of a world actor.
         /// </summary>
         public const int MaximumWorldActorLevel = 10000;
-
-        /// <summary>
-        /// Characters in the right-click menu option of a world actor capability.
-        /// </summary>
-        public const int MaximumWorldActorMenuOptionLength = 32;
 
         /// <summary>
         /// Characters in the kind of a look, such as underwear.
@@ -412,7 +402,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 36;
+        public const ushort Version = 37;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -467,9 +457,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
-        private const int MaximumWorldActorExamineTextLength = RealtimeProtocolLimits.MaximumWorldActorExamineTextLength;
         private const int MaximumWorldActorLevel = RealtimeProtocolLimits.MaximumWorldActorLevel;
-        private const int MaximumWorldActorMenuOptionLength = RealtimeProtocolLimits.MaximumWorldActorMenuOptionLength;
         private const int MaximumAppearanceKindLength = RealtimeProtocolLimits.MaximumAppearanceKindLength;
         private const int MaximumAppearanceSlotLength = RealtimeProtocolLimits.MaximumAppearanceSlotLength;
         private const int MaximumAppearanceNameLength = RealtimeProtocolLimits.MaximumAppearanceNameLength;
@@ -497,7 +485,6 @@ namespace Mmorpg.GameProtocol
         private const int MaximumItemResultRecoveryDeliveries = 8;
         private const int MaximumWorldActorCapabilities = 16;
         private const int MaximumWorldActorCapabilityIdLength = 128;
-        private const int MaximumWorldActorCapabilityNameLength = 128;
         private const int MaximumWorldInteractionMessageLength = 512;
         private const int MaximumCorpsePresencePerChunk = 6;
         private const int MaximumCorpseViewSlotsPerChunk = 4;
