@@ -101,14 +101,20 @@ How to work on a part of the project.
 - Describe the current state. History lives in Git: no "Last updated" lines, dates of decisions,
   pull request numbers, delivery phases, or decision ids. State a decision as the rule it is.
 - Document implemented behavior as implemented and mark planned or deferred work clearly.
+- State the status of an area in two places only: its row in
+  [Project Overview](PROJECT_OVERVIEW.md#status-by-area) and the document that owns the area. To
+  mention another document's area, link to it without saying whether it is implemented, so a
+  finished feature never leaves a stale "planned" behind. A change that implements or defers
+  something updates both places.
 - Use World, Fleet, Node, SimulationWorker, SimulationAssignment, Shard, Zone, and Layer exactly
   as [Project Architecture](PROJECT_ARCHITECTURE.md#canonical-terminology) defines them. There
   are no realms, and World never names a process.
 - Every change states how to test it by hand, with commands and the expected result, and whether
   it needs manual Unity Editor steps. Lasting manual checks belong in
   [Manual Testing](MANUAL_TESTING.md); exact Unity Editor steps belong in the guide of the area.
-- Only the current UI may be documented or implemented as temporary. Every other system is a
-  maintainable foundation.
+- Every system has a maturity level, Foundation, Provisional, or Temporary, defined and listed in
+  [Engineering Standard](PROJECT_OVERVIEW.md#engineering-standard). Only that list states a
+  system's level; a document may call something temporary only when the list does.
 - Keep this map, the root `README.md`, and the links current when a document or heading is added,
   renamed, or removed. Code comments refer to some headings; update them when a heading changes.
 - Write plain English in the present tense, never use the em dash, use Title Case headings, and
