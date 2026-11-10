@@ -705,7 +705,7 @@ class or a database row per actor. It stops before the following:
 - An explicit damage policy for non-city NPCs.
 - Final insurance, quest, vendor, and interaction UI, and final NPC models,
   prompts, and dialogue presentation.
-- Zone, Layer, multi-worker Shard, and world-event orchestration.
+- World-event orchestration.
 
 These later systems must extend the foundation contracts instead of bypassing
 them with prefab-owned authority, endpoint-specific target checks, or parallel

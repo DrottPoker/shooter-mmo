@@ -53,7 +53,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Area | Implemented | Next or deferred |
 | --- | --- | --- |
 | Accounts and characters | Registration, login, one active session per account, characters with looks | Character deletion is an open question |
-| Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Zones, Layers, several workers per shard, production orchestration |
+| Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
 | Items and inventory | Item catalog, slot inventory, equipment, Bags, Bank, Recovery Storage, policies, carry weight, predicted inventory moves | Consume and use, final inventory UI |
@@ -93,7 +93,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | System | Level | Still open |
 | --- | --- | --- |
 | Accounts, account sessions, and authentication | Foundation | Password change and reset, email verification |
-| Topology, placement, runtime fencing, and leases | Foundation | Zones and Layers |
+| Topology, placement, runtime fencing, and leases | Foundation | |
 | Item custody: the transaction kernel, idempotency, the death partition, and corpse custody | Foundation | |
 | The realtime threading contract and the authority lanes | Foundation | |
 | The protocol schema, its generator, and the codec checks | Foundation | |

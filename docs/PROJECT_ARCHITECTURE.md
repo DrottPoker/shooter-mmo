@@ -37,12 +37,16 @@ The following terms are architectural contracts. Do not use `WorldServer`,
 | World actor | A server-owned runtime entity created from shared World content |
 | NPC | A social or service-oriented world actor assembled from composable capabilities |
 | Mob | A combat-oriented world actor with AI, aggro, loot, corpse, and respawn behavior |
-| Zone | A future authoritative spatial partition inside a shard |
-| Layer | A future population copy of a zone or area inside one shard |
 
 The complete world actor vocabulary, including resource nodes, capabilities,
 and the actor identity scopes, is in
 [NPC And Mob System Design](NPC_AND_MOB_SYSTEM_DESIGN.md#canonical-terminology).
+
+There are no Zones and no Layers: one worker simulates a whole Shard, and the
+project does not plan to split a Shard over several processes or to copy
+crowded areas, as [Scale Target](#scale-target) describes. The two words name
+nothing else either; areas with their own gameplay rules are rule areas, as
+[Game Design](GAME_DESIGN.md#gameplay-rule-areas) describes.
 
 There is no Realm layer. Accounts, characters, progression, and the future
 economy are global. Fleets are compute placement boundaries, not data silos.
@@ -132,8 +136,7 @@ and matching World content.
 
 The current safe scale unit is one active SimulationWorker per shard and one
 active shard per SimulationWorker. PostgreSQL partial unique indexes enforce
-both sides. No placeholder zone or layer objects exist today. How many players
-one shard should hold, and what Zones would need before they can exist, is in
+both sides. How many players one shard should hold is in
 [Scale Target](#scale-target).
 
 ## System Context
@@ -1188,8 +1191,11 @@ dashboards, alerts, and operating guidance are in [Monitoring](MONITORING.md).
 
 ## Scale Target
 
-The target is more than 1,000 concurrent players on one Shard, spread over a
-World that is large enough to hold them. It is a target and not a supported
+The target is 500 concurrent players on one Shard, spread over a World that is
+large enough to hold them. One worker process simulates the whole Shard, and
+that stays so: Zones and Layers are not planned. More players than one Shard
+holds play on more Shards, and because accounts, characters, and items are
+global, a character can play on any of them. It is a target and not a supported
 tier: a tier counts as supported only when it passes the
 [Quality Boundary](STACK_STRESS_TESTING.md#quality-boundary), and
 [Stack Stress Testing](STACK_STRESS_TESTING.md) records the tiers that did.
@@ -1204,46 +1210,18 @@ The target counts two things separately:
   the population target does not promise that every player can stand in one
   place at the full cadence.
 
-The target is reached in two stages:
-
-1. One process. The worker simulates the whole Shard on its one loop thread.
-   The snapshot encoding, the transport's send path, the work of every tick,
-   and the GameService traffic per player set the limit. A tier is claimed only
-   after stress workloads with combat, Mobs, and players spread over the World
-   measured it; the workloads that exist are listed under
-   [Scope Boundary](STACK_STRESS_TESTING.md#scope-boundary).
-2. Zones. When one process cannot hold the target, the Shard is partitioned as
-   [Future Scaling Contract](#future-scaling-contract) describes.
-
-Zones are a new subsystem, not a setting of the current one. They need what
-does not exist today:
-
-- Entity ids that are unique in the Shard. Today each worker process counts its
-  own.
-- A serializable form of a player's live state, so one process can hand a
-  player to another: movement and its input queue, combat state, the authority
-  lane with its waiting operations, and open interactions.
-- Durable position, health, and mana. Today a join places every character at
-  the World spawn with full health, and nothing about a live character but its
-  items is stored.
-- Interest and combat across a zone border.
-
-A design that touches these areas keeps the door open: it does not add state
-that only makes sense inside one process without saying how it would move.
+The worker simulates the Shard on its one loop thread, so the snapshot
+encoding, the transport's send path, the work of every tick, and the
+GameService traffic per player set the limit. A tier is claimed only after
+stress workloads with combat, Mobs, and players spread over the World measured
+it; the workloads that exist are listed under
+[Scope Boundary](STACK_STRESS_TESTING.md#scope-boundary).
 
 ## Future Scaling Contract
 
-The next topology extension is not another naming rewrite. It will add:
-
-- Zone definitions and authoritative zone ownership inside a shard.
-- Cross-zone handoff with one owner at every simulation tick.
-- Layer definitions for selected high-population areas inside a shard.
-- Placement policies that keep groups together and prevent content exploits.
-- Durable shared event policies for bosses, resources, and economy where layers
-  must not create duplicate rewards.
-
-It builds on the prerequisites that [Scale Target](#scale-target) lists. Until
-that work exists, a shard is never presented as partially distributed.
+A Shard grows up to the [Scale Target](#scale-target) inside one process, and
+the game grows beyond it with more Shards and more Fleets. A shard is never
+presented as partially distributed.
 
 The service split and deployment direction is planned as follows:
 

@@ -62,8 +62,7 @@ lost on death unless an item policy protects it.
 Persistent character items are global and are not owned by a Fleet, Node,
 SimulationWorker, SimulationAssignment, or Shard. A durable player corpse
 records the Shard where the death happened only so the assigned
-SimulationWorker can restore its live representation. No Zone or Layer identity
-is stored, because those systems do not exist.
+SimulationWorker can restore its live representation.
 
 ## Item Definitions, Categories, And Tags
 
