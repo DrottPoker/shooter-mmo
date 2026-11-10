@@ -212,7 +212,7 @@
     },
     {
       "key": "message/invalid_password",
-      "text": "A password has 8 to 128 characters."
+      "text": "A password has 8 to 128 characters and at most 72 bytes; accented letters and symbols take more than one byte."
     },
     {
       "key": "message/invalid_session_token",

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "0d911953e64b8f1c5fa686c69a80fdc285756b6ad4289f572c6f1ae6a7c8f94c",
+  "revision": "ae9d4f4a81bfff39602ba5695d9362ce91b0e52fd050329482bb25198c99a971",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -214,7 +214,7 @@
     },
     {
       "key": "message/invalid_password",
-      "text": "A password has 8 to 128 characters."
+      "text": "A password has 8 to 128 characters and at most 72 bytes; accented letters and symbols take more than one byte."
     },
     {
       "key": "message/invalid_session_token",
