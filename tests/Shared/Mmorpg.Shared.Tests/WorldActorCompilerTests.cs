@@ -93,9 +93,13 @@ public sealed class WorldActorCompilerTests
         var expected = WorldActorCompiler.Compile(actors, spawns);
         var mira = expected.Actors.Single(value => value.Id == "npc.city_services");
 
+        // The capabilities keep the authored order, which is the order of the menu.
+        Assert.Equal(
+            actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities.Select(value => value.Id),
+            mira.Capabilities.Select(value => value.Id));
         Assert.Equal(
             ["Quests", "Talk-to", "Trade", "Bank", "Recover", "Insure", "Craft"],
-            mira.Capabilities.Select(value => value.MenuOption));
+            actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities.Select(value => value.MenuOption));
 
         Array.Reverse(actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities);
         var reordered = WorldActorCompiler.Compile(actors, spawns);

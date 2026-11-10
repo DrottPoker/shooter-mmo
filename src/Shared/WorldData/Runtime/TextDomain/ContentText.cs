@@ -67,9 +67,8 @@ namespace Mmorpg.WorldData.Text
             return TextTable.Create(TextTableIds.Items, TextTableFormat.SourceLocale, entries);
         }
 
-        // Every World's compiled actors hold the whole actor catalog, so any of them gives the
-        // same table.
-        public static TextTableDocument FromWorldActors(WorldActorRuntimeDocument actors)
+        // The texts of the authored actor catalog. The compiled actors of a World carry none.
+        public static TextTableDocument FromWorldActors(WorldActorCatalogAuthoringDocument actors)
         {
             if (actors == null)
             {
@@ -77,11 +76,11 @@ namespace Mmorpg.WorldData.Text
             }
 
             var entries = new List<TextTableEntry>();
-            foreach (var actor in actors.Actors ?? Array.Empty<WorldActorDefinition>())
+            foreach (var actor in actors.Actors ?? Array.Empty<WorldActorAuthoringEntry>())
             {
                 Add(entries, TextKeys.ActorName(actor.Id), actor.DisplayName);
                 Add(entries, TextKeys.ActorExamine(actor.Id), actor.ExamineText);
-                foreach (var capability in actor.Capabilities ?? Array.Empty<WorldActorCapabilityDefinition>())
+                foreach (var capability in actor.Capabilities ?? Array.Empty<WorldActorCapabilityAuthoringEntry>())
                 {
                     Add(
                         entries,
@@ -94,7 +93,7 @@ namespace Mmorpg.WorldData.Text
                 }
             }
 
-            foreach (var faction in actors.Factions ?? Array.Empty<WorldActorFactionDefinition>())
+            foreach (var faction in actors.Factions ?? Array.Empty<WorldActorFactionAuthoringEntry>())
             {
                 Add(entries, TextKeys.FactionName(faction.Id), faction.DisplayName);
             }

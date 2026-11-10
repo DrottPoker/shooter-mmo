@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 8;
+        public const int Version = 9;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -489,7 +489,6 @@ namespace Mmorpg.WorldData.Actors
     public sealed class WorldActorFactionDefinition
     {
         public string Id;
-        public string DisplayName;
         public string DefaultDisposition;
         public string StructuralFingerprint;
     }
@@ -498,7 +497,6 @@ namespace Mmorpg.WorldData.Actors
     public sealed class WorldActorPresentationDefinition
     {
         public string Id;
-        public string DisplayName;
         public string ActorKind;
         public string StructuralFingerprint;
     }
@@ -593,8 +591,6 @@ namespace Mmorpg.WorldData.Actors
     public sealed class WorldActorDefinition
     {
         public string Id;
-        public string DisplayName;
-        public string ExamineText;
         public string Kind;
         public string FactionId;
         public string Disposition;
@@ -633,8 +629,6 @@ namespace Mmorpg.WorldData.Actors
     {
         public string Id;
         public string Kind;
-        public string DisplayName;
-        public string MenuOption;
         public string ProfileId;
         public string StructuralFingerprint;
     }

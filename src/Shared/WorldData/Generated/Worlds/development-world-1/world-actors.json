@@ -1,64 +1,55 @@
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "catalogId": "core",
   "worldId": "development-world-1",
-  "revision": "bd08c402844b5b99ac32a54500e2986781ea83cf7f850d63ad9799b552ce230f",
+  "revision": "6d7022265ff4798589fc8ab104cfc5606854dd5eefa115a0b23775fb432f2bce",
   "factions": [
     {
       "id": "city",
-      "displayName": "City",
       "defaultDisposition": "friendly",
-      "structuralFingerprint": "99556f7ec722091355f75345283562a70a31df855c036f1d8816a7670266bad6"
+      "structuralFingerprint": "a57329e327978d415a6f0aadb311c88bc432d841d193aa6540a74394d39560aa"
     },
     {
       "id": "wild",
-      "displayName": "Wild Creatures",
       "defaultDisposition": "hostile",
-      "structuralFingerprint": "8e2395996120cb12e098120f31c9a058c4c3c369f81d741b187034ccbbf85421"
+      "structuralFingerprint": "2bf59cc14ffcca4e838a42be765d42aa780185d85b0b4ca89ab0cb32477062e3"
     },
     {
       "id": "world",
-      "displayName": "World",
       "defaultDisposition": "neutral",
-      "structuralFingerprint": "3342a6446f8203541b7a94ef85e240cd03e3893c94a4b1cc7d5639a64123197a"
+      "structuralFingerprint": "385ba7e6c941b84ccf22f5990faaa57d4c6a79aaf74b3491d0aafb19bc9f5837"
     }
   ],
   "presentationArchetypes": [
     {
       "id": "mob.feral_alpha",
-      "displayName": "Feral Alpha",
       "actorKind": "mob",
-      "structuralFingerprint": "1e238691c16c2e1abd9cf867388b508793d0b9a0259db59e7fe343c7a17e3a32"
+      "structuralFingerprint": "0efb2e7951136c5e8e4410b7fef0630ed0280e2d33210fe33a457ed0ad492131"
     },
     {
       "id": "mob.feral_wolf",
-      "displayName": "Feral Wolf",
       "actorKind": "mob",
-      "structuralFingerprint": "176232753514d92cf6f1b1077d7b9b948a6052a09b328674afde4d39dfc0d159"
+      "structuralFingerprint": "78b5171202eaf470decff105ebc98b5017113ea33b095c654d1bb26ccff50619"
     },
     {
       "id": "npc.city_guard",
-      "displayName": "City Guard",
       "actorKind": "npc",
-      "structuralFingerprint": "d7bd6b5f3eaa72ef68f3ffd39f7a2fb96024263b9579e823eed6df654b9fbc39"
+      "structuralFingerprint": "ef03ebc585751d627198be349a1190993f42947952dbef34537ebbe5e1fe03ca"
     },
     {
       "id": "npc.city_services",
-      "displayName": "City Services",
       "actorKind": "npc",
-      "structuralFingerprint": "abebd90d0dc23559272c78292a91c140d1458b03a1e41b0b347098838d6c9528"
+      "structuralFingerprint": "1fffc4a4a8411f8461c27dc2a98d03259b1b122fc4ab2f3158f599542b0ee261"
     },
     {
       "id": "resource.iron_vein",
-      "displayName": "Iron Vein",
       "actorKind": "resource_node",
-      "structuralFingerprint": "ad236d6468e47cce6eb819fb4915ce9ceeb4127c3ff0decec2fbc13a79650267"
+      "structuralFingerprint": "7e48f821430abe393ea71d3848f70efd834e2e881835a233f56a1fc0fb9ed175"
     },
     {
       "id": "resource.oak_tree",
-      "displayName": "Oak Tree",
       "actorKind": "resource_node",
-      "structuralFingerprint": "8ba85619b28e567fb462457a511bac36779f5cadbbebb32c1174ac1404001c2c"
+      "structuralFingerprint": "e8e20d0cf69532d30b41e97713acac00905a9065ae4b5dd16163814e9e57af71"
     }
   ],
   "activityProfiles": [
@@ -216,8 +207,6 @@
   "actors": [
     {
       "id": "mob.feral_alpha",
-      "displayName": "Feral Alpha",
-      "examineText": "The leader of the pack, scarred and heavy. The other wolves follow its lead.",
       "kind": "mob",
       "factionId": "wild",
       "disposition": "hostile",
@@ -255,12 +244,10 @@
       "locomotionProfileId": "mob.large_quadruped",
       "lootProfileId": "mob.feral_alpha",
       "killCredit": "contributors",
-      "structuralFingerprint": "45163e5284090d795d1f75de70661949f571ac5a0371d37ef29892b185a57151"
+      "structuralFingerprint": "f73264395e1fc18e008bd310f8f6af72b5a2627689f18db1d8b321191feaa0c8"
     },
     {
       "id": "mob.feral_wolf",
-      "displayName": "Feral Wolf",
-      "examineText": "A lean, hungry wolf. It eyes you like a meal.",
       "kind": "mob",
       "factionId": "wild",
       "disposition": "hostile",
@@ -297,12 +284,10 @@
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
       "killCredit": "tag",
-      "structuralFingerprint": "921c0af7133920fa66eda50121717836c6dd5d2b2ad2bcce83434b349717eb41"
+      "structuralFingerprint": "d3f573fb5dcd02939432f38930bdda6e4c2a44549b2de49fb6f0258ae4b41c54"
     },
     {
       "id": "mob.grey_wolf",
-      "displayName": "Grey Wolf",
-      "examineText": "A shy grey wolf. It keeps its distance unless provoked.",
       "kind": "mob",
       "factionId": "wild",
       "disposition": "neutral",
@@ -339,12 +324,10 @@
       "locomotionProfileId": "mob.quadruped",
       "lootProfileId": "mob.feral_wolf",
       "killCredit": "tag",
-      "structuralFingerprint": "9237f0aeaabf5b4299c3fee7b948ac017319c6f0581768e58d31189efc19b792"
+      "structuralFingerprint": "cdb0ddca1adb76e24c247363fdee337703b771fa0053b2f66a625ceb862fe804"
     },
     {
       "id": "npc.city_guard",
-      "displayName": "City Guard",
-      "examineText": "A guard of the city watch. Bored, but watching.",
       "kind": "npc",
       "factionId": "city",
       "disposition": "friendly",
@@ -374,18 +357,14 @@
         {
           "id": "guard.dialogue",
           "kind": "dialogue",
-          "displayName": "Talk",
-          "menuOption": "Talk-to",
           "profileId": "",
-          "structuralFingerprint": "630a69c5ec1e9a51b736d982931b406fd9f806ed422d3b54c5c8ee293d80c42f"
+          "structuralFingerprint": "9a01e30452187ddfebf12743d7a086de9b2abe4c685da0daa2af5e6965d240f3"
         },
         {
           "id": "guard.trainer",
           "kind": "trainer",
-          "displayName": "Training",
-          "menuOption": "Train",
           "profileId": "",
-          "structuralFingerprint": "a201f552b9016562b62788aa404abaeb905dbb94ca4a540c2cbc1286248d8f31"
+          "structuralFingerprint": "2802b827523228e0fb54d46d21db6f87641ac13a2078de533db1bca709629c3f"
         }
       ],
       "activityProfileId": "",
@@ -398,12 +377,10 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "2067ecda82a8231257be27fbbed8fd2822abd3006d8c1716dd78139dcdf2c4b4"
+      "structuralFingerprint": "fc8b60a3f44c9fc45d23aa64d0565a0d4d595d925c8aa6b0b7e572b8399959ea"
     },
     {
       "id": "npc.city_services",
-      "displayName": "Mira the Quartermaster",
-      "examineText": "She keeps the city\u0027s stores, its accounts, and whatever the dead leave behind.",
       "kind": "npc",
       "factionId": "city",
       "disposition": "friendly",
@@ -433,58 +410,44 @@
         {
           "id": "services.quests",
           "kind": "quests",
-          "displayName": "Quests",
-          "menuOption": "Quests",
           "profileId": "",
-          "structuralFingerprint": "087df63df8faa498584381d1f19558952bb8f647900034bb1c679b89c0724d30"
+          "structuralFingerprint": "3c5b6d1e2f071ce91e601116f5fa37b24b8007e30011dd4e17871da1be4b0647"
         },
         {
           "id": "services.dialogue",
           "kind": "dialogue",
-          "displayName": "Talk",
-          "menuOption": "Talk-to",
           "profileId": "",
-          "structuralFingerprint": "5b1fbcf97cb6081d064e30ff2545356dc6d882aa53984b6a5771b8a7efec5951"
+          "structuralFingerprint": "03f9b590c9eeb2038ee38a43a95013443fd72164367e73ff06f57ef64e94158f"
         },
         {
           "id": "services.vendor",
           "kind": "vendor",
-          "displayName": "Trade",
-          "menuOption": "Trade",
           "profileId": "vendor.city_general_store",
-          "structuralFingerprint": "f873c3bed8f55d643cfb0182737ee561b1d2bf2cade6565953d7041428bb121a"
+          "structuralFingerprint": "40ca6facc23190b3541e95c20c452f99602994503c13713069eed4d32845d498"
         },
         {
           "id": "services.bank",
           "kind": "bank",
-          "displayName": "Character Bank",
-          "menuOption": "Bank",
           "profileId": "",
-          "structuralFingerprint": "d9ef9120e94e45c00341747255f56137e367eefe4a944a53cb26433b2535384e"
+          "structuralFingerprint": "18e88aa902647aad2b3c4861cbb11555467251387b271453134a29be6bfb179d"
         },
         {
           "id": "services.recovery",
           "kind": "recovery_storage",
-          "displayName": "Recovery Storage",
-          "menuOption": "Recover",
           "profileId": "",
-          "structuralFingerprint": "91aa4c39a391bfbf33869a8dc03078858c1e3ba913a8e78a74e58b9862ee557b"
+          "structuralFingerprint": "d17f687fcf9a339b5f3bad98ea1002e881044913257b9006d1e5d83f16baff1d"
         },
         {
           "id": "services.insurance",
           "kind": "insurance",
-          "displayName": "Insurance",
-          "menuOption": "Insure",
           "profileId": "",
-          "structuralFingerprint": "a9915ccf506ff7b11cf9da749fa0c5be00354fc9e04e25f232fbe1dfb2236e6b"
+          "structuralFingerprint": "710dd2ea25e05e4d6a2655bd3b42b268d2eca9b1ad8473072399f5be3709c615"
         },
         {
           "id": "services.crafting",
           "kind": "crafting",
-          "displayName": "Crafting",
-          "menuOption": "Craft",
           "profileId": "",
-          "structuralFingerprint": "e8558b6836eefa3000c1a8fb8d713936077f887d3c968d6d6f4176e007643a2f"
+          "structuralFingerprint": "71897d404d88a596c971ed1998cce563e72908d18d33c21f5e9ee3c9f0d5a028"
         }
       ],
       "activityProfileId": "",
@@ -497,12 +460,10 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "f3234eb7362828969fbd21392ccbcd4a8686fb61052d409f6673f208bb773f2d"
+      "structuralFingerprint": "c6e5b1071e63492b1ee5b584d660babdaa2648cfcf0841f0b9f600330969fa99"
     },
     {
       "id": "npc.outpost_sergeant",
-      "displayName": "Sergeant Hale",
-      "examineText": "The sergeant of the western outpost, weathered and watchful.",
       "kind": "npc",
       "factionId": "city",
       "disposition": "friendly",
@@ -532,10 +493,8 @@
         {
           "id": "sergeant.quests",
           "kind": "quests",
-          "displayName": "Quests",
-          "menuOption": "Quests",
           "profileId": "",
-          "structuralFingerprint": "2d42555c123921fff4a932d80b860f91aa592e73175accbf9381ad4564d6839a"
+          "structuralFingerprint": "25beefcbebe620b19bd2d20ac7aaf82ba85c73e18bf8837967990e1281e750f6"
         }
       ],
       "activityProfileId": "",
@@ -548,12 +507,10 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "fb5234c93c428064b173bbbf6b198c6d54915da6ba76c889ca317dabec717954"
+      "structuralFingerprint": "28d030a7cb68443af26179c9be0a5558aaae29bda9ae052b593ab3e5527048b0"
     },
     {
       "id": "resource.iron_vein",
-      "displayName": "Iron Vein",
-      "examineText": "A seam of iron ore runs through the rock. A pickaxe would free it.",
       "kind": "resource_node",
       "factionId": "world",
       "disposition": "neutral",
@@ -583,10 +540,8 @@
         {
           "id": "resource.mine",
           "kind": "gathering",
-          "displayName": "Mine",
-          "menuOption": "Mine",
           "profileId": "resource.iron_vein",
-          "structuralFingerprint": "81539f460583987ee875e2ff29ef9ef85da1673808900ffb7fe7d38a090ffe98"
+          "structuralFingerprint": "03b05a3de854f2a90d7f81013be32d77f2e62c484b5022b800b3e7ddfa4ec0c1"
         }
       ],
       "activityProfileId": "",
@@ -599,12 +554,10 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "ffb85eca774bdef58d9af6b3db792e686152489793842f6eba4fbf9bf8f145d2"
+      "structuralFingerprint": "0c0bb28a32c790a156826d797de595286468c123be4e0f760ad18daf49eed2ed"
     },
     {
       "id": "resource.oak_tree",
-      "displayName": "Oak Tree",
-      "examineText": "An old oak with a twisted trunk and a crown like a storm cloud. A woodcutting axe would bring it down.",
       "kind": "resource_node",
       "factionId": "world",
       "disposition": "neutral",
@@ -634,10 +587,8 @@
         {
           "id": "resource.chop",
           "kind": "gathering",
-          "displayName": "Chop",
-          "menuOption": "Chop down",
           "profileId": "resource.oak_tree",
-          "structuralFingerprint": "140af654bfea30fc9bff082414e2dc31f7cf9df0fc65872bed47607615001389"
+          "structuralFingerprint": "e9ff5bda4587f1bfe905aab89a6f3bcd4e3282bb644f31e921ee3a97f513ed0c"
         }
       ],
       "activityProfileId": "",
@@ -650,7 +601,7 @@
       "locomotionProfileId": "",
       "lootProfileId": "",
       "killCredit": "",
-      "structuralFingerprint": "37f443ad659c891a336d7f121ab19ce8db72728c628f9198acd882bdc0873ec0"
+      "structuralFingerprint": "400a5ebe60b9670595d2f2de29d720f1b1111b77cb579122d6cebda732982f3e"
     }
   ],
   "spawnSources": [

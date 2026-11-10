@@ -509,8 +509,9 @@ the servers do not read them, and the world actor and corpse messages carry ids
 only: a Mob's corpse names its actor definition, and only a character's corpse
 carries a name, the one its player chose. The compiled item catalog carries no
 text, and GameService stores none of it: a rename changes neither the catalog
-revision nor a database row. The compiled actor and quest data still carry
-their texts.
+revision nor a database row. The compiled actors of a World carry no text
+either, so the worker holds none. The compiled quest catalog still carries its
+texts.
 
 The servers send no sentence for the player either. An error, a closure, and
 the notice of a committed action carry a stable code and, where the text needs

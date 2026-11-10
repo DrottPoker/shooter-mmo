@@ -9,7 +9,7 @@ public sealed class WorldActorLoaderTests
     public void RuntimeStructuralTamperingFailsStartupValidation()
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.Actors[0].DisplayName = "Tampered Actor";
+        runtime.Actors[0].Level++;
 
         Assert.Throws<WorldActorValidationException>(
             () => WorldActorCompiler.ValidateRuntime(runtime));
