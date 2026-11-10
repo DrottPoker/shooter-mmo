@@ -103,6 +103,14 @@ jobs:
           --
           --verify
 
+      - name: Verify text tables
+        run: >-
+          dotnet run --project tools/TextTableCompiler
+          --configuration Release
+          --no-build
+          --
+          --verify
+
       - name: Verify generated realtime protocol
         run: >-
           dotnet run --project tools/ProtocolGenerator

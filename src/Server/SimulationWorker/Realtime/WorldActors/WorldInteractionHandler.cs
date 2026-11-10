@@ -66,7 +66,8 @@ internal sealed class WorldInteractionHandler(
                         false,
                         0,
                         itemStateRevision: 0,
-                        message: string.Empty,
+                        noticeCode: string.Empty,
+                        arguments: null,
                         error: new RealtimeError(
                             WorldInteractionIntentLimiter.RejectionCode,
                             "World interaction intents exceeded the per-peer rate limit.")),
@@ -96,7 +97,8 @@ internal sealed class WorldInteractionHandler(
                         false,
                         0,
                         itemStateRevision: 0,
-                        message: string.Empty,
+                        noticeCode: string.Empty,
+                        arguments: null,
                         error: new RealtimeError(
                             "world_interaction_queue_full",
                             "Too many authority operations are waiting for this peer.")),
@@ -127,7 +129,8 @@ internal sealed class WorldInteractionHandler(
                     false,
                     0,
                     itemStateRevision: 0,
-                    message: string.Empty,
+                    noticeCode: string.Empty,
+                    arguments: null,
                     error: new RealtimeError(code, message)),
                 null));
     }

@@ -490,7 +490,7 @@ public sealed class RealtimeQuestTests
                 < client.IndexOfFirst(RealtimeMessageType.WorldInteractionResult));
         var result = Assert.Single(client.WorldResults);
         Assert.True(result.Succeeded, result.Error?.Message);
-        Assert.Equal("Quest accepted.", result.Message);
+        Assert.Equal(WorldInteractionNoticeCodes.QuestAccepted, result.NoticeCode);
     }
 
     // A failed action at the NPC still tells the client to read the quest log the worker read again.

@@ -308,6 +308,7 @@ dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-buil
 dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/QuestCatalogCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/TextTableCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
 dotnet test Mmorpg.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 & .\tools\Verify-TestResults.ps1

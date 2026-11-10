@@ -55,7 +55,8 @@ public sealed record WorldActorCapabilityDispatchResult(
     bool ShouldDisconnect = false,
     WorldActorRuntimeState? GatheringNode = null,
     RealtimeOwnerItemStateChanged? ItemStateChange = null,
-    RealtimeQuestLogChanged? QuestLogChange = null);
+    RealtimeQuestLogChanged? QuestLogChange = null,
+    IReadOnlyList<RealtimeMessageArgument>? Arguments = null);
 
 public interface IWorldActorCapabilityHandler
 {

@@ -510,6 +510,13 @@ only: a Mob's corpse names its actor definition, and only a character's corpse
 carries a name, the one its player chose. The compiled catalogs still carry the
 same texts.
 
+The servers send no sentence for the player either. An error, a closure, and
+the notice of a committed action carry a stable code and, where the text needs
+them, named values, and the client shows its own text for the code from the
+messages table, which `tools/TextTableCompiler` compiles from the hand-written
+`content/text/messages.json`, as [Messages](../content/README.md#messages)
+describes. The English sentence that a server sends next to a code is for logs.
+
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless
 integer weight arithmetic, the 140 percent hard cap, the linear fixed-point

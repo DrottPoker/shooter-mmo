@@ -1,6 +1,7 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.SimulationWorker.WorldActors;
 
@@ -14,7 +15,6 @@ public sealed class GatheringWorldActorCapabilityHandler : IWorldActorCapability
 {
     private readonly CharacterItemStateStore itemStates;
     private readonly Dictionary<string, string[]> toolKindsByDefinition;
-    private readonly Dictionary<string, string> toolKindNames;
 
     public GatheringWorldActorCapabilityHandler(
         CharacterItemStateStore itemStates,
@@ -28,8 +28,6 @@ public sealed class GatheringWorldActorCapabilityHandler : IWorldActorCapability
                 definition => definition.Id,
                 definition => definition.ToolKinds ?? [],
                 StringComparer.Ordinal);
-        toolKindNames = (itemCatalog.ToolKinds ?? [])
-            .ToDictionary(kind => kind.Id, kind => kind.DisplayName, StringComparer.Ordinal);
     }
 
     public RealtimeWorldActorCapabilityKind Kind =>
@@ -78,18 +76,20 @@ public sealed class GatheringWorldActorCapabilityHandler : IWorldActorCapability
         var requiredToolKind = node.ResourceProfile.RequiredToolKind;
         if (!HoldsToolKind(itemState!, requiredToolKind))
         {
-            // The same code and message GameService gives when the tool is gone at a yield.
-            return Rejected(
+            // The same code GameService gives when the tool is gone at a yield.
+            return new WorldActorCapabilityDispatchResult(
+                false,
                 GatheringStopCodes.ToolRequired,
-                (toolKindNames.TryGetValue(requiredToolKind, out var name) ? name : requiredToolKind)
-                + " required in the Tool slot.");
+                "A tool of the kind '" + requiredToolKind + "' is required in the Tool slot.",
+                Arguments: GatheringMessageArguments.For(GatheringStopCodes.ToolRequired, requiredToolKind));
         }
 
         return new WorldActorCapabilityDispatchResult(
             true,
+            WorldInteractionNoticeCodes.GatheringStarted,
             string.Empty,
-            context.Capability.DisplayName + ".",
-            GatheringNode: node);
+            GatheringNode: node,
+            Arguments: [WorldInteractionNotices.Capability(context)]);
     }
 
     private bool HoldsToolKind(CharacterItemState itemState, string toolKind)
@@ -103,6 +103,21 @@ public sealed class GatheringWorldActorCapabilityHandler : IWorldActorCapability
     private static WorldActorCapabilityDispatchResult Rejected(string code, string message)
     {
         return new WorldActorCapabilityDispatchResult(false, code, message);
+    }
+}
+
+// The named values of the client's texts for gathering codes: the text for a missing tool
+// names the kind of tool that the node needs.
+public static class GatheringMessageArguments
+{
+    public const string ToolKind = "toolKind";
+
+    public static RealtimeMessageArgument[] For(string code, string? requiredToolKind)
+    {
+        return string.Equals(code, GatheringStopCodes.ToolRequired, StringComparison.Ordinal)
+            && TextKeys.IsValidId(requiredToolKind)
+                ? [RealtimeMessageArgument.TextKey(ToolKind, TextKeys.ToolKindName(requiredToolKind))]
+                : RealtimeMessageArgument.None;
     }
 }
 

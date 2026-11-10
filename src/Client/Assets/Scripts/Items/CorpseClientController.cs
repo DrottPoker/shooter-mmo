@@ -27,6 +27,8 @@ namespace Mmorpg.Client.Items
 
         public CorpseClientState State { get; } = new CorpseClientState();
 
+        private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
         public void Initialize(
             IRealtimeCorpseChannel realtimeClient,
             IInventoryOperationQueue inventory,
@@ -38,6 +40,7 @@ namespace Mmorpg.Client.Items
             }
 
             State.UseTexts(texts);
+            messageTexts = texts;
 
             if (initialized)
             {
@@ -1030,7 +1033,7 @@ namespace Mmorpg.Client.Items
                     result.Succeeded,
                     result.Succeeded
                         ? null
-                        : new InventoryClientError(result.Error.Code, result.Error.Message),
+                        : InventoryClientError.FromServer(result.Error, messageTexts),
                     result.RequiresInventoryRefresh,
                     result.CarryState.ItemStateRevision);
             }

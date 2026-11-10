@@ -184,7 +184,8 @@ public sealed class RealtimeWorldActorProtocolTests
             false,
             3,
             itemStateRevision: 0,
-            message: string.Empty,
+            noticeCode: string.Empty,
+            arguments: null,
             error: new RealtimeError(
                 "world_interaction_capability_deferred",
                 "This capability handler is not implemented in Phase 12."));
@@ -203,7 +204,8 @@ public sealed class RealtimeWorldActorProtocolTests
             true,
             3,
             15,
-            "Insurance applied.",
+            "insurance_applied",
+            [RealtimeMessageArgument.TextKey("capability", "actor/npc.insurer/capability/insurer.insurance/name")],
             null!);
         Assert.True(
             RealtimeProtocol.TryDecodeWorldInteractionResult(
@@ -211,7 +213,11 @@ public sealed class RealtimeWorldActorProtocolTests
                 out var decodedCommitted,
                 out error),
             error);
-        Assert.Equal("Insurance applied.", decodedCommitted.Message);
+        Assert.Equal("insurance_applied", decodedCommitted.NoticeCode);
+        var argument = Assert.Single(decodedCommitted.Arguments);
+        Assert.Equal("capability", argument.Name);
+        Assert.Equal(RealtimeMessageArgumentKind.TextKey, argument.Kind);
+        Assert.Equal("actor/npc.insurer/capability/insurer.insurance/name", argument.Value);
         Assert.Equal(15, decodedCommitted.ItemStateRevision);
 
         var closed = new RealtimeWorldInteractionClosed(
@@ -278,7 +284,8 @@ public sealed class RealtimeWorldActorProtocolTests
             true,
             1,
             itemStateRevision: 0,
-            message: string.Empty,
+            noticeCode: string.Empty,
+            arguments: null,
             error: null!);
         Assert.Throws<ArgumentException>(
             () => RealtimeProtocol.EncodeWorldInteractionResult(invalidResult));

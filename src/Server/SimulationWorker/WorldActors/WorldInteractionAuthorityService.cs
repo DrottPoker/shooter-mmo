@@ -230,7 +230,8 @@ public sealed class WorldInteractionAuthorityService(
                     true,
                     actor.InteractionRevision,
                     itemStateRevision: 0,
-                    message: string.Empty,
+                    noticeCode: string.Empty,
+                    arguments: null,
                     error: null!),
                 new RealtimeWorldInteractionClosed(
                     intent.InteractionSessionId,
@@ -297,7 +298,8 @@ public sealed class WorldInteractionAuthorityService(
                 dispatch.Succeeded,
                 actor.InteractionRevision,
                 dispatch.ItemStateRevision,
-                dispatch.Succeeded ? dispatch.Message : string.Empty,
+                dispatch.Succeeded ? dispatch.Code : string.Empty,
+                dispatch.Arguments?.ToArray(),
                 dispatch.Succeeded
                     ? null!
                     : new RealtimeError(dispatch.Code, dispatch.Message)),
@@ -379,7 +381,8 @@ public sealed class WorldInteractionAuthorityService(
                 false,
                 actor.InteractionRevision,
                 itemStateRevision: 0,
-                message: string.Empty,
+                noticeCode: string.Empty,
+                arguments: null,
                 error: new RealtimeError(code, message)),
             new RealtimeWorldInteractionClosed(
                 intent.InteractionSessionId,
@@ -405,7 +408,8 @@ public sealed class WorldInteractionAuthorityService(
                 false,
                 targetRevision,
                 itemStateRevision: 0,
-                message: string.Empty,
+                noticeCode: string.Empty,
+                arguments: null,
                 error: new RealtimeError(code, message)),
             null);
     }

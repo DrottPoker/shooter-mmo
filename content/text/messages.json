@@ -1,0 +1,510 @@
+{
+  "formatVersion": 1,
+  "tableId": "messages",
+  "entries": [
+    {
+      "key": "message-unlisted/text",
+      "text": "That did not work. [{code}]"
+    },
+    {
+      "key": "message/account_already_exists",
+      "text": "That email or username is already used."
+    },
+    {
+      "key": "message/account_character_already_active",
+      "text": "Another character on this account is already in the world."
+    },
+    {
+      "key": "message/account_not_found",
+      "text": "The account was not found."
+    },
+    {
+      "key": "message/account_session_replaced",
+      "text": "This account logged in from another client."
+    },
+    {
+      "key": "message/ammunition_not_equipped",
+      "text": "No fitting ammunition is equipped."
+    },
+    {
+      "key": "message/appearance_change_in_flight",
+      "text": "The last change of the look is still being saved."
+    },
+    {
+      "key": "message/auth_service_timeout",
+      "text": "The game service did not answer in time. Try again shortly."
+    },
+    {
+      "key": "message/auth_service_unavailable",
+      "text": "The game service cannot be reached right now. Try again shortly."
+    },
+    {
+      "key": "message/bag_not_empty",
+      "text": "Empty the Bag first."
+    },
+    {
+      "key": "message/bag_state_changed",
+      "text": "The Bag changed before the move. Try again."
+    },
+    {
+      "key": "message/carry_weight_limit_exceeded",
+      "text": "That is more than the character can carry."
+    },
+    {
+      "key": "message/character_already_active",
+      "text": "This character is already in the world."
+    },
+    {
+      "key": "message/character_limit_reached",
+      "text": "This account already has the maximum number of characters."
+    },
+    {
+      "key": "message/character_name_taken",
+      "text": "That character name is already taken."
+    },
+    {
+      "key": "message/character_not_found",
+      "text": "The character was not found."
+    },
+    {
+      "key": "message/combat_character_dead",
+      "text": "The character died."
+    },
+    {
+      "key": "message/combat_intent_rate_limited",
+      "text": "Slow down a little."
+    },
+    {
+      "key": "message/combat_player_versus_player_disabled",
+      "text": "This shard does not allow attacking other characters."
+    },
+    {
+      "key": "message/combat_target_dead",
+      "text": "The target is dead."
+    },
+    {
+      "key": "message/combat_target_not_attackable",
+      "text": "The target cannot be attacked."
+    },
+    {
+      "key": "message/combat_target_not_found",
+      "text": "The target is not in view."
+    },
+    {
+      "key": "message/combat_target_self",
+      "text": "You cannot attack yourself."
+    },
+    {
+      "key": "message/corpse_emptied",
+      "text": "The corpse is empty."
+    },
+    {
+      "key": "message/corpse_expired",
+      "text": "The corpse is gone."
+    },
+    {
+      "key": "message/corpse_invalidated",
+      "text": "The corpse is no longer available."
+    },
+    {
+      "key": "message/corpse_not_found",
+      "text": "The corpse is no longer there."
+    },
+    {
+      "key": "message/corpse_not_lootable",
+      "text": "Another player tagged this Mob, so only they may loot it."
+    },
+    {
+      "key": "message/corpse_operation_failed",
+      "text": "The corpse action could not be completed. Try again."
+    },
+    {
+      "key": "message/corpse_out_of_range",
+      "text": "Move closer to the corpse."
+    },
+    {
+      "key": "message/corpse_state_changed",
+      "text": "The corpse changed. Open it again."
+    },
+    {
+      "key": "message/corpse_view_not_open",
+      "text": "Open the corpse first."
+    },
+    {
+      "key": "message/currency_insufficient",
+      "text": "You do not have enough Gold."
+    },
+    {
+      "key": "message/currency_limit_exceeded",
+      "text": "You cannot hold that much Gold."
+    },
+    {
+      "key": "message/email_already_used",
+      "text": "That email is already registered."
+    },
+    {
+      "key": "message/equipment_level_requirement_not_met",
+      "text": "The character's level is too low for that item."
+    },
+    {
+      "key": "message/equipment_slot_blocked",
+      "text": "Another worn item blocks that slot."
+    },
+    {
+      "key": "message/equipment_slot_incompatible",
+      "text": "The item cannot be worn there."
+    },
+    {
+      "key": "message/equipment_slot_occupied",
+      "text": "That equipment slot is taken."
+    },
+    {
+      "key": "message/gathering_failed",
+      "text": "Gathering could not continue. Try again."
+    },
+    {
+      "key": "message/gathering_interrupted",
+      "text": "Gathering stopped."
+    },
+    {
+      "key": "message/gathering_started",
+      "text": "{capability}."
+    },
+    {
+      "key": "message/gathering_tool_required",
+      "text": "{toolKind} required in the Tool slot."
+    },
+    {
+      "key": "message/gathering_unavailable",
+      "text": "Gathering is not available right now."
+    },
+    {
+      "key": "message/insurance_applied",
+      "text": "Insurance applied. It covers one death."
+    },
+    {
+      "key": "message/insurance_removed",
+      "text": "Insurance removed."
+    },
+    {
+      "key": "message/interaction_opened",
+      "text": "{capability} is open."
+    },
+    {
+      "key": "message/invalid_character_appearance",
+      "text": "That look is not available."
+    },
+    {
+      "key": "message/invalid_character_name",
+      "text": "A character name has 3 to 24 letters, numbers, single spaces, hyphens, and underscores."
+    },
+    {
+      "key": "message/invalid_credentials",
+      "text": "The login or the password is incorrect."
+    },
+    {
+      "key": "message/invalid_email",
+      "text": "Enter a valid email address."
+    },
+    {
+      "key": "message/invalid_login",
+      "text": "Enter your login and your password."
+    },
+    {
+      "key": "message/invalid_password",
+      "text": "A password has 8 to 128 characters."
+    },
+    {
+      "key": "message/invalid_session_token",
+      "text": "Your login has expired. Log in again."
+    },
+    {
+      "key": "message/invalid_ticket",
+      "text": "Entering the world took too long. Try again."
+    },
+    {
+      "key": "message/invalid_username",
+      "text": "A username has 3 to 32 letters, numbers, and underscores."
+    },
+    {
+      "key": "message/inventory_full",
+      "text": "There is no room for the items."
+    },
+    {
+      "key": "message/item_already_looted",
+      "text": "That item is no longer on the corpse."
+    },
+    {
+      "key": "message/item_destroy_forbidden",
+      "text": "That item cannot be destroyed."
+    },
+    {
+      "key": "message/item_not_found",
+      "text": "That item is no longer there."
+    },
+    {
+      "key": "message/item_not_owned",
+      "text": "That item is not yours."
+    },
+    {
+      "key": "message/item_operation_failed",
+      "text": "The item action could not be completed. Try again."
+    },
+    {
+      "key": "message/item_operation_queue_full",
+      "text": "Too many actions are waiting. Try again shortly."
+    },
+    {
+      "key": "message/item_policy_not_found",
+      "text": "The item has no active insurance."
+    },
+    {
+      "key": "message/item_policy_restricted",
+      "text": "A protection on the item does not allow that."
+    },
+    {
+      "key": "message/item_quantity_changed",
+      "text": "The amount changed before the move. Try again."
+    },
+    {
+      "key": "message/item_slot_incompatible",
+      "text": "The item does not fit there."
+    },
+    {
+      "key": "message/item_slot_occupied",
+      "text": "That slot is taken."
+    },
+    {
+      "key": "message/item_stack_incompatible",
+      "text": "Those items do not stack."
+    },
+    {
+      "key": "message/item_stack_limit_exceeded",
+      "text": "That slot cannot hold that many."
+    },
+    {
+      "key": "message/item_state_conflict",
+      "text": "Your items changed before the move. Try again."
+    },
+    {
+      "key": "message/item_transaction_timeout",
+      "text": "The item action took too long. Try again."
+    },
+    {
+      "key": "message/join_failed",
+      "text": "The shard could not let the character in. Try again."
+    },
+    {
+      "key": "message/join_timeout",
+      "text": "The shard did not answer in time. Try again."
+    },
+    {
+      "key": "message/leave_failed",
+      "text": "The shard could not let the character leave. Try again."
+    },
+    {
+      "key": "message/quest_abandoned",
+      "text": "Quest abandoned."
+    },
+    {
+      "key": "message/quest_accepted",
+      "text": "Quest accepted."
+    },
+    {
+      "key": "message/quest_already_active",
+      "text": "You already have that quest."
+    },
+    {
+      "key": "message/quest_already_completed",
+      "text": "You have already completed that quest."
+    },
+    {
+      "key": "message/quest_completed",
+      "text": "Quest completed."
+    },
+    {
+      "key": "message/quest_intent_failed",
+      "text": "The quest action could not be completed. Try again."
+    },
+    {
+      "key": "message/quest_intent_queue_full",
+      "text": "Too many actions are waiting. Try again shortly."
+    },
+    {
+      "key": "message/quest_item_not_needed",
+      "text": "Your quests do not need that."
+    },
+    {
+      "key": "message/quest_items_delivered",
+      "text": "Items handed over."
+    },
+    {
+      "key": "message/quest_items_missing",
+      "text": "You do not carry enough of what the quest asks for."
+    },
+    {
+      "key": "message/quest_items_regranted",
+      "text": "You have the quest's items again."
+    },
+    {
+      "key": "message/quest_kill_counted",
+      "text": "Kill counted."
+    },
+    {
+      "key": "message/quest_level_too_low",
+      "text": "The character's level is too low for that quest."
+    },
+    {
+      "key": "message/quest_log_full",
+      "text": "Your quest log is full."
+    },
+    {
+      "key": "message/quest_log_unavailable",
+      "text": "Your quest log could not be read. Try again shortly."
+    },
+    {
+      "key": "message/quest_not_active",
+      "text": "You do not have that quest."
+    },
+    {
+      "key": "message/quest_not_found",
+      "text": "That quest does not exist."
+    },
+    {
+      "key": "message/quest_not_ready",
+      "text": "The quest is not ready to turn in."
+    },
+    {
+      "key": "message/quest_objective_complete",
+      "text": "That objective is already complete."
+    },
+    {
+      "key": "message/quest_objective_completed",
+      "text": "Objective complete."
+    },
+    {
+      "key": "message/quest_requirements_not_met",
+      "text": "Another quest must be completed first."
+    },
+    {
+      "key": "message/quest_reward_choice_invalid",
+      "text": "The quest does not offer that reward."
+    },
+    {
+      "key": "message/quest_reward_choice_required",
+      "text": "Choose one of the rewards."
+    },
+    {
+      "key": "message/recovery_access_required",
+      "text": "Recovery Storage only gives items back."
+    },
+    {
+      "key": "message/recovery_delivery_not_found",
+      "text": "That delivery is no longer in Recovery Storage."
+    },
+    {
+      "key": "message/resource_node_depleted",
+      "text": "Nothing is left to gather here."
+    },
+    {
+      "key": "message/session_expired",
+      "text": "The connection to the shard was lost for too long."
+    },
+    {
+      "key": "message/session_missing",
+      "text": "The character is no longer in the world."
+    },
+    {
+      "key": "message/session_reconnected",
+      "text": "This character connected from another client."
+    },
+    {
+      "key": "message/session_revoked",
+      "text": "The character is no longer in the world."
+    },
+    {
+      "key": "message/shard_not_found",
+      "text": "That shard was not found."
+    },
+    {
+      "key": "message/simulation_session_changed",
+      "text": "The character entered the world from another client. Try again."
+    },
+    {
+      "key": "message/udp_rate_limited",
+      "text": "The connection sent too much at once and was closed."
+    },
+    {
+      "key": "message/username_already_used",
+      "text": "That username is already taken."
+    },
+    {
+      "key": "message/vendor_offer_unavailable",
+      "text": "The vendor does not sell that."
+    },
+    {
+      "key": "message/vendor_price_changed",
+      "text": "The price changed. Look at it again."
+    },
+    {
+      "key": "message/vendor_purchased",
+      "text": "Purchased."
+    },
+    {
+      "key": "message/vendor_sold",
+      "text": "Sold."
+    },
+    {
+      "key": "message/vendor_unavailable",
+      "text": "The vendor is not available."
+    },
+    {
+      "key": "message/vendor_will_not_buy",
+      "text": "The vendor does not buy that."
+    },
+    {
+      "key": "message/world_actor_not_found",
+      "text": "That is no longer there."
+    },
+    {
+      "key": "message/world_actor_unavailable",
+      "text": "That is not available right now."
+    },
+    {
+      "key": "message/world_interaction_capability_deferred",
+      "text": "That is not available yet."
+    },
+    {
+      "key": "message/world_interaction_capability_unavailable",
+      "text": "That is not available to you."
+    },
+    {
+      "key": "message/world_interaction_closed",
+      "text": "The interaction closed."
+    },
+    {
+      "key": "message/world_interaction_failed",
+      "text": "That could not be completed. Try again."
+    },
+    {
+      "key": "message/world_interaction_line_of_sight_blocked",
+      "text": "Something is in the way."
+    },
+    {
+      "key": "message/world_interaction_out_of_range",
+      "text": "Move closer."
+    },
+    {
+      "key": "message/world_interaction_queue_full",
+      "text": "Too many actions are waiting. Try again shortly."
+    },
+    {
+      "key": "message/world_interaction_rate_limited",
+      "text": "Slow down a little."
+    },
+    {
+      "key": "message/world_interaction_target_changed",
+      "text": "That changed. Try again."
+    }
+  ]
+}

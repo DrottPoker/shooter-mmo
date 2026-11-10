@@ -1,6 +1,8 @@
 using System.Text;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Ui
 {
@@ -127,9 +129,9 @@ namespace Mmorpg.Client.Ui
             return null;
         }
 
-        // The message of a refused or failed request with its stable code; a request that never
-        // reached GameService names the address it tried.
-        public static string ErrorText(ApiError error, string gameServiceBaseUrl)
+        // The client's text for the code of a refused request; a request that never reached
+        // GameService names the address it tried.
+        public static string ErrorText(ApiError error, string gameServiceBaseUrl, TextCatalog texts)
         {
             if (error == null)
             {
@@ -142,12 +144,21 @@ namespace Mmorpg.Client.Ui
                     + error.Code + "]";
             }
 
-            return error.Message + " [" + error.Code + "]";
+            return ClientMessages.Text(texts, error);
         }
 
-        public static string ErrorText(RealtimeClientError error)
+        // A refusal by the worker shows the client's text for its code. A failure that the
+        // client found itself keeps its own explanation and code.
+        public static string ErrorText(RealtimeClientError error, TextCatalog texts)
         {
-            return error != null ? error.ToDisplayMessage() : string.Empty;
+            if (error == null)
+            {
+                return string.Empty;
+            }
+
+            return error.Kind == RealtimeClientErrorKind.Server
+                ? ClientMessages.Text(texts, error.Code, error.Message)
+                : error.ToDisplayMessage();
         }
 
         public static string ConnectionLine(string gameServiceBaseUrl, int requestTimeoutSeconds, int realtimeTimeoutSeconds)

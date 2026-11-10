@@ -111,7 +111,11 @@ namespace Mmorpg.SharedTests
                     succeeded: true,
                     targetRevision: 4,
                     error: null,
-                    message: "Farväl ✓",
+                    noticeCode: "interaction_opened",
+                    arguments: new[]
+                    {
+                        RealtimeMessageArgument.TextKey("capability", "actor/npc.smed/capability/smith.trade/name")
+                    },
                     itemStateRevision: 0)));
             r.Vector(
                 "WorldActors/WorldInteractionResult/capability succeeded",
@@ -123,7 +127,8 @@ namespace Mmorpg.SharedTests
                     succeeded: true,
                     targetRevision: long.MaxValue,
                     error: null,
-                    message: "",
+                    noticeCode: "",
+                    arguments: null,
                     itemStateRevision: 77)));
             r.Vector(
                 "WorldActors/WorldInteractionResult/open failed",
@@ -135,10 +140,11 @@ namespace Mmorpg.SharedTests
                     succeeded: false,
                     targetRevision: 0,
                     error: new RealtimeError("interaction_out_of_range", "Move closer to talk."),
-                    message: "",
+                    noticeCode: "",
+                    arguments: null,
                     itemStateRevision: 0)));
             r.Vector(
-                "WorldActors/WorldInteractionResult/capability failed with message",
+                "WorldActors/WorldInteractionResult/capability failed with arguments",
                 result,
                 () => RealtimeProtocol.EncodeWorldInteractionResult(new RealtimeWorldInteractionResult(
                     operationId: G(7),
@@ -146,8 +152,13 @@ namespace Mmorpg.SharedTests
                     operationKind: RealtimeWorldInteractionOperationKind.CapabilityAction,
                     succeeded: false,
                     targetRevision: 4,
-                    error: new RealtimeError("insurance_unavailable", "Insurance is not offered."),
-                    message: " ",
+                    error: new RealtimeError("gathering_tool_required", "A tool of the kind 'pickaxe' is required."),
+                    noticeCode: null,
+                    arguments: new[]
+                    {
+                        RealtimeMessageArgument.TextKey("toolKind", "tool-kind/pickaxe/name"),
+                        RealtimeMessageArgument.Text("level", "12 ✓")
+                    },
                     itemStateRevision: 12)));
             r.Vector(
                 "WorldActors/WorldInteractionClosed/typical",
@@ -337,7 +348,18 @@ namespace Mmorpg.SharedTests
                     ActorEntityId,
                     G(6),
                     "resource_node_depleted",
-                    "Ådern är tom ✓")));
+                    "Ådern är tom ✓",
+                    RealtimeMessageArgument.None)));
+            r.Vector(
+                "WorldActors/GatheringState/stopped with an argument",
+                gathering,
+                () => RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateStopped(
+                    G(9),
+                    ActorEntityId,
+                    G(6),
+                    "gathering_tool_required",
+                    "A tool of the kind 'pickaxe' is required.",
+                    new[] { RealtimeMessageArgument.TextKey("toolKind", "tool-kind/pickaxe/name") })));
         }
 
         private static void RegisterWorldActorPresenceCases(Registry r)
@@ -872,14 +894,59 @@ namespace Mmorpg.SharedTests
                 OpenedWire(capabilities: new[] { CapabilityWire(), CapabilityWire() }));
 
             r.Accepts("WorldActors/WorldInteractionResult/close baseline", InteractionResultWire());
-            r.Accepts("WorldActors/WorldInteractionResult/empty message", InteractionResultWire(message: ""));
-            r.Accepts("WorldActors/WorldInteractionResult/whitespace message", InteractionResultWire(message: "  "));
-            r.Accepts("WorldActors/WorldInteractionResult/512 character message", InteractionResultWire(message: Repeat("m", 512)));
-            r.Rejects("WorldActors/WorldInteractionResult/513 character message", InteractionResultWire(message: Repeat("m", 513)));
-            r.Rejects("WorldActors/WorldInteractionResult/invalid UTF-8 message", InteractionResultWire(message: WireText.Raw(0xFF)));
+            r.Accepts("WorldActors/WorldInteractionResult/empty notice code", InteractionResultWire(noticeCode: ""));
+            r.Accepts("WorldActors/WorldInteractionResult/64 character notice code", InteractionResultWire(noticeCode: Repeat("n", 64)));
+            r.Rejects("WorldActors/WorldInteractionResult/65 character notice code", InteractionResultWire(noticeCode: Repeat("n", 65)));
+            r.Rejects("WorldActors/WorldInteractionResult/invalid UTF-8 notice code", InteractionResultWire(noticeCode: WireText.Raw(0xFF)));
             r.Rejects(
-                "WorldActors/WorldInteractionResult/message length above four bytes per character",
-                InteractionResultWire(message: WireText.Declared(2049, 0x6D)));
+                "WorldActors/WorldInteractionResult/notice code length above four bytes per character",
+                InteractionResultWire(noticeCode: WireText.Declared(257, 0x6E)));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/failure with notice code",
+                InteractionResultWire(succeeded: 0, noticeCode: "quest_accepted", error: ErrorFragment("code", "message")));
+            r.Accepts(
+                "WorldActors/WorldInteractionResult/four arguments",
+                InteractionResultWire(arguments: new[]
+                {
+                    MessageArgumentWire("a", 1, "1"),
+                    MessageArgumentWire("b", 2, "tool-kind/pickaxe/name"),
+                    MessageArgumentWire("toolKind2", 1, Repeat("v", 384)),
+                    MessageArgumentWire(Repeat("n", 32), 2, "x")
+                }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/five arguments",
+                InteractionResultWire(arguments: new[]
+                {
+                    MessageArgumentWire("a", 1, "1"),
+                    MessageArgumentWire("b", 1, "1"),
+                    MessageArgumentWire("c", 1, "1"),
+                    MessageArgumentWire("d", 1, "1"),
+                    MessageArgumentWire("e", 1, "1")
+                }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/two arguments with one name",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("a", 1, "1"), MessageArgumentWire("a", 1, "2") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/argument kind 0",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("a", 0, "1") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/argument kind 3",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("a", 3, "1") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/argument name with a dash",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("tool-kind", 1, "1") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/argument name that starts with a digit",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("1a", 1, "1") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/33 character argument name",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire(Repeat("n", 33), 1, "1") }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/385 character argument value",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("a", 1, Repeat("v", 385)) }));
+            r.Rejects(
+                "WorldActors/WorldInteractionResult/whitespace argument value",
+                InteractionResultWire(arguments: new[] { MessageArgumentWire("a", 1, " ") }));
             r.Accepts(
                 "WorldActors/WorldInteractionResult/open failure",
                 InteractionResultWire(
@@ -962,8 +1029,30 @@ namespace Mmorpg.SharedTests
                 () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(
                     error: new RealtimeError("code", "message"))));
             r.RejectsEncode(
-                "WorldActors/WorldInteractionResult/513 character message",
-                () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(message: Repeat("m", 513))));
+                "WorldActors/WorldInteractionResult/65 character notice code",
+                () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(noticeCode: Repeat("n", 65))));
+            r.RejectsEncode(
+                "WorldActors/WorldInteractionResult/failure with notice code",
+                () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(
+                    succeeded: false,
+                    error: new RealtimeError("code", "message"),
+                    noticeCode: "quest_accepted")));
+            r.RejectsEncode(
+                "WorldActors/WorldInteractionResult/five arguments",
+                () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(arguments: new[]
+                {
+                    RealtimeMessageArgument.Text("a", "1"),
+                    RealtimeMessageArgument.Text("b", "1"),
+                    RealtimeMessageArgument.Text("c", "1"),
+                    RealtimeMessageArgument.Text("d", "1"),
+                    RealtimeMessageArgument.Text("e", "1")
+                })));
+            r.RejectsEncode(
+                "WorldActors/WorldInteractionResult/argument name with a dash",
+                () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(arguments: new[]
+                {
+                    RealtimeMessageArgument.Text("tool-kind", "1")
+                })));
             r.RejectsEncode(
                 "WorldActors/WorldInteractionResult/negative item state revision",
                 () => RealtimeProtocol.EncodeWorldInteractionResult(InteractionResultModel(itemStateRevision: -1)));
@@ -995,13 +1084,44 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/GatheringState/yielded negative item revision", GatheringStateWire(2, YieldedPayload(itemStateRevision: -1)));
             r.Accepts(
                 "WorldActors/GatheringState/stopped baseline",
+                GatheringStateWire(3, Wire.Fragment().Text("gathering_interrupted").Text("Moved away.").U8(0)));
+            r.Accepts(
+                "WorldActors/GatheringState/stopped with an argument",
+                GatheringStateWire(
+                    3,
+                    MessageArgumentsWire(
+                        Wire.Fragment().Text("gathering_tool_required").Text("A tool is required."),
+                        new[] { MessageArgumentWire("toolKind", 2, "tool-kind/pickaxe/name") })));
+            r.Rejects(
+                "WorldActors/GatheringState/stopped with five arguments",
+                GatheringStateWire(
+                    3,
+                    MessageArgumentsWire(
+                        Wire.Fragment().Text("gathering_tool_required").Text("A tool is required."),
+                        new[]
+                        {
+                            MessageArgumentWire("a", 1, "1"),
+                            MessageArgumentWire("b", 1, "1"),
+                            MessageArgumentWire("c", 1, "1"),
+                            MessageArgumentWire("d", 1, "1"),
+                            MessageArgumentWire("e", 1, "1")
+                        })));
+            r.Rejects(
+                "WorldActors/GatheringState/stopped with two arguments with one name",
+                GatheringStateWire(
+                    3,
+                    MessageArgumentsWire(
+                        Wire.Fragment().Text("gathering_tool_required").Text("A tool is required."),
+                        new[] { MessageArgumentWire("a", 1, "1"), MessageArgumentWire("a", 1, "2") })));
+            r.Rejects(
+                "WorldActors/GatheringState/stopped without an argument count",
                 GatheringStateWire(3, Wire.Fragment().Text("gathering_interrupted").Text("Moved away.")));
             r.Rejects(
                 "WorldActors/GatheringState/stopped whitespace code",
-                GatheringStateWire(3, Wire.Fragment().Text(" ").Text("Moved away.")));
+                GatheringStateWire(3, Wire.Fragment().Text(" ").Text("Moved away.").U8(0)));
             r.Rejects(
                 "WorldActors/GatheringState/stopped 65 character code",
-                GatheringStateWire(3, Wire.Fragment().Text(Repeat("c", 65)).Text("Moved away.")));
+                GatheringStateWire(3, Wire.Fragment().Text(Repeat("c", 65)).Text("Moved away.").U8(0)));
 
             r.RejectsEncode("WorldActors/GatheringState/null", () => RealtimeProtocol.EncodeGatheringState(null));
             r.RejectsEncode(
@@ -1010,7 +1130,11 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "WorldActors/GatheringState/stopped whitespace message",
                 () => RealtimeProtocol.EncodeGatheringState(
-                    RealtimeGatheringState.CreateStopped(G(9), ActorEntityId, G(6), "code", " ")));
+                    RealtimeGatheringState.CreateStopped(G(9), ActorEntityId, G(6), "code", " ", RealtimeMessageArgument.None)));
+            r.RejectsEncode(
+                "WorldActors/GatheringState/stopped without arguments",
+                () => RealtimeProtocol.EncodeGatheringState(
+                    RealtimeGatheringState.CreateStopped(G(9), ActorEntityId, G(6), "code", "message", null)));
 
             Wire YieldedPayload(
                 int cycle = 3000,
@@ -1092,7 +1216,8 @@ namespace Mmorpg.SharedTests
             RealtimeWorldInteractionOperationKind operationKind = RealtimeWorldInteractionOperationKind.Close,
             bool succeeded = true,
             RealtimeError error = null,
-            string message = "Farväl",
+            string noticeCode = null,
+            RealtimeMessageArgument[] arguments = null,
             long itemStateRevision = 0)
         {
             return new RealtimeWorldInteractionResult(
@@ -1102,7 +1227,8 @@ namespace Mmorpg.SharedTests
                 succeeded: succeeded,
                 targetRevision: 4,
                 error: error,
-                message: message,
+                noticeCode: noticeCode ?? (succeeded ? "quest_accepted" : string.Empty),
+                arguments: arguments,
                 itemStateRevision: itemStateRevision);
         }
 
@@ -1327,18 +1453,37 @@ namespace Mmorpg.SharedTests
             byte succeeded = 1,
             long targetRevision = 4,
             long itemStateRevision = 0,
-            WireText message = null,
+            WireText noticeCode = null,
+            Wire[] arguments = null,
             Wire error = null)
         {
-            return Wire.Message(RealtimeMessageType.WorldInteractionResult)
+            var wire = Wire.Message(RealtimeMessageType.WorldInteractionResult)
                 .Guid(operationId ?? G(7))
                 .Guid(interactionSessionId ?? G(9))
                 .U8(operationKind)
                 .U8(succeeded)
                 .I64(targetRevision)
                 .I64(itemStateRevision)
-                .Text(message ?? "Farväl")
-                .Append(error ?? Wire.Fragment());
+                .Text(noticeCode ?? (succeeded != 0 ? "quest_accepted" : string.Empty));
+            return MessageArgumentsWire(wire, arguments).Append(error ?? Wire.Fragment());
+        }
+
+        // The named values of a message: a count and, for each, its name, kind, and value.
+        private static Wire MessageArgumentsWire(Wire wire, Wire[] arguments)
+        {
+            arguments = arguments ?? new Wire[0];
+            wire.U8((byte)arguments.Length);
+            foreach (var argument in arguments)
+            {
+                wire.Append(argument);
+            }
+
+            return wire;
+        }
+
+        private static Wire MessageArgumentWire(WireText name, byte kind, WireText value)
+        {
+            return Wire.Fragment().Text(name).U8(kind).Text(value);
         }
 
         private static Wire InteractionClosedWire(

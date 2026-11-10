@@ -9,6 +9,8 @@ namespace Mmorpg.WorldData.Text
     {
         public const char Separator = '/';
 
+        private const string MessageRoot = "message";
+
         public static string ItemName(string definitionId)
         {
             return Join("item", definitionId, "name");
@@ -109,6 +111,25 @@ namespace Mmorpg.WorldData.Text
         public static string QuestObjectiveLine(string questId, string stepId, string objectiveId)
         {
             return Join("quest", questId, "step", stepId, "objective", objectiveId, "line");
+        }
+
+        // The text for a code that a server sends: an error, a closure, or a notice.
+        public static string Message(string code)
+        {
+            return Join(MessageRoot, code);
+        }
+
+        // The text for a code that has no text of its own. It names the code as {code}.
+        public static string UnlistedMessage()
+        {
+            return Join("message-unlisted", "text");
+        }
+
+        public static bool IsMessage(string key)
+        {
+            return IsValid(key)
+                && key.StartsWith(MessageRoot + Separator, StringComparison.Ordinal)
+                && key.IndexOf(Separator, MessageRoot.Length + 1) < 0;
         }
 
         // A key has at least two segments, and every segment is made of lowercase letters,

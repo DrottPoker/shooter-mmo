@@ -35,36 +35,29 @@ namespace Mmorpg.Client.Items
     // so a real invalidation is never hidden.
     public static class CorpseViewClosureRule
     {
-        public static CorpseViewClosure Classify(string code, string message)
+        // The text is the client's text for the code.
+        public static CorpseViewClosure Classify(string code, string text)
         {
             switch (code)
             {
                 case RealtimeCorpseViewClosureCodes.ViewClosed:
                     return Expected(string.Empty);
                 case RealtimeCorpseViewClosureCodes.Emptied:
-                    return Expected(NoticeOrDefault(message, "The corpse is empty."));
                 case RealtimeCorpseViewClosureCodes.Expired:
-                    return Expected(NoticeOrDefault(message, "The corpse expired."));
                 case RealtimeCorpseViewClosureCodes.NotLootable:
-                    return Expected(NoticeOrDefault(message, "Another player tagged this Mob, so only they may loot it."));
                 case RealtimeCombatErrorCodes.CharacterDead:
-                    return Expected(NoticeOrDefault(message, "The character died."));
+                    return Expected(text);
                 default:
                     return new CorpseViewClosure(
                         CorpseViewClosureKind.Failure,
                         string.Empty,
-                        new CorpseClientError(code, message));
+                        new CorpseClientError(code, text));
             }
         }
 
         private static CorpseViewClosure Expected(string notice)
         {
             return new CorpseViewClosure(CorpseViewClosureKind.Expected, notice, null);
-        }
-
-        private static string NoticeOrDefault(string message, string fallback)
-        {
-            return string.IsNullOrWhiteSpace(message) ? fallback : message;
         }
     }
 }

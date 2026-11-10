@@ -24,6 +24,7 @@ namespace Mmorpg.Client.App
     {
         private string previousSceneName;
         private ApiClient apiClient;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private Coroutine accountSessionMonitor;
         private AsyncOperationHandle<ClientConfig> configHandle;
         private RealtimeSimulationClient simulationClient;
@@ -122,10 +123,10 @@ namespace Mmorpg.Client.App
             bodyTint.Changed += SaveBodyTint;
             DeleteRetiredPreferences();
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
-            lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages);
+            texts = LoadTexts(config);
+            lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages, texts);
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
-            var texts = LoadTexts(config);
             inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog, texts);
             inventoryController.State.Changed += UpdatePlayerEquipment;
             UpdatePlayerEquipment();
@@ -144,7 +145,8 @@ namespace Mmorpg.Client.App
                 simulationClient,
                 worldActorController,
                 corpseController,
-                inventoryController);
+                inventoryController,
+                texts);
             worldInteractionController.Gathering.Changed += UpdateUsedEquipment;
             UpdateUsedEquipment();
 
@@ -391,14 +393,14 @@ namespace Mmorpg.Client.App
         {
             if (scene.name == SceneNames.LoginMenu)
             {
-                AddSceneComponentIfMissing<LoginMenuPanel>(null);
+                AddSceneComponentIfMissing<LoginMenuPanel>(panel => panel.Initialize(texts));
                 return;
             }
 
             if (scene.name == SceneNames.CharacterSelect)
             {
                 AddSceneComponentIfMissing<CharacterSelectPanel>(
-                    panel => panel.Initialize(simulationClient));
+                    panel => panel.Initialize(simulationClient, texts));
                 return;
             }
 
@@ -515,7 +517,8 @@ namespace Mmorpg.Client.App
                     combatController,
                     combatTargeting,
                     simulationClient,
-                    combatantViews));
+                    combatantViews,
+                    texts));
         }
 
         // Returns the scene's existing component, or a new one initialized before it activates.

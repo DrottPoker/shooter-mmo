@@ -4,33 +4,32 @@ using Mmorpg.SimulationWorker.Tests.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
 public sealed class ItemStorageCapabilityHandlerTests
 {
     [Theory]
-    [InlineData(RealtimeWorldActorCapabilityKind.Bank, WorldActorCapabilityKindIds.Bank, "Character Bank")]
-    [InlineData(
-        RealtimeWorldActorCapabilityKind.RecoveryStorage,
-        WorldActorCapabilityKindIds.RecoveryStorage,
-        "Recovery Storage")]
+    [InlineData(RealtimeWorldActorCapabilityKind.Bank, WorldActorCapabilityKindIds.Bank)]
+    [InlineData(RealtimeWorldActorCapabilityKind.RecoveryStorage, WorldActorCapabilityKindIds.RecoveryStorage)]
     public async Task OpeningAStorageCapabilityConfirmsItWithoutALifecycleAction(
         RealtimeWorldActorCapabilityKind kind,
-        string capabilityKind,
-        string expectedName)
+        string capabilityKind)
     {
         var handler = new ItemStorageWorldActorCapabilityHandler(kind);
 
-        var opened = await handler.ExecuteAsync(
-            CreateContext(capabilityKind, RealtimeCapabilityActionKind.None),
-            CancellationToken.None);
+        var context = CreateContext(capabilityKind, RealtimeCapabilityActionKind.None);
+        var opened = await handler.ExecuteAsync(context, CancellationToken.None);
         var withAction = await handler.ExecuteAsync(
             CreateContext(capabilityKind, RealtimeCapabilityActionKind.ApplyInsurance),
             CancellationToken.None);
 
         Assert.True(opened.Succeeded);
-        Assert.Contains(expectedName, opened.Message, StringComparison.Ordinal);
+        Assert.Equal(WorldInteractionNoticeCodes.InteractionOpened, opened.Code);
+        Assert.Equal(
+            TextKeys.ActorCapabilityName(context.Actor.Definition.Id, context.Capability.Id),
+            Assert.Single(opened.Arguments!).Value);
         Assert.False(withAction.Succeeded);
         Assert.Equal("npc_lifecycle_action_invalid", withAction.Code);
     }

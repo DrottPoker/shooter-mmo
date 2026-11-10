@@ -386,7 +386,8 @@ public sealed class RealtimeGatheringTests
                     true,
                     vein.InteractionRevision,
                     0,
-                    "Mine.",
+                    WorldInteractionNoticeCodes.GatheringStarted,
+                    null,
                     null!),
                 null,
                 GatheringStart: new GatheringStart(lease.InteractionSessionId, CapabilityId, vein))));

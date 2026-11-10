@@ -2,6 +2,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Quests;
@@ -209,8 +210,8 @@ public sealed class QuestOperationExecutor(
                 : ReloadNotice(session, operation.ReportedOperationId, reloadFrom);
         return new QuestOperationOutcome(
             true,
+            NoticeCode(operation.OperationKind),
             string.Empty,
-            SuccessMessage(operation.OperationKind),
             itemStateRevision,
             ItemStateChange: itemChange,
             QuestLogChange: questChange);
@@ -378,17 +379,18 @@ public sealed class QuestOperationExecutor(
             shouldDisconnect: true);
     }
 
-    private static string SuccessMessage(string operationKind)
+    // The notice the client shows for a committed quest operation.
+    private static string NoticeCode(string operationKind)
     {
         return operationKind switch
         {
-            QuestOperationKinds.Accept => "Quest accepted.",
-            QuestOperationKinds.Abandon => "Quest abandoned.",
-            QuestOperationKinds.RegrantItems => "You have the quest's items again.",
-            QuestOperationKinds.TalkTo => "Objective complete.",
-            QuestOperationKinds.Deliver => "Items handed over.",
-            QuestOperationKinds.TurnIn => "Quest completed.",
-            QuestOperationKinds.CreditKill => "Kill counted.",
+            QuestOperationKinds.Accept => WorldInteractionNoticeCodes.QuestAccepted,
+            QuestOperationKinds.Abandon => WorldInteractionNoticeCodes.QuestAbandoned,
+            QuestOperationKinds.RegrantItems => WorldInteractionNoticeCodes.QuestItemsRegranted,
+            QuestOperationKinds.TalkTo => WorldInteractionNoticeCodes.QuestObjectiveCompleted,
+            QuestOperationKinds.Deliver => WorldInteractionNoticeCodes.QuestItemsDelivered,
+            QuestOperationKinds.TurnIn => WorldInteractionNoticeCodes.QuestCompleted,
+            QuestOperationKinds.CreditKill => WorldInteractionNoticeCodes.QuestKillCounted,
             _ => string.Empty
         };
     }

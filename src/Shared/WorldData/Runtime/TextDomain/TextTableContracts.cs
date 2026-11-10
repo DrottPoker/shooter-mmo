@@ -19,14 +19,17 @@ namespace Mmorpg.WorldData.Text
     }
 
     // One table per content domain, so a change to one domain rewrites only its own table.
+    // The messages table is written by hand, as TextSource describes: it holds the text for
+    // every code that a server sends.
     public static class TextTableIds
     {
         public const string Items = "items";
         public const string Actors = "actors";
         public const string Quests = "quests";
+        public const string Messages = "messages";
 
         public static readonly IReadOnlyList<string> All = Array.AsReadOnly(
-            new[] { Actors, Items, Quests });
+            new[] { Actors, Items, Messages, Quests });
     }
 
     [Serializable]

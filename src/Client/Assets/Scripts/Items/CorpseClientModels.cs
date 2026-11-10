@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Text;
@@ -42,9 +43,10 @@ namespace Mmorpg.Client.Items
 
         public string Message { get; }
 
+        // The text for the player; the code stays for programs and logs.
         public string ToDisplayMessage()
         {
-            return Code + ": " + Message;
+            return Message;
         }
     }
 
@@ -548,9 +550,8 @@ namespace Mmorpg.Client.Items
                 // operation failed, and the automatic refresh of a view the result marks
                 // stale keeps it.
                 Status = CorpseClientStatus.Ready;
-                Error = new CorpseClientError(
-                    result.Error?.Code ?? "corpse_operation_rejected",
-                    result.Error?.Message ?? "The corpse operation was rejected.");
+                var code = result.Error?.Code ?? "corpse_operation_rejected";
+                Error = new CorpseClientError(code, ClientMessages.Text(texts, code, result.Error?.Message));
                 Notice = string.Empty;
             }
             else if (result.OperationKind == RealtimeCorpseInteractionKind.Close)
@@ -584,7 +585,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            var closure = CorpseViewClosureRule.Classify(code, message);
+            var closure = CorpseViewClosureRule.Classify(code, ClientMessages.Text(texts, code, message));
             pendingOutlivedView = PendingOperationId != Guid.Empty;
             EndView(closure.Error, closure.Notice);
             return true;

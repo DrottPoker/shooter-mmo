@@ -424,7 +424,9 @@ one `TextCatalog`, never from the gameplay catalogs or the realtime protocol. `C
 the text tables that `ClientConfig` lists, checks each against its revision,
 and joins them; [Text Tables](../content/README.md#text-tables) describes the
 tables and their keys. The bootstrap loads the catalog once and passes it to
-the inventory, quest, world actor, and corpse controllers.
+the inventory, quest, world actor, corpse, and world interaction controllers,
+and to the look link, the combat HUD, and the login and character panels, which
+show messages.
 
 - `ClientItemCatalog` answers every name from it: `GetDisplayName`,
   `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
@@ -446,15 +448,24 @@ the inventory, quest, world actor, and corpse controllers.
   Mob's corpse carries. `CorpseClientState` names the corpses near the player
   and the open corpse view with it, and `ClientQuestCatalog.ActorName` names
   the Mob of a quest drop message.
+- `ClientMessages.Text` gives the text for a code that a server sent: an
+  error, a closure, or the notice of a committed action, as
+  [Messages](../content/README.md#messages) describes. It fills the
+  placeholders of the text with the named values of the message, writes the
+  English explanation of the server to the log, and shows the unlisted text
+  with the code for a code that has no text. The inventory, corpse, quest,
+  world interaction, and gathering states store that text, never the server's
+  sentence, and a request that GameService refused shows the text of the code
+  in its problem details. A failure that the client finds itself, such as a
+  request that got no answer, keeps the client's own sentence.
 - A text that the catalog lacks shows its key in brackets, such as
   `[item/weapon.iron_sword/name]`, so a missing text is seen on screen. When
   the tables cannot be read at all, the client logs an error and runs with an
   empty catalog.
 
 `ClientTextsTests` fails when the configuration does not list every table of
-`TextTableIds.All`, so a new table cannot be forgotten. The messages that the
-servers send with a result or a closure are still English text, and the
-panels' own labels are still literals in the code.
+`TextTableIds.All`, so a new table cannot be forgotten. The panels' own labels
+and the client's own failure sentences are still literals in the code.
 
 ## Client Session State
 

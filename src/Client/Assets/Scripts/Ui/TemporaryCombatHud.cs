@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -22,6 +24,7 @@ namespace Mmorpg.Client.Ui
     [DefaultExecutionOrder(PresentationExecutionOrder.ScreenAnchoredInterface)]
     public sealed class TemporaryCombatHud : MonoBehaviour
     {
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         public const string OwnerFrameName = "CombatOwnerFrame";
         public const string TargetFrameName = "CombatTargetFrame";
         public const string DeathOverlayName = "CombatDeathOverlay";
@@ -89,8 +92,10 @@ namespace Mmorpg.Client.Ui
             CombatClientController combat,
             CombatTargetingController targeting,
             RealtimeSimulationClient realtime,
-            CombatantViewLocator combatantViews)
+            CombatantViewLocator combatantViews,
+            TextCatalog messageTexts)
         {
+            texts = messageTexts;
             combatController = combat;
             targetingController = targeting;
             realtimeClient = realtime;
@@ -391,7 +396,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            messageText.text = result.Error.Message;
+            messageText.text = ClientMessages.Text(texts, result.Error.Code, result.Error.Message);
             messageVisibleUntil = Time.unscaledTime + RejectionSeconds;
         }
 

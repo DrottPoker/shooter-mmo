@@ -4,6 +4,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -169,7 +170,13 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(
                 state.TryApply(
-                    RealtimeGatheringState.CreateStopped(interaction, 9, runtime, "resource_node_depleted", "Depleted."),
+                    RealtimeGatheringState.CreateStopped(
+                        interaction,
+                        9,
+                        runtime,
+                        "resource_node_depleted",
+                        "Depleted.",
+                        RealtimeMessageArgument.None),
                     Guid.Empty,
                     5f,
                     out error),
@@ -196,6 +203,43 @@ namespace Mmorpg.Client.Tests.EditMode
             state.Clear();
             Assert.That(state.Status, Is.EqualTo(GatheringClientStatus.Idle));
             Assert.That(state.YieldedQuantity, Is.EqualTo(0));
+        }
+
+        // The worker names the missing kind of tool by a text key, and the client's text for
+        // the stop code shows the name from its own tables.
+        [Test]
+        public void AStopForAMissingToolNamesTheKindOfToolFromTheTextTables()
+        {
+            var state = new GatheringClientState();
+            state.UseTexts(TextCatalog.Create(new[]
+            {
+                FixtureTexts.MessageTable(("gathering_tool_required", "{toolKind} required in the Tool slot.")),
+                FixtureTexts.TableOf(TextTableIds.Items, (TextKeys.ToolKindName("pickaxe"), "Pickaxe"))
+            }));
+            var interaction = Guid.NewGuid();
+            var runtime = Guid.NewGuid();
+            Assert.That(
+                state.TryApply(RealtimeGatheringState.CreateStarted(interaction, 9, runtime, 3000), interaction, 1f, out var error),
+                Is.True,
+                error);
+
+            Assert.That(
+                state.TryApply(
+                    RealtimeGatheringState.CreateStopped(
+                        interaction,
+                        9,
+                        runtime,
+                        "gathering_tool_required",
+                        "A tool of the kind 'pickaxe' is required in the Tool slot.",
+                        new[] { RealtimeMessageArgument.TextKey("toolKind", TextKeys.ToolKindName("pickaxe")) }),
+                    Guid.Empty,
+                    2f,
+                    out error),
+                Is.True,
+                error);
+
+            Assert.That(state.StopCode, Is.EqualTo("gathering_tool_required"));
+            Assert.That(state.StopMessage, Is.EqualTo("Pickaxe required in the Tool slot."));
         }
 
         [Test]

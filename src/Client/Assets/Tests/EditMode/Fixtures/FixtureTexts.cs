@@ -94,6 +94,52 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The texts of the corpse tests: the development actors, which name a Mob's corpse, and
+        // the messages of the closures that the tests expect to read.
+        public static TextCatalog Corpses()
+        {
+            return TextCatalog.Create(new[]
+            {
+                DevelopmentActorTexts().BuildTable(),
+                MessageTable(
+                    ("corpse_emptied", "The corpse is empty."),
+                    ("corpse_expired", "The corpse expired and is no longer available."),
+                    ("combat_character_dead", "The character died."))
+            });
+        }
+
+        // One table whose texts the test chooses, for a catalog of several tables.
+        public static TextTableDocument TableOf(string tableId, params (string Key, string Text)[] entries)
+        {
+            return TextTable.Create(
+                tableId,
+                TextTableFormat.SourceLocale,
+                entries.Select(entry => new TextTableEntry { Key = entry.Key, Text = entry.Text }));
+        }
+
+        // The messages of a test: the text of each code it names, and the text for every other
+        // code, as the real messages table has them.
+        public const string UnlistedMessage = "That did not work. [{code}]";
+
+        public static TextCatalog Messages(params (string Code, string Text)[] messages)
+        {
+            return TextCatalog.Create(new[] { MessageTable(messages) });
+        }
+
+        public static TextTableDocument MessageTable(params (string Code, string Text)[] messages)
+        {
+            var entries = new List<TextTableEntry>
+            {
+                new TextTableEntry { Key = TextKeys.UnlistedMessage(), Text = UnlistedMessage }
+            };
+            entries.AddRange(messages.Select(message => new TextTableEntry
+            {
+                Key = TextKeys.Message(message.Code),
+                Text = message.Text
+            }));
+            return TextTable.Create(TextTableIds.Messages, TextTableFormat.SourceLocale, entries);
+        }
+
         // A catalog of one table whose texts the test chooses, to prove where a text comes from.
         public static TextCatalog Of(string tableId, params (string Key, string Text)[] entries)
         {

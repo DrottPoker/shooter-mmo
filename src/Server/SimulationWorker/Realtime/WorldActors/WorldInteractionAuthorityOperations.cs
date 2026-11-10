@@ -49,7 +49,8 @@ internal sealed class WorldInteractionAuthorityOperations(
                     false,
                     0,
                     itemStateRevision: 0,
-                    message: string.Empty,
+                    noticeCode: string.Empty,
+                    arguments: null,
                     error: new RealtimeError(
                         "world_interaction_failed",
                         "SimulationWorker could not complete the world interaction.")),

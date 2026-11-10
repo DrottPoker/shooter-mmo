@@ -103,6 +103,25 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(contentRoot, "actors");
         }
 
+        // The text that is written by hand, one file per table: "text/<table>.json".
+        public static string TextSourceDirectory(string contentRoot)
+        {
+            return Path.Combine(contentRoot, Text.TextSourceFormat.DirectoryName);
+        }
+
+        public static string TextSourcePath(string contentRoot, string tableId)
+        {
+            if (!Text.TextSource.TableIds.Contains(tableId, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Text table '" + tableId + "' is not a table that is written by hand.");
+            }
+
+            return Path.Combine(
+                TextSourceDirectory(contentRoot),
+                tableId + Text.TextSourceFormat.FileSuffix);
+        }
+
         public static string QuestsDirectory(string contentRoot)
         {
             return Path.Combine(contentRoot, Quests.QuestCatalogFormat.QuestsDirectoryName);

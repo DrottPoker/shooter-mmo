@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Mmorpg.Client.Core;
+using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Items
 {
@@ -65,9 +68,19 @@ namespace Mmorpg.Client.Items
 
         public bool UpdateRequired { get; }
 
+        // The error of an operation that a server refused, with the client's text for its
+        // code. The sentence the server sent goes to the log.
+        public static InventoryClientError FromServer(RealtimeError error, TextCatalog texts)
+        {
+            var code = error?.Code ?? "item_operation_rejected";
+            return new InventoryClientError(code, ClientMessages.Text(texts, code, error?.Message));
+        }
+
+        // The message is the text for the player: the client's own sentence, or the text of
+        // the code that a server sent. The code stays for programs and logs.
         public string ToDisplayMessage()
         {
-            return Code + ": " + Message
+            return Message
                 + (string.IsNullOrWhiteSpace(CorrelationId)
                     ? string.Empty
                     : " Correlation: " + CorrelationId + ".");

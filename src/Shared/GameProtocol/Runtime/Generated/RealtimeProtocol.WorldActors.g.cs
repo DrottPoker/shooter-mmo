@@ -835,7 +835,8 @@ namespace Mmorpg.GameProtocol
             bool succeeded,
             long targetRevision,
             long itemStateRevision,
-            string message,
+            string noticeCode,
+            RealtimeMessageArgument[] arguments,
             RealtimeError error)
         {
             OperationId = operationId;
@@ -844,7 +845,8 @@ namespace Mmorpg.GameProtocol
             Succeeded = succeeded;
             TargetRevision = targetRevision;
             ItemStateRevision = itemStateRevision;
-            Message = message ?? string.Empty;
+            NoticeCode = noticeCode ?? string.Empty;
+            Arguments = arguments ?? Array.Empty<RealtimeMessageArgument>();
             Error = error;
         }
 
@@ -879,9 +881,14 @@ namespace Mmorpg.GameProtocol
         public long ItemStateRevision { get; }
 
         /// <summary>
-        /// Text for the player, which may be empty.
+        /// The code of the text the client shows for a committed operation, or empty for none.
         /// </summary>
-        public string Message { get; }
+        public string NoticeCode { get; }
+
+        /// <summary>
+        /// The named values of the client's text for the notice of a committed operation or for the error of a failed one.
+        /// </summary>
+        public RealtimeMessageArgument[] Arguments { get; }
 
         /// <summary>
         /// Why the operation failed.
@@ -956,7 +963,8 @@ namespace Mmorpg.GameProtocol
             int yieldQuantity,
             long itemStateRevision,
             string code,
-            string message)
+            string message,
+            RealtimeMessageArgument[] arguments)
         {
             InteractionSessionId = interactionSessionId;
             TargetEntityId = targetEntityId;
@@ -968,6 +976,7 @@ namespace Mmorpg.GameProtocol
             ItemStateRevision = itemStateRevision;
             Code = code;
             Message = message;
+            Arguments = arguments;
         }
 
         /// <summary>
@@ -1016,9 +1025,14 @@ namespace Mmorpg.GameProtocol
         public string Code { get; }
 
         /// <summary>
-        /// A human-readable explanation.
+        /// An English explanation for logs. The client shows its own text for the code.
         /// </summary>
         public string Message { get; }
+
+        /// <summary>
+        /// The named values of the client's text for the code.
+        /// </summary>
+        public RealtimeMessageArgument[] Arguments { get; }
 
         public static RealtimeGatheringState CreateStarted(
             Guid interactionSessionId,
@@ -1036,7 +1050,8 @@ namespace Mmorpg.GameProtocol
                 0,
                 0,
                 string.Empty,
-                string.Empty);
+                string.Empty,
+                Array.Empty<RealtimeMessageArgument>());
         }
 
         public static RealtimeGatheringState CreateYielded(
@@ -1058,7 +1073,8 @@ namespace Mmorpg.GameProtocol
                 yieldQuantity,
                 itemStateRevision,
                 string.Empty,
-                string.Empty);
+                string.Empty,
+                Array.Empty<RealtimeMessageArgument>());
         }
 
         public static RealtimeGatheringState CreateStopped(
@@ -1066,7 +1082,8 @@ namespace Mmorpg.GameProtocol
             ulong targetEntityId,
             Guid targetRuntimeId,
             string code,
-            string message)
+            string message,
+            RealtimeMessageArgument[] arguments)
         {
             return new RealtimeGatheringState(
                 interactionSessionId,
@@ -1078,7 +1095,8 @@ namespace Mmorpg.GameProtocol
                 0,
                 0,
                 code,
-                message);
+                message,
+                arguments);
         }
     }
 
@@ -2138,7 +2156,12 @@ namespace Mmorpg.GameProtocol
             writer.WriteBoolean(value.Succeeded);
             writer.WriteInt64(value.TargetRevision);
             writer.WriteInt64(value.ItemStateRevision);
-            writer.WriteString(value.Message);
+            writer.WriteString(value.NoticeCode);
+            writer.WriteByte((byte)value.Arguments.Length);
+            foreach (var item in value.Arguments)
+            {
+                WriteMessageArgument(ref writer, item);
+            }
             if (!value.Succeeded)
             {
                 WriteError(ref writer, value.Error);
@@ -2148,7 +2171,13 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfWorldInteractionResult(RealtimeWorldInteractionResult value)
         {
             var size = 50;
-            size += StringSize(value.Message);
+            size += StringSize(value.NoticeCode);
+            size += 1;
+            foreach (var item in value.Arguments)
+            {
+                size += SizeOfMessageArgument(item);
+            }
+
             if (!value.Succeeded)
             {
                 size += SizeOfError(value.Error);
@@ -2192,9 +2221,31 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!reader.TryReadString(MaximumWorldInteractionMessageLength, out var message, out error, allowBlank: true))
+            if (!reader.TryReadString(MaximumErrorCodeLength, out var noticeCode, out error, allowBlank: true))
             {
                 return false;
+            }
+
+            if (!reader.TryReadByte(out var argumentsCount, out error))
+            {
+                return false;
+            }
+
+            if (argumentsCount > MaximumMessageArguments)
+            {
+                error = "World interaction result arguments count is invalid.";
+                return false;
+            }
+
+            var arguments = new RealtimeMessageArgument[argumentsCount];
+            for (var index = 0; index < arguments.Length; index++)
+            {
+                if (!TryReadMessageArgument(ref reader, out var element, out error))
+                {
+                    return false;
+                }
+
+                arguments[index] = element;
             }
 
             RealtimeError errorValue = null;
@@ -2206,7 +2257,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeWorldInteractionResult(operationId, interactionSessionId, operationKind, succeeded, targetRevision, itemStateRevision, message, errorValue);
+            value = new RealtimeWorldInteractionResult(operationId, interactionSessionId, operationKind, succeeded, targetRevision, itemStateRevision, noticeCode, arguments, errorValue);
             return true;
         }
 
@@ -2217,12 +2268,33 @@ namespace Mmorpg.GameProtocol
                 || !IsDefined(value.OperationKind)
                 || value.TargetRevision < 0
                 || value.ItemStateRevision < 0
-                || value.Message == null
-                || value.Message.Length > MaximumWorldInteractionMessageLength
+                || value.NoticeCode == null
+                || value.NoticeCode.Length > MaximumErrorCodeLength
+                || value.Arguments == null
+                || value.Arguments.Length > MaximumMessageArguments
                 || !value.Succeeded != (value.Error != null)
                 || (value.Error != null && !IsValidError(value.Error)))
             {
                 return false;
+            }
+
+            foreach (var item in value.Arguments)
+            {
+                if (!IsValidMessageArgument(item))
+                {
+                    return false;
+                }
+            }
+
+            for (var first = 0; first < value.Arguments.Length; first++)
+            {
+                for (var second = first + 1; second < value.Arguments.Length; second++)
+                {
+                    if (value.Arguments[first].Name == value.Arguments[second].Name)
+                    {
+                        return false;
+                    }
+                }
             }
 
             return SatisfiesRules(value);
@@ -2399,6 +2471,11 @@ namespace Mmorpg.GameProtocol
                 {
                     writer.WriteString(value.Code);
                     writer.WriteString(value.Message);
+                    writer.WriteByte((byte)value.Arguments.Length);
+                    foreach (var item in value.Arguments)
+                    {
+                        WriteMessageArgument(ref writer, item);
+                    }
                     break;
                 }
                 default:
@@ -2428,6 +2505,12 @@ namespace Mmorpg.GameProtocol
                 {
                     size += StringSize(value.Code);
                     size += StringSize(value.Message);
+                    size += 1;
+                    foreach (var item in value.Arguments)
+                    {
+                        size += SizeOfMessageArgument(item);
+                    }
+
                     break;
                 }
                 default:
@@ -2470,6 +2553,7 @@ namespace Mmorpg.GameProtocol
             long itemStateRevision = 0;
             string code = string.Empty;
             string message = string.Empty;
+            RealtimeMessageArgument[] arguments = Array.Empty<RealtimeMessageArgument>();
 
             switch (kind)
             {
@@ -2518,6 +2602,28 @@ namespace Mmorpg.GameProtocol
                         return false;
                     }
 
+                    if (!reader.TryReadByte(out var argumentsCount, out error))
+                    {
+                        return false;
+                    }
+
+                    if (argumentsCount > MaximumMessageArguments)
+                    {
+                        error = "Gathering state arguments count is invalid.";
+                        return false;
+                    }
+
+                    arguments = new RealtimeMessageArgument[argumentsCount];
+                    for (var index = 0; index < arguments.Length; index++)
+                    {
+                        if (!TryReadMessageArgument(ref reader, out var element, out error))
+                        {
+                            return false;
+                        }
+
+                        arguments[index] = element;
+                    }
+
                     break;
                 }
                 default:
@@ -2527,7 +2633,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            value = new RealtimeGatheringState(interactionSessionId, targetEntityId, targetRuntimeId, kind, cycleMilliseconds, yieldDefinitionId, yieldQuantity, itemStateRevision, code, message);
+            value = new RealtimeGatheringState(interactionSessionId, targetEntityId, targetRuntimeId, kind, cycleMilliseconds, yieldDefinitionId, yieldQuantity, itemStateRevision, code, message, arguments);
             return true;
         }
 
@@ -2573,9 +2679,30 @@ namespace Mmorpg.GameProtocol
                     if (string.IsNullOrWhiteSpace(value.Code)
                         || value.Code.Length > MaximumErrorCodeLength
                         || string.IsNullOrWhiteSpace(value.Message)
-                        || value.Message.Length > MaximumErrorMessageLength)
+                        || value.Message.Length > MaximumErrorMessageLength
+                        || value.Arguments == null
+                        || value.Arguments.Length > MaximumMessageArguments)
                     {
                         return false;
+                    }
+
+                    foreach (var item in value.Arguments)
+                    {
+                        if (!IsValidMessageArgument(item))
+                        {
+                            return false;
+                        }
+                    }
+
+                    for (var first = 0; first < value.Arguments.Length; first++)
+                    {
+                        for (var second = first + 1; second < value.Arguments.Length; second++)
+                        {
+                            if (value.Arguments[first].Name == value.Arguments[second].Name)
+                            {
+                                return false;
+                            }
+                        }
                     }
 
                     break;

@@ -321,6 +321,11 @@ namespace Mmorpg.GameProtocol
         public const int MaximumMovementPathWaypoints = 32;
 
         /// <summary>
+        /// Named values in one error or notice.
+        /// </summary>
+        public const int MaximumMessageArguments = 4;
+
+        /// <summary>
         /// The highest level of a world actor.
         /// </summary>
         public const int MaximumWorldActorLevel = 10000;
@@ -402,7 +407,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 38;
+        public const ushort Version = 39;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -457,6 +462,7 @@ namespace Mmorpg.GameProtocol
         private const int MaximumSlotTags = RealtimeProtocolLimits.MaximumSlotTags;
         private const int MaximumDefinitionIdLength = RealtimeProtocolLimits.MaximumDefinitionIdLength;
         private const int MaximumMovementPathWaypoints = RealtimeProtocolLimits.MaximumMovementPathWaypoints;
+        private const int MaximumMessageArguments = RealtimeProtocolLimits.MaximumMessageArguments;
         private const int MaximumWorldActorLevel = RealtimeProtocolLimits.MaximumWorldActorLevel;
         private const int MaximumAppearanceKindLength = RealtimeProtocolLimits.MaximumAppearanceKindLength;
         private const int MaximumAppearanceSlotLength = RealtimeProtocolLimits.MaximumAppearanceSlotLength;
@@ -475,6 +481,8 @@ namespace Mmorpg.GameProtocol
         private const int MaximumTimestampLength = 64;
         private const int MaximumErrorCodeLength = 64;
         private const int MaximumErrorMessageLength = 512;
+        private const int MaximumMessageArgumentNameLength = 32;
+        private const int MaximumMessageArgumentValueLength = 384;
         private const int MaximumJoinTicketLength = 1024;
         private const int MaximumItemOperationItems = 24;
         private const int MaximumItemResultItemRevisions = 32;
@@ -485,7 +493,6 @@ namespace Mmorpg.GameProtocol
         private const int MaximumItemResultRecoveryDeliveries = 8;
         private const int MaximumWorldActorCapabilities = 16;
         private const int MaximumWorldActorCapabilityIdLength = 128;
-        private const int MaximumWorldInteractionMessageLength = 512;
         private const int MaximumCorpsePresencePerChunk = 6;
         private const int MaximumCorpseViewSlotsPerChunk = 4;
         private const int MaximumCorpseSourceNameLength = 128;

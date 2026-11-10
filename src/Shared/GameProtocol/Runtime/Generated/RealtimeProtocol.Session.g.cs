@@ -7,7 +7,47 @@ using System;
 namespace Mmorpg.GameProtocol
 {
     /// <summary>
-    /// A structured error: a stable code for programs and a message for people.
+    /// How the client shows the value of a message argument.
+    /// </summary>
+    public enum RealtimeMessageArgumentKind : byte
+    {
+        Text = 1,
+        TextKey = 2
+    }
+
+    /// <summary>
+    /// A named value of the text that the client shows for a code. A server sends an id or a number, never a sentence. A message that needs such values carries them next to its code.
+    /// </summary>
+    public sealed partial class RealtimeMessageArgument
+    {
+        public RealtimeMessageArgument(
+            string name,
+            RealtimeMessageArgumentKind kind,
+            string value)
+        {
+            Name = name;
+            Kind = kind;
+            Value = value;
+        }
+
+        /// <summary>
+        /// The placeholder of the client's text that the value fills.
+        /// </summary>
+        public string Name { get; }
+
+        /// <summary>
+        /// Whether the value is shown as it is or is a key of the client's text tables.
+        /// </summary>
+        public RealtimeMessageArgumentKind Kind { get; }
+
+        /// <summary>
+        /// The text or the text key.
+        /// </summary>
+        public string Value { get; }
+    }
+
+    /// <summary>
+    /// A structured error: a stable code, which also chooses the text the client shows, and an English explanation for logs.
     /// </summary>
     public sealed partial class RealtimeError
     {
@@ -25,7 +65,7 @@ namespace Mmorpg.GameProtocol
         public string Code { get; }
 
         /// <summary>
-        /// A human-readable explanation.
+        /// An English explanation for logs. The client shows its own text for the code.
         /// </summary>
         public string Message { get; }
     }
@@ -742,6 +782,60 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        private static void WriteMessageArgument(ref PacketWriter writer, RealtimeMessageArgument value)
+        {
+            writer.WriteString(value.Name);
+            writer.WriteByte((byte)value.Kind);
+            writer.WriteString(value.Value);
+        }
+
+        private static int SizeOfMessageArgument(RealtimeMessageArgument value)
+        {
+            var size = 1;
+            size += StringSize(value.Name);
+            size += StringSize(value.Value);
+            return size;
+        }
+
+        private static bool TryReadMessageArgument(ref PacketReader reader, out RealtimeMessageArgument value, out string error)
+        {
+            value = null;
+            if (!reader.TryReadString(MaximumMessageArgumentNameLength, out var name, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadByte(out var kindByte, out error))
+            {
+                return false;
+            }
+
+            var kind = (RealtimeMessageArgumentKind)kindByte;
+
+            if (!reader.TryReadString(MaximumMessageArgumentValueLength, out var valueValue, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeMessageArgument(name, kind, valueValue);
+            return true;
+        }
+
+        private static bool IsValidMessageArgument(RealtimeMessageArgument value)
+        {
+            if (value == null
+                || string.IsNullOrWhiteSpace(value.Name)
+                || value.Name.Length > MaximumMessageArgumentNameLength
+                || !IsDefined(value.Kind)
+                || string.IsNullOrWhiteSpace(value.Value)
+                || value.Value.Length > MaximumMessageArgumentValueLength)
+            {
+                return false;
+            }
+
+            return SatisfiesRules(value);
+        }
+
         private static void WriteError(ref PacketWriter writer, RealtimeError value)
         {
             writer.WriteString(value.Code);
@@ -814,6 +908,11 @@ namespace Mmorpg.GameProtocol
             }
 
             return true;
+        }
+
+        private static bool IsDefined(RealtimeMessageArgumentKind value)
+        {
+            return (byte)value >= 1 && (byte)value <= 2;
         }
     }
 }

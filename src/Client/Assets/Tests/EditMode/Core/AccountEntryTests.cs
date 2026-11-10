@@ -1,4 +1,5 @@
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using NUnit.Framework;
 
@@ -41,12 +42,53 @@ namespace Mmorpg.Client.Tests.EditMode
             var network = new ApiError(ApiErrorKind.Network, 0, "network_error", "Cannot connect to destination host", null);
             var refused = new ApiError(ApiErrorKind.Http, 401, "invalid_credentials", "Login or password is incorrect.", "c-1");
 
+            var texts = FixtureTexts.Messages(("invalid_credentials", "The login or the password is incorrect."));
+
             Assert.That(
-                AccountEntryPresentation.ErrorText(network, "http://localhost:5000"),
+                AccountEntryPresentation.ErrorText(network, "http://localhost:5000", texts),
                 Is.EqualTo("GameService at http://localhost:5000 does not answer. Is it running? [network_error]"));
             Assert.That(
-                AccountEntryPresentation.ErrorText(refused, "http://localhost:5000"),
-                Is.EqualTo("Login or password is incorrect. [invalid_credentials]"));
+                AccountEntryPresentation.ErrorText(refused, "http://localhost:5000", texts),
+                Is.EqualTo("The login or the password is incorrect."));
+        }
+
+        // The sentence GameService sends is for the log. The player reads the client's text for
+        // the code, and a code without a text shows the code.
+        [Test]
+        public void ARefusedRequestShowsTheClientsTextForItsCode()
+        {
+            var texts = FixtureTexts.Messages(("character_name_taken", "That character name is already taken."));
+            var listed = new ApiError(ApiErrorKind.Http, 409, "character_name_taken", "Character name is already taken.", "c-1");
+            var unlisted = new ApiError(ApiErrorKind.Http, 500, "internal_server_error", "Something broke.", "c-2");
+
+            Assert.That(
+                AccountEntryPresentation.ErrorText(listed, "http://localhost:5000", texts),
+                Is.EqualTo("That character name is already taken."));
+            Assert.That(
+                AccountEntryPresentation.ErrorText(unlisted, "http://localhost:5000", texts),
+                Is.EqualTo("That did not work. [internal_server_error]"));
+        }
+
+        [Test]
+        public void ARefusalByTheWorkerShowsTheClientsTextAndAClientFailureKeepsItsOwn()
+        {
+            var texts = FixtureTexts.Messages(("session_reconnected", "This character connected from another client."));
+            var server = new RealtimeClientError(
+                RealtimeClientErrorKind.Server,
+                "session_reconnected",
+                "This character connected from another client. (server words)");
+            var local = new RealtimeClientError(
+                RealtimeClientErrorKind.Protocol,
+                "invalid_join_rejection",
+                "The join rejection could not be read.");
+
+            Assert.That(
+                AccountEntryPresentation.ErrorText(server, texts),
+                Is.EqualTo("This character connected from another client."));
+            Assert.That(
+                AccountEntryPresentation.ErrorText(local, texts),
+                Is.EqualTo("The join rejection could not be read. [invalid_join_rejection]"));
+            Assert.That(AccountEntryPresentation.ErrorText((RealtimeClientError)null, texts), Is.Empty);
         }
 
         [Test]

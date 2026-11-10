@@ -1,6 +1,8 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.WorldActors
 {
@@ -15,6 +17,14 @@ namespace Mmorpg.Client.WorldActors
     // worker owns cycles, yields, and stopping; this only mirrors them for presentation.
     public sealed class GatheringClientState
     {
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
+        // The texts for the codes that stop gathering.
+        public void UseTexts(TextCatalog catalog)
+        {
+            texts = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        }
+
         public event Action Changed;
 
         public GatheringClientStatus Status { get; private set; }
@@ -34,6 +44,7 @@ namespace Mmorpg.Client.WorldActors
 
         public string StopCode { get; private set; } = string.Empty;
 
+        // The client's text for the stop code.
         public string StopMessage { get; private set; } = string.Empty;
 
         // The equipment slot whose item the character uses while it gathers, the Tool slot, or
@@ -102,7 +113,11 @@ namespace Mmorpg.Client.WorldActors
 
                     Status = GatheringClientStatus.Stopped;
                     StopCode = state.Code;
-                    StopMessage = state.Message;
+                    StopMessage = ClientMessages.Text(
+                        texts,
+                        state.Code,
+                        state.Message,
+                        RealtimeMessageArguments.ToText(state.Arguments));
                     break;
                 default:
                     error = "Gathering state has an unknown kind.";

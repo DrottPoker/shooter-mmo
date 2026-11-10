@@ -122,13 +122,15 @@ namespace Mmorpg.GameProtocol
         }
 
         // A failed Open has no interaction yet; every other result names its interaction.
-        // A success reports the committed target revision.
+        // A success reports the committed target revision, and only a success has a notice.
         private static bool SatisfiesRules(RealtimeWorldInteractionResult result)
         {
             var hasExpectedSession = result.OperationKind == RealtimeWorldInteractionOperationKind.Open
                 ? result.InteractionSessionId == Guid.Empty && !result.Succeeded
                 : result.InteractionSessionId != Guid.Empty;
-            return hasExpectedSession && (!result.Succeeded || result.TargetRevision > 0);
+            return hasExpectedSession
+                && (!result.Succeeded || result.TargetRevision > 0)
+                && (result.Succeeded || string.IsNullOrEmpty(result.NoticeCode));
         }
     }
 }

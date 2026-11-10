@@ -410,7 +410,8 @@ internal sealed class GatheringHandler(
                 activity.Node.NetworkEntityId,
                 activity.Node.RuntimeActorId,
                 code,
-                message)));
+                message,
+                GatheringMessageArguments.For(code, activity.Node.ResourceProfile?.RequiredToolKind))));
         }
     }
 
