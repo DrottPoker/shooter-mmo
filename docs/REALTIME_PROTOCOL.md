@@ -179,7 +179,7 @@ nothing, and `TryDecodeLeaveAccepted` only reports whether the packet is valid.
 Text must not be empty or whitespace unless its field sets `blank`:
 
 - `"blank": "allow"` makes empty and whitespace text valid in both directions,
-  so the length prefix may be 0. `WorldInteractionResult.Message` uses it.
+  so the length prefix may be 0. `WorldInteractionResult.NoticeCode` uses it.
 - `"blank": "acceptOnDecode"` keeps the encoder strict but lets the decoder
   accept blank text, so the receiving code decides what blank text means, as
   the Session messages do. On a struct field, such as the `Error` of
@@ -318,6 +318,16 @@ carry application-level tick and chunk metadata.
   code of up to `MaximumErrorCodeLength` (64) characters and a message of up to
   `MaximumErrorMessageLength` (512). Decoders accept blank text, and the
   receiving code decides what it means.
+- The code of an `Error`, of a closure, or of a notice also chooses the text
+  that the client shows, as [Messages](../content/README.md#messages)
+  describes. The message next to a code is an English explanation for logs,
+  which no player reads. A message whose text needs values carries them next to
+  its code as up to `MaximumMessageArguments` (4) `MessageArgument` entries:
+  a `Name`, which is the placeholder of the client's text, a letter followed by
+  letters and digits, a `Kind`, and a `Value`. `Kind` `Text` shows the value as
+  it is, such as a number, and `TextKey` makes it a key of the client's text
+  tables, such as the name of a tool kind. One message has no two arguments of
+  the same name.
 - Error codes, closure codes, and despawn reasons are ordinary text up to the
   error-code limit, so a new code needs no new protocol version. The stable
   codes are listed in [Realtime Codes](SERVICE_FEATURES.md#realtime-codes).
@@ -599,9 +609,13 @@ The world actor messages keep actor visibility apart from interaction state:
   of a `Vendor` capability, the resource profile of a `Gathering` capability,
   and is empty for every other kind.
 - `WorldInteractionResult` (25) correlates an operation by id and carries the
-  target and item-state revisions, a message that may be blank, and an `Error`
-  on failure. `WorldInteractionClosed` (26) names a server-initiated closure
-  with a stable code and a message.
+  target and item-state revisions, a `NoticeCode`, the message arguments, and
+  an `Error` on failure. The notice code names the text for a committed
+  operation, such as `vendor_purchased`, and is empty when nothing needs
+  saying; a failed result has none. The arguments belong to the notice of a
+  committed operation or to the error of a failed one.
+  `WorldInteractionClosed` (26) names a server-initiated closure with a stable
+  code and a message.
 
 Strings and lists are bounded. Large future capability state must use explicit
 chunking or a focused service read rather than an oversized actor packet.
@@ -672,7 +686,8 @@ different current price with `vendor_price_changed`.
 player, keyed by the interaction session and the node's entity and runtime id.
 Its `Kind` is `Started` with the cycle time in milliseconds, `Yielded` with the
 cycle time, the yield definition and quantity, and the item-state revision
-after the yield, or `Stopped` with a stable code and a message. A `Yielded` or
+after the yield, or `Stopped` with a stable code, a message, and the message
+arguments of the code, which name the tool kind when the tool is missing. A `Yielded` or
 `Stopped` can arrive after the interaction closed, and a `Yielded` even after
 `Stopped`, because a cycle that was already in flight still completes. The
 worker always sends the `Yielded` of a committed cycle, so the client learns the

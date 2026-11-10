@@ -18,10 +18,7 @@ public sealed class QuestsWorldActorCapabilityHandler(QuestOperationExecutor exe
         var intent = context.Intent;
         if (intent.CapabilityAction == RealtimeCapabilityActionKind.None)
         {
-            return new WorldActorCapabilityDispatchResult(
-                true,
-                string.Empty,
-                context.Capability.DisplayName + " is open while this interaction stays open.");
+            return WorldInteractionNotices.Opened(context);
         }
 
         var operationKind = intent.CapabilityAction switch

@@ -9,10 +9,18 @@ namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class CorpseClientStateTests
     {
+        // A state with the texts of the closures that these tests read.
+        private static CorpseClientState NewState()
+        {
+            var state = new CorpseClientState();
+            state.UseTexts(FixtureTexts.Corpses());
+            return state;
+        }
+
         [Test]
         public void PresenceChunksApplyOnceAndRejectDuplicateOrStaleSequences()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var firstCorpseId = Guid.NewGuid();
             var secondCorpseId = Guid.NewGuid();
             var first = new RealtimeCorpsePresenceSnapshotChunk(
@@ -52,7 +60,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void SnapshotAndTargetedDeltaApplyWithoutOptimisticMutation()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -112,7 +120,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void DeltaRejectsInconsistentContainerRevisionsAcrossChunks()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -160,7 +168,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void SnapshotRequiresAllCanonicalCorpseSections()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var updateId = Guid.NewGuid();
             CompleteOpen(state, corpseId);
@@ -326,7 +334,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EmptiedClosureAfterTheLastLootLeavesANoticeInsteadOfAnError()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -348,7 +356,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void InvalidationClosureEndsTheViewWithAnError()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
+            state.UseTexts(FixtureTexts.Messages(("corpse_invalidated", "The corpse is gone for good.")));
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
 
@@ -360,13 +369,13 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.Notice, Is.Empty);
             Assert.That(
                 state.Error.ToDisplayMessage(),
-                Is.EqualTo("corpse_invalidated: The corpse is no longer available."));
+                Is.EqualTo("The corpse is gone for good."));
         }
 
         [Test]
         public void OwnCloseAndItsTrailingClosureLeaveNoMessage()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -398,7 +407,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void EmptiedClosureKeepsThePendingLootCorrelatedUntilItsResultArrives()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -433,7 +442,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void LateCommittedLootAfterTheClosureKeepsTheNotice()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -479,7 +488,7 @@ namespace Mmorpg.Client.Tests.EditMode
             string rejectionCode,
             string rejectionMessage)
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var operation = Begin(state, operationKind, corpseId);
@@ -498,7 +507,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void LateRejectionAfterAnInvalidationKeepsTheClosureError()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var refresh = Begin(state, RealtimeCorpseInteractionKind.Refresh, corpseId);
@@ -523,7 +532,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void LateSnapshotOfAClosedViewDoesNotReopenIt()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var refresh = Begin(state, RealtimeCorpseInteractionKind.Refresh, corpseId);
@@ -543,7 +552,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ClosureDuringAPendingOpenKeepsTheOpenCorrelated()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var open = Begin(state, RealtimeCorpseInteractionKind.Open, corpseId);
 
@@ -567,7 +576,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void LateOwnCloseAndItsTrailingClosureKeepTheEmptiedNotice()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var close = Begin(state, RealtimeCorpseInteractionKind.Close, corpseId);
@@ -587,7 +596,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ClosureOfAnotherCorpseIsIgnored()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
 
@@ -620,7 +629,8 @@ namespace Mmorpg.Client.Tests.EditMode
             string code,
             string message)
         {
-            var state = new CorpseClientState();
+            var state = NewState();
+            state.UseTexts(FixtureTexts.Messages((code, "Shown for " + code)));
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var operation = Begin(state, operationKind, corpseId);
@@ -631,7 +641,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
             Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
             Assert.That(state.CanMutate, Is.True);
-            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo(code + ": " + message));
+            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo("Shown for " + code));
             Assert.That(state.Notice, Is.Empty);
 
             Begin(state, operationKind, corpseId);
@@ -642,7 +652,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void AnotherViewersChangeKeepsTheRejectionVisible()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -690,7 +700,8 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("auth_service_unavailable", "GameService is unavailable.")]
         public void AutomaticRefreshKeepsTheRejectionThatAskedForIt(string code, string message)
         {
-            var state = new CorpseClientState();
+            var state = NewState();
+            state.UseTexts(FixtureTexts.Messages((code, "Shown for " + code)));
             var corpseId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -718,7 +729,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.IsAutomaticRefreshPending, Is.True);
             Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Busy));
             Assert.That(state.CanMutate, Is.False);
-            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo(code + ": " + message));
+            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo("Shown for " + code));
 
             AssertCompletes(state, Succeeded(refresh, RealtimeCorpseInteractionKind.Refresh, corpseId));
 
@@ -746,7 +757,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void RejectedAutomaticRefreshReportsItsOwnError()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -780,7 +791,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ClosureDuringAnAutomaticRefreshReplacesTheRejection()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -813,7 +824,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void SessionResetClearsTheRejectionAndTheAutomaticRefresh()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);
@@ -845,7 +856,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void RejectedOpenForgetsTheCorpse()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var open = Begin(state, RealtimeCorpseInteractionKind.Open, corpseId);
 
@@ -872,7 +883,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ResultThatAnswersNoPendingOperationIsAConflict()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
 
@@ -913,7 +924,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ViewStateDuringAPendingOperationKeepsTheStateBusy()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             var itemId = Guid.NewGuid();
             var containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -949,7 +960,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void SessionResetDropsAnOperationThatOutlivedItsView()
         {
-            var state = new CorpseClientState();
+            var state = NewState();
             var corpseId = Guid.NewGuid();
             OpenView(state, corpseId);
             var loot = Begin(state, RealtimeCorpseInteractionKind.LootItem, corpseId);

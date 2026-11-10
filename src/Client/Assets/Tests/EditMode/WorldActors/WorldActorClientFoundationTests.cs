@@ -2,6 +2,7 @@ using System;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -117,7 +118,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         false,
                         3,
                         itemStateRevision: 0,
-                        message: string.Empty,
+                        noticeCode: string.Empty,
+                        arguments: null,
                         error: new RealtimeError("invalid", "Wrong operation")),
                     out error),
                 Is.False);
@@ -181,7 +183,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         false,
                         1,
                         itemStateRevision: 0,
-                        message: string.Empty,
+                        noticeCode: string.Empty,
+                        arguments: null,
                         error: new RealtimeError(
                             "world_interaction_session_invalid",
                             "The interaction closed.")),
@@ -192,9 +195,10 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void LifecycleCompletionPreservesCommittedMessageAndItemRevision()
+        public void LifecycleCompletionShowsTheTextOfTheNoticeAndKeepsTheItemRevision()
         {
             var state = new WorldInteractionClientState();
+            state.UseTexts(FixtureTexts.Messages(("insurance_applied", "Insurance applied. It covers one death.")));
             var operationId = Guid.NewGuid();
             var interactionId = Guid.NewGuid();
             state.Begin(operationId);
@@ -205,14 +209,117 @@ namespace Mmorpg.Client.Tests.EditMode
                 true,
                 3,
                 42,
-                "Insurance applied.",
+                "insurance_applied",
+                null,
                 null);
 
             Assert.That(state.TryComplete(result, out var error), Is.True, error);
             Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
             Assert.That(state.LastErrorCode, Is.Empty);
-            Assert.That(state.LastMessage, Is.EqualTo("Insurance applied."));
+            Assert.That(state.LastMessage, Is.EqualTo("Insurance applied. It covers one death."));
             Assert.That(result.ItemStateRevision, Is.EqualTo(42));
+        }
+
+        // The worker sends a code and named values, and the sentence it sends along is for the
+        // log: the client shows its own text, with the values looked up in its text tables.
+        [Test]
+        public void AResultShowsTheClientsTextForItsCodeWithTheArgumentsFilledIn()
+        {
+            var state = new WorldInteractionClientState();
+            state.UseTexts(TextCatalog.Create(new[]
+            {
+                FixtureTexts.MessageTable(
+                    ("interaction_opened", "{capability} is open."),
+                    ("gathering_tool_required", "{toolKind} required in the Tool slot.")),
+                FixtureTexts.TableOf(
+                    TextTableIds.Actors,
+                    (TextKeys.ActorCapabilityName("npc.city_services", "services.vendor"), "Trade")),
+                FixtureTexts.TableOf(TextTableIds.Items, (TextKeys.ToolKindName("pickaxe"), "Pickaxe"))
+            }));
+            var interactionId = Guid.NewGuid();
+
+            var opened = Guid.NewGuid();
+            state.Begin(opened);
+            Assert.That(
+                state.TryComplete(
+                    new RealtimeWorldInteractionResult(
+                        opened,
+                        interactionId,
+                        RealtimeWorldInteractionOperationKind.CapabilityAction,
+                        true,
+                        3,
+                        0,
+                        "interaction_opened",
+                        new[]
+                        {
+                            RealtimeMessageArgument.TextKey(
+                                "capability",
+                                TextKeys.ActorCapabilityName("npc.city_services", "services.vendor"))
+                        },
+                        null),
+                    out var error),
+                Is.True,
+                error);
+            Assert.That(state.LastErrorCode, Is.Empty);
+            Assert.That(state.LastMessage, Is.EqualTo("Trade is open."));
+
+            var refused = Guid.NewGuid();
+            state.Begin(refused);
+            Assert.That(
+                state.TryComplete(
+                    new RealtimeWorldInteractionResult(
+                        refused,
+                        interactionId,
+                        RealtimeWorldInteractionOperationKind.CapabilityAction,
+                        false,
+                        3,
+                        0,
+                        null,
+                        new[] { RealtimeMessageArgument.TextKey("toolKind", TextKeys.ToolKindName("pickaxe")) },
+                        new RealtimeError("gathering_tool_required", "A tool of the kind 'pickaxe' is required.")),
+                    out error),
+                Is.True,
+                error);
+            Assert.That(state.LastErrorCode, Is.EqualTo("gathering_tool_required"));
+            Assert.That(state.LastMessage, Is.EqualTo("Pickaxe required in the Tool slot."));
+
+            var unlisted = Guid.NewGuid();
+            state.Begin(unlisted);
+            Assert.That(
+                state.TryComplete(
+                    new RealtimeWorldInteractionResult(
+                        unlisted,
+                        interactionId,
+                        RealtimeWorldInteractionOperationKind.CapabilityAction,
+                        false,
+                        3,
+                        0,
+                        null,
+                        null,
+                        new RealtimeError("world_interaction_invalid", "Server words that no player reads.")),
+                    out error),
+                Is.True,
+                error);
+            Assert.That(state.LastMessage, Is.EqualTo("That did not work. [world_interaction_invalid]"));
+
+            var quiet = Guid.NewGuid();
+            state.Begin(quiet);
+            Assert.That(
+                state.TryComplete(
+                    new RealtimeWorldInteractionResult(
+                        quiet,
+                        interactionId,
+                        RealtimeWorldInteractionOperationKind.CapabilityAction,
+                        true,
+                        3,
+                        0,
+                        null,
+                        null,
+                        null),
+                    out error),
+                Is.True,
+                error);
+            Assert.That(state.LastMessage, Is.Empty);
         }
 
         [Test]

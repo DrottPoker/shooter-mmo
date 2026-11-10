@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 38,
+    "version": 39,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -85,7 +85,25 @@
       "name": "MaximumErrorMessageLength",
       "value": 512,
       "visibility": "private",
-      "description": "Characters in a human-readable error or closure message."
+      "description": "Characters in the English explanation of an error or closure, which is for logs."
+    },
+    {
+      "name": "MaximumMessageArguments",
+      "value": 4,
+      "visibility": "public",
+      "description": "Named values in one error or notice."
+    },
+    {
+      "name": "MaximumMessageArgumentNameLength",
+      "value": 32,
+      "visibility": "private",
+      "description": "Characters in the name of a message argument."
+    },
+    {
+      "name": "MaximumMessageArgumentValueLength",
+      "value": 384,
+      "visibility": "private",
+      "description": "Characters in the value of a message argument, which fits a text key that two content ids make."
     },
     {
       "name": "MaximumJoinTicketLength",
@@ -152,12 +170,6 @@
       "value": 10000,
       "visibility": "public",
       "description": "The highest level of a world actor."
-    },
-    {
-      "name": "MaximumWorldInteractionMessageLength",
-      "value": 512,
-      "visibility": "private",
-      "description": "Characters in the optional message of a world interaction result."
     },
     {
       "name": "MaximumCorpsePresencePerChunk",
@@ -394,6 +406,12 @@
         { "name": "DeliverQuestItems", "value": 10 },
         { "name": "TurnInQuest", "value": 11 }
       ]
+    },
+    {
+      "name": "MessageArgumentKind",
+      "family": "Session",
+      "description": "How the client shows the value of a message argument.",
+      "values": [ { "name": "Text", "value": 1 }, { "name": "TextKey", "value": 2 } ]
     },
     {
       "name": "GatheringStateKind",
@@ -716,9 +734,30 @@
       ]
     },
     {
+      "name": "MessageArgument",
+      "family": "Session",
+      "rules": true,
+      "description": "A named value of the text that the client shows for a code. A server sends an id or a number, never a sentence. A message that needs such values carries them next to its code.",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "string",
+          "maxLength": "MaximumMessageArgumentNameLength",
+          "description": "The placeholder of the client's text that the value fills."
+        },
+        { "name": "Kind", "type": "MessageArgumentKind", "description": "Whether the value is shown as it is or is a key of the client's text tables." },
+        {
+          "name": "Value",
+          "type": "string",
+          "maxLength": "MaximumMessageArgumentValueLength",
+          "description": "The text or the text key."
+        }
+      ]
+    },
+    {
       "name": "Error",
       "family": "Session",
-      "description": "A structured error: a stable code for programs and a message for people.",
+      "description": "A structured error: a stable code, which also chooses the text the client shows, and an English explanation for logs.",
       "fields": [
         {
           "name": "Code",
@@ -730,7 +769,7 @@
           "name": "Message",
           "type": "string",
           "maxLength": "MaximumErrorMessageLength",
-          "description": "A human-readable explanation."
+          "description": "An English explanation for logs. The client shows its own text for the code."
         }
       ]
     },
@@ -2524,12 +2563,21 @@
           "description": "The character item-state revision after the operation."
         },
         {
-          "name": "Message",
+          "name": "NoticeCode",
           "type": "string",
-          "maxLength": "MaximumWorldInteractionMessageLength",
+          "maxLength": "MaximumErrorCodeLength",
           "blank": "allow",
           "nullAsEmpty": true,
-          "description": "Text for the player, which may be empty."
+          "description": "The code of the text the client shows for a committed operation, or empty for none."
+        },
+        {
+          "name": "Arguments",
+          "type": "array",
+          "items": "MessageArgument",
+          "maxCount": "MaximumMessageArguments",
+          "nullAsEmpty": true,
+          "distinctBy": "Name",
+          "description": "The named values of the client's text for the notice of a committed operation or for the error of a failed one."
         },
         { "name": "Error", "type": "Error", "when": "!Succeeded", "description": "Why the operation failed." }
       ]
@@ -2669,7 +2717,14 @@
             "name": "Message",
             "type": "string",
             "maxLength": "MaximumErrorMessageLength",
-            "description": "A human-readable explanation."
+            "description": "An English explanation for logs. The client shows its own text for the code."
+          },
+          {
+            "name": "Arguments",
+            "type": "array",
+            "items": "MessageArgument",
+            "maxCount": "MaximumMessageArguments",
+            "description": "The named values of the client's text for the code."
           }
         ],
         "cases": [
@@ -2688,7 +2743,7 @@
           },
           {
             "kinds": [ { "kind": "Stopped", "factory": "CreateStopped" } ],
-            "fields": [ { "field": "Code" }, { "field": "Message" } ]
+            "fields": [ { "field": "Code" }, { "field": "Message" }, { "field": "Arguments", "distinctBy": "Name" } ]
           }
         ]
       }

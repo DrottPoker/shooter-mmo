@@ -6,13 +6,22 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
 {
     public sealed class WorldInteractionClientState
     {
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
         public event Action Changed;
+
+        // The texts for the codes that the worker sends with a result or a closure.
+        public void UseTexts(TextCatalog catalog)
+        {
+            texts = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        }
 
         public RealtimeWorldInteractionOpened ActiveInteraction { get; private set; }
 
@@ -98,8 +107,17 @@ namespace Mmorpg.Client.WorldActors
             }
 
             PendingOperationId = Guid.Empty;
+            // A committed operation may carry a notice, and a failed one carries its error;
+            // the arguments belong to whichever text is shown.
             LastErrorCode = result.Succeeded ? string.Empty : result.Error.Code;
-            LastMessage = result.Succeeded ? result.Message : result.Error.Message;
+            var code = result.Succeeded ? result.NoticeCode : result.Error.Code;
+            LastMessage = string.IsNullOrEmpty(code)
+                ? string.Empty
+                : ClientMessages.Text(
+                    texts,
+                    code,
+                    result.Succeeded ? null : result.Error.Message,
+                    RealtimeMessageArguments.ToText(result.Arguments));
             Changed?.Invoke();
             return true;
         }
@@ -117,7 +135,7 @@ namespace Mmorpg.Client.WorldActors
             ActiveInteraction = null;
             ActiveTarget = null;
             LastErrorCode = closed.Code;
-            LastMessage = closed.Message;
+            LastMessage = ClientMessages.Text(texts, closed.Code, closed.Message);
             Changed?.Invoke();
         }
 
@@ -172,6 +190,7 @@ namespace Mmorpg.Client.WorldActors
         private WorldActorClientController actorController;
         private CorpseClientController corpseController;
         private InventoryClientController inventoryController;
+        private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private bool initialized;
         private Guid pendingCapabilityOperationId;
         private RealtimeWorldActorCapability pendingCapability;
@@ -209,16 +228,22 @@ namespace Mmorpg.Client.WorldActors
             RealtimeSimulationClient realtimeClient,
             WorldActorClientController worldActors,
             CorpseClientController corpses,
-            InventoryClientController inventory)
+            InventoryClientController inventory,
+            TextCatalog texts)
         {
             if (realtimeClient == null
                 || worldActors == null
                 || corpses == null
-                || inventory == null)
+                || inventory == null
+                || texts == null)
             {
                 throw new ArgumentNullException(
-                    "World interaction requires realtime, actor, corpse, and inventory controllers.");
+                    "World interaction requires realtime, actor, corpse, and inventory controllers and the texts.");
             }
+
+            messageTexts = texts;
+            State.UseTexts(texts);
+            Gathering.UseTexts(texts);
 
             if (initialized)
             {
@@ -828,7 +853,7 @@ namespace Mmorpg.Client.WorldActors
                     result.Succeeded,
                     result.Succeeded
                         ? null
-                        : new InventoryClientError(result.Error.Code, result.Error.Message),
+                        : InventoryClientError.FromServer(result.Error, messageTexts),
                     false,
                     result.ItemStateRevision > 0 ? result.ItemStateRevision : inventoryController.State.KnownItemStateRevision);
             }

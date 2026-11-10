@@ -2,6 +2,7 @@ using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Worlds;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,6 +15,14 @@ namespace Mmorpg.Client.Ui
     // fields and Enter sends the open tab. A failed request shows its reason in the card.
     public sealed class LoginMenuPanel : MonoBehaviour
     {
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
+        // Called by the composition root before the component is activated.
+        public void Initialize(TextCatalog messageTexts)
+        {
+            texts = messageTexts;
+        }
+
         public const string ScreenName = "LoginMenu";
 
         // The local development account, filled in only in the Editor and development builds.
@@ -272,7 +281,9 @@ namespace Mmorpg.Client.Ui
 
         private void SetError(string operation, ApiError error, TMP_InputField retryField)
         {
-            SetStatus(AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl), TemporaryUiKit.DangerColor);
+            SetStatus(
+                AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
+                TemporaryUiKit.DangerColor);
             ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDisplayMessage());
             // The form is enabled again once the routine ends, so the field takes the caret then.
             StartCoroutine(FocusWhenIdle(retryField));

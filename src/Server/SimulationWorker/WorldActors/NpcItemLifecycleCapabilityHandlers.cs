@@ -36,10 +36,7 @@ public sealed class VendorWorldActorCapabilityHandler(
         ArgumentNullException.ThrowIfNull(context);
         if (context.Intent.CapabilityAction == RealtimeCapabilityActionKind.None)
         {
-            return Task.FromResult(new WorldActorCapabilityDispatchResult(
-                true,
-                string.Empty,
-                context.Capability.DisplayName + " is open while this interaction stays open."));
+            return Task.FromResult(WorldInteractionNotices.Opened(context));
         }
 
         return executor.ExecuteAsync(context, cancellationToken);
@@ -156,8 +153,8 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
 
         return new WorldActorCapabilityDispatchResult(
             true,
+            NoticeCode(intent.CapabilityAction),
             string.Empty,
-            SuccessMessage(intent.CapabilityAction),
             itemStateRevision,
             ItemStateChange: applied
                 ? OwnerItemStateChangeMapper.TryCreate(intent.OperationId, session.CharacterId, result.Value!)
@@ -197,16 +194,14 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
         };
     }
 
-    private static string SuccessMessage(RealtimeCapabilityActionKind action)
+    private static string NoticeCode(RealtimeCapabilityActionKind action)
     {
         return action switch
         {
-            RealtimeCapabilityActionKind.ApplyInsurance =>
-                "Insurance applied. The policy covers one protecting death.",
-            RealtimeCapabilityActionKind.RemoveInsurance =>
-                "Insurance removed. Normal transfer rules are restored.",
-            RealtimeCapabilityActionKind.VendorPurchase => "Purchased.",
-            RealtimeCapabilityActionKind.VendorSale => "Sold.",
+            RealtimeCapabilityActionKind.ApplyInsurance => WorldInteractionNoticeCodes.InsuranceApplied,
+            RealtimeCapabilityActionKind.RemoveInsurance => WorldInteractionNoticeCodes.InsuranceRemoved,
+            RealtimeCapabilityActionKind.VendorPurchase => WorldInteractionNoticeCodes.VendorPurchased,
+            RealtimeCapabilityActionKind.VendorSale => WorldInteractionNoticeCodes.VendorSold,
             _ => string.Empty
         };
     }

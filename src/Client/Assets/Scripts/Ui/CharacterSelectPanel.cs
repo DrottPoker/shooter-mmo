@@ -3,6 +3,7 @@ using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
@@ -16,6 +17,7 @@ namespace Mmorpg.Client.Ui
     // are in CharacterSelectPanel.Layout.cs.
     public sealed partial class CharacterSelectPanel : MonoBehaviour
     {
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         public const string ScreenName = "CharacterSelect";
 
         private readonly ClientOperationState operationState = new ClientOperationState();
@@ -36,9 +38,10 @@ namespace Mmorpg.Client.Ui
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(RealtimeSimulationClient realtimeClient)
+        public void Initialize(RealtimeSimulationClient realtimeClient, TextCatalog messageTexts)
         {
             simulationClient = realtimeClient;
+            texts = messageTexts;
         }
 
         // Loads the characters and the shards again, keeping what is chosen.
@@ -469,7 +472,9 @@ namespace Mmorpg.Client.Ui
 
             if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient))
             {
-                SetStatus(AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl), TemporaryUiKit.DangerColor);
+                SetStatus(
+                    AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
+                    TemporaryUiKit.DangerColor);
                 ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDisplayMessage());
             }
 
@@ -484,7 +489,7 @@ namespace Mmorpg.Client.Ui
             }
 
             operationStepFailed = true;
-            SetStatus(AccountEntryPresentation.ErrorText(error), TemporaryUiKit.DangerColor);
+            SetStatus(AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
             return true;
         }
 

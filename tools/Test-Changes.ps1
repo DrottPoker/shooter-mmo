@@ -46,7 +46,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   blender-python   the art pipeline's Python tests in tools/art/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   observability    tools/Verify-Observability.ps1
-#   verify-content   the item catalog, world collision, world actor, and quest catalog verifiers
+#   verify-content   the item catalog, world collision, world actor, quest catalog, and text table verifiers
 #   verify-protocol  the realtime protocol verifier
 # A content compiler's verifier also runs whenever its tool project is selected, and every
 # changed PowerShell script gets a syntax check.
@@ -100,6 +100,7 @@ $verifiers = @(
     @{ Name = "world collision"; Tool = "Mmorpg.Tools.WorldCollisionCompiler"; Token = "verify-content" },
     @{ Name = "world actors"; Tool = "Mmorpg.Tools.WorldActorCompiler"; Token = "verify-content" },
     @{ Name = "quest catalog"; Tool = "Mmorpg.Tools.QuestCatalogCompiler"; Token = "verify-content" },
+    @{ Name = "text tables"; Tool = "Mmorpg.Tools.TextTableCompiler"; Token = "verify-content" },
     @{ Name = "realtime protocol"; Tool = "Mmorpg.Tools.ProtocolGenerator"; Token = "verify-protocol" }
 )
 

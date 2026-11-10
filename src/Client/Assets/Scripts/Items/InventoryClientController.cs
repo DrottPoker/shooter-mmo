@@ -43,6 +43,7 @@ namespace Mmorpg.Client.Items
         private const float RefreshRetryDelaySeconds = 0.1f;
 
         private ApiClient apiClient;
+        private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private RealtimeSimulationClient simulationClient;
         private Coroutine refreshCoroutine;
         // Set before the routine starts: its first step raises Changed synchronously, and a
@@ -86,6 +87,7 @@ namespace Mmorpg.Client.Items
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             simulationClient = realtimeClient
                 ?? throw new ArgumentNullException(nameof(realtimeClient));
+            messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientItemCatalog.TryLoad(gameplayCatalog, texts, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
@@ -624,11 +626,7 @@ namespace Mmorpg.Client.Items
                     && operation.OperationId == result.OperationId
                     && operation.Kind == result.OperationKind,
                 result.Succeeded,
-                result.Succeeded
-                    ? null
-                    : new InventoryClientError(
-                        result.Error?.Code ?? "item_operation_rejected",
-                        result.Error?.Message ?? "The server rejected the item operation."),
+                result.Succeeded ? null : InventoryClientError.FromServer(result.Error, messageTexts),
                 result.RequiresInventoryRefresh,
                 result.CarryState.ItemStateRevision);
         }
@@ -652,7 +650,7 @@ namespace Mmorpg.Client.Items
                 succeeded,
                 succeeded
                     ? null
-                    : error ?? new InventoryClientError("item_operation_rejected", "The server rejected the item operation."),
+                    : error ?? InventoryClientError.FromServer(null, messageTexts),
                 requiresInventoryRefresh,
                 itemStateRevision);
         }
@@ -915,7 +913,7 @@ namespace Mmorpg.Client.Items
                         State.SetError(
                             new InventoryClientError(
                                 apiError.Code,
-                                apiError.Message,
+                                ClientMessages.Text(messageTexts, apiError),
                                 apiError.CorrelationId),
                             true);
                     }

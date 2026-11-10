@@ -298,6 +298,7 @@ at `src/Shared/WorldData/Generated/`:
 | `Text/en/items.text-table.json` | the names in `items/` | `tools/ItemCatalogCompiler` |
 | `Text/en/actors.text-table.json` | the names, examine texts, and capability texts in `actors/` | `tools/WorldActorCompiler` |
 | `Text/en/quests.text-table.json` | the texts in `quests/` | `tools/QuestCatalogCompiler` |
+| `Text/en/messages.text-table.json` | `text/messages.json` | `tools/TextTableCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
@@ -341,12 +342,37 @@ A text that content leaves empty has no entry. A text is at most 2000
 characters, has no whitespace around it, and holds no control character but a
 line feed; the content rules of each field are stricter.
 
-The client shows item, quest, and actor text from the tables, as
-[Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes, so
-a table that is not current shows a stale or missing text in the game. The
+The client shows item, quest, and actor text and the messages from the tables,
+as [Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes,
+so a table that is not current shows a stale or missing text in the game. The
 compiled catalogs still hold the same texts. English, `en`, is the
 only locale; a table names its locale so that translated tables can sit beside
 it in `Text/<locale>/`.
+
+### Messages
+
+A server never sends a sentence for the player. It sends a stable code, such
+as `item_slot_occupied`, and the client shows its own text for that code. No
+content owns these texts, so they are written by hand in `text/messages.json`,
+one entry per code:
+
+| Text | Key |
+| --- | --- |
+| The text for a code: an error, a closure, or the notice of a committed action | `message/<code>` |
+| The text for every code that has no text of its own, which names the code as `{code}` | `message-unlisted/text` |
+
+A text may hold placeholders, a name in braces such as `{toolKind}`, for the
+named values that a server sends with the code; a text uses braces for nothing
+else. `gathering_tool_required` reads `{toolKind} required in the Tool slot.`,
+and the worker sends the tool kind as a text key, so the client fills in the
+name from the item text table.
+
+Give a code a text when a player can meet it in normal play. A code that only a
+defect or a tampered client produces needs none: it shows the unlisted text
+with the code, and the English explanation of the server is in the client log.
+`MessageTextTests` fails for a text whose code no server sends and for a
+placeholder that no server fills, and `MessageCoverageTests` fails when a code
+of the worker's notices, gathering, combat, or corpse closures has no text.
 
 ## Compile And Verify
 
@@ -365,6 +391,7 @@ dotnet run --project tools/ItemCatalogCompiler
 dotnet run --project tools/WorldActorCompiler
 dotnet run --project tools/WorldCollisionCompiler
 dotnet run --project tools/QuestCatalogCompiler
+dotnet run --project tools/TextTableCompiler
 ```
 
 Add `-- --verify` to check that the committed generated data matches the
@@ -381,7 +408,8 @@ with its revision and its numbers of definitions and runtime instances, the
 collision compiler prints every World with its revision and chunk count, and the
 quest compiler prints the quest catalog revision with its number of quests. The
 item, actor, and quest compilers each also print their text table with its
-revision and its number of texts.
+revision and its number of texts, and the text table compiler prints the
+messages table.
 
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate

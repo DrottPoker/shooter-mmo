@@ -37,12 +37,6 @@ public sealed class ItemStorageWorldActorCapabilityHandler : IWorldActorCapabili
                 "Item storage capabilities take no lifecycle action."));
         }
 
-        var name = Kind == RealtimeWorldActorCapabilityKind.Bank
-            ? "Character Bank"
-            : "Recovery Storage";
-        return Task.FromResult(new WorldActorCapabilityDispatchResult(
-            true,
-            string.Empty,
-            name + " is open while this interaction stays open."));
+        return Task.FromResult(WorldInteractionNotices.Opened(context));
     }
 }

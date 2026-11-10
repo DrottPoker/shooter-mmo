@@ -11,6 +11,7 @@ using Mmorpg.SimulationWorker.Tests.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -21,12 +22,19 @@ public sealed class VendorAndGatheringCapabilityTests
     {
         var handler = new VendorWorldActorCapabilityHandler(CreateExecutor(new RecordingHandler()));
 
-        var opened = await handler.ExecuteAsync(
-            VendorContext(RealtimeCapabilityActionKind.None),
-            CancellationToken.None);
+        var context = VendorContext(RealtimeCapabilityActionKind.None);
+        var opened = await handler.ExecuteAsync(context, CancellationToken.None);
 
+        // The worker names the capability by a text key; the client owns the sentence.
         Assert.True(opened.Succeeded);
-        Assert.Contains("Trade", opened.Message, StringComparison.Ordinal);
+        Assert.Equal(WorldInteractionNoticeCodes.InteractionOpened, opened.Code);
+        Assert.Empty(opened.Message);
+        var argument = Assert.Single(opened.Arguments!);
+        Assert.Equal(WorldInteractionNotices.CapabilityArgument, argument.Name);
+        Assert.Equal(RealtimeMessageArgumentKind.TextKey, argument.Kind);
+        Assert.Equal(
+            TextKeys.ActorCapabilityName(context.Actor.Definition.Id, context.Capability.Id),
+            argument.Value);
     }
 
     [Fact]
@@ -152,19 +160,48 @@ public sealed class VendorAndGatheringCapabilityTests
         var withoutTool = await handler.ExecuteAsync(context, CancellationToken.None);
         Assert.False(withoutTool.Succeeded);
         Assert.Equal(GatheringStopCodes.ToolRequired, withoutTool.Code);
-        Assert.Equal("Pickaxe required in the Tool slot.", withoutTool.Message);
+        AssertNamesTheToolKind(withoutTool, context);
         Assert.Null(withoutTool.GatheringNode);
 
         Equip(itemStates, context, 2, "tool.woodcutting_axe");
         var withAxe = await handler.ExecuteAsync(context, CancellationToken.None);
         Assert.False(withAxe.Succeeded);
         Assert.Equal(GatheringStopCodes.ToolRequired, withAxe.Code);
-        Assert.Equal("Pickaxe required in the Tool slot.", withAxe.Message);
+        AssertNamesTheToolKind(withAxe, context);
 
         Equip(itemStates, context, 3, "tool.starter_pickaxe");
         var withPickaxe = await handler.ExecuteAsync(context, CancellationToken.None);
         Assert.True(withPickaxe.Succeeded);
+        Assert.Equal(WorldInteractionNoticeCodes.GatheringStarted, withPickaxe.Code);
         Assert.Same(context.Actor, withPickaxe.GatheringNode);
+    }
+
+    // A stop that GameService decides at a yield carries the same value as the worker's own
+    // refusal, and no other stop names a tool.
+    [Fact]
+    public void OnlyTheMissingToolCodeNamesTheToolKind()
+    {
+        var argument = Assert.Single(GatheringMessageArguments.For(GatheringStopCodes.ToolRequired, "pickaxe"));
+        Assert.Equal(GatheringMessageArguments.ToolKind, argument.Name);
+        Assert.Equal(RealtimeMessageArgumentKind.TextKey, argument.Kind);
+        Assert.Equal("tool-kind/pickaxe/name", argument.Value);
+
+        Assert.Empty(GatheringMessageArguments.For(GatheringStopCodes.Depleted, "pickaxe"));
+        Assert.Empty(GatheringMessageArguments.For(GatheringStopCodes.ToolRequired, null));
+        Assert.Empty(GatheringMessageArguments.For(GatheringStopCodes.ToolRequired, "Not An Id"));
+    }
+
+    // The client's text for the code names the kind of tool by the text key the worker sends.
+    private static void AssertNamesTheToolKind(
+        WorldActorCapabilityDispatchResult result,
+        WorldActorCapabilityOperationContext context)
+    {
+        var argument = Assert.Single(result.Arguments!);
+        Assert.Equal(GatheringMessageArguments.ToolKind, argument.Name);
+        Assert.Equal(RealtimeMessageArgumentKind.TextKey, argument.Kind);
+        Assert.Equal(
+            TextKeys.ToolKindName(context.Actor.ResourceProfile!.RequiredToolKind),
+            argument.Value);
     }
 
     [Fact]

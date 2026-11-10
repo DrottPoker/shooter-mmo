@@ -1,6 +1,8 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
@@ -10,13 +12,19 @@ namespace Mmorpg.Client.Gameplay
     // inventory ask for. A refused change shows its reason in the game messages.
     public sealed class PlayerLookLink : IDisposable
     {
+        private readonly TextCatalog texts;
         private readonly RealtimeSimulationClient client;
         private readonly PlayerBodyLookSetting look;
         private readonly GameMessageLog messages;
 
-        public PlayerLookLink(RealtimeSimulationClient realtimeClient, PlayerBodyLookSetting lookSetting, GameMessageLog gameMessages)
+        public PlayerLookLink(
+            RealtimeSimulationClient realtimeClient,
+            PlayerBodyLookSetting lookSetting,
+            GameMessageLog gameMessages,
+            TextCatalog messageTexts)
         {
             client = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
+            texts = messageTexts ?? throw new ArgumentNullException(nameof(messageTexts));
             look = lookSetting ?? throw new ArgumentNullException(nameof(lookSetting));
             messages = gameMessages;
             client.EntityAppearanceChanged += OnEntityAppearanceChanged;
@@ -82,7 +90,9 @@ namespace Mmorpg.Client.Gameplay
         {
             if (!result.Succeeded && result.Error != null && messages != null)
             {
-                messages.Add(result.Error.Message, Time.unscaledTime);
+                messages.Add(
+                    ClientMessages.Text(texts, result.Error.Code, result.Error.Message),
+                    Time.unscaledTime);
             }
         }
     }

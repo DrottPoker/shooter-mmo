@@ -414,6 +414,30 @@ The client shows item, quest, and actor text from the text tables, as
    shows its key in brackets, such as `[item/tool.starter_pickaxe/name]`. Restore the
    file with `git restore src/Shared/WorldData/Generated/Text`.
 
+### Messages By Code
+
+The client shows its own text for every code that a server sends, as
+[Messages](../content/README.md#messages) describes.
+
+1. On the login screen, log in with a wrong password. Expected result: the
+   status reads `The login or the password is incorrect.`, with no code after
+   it.
+2. Join the World with a Woodcutting Axe in the Tool slot; the Inventory Item
+   Grants window gives one. Right-click an Iron Vein and choose `Mine`.
+   Expected result: the interaction panel reads
+   `Pickaxe required in the Tool slot.`, and the Console holds a line that
+   starts with `Server message [gathering_tool_required]:` and names the tool
+   kind by its id. With an empty Tool slot the client refuses by itself and
+   sends nothing.
+3. Open the vendor at Mira and buy an item. Expected result: the trade window
+   reads `Purchased.`
+4. Stop Play Mode. In `content/text/messages.json`, delete the entry of
+   `message/vendor_purchased`, run `dotnet run --project tools/TextTableCompiler`,
+   start Play Mode, and buy an item again. Expected result: the trade window
+   reads `That did not work. [vendor_purchased]`, the text for a code without a
+   text of its own. Restore both files with
+   `git restore content/text src/Shared/WorldData/Generated/Text`.
+
 ### Busy Buttons And Lost Connections
 
 1. Double-click `Create Account`, `Create Character`, `Refresh`, `Enter World`,

@@ -26,6 +26,7 @@ namespace Mmorpg.Client.Quests
         private readonly List<RealtimeQuestLogChanged> waitingChanges = new List<RealtimeQuestLogChanged>();
         private readonly QuestLogRetry retry = new QuestLogRetry();
         private ApiClient apiClient;
+        private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private RealtimeSimulationClient simulationClient;
         private IInventoryOperationQueue inventory;
         private Guid pendingIntentId;
@@ -80,6 +81,7 @@ namespace Mmorpg.Client.Quests
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             simulationClient = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
             inventory = inventoryQueue;
+            messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientQuestCatalog.TryLoad(questCatalog, texts, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
@@ -257,7 +259,12 @@ namespace Mmorpg.Client.Quests
             }
 
             pendingIntentId = Guid.Empty;
-            LastIntentError = result.Succeeded ? string.Empty : result.Error?.Message ?? "The quest action was refused.";
+            LastIntentError = result.Succeeded
+                ? string.Empty
+                : ClientMessages.Text(
+                    messageTexts,
+                    result.Error?.Code ?? "quest_intent_failed",
+                    result.Error?.Message);
             if (result.Succeeded && result.ItemStateRevision > 0)
             {
                 inventory?.EnsureFullState(result.ItemStateRevision);
@@ -358,7 +365,7 @@ namespace Mmorpg.Client.Quests
 
             if (lastError != null)
             {
-                State.SetFailed(lastError.Code, lastError.Message);
+                State.SetFailed(lastError.Code, ClientMessages.Text(messageTexts, lastError));
                 retry.Failed(Time.unscaledTime);
             }
 
