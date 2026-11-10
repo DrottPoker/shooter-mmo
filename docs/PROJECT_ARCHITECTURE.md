@@ -503,10 +503,11 @@ item, actor, and quest compilers each write the table of their domain together
 with their compiled data, with keys that `Mmorpg.WorldData.Text.TextKeys`
 derives from content ids, as [Text Tables](../content/README.md#text-tables)
 describes. A table has its own revision, apart from the revisions of the
-gameplay catalogs. The Unity client shows item and quest text from the tables,
-as [Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes; the
-servers do not read them. The compiled catalogs and the realtime protocol still
-carry the same texts, and actor text still travels in the protocol.
+gameplay catalogs. The Unity client shows item, quest, and actor text from the
+tables, as [Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes;
+the servers do not read them, and the world actor messages carry ids only. The
+compiled catalogs still carry the same texts, and the name on a Mob's corpse
+still travels in the protocol.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless

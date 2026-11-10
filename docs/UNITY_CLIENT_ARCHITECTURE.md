@@ -419,12 +419,12 @@ build-specific configuration assets or a future build configuration pipeline.
 
 ### Content Text
 
-The client shows the names and texts of items and quests from one
-`TextCatalog`, never from the gameplay catalogs. `ClientTexts.TryLoad` reads
+The client shows the names and texts of items, quests, and world actors from
+one `TextCatalog`, never from the gameplay catalogs or the realtime protocol. `ClientTexts.TryLoad` reads
 the text tables that `ClientConfig` lists, checks each against its revision,
 and joins them; [Text Tables](../content/README.md#text-tables) describes the
 tables and their keys. The bootstrap loads the catalog once and passes it to
-the inventory and quest controllers.
+the inventory, quest, and world actor controllers.
 
 - `ClientItemCatalog` answers every name from it: `GetDisplayName`,
   `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
@@ -434,15 +434,22 @@ the inventory and quest controllers.
   copy validates, it replaces every title, offer, progress, and completion
   text, objective text, and line in it with the text catalog's, so the quest
   windows and notices read the quest definitions as before.
+- `WorldActorClientEntry` names an actor when it spawns: its `DisplayName`
+  and `ExamineText` by the actor definition id of the spawn, and
+  `MenuOptionLabel` and `CapabilityName` by that id and a capability id.
+  `WorldInteractionClientState` keeps the actor of the open interaction as
+  `ActiveTarget`, so the panels ask it for `ActiveDisplayName` and
+  `CapabilityName`. An id from the network that cannot be part of a key is
+  shown as it is.
 - A text that the catalog lacks shows its key in brackets, such as
   `[item/weapon.iron_sword/name]`, so a missing text is seen on screen. When
   the tables cannot be read at all, the client logs an error and runs with an
   empty catalog.
 
 `ClientTextsTests` fails when the configuration does not list every table of
-`TextTableIds.All`, so a new table cannot be forgotten. Actor names, examine
-texts, menu options, and capability names still come from the realtime
-protocol, and the panels' own labels are still literals in the code.
+`TextTableIds.All`, so a new table cannot be forgotten. The name on a Mob's
+corpse still comes from the realtime protocol, and the panels' own labels are
+still literals in the code.
 
 ## Client Session State
 

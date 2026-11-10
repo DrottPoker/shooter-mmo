@@ -22,10 +22,12 @@ public sealed class RealtimeWorldActorProtocolTests
         Assert.Equal("local.city_services", decoded.SpawnDefinitionId);
         Assert.Equal(RealtimeWorldActorKind.Npc, decoded.Kind);
         Assert.Equal(RealtimeWorldActorActivityTier.EventDriven, decoded.ActivityTier);
-        Assert.Equal("She keeps the city's stores.", decoded.ExamineText);
         Assert.Equal(
-            ["services.dialogue:Dialogue:Talk-to", "services.vendor:Vendor:Trade"],
-            decoded.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind + ":" + option.Label));
+            ["services.dialogue:Dialogue", "services.vendor:Vendor"],
+            decoded.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind));
+
+        // The client names the actor and its options from its text tables.
+        Assert.DoesNotContain("Mira", System.Text.Encoding.UTF8.GetString(packet), StringComparison.Ordinal);
         Assert.DoesNotContain(
             "vendor.city_general_store",
             System.Text.Encoding.UTF8.GetString(packet),
@@ -91,14 +93,12 @@ public sealed class RealtimeWorldActorProtocolTests
             new RealtimeWorldActorCapability(
                 "services.dialogue",
                 RealtimeWorldActorCapabilityKind.Dialogue,
-                "Talk",
                 string.Empty,
                 true,
                 1),
             new RealtimeWorldActorCapability(
                 "services.vendor",
                 RealtimeWorldActorCapabilityKind.Vendor,
-                "Trade",
                 "vendor.city_general_store",
                 false,
                 4)
@@ -111,7 +111,6 @@ public sealed class RealtimeWorldActorProtocolTests
             runtimeActorId,
             3,
             9,
-            "Mira the Quartermaster",
             capabilities);
         var openedPacket = RealtimeProtocol.EncodeWorldInteractionOpened(opened);
 
@@ -287,14 +286,13 @@ public sealed class RealtimeWorldActorProtocolTests
 
     private static RealtimeWorldActorSpawn CreateSpawn(
         Guid runtimeActorId,
-        string displayName = "Mira the Quartermaster")
+        string spawnDefinitionId = "local.city_services")
     {
         return new RealtimeWorldActorSpawn(
             88,
             runtimeActorId,
             "npc.city_services",
-            "local.city_services",
-            displayName,
+            spawnDefinitionId,
             RealtimeWorldActorKind.Npc,
             "city",
             RealtimeWorldActorDisposition.Friendly,
@@ -315,16 +313,13 @@ public sealed class RealtimeWorldActorProtocolTests
             0.8f,
             2f,
             0.8f,
-            "She keeps the city's stores.",
             [
                 new RealtimeWorldActorMenuOption(
                     "services.dialogue",
-                    RealtimeWorldActorCapabilityKind.Dialogue,
-                    "Talk-to"),
+                    RealtimeWorldActorCapabilityKind.Dialogue),
                 new RealtimeWorldActorMenuOption(
                     "services.vendor",
-                    RealtimeWorldActorCapabilityKind.Vendor,
-                    "Trade")
+                    RealtimeWorldActorCapabilityKind.Vendor)
             ]);
     }
 }

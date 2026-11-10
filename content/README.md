@@ -101,7 +101,8 @@ described in [Game Features](../docs/GAME_FEATURES.md#world-menu):
   capability is the left-click action. Put a dialogue capability first for a
   `Talk-to` default. Actor Studio's `Move Up` and `Move Down` change the order.
 
-Both limits fit the realtime protocol limits that `WorldActorSpawn` carries.
+Both texts go into the actor text table, as [Text Tables](#text-tables)
+describes; the realtime protocol carries neither.
 
 ## Collision Bounds
 
@@ -340,11 +341,11 @@ A text that content leaves empty has no entry. A text is at most 2000
 characters, has no whitespace around it, and holds no control character but a
 line feed; the content rules of each field are stricter.
 
-The client shows item and quest text from the tables, as
+The client shows item, quest, and actor text from the tables, as
 [Content Text](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-text) describes, so
 a table that is not current shows a stale or missing text in the game. The
-compiled catalogs and the realtime protocol still hold the same texts, and
-actor text still reaches the client through the protocol. English, `en`, is the
+compiled catalogs still hold the same texts, and the name on a Mob's corpse
+still reaches the client through the protocol. English, `en`, is the
 only locale; a table names its locale so that translated tables can sit beside
 it in `Text/<locale>/`.
 

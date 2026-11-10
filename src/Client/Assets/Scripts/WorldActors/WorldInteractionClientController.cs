@@ -16,7 +16,27 @@ namespace Mmorpg.Client.WorldActors
 
         public RealtimeWorldInteractionOpened ActiveInteraction { get; private set; }
 
+        // The actor of the open interaction, which names it and its capabilities, or null.
+        public WorldActorClientEntry ActiveTarget { get; private set; }
+
+        // The name of the actor whose interaction is open, or empty.
+        public string ActiveDisplayName
+        {
+            get { return ActiveTarget != null ? ActiveTarget.DisplayName : string.Empty; }
+        }
+
         public Guid PendingOperationId { get; private set; }
+
+        // The name of a capability of the open interaction, or its id without a target.
+        public string CapabilityName(RealtimeWorldActorCapability capability)
+        {
+            if (capability == null)
+            {
+                return string.Empty;
+            }
+
+            return ActiveTarget != null ? ActiveTarget.CapabilityName(capability.Id) : capability.Id;
+        }
 
         public string LastErrorCode { get; private set; } = string.Empty;
 
@@ -32,6 +52,7 @@ namespace Mmorpg.Client.WorldActors
 
         public bool TryOpen(
             RealtimeWorldInteractionOpened opened,
+            WorldActorClientEntry target,
             out string error)
         {
             error = string.Empty;
@@ -49,6 +70,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             ActiveInteraction = opened;
+            ActiveTarget = target;
             PendingOperationId = Guid.Empty;
             LastErrorCode = string.Empty;
             LastMessage = string.Empty;
@@ -93,6 +115,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             ActiveInteraction = null;
+            ActiveTarget = null;
             LastErrorCode = closed.Code;
             LastMessage = closed.Message;
             Changed?.Invoke();
@@ -121,6 +144,7 @@ namespace Mmorpg.Client.WorldActors
         public void Clear()
         {
             ActiveInteraction = null;
+            ActiveTarget = null;
             PendingOperationId = Guid.Empty;
             LastErrorCode = string.Empty;
             LastMessage = string.Empty;
@@ -299,7 +323,7 @@ namespace Mmorpg.Client.WorldActors
             {
                 State.SetLocalError(
                     "world_interaction_capability_missing",
-                    active.DisplayName + " does not offer that right now.");
+                    State.ActiveDisplayName + " does not offer that right now.");
                 return;
             }
 
@@ -765,7 +789,7 @@ namespace Mmorpg.Client.WorldActors
                 ? pendingOpenCapabilityId
                 : string.Empty;
             ClearPendingOpen();
-            if (!State.TryOpen(opened, out var error))
+            if (!State.TryOpen(opened, actor, out var error))
             {
                 simulationClient.DisconnectForClientFailure(
                     "world_interaction_state_conflict",

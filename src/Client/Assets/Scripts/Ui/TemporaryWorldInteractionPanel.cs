@@ -204,7 +204,7 @@ namespace Mmorpg.Client.Ui
 
             if (active != null)
             {
-                AddText(active.DisplayName, 22, FontStyles.Bold, TemporaryUiKit.TextPrimary);
+                AddText(interactionController.State.ActiveDisplayName, 22, FontStyles.Bold, TemporaryUiKit.TextPrimary);
                 AddText(
                     "Capabilities revision " + active.CapabilitySummaryRevision,
                     13,
@@ -236,7 +236,7 @@ namespace Mmorpg.Client.Ui
                         is RealtimeWorldActorCapabilityKind.Bank
                         or RealtimeWorldActorCapabilityKind.RecoveryStorage;
                     var label = (opensStorage ? "Open " : string.Empty)
-                        + capability.DisplayName
+                        + interactionController.State.CapabilityName(capability)
                         + (capability.IsAvailable ? string.Empty : " (Unavailable)");
                     AddButton(
                         label,
@@ -341,7 +341,7 @@ namespace Mmorpg.Client.Ui
                     ? "  Gathered " + gathering.YieldedQuantity + " "
                         + DisplayName(gathering.YieldDefinitionId) + "."
                     : string.Empty;
-                AddText(capability.DisplayName + "..." + yielded, 16, FontStyles.Bold, TemporaryUiKit.TextPrimary);
+                AddText(interactionController.State.CapabilityName(capability) + "..." + yielded, 16, FontStyles.Bold, TemporaryUiKit.TextPrimary);
                 AddProgressBar();
                 AddText(
                     "Moving or closing the interaction stops gathering.",
@@ -361,7 +361,7 @@ namespace Mmorpg.Client.Ui
             }
 
             AddButton(
-                capability.DisplayName + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
+                interactionController.State.CapabilityName(capability) + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
                 capability.IsAvailable && interactionController.State.PendingOperationId == Guid.Empty,
                 () => SubmitStartGathering(capability.Id));
         }
@@ -424,7 +424,7 @@ namespace Mmorpg.Client.Ui
         private void DrawQuestCapability(RealtimeWorldActorCapability capability)
         {
             AddButton(
-                capability.DisplayName + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
+                interactionController.State.CapabilityName(capability) + (capability.IsAvailable ? string.Empty : " (Unavailable)"),
                 capability.IsAvailable,
                 () => interactionController.ActivateCapability(capability.Id));
         }

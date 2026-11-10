@@ -64,11 +64,8 @@ The schema holds:
 
 The content compilers fit the public limits: item catalog tags and equipment
 slot ids stay within `MaximumSlotTagLength` and `MaximumEquipmentSlotIdLength`
-(64), a Bag slot accepts at most `MaximumSlotTags` (16) tags, and actor examine
-texts and menu options stay within their limits, as
-[World Actor Spawns And Menu Options](#world-actor-spawns-and-menu-options)
-describes. A test keeps the `ItemCatalogFormat` limits within
-`RealtimeProtocolLimits`.
+(64), and a Bag slot accepts at most `MaximumSlotTags` (16) tags. A test keeps
+the `ItemCatalogFormat` limits within `RealtimeProtocolLimits`.
 
 The generator owns `Runtime/Generated`. `RealtimeProtocol.Core.g.cs` holds
 `RealtimeMessageType`, the protocol constants, `RealtimeProtocolLimits`, and the
@@ -575,7 +572,7 @@ The world actor messages keep actor visibility apart from interaction state:
 
 - `WorldActorSpawn` (20), `WorldActorState` (21), and `WorldActorDespawn` (22)
   carry the actor's runtime and network identity, its definition and spawn ids,
-  display name, kind, faction, disposition, level, aggression, presentation
+  kind, faction, disposition, level, aggression, presentation
   archetype, state and interaction revisions, active flag, position, facing,
   activity tier, and interaction bounds. A state update goes out only when replicated state
   changes, and a resource node's available or depleted state reuses `IsActive`.
@@ -586,8 +583,8 @@ The world actor messages keep actor visibility apart from interaction state:
   expected revision, the action, and the action's fields.
 - `WorldInteractionOpened` (24) carries the interaction session, the target, the
   capability summary revision, and the player-specific capability summary: every
-  `WorldActorCapability` with its id, kind, display name, `ProfileId`,
-  availability, and revision. `ProfileId` names the item catalog vendor profile
+  `WorldActorCapability` with its id, kind, `ProfileId`, availability, and
+  revision. `ProfileId` names the item catalog vendor profile
   of a `Vendor` capability, the resource profile of a `Gathering` capability,
   and is empty for every other kind.
 - `WorldInteractionResult` (25) correlates an operation by id and carries the
@@ -598,17 +595,20 @@ The world actor messages keep actor visibility apart from interaction state:
 Strings and lists are bounded. Large future capability state must use explicit
 chunking or a focused service read rather than an oversized actor packet.
 
+No world actor message carries player-facing text. An actor's name and examine
+text and the name and menu verb of each capability are in the client's text
+tables, and the client finds them by the actor definition id and the capability
+id that these messages carry, as
+[Text Tables](../content/README.md#text-tables) describes.
+
 ### World Actor Spawns And Menu Options
 
-`WorldActorSpawn` ends with two fields for the client's right-click world menu:
-`ExamineText`, up to `MaximumWorldActorExamineTextLength` (200) characters, and
-`MenuOptions`, up to `MaximumWorldActorCapabilities` (16) `WorldActorMenuOption`
-structs with distinct `CapabilityId` values. Each option names a capability, its
-`WorldActorCapabilityKind`, and its `Label`, the menu verb of up to
-`MaximumWorldActorMenuOptionLength` (32) characters, in the actor's authored
-capability order. The spawn carries no availability, revision, or profile: those
-stay in the player-specific capability summary of `WorldInteractionOpened`. Both
-text limits are public, and `WorldActorTextRules` in WorldData must fit them.
+`WorldActorSpawn` ends with `MenuOptions` for the client's right-click world
+menu: up to `MaximumWorldActorCapabilities` (16) `WorldActorMenuOption` structs
+with distinct `CapabilityId` values, in the actor's authored capability order.
+Each option names a capability and its `WorldActorCapabilityKind`. The spawn
+carries no availability, revision, or profile: those stay in the
+player-specific capability summary of `WorldInteractionOpened`.
 
 ### World Actor Level And Aggression
 

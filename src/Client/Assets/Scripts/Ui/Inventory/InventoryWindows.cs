@@ -338,9 +338,9 @@ namespace Mmorpg.Client.Ui
         // empty.
         internal string StorageOwnerName()
         {
-            var active = worldInteractionController?.State.ActiveInteraction;
-            return storageSource == InventoryStorageSource.Npc && active != null
-                ? active.DisplayName
+            var state = worldInteractionController?.State;
+            return storageSource == InventoryStorageSource.Npc && state?.ActiveInteraction != null
+                ? state.ActiveDisplayName
                 : string.Empty;
         }
 

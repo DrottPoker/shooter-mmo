@@ -248,9 +248,10 @@ public sealed class WorldActorRuntimeTests
         actor.Capabilities = Enumerable.Range(0, 16)
             .Select(index => new WorldActorCapabilityAuthoringEntry
             {
-                Id = "services.oversized_" + index.ToString("D2"),
+                // Sixteen ids of this length fit no realtime packet.
+                Id = "services." + new string('x', 100) + "_" + index.ToString("D2"),
                 Kind = WorldActorCapabilityKindIds.Dialogue,
-                DisplayName = new string('\u00e5', 128),
+                DisplayName = "Talk",
                 MenuOption = "Talk-to"
             })
             .ToArray();
@@ -272,7 +273,7 @@ public sealed class WorldActorRuntimeTests
     // The spawn names every capability in authored order, so the client can offer the
     // right-click menu before the interaction opens.
     [Fact]
-    public void ActorSpawnCarriesExamineTextAndMenuOptionsInAuthoredOrder()
+    public void ActorSpawnCarriesMenuOptionsInAuthoredOrderAndNoText()
     {
         var store = new WorldActorStore(WorldActorTestData.Compile(), new SimulationEntityRegistry());
         var actors = store.ActivateAssignment(
@@ -285,20 +286,26 @@ public sealed class WorldActorRuntimeTests
         var miraSpawn = WorldActorProtocolMapper.ToSpawn(mira);
         var wolfSpawn = WorldActorProtocolMapper.ToSpawn(wolf);
 
-        Assert.Equal(mira.Definition.ExamineText, miraSpawn.ExamineText);
         Assert.Equal(
             [
-                "services.quests:Quests:Quests",
-                "services.dialogue:Dialogue:Talk-to",
-                "services.vendor:Vendor:Trade",
-                "services.bank:Bank:Bank",
-                "services.recovery:RecoveryStorage:Recover",
-                "services.insurance:Insurance:Insure",
-                "services.crafting:Crafting:Craft"
+                "services.quests:Quests",
+                "services.dialogue:Dialogue",
+                "services.vendor:Vendor",
+                "services.bank:Bank",
+                "services.recovery:RecoveryStorage",
+                "services.insurance:Insurance",
+                "services.crafting:Crafting"
             ],
-            miraSpawn.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind + ":" + option.Label));
-        Assert.Equal("A lean, hungry wolf. It eyes you like a meal.", wolfSpawn.ExamineText);
+            miraSpawn.MenuOptions.Select(option => option.CapabilityId + ":" + option.Kind));
         Assert.Empty(wolfSpawn.MenuOptions);
+
+        // The client names an actor and its options from its text tables by their ids.
+        var miraPacket = System.Text.Encoding.UTF8.GetString(RealtimeProtocol.EncodeWorldActorSpawn(miraSpawn));
+        var wolfPacket = System.Text.Encoding.UTF8.GetString(RealtimeProtocol.EncodeWorldActorSpawn(wolfSpawn));
+        Assert.DoesNotContain(mira.Definition.DisplayName, miraPacket, StringComparison.Ordinal);
+        Assert.DoesNotContain(mira.Definition.ExamineText, miraPacket, StringComparison.Ordinal);
+        Assert.DoesNotContain("Talk-to", miraPacket, StringComparison.Ordinal);
+        Assert.DoesNotContain(wolf.Definition.ExamineText, wolfPacket, StringComparison.Ordinal);
         WorldActorProtocolCompatibility.Validate(actors);
     }
 

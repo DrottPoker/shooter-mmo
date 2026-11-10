@@ -53,7 +53,7 @@ public sealed class RealtimeWorldActorInteractionTests
         client.SendWorldIntent(CreateOpen(character.SimulationSessionId, services));
         await harness.PollUntilAsync(() => client.WorldOpened.Count == 1, "the open");
         var opened = client.WorldOpened[0];
-        Assert.Equal("Mira the Quartermaster", opened.DisplayName);
+        Assert.Equal(services.EntityId, opened.TargetEntityId);
 
         var close = RealtimeWorldInteractionIntent.CreateClose(
             Guid.NewGuid(),

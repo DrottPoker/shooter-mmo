@@ -137,7 +137,7 @@ namespace Mmorpg.Client.App
             corpseController.Initialize(simulationClient, inventoryController);
 
             worldActorController = GetOrAddComponent<WorldActorClientController>();
-            worldActorController.Initialize(simulationClient);
+            worldActorController.Initialize(simulationClient, texts);
 
             worldInteractionController = GetOrAddComponent<WorldInteractionClientController>();
             worldInteractionController.Initialize(

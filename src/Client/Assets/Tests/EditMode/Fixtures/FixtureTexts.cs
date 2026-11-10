@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.WorldActors;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
 using Mmorpg.WorldData.Text;
@@ -25,6 +27,54 @@ namespace Mmorpg.Client.Tests.EditMode
         public static TextCatalog For(QuestCatalogRuntimeDocument quests)
         {
             return TextCatalog.Create(new[] { ContentText.FromQuestCatalog(quests) });
+        }
+
+        // The actors that the client tests spawn, named as the tests expect: Mira of the city
+        // services, the Feral Wolf, and the Iron Vein.
+        public static TextCatalog DevelopmentActors()
+        {
+            return new ActorTexts()
+                .Actor("npc.city_services", "Mira", "She keeps the city's stores.")
+                .Capability("npc.city_services", "services.dialogue", "Talk", "Talk-to")
+                .Capability("npc.city_services", "services.vendor", "Trade", "Trade")
+                .Capability("npc.city_services", "services.bank", "Character Bank", "Bank")
+                .Actor("mob.feral_wolf", "Feral Wolf", "A lean, hungry wolf.")
+                .Actor("resource.iron_vein", "Iron Vein", "A seam of iron ore runs through the rock.")
+                .Capability("resource.iron_vein", "resource.mine", "Mine", "Mine")
+                .Build();
+        }
+
+        // An actor state that names its actors from DevelopmentActors.
+        public static WorldActorClientState ActorState()
+        {
+            var state = new WorldActorClientState();
+            state.UseTexts(DevelopmentActors());
+            return state;
+        }
+
+        // Builds the actor text table of a test, as the actor compiler builds the real one.
+        public sealed class ActorTexts
+        {
+            private readonly List<(string Key, string Text)> entries = new List<(string Key, string Text)>();
+
+            public ActorTexts Actor(string actorId, string name, string examine)
+            {
+                entries.Add((TextKeys.ActorName(actorId), name));
+                entries.Add((TextKeys.ActorExamine(actorId), examine));
+                return this;
+            }
+
+            public ActorTexts Capability(string actorId, string capabilityId, string name, string menuOption)
+            {
+                entries.Add((TextKeys.ActorCapabilityName(actorId, capabilityId), name));
+                entries.Add((TextKeys.ActorCapabilityMenuOption(actorId, capabilityId), menuOption));
+                return this;
+            }
+
+            public TextCatalog Build()
+            {
+                return Of(TextTableIds.Actors, entries.ToArray());
+            }
         }
 
         // A catalog of one table whose texts the test chooses, to prove where a text comes from.

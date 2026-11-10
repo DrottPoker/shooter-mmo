@@ -137,6 +137,13 @@ namespace Mmorpg.WorldData.Text
             return true;
         }
 
+        // Whether an id can be part of a key. Content ids always can; an id from the network
+        // is checked before a key is built from it.
+        public static bool IsValidId(string id)
+        {
+            return IsValidSegment(id);
+        }
+
         private static string Join(params string[] segments)
         {
             foreach (var segment in segments)

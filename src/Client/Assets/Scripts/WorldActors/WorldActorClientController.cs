@@ -1,6 +1,7 @@
 using System;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
@@ -13,11 +14,16 @@ namespace Mmorpg.Client.WorldActors
 
         public WorldActorClientState State { get; } = new WorldActorClientState();
 
-        public void Initialize(RealtimeSimulationClient realtimeClient)
+        public void Initialize(RealtimeSimulationClient realtimeClient, TextCatalog texts)
         {
             if (realtimeClient == null)
             {
                 throw new ArgumentNullException(nameof(realtimeClient));
+            }
+
+            if (texts == null)
+            {
+                throw new ArgumentNullException(nameof(texts));
             }
 
             if (initialized)
@@ -32,6 +38,7 @@ namespace Mmorpg.Client.WorldActors
             simulationClient.SessionEnded += OnSessionEnded;
             initialized = true;
 
+            State.UseTexts(texts);
             State.Clear();
             foreach (var spawn in simulationClient.SpawnedWorldActors)
             {

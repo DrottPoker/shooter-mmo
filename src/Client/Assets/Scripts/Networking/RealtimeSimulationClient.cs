@@ -1926,7 +1926,6 @@ namespace Mmorpg.Client.Networking
                     first.SpawnDefinitionId,
                     second.SpawnDefinitionId,
                     StringComparison.Ordinal)
-                && string.Equals(first.DisplayName, second.DisplayName, StringComparison.Ordinal)
                 && first.Kind == second.Kind
                 && string.Equals(first.FactionId, second.FactionId, StringComparison.Ordinal)
                 && first.Disposition == second.Disposition

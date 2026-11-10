@@ -144,7 +144,7 @@ namespace Mmorpg.Client.WorldActors
                         OpenCapabilityAction,
                         index,
                         candidate,
-                        option.Label,
+                        actor.MenuOptionLabel(option.CapabilityId),
                         actor.DisplayName,
                         WorldMenuTargets.StyleOf(actor.Kind),
                         option.CapabilityId));
