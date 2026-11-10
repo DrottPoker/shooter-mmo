@@ -302,10 +302,14 @@ public sealed class WorldActorRuntimeTests
         // The client names an actor and its options from its text tables by their ids.
         var miraPacket = System.Text.Encoding.UTF8.GetString(RealtimeProtocol.EncodeWorldActorSpawn(miraSpawn));
         var wolfPacket = System.Text.Encoding.UTF8.GetString(RealtimeProtocol.EncodeWorldActorSpawn(wolfSpawn));
-        Assert.DoesNotContain(mira.Definition.DisplayName, miraPacket, StringComparison.Ordinal);
-        Assert.DoesNotContain(mira.Definition.ExamineText, miraPacket, StringComparison.Ordinal);
+        // The worker's actor data holds no text at all, so the texts come from the content.
+        var authored = WorldActorTestData.LoadActors().Actors;
+        var miraText = authored.Single(actor => actor.Id == mira.Definition.Id);
+        var wolfText = authored.Single(actor => actor.Id == wolf.Definition.Id);
+        Assert.DoesNotContain(miraText.DisplayName, miraPacket, StringComparison.Ordinal);
+        Assert.DoesNotContain(miraText.ExamineText, miraPacket, StringComparison.Ordinal);
         Assert.DoesNotContain("Talk-to", miraPacket, StringComparison.Ordinal);
-        Assert.DoesNotContain(wolf.Definition.ExamineText, wolfPacket, StringComparison.Ordinal);
+        Assert.DoesNotContain(wolfText.ExamineText, wolfPacket, StringComparison.Ordinal);
         WorldActorProtocolCompatibility.Validate(actors);
     }
 

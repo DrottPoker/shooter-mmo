@@ -66,16 +66,19 @@ namespace Mmorpg.WorldData.Editor.Quests
     // The same documents feed the shared quest compiler for live validation.
     public sealed class QuestEditorReferences
     {
-        // The compiled item catalog carries no names, so they come from the item text table.
-        // Without the table an item shows its id.
+        // The compiled item catalog and the compiled actors carry no names, so they come from
+        // the item and actor text tables. Without a table an item or an actor shows its id.
         public QuestEditorReferences(
             ItemCatalogRuntimeDocument items,
             IReadOnlyList<WorldActorRuntimeDocument> worlds,
-            TextTableDocument itemTexts = null)
+            params TextTableDocument[] texts)
         {
             Items = items ?? throw new ArgumentNullException(nameof(items));
-            var itemNames = (itemTexts?.Entries ?? Array.Empty<TextTableEntry>())
-                .ToDictionary(entry => entry.Key, entry => entry.Text, StringComparer.Ordinal);
+            var names = (texts ?? Array.Empty<TextTableDocument>())
+                .Where(table => table != null)
+                .SelectMany(table => table.Entries ?? Array.Empty<TextTableEntry>())
+                .GroupBy(entry => entry.Key, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().Text, StringComparer.Ordinal);
             Worlds = worlds ?? throw new ArgumentNullException(nameof(worlds));
             var placed = new HashSet<string>(
                 worlds.SelectMany(world => world.SpawnInstances ?? Array.Empty<WorldActorSpawnInstanceDefinition>())
@@ -86,7 +89,7 @@ namespace Mmorpg.WorldData.Editor.Quests
                 .Select(group => group.First())
                 .Select(actor => new QuestEditorActorChoice(
                     actor.Id,
-                    actor.DisplayName,
+                    names.TryGetValue(TextKeys.ActorName(actor.Id), out var actorName) ? actorName : actor.Id,
                     actor.Kind,
                     actor.Tags,
                     (actor.Capabilities ?? Array.Empty<WorldActorCapabilityDefinition>())
@@ -97,7 +100,7 @@ namespace Mmorpg.WorldData.Editor.Quests
             ItemChoices = (items.Definitions ?? Array.Empty<ItemDefinition>())
                 .Select(item => new QuestEditorItemChoice(
                     item.Id,
-                    itemNames.TryGetValue(TextKeys.ItemName(item.Id), out var itemName) ? itemName : item.Id,
+                    names.TryGetValue(TextKeys.ItemName(item.Id), out var itemName) ? itemName : item.Id,
                     item.Category,
                     item.Category == ItemCategoryIds.QuestItem
                         && (item.DefaultPolicies ?? Array.Empty<string>()).Contains(ItemPolicyIds.ProtectedOnDeath),
@@ -135,7 +138,11 @@ namespace Mmorpg.WorldData.Editor.Quests
             var worlds = ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot))
                 .Select(worldId => LoadWorld(ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId)))
                 .ToArray();
-            return new QuestEditorReferences(LoadItems(itemCatalogPath), worlds, LoadItemTexts(generatedRoot));
+            return new QuestEditorReferences(
+                LoadItems(itemCatalogPath),
+                worlds,
+                LoadTexts(generatedRoot, TextTableIds.Items),
+                LoadTexts(generatedRoot, TextTableIds.Actors));
         }
 
         public string ActorLabel(string actorId)
@@ -164,20 +171,20 @@ namespace Mmorpg.WorldData.Editor.Quests
             return ItemCatalogCompiler.CompileCompiled(document.ToAuthoringDocument());
         }
 
-        // The item compiler writes the table with the catalog; a missing one only costs names.
-        private static TextTableDocument LoadItemTexts(string generatedRoot)
+        // A compiler writes its table with its compiled data; a missing one only costs names.
+        private static TextTableDocument LoadTexts(string generatedRoot, string tableId)
         {
             var path = ContentLayout.GeneratedTextTablePath(
                 generatedRoot,
                 TextTableFormat.SourceLocale,
-                TextTableIds.Items);
+                tableId);
             if (!File.Exists(path))
             {
                 return null;
             }
 
             var table = (JsonUtility.FromJson<TextTableJsonDocument>(File.ReadAllText(path))
-                ?? throw new InvalidDataException("The item text table has no root object.")).ToRuntime();
+                ?? throw new InvalidDataException("The text table '" + tableId + "' has no root object.")).ToRuntime();
             TextTable.Validate(table);
             return table;
         }
@@ -199,7 +206,6 @@ namespace Mmorpg.WorldData.Editor.Quests
                     .Select(actor => new WorldActorDefinition
                     {
                         Id = actor.id,
-                        DisplayName = actor.displayName,
                         Kind = actor.kind,
                         Tags = actor.tags ?? Array.Empty<string>(),
                         Capabilities = (actor.capabilities ?? Array.Empty<CapabilityJson>())
@@ -224,7 +230,6 @@ namespace Mmorpg.WorldData.Editor.Quests
         private sealed class ActorJson
         {
             public string id;
-            public string displayName;
             public string kind;
             public string[] tags;
             public CapabilityJson[] capabilities;

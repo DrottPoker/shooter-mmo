@@ -24,11 +24,9 @@ try
             $"No World exists below '{ContentLayout.WorldsDirectory(contentRoot)}'.");
     }
 
-    WorldActorRuntimeDocument? firstWorld = null;
     foreach (var worldId in worldIds)
     {
         var runtime = CompileWorld(catalog, itemCatalog, contentRoot, worldId);
-        firstWorld ??= runtime;
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -48,10 +46,10 @@ try
         options.VerifyOnly,
         "Compiled world actors");
 
-    // The actor texts belong to the actor catalog, which every World compiles in full.
+    // The actor texts belong to the authored actor catalog. The compiled actors carry none.
     TextTableOutput.WriteOrVerify(
         options.GeneratedRoot,
-        ContentText.FromWorldActors(firstWorld!),
+        ContentText.FromWorldActors(catalog),
         options.VerifyOnly);
     return 0;
 }

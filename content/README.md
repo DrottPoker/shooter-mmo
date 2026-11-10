@@ -353,7 +353,14 @@ goes only into the item text table, so renaming an item, a category, a tag, a
 tool kind, an equipment slot, a weapon or ammunition family, a vendor, or the
 currency changes the text table and nothing else: not the compiled catalog, not
 its revision, and nothing that a server reads. A compiled item catalog that
-holds a name is refused. The compiled actor and quest data still hold their
+holds a name is refused.
+
+The compiled actors of a World carry no text either. The names and examine
+texts of actors, the names and menu options of their capabilities, and the
+names of factions are required in `actors/` and go only into the actor text
+table. The name of a presentation archetype is a label for the content tools
+and is not compiled. A new text changes no `world-actors.json`, no revision,
+and no structural fingerprint. The compiled quest catalog still holds its
 texts.
 
 ### Messages

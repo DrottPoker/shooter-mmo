@@ -1457,12 +1457,10 @@ namespace Mmorpg.WorldData.Actors
             var compiled = new WorldActorFactionDefinition
             {
                 Id = value.Id,
-                DisplayName = value.DisplayName,
                 DefaultDisposition = value.DefaultDisposition
             };
             compiled.StructuralFingerprint = Fingerprint(
                 compiled.Id,
-                compiled.DisplayName,
                 compiled.DefaultDisposition);
             return compiled;
         }
@@ -1473,12 +1471,10 @@ namespace Mmorpg.WorldData.Actors
             var compiled = new WorldActorPresentationDefinition
             {
                 Id = value.Id,
-                DisplayName = value.DisplayName,
                 ActorKind = value.ActorKind
             };
             compiled.StructuralFingerprint = Fingerprint(
                 compiled.Id,
-                compiled.DisplayName,
                 compiled.ActorKind);
             return compiled;
         }
@@ -1550,7 +1546,7 @@ namespace Mmorpg.WorldData.Actors
 
         private static string CapabilityFingerprint(WorldActorCapabilityDefinition value)
         {
-            return Fingerprint(value.Id, value.Kind, value.DisplayName, value.MenuOption, value.ProfileId);
+            return Fingerprint(value.Id, value.Kind, value.ProfileId);
         }
 
         private static WorldActorCombatProfileDefinition CompileCombatProfile(
@@ -1679,8 +1675,6 @@ namespace Mmorpg.WorldData.Actors
                     {
                         Id = capability.Id,
                         Kind = capability.Kind,
-                        DisplayName = capability.DisplayName,
-                        MenuOption = capability.MenuOption,
                         ProfileId = capability.ProfileId ?? string.Empty
                     };
                     compiledCapability.StructuralFingerprint = CapabilityFingerprint(compiledCapability);
@@ -1692,8 +1686,6 @@ namespace Mmorpg.WorldData.Actors
             var compiled = new WorldActorDefinition
             {
                 Id = value.Id,
-                DisplayName = value.DisplayName,
-                ExamineText = value.ExamineText,
                 Kind = value.Kind,
                 FactionId = value.FactionId,
                 Disposition = value.Disposition,
@@ -1741,8 +1733,6 @@ namespace Mmorpg.WorldData.Actors
             var collision = value.CollisionBounds;
             return Fingerprint(
                 value.Id,
-                value.DisplayName,
-                value.ExamineText,
                 value.Kind,
                 value.FactionId,
                 value.Disposition,

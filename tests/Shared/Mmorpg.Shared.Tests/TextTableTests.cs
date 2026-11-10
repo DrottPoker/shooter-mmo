@@ -1,6 +1,8 @@
 using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
 using Mmorpg.Tools.ContentPipeline;
+using Mmorpg.Tools.WorldActorCompiler;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Quests;
 using Mmorpg.WorldData.Text;
@@ -188,7 +190,7 @@ public sealed class TextTableTests
     [Fact]
     public void TheActorTableHoldsNamesExamineTextsAndCapabilityTexts()
     {
-        var actors = WorldActorTestData.Compile();
+        var actors = WorldActorTestData.LoadActors();
         var texts = ContentText.FromWorldActors(actors).Entries
             .ToDictionary(entry => entry.Key, entry => entry.Text, StringComparer.Ordinal);
 
@@ -216,15 +218,31 @@ public sealed class TextTableTests
             faction => Assert.Equal(faction.DisplayName, texts[TextKeys.FactionName(faction.Id)]));
     }
 
-    // Every World compiles the whole actor catalog, so the table does not depend on the World.
+    // The compiled actors hold rules only, so a new text changes the text table and no World.
     [Fact]
-    public void EveryWorldGivesTheSameActorTable()
+    public void AnActorTextChangeChangesNoCompiledWorld()
     {
-        var revisions = WorldActorTestData.CheckedInWorldIds()
-            .Select(worldId => ContentText.FromWorldActors(WorldActorTestData.CompileWorld(worldId)).Revision)
-            .Distinct(StringComparer.Ordinal);
+        var actors = WorldActorTestData.LoadActors();
+        var spawns = WorldActorTestData.LoadSpawns();
+        var original = WorldActorCompiler.Compile(actors, spawns);
+        var originalTexts = ContentText.FromWorldActors(actors);
+        var actor = actors.Actors.First(candidate => candidate.Capabilities is { Length: > 0 });
+        actor.DisplayName += " Renamed";
+        actor.ExamineText = "A new examine text.";
+        actor.Capabilities[0].DisplayName += " Renamed";
+        actor.Capabilities[0].MenuOption = "Renamed";
+        actors.Factions[0].DisplayName += " Renamed";
+        actors.PresentationArchetypes[0].DisplayName += " Renamed";
 
-        Assert.Single(revisions);
+        var changed = WorldActorCompiler.Compile(actors, spawns);
+
+        Assert.Equal(original.Revision, changed.Revision);
+        Assert.Equal(WorldActorJson.SerializeRuntime(original), WorldActorJson.SerializeRuntime(changed));
+        Assert.NotEqual(originalTexts.Revision, ContentText.FromWorldActors(actors).Revision);
+        var json = WorldActorJson.SerializeRuntime(changed);
+        Assert.DoesNotContain("isplayName", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("xamineText", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("enuOption", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -277,8 +295,7 @@ public sealed class TextTableTests
         var expected = tableId switch
         {
             TextTableIds.Items => ContentText.FromItemCatalog(ItemCatalogTestData.LoadAuthoring()),
-            TextTableIds.Actors => ContentText.FromWorldActors(
-                WorldActorTestData.CompileWorld(WorldActorTestData.CheckedInWorldIds()[0])),
+            TextTableIds.Actors => ContentText.FromWorldActors(WorldActorTestData.LoadActors()),
             _ => ContentText.FromQuestCatalog(QuestCatalogTestData.Compile())
         };
         var json = StrictContentJson.NormalizeLineEndings(File.ReadAllText(

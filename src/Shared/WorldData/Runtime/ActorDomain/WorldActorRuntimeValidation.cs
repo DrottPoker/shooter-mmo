@@ -344,7 +344,6 @@ namespace Mmorpg.WorldData.Actors
         {
             foreach (var value in values)
             {
-                ValidateDisplayName(value.DisplayName, "runtime faction displayName", errors);
                 ValidateSupported(
                     value.DefaultDisposition,
                     SupportedDispositions,
@@ -352,7 +351,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(value.Id, value.DisplayName, value.DefaultDisposition),
+                    Fingerprint(value.Id, value.DefaultDisposition),
                     "runtime faction " + value.Id,
                     errors);
             }
@@ -364,7 +363,6 @@ namespace Mmorpg.WorldData.Actors
         {
             foreach (var value in values)
             {
-                ValidateDisplayName(value.DisplayName, "runtime presentation displayName", errors);
                 ValidateSupported(
                     value.ActorKind,
                     SupportedActorKinds,
@@ -372,7 +370,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(value.Id, value.DisplayName, value.ActorKind),
+                    Fingerprint(value.Id, value.ActorKind),
                     "runtime presentation " + value.Id,
                     errors);
             }
@@ -577,8 +575,6 @@ namespace Mmorpg.WorldData.Actors
         {
             foreach (var value in values)
             {
-                ValidateDisplayName(value.DisplayName, "runtime actor displayName", errors);
-                ValidateExamineText(value.ExamineText, "runtime actor examineText", errors);
                 ValidateSupported(value.Kind, SupportedActorKinds, "runtime actor kind", errors);
                 ValidateReference(value.FactionId, factionIds, "runtime actor factionId", errors);
                 ValidateSupported(
@@ -797,14 +793,6 @@ namespace Mmorpg.WorldData.Actors
                         capabilityIds,
                         capability.Id,
                         "runtime capability id",
-                        errors);
-                    ValidateDisplayName(
-                        capability.DisplayName,
-                        "runtime capability displayName",
-                        errors);
-                    ValidateMenuOption(
-                        capability.MenuOption,
-                        "runtime capability menuOption",
                         errors);
                     ValidateSupported(
                         capability.Kind,

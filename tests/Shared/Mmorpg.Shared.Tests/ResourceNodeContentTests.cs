@@ -40,7 +40,9 @@ public sealed class ResourceNodeContentTests
         Assert.Equal(WorldActorDamagePolicyIds.Invulnerable, tree.DamagePolicy);
         var capability = Assert.Single(tree.Capabilities);
         Assert.Equal(WorldActorCapabilityKindIds.Gathering, capability.Kind);
-        Assert.Equal("Chop down", capability.MenuOption);
+        Assert.Equal(
+            "Chop down",
+            WorldActorTestData.LoadActors().Actors.Single(actor => actor.Id == tree.Id).Capabilities.Single().MenuOption);
         Assert.Equal(profile.Id, capability.ProfileId);
         Assert.Equal("woodcutting_axe", profile.RequiredToolKind);
         Assert.Equal("material.oak_log", profile.YieldDefinitionId);
