@@ -32,13 +32,11 @@ Implemented:
 - Central scheduling of NPCs and Mobs without per-actor tasks or durable rows.
 
 Planned: the dialogue, crafting, and trainer capabilities, which answer with an
-explicit deferred result today; the quest dialog of the `quests` capability, as
-[Quest System Design](QUEST_SYSTEM_DESIGN.md) describes; threat tables, Mob
-abilities and groups,
+explicit deferred result today; threat tables, Mob abilities and groups,
 durable unique actor state, and the final actor art and interaction UI; see
-[Deferred Work](#deferred-work). The Unity presentation of actors and the
-interaction panel is temporary. The content, runtime, protocol, client state,
-and tooling are permanent foundations. The checked-in actor definitions are in
+[Deferred Work](#deferred-work). What the `quests` capability does is in
+[Quest System Design](QUEST_SYSTEM_DESIGN.md). The interaction panel is
+temporary. The checked-in actor definitions are in
 `content/actors`, and where the development Worlds place them is in
 [Development Worlds](DEVELOPMENT_WORLDS.md).
 
@@ -697,8 +695,7 @@ exercise authoritative targeted interaction without adding a new runtime actor
 class or a database row per actor. It stops before the following:
 
 - Dialogue, crafting, and trainer business operations, and trainer and
-  profession progression, including Mining and Woodcutting experience. Quests
-  are planned in [Quest System Design](QUEST_SYSTEM_DESIGN.md).
+  profession progression, including Mining and Woodcutting experience.
 - Threat tables, Mob abilities beyond one attack, Mob groups that assist each
   other, and an `Investigate` brain state.
 - Mob combat data for defense, elemental weaknesses, and movement impairment

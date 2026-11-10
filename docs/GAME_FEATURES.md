@@ -1,9 +1,9 @@
 # Game Features
 
 What a player can do and see in the game today: the flows, the controls, the
-panels, and the numbers a player notices. Everything here is implemented. Every
-panel is temporary development UI over permanent client and server foundations,
-while the final custom UI is being designed.
+panels, and the numbers a player notices. Everything here is implemented. The
+inventory and quest windows are built on the UI kit, and the other panels are
+temporary stand-ins that only present state the controllers own.
 
 How the client builds these features is in
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md), and the server

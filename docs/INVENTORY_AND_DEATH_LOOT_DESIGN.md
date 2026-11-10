@@ -17,10 +17,8 @@ nodes, and generic world interaction are in
 Every rule in this document is implemented unless it is marked as planned or
 listed in [Planned](#planned), [Proposed](#proposed), or
 [Open Questions](#open-questions). The main planned work is consume and use
-intents for potions and food, combat data for armor, resistances, and healing,
-quests as
-[Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, and the final
-inventory and corpse loot interface, which is temporary uGUI today.
+intents for potions and food and combat data for armor, resistances, and
+healing.
 
 ## Canonical Item Terminology
 
@@ -962,16 +960,10 @@ These rules are decided and wait for later work, mostly the combat work in
   resistances, and healing multipliers.
 - Consume and use intents for potions, food, and other consumables, with the
   consumable cooldowns from the combat design.
-- Quests as a producer that calls the existing item boundaries, as
-  [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans: start items, quest drops,
-  deliveries, and rewards. Today one configured quest grants its protected quest
-  item.
 - Saved equipment loadouts, proposed in
   [Attacks And Abilities](GAME_DESIGN.md#attacks-and-abilities), which swap as
   one equipment change.
 - Loot containers in the world, shown in the context column like a corpse.
-- The final inventory and corpse loot interface. The corpse already shows the
-  dead body; the inventory and loot panels are temporary uGUI.
 
 ## Proposed
 

@@ -16,10 +16,14 @@ Follow these rules for all future work in this repository.
 - Verify frontend changes with typecheck when practical.
 - Draw all Unity UI text with TextMesh Pro, never with the legacy uGUI `Text`,
   which blurs when the canvas scales.
-- Only UI may use explicitly temporary implementations while the custom UI is
-  being designed. Architecture, networking, state management, gameplay systems,
-  service code, and tooling must be implemented as maintainable foundations from
-  the start.
+- Every system has a maturity level, Foundation, Provisional, or Temporary, as
+  `docs/PROJECT_OVERVIEW.md` defines under Engineering Standard and lists per
+  system. The level decides how settled a design is, never the code quality:
+  tests, zero warnings, documentation, server authority, and the trust
+  boundaries apply at every level. A new system starts as Provisional: build
+  what the next system on top needs, not more. Change a Foundation's contract
+  only with a design decision and a path for what depends on it, and change a
+  level only in a pull request that says why.
 - When a change requires Unity Editor actions, always list the exact manual steps
   the user must perform and the expected result. Explicitly state when no manual
   Unity Editor steps are required.

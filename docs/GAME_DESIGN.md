@@ -45,10 +45,10 @@ triangle with armor and misses, elemental damage and resistances, threat,
 healing abilities, potions, food, and drinking, movement impairments,
 experience and talents, profession levels and crafting, the other gathering
 professions, gameplay rule areas with the logout risk timer, the hostile flag
-and criminal reputation, achievements and the cloaks they reward, quests as
-[Quest System Design](QUEST_SYSTEM_DESIGN.md) plans them, player trading, and
-social systems. The status of the whole project is in
-[Project Overview](PROJECT_OVERVIEW.md).
+and criminal reputation, achievements and the cloaks they reward, player
+trading, and social systems. Quests have their own document,
+[Quest System Design](QUEST_SYSTEM_DESIGN.md), with its own status. The status
+of the whole project is in [Project Overview](PROJECT_OVERVIEW.md).
 
 Each section says what of it is implemented. Its rules are grouped as
 **Decided** product rules, **Proposed** baselines that fit the decisions and
@@ -1166,10 +1166,10 @@ The MVP is built in named slices:
 | Account, character, and Shard join | Complete | Registration, login, characters, placement, exact-runtime tickets, and one active session per character |
 | Unity connection and movement | Complete | Unity API and UDP flow, entity lifecycle, spatial interest, click-to-move with client-planned paths, prediction, reconciliation, interpolation, and checksummed collision |
 | SimulationWorker performance baseline | Complete | Headless stress clients, active bots, visibility and packet reuse, bounded backpressure, and repeatable baselines |
-| Items, inventory, equipment, and carry weight | Complete | The slot inventory, equipment with the ammunition slot, Bags, the Bank, Recovery Storage, carry weight and encumbrance, item policies, and insurance, as [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) decides them, with the temporary Unity inventory UI |
+| Items, inventory, equipment, and carry weight | Complete | The slot inventory, equipment with the ammunition slot, Bags, the Bank, Recovery Storage, carry weight and encumbrance, item policies, and insurance, as [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md) decides them |
 | Vendor and gathering | Complete | One NPC vendor, persistent Gold, shared resource nodes gathered with a tool in the Tool slot, gathering through the item transaction service, and buying from and selling to the vendor |
 | Target-based combat and simple Mob | Complete | Ranged, Melee, and Magic weapons with consumed ammunition or mana, target selection and auto attack, health and Normal damage, authoritative death events, aggressive Mobs with live loot, and a boss with a durable corpse |
-| Death, Recovery, and corpse looting | Complete, with a temporary corpse loot interface | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
+| Death, Recovery, and corpse looting | Complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
 | Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas without Zones or Layers, instant logout in the Safe City, a five-minute body after a disconnect in the Open Risk area, and reconnect to the same body |
 
 ## Deferred Features
@@ -1186,7 +1186,6 @@ These do not block the first playable MVP:
 - An auction house, direct player trading, and regional markets.
 - Crafting and professions beyond the first gathering loop.
 - Advanced Mobs and bosses beyond the first boss.
-- Quests, which [Quest System Design](QUEST_SYSTEM_DESIGN.md) plans.
 - Insured stack quantities.
 - Armor types and armor stats.
 

@@ -21,11 +21,10 @@ one assembly per area, described in [Assemblies](#assemblies), and all runtime
 content loads through Addressables, described in
 [Content Loading With Addressables](#content-loading-with-addressables).
 
-Only the runtime UI is temporary while the custom UI is being designed. The
-bootstrap, state ownership, API layer, networking, scene lifecycle, input,
-camera, and gameplay systems are long-term foundations and are built to
-production standards from the start. A temporary panel only presents state that
-a permanent controller owns.
+The maturity level of every client system is listed in
+[Engineering Standard](PROJECT_OVERVIEW.md#engineering-standard). The panels
+named `Temporary` are stand-ins: a temporary panel only presents state that a
+controller owns, so replacing the panel never changes the controller.
 
 The World maps, the local and remote player prefabs, the camera, the input
 actions asset, and the spawn points are authored Unity assets; runtime code never

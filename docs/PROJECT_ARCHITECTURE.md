@@ -4,8 +4,8 @@ This document owns the project-wide architecture: terminology and naming, the
 topology model, the process and repository boundaries and their contracts, the
 realtime threading and performance contracts, the durable item and world actor
 boundaries, the durable data model, runtime identity, trust boundaries, the core
-runtime flows, configuration ownership, health, and the future scaling
-contract.
+runtime flows, configuration ownership, health, the scale target, and the
+future scaling contract.
 
 Implemented behavior with its routes, error codes, limits, and defaults is in
 [Service Features](SERVICE_FEATURES.md). GameService module internals are in
@@ -132,9 +132,9 @@ and matching World content.
 
 The current safe scale unit is one active SimulationWorker per shard and one
 active shard per SimulationWorker. PostgreSQL partial unique indexes enforce
-both sides. Zones and layers will later extend the assignment model when one
-process can no longer simulate a complete shard. No placeholder zone or layer
-objects exist today.
+both sides. No placeholder zone or layer objects exist today. How many players
+one shard should hold, and what Zones would need before they can exist, is in
+[Scale Target](#scale-target).
 
 ## System Context
 
@@ -373,7 +373,8 @@ Every new replicated or authoritative gameplay feature must define its load
 shape before it can be treated as complete:
 
 - State the worst-case producer count, recipient count, update cadence, encoded
-  bytes, and database operations per player action.
+  bytes, and database operations per player action, at the population of the
+  [Scale Target](#scale-target).
 - Keep owner feedback, input acknowledgement, session leases, and reliable
   authority results independent from degradable remote presentation traffic.
 - Batch or reuse identical encoded state across recipients. Do not encode the
@@ -703,7 +704,7 @@ The world actor boundary adds no new service or topology layer:
   actions, gathering state, and combat, compiled from the same source for .NET
   and Unity.
 - Unity owns advisory pointer targeting, immutable replicated actor and
-  interaction state, prefab presentation, temporary uGUI, and Editor authoring
+  interaction state, prefab presentation, the uGUI panels, and Editor authoring
   tools. Authoritative vendor, quest, crafting, gathering, insurance, or combat
   behavior never lives in a MonoBehaviour.
 - GameService remains the durable authority when a capability mutates items,
@@ -1185,6 +1186,51 @@ services never depend on a storage backend. Export is off unless
 hot-path metric recording does not allocate. The catalog, the stack,
 dashboards, alerts, and operating guidance are in [Monitoring](MONITORING.md).
 
+## Scale Target
+
+The target is more than 1,000 concurrent players on one Shard, spread over a
+World that is large enough to hold them. It is a target and not a supported
+tier: a tier counts as supported only when it passes the
+[Quality Boundary](STACK_STRESS_TESTING.md#quality-boundary), and
+[Stack Stress Testing](STACK_STRESS_TESTING.md) records the tiers that did.
+
+The target counts two things separately:
+
+- Shard population is every player the Shard simulates. The target applies to
+  it.
+- Local density is the number of players inside one interest radius. Dense
+  crowds lower the remote update cadence by design, as the
+  [Realtime Performance Contract](#realtime-performance-contract) requires, so
+  the population target does not promise that every player can stand in one
+  place at the full cadence.
+
+The target is reached in two stages:
+
+1. One process. The worker simulates the whole Shard on its one loop thread.
+   The snapshot encoding, the transport's send path, the work of every tick,
+   and the GameService traffic per player set the limit. A tier is claimed only
+   after stress workloads with combat, Mobs, and players spread over the World
+   measured it; the workloads that exist are listed under
+   [Scope Boundary](STACK_STRESS_TESTING.md#scope-boundary).
+2. Zones. When one process cannot hold the target, the Shard is partitioned as
+   [Future Scaling Contract](#future-scaling-contract) describes.
+
+Zones are a new subsystem, not a setting of the current one. They need what
+does not exist today:
+
+- Entity ids that are unique in the Shard. Today each worker process counts its
+  own.
+- A serializable form of a player's live state, so one process can hand a
+  player to another: movement and its input queue, combat state, the authority
+  lane with its waiting operations, and open interactions.
+- Durable position, health, and mana. Today a join places every character at
+  the World spawn with full health, and nothing about a live character but its
+  items is stored.
+- Interest and combat across a zone border.
+
+A design that touches these areas keeps the door open: it does not add state
+that only makes sense inside one process without saying how it would move.
+
 ## Future Scaling Contract
 
 The next topology extension is not another naming rewrite. It will add:
@@ -1196,7 +1242,8 @@ The next topology extension is not another naming rewrite. It will add:
 - Durable shared event policies for bosses, resources, and economy where layers
   must not create duplicate rewards.
 
-Until that work exists, a shard is never presented as partially distributed.
+It builds on the prerequisites that [Scale Target](#scale-target) lists. Until
+that work exists, a shard is never presented as partially distributed.
 
 The service split and deployment direction is planned as follows:
 
@@ -1219,5 +1266,5 @@ The service split and deployment direction is planned as follows:
   HTTP, HTTPS, and WSS on TCP 80 and 443, and the world UDP ports, such as 27015
   and 27016, are exposed; PostgreSQL and Redis are never public.
 
-Only UI may remain explicitly temporary. All other boundaries in this document
-are production-oriented foundations.
+How settled each of these boundaries is today is listed in
+[Engineering Standard](PROJECT_OVERVIEW.md#engineering-standard).
