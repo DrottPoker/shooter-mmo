@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.WorldActors;
-using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
 using Mmorpg.WorldData.Text;
 using NUnit.Framework;
@@ -17,11 +16,6 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             Assert.That(ClientTexts.TryLoad(config.TextTables, out var texts, out var error), Is.True, error);
             return texts;
-        }
-
-        public static TextCatalog For(ItemCatalogRuntimeDocument items)
-        {
-            return TextCatalog.Create(new[] { ContentText.FromItemCatalog(items) });
         }
 
         // The quest texts with the development actors, which name the Mob of a quest drop.

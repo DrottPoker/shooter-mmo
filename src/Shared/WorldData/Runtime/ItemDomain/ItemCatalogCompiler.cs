@@ -57,15 +57,32 @@ namespace Mmorpg.WorldData.Items
                 ItemPolicyIds.Insured
             };
 
+        // Authored content names everything it defines. The compiled catalog carries no text:
+        // the item compiler collects the names into the item text table, and a text change
+        // never changes the catalog or its revision.
         public static ItemCatalogRuntimeDocument Compile(
             ItemCatalogAuthoringDocument authoring)
+        {
+            return Compile(authoring, false);
+        }
+
+        // Compiles a compiled catalog again from its own content, which must hold no text.
+        public static ItemCatalogRuntimeDocument CompileCompiled(
+            ItemCatalogAuthoringDocument compiled)
+        {
+            return Compile(compiled, true);
+        }
+
+        private static ItemCatalogRuntimeDocument Compile(
+            ItemCatalogAuthoringDocument authoring,
+            bool compiled)
         {
             if (authoring == null)
             {
                 throw new ArgumentNullException(nameof(authoring));
             }
 
-            Validate(authoring);
+            Validate(authoring, compiled);
 
             var catalog = new ItemCatalogRuntimeDocument
             {
@@ -80,7 +97,6 @@ namespace Mmorpg.WorldData.Items
                 },
                 Economy = new ItemEconomySettingsEntry
                 {
-                    CurrencyDisplayName = authoring.Economy.CurrencyDisplayName,
                     StartingBalance = authoring.Economy.StartingBalance
                 },
                 Progression = new ItemProgressionSettingsEntry
@@ -94,7 +110,6 @@ namespace Mmorpg.WorldData.Items
                     .Select(slot => new ItemEquipmentSlotEntry
                     {
                         Id = slot.Id,
-                        DisplayName = slot.DisplayName,
                         MaximumQuantity = slot.MaximumQuantity
                     })
                     .ToArray(),
@@ -102,7 +117,6 @@ namespace Mmorpg.WorldData.Items
                     .Select(family => new ItemWeaponFamilyEntry
                     {
                         Id = family.Id,
-                        DisplayName = family.DisplayName,
                         CombatStyle = family.CombatStyle,
                         AmmunitionFamily = family.AmmunitionFamily,
                         ProjectileSpeed = family.ProjectileSpeed,
@@ -131,7 +145,7 @@ namespace Mmorpg.WorldData.Items
             return catalog;
         }
 
-        private static void Validate(ItemCatalogAuthoringDocument authoring)
+        private static void Validate(ItemCatalogAuthoringDocument authoring, bool compiled)
         {
             var errors = new List<string>();
             if (authoring.FormatVersion != ItemCatalogFormat.Version)
@@ -142,6 +156,7 @@ namespace Mmorpg.WorldData.Items
             ValidateIdentifier(authoring.CatalogId, "catalogId", errors);
             ValidateCharacterSettings(authoring.Character, errors);
             ValidateEconomySettings(authoring.Economy, errors);
+            ValidateTexts(authoring, compiled, errors);
             var maximumCharacterLevel = ValidateProgression(authoring.Progression, errors);
 
             var categoryIds = ValidateIdentities(
@@ -239,19 +254,6 @@ namespace Mmorpg.WorldData.Items
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(economy.CurrencyDisplayName)
-                || economy.CurrencyDisplayName.Length > ItemCatalogFormat.MaximumCurrencyDisplayNameLength
-                || !string.Equals(
-                    economy.CurrencyDisplayName,
-                    economy.CurrencyDisplayName.Trim(),
-                    StringComparison.Ordinal))
-            {
-                errors.Add(
-                    "economy.currencyDisplayName is required, must be trimmed, and must not exceed "
-                    + ItemCatalogFormat.MaximumCurrencyDisplayNameLength
-                    + " characters.");
-            }
-
             if (economy.StartingBalance < 0
                 || economy.StartingBalance > VendorPricing.MaximumCurrencyBalance)
             {
@@ -308,7 +310,6 @@ namespace Mmorpg.WorldData.Items
                 }
 
                 ValidateIdentifier(family.Id, path + ".id", errors);
-                ValidateDisplayName(family.DisplayName, path + ".displayName", errors);
                 if (!string.IsNullOrWhiteSpace(family.Id) && !ids.Add(family.Id))
                 {
                     errors.Add("weaponFamilies contains duplicate id '" + family.Id + "'.");
@@ -419,7 +420,6 @@ namespace Mmorpg.WorldData.Items
                 }
 
                 ValidateIdentifier(entry.Id, path + ".id", errors, maximumLength);
-                ValidateDisplayName(entry.DisplayName, path + ".displayName", errors);
                 if (!string.IsNullOrWhiteSpace(entry.Id) && !ids.Add(entry.Id))
                 {
                     errors.Add(collectionName + " contains duplicate id '" + entry.Id + "'.");
@@ -455,7 +455,6 @@ namespace Mmorpg.WorldData.Items
                     path + ".id",
                     errors,
                     ItemCatalogFormat.MaximumEquipmentSlotIdLength);
-                ValidateDisplayName(slot.DisplayName, path + ".displayName", errors);
                 if (slot.MaximumQuantity <= 0 || slot.MaximumQuantity > ItemCatalogFormat.MaximumQuantity)
                 {
                     errors.Add(
@@ -530,7 +529,6 @@ namespace Mmorpg.WorldData.Items
                 }
 
                 ValidateIdentifier(definition.Id, path + ".id", errors);
-                ValidateDisplayName(definition.DisplayName, path + ".displayName", errors);
                 if (!string.IsNullOrWhiteSpace(definition.Id)
                     && !definitionIds.Add(definition.Id))
                 {
@@ -1045,7 +1043,6 @@ namespace Mmorpg.WorldData.Items
                 }
 
                 ValidateIdentifier(vendor.Id, path + ".id", errors);
-                ValidateDisplayName(vendor.DisplayName, path + ".displayName", errors);
                 if (!string.IsNullOrWhiteSpace(vendor.Id) && !vendorIds.Add(vendor.Id))
                 {
                     errors.Add("vendors contains duplicate id '" + vendor.Id + "'.");
@@ -1347,19 +1344,86 @@ namespace Mmorpg.WorldData.Items
             }
         }
 
-        private static void ValidateDisplayName(
-            string value,
-            string path,
+        // Every name of the catalog. Authored content needs each one, and a compiled catalog
+        // holds none.
+        private static void ValidateTexts(
+            ItemCatalogAuthoringDocument authoring,
+            bool compiled,
             ICollection<string> errors)
         {
+            if (authoring.Economy != null)
+            {
+                ValidateText(
+                    authoring.Economy.CurrencyDisplayName,
+                    "economy.currencyDisplayName",
+                    ItemCatalogFormat.MaximumCurrencyDisplayNameLength,
+                    compiled,
+                    errors);
+            }
+
+            ValidateNames(authoring.Categories, "categories", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(authoring.Tags, "tags", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(authoring.ToolKinds, "toolKinds", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(authoring.EquipmentSlots, "equipmentSlots", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(
+                authoring.AmmunitionFamilies,
+                "ammunitionFamilies",
+                entry => entry.DisplayName,
+                compiled,
+                errors);
+            ValidateNames(authoring.WeaponFamilies, "weaponFamilies", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(authoring.Definitions, "definitions", entry => entry.DisplayName, compiled, errors);
+            ValidateNames(authoring.Vendors, "vendors", entry => entry.DisplayName, compiled, errors);
+        }
+
+        private static void ValidateNames<T>(
+            T[] entries,
+            string collectionName,
+            Func<T, string> displayName,
+            bool compiled,
+            ICollection<string> errors)
+            where T : class
+        {
+            for (var index = 0; entries != null && index < entries.Length; index++)
+            {
+                if (entries[index] != null)
+                {
+                    ValidateText(
+                        displayName(entries[index]),
+                        collectionName + "[" + index + "].displayName",
+                        MaximumDisplayNameLength,
+                        compiled,
+                        errors);
+                }
+            }
+        }
+
+        private static void ValidateText(
+            string value,
+            string path,
+            int maximumLength,
+            bool compiled,
+            ICollection<string> errors)
+        {
+            if (compiled)
+            {
+                // Unity's JsonUtility reads a missing text as an empty one.
+                if (!string.IsNullOrEmpty(value))
+                {
+                    errors.Add(path + " must be absent: a compiled catalog carries no text.");
+                }
+
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(value)
-                || value.Length > MaximumDisplayNameLength
+                || value.Length > maximumLength
                 || !string.Equals(value, value.Trim(), StringComparison.Ordinal))
             {
                 errors.Add(
                     path
                     + " is required, must be trimmed, and must not exceed "
-                    + MaximumDisplayNameLength
+                    + maximumLength
                     + " characters.");
             }
         }
@@ -1368,11 +1432,7 @@ namespace Mmorpg.WorldData.Items
             IEnumerable<ItemCatalogIdentityEntry> entries)
         {
             return entries
-                .Select(entry => new ItemCatalogIdentityEntry
-                {
-                    Id = entry.Id,
-                    DisplayName = entry.DisplayName
-                })
+                .Select(entry => new ItemCatalogIdentityEntry { Id = entry.Id })
                 .OrderBy(entry => entry.Id, StringComparer.Ordinal)
                 .ToArray();
         }
@@ -1383,7 +1443,6 @@ namespace Mmorpg.WorldData.Items
             var definition = new ItemDefinition
             {
                 Id = authoring.Id,
-                DisplayName = authoring.DisplayName,
                 Category = authoring.Category,
                 Tags = SortStrings(authoring.Tags),
                 ToolKinds = SortStrings(authoring.ToolKinds),
@@ -1448,7 +1507,6 @@ namespace Mmorpg.WorldData.Items
             return new VendorProfileDefinition
             {
                 Id = authoring.Id,
-                DisplayName = authoring.DisplayName,
                 Offers = authoring.Offers
                     .Select(offer => new VendorOfferEntry { DefinitionId = offer.DefinitionId })
                     .ToArray(),
@@ -1502,7 +1560,6 @@ namespace Mmorpg.WorldData.Items
                 writer.Write(catalog.Character.BaseCarryCapacity);
                 writer.Write(catalog.Character.InventorySlotCount);
                 writer.Write(catalog.Character.BankSlotCount);
-                writer.Write(catalog.Economy.CurrencyDisplayName);
                 writer.Write(catalog.Economy.StartingBalance);
                 writer.Write(catalog.Progression.MaximumCharacterLevel);
                 WriteIdentities(writer, catalog.Categories);
@@ -1512,7 +1569,6 @@ namespace Mmorpg.WorldData.Items
                 foreach (var slot in catalog.EquipmentSlots)
                 {
                     writer.Write(slot.Id);
-                    writer.Write(slot.DisplayName);
                     writer.Write(slot.MaximumQuantity);
                 }
 
@@ -1520,7 +1576,6 @@ namespace Mmorpg.WorldData.Items
                 foreach (var family in catalog.WeaponFamilies)
                 {
                     writer.Write(family.Id);
-                    writer.Write(family.DisplayName);
                     writer.Write(family.CombatStyle);
                     writer.Write(family.AmmunitionFamily);
                     writer.Write(family.ProjectileSpeed);
@@ -1532,7 +1587,6 @@ namespace Mmorpg.WorldData.Items
                 foreach (var definition in catalog.Definitions)
                 {
                     writer.Write(definition.Id);
-                    writer.Write(definition.DisplayName);
                     writer.Write(definition.StructuralFingerprint);
                     writer.Write(definition.Value);
                     WriteStrings(writer, definition.ToolKinds);
@@ -1543,7 +1597,6 @@ namespace Mmorpg.WorldData.Items
                 foreach (var vendor in catalog.Vendors)
                 {
                     writer.Write(vendor.Id);
-                    writer.Write(vendor.DisplayName);
                     writer.Write(vendor.Offers.Length);
                     foreach (var offer in vendor.Offers)
                     {
@@ -1595,7 +1648,6 @@ namespace Mmorpg.WorldData.Items
             foreach (var entry in entries)
             {
                 writer.Write(entry.Id);
-                writer.Write(entry.DisplayName);
             }
         }
 

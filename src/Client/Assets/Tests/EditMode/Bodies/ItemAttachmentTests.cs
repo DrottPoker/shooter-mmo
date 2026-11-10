@@ -272,8 +272,6 @@ namespace Mmorpg.Client.Tests.EditMode
                     {
                         definitionId = "test.a",
                         iconAddress = string.Empty,
-                        localizationKey = "items.test.a.name",
-                        fallbackDisplayName = "test.a",
                         prefabPresentationKey = string.Empty,
                         attachment = "Iron Sword",
                     },

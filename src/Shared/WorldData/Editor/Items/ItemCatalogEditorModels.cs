@@ -33,7 +33,6 @@ namespace Mmorpg.WorldData.Editor.Items
                     new ItemCatalogEditorRuntimeDefinition
                     {
                         id = definition.Id,
-                        displayName = definition.DisplayName,
                         structuralFingerprint = definition.StructuralFingerprint
                     })
                     .ToArray()
@@ -45,7 +44,6 @@ namespace Mmorpg.WorldData.Editor.Items
     public sealed class ItemCatalogEditorRuntimeDefinition
     {
         public string id;
-        public string displayName;
         public string structuralFingerprint;
     }
 
@@ -391,7 +389,6 @@ namespace Mmorpg.WorldData.Editor.Items
     public enum ItemCatalogDefinitionChangeKind
     {
         Added = 1,
-        DisplayOnly = 2,
         Structural = 3,
         Removed = 4
     }
@@ -444,17 +441,6 @@ namespace Mmorpg.WorldData.Editor.Items
                     changes.Add(new ItemCatalogDefinitionChange(
                         pair.Key,
                         ItemCatalogDefinitionChangeKind.Structural));
-                    continue;
-                }
-
-                if (!string.Equals(
-                    previous.displayName,
-                    pair.Value.displayName,
-                    StringComparison.Ordinal))
-                {
-                    changes.Add(new ItemCatalogDefinitionChange(
-                        pair.Key,
-                        ItemCatalogDefinitionChangeKind.DisplayOnly));
                 }
             }
 
@@ -643,8 +629,6 @@ namespace Mmorpg.WorldData.Editor.Items
                     iconAddress = sourcePresentation == null
                         ? string.Empty
                         : sourcePresentation.iconAddress,
-                    localizationKey = "items." + copy.id + ".name",
-                    fallbackDisplayName = copy.displayName,
                     prefabPresentationKey = sourcePresentation == null
                         ? string.Empty
                         : sourcePresentation.prefabPresentationKey,
@@ -693,7 +677,6 @@ namespace Mmorpg.WorldData.Editor.Items
             if (presentation != null)
             {
                 presentation.definitionId = newId;
-                presentation.localizationKey = "items." + newId + ".name";
             }
 
             return true;
@@ -809,8 +792,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 {
                     definitionId = definition.id,
                     iconAddress = string.Empty,
-                    localizationKey = "items." + definition.id + ".name",
-                    fallbackDisplayName = definition.displayName,
                     prefabPresentationKey = string.Empty
                 }
             }).ToArray();

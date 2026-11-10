@@ -318,21 +318,18 @@ internal sealed class ItemCatalogSeeder(
                         id,
                         catalog_id,
                         catalog_revision,
-                        display_name,
                         is_active)
-                    values (@Id, @CatalogId, @Revision, @DisplayName, true)
+                    values (@Id, @CatalogId, @Revision, true)
                     on conflict (id) do update
                     set catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
                         is_active = true,
                         updated_at = now()
                     where item_categories.catalog_id is distinct from excluded.catalog_id
                        or item_categories.catalog_revision is distinct from excluded.catalog_revision
-                       or item_categories.display_name is distinct from excluded.display_name
                        or not item_categories.is_active;
                     """,
-                    new { category.Id, canonical.CatalogId, canonical.Revision, category.DisplayName }));
+                    new { category.Id, canonical.CatalogId, canonical.Revision }));
             }
 
             foreach (var tag in canonical.Tags)
@@ -343,21 +340,18 @@ internal sealed class ItemCatalogSeeder(
                         id,
                         catalog_id,
                         catalog_revision,
-                        display_name,
                         is_active)
-                    values (@Id, @CatalogId, @Revision, @DisplayName, true)
+                    values (@Id, @CatalogId, @Revision, true)
                     on conflict (id) do update
                     set catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
                         is_active = true,
                         updated_at = now()
                     where item_tags.catalog_id is distinct from excluded.catalog_id
                        or item_tags.catalog_revision is distinct from excluded.catalog_revision
-                       or item_tags.display_name is distinct from excluded.display_name
                        or not item_tags.is_active;
                     """,
-                    new { tag.Id, canonical.CatalogId, canonical.Revision, tag.DisplayName }));
+                    new { tag.Id, canonical.CatalogId, canonical.Revision }));
             }
 
             foreach (var toolKind in canonical.ToolKinds)
@@ -368,21 +362,18 @@ internal sealed class ItemCatalogSeeder(
                         id,
                         catalog_id,
                         catalog_revision,
-                        display_name,
                         is_active)
-                    values (@Id, @CatalogId, @Revision, @DisplayName, true)
+                    values (@Id, @CatalogId, @Revision, true)
                     on conflict (id) do update
                     set catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
                         is_active = true,
                         updated_at = now()
                     where item_tool_kinds.catalog_id is distinct from excluded.catalog_id
                        or item_tool_kinds.catalog_revision is distinct from excluded.catalog_revision
-                       or item_tool_kinds.display_name is distinct from excluded.display_name
                        or not item_tool_kinds.is_active;
                     """,
-                    new { toolKind.Id, canonical.CatalogId, canonical.Revision, toolKind.DisplayName }));
+                    new { toolKind.Id, canonical.CatalogId, canonical.Revision }));
             }
 
             // Tool kinds carry no live state, so a kind that left the catalog only turns inactive.
@@ -404,7 +395,6 @@ internal sealed class ItemCatalogSeeder(
                     """
                     insert into equipment_slots (
                         id,
-                        display_name,
                         display_order,
                         maximum_quantity,
                         is_active,
@@ -412,22 +402,19 @@ internal sealed class ItemCatalogSeeder(
                         catalog_revision)
                     values (
                         @Id,
-                        @DisplayName,
                         @DisplayOrder,
                         @MaximumQuantity,
                         true,
                         @CatalogId,
                         @Revision)
                     on conflict (id) do update
-                    set display_name = excluded.display_name,
-                        display_order = excluded.display_order,
+                    set display_order = excluded.display_order,
                         maximum_quantity = excluded.maximum_quantity,
                         is_active = true,
                         catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
                         updated_at = now()
-                    where equipment_slots.display_name is distinct from excluded.display_name
-                       or equipment_slots.display_order is distinct from excluded.display_order
+                    where equipment_slots.display_order is distinct from excluded.display_order
                        or equipment_slots.maximum_quantity is distinct from excluded.maximum_quantity
                        or not equipment_slots.is_active
                        or equipment_slots.catalog_id is distinct from excluded.catalog_id
@@ -436,7 +423,6 @@ internal sealed class ItemCatalogSeeder(
                     new
                     {
                         slot.Id,
-                        slot.DisplayName,
                         DisplayOrder = index,
                         slot.MaximumQuantity,
                         canonical.CatalogId,
@@ -455,7 +441,6 @@ internal sealed class ItemCatalogSeeder(
                         id,
                         catalog_id,
                         catalog_revision,
-                        display_name,
                         category_id,
                         unit_weight,
                         value,
@@ -468,7 +453,6 @@ internal sealed class ItemCatalogSeeder(
                         @Id,
                         @CatalogId,
                         @Revision,
-                        @DisplayName,
                         @Category,
                         @UnitWeight,
                         @Value,
@@ -480,7 +464,6 @@ internal sealed class ItemCatalogSeeder(
                     on conflict (id) do update
                     set catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
                         category_id = excluded.category_id,
                         unit_weight = excluded.unit_weight,
                         value = excluded.value,
@@ -492,7 +475,6 @@ internal sealed class ItemCatalogSeeder(
                         updated_at = now()
                     where item_definitions.catalog_id is distinct from excluded.catalog_id
                        or item_definitions.catalog_revision is distinct from excluded.catalog_revision
-                       or item_definitions.display_name is distinct from excluded.display_name
                        or item_definitions.category_id is distinct from excluded.category_id
                        or item_definitions.unit_weight is distinct from excluded.unit_weight
                        or item_definitions.value is distinct from excluded.value
@@ -507,7 +489,6 @@ internal sealed class ItemCatalogSeeder(
                         definition.Id,
                         canonical.CatalogId,
                         canonical.Revision,
-                        definition.DisplayName,
                         definition.Category,
                         definition.UnitWeight,
                         definition.Value,
@@ -533,7 +514,6 @@ internal sealed class ItemCatalogSeeder(
                         id,
                         catalog_id,
                         catalog_revision,
-                        display_name,
                         purchase_price_basis_points,
                         sale_price_basis_points,
                         is_active)
@@ -541,21 +521,18 @@ internal sealed class ItemCatalogSeeder(
                         @Id,
                         @CatalogId,
                         @Revision,
-                        @DisplayName,
                         @PurchasePriceBasisPoints,
                         @SalePriceBasisPoints,
                         true)
                     on conflict (id) do update
                     set catalog_id = excluded.catalog_id,
                         catalog_revision = excluded.catalog_revision,
-                        display_name = excluded.display_name,
                         purchase_price_basis_points = excluded.purchase_price_basis_points,
                         sale_price_basis_points = excluded.sale_price_basis_points,
                         is_active = true,
                         updated_at = now()
                     where vendor_profiles.catalog_id is distinct from excluded.catalog_id
                        or vendor_profiles.catalog_revision is distinct from excluded.catalog_revision
-                       or vendor_profiles.display_name is distinct from excluded.display_name
                        or vendor_profiles.purchase_price_basis_points
                            is distinct from excluded.purchase_price_basis_points
                        or vendor_profiles.sale_price_basis_points
@@ -570,7 +547,6 @@ internal sealed class ItemCatalogSeeder(
                         vendor.Id,
                         canonical.CatalogId,
                         canonical.Revision,
-                        vendor.DisplayName,
                         vendor.PurchasePriceBasisPoints,
                         vendor.SalePriceBasisPoints
                     }));
@@ -695,16 +671,13 @@ internal sealed class ItemCatalogSeeder(
             await connection.ExecuteAsync(Command(
                 """
                 update item_system_settings
-                set currency_display_name = @CurrencyDisplayName,
-                    starting_currency_balance = @StartingBalance
+                set starting_currency_balance = @StartingBalance
                 where id = @CharacterSettingsId
-                  and (currency_display_name is distinct from @CurrencyDisplayName
-                       or starting_currency_balance is distinct from @StartingBalance);
+                  and starting_currency_balance is distinct from @StartingBalance;
                 """,
                 new
                 {
                     CharacterSettingsId,
-                    canonical.Economy.CurrencyDisplayName,
                     canonical.Economy.StartingBalance
                 }));
         }

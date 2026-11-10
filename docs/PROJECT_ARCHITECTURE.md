@@ -507,8 +507,10 @@ gameplay catalogs. The Unity client shows item, quest, and actor text from the
 tables, as [Content Text](UNITY_CLIENT_ARCHITECTURE.md#content-text) describes;
 the servers do not read them, and the world actor and corpse messages carry ids
 only: a Mob's corpse names its actor definition, and only a character's corpse
-carries a name, the one its player chose. The compiled catalogs still carry the
-same texts.
+carries a name, the one its player chose. The compiled item catalog carries no
+text, and GameService stores none of it: a rename changes neither the catalog
+revision nor a database row. The compiled actor and quest data still carry
+their texts.
 
 The servers send no sentence for the player either. An error, a closure, and
 the notice of a committed action carry a stable code and, where the text needs
@@ -570,8 +572,8 @@ implementation is in
 [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#development-item-tools).
 
 Unity owns a separate client presentation catalog keyed by stable definition id
-and loaded through Addressables. It references icons, localization keys,
-fallback text, garments, and prefab presentation keys, but cannot duplicate or
+and loaded through Addressables. It references icons, garments, and prefab
+presentation keys, holds no name, and cannot duplicate or
 override authoritative gameplay fields, and server item state carries
 definition ids instead of presentation assets, as
 [Client Presentation](INVENTORY_AND_DEATH_LOOT_DESIGN.md#client-presentation-and-catalog-caching)
@@ -791,7 +793,7 @@ transaction protocol stay authoritative for corpse contents.
 | `simulation_join_tickets` | Short-lived exact-runtime admission credentials, stored as hashes |
 | `character_simulation_sessions` | Global active simulation leases |
 | `item_catalog_revisions` | Applied deterministic catalog revisions and the current one |
-| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings, and the currency display name and starting balance from its economy settings |
+| `item_system_settings` | Base carry capacity and the inventory and bank slot counts from the catalog's character settings, and the starting balance from its economy settings |
 | `item_categories`, `item_tags`, `item_tool_kinds`, `equipment_slots` | Catalog vocabulary, kept separate by domain meaning, with display order, slot maximum quantity, and active state |
 | `item_definitions` | Stable id, display metadata, category, unit weight, stack maximum, destruction capability, required character level, value in whole currency units, structural fingerprint, and active state |
 | `item_definition_tags`, `item_definition_default_policies`, `item_definition_tool_kinds` | A definition's tags, default policies, and tool kinds |

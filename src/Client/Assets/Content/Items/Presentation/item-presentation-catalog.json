@@ -1,13 +1,11 @@
 {
-    "formatVersion": 4,
-    "sourceCatalogRevision": "592ba26fbd987ce37671f8e96d91f16138b64fb33bff129cdb6b0305343db5c0",
-    "presentationRevision": "b3ce37ac8f3e58bf788ad7844ec3f514ce11d97e3a3ba490adcf9258a32e9d0e",
+    "formatVersion": 5,
+    "sourceCatalogRevision": "cc4929be3710c5a696515d438df95c2efedc32462c2a4956e1f9d95138984ea9",
+    "presentationRevision": "a388801bca9b43b8dc2ec8a7c971002cc5b489bac5bd41c53959a12252db3565",
     "entries": [
         {
             "definitionId": "ammunition.bronze_arrow",
             "iconAddress": "",
-            "localizationKey": "items.ammunition.bronze_arrow.name",
-            "fallbackDisplayName": "Bronze Arrow",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -17,8 +15,6 @@
         {
             "definitionId": "armor.heater_shield",
             "iconAddress": "",
-            "localizationKey": "items.armor.heater_shield.name",
-            "fallbackDisplayName": "Heater Shield",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -28,8 +24,6 @@
         {
             "definitionId": "armor.leather_boots",
             "iconAddress": "",
-            "localizationKey": "items.armor.leather_boots.name",
-            "fallbackDisplayName": "Leather Boots",
             "prefabPresentationKey": "",
             "garments": [
                 "LeatherBoots"
@@ -41,8 +35,6 @@
         {
             "definitionId": "armor.leather_gloves",
             "iconAddress": "",
-            "localizationKey": "items.armor.leather_gloves.name",
-            "fallbackDisplayName": "Leather Gloves",
             "prefabPresentationKey": "",
             "garments": [
                 "LeatherGloves"
@@ -54,8 +46,6 @@
         {
             "definitionId": "armor.leather_jerkin",
             "iconAddress": "",
-            "localizationKey": "items.armor.leather_jerkin.name",
-            "fallbackDisplayName": "Leather Jerkin",
             "prefabPresentationKey": "",
             "garments": [
                 "LeatherJerkin"
@@ -67,8 +57,6 @@
         {
             "definitionId": "armor.nasal_helm",
             "iconAddress": "",
-            "localizationKey": "items.armor.nasal_helm.name",
-            "fallbackDisplayName": "Nasal Helm",
             "prefabPresentationKey": "",
             "garments": [
                 "IronNasalHelm"
@@ -80,8 +68,6 @@
         {
             "definitionId": "bag.travelers_pack",
             "iconAddress": "",
-            "localizationKey": "items.bag.travelers_pack.name",
-            "fallbackDisplayName": "Traveler's Pack",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -91,8 +77,6 @@
         {
             "definitionId": "clothing.blue_wool_cloak",
             "iconAddress": "",
-            "localizationKey": "items.clothing.blue_wool_cloak.name",
-            "fallbackDisplayName": "Blue Wool Cloak",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -102,8 +86,6 @@
         {
             "definitionId": "clothing.blue_wool_hood",
             "iconAddress": "",
-            "localizationKey": "items.clothing.blue_wool_hood.name",
-            "fallbackDisplayName": "Blue Wool Hood",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolHoodUp"
@@ -119,8 +101,6 @@
         {
             "definitionId": "clothing.blue_wool_robe",
             "iconAddress": "",
-            "localizationKey": "items.clothing.blue_wool_robe.name",
-            "fallbackDisplayName": "Blue Wool Robe",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolRobe"
@@ -134,8 +114,6 @@
         {
             "definitionId": "clothing.linen_shirt",
             "iconAddress": "",
-            "localizationKey": "items.clothing.linen_shirt.name",
-            "fallbackDisplayName": "Linen Shirt",
             "prefabPresentationKey": "",
             "garments": [
                 "LinenShirt"
@@ -147,8 +125,6 @@
         {
             "definitionId": "clothing.long_linen_shirt",
             "iconAddress": "",
-            "localizationKey": "items.clothing.long_linen_shirt.name",
-            "fallbackDisplayName": "Long-Sleeved Linen Shirt",
             "prefabPresentationKey": "",
             "garments": [
                 "LinenLongShirt"
@@ -160,8 +136,6 @@
         {
             "definitionId": "clothing.net_shirt",
             "iconAddress": "",
-            "localizationKey": "items.clothing.net_shirt.name",
-            "fallbackDisplayName": "Net Shirt",
             "prefabPresentationKey": "",
             "garments": [
                 "NetShirt"
@@ -173,8 +147,6 @@
         {
             "definitionId": "clothing.red_wool_cloak",
             "iconAddress": "",
-            "localizationKey": "items.clothing.red_wool_cloak.name",
-            "fallbackDisplayName": "Red Wool Cloak",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -184,8 +156,6 @@
         {
             "definitionId": "clothing.red_wool_hood",
             "iconAddress": "",
-            "localizationKey": "items.clothing.red_wool_hood.name",
-            "fallbackDisplayName": "Red Wool Hood",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolHoodUp"
@@ -201,8 +171,6 @@
         {
             "definitionId": "clothing.red_wool_robe",
             "iconAddress": "",
-            "localizationKey": "items.clothing.red_wool_robe.name",
-            "fallbackDisplayName": "Red Wool Robe",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolRobe"
@@ -216,8 +184,6 @@
         {
             "definitionId": "clothing.wool_cloak",
             "iconAddress": "",
-            "localizationKey": "items.clothing.wool_cloak.name",
-            "fallbackDisplayName": "Wool Cloak",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -227,8 +193,6 @@
         {
             "definitionId": "clothing.wool_hood",
             "iconAddress": "",
-            "localizationKey": "items.clothing.wool_hood.name",
-            "fallbackDisplayName": "Wool Hood",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolHoodUp"
@@ -242,8 +206,6 @@
         {
             "definitionId": "clothing.wool_robe",
             "iconAddress": "",
-            "localizationKey": "items.clothing.wool_robe.name",
-            "fallbackDisplayName": "Wool Robe",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolRobe"
@@ -255,8 +217,6 @@
         {
             "definitionId": "clothing.wool_trousers",
             "iconAddress": "",
-            "localizationKey": "items.clothing.wool_trousers.name",
-            "fallbackDisplayName": "Wool Trousers",
             "prefabPresentationKey": "",
             "garments": [
                 "WoolTrousers"
@@ -268,8 +228,6 @@
         {
             "definitionId": "food.cooked_trout",
             "iconAddress": "",
-            "localizationKey": "items.food.cooked_trout.name",
-            "fallbackDisplayName": "Cooked Trout",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -279,8 +237,6 @@
         {
             "definitionId": "jewelry.copper_ring",
             "iconAddress": "",
-            "localizationKey": "items.jewelry.copper_ring.name",
-            "fallbackDisplayName": "Copper Ring",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -290,8 +246,6 @@
         {
             "definitionId": "material.iron_ore",
             "iconAddress": "",
-            "localizationKey": "items.material.iron_ore.name",
-            "fallbackDisplayName": "Iron Ore",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -301,8 +255,6 @@
         {
             "definitionId": "material.oak_log",
             "iconAddress": "",
-            "localizationKey": "items.material.oak_log.name",
-            "fallbackDisplayName": "Oak Log",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -312,8 +264,6 @@
         {
             "definitionId": "material.wolf_pelt",
             "iconAddress": "",
-            "localizationKey": "items.material.wolf_pelt.name",
-            "fallbackDisplayName": "Wolf Pelt",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -323,8 +273,6 @@
         {
             "definitionId": "potion.minor_healing",
             "iconAddress": "",
-            "localizationKey": "items.potion.minor_healing.name",
-            "fallbackDisplayName": "Minor Healing Potion",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -334,8 +282,6 @@
         {
             "definitionId": "quest_item.alpha_fang",
             "iconAddress": "",
-            "localizationKey": "items.quest_item.alpha_fang.name",
-            "fallbackDisplayName": "Alpha's Fang",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -345,8 +291,6 @@
         {
             "definitionId": "quest_item.sealed_letter",
             "iconAddress": "",
-            "localizationKey": "items.quest_item.sealed_letter.name",
-            "fallbackDisplayName": "Sealed Letter",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -356,8 +300,6 @@
         {
             "definitionId": "quest_item.wolf_fang",
             "iconAddress": "",
-            "localizationKey": "items.quest_item.wolf_fang.name",
-            "fallbackDisplayName": "Wolf Fang",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -367,8 +309,6 @@
         {
             "definitionId": "tool.starter_pickaxe",
             "iconAddress": "",
-            "localizationKey": "items.tool.starter_pickaxe.name",
-            "fallbackDisplayName": "Starter Pickaxe",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -378,8 +318,6 @@
         {
             "definitionId": "tool.woodcutting_axe",
             "iconAddress": "",
-            "localizationKey": "items.tool.woodcutting_axe.name",
-            "fallbackDisplayName": "Woodcutting Axe",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -389,8 +327,6 @@
         {
             "definitionId": "weapon.iron_greataxe",
             "iconAddress": "",
-            "localizationKey": "items.weapon.iron_greataxe.name",
-            "fallbackDisplayName": "Iron Greataxe",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -400,8 +336,6 @@
         {
             "definitionId": "weapon.iron_sword",
             "iconAddress": "",
-            "localizationKey": "items.weapon.iron_sword.name",
-            "fallbackDisplayName": "Iron Sword",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -411,8 +345,6 @@
         {
             "definitionId": "weapon.oak_staff",
             "iconAddress": "",
-            "localizationKey": "items.weapon.oak_staff.name",
-            "fallbackDisplayName": "Oak Staff",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],
@@ -422,8 +354,6 @@
         {
             "definitionId": "weapon.training_shortbow",
             "iconAddress": "",
-            "localizationKey": "items.weapon.training_shortbow.name",
-            "fallbackDisplayName": "Training Shortbow",
             "prefabPresentationKey": "",
             "garments": [],
             "loweredGarments": [],

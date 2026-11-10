@@ -263,13 +263,12 @@ internal sealed class DevelopmentItemToolService(
             """
             select
                 definition.id as "DefinitionId",
-                definition.display_name as "DisplayName",
                 definition.category_id as "CategoryId",
                 definition.maximum_stack_size as "MaximumStackSize",
                 definition.unit_weight as "UnitWeight"
             from item_definitions definition
             where definition.is_active
-            order by lower(definition.display_name), definition.id;
+            order by definition.id;
             """,
             cancellationToken: cancellationToken))).ToArray();
 
@@ -287,7 +286,6 @@ internal sealed class DevelopmentItemToolService(
                 row.Currency)).ToArray(),
             definitions.Select(row => new DevelopmentItemToolDefinition(
                 row.DefinitionId,
-                row.DisplayName,
                 row.CategoryId,
                 row.MaximumStackSize,
                 row.UnitWeight)).ToArray(),
@@ -391,7 +389,6 @@ internal sealed class DevelopmentItemToolService(
     {
         public string DefinitionId { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
 
         public string CategoryId { get; set; } = string.Empty;
 

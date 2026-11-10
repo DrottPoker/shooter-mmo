@@ -4,7 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Mmorpg.Client.Core;
+using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor;
+using Mmorpg.WorldData.Text;
 using UnityEditor;
 using UnityEngine;
 
@@ -51,6 +54,41 @@ namespace Mmorpg.Client.Editor
             window.titleContent = new GUIContent("Inventory Item Grants");
             window.minSize = new Vector2(620f, 520f);
             window.Show();
+        }
+
+        // GameService lists item ids. The names come from the item text table, as in the game,
+        // and are read again with every answer, so a baked catalog shows its new names.
+        private TextCatalog itemTexts;
+
+        private string ItemName(string definitionId)
+        {
+            itemTexts = itemTexts ?? LoadItemTexts();
+            return TextKeys.IsValidId(definitionId)
+                ? itemTexts.Get(TextKeys.ItemName(definitionId))
+                : definitionId;
+        }
+
+        private static TextCatalog LoadItemTexts()
+        {
+            try
+            {
+                var path = ContentLayout.GeneratedTextTablePath(
+                    ContentLayout.GeneratedRoot(RepositoryLayout.FindRoot()),
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Items);
+                if (ClientTexts.TryParse(File.ReadAllText(path), out var table, out var error))
+                {
+                    return TextCatalog.Create(new[] { table });
+                }
+
+                Debug.LogWarning("The item text table is unreadable, so item names show as keys: " + error);
+            }
+            catch (Exception exception) when (exception is IOException || exception is InvalidDataException)
+            {
+                Debug.LogWarning("The item text table is unavailable, so item names show as keys: " + exception.Message);
+            }
+
+            return TextCatalog.Empty(TextTableFormat.SourceLocale);
         }
 
         private void OnEnable()
@@ -190,7 +228,7 @@ namespace Mmorpg.Client.Editor
 
             definitionIndex = Mathf.Clamp(definitionIndex, 0, definitions.Length - 1);
             var definitionLabels = definitions.Select(definition =>
-                definition.displayName + " (" + definition.definitionId + ")").ToArray();
+                ItemName(definition.definitionId) + " (" + definition.definitionId + ")").ToArray();
             definitionIndex = EditorGUILayout.Popup("Item", definitionIndex, definitionLabels);
             var definition = definitions[definitionIndex];
             quantity = EditorGUILayout.IntSlider(
@@ -455,6 +493,7 @@ namespace Mmorpg.Client.Editor
             }
 
             response = completedResponse;
+            itemTexts = null;
             if (response.success && response.data != null)
             {
                 SynchronizeSelections();
@@ -1001,7 +1040,6 @@ namespace Mmorpg.Client.Editor
     public sealed class DevelopmentItemToolDefinition
     {
         public string definitionId;
-        public string displayName;
         public string categoryId;
         public int maximumStackSize;
         public long unitWeight;

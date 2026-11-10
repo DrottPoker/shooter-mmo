@@ -212,8 +212,6 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 definitionId = id,
                 iconAddress = string.Empty,
-                localizationKey = "items." + id + ".name",
-                fallbackDisplayName = id,
                 prefabPresentationKey = string.Empty,
                 garments = garments,
                 loweredGarments = lowered ?? Array.Empty<string>(),

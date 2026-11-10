@@ -163,7 +163,7 @@ public sealed class TextTableTests
     [Fact]
     public void TheItemTableNamesEveryDefinitionAndTheCatalogVocabulary()
     {
-        var catalog = ItemCatalogTestData.Compile();
+        var catalog = ItemCatalogTestData.LoadAuthoring();
         var table = ContentText.FromItemCatalog(catalog);
         var texts = table.Entries.ToDictionary(entry => entry.Key, entry => entry.Text, StringComparer.Ordinal);
 
@@ -276,7 +276,7 @@ public sealed class TextTableTests
     {
         var expected = tableId switch
         {
-            TextTableIds.Items => ContentText.FromItemCatalog(ItemCatalogTestData.Compile()),
+            TextTableIds.Items => ContentText.FromItemCatalog(ItemCatalogTestData.LoadAuthoring()),
             TextTableIds.Actors => ContentText.FromWorldActors(
                 WorldActorTestData.CompileWorld(WorldActorTestData.CheckedInWorldIds()[0])),
             _ => ContentText.FromQuestCatalog(QuestCatalogTestData.Compile())

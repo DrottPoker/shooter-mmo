@@ -12,7 +12,8 @@ public sealed class VendorContentTests
     {
         var catalog = ItemCatalogTestData.CompileFixture();
 
-        Assert.Equal("Fixture Coins", catalog.Economy.CurrencyDisplayName);
+        Assert.Equal("Fixture Coins", ItemCatalogTestData.LoadFixtureAuthoring().Economy.CurrencyDisplayName);
+        Assert.Null(catalog.Economy.CurrencyDisplayName);
         Assert.Equal(0, catalog.Economy.StartingBalance);
         Assert.Equal(["pickaxe"], catalog.ToolKinds.Select(kind => kind.Id));
         Assert.Equal(["pickaxe"], Definition(catalog, "fixture.pickaxe").ToolKinds);
@@ -170,7 +171,7 @@ public sealed class VendorContentTests
         var catalog = ItemCatalogTestData.Compile();
         var vendor = catalog.Vendors.Single(value => value.Id == "vendor.city_general_store");
 
-        Assert.Equal("Gold", catalog.Economy.CurrencyDisplayName);
+        Assert.Equal("Gold", ItemCatalogTestData.LoadAuthoring().Economy.CurrencyDisplayName);
         Assert.Equal(100, catalog.Economy.StartingBalance);
         Assert.Equal(VendorPricing.BasisPointsScale, vendor.PurchasePriceBasisPoints);
         Assert.Equal(4000, vendor.SalePriceBasisPoints);

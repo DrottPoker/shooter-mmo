@@ -269,8 +269,9 @@ public sealed class VendorAndGatheringIntegrationTests
 
         var withoutTool = await GatherAsync(context, session, 1);
         AssertRejected(withoutTool, ItemTransactionErrorCodes.GatheringToolRequired);
-        // The player learns which tool kind the node needs, by its display name.
-        Assert.Equal("Pickaxe required in the Tool slot.", withoutTool.Error!.Message);
+        // The explanation names the kind for the log. The worker sends the kind with the code,
+        // and the client shows its name.
+        Assert.Contains("'pickaxe'", withoutTool.Error!.Message, StringComparison.Ordinal);
 
         await world.EquipAsync(characterId, pickaxeId, ItemEquipmentSlotIds.Tool);
         var first = await GatherAsync(context, session, 1);
@@ -317,7 +318,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var authoring = ItemCatalogRuntimeVerifier.ToAuthoring(catalog);
         authoring.Economy.StartingBalance = 75;
         await context.ItemCatalogSeeder.SeedAsync(
-            ItemCatalogCompiler.Compile(authoring),
+            ItemCatalogCompiler.CompileCompiled(authoring),
             CancellationToken.None);
 
         var world = new ItemScenarioWorld(context);

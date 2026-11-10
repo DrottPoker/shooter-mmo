@@ -958,7 +958,8 @@ This section describes the implemented behavior around them.
   describes; such a change needs an explicit data migration.
 - `GET /api/item-catalog` returns the current relational catalog graph from a
   read-only repeatable-read transaction. Definitions are present exactly once in
-  that response. The response uses the catalog revision as a strong ETag, is
+  that response. It holds ids and rules and no names: GameService stores no
+  text of the catalog, and a client reads names from its item text table. The response uses the catalog revision as a strong ETag, is
   revalidated by clients, and returns `304 Not Modified` when unchanged.
 - SimulationWorker runs on the same compiled catalog, and placement refuses a
   worker whose catalog revision differs, as

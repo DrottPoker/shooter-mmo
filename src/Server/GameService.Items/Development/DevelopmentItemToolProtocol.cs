@@ -26,7 +26,6 @@ internal sealed record DevelopmentItemToolCharacter(
 
 internal sealed record DevelopmentItemToolDefinition(
     string DefinitionId,
-    string DisplayName,
     string CategoryId,
     int MaximumStackSize,
     long UnitWeight);

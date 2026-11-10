@@ -130,7 +130,7 @@ namespace Mmorpg.Client.Items
             try
             {
                 var jsonDocument = ClientItemCatalogJson.Deserialize(json, out var revision);
-                var compiled = ItemCatalogCompiler.Compile(jsonDocument.ToAuthoringDocument());
+                var compiled = ItemCatalogCompiler.CompileCompiled(jsonDocument.ToAuthoringDocument());
                 if (!string.Equals(
                     compiled.Revision,
                     revision,

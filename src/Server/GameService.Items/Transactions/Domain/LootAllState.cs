@@ -51,7 +51,6 @@ internal sealed class LootAllState
             """
             select
                 equipment.id as "SlotId",
-                equipment.display_name as "DisplayName",
                 equipment.maximum_quantity as "MaximumQuantity",
                 item.id as "ItemInstanceId",
                 item.definition_id as "DefinitionId",
@@ -97,7 +96,6 @@ internal sealed class LootAllState
                 new ItemEquipmentSlotEntry
                 {
                     Id = row.SlotId,
-                    DisplayName = row.DisplayName,
                     MaximumQuantity = row.MaximumQuantity
                 },
                 occupant));
@@ -205,7 +203,6 @@ internal sealed class LootAllState
     {
         public string SlotId { get; set; } = string.Empty;
 
-        public string DisplayName { get; set; } = string.Empty;
 
         public int MaximumQuantity { get; set; }
 

@@ -18,7 +18,7 @@ namespace Mmorpg.WorldData.Items
                 throw new ArgumentNullException(nameof(runtime));
             }
 
-            var canonical = ItemCatalogCompiler.Compile(ToAuthoring(runtime));
+            var canonical = ItemCatalogCompiler.CompileCompiled(ToAuthoring(runtime));
             if (!string.Equals(runtime.Revision, canonical.Revision, StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
@@ -119,7 +119,6 @@ namespace Mmorpg.WorldData.Items
                         : new VendorProfileAuthoringEntry
                         {
                             Id = vendor.Id,
-                            DisplayName = vendor.DisplayName,
                             Offers = vendor.Offers?
                                 .Select(offer => offer == null
                                     ? null
@@ -166,7 +165,6 @@ namespace Mmorpg.WorldData.Items
             return new ItemDefinitionAuthoringEntry
             {
                 Id = definition.Id,
-                DisplayName = definition.DisplayName,
                 Category = definition.Category,
                 Tags = definition.Tags,
                 ToolKinds = definition.ToolKinds,

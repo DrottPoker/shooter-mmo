@@ -129,7 +129,7 @@ Item data is split by responsibility:
 - WorldData item definitions own the gameplay rules: category, tags, unitless
   weight, stack rules, equipment compatibility, policies, Bag layout, value,
   tool kinds, and combat data.
-- The Unity client owns presentation: icons, localization keys, visual prefabs,
+- The Unity client owns presentation: icons, visual prefabs,
   the garments an item shows on a body with their dye colors, and other
   non-authoritative presentation metadata; see
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#items).
@@ -637,7 +637,8 @@ Currency is a balance on the character, not an item:
   balance.
 - Currency is one integer unit. Its display name and the starting balance are
   catalog content, today Gold and 100, enough for a starter tool and some
-  arrows. A new character receives the starting balance when it is created, and
+  arrows. The name is text, which only the client reads from the item text
+  table; GameService stores the balance alone. A new character receives the starting balance when it is created, and
   a later change of the starting balance leaves existing characters' balances
   alone. Splitting the unit later, such as into gold, silver, and copper coins,
   would need a one-time migration of balances and prices.
