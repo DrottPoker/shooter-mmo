@@ -87,6 +87,7 @@ How to work on a part of the project.
 | Making or changing art | [Art Pipeline](ART_PIPELINE.md) |
 | A development World's layout, World collision and water authoring, or the World Builder | [Development Worlds](DEVELOPMENT_WORLDS.md) |
 | Authoring content or adding a kind of content | [Game Content](../content/README.md) |
+| A text table, a text key, or a kind of player-facing text | [Text Tables](../content/README.md#text-tables) |
 | A test project, test rule, or test database | [Backend Tests](../tests/README.md) |
 | A new script or tool | [Tools](../tools/README.md) and the guide of its area |
 

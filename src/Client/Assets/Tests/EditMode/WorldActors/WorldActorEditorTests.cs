@@ -7,6 +7,7 @@ using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.Actors;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -85,7 +86,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 preview.Files.Select(file => file.DisplayPath),
                 Does.Contain("Generated/Worlds/development-world-1/world-actors.json")
-                    .And.Contain("Generated/Worlds/development-world-2/world-actors.json"));
+                    .And.Contain("Generated/Worlds/development-world-2/world-actors.json")
+                    .And.Contain("Generated/Text/en/actors.text-table.json"));
             Assert.That(verify.Success, Is.True, verify.Output);
         }
 
@@ -126,6 +128,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     paths.ActorsDirectory,
                     "mob.editor_test_wolf");
                 Assert.That(File.Exists(addedPath), Is.True);
+                Assert.That(
+                    File.ReadAllText(ActorTextTablePath(paths.GeneratedRoot)),
+                    Does.Contain(TextKeys.ActorName("mob.editor_test_wolf")));
                 var verifyAfterAddition = service.VerifyCanonical();
                 Assert.That(verifyAfterAddition.Success, Is.True, verifyAfterAddition.Output);
 
@@ -151,6 +156,10 @@ namespace Mmorpg.Client.Tests.EditMode
                             worldId))),
                         worldId);
                 }
+
+                Assert.That(
+                    ReadNormalized(ActorTextTablePath(paths.GeneratedRoot)),
+                    Is.EqualTo(ReadNormalized(ActorTextTablePath(repositoryPaths.GeneratedRoot))));
             }
             finally
             {
@@ -273,6 +282,14 @@ namespace Mmorpg.Client.Tests.EditMode
         private static string ReadNormalized(string path)
         {
             return ContentFileTransaction.NormalizeLineEndings(File.ReadAllText(path));
+        }
+
+        private static string ActorTextTablePath(string generatedRoot)
+        {
+            return ContentLayout.GeneratedTextTablePath(
+                generatedRoot,
+                TextTableFormat.SourceLocale,
+                TextTableIds.Actors);
         }
     }
 }

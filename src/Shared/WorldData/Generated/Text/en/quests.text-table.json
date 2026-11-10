@@ -1,0 +1,144 @@
+{
+  "formatVersion": 1,
+  "tableId": "quests",
+  "locale": "en",
+  "revision": "e431b6e9d98a943078e64eab90cf236d6e36b91c902e05f6ca17bbd7689a4b54",
+  "entries": [
+    {
+      "key": "quest/quest.letter_for_the_outpost/completion",
+      "text": "Orders from the Quartermaster, sealed and dry. Good work, runner."
+    },
+    {
+      "key": "quest/quest.letter_for_the_outpost/offer",
+      "text": "This letter must reach the sergeant at the western outpost before nightfall. Follow the road west and hand it over yourself."
+    },
+    {
+      "key": "quest/quest.letter_for_the_outpost/progress",
+      "text": "You have a letter for me? Let me see it."
+    },
+    {
+      "key": "quest/quest.letter_for_the_outpost/step/deliver/objective/sealed_letter/text",
+      "text": "Sealed Letter delivered"
+    },
+    {
+      "key": "quest/quest.letter_for_the_outpost/title",
+      "text": "A Letter for the Outpost"
+    },
+    {
+      "key": "quest/quest.ore_for_the_quartermaster/completion",
+      "text": "She liked it? Then the smith is on his way. Good work."
+    },
+    {
+      "key": "quest/quest.ore_for_the_quartermaster/offer",
+      "text": "The Quartermaster wants to see the ore before she sends her smith out here. Take her three Iron Ore, then come back and tell me what she said."
+    },
+    {
+      "key": "quest/quest.ore_for_the_quartermaster/progress",
+      "text": "Has the Quartermaster seen the ore yet?"
+    },
+    {
+      "key": "quest/quest.ore_for_the_quartermaster/step/deliver/objective/iron_ore/text",
+      "text": "Iron Ore handed to the Quartermaster"
+    },
+    {
+      "key": "quest/quest.ore_for_the_quartermaster/title",
+      "text": "Ore for the Quartermaster"
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/completion",
+      "text": "Fine pelts, and sharp fangs. Choose something from my stores to keep you warm on the road."
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/offer",
+      "text": "The tanner pays well for good pelts, and the healer grinds wolf fangs into her salves. Bring me three Wolf Pelts and two Wolf Fangs."
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/progress",
+      "text": "Pelts and fangs, traveler. Have you brought them?"
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/step/hunt/objective/wolf_fangs/text",
+      "text": "Wolf Fangs"
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/step/hunt/objective/wolf_pelts/text",
+      "text": "Wolf Pelts"
+    },
+    {
+      "key": "quest/quest.pelts_and_fangs/title",
+      "text": "Pelts and Fangs"
+    },
+    {
+      "key": "quest/quest.sergeants_request/completion",
+      "text": "Iron for the gates and word to the town. The outpost owes you one."
+    },
+    {
+      "key": "quest/quest.sergeants_request/offer",
+      "text": "The palisade needs iron for new hinges. Mine five Iron Ore in the quarry, then tell the Quartermaster in town that the iron is on its way."
+    },
+    {
+      "key": "quest/quest.sergeants_request/progress",
+      "text": "Did you mine the iron and speak with the Quartermaster?"
+    },
+    {
+      "key": "quest/quest.sergeants_request/step/mine/objective/iron_ore/text",
+      "text": "Iron Ore mined"
+    },
+    {
+      "key": "quest/quest.sergeants_request/step/report/objective/quartermaster/line",
+      "text": "Iron for the outpost? Tell the sergeant it is welcome, and that the road stays open."
+    },
+    {
+      "key": "quest/quest.sergeants_request/step/report/objective/quartermaster/text",
+      "text": "Tell the Quartermaster"
+    },
+    {
+      "key": "quest/quest.sergeants_request/title",
+      "text": "The Sergeant\u0027s Request"
+    },
+    {
+      "key": "quest/quest.the_alpha/completion",
+      "text": "That is the alpha\u0027s fang, no doubt about it. The woods will be quieter now. Take your pick from the armory."
+    },
+    {
+      "key": "quest/quest.the_alpha/offer",
+      "text": "The pack follows an alpha, a scarred brute that lairs southwest of the woods. Kill it and bring me its fang as proof."
+    },
+    {
+      "key": "quest/quest.the_alpha/progress",
+      "text": "The alpha still lives. I can hear the pack at night."
+    },
+    {
+      "key": "quest/quest.the_alpha/step/hunt/objective/alpha_fang/text",
+      "text": "Alpha\u0027s Fang"
+    },
+    {
+      "key": "quest/quest.the_alpha/step/hunt/objective/feral_alpha/text",
+      "text": "Feral Alpha slain"
+    },
+    {
+      "key": "quest/quest.the_alpha/title",
+      "text": "The Alpha"
+    },
+    {
+      "key": "quest/quest.wolves_at_the_gate/completion",
+      "text": "Five fewer wolves. The traders will sleep better tonight, and so will I. Take this for your trouble."
+    },
+    {
+      "key": "quest/quest.wolves_at_the_gate/offer",
+      "text": "Feral wolves prowl the woods west of town, and the traders are scared to take the road. Thin the pack: bring down five of them."
+    },
+    {
+      "key": "quest/quest.wolves_at_the_gate/progress",
+      "text": "The wolves still howl at night. Have you thinned the pack?"
+    },
+    {
+      "key": "quest/quest.wolves_at_the_gate/step/hunt/objective/feral_wolves/text",
+      "text": "Feral Wolves slain"
+    },
+    {
+      "key": "quest/quest.wolves_at_the_gate/title",
+      "text": "Wolves at the Gate"
+    }
+  ]
+}

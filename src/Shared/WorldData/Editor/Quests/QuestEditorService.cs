@@ -6,6 +6,7 @@ using System.Text;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.WorldData.Editor.Quests
@@ -282,12 +283,27 @@ namespace Mmorpg.WorldData.Editor.Quests
                     return QuestEditorValidationResult.Failed(CompilerToolName + " did not produce the quest catalog.");
                 }
 
+                // The compiler writes the quest text table with the catalog, and a save keeps
+                // it current with the catalog.
+                var textTablePath = ContentLayout.GeneratedTextTablePath(
+                    string.Empty,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Quests);
+                if (!File.Exists(Path.Combine(generatedRoot, textTablePath)))
+                {
+                    return QuestEditorValidationResult.Failed(CompilerToolName + " did not produce the quest text table.");
+                }
+
                 var runtimeFile = new KeyValuePair<string, string>(
                     ContentLayout.GeneratedQuestCatalogPath(string.Empty),
                     Normalize(File.ReadAllText(runtimePath)));
+                var textTableFile = new KeyValuePair<string, string>(
+                    textTablePath,
+                    Normalize(File.ReadAllText(Path.Combine(generatedRoot, textTablePath))));
                 var files = authoredFiles
                     .Select(file => CreateFile("content", paths.ContentRoot, file))
                     .Append(CreateFile("Generated", paths.GeneratedRoot, runtimeFile))
+                    .Append(CreateFile("Generated", paths.GeneratedRoot, textTableFile))
                     .ToArray();
                 var written = new HashSet<string>(files.Select(file => file.FullPath), StringComparer.OrdinalIgnoreCase);
                 var removedFiles = ContentLayout.ListDefinitionFiles(paths.QuestsDirectory)

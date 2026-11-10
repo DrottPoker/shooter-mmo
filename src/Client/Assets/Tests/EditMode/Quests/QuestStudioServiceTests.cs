@@ -5,6 +5,7 @@ using Mmorpg.WorldData.Editor;
 using Mmorpg.WorldData.Editor.ContentTools;
 using Mmorpg.WorldData.Editor.Quests;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -107,6 +108,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 preview.Files.Select(file => file.DisplayPath),
                 Does.Contain("Generated/Quests/core.quest-catalog.json")
+                    .And.Contain("Generated/Text/en/quests.text-table.json")
                     .And.Contain("content/quests/definitions/quest.wolves_at_the_gate.json"));
             Assert.That(verify.Success, Is.True, verify.Output);
         }
@@ -128,7 +130,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 service.Save(workspace, addition);
 
                 var addedPath = ContentLayout.DefinitionPath(paths.QuestsDirectory, "quest.editor_test_hunt");
+                var textTablePath = ContentLayout.GeneratedTextTablePath(
+                    paths.GeneratedRoot,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Quests);
                 Assert.That(File.Exists(addedPath), Is.True);
+                Assert.That(
+                    File.ReadAllText(textTablePath),
+                    Does.Contain(TextKeys.QuestTitle("quest.editor_test_hunt")));
                 var verifyAfterAddition = service.VerifyCanonical();
                 Assert.That(verifyAfterAddition.Success, Is.True, verifyAfterAddition.Output);
 
@@ -143,6 +152,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 service.Save(workspace, removal);
 
                 Assert.That(File.Exists(addedPath), Is.False);
+                Assert.That(
+                    File.ReadAllText(textTablePath),
+                    Does.Not.Contain(TextKeys.QuestTitle("quest.editor_test_hunt")));
                 Assert.That(service.VerifyCanonical().Success, Is.True);
                 Assert.That(
                     QuestEditorContent.Load(paths.QuestsDirectory).retiredQuestIds,

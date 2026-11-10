@@ -2,6 +2,7 @@ using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.Tools.ItemCatalogCompiler;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
@@ -25,6 +26,10 @@ try
         catalog.CatalogId,
         catalog.Revision,
         catalog.Definitions.Length);
+    TextTableOutput.WriteOrVerify(
+        options.GeneratedRoot,
+        ContentText.FromItemCatalog(catalog),
+        options.VerifyOnly);
     return 0;
 }
 catch (Exception exception)

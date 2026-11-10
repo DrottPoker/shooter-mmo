@@ -3,6 +3,7 @@ using Mmorpg.Tools.WorldActorCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 {
@@ -23,9 +24,11 @@ try
             $"No World exists below '{ContentLayout.WorldsDirectory(contentRoot)}'.");
     }
 
+    WorldActorRuntimeDocument? firstWorld = null;
     foreach (var worldId in worldIds)
     {
         var runtime = CompileWorld(catalog, itemCatalog, contentRoot, worldId);
+        firstWorld ??= runtime;
         GeneratedOutput.WriteOrVerifyText(
             ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
             WorldActorJson.SerializeRuntime(runtime),
@@ -44,6 +47,12 @@ try
         FindStaleRuntimeFiles(options.GeneratedRoot, worldIds),
         options.VerifyOnly,
         "Compiled world actors");
+
+    // The actor texts belong to the actor catalog, which every World compiles in full.
+    TextTableOutput.WriteOrVerify(
+        options.GeneratedRoot,
+        ContentText.FromWorldActors(firstWorld!),
+        options.VerifyOnly);
     return 0;
 }
 catch (Exception exception)

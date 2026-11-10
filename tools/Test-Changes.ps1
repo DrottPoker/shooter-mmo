@@ -89,7 +89,7 @@ $rules = @(
         Checks = @("none"); Reason = "a tool script" },
     @{ Pattern = '^tools/ci/[^/]+\.ps1$'
         Checks = @("none"); Reason = "a setup script of the self-hosted runner" },
-    @{ Pattern = '^tools/(ContentPipeline|ItemCatalogCompiler|WorldActorCompiler)/'
+    @{ Pattern = '^tools/(ContentPipeline|ItemCatalogCompiler|WorldActorCompiler|QuestCatalogCompiler)/'
         Checks = @("owner!", "unity"); Reason = "a content compiler that the Unity Editor runs" },
     @{ Pattern = '^(src/Server|tools|tests)/'
         Checks = @("owner!"); Reason = "a .NET project" }

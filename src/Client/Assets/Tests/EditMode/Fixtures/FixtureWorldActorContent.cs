@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Editor.Actors;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -97,6 +98,17 @@ namespace Mmorpg.Client.Tests.EditMode
             files.Add(new KeyValuePair<string, string>(
                 ContentLayout.GeneratedItemCatalogPath(source.GeneratedRoot),
                 ContentLayout.GeneratedItemCatalogPath(target.GeneratedRoot)));
+
+            // The actor compiler verifies the actor text table with the runtimes.
+            files.Add(new KeyValuePair<string, string>(
+                ContentLayout.GeneratedTextTablePath(
+                    source.GeneratedRoot,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Actors),
+                ContentLayout.GeneratedTextTablePath(
+                    target.GeneratedRoot,
+                    TextTableFormat.SourceLocale,
+                    TextTableIds.Actors)));
 
             foreach (var file in files)
             {

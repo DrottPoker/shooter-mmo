@@ -497,6 +497,15 @@ availability and step progression. GameService and SimulationWorker load the
 compiled catalog, and [Quest System Design](QUEST_SYSTEM_DESIGN.md#authority)
 describes how they share the authority over quests.
 
+Player-facing text is collected into text tables below
+`src/Shared/WorldData/Generated/Text/<locale>/`, one per content domain. The
+item, actor, and quest compilers each write the table of their domain together
+with their compiled data, with keys that `Mmorpg.WorldData.Text.TextKeys`
+derives from content ids, as [Text Tables](../content/README.md#text-tables)
+describes. A table has its own revision, apart from the revisions of the
+gameplay catalogs. No process reads the tables yet: the compiled catalogs and
+the realtime protocol still carry the same texts.
+
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless
 integer weight arithmetic, the 140 percent hard cap, the linear fixed-point
