@@ -648,9 +648,7 @@ namespace Mmorpg.Client.Ui
         private string ItemName(string definitionId)
         {
             var catalog = inventory?.State.Catalog;
-            return catalog != null && catalog.TryGetDefinition(definitionId, out var definition)
-                ? definition.DisplayName
-                : definitionId;
+            return catalog != null ? catalog.GetDisplayName(definitionId) : definitionId;
         }
 
         private static bool IsSameEntry(QuestDialogEntry entry, QuestDialogEntry other)
