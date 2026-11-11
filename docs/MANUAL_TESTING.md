@@ -446,6 +446,22 @@ actors, and the compiled quest catalog carry no text, as
    text shows. Restore the files with
    `git restore content/quests src/Shared/WorldData/Generated/Text`.
 
+### Client Texts And The Pseudo-Locale
+
+The client's own labels come from the `ui` text table, as
+[Client Texts](../content/README.md#client-texts) describes.
+
+1. In the Unity Editor, choose `MMORPG > Tools > Pseudo Locale`, so the menu
+   entry is checked, and start Play Mode. Join, accept a quest at Mira, and
+   open the quest log (L). Expected result: every text of the quest dialog,
+   the quest log, the quest tracker, and the quest messages shows with
+   accented vowels, such as `Qúést Lóg`, `Áccépt`, and
+   `Qúést áccéptéd: Pélts ánd Fángs`, and so does every item, actor, and quest
+   text. A label that still reads as plain English, such as those of the
+   inventory windows, is a literal in the code.
+2. Choose `MMORPG > Tools > Pseudo Locale` again and restart Play Mode.
+   Expected result: every text reads as plain English again.
+
 ### Messages By Code
 
 The client shows its own text for every code that a server sends, as

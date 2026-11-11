@@ -35,7 +35,7 @@ namespace Mmorpg.Client.Quests
 
             if (quest.RewardGold > VendorPricing.MaximumCurrencyBalance - snapshot.Currency)
             {
-                reason = "Your balance cannot hold the Gold reward.";
+                reason = catalog.Texts.Get("ui/quests/reward-balance-full");
                 return false;
             }
 
@@ -77,7 +77,7 @@ namespace Mmorpg.Client.Quests
                     addedWeight = checked(addedWeight + ItemWeightRules.CalculateStackWeight(definition.UnitWeight, reward.Quantity));
                     if (!Place(slots, definition, reward.Quantity))
                     {
-                        reason = "Make room in your bags for the rewards first.";
+                        reason = catalog.Texts.Get("ui/quests/reward-no-room");
                         return false;
                     }
                 }
@@ -89,7 +89,7 @@ namespace Mmorpg.Client.Quests
                         weight,
                         snapshot.CarryCapacity))
                 {
-                    reason = "The rewards would be too heavy to carry.";
+                    reason = catalog.Texts.Get("ui/quests/reward-too-heavy");
                     return false;
                 }
             }

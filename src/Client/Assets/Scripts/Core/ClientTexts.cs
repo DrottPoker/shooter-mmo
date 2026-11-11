@@ -9,6 +9,9 @@ namespace Mmorpg.Client.Core
     // text from. The composition root loads it once and passes it on.
     public static class ClientTexts
     {
+        // Set to 1, the client shows the pseudo-locale from its next start.
+        public const string PseudoLocalePreference = "Mmorpg.Debug.PseudoLocale";
+
         public static bool TryLoad(
             IReadOnlyList<TextAsset> tableAssets,
             out TextCatalog catalog,

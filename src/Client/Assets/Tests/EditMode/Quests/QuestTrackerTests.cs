@@ -36,7 +36,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void TheTrackerShowsEachActiveQuestsObjectivesOrThatItIsReady()
         {
-            var tracker = new QuestTracker(theme, canvasObject.GetComponent<RectTransform>());
+            var tracker = new QuestTracker(theme, FixtureTexts.Ui(), canvasObject.GetComponent<RectTransform>());
             var state = new QuestClientState();
             state.SetCatalog(FixtureQuestCatalog.Load());
             var characterId = Guid.NewGuid();

@@ -1,0 +1,196 @@
+{
+  "formatVersion": 1,
+  "tableId": "ui",
+  "locale": "en",
+  "revision": "e65a4a32a980c63678c6be03f15be99f170a9cf3463044c39f768b2b164ae57b",
+  "entries": [
+    {
+      "key": "ui/common/item-quantity",
+      "text": "{quantity} x {item}"
+    },
+    {
+      "key": "ui/quests/abandon",
+      "text": "Abandon"
+    },
+    {
+      "key": "ui/quests/abandon-heading",
+      "text": "Abandon Quest"
+    },
+    {
+      "key": "ui/quests/abandon-question",
+      "text": "Abandon {quest}? Its progress and its quest items are lost."
+    },
+    {
+      "key": "ui/quests/accept",
+      "text": "Accept"
+    },
+    {
+      "key": "ui/quests/ask-again",
+      "text": "Ask again"
+    },
+    {
+      "key": "ui/quests/back",
+      "text": "Back"
+    },
+    {
+      "key": "ui/quests/choose-one",
+      "text": "Choose one of:"
+    },
+    {
+      "key": "ui/quests/complete",
+      "text": "Complete"
+    },
+    {
+      "key": "ui/quests/continue",
+      "text": "Continue"
+    },
+    {
+      "key": "ui/quests/deliver-text",
+      "text": "Hand over {items}. You carry {carried}."
+    },
+    {
+      "key": "ui/quests/dialog-nothing",
+      "text": "There is nothing more to do here for now."
+    },
+    {
+      "key": "ui/quests/dialog-title",
+      "text": "Quests"
+    },
+    {
+      "key": "ui/quests/error-busy",
+      "text": "Wait for the last quest action to finish."
+    },
+    {
+      "key": "ui/quests/error-not-active",
+      "text": "That quest is not active."
+    },
+    {
+      "key": "ui/quests/error-not-loaded",
+      "text": "Your quests are not loaded yet."
+    },
+    {
+      "key": "ui/quests/error-unsent",
+      "text": "The quest request could not be sent."
+    },
+    {
+      "key": "ui/quests/hand-over",
+      "text": "Hand over"
+    },
+    {
+      "key": "ui/quests/label-complete",
+      "text": "{quest} (Complete)"
+    },
+    {
+      "key": "ui/quests/label-in-progress",
+      "text": "{quest} (in progress)"
+    },
+    {
+      "key": "ui/quests/label-lost-items",
+      "text": "{quest}: lost items"
+    },
+    {
+      "key": "ui/quests/label-objective",
+      "text": "{quest}: {objective}"
+    },
+    {
+      "key": "ui/quests/log-active",
+      "text": "Active"
+    },
+    {
+      "key": "ui/quests/log-completed",
+      "text": "Completed"
+    },
+    {
+      "key": "ui/quests/log-empty",
+      "text": "You have no quests. Quest NPCs offer them."
+    },
+    {
+      "key": "ui/quests/log-title",
+      "text": "Quest Log"
+    },
+    {
+      "key": "ui/quests/lost-items-text",
+      "text": "You no longer have what you were given for this quest: {items}. Ask for it again."
+    },
+    {
+      "key": "ui/quests/notice-abandoned",
+      "text": "Quest abandoned: {quest}"
+    },
+    {
+      "key": "ui/quests/notice-accepted",
+      "text": "Quest accepted: {quest}"
+    },
+    {
+      "key": "ui/quests/notice-completed",
+      "text": "Quest completed: {quest}"
+    },
+    {
+      "key": "ui/quests/notice-drop",
+      "text": "{source} dropped {item} for {quest}."
+    },
+    {
+      "key": "ui/quests/notice-drop-many",
+      "text": "{source} dropped {quantity} x {item} for {quest}."
+    },
+    {
+      "key": "ui/quests/notice-ready",
+      "text": "{quest} is ready to turn in."
+    },
+    {
+      "key": "ui/quests/notice-updated",
+      "text": "Quest updated: {quest}"
+    },
+    {
+      "key": "ui/quests/objectives",
+      "text": "Objectives"
+    },
+    {
+      "key": "ui/quests/ready-to-turn-in",
+      "text": "Ready to turn in."
+    },
+    {
+      "key": "ui/quests/reward-balance-full",
+      "text": "Your balance cannot hold the Gold reward."
+    },
+    {
+      "key": "ui/quests/reward-gold",
+      "text": "{amount} {currency}"
+    },
+    {
+      "key": "ui/quests/reward-no-room",
+      "text": "Make room in your bags for the rewards first."
+    },
+    {
+      "key": "ui/quests/reward-too-heavy",
+      "text": "The rewards would be too heavy to carry."
+    },
+    {
+      "key": "ui/quests/rewards",
+      "text": "Rewards"
+    },
+    {
+      "key": "ui/quests/status-reading",
+      "text": "Reading your quests..."
+    },
+    {
+      "key": "ui/quests/status-unavailable",
+      "text": "Your quests are unavailable."
+    },
+    {
+      "key": "ui/quests/status-unavailable-reason",
+      "text": "Your quests are unavailable: {reason}"
+    },
+    {
+      "key": "ui/quests/status-update-required",
+      "text": "This client build requires a quest catalog update."
+    },
+    {
+      "key": "ui/quests/tracker-more",
+      "text": "\u002B{count} more in the quest log (L)"
+    },
+    {
+      "key": "ui/quests/tracker-ready",
+      "text": "Ready to turn in"
+    }
+  ]
+}

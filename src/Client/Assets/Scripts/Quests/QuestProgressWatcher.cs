@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Quests
 {
@@ -60,7 +61,7 @@ namespace Mmorpg.Client.Quests
                     watched[active.QuestId] = WatchedQuest.Of(active, lines, ready);
                     if (ready && !silent)
                     {
-                        notices.Add(ReadyText(quest));
+                        notices.Add(ReadyText(state.Catalog, quest));
                     }
 
                     continue;
@@ -80,7 +81,7 @@ namespace Mmorpg.Client.Quests
 
                 if (ready && !previous.Ready && !silent)
                 {
-                    notices.Add(ReadyText(quest));
+                    notices.Add(ReadyText(state.Catalog, quest));
                 }
 
                 watched[active.QuestId] = WatchedQuest.Of(active, lines, ready);
@@ -89,9 +90,9 @@ namespace Mmorpg.Client.Quests
             return notices;
         }
 
-        private static string ReadyText(QuestDefinition quest)
+        private static string ReadyText(ClientQuestCatalog catalog, QuestDefinition quest)
         {
-            return quest.Title + " is ready to turn in.";
+            return catalog.Texts.Format("ui/quests/notice-ready", MessageArgument.Text("quest", quest.Title));
         }
 
         private sealed class WatchedQuest

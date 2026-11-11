@@ -124,6 +124,25 @@ namespace Mmorpg.WorldData.Text
             return TryGet(key, out var text) ? text : Missing(key);
         }
 
+        // A text with its named values filled in, such as "{count} left".
+        public string Format(string key, params MessageArgument[] arguments)
+        {
+            return TextTemplate.Format(Get(key), arguments, this);
+        }
+
+        // The same catalog with every text visibly altered, as a pseudo-locale: a text on
+        // screen that still reads as plain English did not come from a text table.
+        public TextCatalog ToPseudoLocale()
+        {
+            var altered = new Dictionary<string, string>(texts.Count, StringComparer.Ordinal);
+            foreach (var pair in texts)
+            {
+                altered[pair.Key] = PseudoText.Alter(pair.Value);
+            }
+
+            return new TextCatalog(PseudoText.Locale, Revision, altered);
+        }
+
         // For a text that content may leave out, such as the line of an objective.
         public string GetOrEmpty(string key)
         {

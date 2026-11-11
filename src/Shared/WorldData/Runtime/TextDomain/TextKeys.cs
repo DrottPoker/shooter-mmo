@@ -10,6 +10,7 @@ namespace Mmorpg.WorldData.Text
         public const char Separator = '/';
 
         private const string MessageRoot = "message";
+        private const string UiRoot = "ui";
 
         public static string ItemName(string definitionId)
         {
@@ -130,6 +131,12 @@ namespace Mmorpg.WorldData.Text
             return IsValid(key)
                 && key.StartsWith(MessageRoot + Separator, StringComparison.Ordinal)
                 && key.IndexOf(Separator, MessageRoot.Length + 1) < 0;
+        }
+
+        // A text of the client itself, such as a window title: "ui/<area>/<name>".
+        public static bool IsUi(string key)
+        {
+            return IsValid(key) && key.StartsWith(UiRoot + Separator, StringComparison.Ordinal);
         }
 
         // A key has at least two segments, and every segment is made of lowercase letters,

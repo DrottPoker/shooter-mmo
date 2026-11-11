@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.WorldData.Text;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -17,10 +19,34 @@ namespace Mmorpg.Client.Tests.EditMode
             return texts;
         }
 
-        // A text table with the development actors, which name the Mob of a quest drop.
+        // A quest text table with the development actors, which name the Mob of a quest drop,
+        // and the client's own texts.
         public static TextCatalog WithDevelopmentActors(TextTableDocument table)
         {
-            return TextCatalog.Create(new[] { table, DevelopmentActorTexts().BuildTable() });
+            return TextCatalog.Create(new[] { table, DevelopmentActorTexts().BuildTable(), UiTable() });
+        }
+
+        // The client's own texts as they are checked in, so a test reads the sentences that
+        // a player reads.
+        public static TextTableDocument UiTable()
+        {
+            var path = Path.GetFullPath(Path.Combine(
+                Application.dataPath,
+                "..",
+                "..",
+                "Shared",
+                "WorldData",
+                "Generated",
+                "Text",
+                TextTableFormat.SourceLocale,
+                TextTableIds.Ui + TextTableFormat.FileSuffix));
+            Assert.That(ClientTexts.TryParse(File.ReadAllText(path), out var table, out var error), Is.True, error);
+            return table;
+        }
+
+        public static TextCatalog Ui()
+        {
+            return TextCatalog.Create(new[] { UiTable() });
         }
 
         // The actors that the client tests spawn, named as the tests expect: Mira of the city

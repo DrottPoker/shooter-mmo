@@ -18,6 +18,12 @@ namespace Mmorpg.Client.Quests
 
         private readonly TextCatalog texts;
 
+        // The texts that filled the quests, which also hold the client's own quest sentences.
+        public TextCatalog Texts
+        {
+            get { return texts; }
+        }
+
         private ClientQuestCatalog(QuestCatalogRuntimeDocument runtime, TextCatalog texts)
         {
             this.texts = texts;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Quests;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 
@@ -17,17 +18,24 @@ namespace Mmorpg.Client.Ui
         private const float Width = 440f;
 
         private readonly UiTheme theme;
+        private readonly TextCatalog texts;
         private readonly Action<QuestLogActiveEntry> abandon;
         private readonly Action refresh;
         private string selectedQuestId = string.Empty;
 
         // refresh shows the log again with the current state, such as after a selection.
-        public QuestLogWindow(UiTheme theme, RectTransform parent, Action<QuestLogActiveEntry> abandon, Action refresh)
+        public QuestLogWindow(
+            UiTheme theme,
+            TextCatalog texts,
+            RectTransform parent,
+            Action<QuestLogActiveEntry> abandon,
+            Action refresh)
         {
             this.theme = theme;
+            this.texts = texts ?? throw new ArgumentNullException(nameof(texts));
             this.abandon = abandon;
             this.refresh = refresh;
-            Window = UiWindow.Create(theme, parent, WindowName, null, "Quest Log", Width);
+            Window = UiWindow.Create(theme, parent, WindowName, null, texts.Get("ui/quests/log-title"), Width);
             Window.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
             Window.SetOpen(false);
         }
@@ -55,18 +63,18 @@ namespace Mmorpg.Client.Ui
             UiFactory.ClearChildren(Window.Footer);
             if (state == null || !state.IsReady)
             {
-                AddParagraph(StatusText(state), theme.MutedTextColor);
+                AddParagraph(StatusText(state, texts), theme.MutedTextColor);
                 Window.FitBody();
                 return;
             }
 
             var active = QuestLogModel.Active(state, carriedCount);
             var maximum = state.Catalog.MaximumActiveQuests;
-            UiFactory.SectionHeading(theme, Window.Body, "Active", null, out var count);
+            UiFactory.SectionHeading(theme, Window.Body, texts.Get("ui/quests/log-active"), null, out var count);
             count.text = active.Count + " / " + maximum;
             if (active.Count == 0)
             {
-                AddParagraph("You have no quests. Quest NPCs offer them.", theme.MutedTextColor);
+                AddParagraph(texts.Get("ui/quests/log-empty"), theme.MutedTextColor);
             }
 
             var selected = active.FirstOrDefault(entry =>
@@ -93,14 +101,14 @@ namespace Mmorpg.Client.Ui
 
                 if (selected.IsReady)
                 {
-                    AddParagraph("Ready to turn in.", theme.GoldTextColor);
+                    AddParagraph(texts.Get("ui/quests/ready-to-turn-in"), theme.GoldTextColor);
                 }
 
                 AddParagraph(selected.Quest.OfferText, theme.MutedTextColor);
                 var button = UiFactory.Button(
                     theme,
                     Window.Footer,
-                    "Abandon",
+                    texts.Get("ui/quests/abandon"),
                     () => abandon?.Invoke(selected),
                     UiButtonTone.Danger);
                 button.interactable = !abandonPending;
@@ -109,7 +117,7 @@ namespace Mmorpg.Client.Ui
             var completed = QuestLogModel.Completed(state);
             if (completed.Count > 0)
             {
-                UiFactory.SectionHeading(theme, Window.Body, "Completed", null, out var done);
+                UiFactory.SectionHeading(theme, Window.Body, texts.Get("ui/quests/log-completed"), null, out var done);
                 done.text = completed.Count.ToString();
                 foreach (var entry in completed)
                 {
@@ -131,19 +139,21 @@ namespace Mmorpg.Client.Ui
 
         // What the quest windows show until the quest log is ready, with the reason a log or
         // the bundled catalog failed.
-        internal static string StatusText(QuestClientState state)
+        internal static string StatusText(QuestClientState state, TextCatalog texts)
         {
             switch (state?.Status ?? QuestClientStatus.Unavailable)
             {
                 case QuestClientStatus.Loading:
                 case QuestClientStatus.Unavailable:
-                    return "Reading your quests...";
+                    return texts.Get("ui/quests/status-reading");
                 case QuestClientStatus.UpdateRequired:
-                    return "This client build requires a quest catalog update.";
+                    return texts.Get("ui/quests/status-update-required");
                 default:
                     return string.IsNullOrWhiteSpace(state.ErrorMessage)
-                        ? "Your quests are unavailable."
-                        : "Your quests are unavailable: " + state.ErrorMessage;
+                        ? texts.Get("ui/quests/status-unavailable")
+                        : texts.Format(
+                            "ui/quests/status-unavailable-reason",
+                            MessageArgument.Text("reason", state.ErrorMessage));
             }
         }
 

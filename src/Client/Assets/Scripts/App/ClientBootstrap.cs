@@ -164,7 +164,11 @@ namespace Mmorpg.Client.App
         {
             if (ClientTexts.TryLoad(config.TextTables, out var texts, out var error))
             {
-                return texts;
+                // The pseudo-locale alters every text of the tables, so a text that still
+                // reads as plain English on screen is a literal in the code.
+                return PlayerPrefs.GetInt(ClientTexts.PseudoLocalePreference, 0) == 1
+                    ? texts.ToPseudoLocale()
+                    : texts;
             }
 
             ClientLog.Error(
@@ -453,6 +457,7 @@ namespace Mmorpg.Client.App
                     inventoryController,
                     worldInteractionController,
                     gameMessages,
+                    texts,
                     worldMenu,
                     inventoryWindows));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
