@@ -8,6 +8,7 @@
     <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
     <ProjectReference Include="..\GameService.Quests\Mmorpg.GameService.Quests.csproj" />
     <ProjectReference Include="..\GameService.Items\Mmorpg.GameService.Items.csproj" />
+    <ProjectReference Include="..\GameService.Content\Mmorpg.GameService.Content.csproj" />
     <ProjectReference Include="..\Telemetry\Mmorpg.Server.Telemetry.csproj" />
   </ItemGroup>
 
@@ -35,6 +36,10 @@
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\Shared\WorldData\Generated\Quests\core.quest-catalog.json"
              Link="WorldData\Quests\core.quest-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Text\en\*.text-table.json"
+             Link="WorldData\Text\en\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\content\characters\appearance.json"

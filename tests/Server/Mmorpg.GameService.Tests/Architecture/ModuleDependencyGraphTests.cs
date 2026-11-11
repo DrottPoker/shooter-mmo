@@ -3,7 +3,7 @@ using Mmorpg.GameService.Testing;
 namespace Mmorpg.GameService.Tests.Architecture;
 
 // The project references enforce Platform <- Accounts <- Characters <- Placement <- Quests
-// <- Items <- host. This pins the compiled graph, so a new edge is a deliberate decision.
+// <- Items <- Content <- host. This pins the compiled graph, so a new edge is a deliberate decision.
 public sealed class ModuleDependencyGraphTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> ExpectedReferences =
@@ -26,10 +26,14 @@ public sealed class ModuleDependencyGraphTests
                 "Mmorpg.GameService.Platform",
                 "Mmorpg.GameService.Quests"
             ],
+            // Content compares its catalogs through Placement's revision contracts.
+            ["Mmorpg.GameService.Content"] =
+                ["Mmorpg.GameService.Placement", "Mmorpg.GameService.Platform"],
             ["Mmorpg.GameService"] =
             [
                 "Mmorpg.GameService.Accounts",
                 "Mmorpg.GameService.Characters",
+                "Mmorpg.GameService.Content",
                 "Mmorpg.GameService.Items",
                 "Mmorpg.GameService.Placement",
                 "Mmorpg.GameService.Platform",

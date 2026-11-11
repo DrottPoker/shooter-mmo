@@ -12,11 +12,12 @@ internal static class GameServiceSourceMap
     public const string Placement = "Placement";
     public const string Quests = "Quests";
     public const string Items = "Items";
+    public const string Content = "Content";
     public const string Host = "Host";
 
     // Lower modules come first. A module may only depend on modules before it.
     public static IReadOnlyList<string> DependencyOrder { get; } =
-        [Platform, Accounts, Characters, Placement, Quests, Items, Host];
+        [Platform, Accounts, Characters, Placement, Quests, Items, Content, Host];
 
     // Ordered by specificity: the first matching prefix decides the module.
     private static readonly (string Prefix, string Module)[] PathRules =
@@ -27,6 +28,7 @@ internal static class GameServiceSourceMap
         ("GameService.Placement/", Placement),
         ("GameService.Quests/", Quests),
         ("GameService.Items/", Items),
+        ("GameService.Content/", Content),
         ("GameService/", Host)
     ];
 

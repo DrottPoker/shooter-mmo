@@ -17,38 +17,6 @@ public sealed class ItemApiIntegrationTests
     private const string LocalShardId = "local-shard-1";
 
     [PostgresIntegrationFact]
-    public async Task CatalogUsesRevisionEtagAndExcludesClientPresentationAssets()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var player = await context.RegisterPlayerAsync();
-        await using var host = await ItemApiTestHost.StartAsync(context);
-        host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            player.Registration.SessionToken);
-
-        using var response = await host.Client.GetAsync("/api/item-catalog");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.NotNull(response.Headers.ETag);
-        Assert.Equal("public", response.Headers.CacheControl?.Public == true ? "public" : null);
-        Assert.True(response.Headers.CacheControl?.MustRevalidate);
-        var json = await response.Content.ReadAsStringAsync();
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        Assert.True(root.TryGetProperty("revision", out var revision));
-        Assert.Equal($"\"{revision.GetString()}\"", response.Headers.ETag!.Tag);
-        Assert.DoesNotContain("icon", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("unity", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("assetReference", json, StringComparison.OrdinalIgnoreCase);
-
-        using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/item-catalog");
-        unchangedRequest.Headers.IfNoneMatch.Add(response.Headers.ETag);
-        using var unchanged = await host.Client.SendAsync(unchangedRequest);
-        Assert.Equal(HttpStatusCode.NotModified, unchanged.StatusCode);
-        Assert.Equal(response.Headers.ETag, unchanged.Headers.ETag);
-        Assert.Equal(string.Empty, await unchanged.Content.ReadAsStringAsync());
-    }
-
-    [PostgresIntegrationFact]
     public async Task CharacterReadsAreAuthenticatedOwnerScopedAndNeverCacheable()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -87,6 +55,12 @@ public sealed class ItemApiIntegrationTests
                 "/api/items/secure-container-tier",
                 new { operationId = Guid.NewGuid() });
             Assert.Equal(HttpStatusCode.NotFound, removedRoute.StatusCode);
+        }
+
+        // The item catalog is served as a file by the Content module; the old route is gone.
+        using (var removedCatalog = await host.Client.GetAsync("/api/item-catalog"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, removedCatalog.StatusCode);
         }
 
         host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(

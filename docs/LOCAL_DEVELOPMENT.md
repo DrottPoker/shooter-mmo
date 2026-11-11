@@ -210,6 +210,13 @@ describes.
   [Reset The Local Development Database](#reset-the-local-development-database).
 - A worker stops with `shard_rule_set_unknown` when the rule set that
   GameService names for its shard is not in `content/combat/combat-rules.json`.
+- GameService also serves the compiled item catalog, quest catalog, and the
+  text tables of `src/Shared/WorldData/Generated/Text/en` from its output at
+  `/api/content`, as [Content Files](SERVICE_FEATURES.md#content-files)
+  describes. After a text change, compile the text tables and restart
+  GameService to serve them; it refuses to start when a table is invalid. The
+  Unity client still uses the files baked into its build until it resolves them
+  from GameService, so it still needs its own copy rebuilt for now.
 
 ### Health Checks
 

@@ -110,6 +110,16 @@
           "Npgsql": "[10.0.3, )"
         }
       },
+      "mmorpg.gameservice.content": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameService.Placement": "[1.0.0, )",
+          "Mmorpg.GameService.Platform": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )",
+          "Npgsql": "[10.0.3, )"
+        }
+      },
       "mmorpg.gameservice.items": {
         "type": "Project",
         "dependencies": {

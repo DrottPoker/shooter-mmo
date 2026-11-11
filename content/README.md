@@ -370,8 +370,12 @@ table, so a new wording changes neither the compiled catalog nor its revision,
 and GameService and the worker hold no quest text. A compiled quest catalog
 that holds a text is refused.
 
-So no compiled content holds a text, and no server stores or sends one: every
-text of the content is in a text table, which only the client reads.
+So no compiled content holds a text, and no server stores or sends one in its
+own data: every text of the content is in a text table, which only the client
+reads. GameService serves the compiled text table files as they are, by
+revision, as [Content Files](../docs/SERVICE_FEATURES.md#content-files)
+describes, without reading a text from them; the Unity client still uses the
+tables baked into its build until it resolves them from GameService.
 
 ### Messages
 

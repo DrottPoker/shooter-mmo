@@ -1,7 +1,7 @@
 # GameService Modules
 
 GameService is one ASP.NET Core process and one deployable whose code is a
-compiler-enforced modular monolith: a host and six module projects. This
+compiler-enforced modular monolith: a host and seven module projects. This
 document owns the module projects, their public surface and composition, table
 ownership, the access rules, the contracts between modules, the items
 transaction kernel, the lock order, the migrations, the module configuration,
@@ -17,10 +17,10 @@ the item rules that the kernel enforces in
 ## Modules
 
 GameService keeps its process and assembly name `Mmorpg.GameService`. Its code
-is split into seven projects whose references enforce one dependency order:
+is split into eight projects whose references enforce one dependency order:
 
 ```text
-Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
+Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- Content <- host
 ```
 
 | Project | Path | References | Owns |
@@ -31,6 +31,7 @@ Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, and every character's quest log with its owner and worker reads |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, Quests, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, item transactions including vendor trades, gathering yields, ammunition batches, and the quest commands, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
+| `Mmorpg.GameService.Content` | `src/Server/GameService.Content` | Platform, Placement, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | Serving the compiled item catalog, quest catalog, and text tables by revision, exactly the files the other modules load, with the content rate limit. It owns no table and reads no text. |
 | `Mmorpg.GameService` (host) | `src/Server/GameService` | every module | `Program.cs`, the configuration loader, database startup, the frozen baseline migrations, health routes, and the shipped configuration and content files |
 
 "Placement" avoids collisions with World content (`Mmorpg.WorldData`) and with
@@ -57,6 +58,7 @@ another module or any production assembly access to its internals.
 | Placement | `PlacementModule`, `PlacementModuleOptions`, `SimulationTopologyConfig`, `FleetBootstrapConfig`, `SimulationNodeBootstrapConfig`, `ShardBootstrapConfig`, `WorldManifestCatalog`, `DevelopmentSimulationBotOptions` |
 | Quests | `QuestsModule`, `QuestsModuleOptions`, `QuestCatalogSource` |
 | Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStress.StackStressFixtureOptions`, `Development.DevelopmentItemPackageSource`, `ItemsCommandLine` |
+| Content | `ContentModule`, `ContentModuleOptions` |
 
 Platform is public except its middleware and exception handler.
 
@@ -74,7 +76,9 @@ order. Startup runs in this order:
    (`GameServiceConfiguration.Load`), and configure telemetry export.
 2. Set the Kestrel request body limit from the item operations options.
 3. Register Platform, the host services, and each module, then check that every
-   single-implementation SPI has exactly one implementation.
+   single-implementation SPI has exactly one implementation. Content reads every
+   file it serves here and refuses to start on a missing or invalid file, as
+   [Content Files](SERVICE_FEATURES.md#content-files) describes.
 4. Build the pipeline: the API pipeline (correlation id, exception handler,
    status pages, no-store responses), the distributed authentication rate
    limiter, the in-process rate limiter, authentication, and authorization.
@@ -93,7 +97,10 @@ order. Startup runs in this order:
    mirrors the item catalog and then back-fills character item state.
 6. Run a `--dev-items-*` command through `ItemsCommandLine` and exit, if one is
    given. Hosted services never start in that mode.
-7. Map the health routes, then each module's routes, and run.
+7. Map the health routes, then each module's routes, and run. Hosted services
+   start in module order; Content's `ContentRevisionCheck` refuses to start when
+   the item or quest catalog it serves is not the revision that Items and Quests
+   mirrored, and is skipped with a warning when the database cannot be read.
 
 `GameServiceTestComposition` in the GameService test kit,
 `tests/Testing/Mmorpg.GameService.Testing`, builds the same production service
@@ -111,6 +118,7 @@ inside the modules.
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Quests | `quest_catalogs`, `quest_definitions`, `character_quest_logs`, `character_active_quests`, `character_quest_progress`, and `character_completed_quests`; the quest catalog advisory lock `7104202611042200` |
+| Content | none |
 | Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, and the catalog advisory lock `7104202607151230` |
 
 Foreign keys between modules follow the dependency order only: Characters to
@@ -169,8 +177,8 @@ caller keeps its own check order, error codes, and messages.
 | `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session |
 | `IQuestDefinitions` | Quests | Items | The loaded quest catalog: its id, revision, active quest limit, and every quest definition by id |
 | `ICharacterQuestLog` | Quests | Items | Read a character's quest log, or accept, progress, advance, complete, or abandon one of its quests, each raising the log revision |
-| `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items | Read the mirrored item catalog revision that a placed worker must run |
-| `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests | Read the mirrored quest catalog revision that a placed worker must run |
+| `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items, also used by Content | Read the mirrored item catalog revision that a placed worker must run and that Content must serve |
+| `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests, also used by Content | Read the mirrored quest catalog revision that a placed worker must run and that Content must serve |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items mirrors the item catalog and back-fills character item state |
 
@@ -577,6 +585,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Quests:CatalogPath` | `QuestsModuleOptions` |
 | `Items:*`, `StackStressFixtures:*`, `STACK_STRESS_FIXTURE_SECRET` | `ItemsModuleOptions` |
+| `Content:*`, `RateLimiting:Content:*` | `ContentModuleOptions`, which also receives the item and quest catalog paths from the host |
 | `Telemetry:*` | The host, through `TelemetryOptions` of `Mmorpg.Server.Telemetry` |
 
 The host loader `GameServiceConfiguration.Load` first validates the required
@@ -585,7 +594,8 @@ invalid:` error that lists every problem. It then reads the self-contained
 option sets in a fixed order, each with its own error message: the World
 catalog, Development simulation bots, stack stress fixtures, NPC item
 lifecycle, item operations, Redis acceleration, the item catalog source, the
-quest catalog source, telemetry, and the Development item packages. Worker credentials keep the
+quest catalog source, telemetry, the content options, and the Development item
+packages. Worker credentials keep the
 original key casing, so only an exact worker id matches, and the shared worker
 secret applies only when no per-worker secret exists. Items reads the worker
 heartbeat timeout through Placement's `SimulationWorkerLeasePolicy` and writes
@@ -662,6 +672,7 @@ the statement ids.
 | S61 | The worker quest log read checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` in `SimulationQuestLogService` |
 | S62 | A quest drop reads the quest catalog and the quest log for what its quest still needs | Qst R | `IQuestDefinitions` and `ICharacterQuestLog.ReadAsync` in `QuestDrops` |
 | S63 | The worker quest drop read checks session, worker, and assignment, and reads what the quests still need | Plc R, Acc R, Qst R | `ISimulationSessionAuthority.GetReadAuthorityAsync`, then S62's reads, in `SimulationQuestDropService` |
+| S64 | Content's startup check compares the served catalogs with the mirrored revisions | Itm R, Qst R | `IItemCatalogRevisionProvider` and `IQuestCatalogRevisionProvider` in one read transaction in `ContentRevisionCheck` |
 
 Notes on specific statements:
 

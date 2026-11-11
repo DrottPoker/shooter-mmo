@@ -26,6 +26,7 @@ and the check before every push in
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
 | `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares |
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel boundary tests under `ItemTransactions` |
+| `Mmorpg.GameService.Content.Tests` | `Server/Mmorpg.GameService.Content.Tests` | Content: the content file loader and its startup refusals, the manifest and file routes with their cache headers and rate limit on an in-process host, and the PostgreSQL test of the startup revision check |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
 | `Mmorpg.Integration.Tests` | `Integration/Mmorpg.Integration.Tests` | Flows across GameService modules or across GameService and SimulationWorker, the test output guard, and the test database isolation guard |
@@ -81,8 +82,11 @@ and stops the containers it started when it ends. It also warns when
 `MMORPG_TEST_POSTGRES` uses `Host=localhost`. Use the steps below to run
 integration tests by hand.
 
-`docker-compose.test.yml` runs PostgreSQL 16 on `127.0.0.1:55432` and Redis 7
-on `127.0.0.1:56380`. Its Compose project name, `shooter-mmo-tests`, is fixed,
+`docker-compose.test.yml` runs PostgreSQL 16 on `127.0.0.1:15432` and Redis 7
+on `127.0.0.1:16379`. Both ports are below `49152`, where the dynamic port
+range of Windows starts: Windows may reserve any part of that range after a
+restart, and a container whose port is reserved fails to start with `ports are
+not available`. Its Compose project name, `shooter-mmo-tests`, is fixed,
 so every checkout and worktree shares the same containers. Both keep their data
 in memory, PostgreSQL on a tmpfs and Redis without persistence, so `down`
 removes every test database. Compose takes the PostgreSQL credentials from
@@ -400,14 +404,15 @@ Test access to `internal` types follows the production dependency direction.
   the test projects of the modules that build on it, the kit
   (`Mmorpg.GameService.Testing`), `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`. Platform grants Accounts, Characters, Placement,
-  Quests, and Items tests; Accounts grants Characters, Placement, Quests, and
-  Items tests; Characters grants Placement, Quests, and Items tests; Placement
-  grants Quests and Items tests; Quests grants Items tests.
+  Quests, Items, and Content tests; Accounts grants Characters, Placement,
+  Quests, Items, and Content tests; Characters grants Placement, Quests, Items,
+  and Content tests; Placement grants Quests, Items, and Content tests; Quests
+  grants Items and Content tests; Items grants Content tests.
 - The GameService host grants the kit, `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`.
 - SimulationWorker grants `Mmorpg.SimulationWorker.Tests`, and
   `Mmorpg.Server.Telemetry` grants `Mmorpg.Server.Telemetry.Tests`.
-- The kit keeps its types `internal` and grants all seven GameService test
+- The kit keeps its types `internal` and grants all eight GameService test
   projects and `Mmorpg.Integration.Tests`.
 - No grant goes to a lower module or to a production assembly.
 

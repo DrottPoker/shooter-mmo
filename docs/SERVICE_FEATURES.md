@@ -27,10 +27,12 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `GET /api/accounts/session` | Account session | Validate the current session |
 | `POST /api/accounts/logout` | Account session | Revoke the current session and its dependent access |
 | `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
+| `GET /api/content` | Public, rate limited | Return the content manifest: every served content file with its revision and URL, as [Content Files](#content-files) describes |
+| `GET /api/content/{kind}/{id}/{revision}` | Public, rate limited | Return the exact bytes of the current item or quest catalog as an immutable file |
+| `GET /api/content/text-table/{locale}/{id}/{revision}` | Public, rate limited | Return the exact bytes of the current text table of a locale as an immutable file |
 | `GET /api/characters` | Account session | List owned characters with their body models |
 | `POST /api/characters` | Account session | Create a character with its body model and look, checked against `content/characters/appearance.json`, or with the default look of the default body model when the request names none |
 | `GET /api/character-appearance` | Account session | Return what character creation offers: the kinds of a look with their rules and every body model with its options per kind and slot |
-| `GET /api/item-catalog` | Account session | Return the neutral current catalog with revision ETag validation |
 | `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
 | `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
 | `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
@@ -937,6 +939,98 @@ startup outside the Development environment, is on in the worker's
   in the Development environment and answers every other environment with
   `403` and `development_tools_disabled`.
 
+## Content Files
+
+GameService serves the content files that a client needs to run the current
+content, so a change of rules data or of a text needs no new client build. The
+Content module serves exactly the files the other modules run with:
+
+| Kind | Id | File |
+| --- | --- | --- |
+| `item-catalog` | `core`, the catalog id | The file at `Items:CatalogPath`, which Items mirrors |
+| `quest-catalog` | `core`, the catalog id | The file at `Quests:CatalogPath`, which Quests runs and mirrors |
+| `text-table` | the table id, such as `items` or `ui` | Every `*.text-table.json` file in `Content:TextTablesPath`, one locale folder |
+
+At startup the module reads every file once and keeps its bytes in memory. It
+checks the catalogs with the same loaders that Items, Quests, and
+SimulationWorker use and requires their headers to state the revision those
+loaders compute, and it checks every text table with `TextTable.Validate`.
+GameService does not read the texts; it serves the tables as they are. The
+start fails with `GameService cannot serve its content files:` and a list of
+every problem when a file or the text table folder is missing, the folder holds
+no text table, a file is invalid, or two text tables have the same locale and
+id. Once the database is ready, the hosted `ContentRevisionCheck` reads the
+catalog revisions that Items and Quests mirrored and refuses to start with
+`GameService would serve content that its modules do not run with:` when either
+served catalog differs. When the database cannot be read at that moment, the
+check logs a warning and is skipped, and readiness reports the database.
+
+`GET /api/content` returns the manifest:
+
+```json
+{
+  "formatVersion": 1,
+  "files": [
+    {
+      "kind": "item-catalog",
+      "id": "core",
+      "formatVersion": 9,
+      "revision": "cc4929be...",
+      "sizeBytes": 23779,
+      "url": "/api/content/item-catalog/core/cc4929be..."
+    },
+    {
+      "kind": "text-table",
+      "id": "ui",
+      "locale": "en",
+      "formatVersion": 1,
+      "revision": "616a915e...",
+      "sizeBytes": 45938,
+      "url": "/api/content/text-table/en/ui/616a915e..."
+    }
+  ]
+}
+```
+
+- The files are listed in a fixed order: the item catalog, the quest catalog,
+  then the text tables by locale and id. `locale` is present for text tables
+  only and left out for the catalogs. `formatVersion` and `revision` are the
+  file's own header fields, and `sizeBytes` is the length of the served bytes.
+- `url` is the path of the file route. When `Content:BaseUrl` is set, it is that
+  base plus the same relative path, for example
+  `https://cdn.example.com/content/item-catalog/core/<revision>`, so a static
+  file host that mirrors the relative paths can serve the files later without a
+  client change.
+- The manifest is sent with `Cache-Control: no-cache` and a strong ETag, the
+  SHA-256 of its bytes, and answers `If-None-Match` with `304 Not Modified`.
+
+`GET /api/content/{kind}/{id}/{revision}` serves a catalog, and
+`GET /api/content/text-table/{locale}/{id}/{revision}` a text table, whose
+locale is a path segment of its own. Both return the file's exact bytes with
+`Content-Type: application/json`,
+`Cache-Control: public, max-age=31536000, immutable`, and the revision as a
+strong ETag, and answer a matching `If-None-Match` with `304`. Only the current
+revision of each file exists. The route values are checked before any lookup:
+`kind` must be `item-catalog` or `quest-catalog` without a locale, or
+`text-table` with one, `id` a lowercase id of at most 64 letters, digits, `-`,
+`_`, or `.` that starts with a letter, `locale` a lowercase locale such as `en`
+or `pt-br`, and `revision` 64 lowercase hexadecimal digits. Every miss, also a
+known file at an older revision, is `404` with the code `content_not_found`.
+
+The routes are anonymous, because the files hold nothing secret, they ship
+inside every client, and a client fetches them before login. They share the
+`content` rate limit: a fixed window per remote address of
+`RateLimiting:Content:PermitLimit` requests per
+`RateLimiting:Content:WindowSeconds`, 120 a minute by default. A client start
+needs the manifest and about seven files, so the default leaves room for many
+starts behind one address while it bounds anonymous traffic. A rejected request
+gets `429` with `Retry-After` and the code `rate_limit_exceeded`. Unlike login
+and registration, the content limit is process-local and has no Redis window.
+
+The Unity client still uses the catalogs and text tables baked into its build;
+resolving them from these routes at start, before login, with a disk cache keyed
+by revision is the next step.
+
 ## Items And Corpses
 
 The item rules are in
@@ -956,11 +1050,10 @@ This section describes the implemented behavior around them.
   new catalog would invalidate live state, as
   [Revisions And Structural Changes](../content/items/README.md#revisions-and-structural-changes)
   describes; such a change needs an explicit data migration.
-- `GET /api/item-catalog` returns the current relational catalog graph from a
-  read-only repeatable-read transaction. Definitions are present exactly once in
-  that response. It holds ids and rules and no names: GameService stores no
-  text of the catalog, and a client reads names from its item text table. The response uses the catalog revision as a strong ETag, is
-  revalidated by clients, and returns `304 Not Modified` when unchanged.
+- GameService serves the compiled catalog file itself, byte for byte, by its
+  revision, as [Content Files](#content-files) describes. The catalog holds ids
+  and rules and no names: GameService stores no text of the catalog, and a
+  client reads names from its item text table.
 - SimulationWorker runs on the same compiled catalog, and placement refuses a
   worker whose catalog revision differs, as
   [Shard Discovery And Placement](#shard-discovery-and-placement) describes.
@@ -1468,7 +1561,8 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
-| Item reads and requests | `item_catalog_not_found`, `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
+| Content files | `content_not_found` |
+| Item reads and requests | `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
 | Quest commands | `quest_not_found`, `quest_not_active`, `quest_already_active`, `quest_already_completed`, `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, `quest_npc_access_required`, `quest_objective_invalid`, `quest_objective_complete`, `quest_items_missing`, `quest_not_ready`, `quest_reward_choice_required`, `quest_reward_choice_invalid`, `quest_item_not_needed` |
 | Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
@@ -1587,6 +1681,9 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `WorldData:WorldsPath` | `WorldData/Worlds` | The World manifests that seed the World definitions |
 | `Items:CatalogPath` | `WorldData/Items/core.item-catalog.json` | The compiled item catalog that GameService mirrors |
 | `Quests:CatalogPath` | `WorldData/Quests/core.quest-catalog.json` | The compiled quest catalog that GameService runs and mirrors |
+| `Content:TextTablesPath` | `WorldData/Text/en` | The folder of the text tables that GameService serves, one locale |
+| `Content:BaseUrl` | empty | When set, an absolute `http` or `https` URL without query or fragment that the content manifest puts before each file's relative path instead of `/api/content` |
+| `RateLimiting:Content:PermitLimit`, `WindowSeconds` | `120`, `60` | Content requests per remote address and window, shared by the manifest and file routes; 1 to 10,000 requests and 1 to 3,600 seconds |
 | `Items:Operations:TransactionTimeoutMilliseconds` | `10000` | Statement timeout of an item transaction, 100 to 120,000 |
 | `Items:Operations:LockTimeoutMilliseconds` | `2000` | Lock timeout of an item transaction, 10 to 120,000 and at most the transaction timeout |
 | `Items:Operations:MaximumCommandPayloadBytes` | `65536` | Largest canonical command, 1,024 to 1,048,576 |

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\GameService.Module.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameService.Platform\Mmorpg.GameService.Platform.csproj" />
+    <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
+    <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
+    <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test access follows the module dependency direction: the module's own tests, the
+         GameService test kit, the host tests, and the cross-module integration tests.
+         Never a production assembly. -->
+    <InternalsVisibleTo Include="Mmorpg.GameService.Content.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Testing" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.Integration.Tests" />
+  </ItemGroup>
+
+</Project>
