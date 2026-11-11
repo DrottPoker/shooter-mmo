@@ -214,9 +214,18 @@ describes.
   text tables of `src/Shared/WorldData/Generated/Text/en` from its output at
   `/api/content`, as [Content Files](SERVICE_FEATURES.md#content-files)
   describes. After a text change, compile the text tables and restart
-  GameService to serve them; it refuses to start when a table is invalid. The
-  Unity client still uses the files baked into its build until it resolves them
-  from GameService, so it still needs its own copy rebuilt for now.
+  GameService to serve them; it refuses to start when a table is invalid.
+- A Unity client fetches the item catalog, the quest catalog, and the text
+  tables from GameService at its next start, so a change of them needs no
+  client build: compile, restart the services, restart the client. A client
+  that runs across the change reports `item_catalog_update_required` or
+  `quest_catalog_update_required` and asks for a restart. What still needs a
+  client build is in [What A Change Needs](../content/README.md#what-a-change-needs).
+  In the Editor the bundled files equal the served ones, so Play Mode takes
+  them from the build; `MMORPG > Tools > Ignore Bundled Content` makes it fetch
+  every file, as
+  [Content Resolution At Start](UNITY_CLIENT_ARCHITECTURE.md#content-resolution-at-start)
+  describes.
 
 ### Health Checks
 

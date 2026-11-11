@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Core
 {
-    // Reads the bundled text tables into the one text catalog that the client shows content
+    // Reads the resolved text tables into the one text catalog that the client shows content
     // text from. The composition root loads it once and passes it on.
     public static class ClientTexts
     {
@@ -13,39 +13,38 @@ namespace Mmorpg.Client.Core
         public const string PseudoLocalePreference = "Mmorpg.Debug.PseudoLocale";
 
         public static bool TryLoad(
-            IReadOnlyList<TextAsset> tableAssets,
+            IReadOnlyList<string> tables,
             out TextCatalog catalog,
             out string error)
         {
             catalog = null;
-            if (tableAssets == null || tableAssets.Count == 0)
+            if (tables == null || tables.Count == 0)
             {
-                error = "The client configuration lists no text tables.";
+                error = "The client has no text tables.";
                 return false;
             }
 
-            var tables = new List<TextTableDocument>(tableAssets.Count);
-            for (var index = 0; index < tableAssets.Count; index++)
+            var documents = new List<TextTableDocument>(tables.Count);
+            for (var index = 0; index < tables.Count; index++)
             {
-                var asset = tableAssets[index];
-                if (asset == null)
+                if (tables[index] == null)
                 {
-                    error = "Text table " + index + " of the client configuration is missing.";
+                    error = "Text table " + index + " is missing.";
                     return false;
                 }
 
-                if (!TryParse(asset.text, out var table, out error))
+                if (!TryParse(tables[index], out var table, out error))
                 {
-                    error = "Text table '" + asset.name + "' is invalid: " + error;
+                    error = "Text table " + index + " is invalid: " + error;
                     return false;
                 }
 
-                tables.Add(table);
+                documents.Add(table);
             }
 
             try
             {
-                catalog = TextCatalog.Create(tables);
+                catalog = TextCatalog.Create(documents);
                 error = string.Empty;
                 return true;
             }
@@ -85,6 +84,39 @@ namespace Mmorpg.Client.Core
                 error = exception.Message;
                 return false;
             }
+        }
+
+        // One request per bundled table of the source locale, named by the table id the bundled
+        // file states. A table whose header cannot be read keeps an empty id, which no manifest
+        // lists, so the client keeps its bundled set and the loader reports the table.
+        public static IReadOnlyList<ClientContentRequest> ContentRequests(IReadOnlyList<string> bundledTables)
+        {
+            var requests = new List<ClientContentRequest>();
+            foreach (var bundled in bundledTables ?? Array.Empty<string>())
+            {
+                var id = ClientContentHeader.TryRead(bundled, out var header) ? header.Id : string.Empty;
+                requests.Add(new ClientContentRequest(
+                    ClientContentKinds.TextTable,
+                    id,
+                    TextTableFormat.SourceLocale,
+                    TextTableFormat.Version,
+                    bundled,
+                    TryValidateContent));
+            }
+
+            return requests;
+        }
+
+        public static bool TryValidateContent(string json, out ClientContentHeader header, out string error)
+        {
+            header = null;
+            if (!TryParse(json, out var table, out error))
+            {
+                return false;
+            }
+
+            header = new ClientContentHeader(table.TableId, table.Locale, table.FormatVersion, table.Revision);
+            return true;
         }
     }
 }

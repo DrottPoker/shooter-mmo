@@ -2,15 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Quests;
 using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Quests
 {
-    // The bundled compiled quest catalog: every quest's steps, objectives, and rewards, with the
-    // texts of the client's text catalog. It is accepted only when it validates as the compiler
-    // wrote it, and the quest log GameService returns must name the same revision.
+    // The compiled quest catalog the client resolved at start: every quest's steps, objectives,
+    // and rewards, with the texts of the client's text catalog. It is accepted only when it
+    // validates as the compiler wrote it, and the quest log GameService returns must name the
+    // same revision.
     public sealed class ClientQuestCatalog
     {
         private readonly Dictionary<string, QuestDefinition> quests;
@@ -55,21 +57,50 @@ namespace Mmorpg.Client.Quests
             get { return Runtime.Quests; }
         }
 
-        public static bool TryLoad(TextAsset asset, TextCatalog texts, out ClientQuestCatalog catalog, out string error)
-        {
-            catalog = null;
-            if (asset == null)
-            {
-                error = "The bundled quest catalog is missing.";
-                return false;
-            }
-
-            return TryParse(asset.text, texts, out catalog, out error);
-        }
-
         public static bool TryParse(string json, TextCatalog texts, out ClientQuestCatalog catalog, out string error)
         {
             catalog = null;
+            return TryReadRuntime(json, out var runtime, out error)
+                && TryCreate(runtime, texts, out catalog, out error);
+        }
+
+        // The quest catalog of the content set that the client resolves at start.
+        public static ClientContentRequest ContentRequest(string bundledJson)
+        {
+            return new ClientContentRequest(
+                ClientContentKinds.QuestCatalog,
+                ClientContentKinds.CoreCatalogId,
+                null,
+                QuestCatalogFormat.Version,
+                bundledJson,
+                TryValidateContent);
+        }
+
+        public static bool TryValidateContent(string json, out ClientContentHeader header, out string error)
+        {
+            header = null;
+            if (!TryReadRuntime(json, out var runtime, out error))
+            {
+                return false;
+            }
+
+            try
+            {
+                QuestCatalogCompiler.ValidateRuntime(runtime);
+            }
+            catch (QuestValidationException exception)
+            {
+                error = "The quest catalog is invalid: " + string.Join(" ", exception.Errors);
+                return false;
+            }
+
+            header = new ClientContentHeader(runtime.CatalogId, null, runtime.FormatVersion, runtime.Revision);
+            return true;
+        }
+
+        private static bool TryReadRuntime(string json, out QuestCatalogRuntimeDocument runtime, out string error)
+        {
+            runtime = null;
             error = string.Empty;
             try
             {
@@ -80,7 +111,8 @@ namespace Mmorpg.Client.Quests
 
                 var document = JsonUtility.FromJson<QuestCatalogJsonDocument>(json)
                     ?? throw new InvalidDataException("The quest catalog JSON has no root object.");
-                return TryCreate(document.ToRuntime(), texts, out catalog, out error);
+                runtime = document.ToRuntime();
+                return true;
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
             {

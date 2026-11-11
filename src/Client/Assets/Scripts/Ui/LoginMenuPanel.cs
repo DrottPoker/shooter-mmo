@@ -16,11 +16,14 @@ namespace Mmorpg.Client.Ui
     public sealed class LoginMenuPanel : MonoBehaviour
     {
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+        private string notice = string.Empty;
 
-        // Called by the composition root before the component is activated.
-        public void Initialize(TextCatalog messageTexts)
+        // Called by the composition root before the component is activated. A notice, such as
+        // that the client is out of date, shows in the card and never blocks the form.
+        public void Initialize(TextCatalog messageTexts, string clientNotice)
         {
             texts = messageTexts;
+            notice = clientNotice ?? string.Empty;
         }
 
         public const string ScreenName = "LoginMenu";
@@ -55,6 +58,11 @@ namespace Mmorpg.Client.Ui
         public string StatusText
         {
             get { return status != null ? status.text : string.Empty; }
+        }
+
+        public string NoticeText
+        {
+            get { return notice; }
         }
 
         // Shows the Create Account tab, or the Log In tab.
@@ -119,6 +127,11 @@ namespace Mmorpg.Client.Ui
             form = card.gameObject.AddComponent<CanvasGroup>();
             TemporaryEntryScreen.AddHeading(card, TemporaryEntryScreen.GameTitle, 30);
             TemporaryEntryScreen.AddText(card, texts.Get("ui/login/development-client"), 14, TemporaryUiKit.TextMuted);
+            if (notice.Length > 0)
+            {
+                TemporaryEntryScreen.AddText(card, notice, 14, TemporaryUiKit.WarningColor).gameObject.name = "Notice";
+            }
+
             TemporaryEntryScreen.AddSpace(card, 8f, false);
 
             var tabs = TemporaryEntryScreen.AddButtonRow(card, 34f);

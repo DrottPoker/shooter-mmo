@@ -49,11 +49,11 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var texts = FixtureTexts.Bundled(config);
             Assert.That(
-                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, texts, out var items, out var error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog.text, texts, out var items, out var error),
                 Is.True,
                 error);
             Assert.That(
-                ClientQuestCatalog.TryLoad(config.QuestCatalog, texts, out var quests, out error),
+                ClientQuestCatalog.TryParse(config.QuestCatalog.text, texts, out var quests, out error),
                 Is.True,
                 error);
 
@@ -100,7 +100,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void AnItemNameComesFromTheTextCatalogAndAMissingOneShowsItsKey()
         {
             Assert.That(
-                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, FixtureTexts.Bundled(config), out var bundled, out var error),
+                ClientItemCatalog.TryLoad(config.ItemGameplayCatalog.text, FixtureTexts.Bundled(config), out var bundled, out var error),
                 Is.True,
                 error);
             var definition = bundled.Definitions.First();
@@ -155,18 +155,18 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(ClientTexts.TryLoad(null, out _, out var error), Is.False);
             Assert.That(error, Does.Contain("no text tables"));
-            Assert.That(ClientTexts.TryLoad(new TextAsset[] { null }, out _, out error), Is.False);
+            Assert.That(ClientTexts.TryLoad(new string[] { null }, out _, out error), Is.False);
             Assert.That(error, Does.Contain("missing"));
             Assert.That(ClientTexts.TryParse(string.Empty, out _, out error), Is.False);
             Assert.That(ClientTexts.TryParse("not json", out _, out error), Is.False);
             Assert.That(
-                ClientTexts.TryLoad(new[] { new TextAsset(first), new TextAsset(first) }, out _, out error),
+                ClientTexts.TryLoad(new[] { first, first }, out _, out error),
                 Is.False);
             Assert.That(error, Does.Contain("listed twice"));
             Assert.That(ClientTexts.TryParse(first.Replace("\"text\": \"", "\"text\": \"x"), out _, out error), Is.False);
             Assert.That(error, Does.Contain("revision"));
-            Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog, null, out _, out error), Is.False);
-            Assert.That(ClientQuestCatalog.TryLoad(config.QuestCatalog, null, out _, out error), Is.False);
+            Assert.That(ClientItemCatalog.TryLoad(config.ItemGameplayCatalog.text, null, out _, out error), Is.False);
+            Assert.That(ClientQuestCatalog.TryParse(config.QuestCatalog.text, null, out _, out error), Is.False);
         }
     }
 }

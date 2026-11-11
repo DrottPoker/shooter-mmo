@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "cbd01092332f4632aa68830d73cefde86fb8967a307bc792507f70266e59883b",
+  "revision": "75f9704f7dc9944b6a11f8282ed5e98c8b74f87479d25f3753c08ba0dd52704d",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -67,6 +67,10 @@
     {
       "key": "message/character_not_found",
       "text": "The character was not found."
+    },
+    {
+      "key": "message/client_update_required",
+      "text": "This client is out of date. Install the new version to keep playing."
     },
     {
       "key": "message/combat_character_dead",
@@ -258,7 +262,7 @@
     },
     {
       "key": "message/item_catalog_update_required",
-      "text": "This client is out of date. Update it to use your items."
+      "text": "The items have changed. Restart the client to use your items."
     },
     {
       "key": "message/item_destroy_forbidden",
@@ -358,7 +362,7 @@
     },
     {
       "key": "message/quest_catalog_update_required",
-      "text": "This client is out of date. Update it to see your quests."
+      "text": "The quests have changed. Restart the client to see your quests."
     },
     {
       "key": "message/quest_completed",

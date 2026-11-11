@@ -22,6 +22,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator LoadingLoginSceneCreatesTheRuntimeLoginPanel()
         {
+            yield return PlayModeClient.WaitForContent();
             var loadOperation = SceneManager.LoadSceneAsync(SceneNames.LoginMenu);
             Assert.That(loadOperation, Is.Not.Null);
 
@@ -32,7 +33,12 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             yield return null;
 
-            Assert.That(Object.FindAnyObjectByType<ClientBootstrap>(), Is.Not.Null);
+            var bootstrap = Object.FindAnyObjectByType<ClientBootstrap>();
+            Assert.That(bootstrap, Is.Not.Null);
+
+            // Both catalogs and the five text tables, from wherever the check found them.
+            Assert.That(bootstrap.ContentReport.Files.Count, Is.EqualTo(7));
+            Assert.That(Object.FindAnyObjectByType<ContentCheckPanel>(), Is.Null);
             Assert.That(Object.FindAnyObjectByType<RealtimeSimulationClient>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<InventoryClientController>(), Is.Not.Null);
             Assert.That(Object.FindAnyObjectByType<CorpseClientController>(), Is.Not.Null);
@@ -48,6 +54,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             ClientSession.Clear();
             Assert.That(ClientSceneLoader.IsWorldSceneAvailable(SceneNames.DevelopmentWorld1), Is.True);
+            yield return PlayModeClient.WaitForContent();
             var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
             yield return loadOperation;
             Assert.That(loadOperation.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
@@ -149,6 +156,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         public IEnumerator TheDebugAndAdminMenusStartClosedAndOpenWithTheirTabs()
         {
             ClientSession.Clear();
+            yield return PlayModeClient.WaitForContent();
             var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
             yield return loadOperation;
             Assert.That(loadOperation.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
@@ -199,6 +207,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         public IEnumerator LeavingAWorldSceneReleasesItsAddressablesHandle()
         {
             ClientSession.Clear();
+            yield return PlayModeClient.WaitForContent();
             var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
             yield return worldLoad;
             Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));

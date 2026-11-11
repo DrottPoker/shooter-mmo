@@ -537,8 +537,8 @@ GameService would refuse too.
 
 The client loads its quest state once per join and patches it from the realtime
 quest changes. It derives availability, markers, and collect counts with the
-shared rules, its inventory, and the bundled quest catalog, which holds every
-quest text, so realtime messages carry only ids and counts. It never decides a
+shared rules, its inventory, and the quest catalog it resolved at start, with
+the quest texts of its text tables, so realtime messages carry only ids and counts. It never decides a
 quest outcome.
 
 ## Presentation

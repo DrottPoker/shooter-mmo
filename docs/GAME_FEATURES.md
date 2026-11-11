@@ -304,7 +304,11 @@ not implemented, and running with run energy is planned in
   - **Network**: connection state, character, shard, World, worker, runtime, UDP
     endpoint and protocol, the observed server tick, round trip time, snapshot
     age and observed rate, application packets and payload in and out,
-    estimated snapshot loss, and known entities.
+    estimated snapshot loss, and known entities. Its `Content` section lists
+    each content file the client resolved at start, by kind and id, with the
+    first 8 characters of its revision and where it came from, `bundled`,
+    `cache`, or `downloaded`, and whether the client fell back to its bundled
+    set, with the code and reason.
   - **Movement**: the authority, tick and snapshot rates, the walk speed, carry
     weight and capacity, item-state revision and movement percentage, pending
     predicted inputs, reconciliations and hard snaps, the latest correction, the

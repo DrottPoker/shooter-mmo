@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
 using Mmorpg.WorldData.Text;
@@ -58,10 +59,11 @@ namespace Mmorpg.Client.Items
             get { return definitions.Values; }
         }
 
-        // The texts are the client's text catalog, which names every item, slot, category,
-        // vendor, and the currency.
+        // Loads the resolved gameplay catalog JSON with the bundled presentation. The texts are
+        // the client's text catalog, which names every item, slot, category, vendor, and the
+        // currency.
         public static bool TryLoad(
-            TextAsset gameplayAsset,
+            string gameplayJson,
             TextCatalog texts,
             out ClientItemCatalog catalog,
             out string error)
@@ -74,13 +76,13 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (gameplayAsset == null)
+            if (string.IsNullOrWhiteSpace(gameplayJson))
             {
-                error = "The bundled item gameplay catalog is missing.";
+                error = "The item gameplay catalog is missing.";
                 return false;
             }
 
-            if (!TryParseGameplay(gameplayAsset.text, out var gameplay, out error)
+            if (!TryParseGameplay(gameplayJson, out var gameplay, out error)
                 || !ItemPresentationCatalogLoader.TryLoadOnce(out var presentation, out error))
             {
                 return false;
@@ -130,7 +132,7 @@ namespace Mmorpg.Client.Items
                     revision,
                     StringComparison.Ordinal))
                 {
-                    error = "The bundled item gameplay catalog revision is stale.";
+                    error = "The item gameplay catalog revision does not match its content.";
                     return false;
                 }
 
@@ -142,6 +144,30 @@ namespace Mmorpg.Client.Items
                 error = exception.Message;
                 return false;
             }
+        }
+
+        // The item catalog of the content set that the client resolves at start.
+        public static ClientContentRequest ContentRequest(string bundledJson)
+        {
+            return new ClientContentRequest(
+                ClientContentKinds.ItemCatalog,
+                ClientContentKinds.CoreCatalogId,
+                null,
+                ItemCatalogFormat.Version,
+                bundledJson,
+                TryValidateContent);
+        }
+
+        public static bool TryValidateContent(string json, out ClientContentHeader header, out string error)
+        {
+            header = null;
+            if (!TryParseGameplay(json, out var gameplay, out error))
+            {
+                return false;
+            }
+
+            header = new ClientContentHeader(gameplay.CatalogId, null, gameplay.FormatVersion, gameplay.Revision);
+            return true;
         }
 
         public bool MatchesServerRevision(string serverRevision)

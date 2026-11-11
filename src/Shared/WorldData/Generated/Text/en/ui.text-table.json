@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "616a915eb3c551464b722b75a58d849a632ff45ab154ab13c8482c285da9d2c9",
+  "revision": "e2d44bba3b9a79b265a2e9b20018f6d3264a3635db1697424a6d57d07a440c1c",
   "entries": [
     {
       "key": "ui/characters/character-count-many",
@@ -1219,6 +1219,10 @@
     {
       "key": "ui/items/weight-invalid",
       "text": "The item weight is invalid."
+    },
+    {
+      "key": "ui/login/checking-content",
+      "text": "Checking for updated game content..."
     },
     {
       "key": "ui/login/connection",

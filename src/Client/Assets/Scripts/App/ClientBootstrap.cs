@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Combat;
@@ -19,14 +21,24 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.App
 {
     // Composition root: owns the persistent client services and passes them explicitly to
-    // every component that needs them. No runtime assembly references this one.
+    // every component that needs them. No runtime assembly references this one. Awake creates
+    // what does not depend on content; Start resolves the content set, then creates the
+    // controllers and composes the active scene. A scene that loads before that is composed
+    // when the content is ready.
     public sealed class ClientBootstrap : MonoBehaviour
     {
+        // Below Application.persistentDataPath.
+        private const string ContentCacheFolder = "content";
+
         private string previousSceneName;
         private ApiClient apiClient;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private Coroutine accountSessionMonitor;
         private AsyncOperationHandle<ClientConfig> configHandle;
+        private ClientConfig config;
+        private UnityWebContentTransport contentTransport;
+        private ClientContentReport contentReport;
+        private ContentCheckPanel contentCheckPanel;
         private RealtimeSimulationClient simulationClient;
         private InventoryClientController inventoryController;
         private QuestClientController questController;
@@ -80,9 +92,17 @@ namespace Mmorpg.Client.App
             gameObject.AddComponent<ClientBootstrap>();
         }
 
+        // True once the content is resolved and the controllers exist.
+        public bool IsContentReady { get; private set; }
+
+        public ClientContentReport ContentReport
+        {
+            get { return contentReport; }
+        }
+
         private void Awake()
         {
-            var config = ClientConfig.Load(out configHandle);
+            config = ClientConfig.Load(out configHandle);
             ClientSession.Configure(config);
             runtimePrimitiveMaterial = config.RuntimePrimitiveMaterial;
             debugLineMaterial = config.DebugLineMaterial;
@@ -123,16 +143,112 @@ namespace Mmorpg.Client.App
             bodyTint.Changed += SaveBodyTint;
             DeleteRetiredPreferences();
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
-            texts = LoadTexts(config);
+            simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
+            previousSceneName = SceneManager.GetActiveScene().name;
+        }
+
+        private void Start()
+        {
+            StartCoroutine(ResolveContentRoutine());
+        }
+
+        // The status line shows while the check runs; no controller or panel that needs content
+        // exists before it ends.
+        private IEnumerator ResolveContentRoutine()
+        {
+            var requests = BundledContentRequests(config);
+            ShowContentCheck(requests);
+
+            contentTransport = new UnityWebContentTransport();
+            var resolver = new ClientContentResolver(
+                ClientSession.GameServiceBaseUrl,
+                contentTransport,
+                new ClientContentCache(Path.Combine(Application.persistentDataPath, ContentCacheFolder)),
+                requests,
+                Debug.isDebugBuild && PlayerPrefs.GetInt(ClientContentResolver.IgnoreBundledContentPreference, 0) == 1);
+            ClientContentReport report = null;
+            yield return resolver.Resolve(value => report = value);
+            LogContent(report);
+            contentReport = report;
+
+            if (contentCheckPanel != null)
+            {
+                Destroy(contentCheckPanel.gameObject);
+                contentCheckPanel = null;
+            }
+
+            CreateControllers(report);
+            IsContentReady = true;
+            ComposeScene(SceneManager.GetActiveScene());
+        }
+
+        private static IReadOnlyList<ClientContentRequest> BundledContentRequests(ClientConfig config)
+        {
+            var requests = new List<ClientContentRequest>
+            {
+                ClientItemCatalog.ContentRequest(config.ItemGameplayCatalog != null ? config.ItemGameplayCatalog.text : null),
+                ClientQuestCatalog.ContentRequest(config.QuestCatalog != null ? config.QuestCatalog.text : null)
+            };
+            requests.AddRange(ClientTexts.ContentRequests(
+                (config.TextTables ?? Array.Empty<TextAsset>()).Select(asset => asset != null ? asset.text : null).ToArray()));
+            return requests;
+        }
+
+        // The status line comes from the bundled tables, which are there before the check.
+        private void ShowContentCheck(IReadOnlyList<ClientContentRequest> requests)
+        {
+            var bundledTexts = LoadTexts(ClientContentReport.Bundled(requests, null, null, null));
+            var panelObject = new GameObject(nameof(ContentCheckPanel));
+            panelObject.SetActive(false);
+            contentCheckPanel = panelObject.AddComponent<ContentCheckPanel>();
+            contentCheckPanel.Initialize(bundledTexts.Get("ui/login/checking-content"));
+            panelObject.SetActive(true);
+        }
+
+        private static void LogContent(ClientContentReport report)
+        {
+            foreach (var file in report.Files)
+            {
+                ClientLog.Info(
+                    ClientLogCategory.Client,
+                    "Content " + file.Kind + " " + (file.Locale.Length > 0 ? file.Locale + "/" : string.Empty) + file.Id
+                    + " revision " + file.Revision + " from " + file.Source + ".");
+            }
+
+            foreach (var warning in report.Warnings)
+            {
+                ClientLog.Warning(ClientLogCategory.Client, warning);
+            }
+
+            if (report.FellBackToBundled)
+            {
+                ClientLog.Warning(
+                    ClientLogCategory.Client,
+                    "The client runs with its bundled content [" + report.FallbackCode + "]: " + report.FallbackDiagnostic);
+            }
+        }
+
+        private void CreateControllers(ClientContentReport report)
+        {
+            texts = LoadTexts(report);
             lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages, texts);
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
-            inventoryController.Initialize(apiClient, simulationClient, config.ItemGameplayCatalog, texts);
+            inventoryController.Initialize(
+                apiClient,
+                simulationClient,
+                report.TextOf(ClientContentKinds.ItemCatalog, ClientContentKinds.CoreCatalogId),
+                texts);
             inventoryController.State.Changed += UpdatePlayerEquipment;
             UpdatePlayerEquipment();
 
             questController = GetOrAddComponent<QuestClientController>();
-            questController.Initialize(apiClient, simulationClient, config.QuestCatalog, texts, inventoryController);
+            questController.Initialize(
+                apiClient,
+                simulationClient,
+                report.TextOf(ClientContentKinds.QuestCatalog, ClientContentKinds.CoreCatalogId),
+                texts,
+                inventoryController);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
             corpseController.Initialize(simulationClient, inventoryController, texts);
@@ -153,16 +269,13 @@ namespace Mmorpg.Client.App
             // Mirrors the worker's combat state across scenes.
             combatController = GetOrAddComponent<CombatClientController>();
             combatController.Initialize(simulationClient);
-
-            simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
-            previousSceneName = SceneManager.GetActiveScene().name;
         }
 
         // Without readable text tables the client still runs, and every content text shows as
         // its key in brackets.
-        private static TextCatalog LoadTexts(ClientConfig config)
+        private static TextCatalog LoadTexts(ClientContentReport report)
         {
-            if (ClientTexts.TryLoad(config.TextTables, out var texts, out var error))
+            if (ClientTexts.TryLoad(report.TextsOf(ClientContentKinds.TextTable), out var texts, out var error))
             {
                 // The pseudo-locale alters every text of the tables, so a text that still
                 // reads as plain English on screen is a literal in the code.
@@ -208,6 +321,8 @@ namespace Mmorpg.Client.App
 
             lookLink?.Dispose();
             lookLink = null;
+            contentTransport?.Dispose();
+            contentTransport = null;
 
             if (inventoryController != null)
             {
@@ -221,6 +336,7 @@ namespace Mmorpg.Client.App
 
             apiClient?.Dispose();
             apiClient = null;
+            config = null;
             ClientAssets.Release(configHandle);
             configHandle = default;
             ClientAssets.Release(uiThemeHandle);
@@ -395,9 +511,14 @@ namespace Mmorpg.Client.App
         // so Awake and OnEnable already see their dependencies.
         private void ComposeScene(Scene scene)
         {
+            if (!IsContentReady)
+            {
+                return;
+            }
+
             if (scene.name == SceneNames.LoginMenu)
             {
-                AddSceneComponentIfMissing<LoginMenuPanel>(panel => panel.Initialize(texts));
+                AddSceneComponentIfMissing<LoginMenuPanel>(panel => panel.Initialize(texts, ClientNotice()));
                 return;
             }
 
@@ -424,7 +545,7 @@ namespace Mmorpg.Client.App
             }
 
             AddSceneComponentIfMissing<TemporaryDebugMenu>(
-                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial, texts));
+                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial, texts, contentReport));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
@@ -527,6 +648,14 @@ namespace Mmorpg.Client.App
                     simulationClient,
                     combatantViews,
                     texts));
+        }
+
+        // The entry screen says when the served content is newer than this client reads.
+        private string ClientNotice()
+        {
+            return contentReport != null && contentReport.UpdateRequired
+                ? ClientMessages.Text(texts, contentReport.FallbackCode)
+                : string.Empty;
         }
 
         // Returns the scene's existing component, or a new one initialized before it activates.

@@ -662,6 +662,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             {
                 ConfigureGameServiceUrl(UnreachableGameServiceUrl);
                 ClientSession.Clear();
+                yield return PlayModeClient.WaitForContent();
                 var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
                 yield return worldLoad;
                 Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));

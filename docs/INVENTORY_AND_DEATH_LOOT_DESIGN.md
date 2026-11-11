@@ -143,8 +143,8 @@ with the client. It never duplicates or overrides gameplay fields. Server
 snapshots and mutation results send definition ids and changed instance
 state. They never send icons, complete definitions, or Unity asset references,
 and GameService never serves image bytes as inventory state. The client must
-run the server's catalog revision: a mismatch requires a client update instead
-of showing stale rules or missing presentation. A later remote presentation
+run the server's catalog revision, which it fetches at start: a mismatch while it
+runs requires a restart instead of showing stale rules. A later remote presentation
 catalog may download presentation separately, but it must keep the same
 definition ids and server contract. How the client loads and caches its
 catalogs is in

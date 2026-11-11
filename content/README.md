@@ -374,8 +374,8 @@ So no compiled content holds a text, and no server stores or sends one in its
 own data: every text of the content is in a text table, which only the client
 reads. GameService serves the compiled text table files as they are, by
 revision, as [Content Files](../docs/SERVICE_FEATURES.md#content-files)
-describes, without reading a text from them; the Unity client still uses the
-tables baked into its build until it resolves them from GameService.
+describes, without reading a text from them; the Unity client fetches them at
+start, as [What A Change Needs](#what-a-change-needs) describes.
 
 ### Messages
 
@@ -484,6 +484,22 @@ messages table.
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate
 content in a temporary directory before anything is written.
+
+### What A Change Needs
+
+- A change of the item catalog, the quest catalog, or a text: compile it,
+  commit the generated files, and restart the services, as
+  [Content The Services Load](../docs/LOCAL_DEVELOPMENT.md#content-the-services-load)
+  describes. A Unity client fetches the new files from GameService at its next
+  start and needs no new build; one that runs across the change asks the
+  player to restart it.
+- A new item also needs a client build for its icon, model, garment, or
+  attachment, because the item presentation catalog and the art ship in the
+  build; until then the item shows the placeholder icon.
+- A World scene or its collision, and a new format version of any content
+  file, need a client build, as
+  [Client And Server Agreement](../docs/PROJECT_ARCHITECTURE.md#client-and-server-agreement)
+  describes.
 
 ## Unity Content Tools
 

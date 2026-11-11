@@ -1219,6 +1219,10 @@
       "text": "The item weight is invalid."
     },
     {
+      "key": "ui/login/checking-content",
+      "text": "Checking for updated game content..."
+    },
+    {
       "key": "ui/login/connection",
       "text": "Game Service: {url}  ·  Request Timeout: {request} seconds  ·  Realtime Timeout: {realtime} seconds"
     },

@@ -132,7 +132,7 @@ layers from the bottom up:
 |---|---|---|
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
-| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, and `ClientText`, a text that rule code names by key | Api |
+| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
@@ -246,6 +246,8 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   +-- ApiClient
   +-- RealtimeSimulationClient
   |   +-- NetworkMovementSession while a session is joined
+  +-- ClientContentReport, the content set that ClientContentResolver resolved at start
+  +-- created once the content is resolved:
   +-- InventoryClientController
   |   +-- ClientItemCatalog
   |   +-- InventoryClientState (confirmed and shown state, pending operations)
@@ -263,6 +265,9 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   +-- PlayerBodyLookSetting with PlayerLookLink, and PlayerEquipment
   +-- PlayerBodyTintSetting and WorldDebugViewSettings
   +-- account-session validation and scene lifecycle recovery
+
+The active scene while the content check runs
+  +-- ContentCheckPanel (one status line on TemporaryEntryScreen, no form)
 
 LoginMenu and CharacterSelect
   +-- LoginMenuPanel or CharacterSelectPanel (code-built uGUI on TemporaryEntryScreen)
@@ -336,7 +341,7 @@ Combat (World scene, created at runtime by ClientBootstrap)
   +-- CombatantViewLocator (local player, remote players, world actor views)
   +-- CombatTargetingController
   |   +-- CombatClickRules, CombatTargetSelection, CombatApproachPlanner
-  |   +-- CombatLoadoutRules (weapon range from the bundled item catalog)
+  |   +-- CombatLoadoutRules (weapon range from the item catalog)
   +-- CombatProjectilePresentation (replaceable arrows and bolts)
   +-- CombatDeathPresentation
   +-- WorldNameplates (runtime uGUI nameplates over Mobs)
@@ -350,14 +355,35 @@ Combat (World scene, created at runtime by ClientBootstrap)
 
 `ClientBootstrap` creates itself after the first scene loads, through
 `RuntimeInitializeOnLoadMethod` with `AfterSceneLoad`, on an object that
-survives every scene change. It loads the configuration, owns one
-`RealtimeSimulationClient`, one `InventoryClientController`, and the corpse,
-world actor, world interaction, and combat controllers, observes scene
-transitions, and performs the fallback leave when an active World scene is left
-outside the normal panel flow. A configuration without its runtime primitive
-material, debug line material, or arrow model logs a warning, because markers
-and fallback models then draw with the error shader in a player build, the Debug
-menu draws no lines, and arrows fly as plain bars.
+survives every scene change. It owns one `RealtimeSimulationClient`, one
+`InventoryClientController`, and the quest, corpse, world actor, world
+interaction, and combat controllers, observes scene transitions, and performs
+the fallback leave when an active World scene is left outside the normal panel
+flow. A configuration without its runtime primitive material, debug line
+material, or arrow model logs a warning, because markers and fallback models
+then draw with the error shader in a player build, the Debug menu draws no
+lines, and arrows fly as plain bars.
+
+The bootstrap starts in two steps, because the controllers need the content
+that the client resolves from GameService:
+
+1. `Awake` creates what does not depend on content: the configuration, the
+   materials and the arrow model, the UI theme, `ApiClient`, the body tint
+   setting, and `RealtimeSimulationClient`. The account-session check starts
+   in `OnEnable`.
+2. `Start` runs one coroutine. It shows `ContentCheckPanel` in the active
+   scene, the entry screen with the title and the status line
+   `ui/login/checking-content` from the bundled `ui` table, and resolves the
+   content set as [Content Resolution At Start](#content-resolution-at-start)
+   describes. Then it builds the text catalog from the resolved tables, creates
+   and initializes every controller and the look link, removes the panel, sets
+   `IsContentReady`, and composes the active scene.
+
+No controller and no panel that needs content exists before the check ends. A
+scene that loads during the check is composed when the content is ready, and
+the services stay passed explicitly; nothing finds content through a static or
+a `Find` call. PlayMode tests wait for `IsContentReady` with
+`PlayModeClient.WaitForContent` before they load a scene.
 
 `ClientBootstrap` is the only composition root, and no runtime assembly
 references it. It creates the persistent services and passes them explicitly to
@@ -379,13 +405,83 @@ Completion of an older request cannot clear a newer local reconnect state. If
 graceful leave fails after the scene already changed, the client closes UDP so
 SimulationWorker can run disconnect cleanup.
 
+## Content Resolution At Start
+
+The client resolves its rules data and texts once at start and runs with them
+until it exits; it never swaps content while it runs. The content set is the
+item catalog `core`, the quest catalog `core`, and the text tables of the
+source locale `en` that `ClientConfig` bundles, by their table id. The item
+presentation catalog, icons, models, World scenes, and collision stay in the
+build. Which agreements between a client build and the servers this leaves is
+in [Client And Server Agreement](PROJECT_ARCHITECTURE.md#client-and-server-agreement).
+
+`ClientContentResolver` in `Mmorpg.Client.Core` does the work in plain C#. It
+takes the GameService base URL, an `IClientContentTransport`, a
+`ClientContentCache` folder, and one `ClientContentRequest` per file: kind, id,
+locale, the format version this build reads, the bundled text, and the
+loader's validator. `ClientItemCatalog.ContentRequest`,
+`ClientQuestCatalog.ContentRequest`, and `ClientTexts.ContentRequests` build
+the requests, and the bootstrap wires the real `UnityWebContentTransport` and
+the cache below `Application.persistentDataPath/content`. EditMode tests drive
+it with a fake transport and a temporary folder.
+
+1. It fetches `GET /api/content` with a 3 s limit and a 1 MiB cap; a refused
+   connection fails at once. The whole check ends within 20 s: a download gets
+   at most 10 s and never more than what is left of the 20 s.
+2. Every file of the set must be listed in the manifest, in the format version
+   this build reads, and the manifest itself in format 1.
+3. For each file, in order: the bundled file when its revision is the
+   manifest's; otherwise the cached file of that revision; otherwise a download
+   from the manifest `url`, which is relative to the GameService base URL when
+   it starts with one `/` and otherwise must be an absolute http or https URL.
+   A `sizeBytes` or a body above 16 MiB is refused, and the transport stops
+   reading at the cap.
+4. A cached or downloaded file is used only when its length is the manifest's
+   `sizeBytes`, it is UTF-8, the loader's own check accepts it, which computes
+   the revision from the content again, and it states the manifest's revision,
+   the expected id and locale, and the format version this build reads. A
+   cached file that fails is deleted and downloaded once.
+5. A downloaded file is cached only after it validated, through a temporary
+   file that is then moved to
+   `<kind>/<id>/<revision>.json` or `text-table/<locale>/<id>/<revision>.json`.
+   After a successful resolution the other revisions and leftover temporary
+   files of each file are deleted, so the cache keeps one revision per file. A
+   cache that cannot be read or written is never fatal; its problem is logged
+   as a warning.
+
+It is all or nothing. When the manifest cannot be fetched or read, does not list
+a file of the set, or a download or a check fails, the client runs with its
+complete bundled set and logs the reason as a warning with the code
+`content_unavailable`; a stale bundled set then meets the
+`item_catalog_update_required` and `quest_catalog_update_required` checks after
+login. A manifest or a file in a format newer than this build reads gives
+`client_update_required`: the client still starts with its bundled set, and the
+login screen shows the text of the code above its form without blocking it.
+
+Trust: the manifest comes from the configured GameService like every API
+answer, and a file is trusted because its content hashes to the revision the
+manifest names. The catalogs feed prediction and UI only; the servers stay the
+authority for every rule.
+
+Two development aids show it working:
+
+- The F2 Debug menu's Network tab lists each resolved file with the first 8
+  characters of its revision and where it came from, `bundled`, `cache`, or
+  `downloaded`, and the fallback code and reason. The log has one line per file.
+- `MMORPG > Tools > Ignore Bundled Content` sets the `PlayerPrefs` key
+  `ClientContentResolver.IgnoreBundledContentPreference`, read at the next
+  start of Play Mode in the Editor and development builds. No bundled file then
+  counts as current, so every file comes from the cache or a download; the
+  bundled set stays the fallback. In the Editor the bundled files always equal
+  the served ones, so without it the download path never runs.
+
 ## Configuration
 
 `ClientConfig` is a ScriptableObject at
 `Assets/Content/Config/ClientConfig.asset`, defined in `Assets/Scripts/Core`. The
-bootstrap loads it through Addressables at startup, synchronously, and keeps its
-handle until the bootstrap is destroyed, which also keeps the referenced gameplay
-catalog loaded. A missing configuration logs a warning and uses local fallback
+bootstrap loads it through Addressables in `Awake`, synchronously, and keeps its
+handle until the bootstrap is destroyed, which also keeps the referenced bundled
+content loaded. A missing configuration logs a warning and uses local fallback
 endpoints.
 
 | Field | Checked-in value | Used for |
@@ -394,9 +490,9 @@ endpoints.
 | Request timeout | 10 s | Every HTTP request |
 | Realtime timeout | 10 s | Realtime join and leave deadlines and the UDP disconnect timeout |
 | Session validation interval | 5 s, clamped to 2 to 60 s | The periodic account-session check |
-| Item gameplay catalog | `core.item-catalog.json` of the local WorldData package | `ClientItemCatalog` |
-| Quest catalog | `core.quest-catalog.json` of the local WorldData package | `ClientQuestCatalog` |
-| Text tables | Every table of `Text/en/` of the local WorldData package | The text catalog, as [Content Text](#content-text) describes |
+| Item gameplay catalog | `core.item-catalog.json` of the local WorldData package | The bundled item catalog of the [content set](#content-resolution-at-start) |
+| Quest catalog | `core.quest-catalog.json` of the local WorldData package | The bundled quest catalog of the content set |
+| Text tables | Every table of `Text/en/` of the local WorldData package | The bundled text tables of the content set |
 | Runtime primitive material | `Assets/Art/Materials/M_RuntimePrimitive.mat`, URP Lit | Primitives that runtime presentation creates |
 | Debug line material | `Assets/Art/Materials/M_DebugLines.mat`, URP Unlit | The Debug menu's collision and path lines |
 | Arrow model | `Assets/Art/Models/Projectiles/BronzeArrow.fbx` | Arrows in flight and on an archer's string |
@@ -421,8 +517,8 @@ build-specific configuration assets or a future build configuration pipeline.
 
 The client shows the names and texts of items, quests, and world actors from
 one `TextCatalog`, never from the gameplay catalogs or the realtime protocol. `ClientTexts.TryLoad` reads
-the text tables that `ClientConfig` lists, checks each against its revision,
-and joins them; [Text Tables](../content/README.md#text-tables) describes the
+the text tables that the [content check](#content-resolution-at-start)
+resolved, checks each against its revision, and joins them; [Text Tables](../content/README.md#text-tables) describes the
 tables and their keys. The bootstrap loads the catalog once and passes it to
 the inventory, quest, world actor, corpse, and world interaction controllers,
 and to the look link, the combat HUD, the login and character panels, and the
@@ -466,8 +562,10 @@ F2 Debug menu, which show messages.
   realtime failure carries its code in `RealtimeClientError`; a World that the
   World scene catalog cannot resolve is `world_scene_unavailable`, and a World
   scene that fails to load is `world_scene_load_failed`; a catalog that cannot
-  load is `item_catalog_invalid` or `quest_catalog_invalid`, and an outdated
-  one `item_catalog_update_required` or `quest_catalog_update_required`.
+  load is `item_catalog_invalid` or `quest_catalog_invalid`, an outdated one
+  `item_catalog_update_required` or `quest_catalog_update_required`, whose
+  texts ask the player to restart the client, and served content in a newer
+  format than the build reads is `client_update_required`.
   `ClientMessages.Text(texts, ApiError)` and
   `AccountEntryPresentation.ErrorText` resolve every kind of failure by its
   code, except that the login and character screens name the GameService
@@ -534,7 +632,7 @@ windows. The literals inside the `Temporary` panels and the F2 Debug and F3
 Admin menus stay English by decision. A technical failure that the client finds
 itself shows the text of its code, as [Content Text](#content-text) describes.
 `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
-pseudo-locale, which `PseudoText` builds from the same tables.
+pseudo-locale, which `PseudoText` builds from the resolved tables.
 
 ## Client Session State
 
@@ -815,7 +913,9 @@ authentication. `Log In` sends the login field as the `login` of
 `POST /api/accounts/login`, which GameService matches against the email and the
 username. Only the Editor and development builds, `Debug.isDebugBuild`, fill in
 the local development account. A failed request puts the caret back in the
-password field once the form is enabled again.
+password field once the form is enabled again. When the served content is in a
+newer format than the build reads, the card shows the text of
+`client_update_required` below its subtitle, and the form stays usable.
 
 ### CharacterSelect
 
@@ -1268,8 +1368,8 @@ raised. The transport does not own item collections. The persistent
 and kind. A duplicate completion for the last finalized operation is ignored
 safely.
 
-`ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset
-through the shared `ItemCatalogJsonDocument` shape that the Item Catalog editor
+`ClientItemCatalog` compiles and revision-checks the gameplay catalog JSON that
+the [content check](#content-resolution-at-start) resolved through the shared `ItemCatalogJsonDocument` shape that the Item Catalog editor
 also uses, loads the presentation catalog once through Addressables and caches
 it, and indexes definitions and equipment slots by stable id. The presentation
 catalog is valid with any gameplay catalog: the client checks only its format
@@ -1278,9 +1378,10 @@ presentation entry shows the placeholder icon and no garment, attachment, or
 tool, and an entry for an unknown id is ignored, so a rules change never
 blocks item UI. Exact coverage is a repository rule that
 [Items content](../content/items/README.md#unity-editor-workflow) describes.
-Every HTTP snapshot must also match the bundled gameplay revision. A mismatch
-clears renderable item state and produces `item_catalog_update_required` instead
-of accepting stale definitions. Icons and optional prefab presentation keys
+Every HTTP snapshot must also match the gameplay revision the client runs. A
+mismatch clears renderable item state and produces `item_catalog_update_required`
+instead of accepting stale definitions; its text asks the player to restart the
+client, which fetches the new catalog at its next start. Icons and optional prefab presentation keys
 resolve locally, and every name comes from the text catalog, as
 [Content Text](#content-text) describes. An icon is a Sprite whose
 Addressables address is stored in the catalog's `iconAddress` field, below
@@ -1615,7 +1716,7 @@ assembly fills the theme from them.
 The storage window has a Trade tab, `InventoryContextKind.Vendor`. Choosing a
 vendor capability opens it through the worker, and the confirmed result raises
 `InventoryCapabilityOpened`, which opens the storage window on that tab. The
-capability's `profileId` names a vendor profile of the bundled item catalog, and
+capability's `profileId` names a vendor profile of the item catalog, and
 an unknown profile asks for a client update instead of guessing prices. Without
 an open vendor interaction the tab only says to talk to a vendor, because trading
 needs the interaction to stay open. Every purchase and sale sends the total it
@@ -2735,7 +2836,7 @@ Its decisions live in pure classes:
   `RangeMargin` (0.75 m), at least `MinimumRange` (0.5 m), because the worker
   measures to the target's bounds in three dimensions while the route stops on
   the planar distance. `CombatLoadoutRules.TryGetWeaponRange` reads the weapon
-  range from the bundled item catalog for the item in the `main_hand` slot of the
+  range from the item catalog for the item in the `main_hand` slot of the
   committed inventory, as the worker resolves the loadout; without a weapon the
   character does not walk, and the worker reports `WeaponMissing`. The first
   approach also stops a walk that is already in range. While walking, a target
@@ -2941,7 +3042,7 @@ as [Quest System Design](QUEST_SYSTEM_DESIGN.md#authority) describes.
 `Mmorpg.Client.Quests` holds the state and the rules it reads, and the quest
 windows in `Mmorpg.Client.Ui` present it.
 
-- `ClientQuestCatalog` reads the bundled `core.quest-catalog.json` through the
+- `ClientQuestCatalog` reads the resolved `core.quest-catalog.json` through the
   camelCase `QuestCatalogJsonDocument` of the WorldData package, which Unity's
   `JsonUtility` needs, and accepts it only when `QuestCatalogCompiler.ValidateRuntime`
   computes the same fingerprints and revision. It then replaces the texts of
@@ -2950,7 +3051,8 @@ windows in `Mmorpg.Client.Ui` present it.
   marker of an NPC never walk the whole catalog.
 - `QuestClientController` reads `GET /api/characters/{characterId}/quests` when
   the character joins, up to three times, and refuses a log of another quest
-  catalog revision with `quest_catalog_update_required`. It applies every
+  catalog revision with `quest_catalog_update_required`, whose text asks the
+  player to restart the client. It applies every
   `QuestLogChanged` whose previous revision is the log's; a change the log
   already holds is stale, and one after a gap, or one with `ReloadRequired`,
   reads the log again. A change with `ReloadRequired` also reads the whole
@@ -2964,7 +3066,7 @@ windows in `Mmorpg.Client.Ui` present it.
 - `QuestClientState` keeps the active quests with their current step and the
   stored progress of the step's counted objectives, the completion counts, and
   the character's level from the character list. It raises `QuestsChanged` with
-  each quest a change touched, before and after. A bundled catalog that is
+  each quest a change touched, before and after. A catalog that is
   invalid leaves it `Failed` with the reason for every character, and the quest
   windows show that reason instead of reading quests.
 - `QuestProgress` counts a collect objective by the carried items, as

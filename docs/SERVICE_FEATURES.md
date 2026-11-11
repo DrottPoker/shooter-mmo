@@ -942,8 +942,9 @@ startup outside the Development environment, is on in the worker's
 ## Content Files
 
 GameService serves the content files that a client needs to run the current
-content, so a change of rules data or of a text needs no new client build. The
-Content module serves exactly the files the other modules run with:
+content, so a change of rules data or of a text needs no new client build, as
+[Client And Server Agreement](PROJECT_ARCHITECTURE.md#client-and-server-agreement)
+sums up. The Content module serves exactly the files the other modules run with:
 
 | Kind | Id | File |
 | --- | --- | --- |
@@ -1057,7 +1058,7 @@ This section describes the implemented behavior around them.
 - SimulationWorker runs on the same compiled catalog, and placement refuses a
   worker whose catalog revision differs, as
   [Shard Discovery And Placement](#shard-discovery-and-placement) describes.
-- Server snapshots must match the client's bundled gameplay revision, or the
+- Server snapshots must match the gameplay revision the client runs, or the
   Unity client reports `item_catalog_update_required` and refuses stale item
   state.
 
@@ -1339,8 +1340,8 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   objectives, and every completed quest with its completion count and last
   completion time. Collect objectives count carried items, so they carry no
   stored progress. A character without quests has quest log revision 0. Quest
-  texts and rules are not part of the response; the client reads them from its
-  bundled quest catalog.
+  texts and rules are not part of the response; the client reads them from the
+  quest catalog it resolved at start.
 - `POST /api/simulation-sessions/{id}/quest-log` returns the same quest log to
   the worker that hosts the character's live simulation session, for the quest
   state the worker keeps while the character plays. The account, character,
