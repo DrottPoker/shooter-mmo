@@ -6,6 +6,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -85,11 +86,13 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(InventorySlotPresentation.LiveQuantityText(3, 0), Is.EqualTo("0"));
             Assert.That(InventorySlotPresentation.LiveQuantityText(500, 500), Is.EqualTo("500"));
             Assert.That(InventorySlotPresentation.LiveQuantityText(1, 1), Is.Empty);
+            var texts = FixtureTexts.Ui();
             Assert.That(
-                InventorySlotPresentation.LiveQuantityDescription("Equipped in Ammunition", 500, 482),
-                Does.StartWith("Equipped in Ammunition\n482 left"));
+                InventorySlotPresentation.LiveQuantityDescription(texts, "Equipped in Ammunition", 500, 482),
+                Is.EqualTo("Equipped in Ammunition\n"
+                    + texts.Format("ui/inventory/arrows-left", MessageArgument.Text("count", "482"))));
             Assert.That(
-                InventorySlotPresentation.LiveQuantityDescription("Equipped in Ammunition", 500, 500),
+                InventorySlotPresentation.LiveQuantityDescription(texts, "Equipped in Ammunition", 500, 500),
                 Is.EqualTo("Equipped in Ammunition"));
         }
 

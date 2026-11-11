@@ -419,8 +419,10 @@ as `Qúést Lóg`, and leaves placeholders and rich text tags alone.
 `MMORPG > Tools > Pseudo Locale` in the Unity Editor switches it on from the
 next start of Play Mode. A text that still reads as plain English on screen
 is a literal in the code. The quest windows, the quest tracker, the quest
-messages, and the reasons the item rules give, below `ui/items/`,
-`ui/corpse/`, and `ui/vendor/`, take every text from the table; the other
+messages, the reasons the item rules give, and the inventory, equipment,
+storage, corpse, and vendor windows with the errors of their controllers, below
+`ui/items/`, `ui/inventory/`, `ui/corpse/`, `ui/vendor/`, and `ui/common/` for
+words that several windows share, take every text from the table; the other
 windows still hold literals.
 
 ## Compile And Verify

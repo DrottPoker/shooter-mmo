@@ -447,6 +447,7 @@ namespace Mmorpg.Client.App
                     worldMenu,
                     gameMessages,
                     inventoryWindowRequests,
+                    texts,
                     bodyLook,
                     sceneContext != null ? sceneContext.Preview : null,
                     pointerFocus));

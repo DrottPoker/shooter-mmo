@@ -457,15 +457,15 @@ namespace Mmorpg.Client.Items
             error = string.Empty;
             if (operation == null)
             {
-                error = "The item operation is invalid.";
+                error = Text("ui/inventory/operation-invalid");
                 return false;
             }
 
             if (!CanPredict)
             {
                 error = pendingOperations.Count >= MaximumPendingOperations
-                    ? "Too many item moves are waiting for the server."
-                    : "Inventory must finish loading in an active simulation session.";
+                    ? Text("ui/inventory/too-many-pending")
+                    : Text("ui/inventory/session-required");
                 return false;
             }
 
@@ -565,7 +565,7 @@ namespace Mmorpg.Client.Items
             Error = operationWasPending
                 ? new InventoryClientError(
                     "inventory_operation_uncertain",
-                    "The connection closed before the item operation was reconciled. Refresh after reconnect.")
+                    Text("ui/inventory/operation-uncertain"))
                 : null;
             Status = InventoryClientStatus.Unavailable;
             DiscardPredictions();
@@ -878,6 +878,12 @@ namespace Mmorpg.Client.Items
             {
                 PredictionRolledBack?.Invoke(rollback);
             }
+        }
+
+        // The state's own error, as the text the player reads.
+        private string Text(string key)
+        {
+            return ClientText.Of(key).Resolve(Catalog?.Texts);
         }
     }
 }

@@ -6,6 +6,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -25,9 +26,11 @@ namespace Mmorpg.Client.Ui
             var tagLabel = specialized
                 ? InventorySlotPresentation.AcceptedTagsLabel(state.Catalog, slot.AcceptedTags)
                 : string.Empty;
-            var description = InventorySlotPresentation.ContainerName(state, container.ContainerType)
-                + " slot " + (slot.SlotIndex + 1).ToString(CultureInfo.InvariantCulture)
-                + (specialized ? ", accepts " + tagLabel : string.Empty);
+            var description = SlotDescription(
+                InventorySlotPresentation.ContainerName(texts, state, container.ContainerType),
+                slot.SlotIndex,
+                specialized,
+                tagLabel);
             var spec = ItemSpec(item, keyPrefix + ":" + slot.SlotIndex.ToString(CultureInfo.InvariantCulture));
             spec.Silhouette = specialized ? theme.TagSilhouette(slot.AcceptedTags) : null;
             spec.OnRightClick = item == null ? null : () => OnItemRightClicked(item, false);
@@ -39,8 +42,23 @@ namespace Mmorpg.Client.Ui
             spec.OnDrop = payload => DropOnContainer(container, slot, payload);
             spec.Tooltip = item != null
                 ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, item, description)
-                : specialized ? "<b>Empty</b>\n" + description : string.Empty;
+                : specialized ? EmptySlotTooltip(description) : string.Empty;
             return spec;
+        }
+
+        // "Permanent Inventory slot 3", with the accepted item types of a specialized slot.
+        private string SlotDescription(string place, int slotIndex, bool accepts, string acceptedTags)
+        {
+            var placeArgument = MessageArgument.Text("place", place);
+            var number = MessageArgument.Text("number", (slotIndex + 1).ToString(CultureInfo.InvariantCulture));
+            return accepts
+                ? Text("ui/inventory/slot-number-accepts", placeArgument, number, MessageArgument.Text("tags", acceptedTags))
+                : Text("ui/inventory/slot-number", placeArgument, number);
+        }
+
+        private string EmptySlotTooltip(string description)
+        {
+            return "<b>" + Text("ui/inventory/empty") + "</b>\n" + description;
         }
 
         // An equipment slot. The equipped arrows show the worker's live count, which already
@@ -64,19 +82,19 @@ namespace Mmorpg.Client.Ui
                 CanDropOnEquipment(equipmentSlot, payload, out reason);
             spec.OnDrop = payload => Report(interactions.Execute(
                 interactions.PlanEquipmentDrop(equipmentSlot, payload, payload.Quantity)));
-            var description = "Equipped in " + slotName;
+            var description = Text("ui/inventory/equipped-in", MessageArgument.Text("slot", slotName));
             if (item != null && IsAmmunitionSlot(equipmentSlot))
             {
                 var live = LiveAmmunitionQuantity(item);
                 spec.QuantityText = InventorySlotPresentation.LiveQuantityText(item.Quantity, live);
-                description = InventorySlotPresentation.LiveQuantityDescription(description, item.Quantity, live);
+                description = InventorySlotPresentation.LiveQuantityDescription(texts, description, item.Quantity, live);
             }
 
             spec.Tooltip = item != null
                 ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, item, description)
                 : "<b>" + slotName + "</b>\n" + (blocker != null
                     ? InventorySlotPresentation.BlockedSlotText(state.Catalog, blocker)
-                    : InventorySlotPresentation.EmptyEquipmentSlotText(state.Catalog, equipmentSlot.SlotId));
+                    : InventorySlotPresentation.EmptyEquipmentSlotText(texts, state.Catalog, equipmentSlot.SlotId));
             return spec;
         }
 
@@ -100,11 +118,13 @@ namespace Mmorpg.Client.Ui
             var corpseItem = slot.Item;
             var item = corpseItem?.ToInventoryItem();
             var label = InventorySlotPresentation.CorpseSlotLabel(state.Catalog, slot);
-            var description = InventorySlotPresentation.CorpseSectionTitle(section.SectionKind)
-                + (!string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
-                    ? ", " + label
-                    : " slot " + (slot.SlotIndex + 1).ToString(CultureInfo.InvariantCulture)
-                        + (label.Length > 0 ? ", accepts " + label : string.Empty));
+            var sectionTitle = InventorySlotPresentation.CorpseSectionTitle(texts, section.SectionKind);
+            var description = !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
+                ? Text(
+                    "ui/corpse/equipment-slot-description",
+                    MessageArgument.Text("section", sectionTitle),
+                    MessageArgument.Text("slot", label))
+                : SlotDescription(sectionTitle, slot.SlotIndex, label.Length > 0, label);
             var spec = ItemSpec(item, "corpse:" + section.SectionKind + ":" + slot.SlotIndex.ToString(CultureInfo.InvariantCulture));
             spec.Silhouette = !string.IsNullOrWhiteSpace(slot.EquipmentSlotId)
                 ? theme.EquipmentSilhouette(slot.EquipmentSlotId)
@@ -128,7 +148,7 @@ namespace Mmorpg.Client.Ui
             spec.OnDrop = payload => DropOnCorpse(section, slot, payload);
             spec.Tooltip = item != null
                 ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, item, description)
-                : label.Length > 0 ? "<b>Empty</b>\n" + description : string.Empty;
+                : label.Length > 0 ? EmptySlotTooltip(description) : string.Empty;
             return spec;
         }
 
@@ -151,7 +171,7 @@ namespace Mmorpg.Client.Ui
             spec.Tooltip = InventorySlotPresentation.BuildItemTooltip(
                 state.Catalog,
                 item,
-                "Recovery delivery, claimed as a whole");
+                Text("ui/inventory/recovery-delivery-slot"));
             return spec;
         }
 
@@ -248,8 +268,11 @@ namespace Mmorpg.Client.Ui
 
             var catalog = State.Catalog;
             dialog.AskQuantity(
-                "Split Stack",
-                catalog.GetDisplayName(definitionId) + " (" + stack.ToString(CultureInfo.InvariantCulture) + ")",
+                Text("ui/inventory/split-heading"),
+                Text(
+                    "ui/inventory/split-stack-size",
+                    MessageArgument.Text("item", catalog.GetDisplayName(definitionId)),
+                    MessageArgument.Text("quantity", stack.ToString(CultureInfo.InvariantCulture))),
                 1,
                 stack - 1,
                 InventoryQuickMoves.HalfOf(stack),
@@ -261,7 +284,7 @@ namespace Mmorpg.Client.Ui
         {
             if (!TryFindStack(payload, out var definitionId, out var stack) || quantity >= stack)
             {
-                Say("The stack changed. Split it again.");
+                Say(Text("ui/inventory/split-stack-changed"));
                 return;
             }
 
@@ -321,7 +344,7 @@ namespace Mmorpg.Client.Ui
 
             if (payload.IsPartial)
             {
-                Say("Drag the whole stack out of the windows to destroy it.");
+                Say(Text("ui/inventory/destroy-whole-stack"));
                 return;
             }
 
@@ -334,9 +357,9 @@ namespace Mmorpg.Client.Ui
             var name = State.Catalog.GetDisplayName(item.DefinitionId)
                 + (item.Quantity > 1 ? " x" + item.Quantity.ToString(CultureInfo.InvariantCulture) : string.Empty);
             dialog.AskConfirmation(
-                "Destroy Item",
-                "Destroy " + name + "? It cannot be brought back.",
-                "Destroy",
+                Text("ui/inventory/destroy-heading"),
+                Text("ui/inventory/destroy-question", MessageArgument.Text("item", name)),
+                Text("ui/inventory/destroy"),
                 () => Report(interactions.Destroy(item)));
         }
 

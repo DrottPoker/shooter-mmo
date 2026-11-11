@@ -27,7 +27,6 @@ namespace Mmorpg.Client.Tests.PlayMode
         // Port 9 refuses connections, so no request can reach a real GameService.
         private const string UnreachableGameServiceUrl = "http://127.0.0.1:9";
         private const string AmmunitionSlotId = "ammunition";
-        private const string NoSessionMessage = "active simulation session";
 
         [UnityTest]
         public IEnumerator WindowsDrawPaperDollBlockedSlotCarryMeterSearchAndTooltip()
@@ -272,7 +271,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             slot.GetComponent<InventorySlotClicks>().OnPointerClick(rightPress);
             yield return null;
 
-            Assert.That(GameMessageShows(NoSessionMessage), Is.True, "The game message names why the move was not sent.");
+            Assert.That(GameMessageShows(NoSessionMessage(probe)), Is.True, "The game message names why the move was not sent.");
         }
 
         // Shift-dragging a stack splits half of it off without asking: onto an empty slot, and
@@ -308,7 +307,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             source.OnEndDrag(pointer);
             yield return null;
             Assert.That(windows.Dialog.IsOpen, Is.False);
-            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage(probe)));
 
             var arrows = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:2").GetComponent<InventoryDragSource>();
             arrows.PartialOverride = true;
@@ -323,14 +322,14 @@ namespace Mmorpg.Client.Tests.PlayMode
             ammunitionTarget.OnDrop(pointer);
             arrows.OnEndDrag(pointer);
             yield return null;
-            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage(probe)));
 
             var right = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right };
             var arrowClicks = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:2").GetComponent<InventorySlotClicks>();
             arrowClicks.ShiftOverride = true;
             arrowClicks.OnPointerClick(right);
             yield return null;
-            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage), "half the arrows go to the ammunition slot");
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage(probe)), "half the arrows go to the ammunition slot");
 
             windows.OpenStorage(InventoryContextKind.Bank, InventoryStorageSource.Development);
             yield return null;
@@ -338,7 +337,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             clicks.ShiftOverride = true;
             clicks.OnPointerClick(right);
             yield return null;
-            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage));
+            Assert.That(NewestGameMessage(), Does.Contain(NoSessionMessage(probe)));
         }
 
         // Ctrl+click asks how many items to take and carries them on the pointer, where the
@@ -362,8 +361,9 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             var dialog = windows.Dialog;
             Assert.That(dialog.IsOpen, Is.True);
-            Assert.That(dialog.Title, Is.EqualTo("Split Stack"));
-            Assert.That(dialog.GetComponentInChildren<TMP_Text>().text, Is.EqualTo("SPLIT STACK"));
+            var splitHeading = probe.Catalog.Texts.Get("ui/inventory/split-heading");
+            Assert.That(dialog.Title, Is.EqualTo(splitHeading));
+            Assert.That(dialog.GetComponentInChildren<TMP_Text>().text, Is.EqualTo(splitHeading.ToUpperInvariant()));
             // A stack of two splits one item off.
             Assert.That(dialog.Quantity, Is.EqualTo(1));
             dialog.Confirm();
@@ -393,7 +393,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             emptyClicks.OnPointerClick(left);
             yield return null;
             Assert.That(coordinator.IsCarrying, Is.False);
-            Assert.That(GameMessageShows(NoSessionMessage), Is.True);
+            Assert.That(GameMessageShows(NoSessionMessage(probe)), Is.True);
 
             // Released over nothing of the interface, the item asks to be destroyed.
             var source = View(windows.GetComponentsInChildren<InventorySlotView>(), "inventory:0").GetComponent<InventoryDragSource>();
@@ -402,7 +402,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             source.OnBeginDrag(pointer);
             source.OnEndDrag(new PointerEventData(EventSystem.current) { position = new Vector2(960f, 540f) });
             Assert.That(dialog.IsOpen, Is.True);
-            Assert.That(dialog.Title, Is.EqualTo("Destroy Item"));
+            Assert.That(dialog.Title, Is.EqualTo(probe.Catalog.Texts.Get("ui/inventory/destroy-heading")));
             Assert.That(dialog.Message, Does.Contain(probe.Catalog.GetDisplayName(stack.ItemDefinitionId)));
             dialog.Close();
             Assert.That(dialog.IsOpen, Is.False);
@@ -560,6 +560,12 @@ namespace Mmorpg.Client.Tests.PlayMode
             var hits = new List<RaycastResult>();
             EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = point }, hits);
             return hits.Any(hit => hit.gameObject.transform.IsChildOf(windows.transform));
+        }
+
+        // Without a simulation session the controller refuses every operation with this text.
+        private static string NoSessionMessage(WindowProbe probe)
+        {
+            return probe.Catalog.Texts.Get("ui/inventory/session-required");
         }
 
         private static bool GameMessageShows(string text)

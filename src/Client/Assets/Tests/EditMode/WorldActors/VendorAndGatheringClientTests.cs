@@ -21,7 +21,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void LoadCatalog()
         {
             catalog = FixtureItemCatalog.Load();
-            Assert.That(VendorClientRules.TryResolve(catalog, VendorId, out vendor, out var error), Is.True, error);
+            Assert.That(VendorClientRules.TryResolve(catalog, VendorId, out vendor, out var error), Is.True, error.ToString());
         }
 
         [Test]
@@ -34,9 +34,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(new[] { "fixture.arrow", "fixture.potion", "fixture.pickaxe", "fixture.pack" }));
             Assert.That(offers.Select(offer => offer.UnitPrice), Is.EqualTo(new long[] { 1, 25, 50, 200 }));
             Assert.That(offers[0].MaximumQuantity, Is.EqualTo(60));
-            Assert.That(VendorClientRules.FormatAmount(catalog, 1250), Is.EqualTo("1,250 Fixture Coins"));
+            Assert.That(VendorClientRules.FormatAmount(1250).Resolve(catalog.Texts), Is.EqualTo("1,250 Fixture Coins"));
             Assert.That(VendorClientRules.TryResolve(catalog, "vendor.unknown", out _, out var error), Is.False);
-            Assert.That(error, Does.Contain("Update the client"));
+            Assert.That(error, Is.EqualTo(ClientText.Of("ui/vendor/unknown-vendor")));
+            Assert.That(VendorClientRules.TryResolve(null, VendorId, out _, out error), Is.False);
+            Assert.That(error, Is.EqualTo(ClientText.Of("ui/vendor/catalog-unavailable")));
         }
 
         [Test]

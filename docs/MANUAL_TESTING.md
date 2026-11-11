@@ -458,12 +458,22 @@ The client's own labels come from the `ui` text table, as
    accented vowels, such as `Qúést Lóg`, `Áccépt`, and
    `Qúést áccéptéd: Pélts ánd Fángs`, and so does every item, actor, and quest
    text. A label that still reads as plain English, such as those of the
-   inventory windows, is a literal in the code.
+   `Temporary` panels, is a literal in the code.
    Open the inventory (I) and drag an item onto an equipment slot that does
    not take it, then right-click an item that is not equipment. Expected
    result: the refusal messages show with accented vowels, such as
    `Thé ítém ís nót cómpátíblé wíth thís éqúípmént slót.` and
    `Ríght-clíck éqúíps éqúípmént; drág thís ítém tó móvé ít.`
+   Open the Equipment (C) and Inventory (I) windows and hover an equipped item,
+   an empty equipment slot, and the hood button if it shows. Ctrl+click a stack
+   and cancel the split dialog, then drag an item out of the windows and cancel
+   the destroy dialog. Talk to Mira, open the Bank and Trade tabs, buy an item,
+   and drop an item on the Sell slot; kill a wolf and open its corpse. Expected
+   result: every window title, tab, section heading, button, tooltip line,
+   carry meter label, balance, price, dialog, and message shows with accented
+   vowels, such as the buttons `Lóót Áll` and `Cáncél` and the tooltip line
+   `Éqúíppéd ín` followed by the slot name; titles and headings show the same
+   in capitals. Only numbers and the `x` of a stack count stay as they are.
 2. Choose `MMORPG > Tools > Pseudo Locale` again and restart Play Mode.
    Expected result: every text reads as plain English again.
 

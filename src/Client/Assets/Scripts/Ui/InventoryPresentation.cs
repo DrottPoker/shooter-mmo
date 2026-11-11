@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Ui
 {
@@ -284,13 +285,13 @@ namespace Mmorpg.Client.Ui
         }
 
         public static string LiveQuantityDescription(
+            TextCatalog texts,
             string description,
             int committedQuantity,
             int liveQuantity)
         {
             return liveQuantity != committedQuantity
-                ? description + "\n" + Math.Max(0, liveQuantity).ToString(CultureInfo.InvariantCulture)
-                    + " left; spent arrows commit in batches"
+                ? description + "\n" + texts.Format("ui/inventory/arrows-left", Number("count", Math.Max(0, liveQuantity)))
                 : description;
         }
 
@@ -374,44 +375,44 @@ namespace Mmorpg.Client.Ui
                 : string.Empty;
         }
 
-        public static string ContainerName(InventoryClientState state, string containerType)
+        public static string ContainerName(TextCatalog texts, InventoryClientState state, string containerType)
         {
             return containerType switch
             {
-                ItemContainerTypeIds.PermanentInventory => "Permanent Inventory",
+                ItemContainerTypeIds.PermanentInventory => texts.Get("ui/inventory/permanent-inventory"),
                 ItemContainerTypeIds.BagContents => state?.FullSnapshot?.EquippedBag != null
                     ? state.Catalog.GetDisplayName(state.FullSnapshot.EquippedBag.Item.DefinitionId)
-                    : "Bag",
-                ItemContainerTypeIds.Bank => "Bank",
+                    : texts.Get("ui/inventory/bag"),
+                ItemContainerTypeIds.Bank => texts.Get("ui/inventory/bank"),
                 _ => containerType ?? string.Empty
             };
         }
 
         public static string BlockedSlotText(ClientItemCatalog catalog, InventoryEquipmentSlot blocker)
         {
-            return "Blocked by " + catalog.GetDisplayName(blocker.Item.DefinitionId)
-                + " in " + EquipmentSlotName(catalog, blocker.SlotId)
-                + ". Unequip it to use this slot.";
+            return catalog.Texts.Format(
+                "ui/inventory/slot-blocked",
+                MessageArgument.Text("item", catalog.GetDisplayName(blocker.Item.DefinitionId)),
+                MessageArgument.Text("slot", EquipmentSlotName(catalog, blocker.SlotId)));
         }
 
-        public static string EmptyEquipmentSlotText(ClientItemCatalog catalog, string slotId)
+        public static string EmptyEquipmentSlotText(TextCatalog texts, ClientItemCatalog catalog, string slotId)
         {
             return catalog != null
                 && catalog.TryGetEquipmentSlot(slotId, out var definition)
                 && definition.MaximumQuantity > 1
-                    ? "Empty. Holds a stack of up to "
-                        + definition.MaximumQuantity.ToString(CultureInfo.InvariantCulture) + "."
-                    : "Empty";
+                    ? texts.Format("ui/inventory/empty-stack-slot", Number("maximum", definition.MaximumQuantity))
+                    : texts.Get("ui/inventory/empty");
         }
 
-        public static string CorpseSectionTitle(string sectionKind)
+        public static string CorpseSectionTitle(TextCatalog texts, string sectionKind)
         {
             return sectionKind switch
             {
-                CorpseSectionKindIds.Equipment => "Corpse Equipment",
-                CorpseSectionKindIds.GeneralInventory => "Corpse Inventory",
-                CorpseSectionKindIds.Bag => "Corpse Bag Contents",
-                _ => "Corpse " + sectionKind
+                CorpseSectionKindIds.Equipment => texts.Get("ui/corpse/section-equipment"),
+                CorpseSectionKindIds.GeneralInventory => texts.Get("ui/corpse/section-inventory"),
+                CorpseSectionKindIds.Bag => texts.Get("ui/corpse/section-bag"),
+                _ => texts.Format("ui/corpse/section-other", MessageArgument.Text("section", sectionKind))
             };
         }
 
@@ -429,15 +430,15 @@ namespace Mmorpg.Client.Ui
                 : AcceptedTagsLabel(catalog, slot.AcceptedTags);
         }
 
-        public static string RecoverySourceLabel(string source)
+        public static string RecoverySourceLabel(TextCatalog texts, string source)
         {
             return source switch
             {
-                "death_recovered_insured" => "Recovered: consumed insurance",
-                "death_recovered_protected" => "Recovered: protected on death",
-                "secure_container_removal" => "Recovered: from the removed Warded Pouch",
-                "cloak_equipment_removal" => "Recovered: cloaks can no longer be worn",
-                _ => "Recovered: " + source
+                "death_recovered_insured" => texts.Get("ui/inventory/recovered-insured"),
+                "death_recovered_protected" => texts.Get("ui/inventory/recovered-protected"),
+                "secure_container_removal" => texts.Get("ui/inventory/recovered-warded-pouch"),
+                "cloak_equipment_removal" => texts.Get("ui/inventory/recovered-cloak"),
+                _ => texts.Format("ui/inventory/recovered-other", MessageArgument.Text("source", source))
             };
         }
 
@@ -487,85 +488,108 @@ namespace Mmorpg.Client.Ui
                 return string.Empty;
             }
 
+            var texts = catalog.Texts;
             var text = new StringBuilder();
             text.Append("<b>").Append(catalog.GetDisplayName(item.DefinitionId)).Append("</b>");
             if (!catalog.TryGetDefinition(item.DefinitionId, out var definition))
             {
-                AppendLine(text, "Quantity " + item.Quantity.ToString(CultureInfo.InvariantCulture));
+                AppendLine(text, texts.Format("ui/inventory/tooltip-quantity", Number("quantity", item.Quantity)));
                 AppendSlot(text, slotDescription);
                 return text.ToString();
             }
 
-            var category = catalog.GetCategoryName(definition.Category);
             AppendLine(
                 text,
-                category
-                    + "  ·  Quantity "
-                    + item.Quantity.ToString(CultureInfo.InvariantCulture)
-                    + " / "
-                    + definition.MaximumStackSize.ToString(CultureInfo.InvariantCulture));
+                texts.Format(
+                    "ui/inventory/tooltip-category-quantity",
+                    MessageArgument.Text("category", catalog.GetCategoryName(definition.Category)),
+                    Number("quantity", item.Quantity),
+                    Number("maximum", definition.MaximumStackSize)));
             var weight = ItemWeightRules.CalculateStackWeight(
                 definition.UnitWeight,
                 Math.Max(1, item.Quantity));
             AppendLine(
                 text,
-                "Weight "
-                    + weight.ToString(CultureInfo.InvariantCulture)
-                    + (item.Quantity > 1
-                        ? " (" + definition.UnitWeight.ToString(CultureInfo.InvariantCulture) + " each)"
-                        : string.Empty));
+                item.Quantity > 1
+                    ? texts.Format(
+                        "ui/inventory/tooltip-weight-each",
+                        Number("weight", weight),
+                        Number("unit", definition.UnitWeight))
+                    : texts.Format("ui/inventory/tooltip-weight", Number("weight", weight)));
             if (definition.EquipmentSlots != null && definition.EquipmentSlots.Length > 0)
             {
-                var equips = "Equips to "
-                    + string.Join(
-                        " or ",
-                        definition.EquipmentSlots.Select(slotId => EquipmentSlotName(catalog, slotId)));
-                if (definition.BlockedEquipmentSlots != null
-                    && definition.BlockedEquipmentSlots.Length > 0)
-                {
-                    equips += ", blocks "
-                        + string.Join(
-                            " and ",
-                            definition.BlockedEquipmentSlots.Select(slotId =>
-                                EquipmentSlotName(catalog, slotId)));
-                }
-
-                AppendLine(text, equips);
+                var slots = MessageArgument.Text(
+                    "slots",
+                    JoinNames(texts, "ui/common/either", definition.EquipmentSlots.Select(slotId => EquipmentSlotName(catalog, slotId))));
+                AppendLine(
+                    text,
+                    definition.BlockedEquipmentSlots != null && definition.BlockedEquipmentSlots.Length > 0
+                        ? texts.Format(
+                            "ui/inventory/tooltip-equips-blocks",
+                            slots,
+                            MessageArgument.Text(
+                                "blocked",
+                                JoinNames(texts, "ui/common/both", definition.BlockedEquipmentSlots.Select(slotId => EquipmentSlotName(catalog, slotId)))))
+                        : texts.Format("ui/inventory/tooltip-equips", slots));
             }
 
             foreach (var policy in item.Policies.Where(IsActive))
             {
-                AppendLine(text, PolicyName(policy.Kind) + " (" + ProtectionSourceName(policy.ProtectionSource) + ")");
+                AppendLine(
+                    text,
+                    texts.Format(
+                        "ui/inventory/tooltip-policy",
+                        MessageArgument.Text("policy", PolicyName(texts, policy.Kind)),
+                        MessageArgument.Text("source", ProtectionSourceName(texts, policy.ProtectionSource))));
             }
 
             if (!definition.PlayerDestroyable)
             {
-                AppendLine(text, "Cannot be destroyed");
+                AppendLine(text, texts.Get("ui/inventory/tooltip-indestructible"));
             }
 
             AppendSlot(text, slotDescription);
             return text.ToString();
         }
 
-        public static string ProtectionSourceName(string source)
+        public static string ProtectionSourceName(TextCatalog texts, string source)
         {
             return source switch
             {
-                "insurance_npc" => "Insurance NPC",
-                "quest_grant" => "Quest grant",
-                "catalog_default" => "Catalog rule",
-                _ => "System"
+                "insurance_npc" => texts.Get("ui/inventory/protection-insurance-npc"),
+                "quest_grant" => texts.Get("ui/inventory/protection-quest-grant"),
+                "catalog_default" => texts.Get("ui/inventory/protection-catalog-rule"),
+                _ => texts.Get("ui/inventory/protection-system")
             };
         }
 
-        public static string PolicyName(string policyKind)
+        public static string PolicyName(TextCatalog texts, string policyKind)
         {
             return policyKind switch
             {
-                ItemPolicyIds.ProtectedOnDeath => "Protected on death",
-                ItemPolicyIds.Insured => "Insured",
+                ItemPolicyIds.ProtectedOnDeath => texts.Get("ui/inventory/policy-protected-on-death"),
+                ItemPolicyIds.Insured => texts.Get("ui/inventory/policy-insured"),
                 _ => policyKind ?? string.Empty
             };
+        }
+
+        // Names joined pair by pair with the text of the key, such as "{first} or {second}".
+        private static string JoinNames(TextCatalog texts, string pairKey, IEnumerable<string> names)
+        {
+            string joined = null;
+            foreach (var name in names)
+            {
+                joined = joined == null
+                    ? name
+                    : texts.Format(pairKey, MessageArgument.Text("first", joined), MessageArgument.Text("second", name));
+            }
+
+            return joined ?? string.Empty;
+        }
+
+        private static MessageArgument Number(string name, long value)
+        {
+            return MessageArgument.Text(name, value.ToString(CultureInfo.InvariantCulture));
         }
 
         private static void AppendSlot(StringBuilder text, string slotDescription)
