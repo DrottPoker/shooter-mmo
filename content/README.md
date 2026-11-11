@@ -360,8 +360,17 @@ texts of actors, the names and menu options of their capabilities, and the
 names of factions are required in `actors/` and go only into the actor text
 table. The name of a presentation archetype is a label for the content tools
 and is not compiled. A new text changes no `world-actors.json`, no revision,
-and no structural fingerprint. The compiled quest catalog still holds its
-texts.
+and no structural fingerprint.
+
+The compiled quest catalog carries no text as well. A quest's title, offer,
+progress, and completion text, every objective's text, and the line of a
+talk-to objective are required in `quests/` and go only into the quest text
+table, so a new wording changes neither the compiled catalog nor its revision,
+and GameService and the worker hold no quest text. A compiled quest catalog
+that holds a text is refused.
+
+So no compiled content holds a text, and no server stores or sends one: every
+text of the content is in a text table, which only the client reads.
 
 ### Messages
 

@@ -43,7 +43,7 @@ public sealed class QuestCatalogFileLoaderTests
     public void AnEditedCatalogIsRejected()
     {
         var json = File.ReadAllText(RepositoryPaths.QuestCatalogFixtureRuntimePath)
-            .Replace("\"title\": \"Fixture Wolves\"", "\"title\": \"Edited Wolves\"", StringComparison.Ordinal);
+            .Replace("\"minimumLevel\": 1", "\"minimumLevel\": 2", StringComparison.Ordinal);
 
         var exception = Assert.Throws<InvalidDataException>(() => QuestCatalogFileLoader.Parse(json));
 

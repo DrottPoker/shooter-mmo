@@ -1,0 +1,104 @@
+{
+  "formatVersion": 1,
+  "tableId": "quests",
+  "locale": "en",
+  "revision": "82a0a9e901ee60b17b6b355ce15a8ef0974c73eff82b5131caaea55fe19716a4",
+  "entries": [
+    {
+      "key": "quest/quest.fixture.errand/completion",
+      "text": "The letter is back, and the errand is done."
+    },
+    {
+      "key": "quest/quest.fixture.errand/offer",
+      "text": "Mine two ore, hand one over, tell me about it, and bring the letter back."
+    },
+    {
+      "key": "quest/quest.fixture.errand/progress",
+      "text": "Do you have the letter?"
+    },
+    {
+      "key": "quest/quest.fixture.errand/step/return/objective/letter/text",
+      "text": "Letter returned"
+    },
+    {
+      "key": "quest/quest.fixture.errand/step/work/objective/hand_over/text",
+      "text": "Ore handed over"
+    },
+    {
+      "key": "quest/quest.fixture.errand/step/work/objective/ore/text",
+      "text": "Ore mined"
+    },
+    {
+      "key": "quest/quest.fixture.errand/step/work/objective/report/line",
+      "text": "Two ore mined. Well done."
+    },
+    {
+      "key": "quest/quest.fixture.errand/step/work/objective/report/text",
+      "text": "Report the mining"
+    },
+    {
+      "key": "quest/quest.fixture.errand/title",
+      "text": "Fixture Errand"
+    },
+    {
+      "key": "quest/quest.fixture.ore_run/completion",
+      "text": "Three ore. Come back for more."
+    },
+    {
+      "key": "quest/quest.fixture.ore_run/offer",
+      "text": "Bring me three ore, as often as you like."
+    },
+    {
+      "key": "quest/quest.fixture.ore_run/progress",
+      "text": "Three ore, please."
+    },
+    {
+      "key": "quest/quest.fixture.ore_run/step/deliver/objective/ore/text",
+      "text": "Ore"
+    },
+    {
+      "key": "quest/quest.fixture.ore_run/title",
+      "text": "Fixture Ore Run"
+    },
+    {
+      "key": "quest/quest.fixture.trophies/completion",
+      "text": "Both trophies. Thank you."
+    },
+    {
+      "key": "quest/quest.fixture.trophies/offer",
+      "text": "The wolves carry stolen trophies. Bring me two of them."
+    },
+    {
+      "key": "quest/quest.fixture.trophies/progress",
+      "text": "Two trophies, from the wolves."
+    },
+    {
+      "key": "quest/quest.fixture.trophies/step/collect/objective/trophies/text",
+      "text": "Stolen trophies"
+    },
+    {
+      "key": "quest/quest.fixture.trophies/title",
+      "text": "Fixture Trophies"
+    },
+    {
+      "key": "quest/quest.fixture.wolves/completion",
+      "text": "Two wolves fewer. Take a potion and pick a weapon."
+    },
+    {
+      "key": "quest/quest.fixture.wolves/offer",
+      "text": "Hunt two Feral Wolves for the fixture."
+    },
+    {
+      "key": "quest/quest.fixture.wolves/progress",
+      "text": "Are the two wolves hunted?"
+    },
+    {
+      "key": "quest/quest.fixture.wolves/step/hunt/objective/wolves/text",
+      "text": "Feral Wolves slain"
+    },
+    {
+      "key": "quest/quest.fixture.wolves/title",
+      "text": "Fixture Wolves"
+    }
+  ]
+}

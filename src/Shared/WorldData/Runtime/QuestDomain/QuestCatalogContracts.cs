@@ -5,7 +5,7 @@ namespace Mmorpg.WorldData.Quests
 {
     public static class QuestCatalogFormat
     {
-        public const int Version = 1;
+        public const int Version = 2;
         public const string QuestsDirectoryName = "quests";
         public const string CatalogFileName = "core.quest-catalog.json";
     }
@@ -151,6 +151,9 @@ namespace Mmorpg.WorldData.Quests
         public QuestDefinition[] Quests;
     }
 
+    // Title, OfferText, ProgressText, and CompletionText, and the Text and Line of an
+    // objective, are empty in the compiled catalog and on every server. A client fills them
+    // into its own copy from the quest text table, so its windows read a quest whole.
     [Serializable]
     public sealed class QuestDefinition
     {

@@ -194,21 +194,27 @@ namespace Mmorpg.WorldData.Quests
             }
         }
 
-        // The values the services and the client use without checking them again: texts, the
-        // NPCs, the level, the Gold, and every item quantity within the content limits.
+        // The values the services and the client use without checking them again: the NPCs,
+        // the level, the Gold, and every item quantity within the content limits. A compiled
+        // catalog carries no text: the quest compiler writes the texts into the quest text
+        // table, and a client fills them into its own copy of the catalog.
         private static void ValidateRuntimeValues(QuestDefinition quest, string path, List<string> errors)
         {
-            if (string.IsNullOrEmpty(quest.Title)
-                || string.IsNullOrEmpty(quest.OfferText)
-                || string.IsNullOrEmpty(quest.ProgressText)
-                || string.IsNullOrEmpty(quest.CompletionText)
-                || !IsIdentifier(quest.GiverActorId)
+            if (!string.IsNullOrEmpty(quest.Title)
+                || !string.IsNullOrEmpty(quest.OfferText)
+                || !string.IsNullOrEmpty(quest.ProgressText)
+                || !string.IsNullOrEmpty(quest.CompletionText))
+            {
+                errors.Add(path + " holds a text: a compiled quest catalog carries none.");
+            }
+
+            if (!IsIdentifier(quest.GiverActorId)
                 || !IsIdentifier(quest.TurnInActorId)
                 || quest.MinimumLevel < 1
                 || quest.RewardGold < 0
                 || quest.RewardGold > QuestContentRules.MaximumRewardGold)
             {
-                errors.Add(path + " has an empty text, an invalid NPC, a level below 1, or a Gold reward out of range.");
+                errors.Add(path + " has an invalid NPC, a level below 1, or a Gold reward out of range.");
             }
 
             if (quest.StartItems.Length > QuestContentRules.MaximumStartItems
@@ -225,11 +231,12 @@ namespace Mmorpg.WorldData.Quests
         // The fields each objective kind uses, which the services read without checking again.
         private static bool HasRuntimeKindFields(QuestObjectiveDefinition objective)
         {
-            if (string.IsNullOrEmpty(objective.Text)
+            // An objective holds no text either: neither its text nor the line of a talk-to.
+            if (!string.IsNullOrEmpty(objective.Text)
+                || !string.IsNullOrEmpty(objective.Line)
                 || objective.ActorTag == null
                 || objective.ItemId == null
                 || objective.NpcActorId == null
-                || objective.Line == null
                 || objective.ActorIds.Any(actorId => !IsIdentifier(actorId))
                 || (objective.DropSources.Length > 0 && objective.Kind != QuestObjectiveKindIds.Collect)
                 || objective.DropSources.Any(source =>
@@ -245,19 +252,18 @@ namespace Mmorpg.WorldData.Quests
             var tag = objective.ActorTag.Length > 0;
             var item = objective.ItemId.Length > 0;
             var npc = objective.NpcActorId.Length > 0;
-            var line = objective.Line.Length > 0;
             switch (objective.Kind)
             {
                 case QuestObjectiveKindIds.Kill:
-                    return actors != tag && !item && !npc && !line;
+                    return actors != tag && !item && !npc;
                 case QuestObjectiveKindIds.Gather:
-                    return actors && !tag && !item && !npc && !line;
+                    return actors && !tag && !item && !npc;
                 case QuestObjectiveKindIds.Collect:
-                    return IsIdentifier(objective.ItemId) && !actors && !tag && !npc && !line;
+                    return IsIdentifier(objective.ItemId) && !actors && !tag && !npc;
                 case QuestObjectiveKindIds.Deliver:
-                    return IsIdentifier(objective.ItemId) && IsIdentifier(objective.NpcActorId) && !actors && !tag && !line;
+                    return IsIdentifier(objective.ItemId) && IsIdentifier(objective.NpcActorId) && !actors && !tag;
                 case QuestObjectiveKindIds.TalkTo:
-                    return IsIdentifier(objective.NpcActorId) && line && objective.Count == 1 && !actors && !tag && !item;
+                    return IsIdentifier(objective.NpcActorId) && objective.Count == 1 && !actors && !tag && !item;
                 default:
                     return false;
             }
@@ -1066,16 +1072,12 @@ namespace Mmorpg.WorldData.Quests
             var compiled = new QuestDefinition
             {
                 Id = quest.Id,
-                Title = quest.Title,
                 GiverActorId = quest.GiverActorId,
                 TurnInActorId = quest.TurnInActorId,
                 MinimumLevel = quest.MinimumLevel,
                 RequiredQuestIds = Sorted(quest.RequiredQuestIds),
                 Repeatable = quest.Repeatable,
                 Tags = Sorted(quest.Tags),
-                OfferText = quest.OfferText,
-                ProgressText = quest.ProgressText,
-                CompletionText = quest.CompletionText,
                 StartItems = CompileItems(quest.StartItems),
                 Steps = quest.Steps.Select(step => new QuestStepDefinition
                 {
@@ -1096,13 +1098,11 @@ namespace Mmorpg.WorldData.Quests
             {
                 Id = objective.Id,
                 Kind = objective.Kind,
-                Text = objective.Text,
                 Count = objective.Count,
                 ActorIds = Sorted(objective.ActorIds),
                 ActorTag = objective.ActorTag ?? string.Empty,
                 ItemId = objective.ItemId ?? string.Empty,
                 NpcActorId = objective.NpcActorId ?? string.Empty,
-                Line = objective.Line ?? string.Empty,
                 DropSources = (objective.DropSources ?? Array.Empty<QuestDropSourceAuthoringEntry>())
                     .Select(source => new QuestDropSourceDefinition
                     {
@@ -1158,22 +1158,16 @@ namespace Mmorpg.WorldData.Quests
             foreach (var quest in runtime.Quests)
             {
                 values.Add(quest.StructuralFingerprint);
-                values.Add(quest.Title);
                 values.Add(quest.GiverActorId);
                 values.Add(quest.TurnInActorId);
                 values.Add(quest.MinimumLevel.ToString(CultureInfo.InvariantCulture));
                 values.Add(string.Join(",", quest.RequiredQuestIds));
                 values.Add(quest.Repeatable ? "repeatable" : "once");
                 values.Add(string.Join(",", quest.Tags));
-                values.Add(quest.OfferText);
-                values.Add(quest.ProgressText);
-                values.Add(quest.CompletionText);
                 values.Add(ItemsFingerprint(quest.StartItems));
                 foreach (var objective in quest.Steps.SelectMany(step => step.Objectives))
                 {
-                    values.Add(objective.Text);
                     values.Add(objective.Count.ToString(CultureInfo.InvariantCulture));
-                    values.Add(objective.Line);
                     values.Add(string.Join(",", objective.DropSources.Select(source =>
                         source.ActorId
                         + ":" + source.ChanceBasisPoints.ToString(CultureInfo.InvariantCulture)

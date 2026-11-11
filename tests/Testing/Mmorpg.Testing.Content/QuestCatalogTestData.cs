@@ -21,16 +21,27 @@ public static class QuestCatalogTestData
 
     public static QuestCatalogRuntimeDocument Compile()
     {
+        return Compile(LoadAuthoring());
+    }
+
+    // The checked-in items and Worlds with the quests of a test.
+    public static QuestCatalogRuntimeDocument Compile(QuestCatalogAuthoringDocument authoring)
+    {
         var worlds = WorldActorTestData.CheckedInWorldIds()
             .Select(WorldActorTestData.CompileWorld)
             .ToArray();
-        return QuestCatalogCompiler.Compile(LoadAuthoring(), ItemCatalogTestData.Compile(), worlds);
+        return QuestCatalogCompiler.Compile(authoring, ItemCatalogTestData.Compile(), worlds);
+    }
+
+    public static QuestCatalogAuthoringDocument LoadFixtureAuthoring()
+    {
+        return QuestContent.LoadCatalog(FixtureQuestsDirectory);
     }
 
     public static QuestCatalogRuntimeDocument CompileFixture()
     {
         return QuestCatalogCompiler.Compile(
-            QuestContent.LoadCatalog(FixtureQuestsDirectory),
+            LoadFixtureAuthoring(),
             ItemCatalogTestData.CompileFixture(),
             [WorldActorTestData.Compile()]);
     }

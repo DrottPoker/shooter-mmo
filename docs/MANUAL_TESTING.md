@@ -419,9 +419,9 @@ The client shows item, quest, and actor text from the text tables, as
 
 ### A Rename Changes Only The Text Table
 
-The compiled item catalog, the item tables of GameService, and the compiled
-actors carry no text, as [Text Tables](../content/README.md#text-tables)
-describes.
+The compiled item catalog, the item tables of GameService, the compiled
+actors, and the compiled quest catalog carry no text, as
+[Text Tables](../content/README.md#text-tables) describes.
 
 1. Note the output of `git status --short`. Open `MMORPG > Tools > Item Catalog`,
    change the display name of the Iron Sword, and bake. Expected result:
@@ -438,6 +438,13 @@ describes.
    `world-actors.json`. Start Play Mode without restarting the worker and
    examine a wolf: the new text shows. Restore the files with
    `git restore content/actors src/Shared/WorldData/Generated/Text`.
+4. Open `MMORPG > Tools > Content > Quest Studio`, change the offer text of
+   `Pelts and Fangs`, and save. Expected result: `git status --short` lists
+   `content/quests/` and `Generated/Text/en/quests.text-table.json`, and not
+   `Generated/Quests/core.quest-catalog.json`. Start Play Mode without
+   restarting GameService or the worker and talk to the quest's NPC: the new
+   text shows. Restore the files with
+   `git restore content/quests src/Shared/WorldData/Generated/Text`.
 
 ### Messages By Code
 

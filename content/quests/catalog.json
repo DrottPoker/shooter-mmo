@@ -1,5 +1,5 @@
 {
-    "formatVersion": 1,
+    "formatVersion": 2,
     "catalogId": "core",
     "maximumActiveQuests": 25,
     "retiredQuestIds": []

@@ -28,6 +28,8 @@ public sealed class QuestCatalogJsonTests
 
         QuestCatalogCompiler.ValidateRuntime(runtime);
         Assert.NotEmpty(runtime.Quests);
-        Assert.All(runtime.Quests, quest => Assert.False(string.IsNullOrEmpty(quest.OfferText)));
+        // The compiled catalog carries no text, so the shape reads every text as empty.
+        Assert.All(runtime.Quests, quest => Assert.True(string.IsNullOrEmpty(quest.OfferText)));
+        Assert.DoesNotContain("offerText", json, StringComparison.Ordinal);
     }
 }

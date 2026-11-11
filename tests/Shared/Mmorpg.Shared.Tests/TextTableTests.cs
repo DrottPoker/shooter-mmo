@@ -248,7 +248,7 @@ public sealed class TextTableTests
     [Fact]
     public void TheQuestTableHoldsEveryQuestTextAndALineOnlyWhereOneIsWritten()
     {
-        var catalog = QuestCatalogTestData.Compile();
+        var catalog = QuestCatalogTestData.LoadAuthoring();
         var texts = ContentText.FromQuestCatalog(catalog).Entries
             .ToDictionary(entry => entry.Key, entry => entry.Text, StringComparer.Ordinal);
 
@@ -296,7 +296,7 @@ public sealed class TextTableTests
         {
             TextTableIds.Items => ContentText.FromItemCatalog(ItemCatalogTestData.LoadAuthoring()),
             TextTableIds.Actors => ContentText.FromWorldActors(WorldActorTestData.LoadActors()),
-            _ => ContentText.FromQuestCatalog(QuestCatalogTestData.Compile())
+            _ => ContentText.FromQuestCatalog(QuestCatalogTestData.LoadAuthoring())
         };
         var json = StrictContentJson.NormalizeLineEndings(File.ReadAllText(
             ContentLayout.GeneratedTextTablePath(
