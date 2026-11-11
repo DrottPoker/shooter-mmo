@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
@@ -19,7 +20,7 @@ namespace Mmorpg.Client.Items
         {
             var createdId = Guid.NewGuid();
             return InventoryPredictedOperation.External(
-                (InventoryPredictionEdit edit, out string reason) =>
+                (InventoryPredictionEdit edit, out ClientText reason) =>
                     TryPurchase(edit, definitionId, quantity, price, createdId, out reason),
                 send,
                 Array.Empty<Guid>(),
@@ -33,7 +34,7 @@ namespace Mmorpg.Client.Items
             InventoryOperationSend send)
         {
             return InventoryPredictedOperation.External(
-                (InventoryPredictionEdit edit, out string reason) =>
+                (InventoryPredictionEdit edit, out ClientText reason) =>
                     TrySell(edit, itemInstanceId, quantity, price, out reason),
                 send,
                 new[] { itemInstanceId });
@@ -45,9 +46,9 @@ namespace Mmorpg.Client.Items
             int quantity,
             long price,
             Guid createdId,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The offer is no longer available.";
+            reason = ClientText.Of("ui/vendor/offer-unavailable");
             if (!edit.TryGetDefinition(definitionId, out var definition) || quantity <= 0)
             {
                 return false;
@@ -55,7 +56,7 @@ namespace Mmorpg.Client.Items
 
             if (price > edit.Currency)
             {
-                reason = "You cannot afford this purchase.";
+                reason = ClientText.Of("ui/vendor/cannot-afford");
                 return false;
             }
 
@@ -110,7 +111,7 @@ namespace Mmorpg.Client.Items
 
                 if (slot == null)
                 {
-                    reason = "Your inventory has no free slot for this purchase.";
+                    reason = ClientText.Of("ui/vendor/purchase-no-room");
                     return false;
                 }
 
@@ -121,7 +122,7 @@ namespace Mmorpg.Client.Items
             }
 
             edit.MoveWeight(definition, quantity, null, ItemContainerTypeIds.PermanentInventory);
-            reason = "The purchase would exceed the 140 percent carry cap.";
+            reason = ClientText.Of("ui/vendor/purchase-over-carry-cap");
             return edit.FitsHardCap();
         }
 
@@ -130,9 +131,9 @@ namespace Mmorpg.Client.Items
             Guid itemInstanceId,
             int quantity,
             long price,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The item is no longer in carried storage.";
+            reason = ClientText.Of("ui/items/not-carried");
             if (!edit.Editor.TryFind(itemInstanceId, out var item, out var source)
                 || source.Kind != InventoryItemLocationKind.Container
                 || !ItemContainerTypeIds.IsCarried(source.ContainerType)

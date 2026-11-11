@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 
@@ -16,7 +17,7 @@ namespace Mmorpg.Client.Items
 
     // Applies an operation that another controller owns, such as a corpse loot or a vendor
     // trade, to one step of the shown inventory.
-    internal delegate bool InventoryOperationPrediction(InventoryPredictionEdit edit, out string reason);
+    internal delegate bool InventoryOperationPrediction(InventoryPredictionEdit edit, out ClientText reason);
 
     // Sends such an operation with the revisions the confirmed state expects.
     public delegate InventoryOperationSendResult InventoryOperationSend(
@@ -144,7 +145,7 @@ namespace Mmorpg.Client.Items
             }
         }
 
-        internal bool TryPredictExternal(InventoryPredictionEdit edit, out string reason)
+        internal bool TryPredictExternal(InventoryPredictionEdit edit, out ClientText reason)
         {
             return externalPrediction(edit, out reason);
         }
@@ -401,7 +402,7 @@ namespace Mmorpg.Client.Items
             IInventoryView view,
             InventoryPredictedOperation operation,
             out CharacterInventorySnapshot predicted,
-            out string reason)
+            out ClientText reason)
         {
             return TryApply(view, operation, null, out predicted, out reason);
         }
@@ -411,13 +412,13 @@ namespace Mmorpg.Client.Items
             InventoryPredictedOperation operation,
             Func<Guid, bool> isPredictedContainer,
             out CharacterInventorySnapshot predicted,
-            out string reason)
+            out ClientText reason)
         {
             predicted = null;
-            reason = "The item is no longer where it was.";
+            reason = ClientText.Of("ui/items/item-moved");
             if (view?.Catalog == null || view.FullSnapshot == null || operation == null)
             {
-                reason = "Inventory state is unavailable.";
+                reason = ClientText.Of("ui/items/inventory-unavailable");
                 return false;
             }
 
@@ -438,17 +439,17 @@ namespace Mmorpg.Client.Items
                 // may show a load it would refuse, such as a swap to a smaller Bag.
                 if (!edit.FitsHardCap())
                 {
-                    reason = "The move would exceed the 140 percent carry cap.";
+                    reason = ClientText.Of("ui/items/move-over-carry-cap");
                     return false;
                 }
 
                 predicted = edit.Build();
-                reason = string.Empty;
+                reason = ClientText.None;
                 return true;
             }
             catch (OverflowException)
             {
-                reason = "The item weight is invalid.";
+                reason = ClientText.Of("ui/items/weight-invalid");
                 return false;
             }
         }
@@ -456,9 +457,9 @@ namespace Mmorpg.Client.Items
         private static bool TryApplyItemOperation(
             InventoryPredictionEdit edit,
             InventoryPredictedOperation operation,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The item is no longer where it was.";
+            reason = ClientText.Of("ui/items/item-moved");
             var view = edit.View;
             var editor = edit.Editor;
             if (!editor.TryFind(operation.ItemInstanceId, out var item, out var source)
@@ -498,7 +499,7 @@ namespace Mmorpg.Client.Items
                         string.Equals(candidate.SlotId, operation.EquipmentSlotId, StringComparison.Ordinal));
                     if (equipmentSlot == null)
                     {
-                        reason = "The equipment slot is unavailable.";
+                        reason = ClientText.Of("ui/items/equipment-slot-unavailable");
                         return false;
                     }
 
@@ -568,7 +569,7 @@ namespace Mmorpg.Client.Items
                     var moved = operation.Quantity > 0 ? operation.Quantity : item.Quantity;
                     if (moved > item.Quantity)
                     {
-                        reason = "The stack no longer holds that many items.";
+                        reason = ClientText.Of("ui/items/stack-too-small");
                         return false;
                     }
 
@@ -644,7 +645,7 @@ namespace Mmorpg.Client.Items
                     return true;
                 }
                 default:
-                    reason = "This operation cannot be shown before the server answers.";
+                    reason = ClientText.Of("ui/items/operation-not-predicted");
                     return false;
             }
         }
@@ -662,11 +663,11 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation source,
             ItemDefinition definition,
             InventoryEquipmentSlot equipmentSlot,
-            out string reason)
+            out ClientText reason)
         {
             if (source.Kind != InventoryItemLocationKind.Container)
             {
-                reason = "Only a stack in a container can equip part of itself.";
+                reason = ClientText.Of("ui/items/equip-part-needs-container");
                 return false;
             }
 
@@ -677,7 +678,7 @@ namespace Mmorpg.Client.Items
 
             if (equipmentSlot.Item != null)
             {
-                reason = "Part of a stack equips only into an empty slot.";
+                reason = ClientText.Of("ui/items/equip-part-needs-empty-slot");
                 return false;
             }
 
@@ -705,7 +706,7 @@ namespace Mmorpg.Client.Items
         private static bool TryClaim(
             InventoryPredictionEdit edit,
             InventoryPredictedOperation operation,
-            out string reason)
+            out ClientText reason)
         {
             var recovery = edit.View.FullSnapshot.RecoveryStorage;
             var delivery = recovery?.Deliveries.FirstOrDefault(candidate =>
@@ -713,7 +714,7 @@ namespace Mmorpg.Client.Items
             var destination = edit.FindContainer(operation.DestinationContainerId);
             if (delivery == null || destination == null)
             {
-                reason = "The Recovery delivery or its destination is no longer available.";
+                reason = ClientText.Of("ui/items/claim-unavailable");
                 return false;
             }
 
@@ -728,14 +729,14 @@ namespace Mmorpg.Client.Items
             {
                 if (!edit.TryGetDefinition(deliveryItem.Item.DefinitionId, out var definition))
                 {
-                    reason = "A Recovery item definition is unavailable.";
+                    reason = ClientText.Of("ui/items/recovery-definition-unavailable");
                     return false;
                 }
 
                 var slot = edit.FindFreeSlot(destination, definition, filled);
                 if (slot == null)
                 {
-                    reason = "The destination has no free slot for every delivered item.";
+                    reason = ClientText.Of("ui/items/claim-no-room");
                     return false;
                 }
 
@@ -744,7 +745,7 @@ namespace Mmorpg.Client.Items
                 edit.MoveWeight(definition, deliveryItem.Item.Quantity, ItemContainerTypeIds.RecoveryStorage, destination.ContainerType);
             }
 
-            reason = string.Empty;
+            reason = ClientText.None;
             return true;
         }
 
@@ -757,11 +758,11 @@ namespace Mmorpg.Client.Items
             int quantity,
             out InventoryContainer container,
             out InventorySlot slot,
-            out string reason)
+            out ClientText reason)
         {
             reason = edit.IsPredictedContainer(operation.DestinationContainerId)
-                ? "Wait a moment until your equipped Bag is confirmed."
-                : "The destination container is unavailable.";
+                ? ClientText.Of("ui/items/wait-for-bag")
+                : ClientText.Of("ui/items/destination-container-unavailable");
             slot = null;
             container = edit.FindContainer(operation.DestinationContainerId);
             if (container == null)
@@ -776,7 +777,7 @@ namespace Mmorpg.Client.Items
                     return true;
                 }
 
-                reason = "The destination slot is unavailable.";
+                reason = ClientText.Of("ui/items/destination-slot-unavailable");
                 return false;
             }
 
@@ -790,7 +791,7 @@ namespace Mmorpg.Client.Items
                 }
             }
 
-            reason = "The destination container has no free slot for the item.";
+            reason = ClientText.Of("ui/items/destination-container-full");
             return false;
         }
     }

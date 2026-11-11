@@ -132,7 +132,7 @@ layers from the bottom up:
 |---|---|---|
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
-| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, and `ClientTexts`, which reads the text tables | Api |
+| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, and `ClientText`, a text that rule code names by key | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
@@ -472,9 +472,25 @@ text catalog from the bootstrap and asks it for a text by key, with
 `TextCatalog.Get`, or with `TextCatalog.Format` and named `MessageArgument`
 values for a text with placeholders. Rule code that explains itself to the
 player, such as `QuestRewardFit`, reads the texts of the catalog it already
-takes: `ClientItemCatalog.Texts` and `ClientQuestCatalog.Texts`. The quest
-windows, the quest tracker, and the quest messages are converted; the
-inventory windows, the item rules, and the `Temporary` panels still hold
+takes: `ClientItemCatalog.Texts` and `ClientQuestCatalog.Texts`.
+
+The item rules return why a move, a loot, or a trade is refused as a
+`ClientText`, never as a sentence: `ClientText.Of` with a key such as
+`ui/items/inventory-full` and named `ClientTextArgument` values, a plain text,
+a number, a text key such as an equipment slot or currency name, or a nested
+`ClientText` for a reason inside a sentence. `ClientText.Literal` wraps a
+sentence that is finished already, such as the error of a controller.
+`InventoryTargetAdvisor`, `CorpseTargetAdvisor`, the predictions,
+`VendorClientRules`, `InventoryQuickMoves`, and `InventoryDropPlanner` pass the
+reason on, and a test compares keys. Only the code that shows it calls
+`Resolve`: the inventory windows with `ClientItemCatalog.Texts` for a drop,
+right-click, or trade they refuse, and the inventory and corpse controllers
+and `InventoryClientState`, which turn the reason into the error text of an
+operation they do not send or a prediction they undo.
+
+The quest windows, the quest tracker, the quest messages, and the item rule
+reasons are converted; the labels of the inventory windows, the success
+messages of the item operations, and the `Temporary` panels still hold
 literals. `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
 pseudo-locale, which `PseudoText` builds from the same tables.
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
@@ -358,6 +359,12 @@ namespace Mmorpg.Client.Ui
         internal void Say(string message)
         {
             gameMessages?.Add(message, Time.unscaledTime);
+        }
+
+        // Says a text in the words of the item catalog's text tables.
+        internal void Say(ClientText message)
+        {
+            Say(message.Resolve(State?.Catalog?.Texts));
         }
 
         internal bool IsRolledBack(InventoryItem item)

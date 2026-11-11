@@ -266,7 +266,7 @@ namespace Mmorpg.Client.Items
             out string error)
         {
             return TryPrepareItemOperation(item, out _, out error)
-                && InventoryTargetAdvisor.CanSplit(State.Catalog, item, quantity, out error)
+                && Allows(InventoryTargetAdvisor.CanSplit(State.Catalog, item, quantity, out var reason), reason, out error)
                 && TryQueue(
                     InventoryPredictedOperation.Split(
                         item.ItemInstanceId,
@@ -294,12 +294,15 @@ namespace Mmorpg.Client.Items
             if (!TryPrepareItemOperation(sourceItem, out var source, out error)
                 || !TryPrepareItemOperation(targetItem, out var target, out error)
                 || (quantity > 0 && quantity > sourceItem.Quantity)
-                || !InventoryTargetAdvisor.CanMerge(
-                    State,
-                    quantity > 0 ? sourceItem.WithQuantity(quantity) : sourceItem,
-                    source,
-                    targetItem,
-                    target,
+                || !Allows(
+                    InventoryTargetAdvisor.CanMerge(
+                        State,
+                        quantity > 0 ? sourceItem.WithQuantity(quantity) : sourceItem,
+                        source,
+                        targetItem,
+                        target,
+                        out var reason),
+                    reason,
                     out error))
             {
                 if (string.IsNullOrWhiteSpace(error))
@@ -322,12 +325,15 @@ namespace Mmorpg.Client.Items
         {
             if (!TryPrepareItemOperation(firstItem, out var firstLocation, out error)
                 || !TryPrepareItemOperation(secondItem, out var secondLocation, out error)
-                || !InventoryTargetAdvisor.CanSwap(
-                    State,
-                    firstItem,
-                    firstLocation,
-                    secondItem,
-                    secondLocation,
+                || !Allows(
+                    InventoryTargetAdvisor.CanSwap(
+                        State,
+                        firstItem,
+                        firstLocation,
+                        secondItem,
+                        secondLocation,
+                        out var reason),
+                    reason,
                     out error))
             {
                 if (string.IsNullOrWhiteSpace(error))
@@ -346,7 +352,7 @@ namespace Mmorpg.Client.Items
         public bool TryDestroy(InventoryItem item, out string error)
         {
             return TryPrepareItemOperation(item, out _, out error)
-                && InventoryTargetAdvisor.CanDestroy(State.Catalog, item, out error)
+                && Allows(InventoryTargetAdvisor.CanDestroy(State.Catalog, item, out var reason), reason, out error)
                 && TryQueue(InventoryPredictedOperation.Destroy(item.ItemInstanceId), out error);
         }
 
@@ -395,6 +401,13 @@ namespace Mmorpg.Client.Items
             }
 
             return true;
+        }
+
+        // A rule's answer, with its reason as the error text the player reads.
+        private bool Allows(bool allowed, ClientText reason, out string error)
+        {
+            error = allowed ? string.Empty : reason.Resolve(messageTexts);
+            return allowed;
         }
 
         private bool CanStartOperation(out string error)

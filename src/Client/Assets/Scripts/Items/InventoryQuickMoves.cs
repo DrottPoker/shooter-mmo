@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
@@ -24,7 +25,7 @@ namespace Mmorpg.Client.Items
     {
         private InventoryQuickMove(
             InventoryQuickMoveKind kind,
-            string reason,
+            ClientText reason,
             InventoryItem item = null,
             InventoryItem target = null,
             InventoryContainer container = null,
@@ -36,7 +37,7 @@ namespace Mmorpg.Client.Items
             int quantity = 0)
         {
             Kind = kind;
-            Reason = reason ?? string.Empty;
+            Reason = reason;
             Item = item;
             Target = target;
             Container = container;
@@ -50,7 +51,7 @@ namespace Mmorpg.Client.Items
 
         public InventoryQuickMoveKind Kind { get; }
 
-        public string Reason { get; }
+        public ClientText Reason { get; }
 
         // The part of the stack a split, a merge, an equip, or a loot moves; zero moves the
         // whole stack.
@@ -74,7 +75,7 @@ namespace Mmorpg.Client.Items
         // The unequips that free an equip's slot first.
         public IReadOnlyList<InventoryQuickMove> Before { get; }
 
-        public static InventoryQuickMove Nothing(string reason)
+        public static InventoryQuickMove Nothing(ClientText reason)
         {
             return new InventoryQuickMove(InventoryQuickMoveKind.None, reason);
         }
@@ -87,7 +88,7 @@ namespace Mmorpg.Client.Items
         {
             return new InventoryQuickMove(
                 InventoryQuickMoveKind.Equip,
-                string.Empty,
+                ClientText.None,
                 item,
                 equipmentSlotId: equipmentSlotId,
                 before: before,
@@ -96,39 +97,39 @@ namespace Mmorpg.Client.Items
 
         internal static InventoryQuickMove Unequip(InventoryItem item, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Unequip, string.Empty, item, container: container, slot: slot);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Unequip, ClientText.None, item, container: container, slot: slot);
         }
 
         internal static InventoryQuickMove Relocate(InventoryItem item, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Relocate, string.Empty, item, container: container, slot: slot);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Relocate, ClientText.None, item, container: container, slot: slot);
         }
 
         internal static InventoryQuickMove Merge(InventoryItem item, InventoryItem target, int quantity = 0)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Merge, string.Empty, item, target, quantity: quantity);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Merge, ClientText.None, item, target, quantity: quantity);
         }
 
         internal static InventoryQuickMove Claim(RecoveryDelivery delivery, InventoryContainer container)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.ClaimRecovery, string.Empty, container: container, delivery: delivery);
+            return new InventoryQuickMove(InventoryQuickMoveKind.ClaimRecovery, ClientText.None, container: container, delivery: delivery);
         }
 
         internal static InventoryQuickMove Split(InventoryItem item, int quantity, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Split, string.Empty, item, container: container, slot: slot, quantity: quantity);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Split, ClientText.None, item, container: container, slot: slot, quantity: quantity);
         }
 
         internal static InventoryQuickMove Loot(CorpseLootItem item, InventoryContainer container, InventorySlot slot, int quantity = 0)
         {
-            return new InventoryQuickMove(InventoryQuickMoveKind.Loot, string.Empty, container: container, slot: slot, corpseItem: item, quantity: quantity);
+            return new InventoryQuickMove(InventoryQuickMoveKind.Loot, ClientText.None, container: container, slot: slot, corpseItem: item, quantity: quantity);
         }
 
         internal static InventoryQuickMove LootToEquipment(CorpseLootItem item, string equipmentSlotId, int quantity = 0)
         {
             return new InventoryQuickMove(
                 InventoryQuickMoveKind.LootToEquipment,
-                string.Empty,
+                ClientText.None,
                 equipmentSlotId: equipmentSlotId,
                 corpseItem: item,
                 quantity: quantity);
@@ -154,27 +155,27 @@ namespace Mmorpg.Client.Items
                 || !state.TryFindItem(item.ItemInstanceId, out var current, out var location)
                 || !state.Catalog.TryGetDefinition(current.DefinitionId, out var definition))
             {
-                return InventoryQuickMove.Nothing("The item is no longer available.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/item-unavailable"));
             }
 
             if (string.Equals(location.ContainerType, ItemContainerTypeIds.Bank, StringComparison.Ordinal))
             {
-                return ToCarriedStorage(state, current, location, "Your inventory has no room for the item.");
+                return ToCarriedStorage(state, current, location, ClientText.Of("ui/items/inventory-full"));
             }
 
             if (bankOpen && state.Bank != null)
             {
-                return ToContainers(state, current, location, new[] { state.Bank }, new[] { state.Bank }, "The Bank has no room for the item.");
+                return ToContainers(state, current, location, new[] { state.Bank }, new[] { state.Bank }, ClientText.Of("ui/items/bank-full"));
             }
 
             if (location.Kind == InventoryItemLocationKind.Equipment)
             {
-                return ToCarriedStorage(state, current, location, "Your inventory has no room for the item.");
+                return ToCarriedStorage(state, current, location, ClientText.Of("ui/items/inventory-full"));
             }
 
             if (definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0)
             {
-                return InventoryQuickMove.Nothing("Right-click equips equipment; drag this item to move it.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/right-click-equips"));
             }
 
             return Equip(state, current, location, definition);
@@ -185,7 +186,7 @@ namespace Mmorpg.Client.Items
             var inventory = state?.FullSnapshot?.PermanentInventory;
             if (delivery == null || inventory == null)
             {
-                return InventoryQuickMove.Nothing("The Recovery delivery is no longer available.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/recovery-delivery-unavailable"));
             }
 
             var claim = InventoryPredictedOperation.ClaimRecovery(delivery, inventory.ContainerId);
@@ -203,10 +204,10 @@ namespace Mmorpg.Client.Items
                 || !view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot)
                 || !state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
             {
-                return InventoryQuickMove.Nothing("The corpse item is no longer available.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/corpse/item-unavailable"));
             }
 
-            var reason = "Your equipment and inventory have no room for the item.";
+            var reason = ClientText.Of("ui/items/equipment-and-inventory-full");
             if (definition.EquipmentSlots != null && definition.RequiredCharacterLevel <= 1)
             {
                 foreach (var equipmentSlot in state.FullSnapshot.Equipment.Where(candidate =>
@@ -224,7 +225,7 @@ namespace Mmorpg.Client.Items
 
             if (item.HasBagContents && view.BagHasContents(item))
             {
-                return InventoryQuickMove.Nothing("Your Bag slot is taken. Drag the corpse Bag onto your Bag to swap them.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/corpse/bag-slot-taken"));
             }
 
             // A stack that takes the whole item, else the first free slot; a loot never swaps.
@@ -244,7 +245,7 @@ namespace Mmorpg.Client.Items
                     return InventoryQuickMove.Loot(item, container, carriedSlot);
                 }
 
-                if (!lootReason.Contains("accepted tags"))
+                if (!IsSlotKindRefusal(lootReason))
                 {
                     reason = lootReason;
                 }
@@ -271,7 +272,7 @@ namespace Mmorpg.Client.Items
                 || !state.TryFindItem(item.ItemInstanceId, out var current, out var location)
                 || !state.Catalog.TryGetDefinition(current.DefinitionId, out var definition))
             {
-                return InventoryQuickMove.Nothing("The item is no longer available.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/item-unavailable"));
             }
 
             if (!InventoryTargetAdvisor.CanSplit(state.Catalog, current, quantity, out var reason))
@@ -293,7 +294,7 @@ namespace Mmorpg.Client.Items
                     quantity,
                     bank.Slots.Where(slot => slot.Item != null).Select(slot => (bank, slot)),
                     bank.Slots.Where(slot => slot.Item == null).Select(slot => (bank, slot)),
-                    "The Bank has no room for the item.");
+                    ClientText.Of("ui/items/bank-full"));
             }
 
             if (location.Kind == InventoryItemLocationKind.Equipment)
@@ -303,7 +304,7 @@ namespace Mmorpg.Client.Items
 
             if (definition.EquipmentSlots == null || definition.EquipmentSlots.Length == 0)
             {
-                return InventoryQuickMove.Nothing("Right-click equips equipment; drag this item to move it.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/right-click-equips"));
             }
 
             return EquipPart(state, current, definition, quantity);
@@ -325,12 +326,12 @@ namespace Mmorpg.Client.Items
                 || corpseItem == null
                 || !view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot))
             {
-                return InventoryQuickMove.Nothing("The corpse item is no longer available.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/corpse/item-unavailable"));
             }
 
             if (quantity < 1 || quantity >= item.Quantity)
             {
-                return InventoryQuickMove.Nothing("A single item cannot be split.");
+                return InventoryQuickMove.Nothing(ClientText.Of("ui/items/single-item-split"));
             }
 
             var part = item.WithQuantity(quantity);
@@ -350,7 +351,7 @@ namespace Mmorpg.Client.Items
                 }
             }
 
-            var reason = "Your inventory has no room for the item.";
+            var reason = ClientText.Of("ui/items/inventory-full");
             foreach (var (container, carriedSlot) in CarriedStacks(state).Concat(CarriedFreeSlots(state)))
             {
                 if (CorpseTargetAdvisor.CanLoot(state, view, item, section, slot, container, carriedSlot, quantity, out var lootReason))
@@ -358,7 +359,7 @@ namespace Mmorpg.Client.Items
                     return InventoryQuickMove.Loot(item, container, carriedSlot, quantity);
                 }
 
-                if (carriedSlot.Item == null && !lootReason.Contains("accepted tags"))
+                if (carriedSlot.Item == null && !IsSlotKindRefusal(lootReason))
                 {
                     reason = lootReason;
                 }
@@ -375,7 +376,7 @@ namespace Mmorpg.Client.Items
                 quantity,
                 CarriedStacks(state),
                 CarriedFreeSlots(state),
-                "Your inventory has no room for the item.");
+                ClientText.Of("ui/items/inventory-full"));
         }
 
         // Tops up the first stack that takes the part, or else splits it into the first free
@@ -386,7 +387,7 @@ namespace Mmorpg.Client.Items
             int quantity,
             IEnumerable<(InventoryContainer Container, InventorySlot Slot)> stacks,
             IEnumerable<(InventoryContainer Container, InventorySlot Slot)> freeSlots,
-            string failure)
+            ClientText failure)
         {
             var part = item.WithQuantity(quantity);
             foreach (var (_, slot) in stacks)
@@ -409,7 +410,7 @@ namespace Mmorpg.Client.Items
                     return InventoryQuickMove.Split(item, quantity, container, slot);
                 }
 
-                if (!splitReason.Contains("accepted tags"))
+                if (!IsSlotKindRefusal(splitReason))
                 {
                     reason = splitReason;
                 }
@@ -429,7 +430,7 @@ namespace Mmorpg.Client.Items
             var compatible = state.FullSnapshot.Equipment
                 .Where(slot => ItemEquipmentRules.IsCompatible(definition, slot.SlotId))
                 .ToArray();
-            var reason = "The item cannot be equipped.";
+            var reason = ClientText.Of("ui/items/cannot-equip");
             var topUp = compatible.FirstOrDefault(slot => InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, slot.Item));
             if (topUp != null)
             {
@@ -448,7 +449,7 @@ namespace Mmorpg.Client.Items
 
             return InventoryQuickMove.Nothing(compatible.Any(slot => slot.Item == null)
                 ? reason
-                : "Part of a stack equips only into an empty slot.");
+                : ClientText.Of("ui/items/equip-part-needs-empty-slot"));
         }
 
         private static InventoryQuickMove Equip(
@@ -460,7 +461,7 @@ namespace Mmorpg.Client.Items
             var compatible = state.FullSnapshot.Equipment
                 .Where(slot => ItemEquipmentRules.IsCompatible(definition, slot.SlotId))
                 .ToArray();
-            var reason = "The item cannot be equipped.";
+            var reason = ClientText.Of("ui/items/cannot-equip");
             var topUp = compatible.FirstOrDefault(slot => InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, item, slot.Item));
             if (topUp != null)
             {
@@ -490,7 +491,7 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryEquipmentSlot slot,
             out InventoryQuickMove move,
-            out string reason)
+            out ClientText reason)
         {
             move = null;
             IInventoryView view = state;
@@ -501,7 +502,7 @@ namespace Mmorpg.Client.Items
                     candidate.Item != null && candidate.Item.ItemInstanceId == blocker.ItemInstanceId);
                 if (blockerSlot == null)
                 {
-                    reason = "The item that blocks the slot is no longer equipped.";
+                    reason = ClientText.Of("ui/items/blocker-gone");
                     return false;
                 }
 
@@ -509,7 +510,7 @@ namespace Mmorpg.Client.Items
                     view,
                     blockerSlot.Item,
                     InventoryItemLocation.ForEquipment(blockerSlot.SlotId),
-                    "Your inventory has no room for the item that blocks the slot.");
+                    ClientText.Of("ui/items/blocker-no-room"));
                 if (unequip.Kind == InventoryQuickMoveKind.None)
                 {
                     reason = unequip.Reason;
@@ -570,7 +571,7 @@ namespace Mmorpg.Client.Items
             IInventoryView view,
             InventoryItem item,
             InventoryItemLocation location,
-            string failure)
+            ClientText failure)
         {
             var snapshot = view.FullSnapshot;
             var bag = snapshot.EquippedBag?.Contents;
@@ -596,7 +597,7 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation location,
             IReadOnlyList<InventoryContainer> stackContainers,
             IReadOnlyList<InventoryContainer> slotContainers,
-            string failure)
+            ClientText failure)
         {
             return ToSlots(
                 view,
@@ -615,7 +616,7 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation location,
             IReadOnlyList<InventoryContainer> stackContainers,
             IReadOnlyList<(InventoryContainer Container, InventorySlot Slot)> freeSlots,
-            string failure)
+            ClientText failure)
         {
             var reason = failure;
             foreach (var target in stackContainers.SelectMany(container => container.Slots).Select(slot => slot.Item))
@@ -644,7 +645,7 @@ namespace Mmorpg.Client.Items
                 }
 
                 // A slot that only refuses the item's kind says nothing about the rest.
-                if (!moveReason.Contains("accepted tags"))
+                if (!IsSlotKindRefusal(moveReason))
                 {
                     reason = moveReason;
                 }
@@ -704,7 +705,7 @@ namespace Mmorpg.Client.Items
             }
         }
 
-        private static bool Predicts(IInventoryView view, InventoryPredictedOperation operation, out string reason)
+        private static bool Predicts(IInventoryView view, InventoryPredictedOperation operation, out ClientText reason)
         {
             return InventoryOperationPredictor.TryApply(view, operation, out _, out reason);
         }
@@ -712,6 +713,13 @@ namespace Mmorpg.Client.Items
         private static bool IsSpecialized(InventorySlot slot)
         {
             return !string.Equals(slot.SlotKind, BagSlotKindIds.General, StringComparison.Ordinal);
+        }
+
+        // A slot that only refuses the item's kind by its accepted tags.
+        private static bool IsSlotKindRefusal(ClientText reason)
+        {
+            return reason.Key == "ui/items/slot-tags-mismatch"
+                || reason.Key == "ui/items/opposite-slot-tags-mismatch";
         }
     }
 }

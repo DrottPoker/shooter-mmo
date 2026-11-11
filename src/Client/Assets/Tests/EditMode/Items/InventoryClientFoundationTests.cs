@@ -5,6 +5,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items.Presentation;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine;
@@ -387,7 +388,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     bagPotionSlot,
                     out var potionReason),
                 Is.True,
-                potionReason);
+                potionReason.ToString());
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     state,
@@ -415,7 +416,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     state.FullSnapshot.PermanentInventory.Slots[0],
                     out var bagReason),
                 Is.False);
-            Assert.That(bagReason, Does.Contain("non-empty Bag"));
+            Assert.That(bagReason.Key, Is.EqualTo("ui/items/bag-not-empty-move"));
 
             var hardCapState = CreateAdvisorState(350, 250);
             var ammunition = CreateItem("fixture.arrow", 1);
@@ -428,7 +429,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     hardCapState.FullSnapshot.PermanentInventory.Slots[0],
                     out var hardCapReason),
                 Is.False);
-            Assert.That(hardCapReason, Does.Contain("140 percent"));
+            Assert.That(hardCapReason.Key, Is.EqualTo("ui/items/move-over-carry-cap"));
 
             var carriedAmmunition = CreateItem("fixture.arrow", 1);
             Assert.That(
@@ -446,7 +447,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         Guid.Empty),
                     out var mergeCapReason),
                 Is.False);
-            Assert.That(mergeCapReason, Does.Contain("140 percent"));
+            Assert.That(mergeCapReason.Key, Is.EqualTo("ui/items/merge-over-carry-cap"));
 
             var recoveryDelivery = new RecoveryDelivery(
                 Guid.NewGuid(),
@@ -467,7 +468,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     hardCapState.FullSnapshot.PermanentInventory,
                     out var recoveryCapReason),
                 Is.False);
-            Assert.That(recoveryCapReason, Does.Contain("140 percent"));
+            Assert.That(recoveryCapReason.Key, Is.EqualTo("ui/items/claim-over-carry-cap"));
             Assert.That(
                 InventoryTargetAdvisor.CanClaimRecovery(
                     hardCapState,
@@ -516,7 +517,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     bagEquipmentSlot,
                     out var equipBagReason),
                 Is.True,
-                equipBagReason);
+                equipBagReason.ToString());
 
             var emptyBagState = CreateAdvisorState(275, 250, false);
             Assert.That(
@@ -527,7 +528,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     emptyBagState.Bank.Slots[0],
                     out var bankUnequipReason),
                 Is.True,
-                bankUnequipReason);
+                bankUnequipReason.ToString());
             Assert.That(
                 InventoryTargetAdvisor.CanUnequip(
                     emptyBagState,
@@ -547,7 +548,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     overloadedUnequipState.Bank.Slots[0],
                     out var externalUnequipReason),
                 Is.True,
-                externalUnequipReason);
+                externalUnequipReason.ToString());
             Assert.That(
                 InventoryTargetAdvisor.CanUnequip(
                     overloadedUnequipState,
@@ -556,7 +557,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     overloadedUnequipState.FullSnapshot.PermanentInventory.Slots[0],
                     out var carriedUnequipReason),
                 Is.False);
-            Assert.That(carriedUnequipReason, Does.Contain("140 percent"));
+            Assert.That(carriedUnequipReason.Key, Is.EqualTo("ui/items/move-over-carry-cap"));
 
             var bankLocation = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
@@ -581,7 +582,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     permanentLocation,
                     out var reducingSwapReason),
                 Is.True,
-                reducingSwapReason);
+                reducingSwapReason.ToString());
 
             var swapHardCapState = CreateAdvisorState(338, 250);
             Assert.That(
@@ -605,7 +606,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         Guid.Empty),
                     out var swapHardCapReason),
                 Is.False);
-            Assert.That(swapHardCapReason, Does.Contain("140 percent"));
+            Assert.That(swapHardCapReason.Key, Is.EqualTo("ui/items/swap-over-carry-cap"));
 
             var potionSlotLocation = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
@@ -629,7 +630,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     potionSlotLocation,
                     out var specializedSwapReason),
                 Is.False);
-            Assert.That(specializedSwapReason, Does.Contain("accepted tags"));
+            Assert.That(specializedSwapReason.Key, Is.EqualTo("ui/items/opposite-slot-tags-mismatch"));
 
             var corpseContainer = new InventoryContainer(
                 Guid.NewGuid(),
@@ -656,7 +657,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     corpseContainer.Slots[0],
                     out var externalSwapCapReason),
                 Is.False);
-            Assert.That(externalSwapCapReason, Does.Contain("140 percent"));
+            Assert.That(externalSwapCapReason.Key, Is.EqualTo("ui/items/swap-over-carry-cap"));
             Assert.That(
                 InventoryTargetAdvisor.CanSwapWithExternalContainer(
                     hardCapState,
@@ -667,7 +668,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     corpseContainer.Slots[0],
                     out var externalReducingReason),
                 Is.True,
-                externalReducingReason);
+                externalReducingReason.ToString());
         }
 
         private bool TryMap(
@@ -764,7 +765,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     overflowState.FullSnapshot.PermanentInventory.Slots[0],
                     out var addReason),
                 Is.False);
-            Assert.That(addReason, Does.Contain("140 percent"));
+            Assert.That(addReason.Key, Is.EqualTo("ui/items/move-over-carry-cap"));
 
             Assert.That(
                 InventoryTargetAdvisor.CanSwap(
@@ -775,7 +776,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     permanentLocation,
                     out var shrinkReason),
                 Is.True,
-                shrinkReason);
+                shrinkReason.ToString());
         }
 
         private InventoryClientState CreateAdvisorState(
@@ -857,7 +858,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     state.FullSnapshot.Equipment[1],
                     out var blockedReason),
                 Is.False);
-            Assert.That(blockedReason, Does.Contain("Main Hand"));
+            Assert.That(
+                blockedReason,
+                Is.EqualTo(ClientText.Of(
+                    "ui/items/equipment-slot-blocked",
+                    ClientTextArgument.TextKey("slot", TextKeys.EquipmentSlotName("main_hand")))));
             Assert.That(
                 InventoryTargetAdvisor.CanMerge(
                     state,
@@ -867,7 +872,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     ammunitionLocation,
                     out var topUpReason),
                 Is.True,
-                topUpReason);
+                topUpReason.ToString());
             Assert.That(
                 InventoryTargetAdvisor.CanMerge(
                     state,
@@ -877,7 +882,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     ammunitionLocation,
                     out var limitReason),
                 Is.False);
-            Assert.That(limitReason, Does.Contain("equipment slot limit"));
+            Assert.That(limitReason.Key, Is.EqualTo("ui/items/merge-over-slot-limit"));
 
             var emptySlotState = CreateAdvisorStateWithEquipment(
                 100,
@@ -899,7 +904,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     emptySlotState.FullSnapshot.Equipment[0],
                     out var fitReason),
                 Is.True,
-                fitReason);
+                fitReason.ToString());
 
             var loadedState = CreateAdvisorStateWithEquipment(
                 270,
@@ -916,7 +921,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     10,
                     out var splitReason),
                 Is.True,
-                splitReason);
+                splitReason.ToString());
             Assert.That(
                 InventoryTargetAdvisor.CanPlaceInContainer(
                     loadedState,
@@ -927,7 +932,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     11,
                     out var capReason),
                 Is.False);
-            Assert.That(capReason, Does.Contain("140 percent"));
+            Assert.That(capReason.Key, Is.EqualTo("ui/items/move-over-carry-cap"));
         }
 
         [Test]
@@ -949,7 +954,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     mainHand,
                     out var swapReason),
                 Is.True,
-                swapReason);
+                swapReason.ToString());
 
             Assert.That(
                 InventoryTargetAdvisor.CanEquip(
@@ -959,7 +964,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     mainHand,
                     out var selfReason),
                 Is.False);
-            Assert.That(selfReason, Does.Contain("already equipped"));
+            Assert.That(selfReason.Key, Is.EqualTo("ui/items/already-equipped"));
 
             // The swapped-out sword frees the main hand, but the new bow still needs the off hand.
             var shieldState = CreateAdvisorStateWithEquipment(
@@ -975,7 +980,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     shieldState.FullSnapshot.Equipment[0],
                     out var blockedReason),
                 Is.False);
-            Assert.That(blockedReason, Does.Contain("Off Hand"));
+            Assert.That(
+                blockedReason,
+                Is.EqualTo(ClientText.Of(
+                    "ui/items/equipment-slot-blocked",
+                    ClientTextArgument.TextKey("slot", TextKeys.EquipmentSlotName("off_hand")))));
         }
 
         private static InventoryItemLocation ContainerLocation(InventoryContainer container)

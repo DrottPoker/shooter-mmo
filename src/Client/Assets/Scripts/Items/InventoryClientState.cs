@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 
@@ -468,8 +469,10 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (!InventoryOperationPredictor.TryApply(this, operation, IsPredictedContainer, out var predicted, out error))
+            if (!InventoryOperationPredictor.TryApply(this, operation, IsPredictedContainer, out var predicted, out var reason))
             {
+                // The error leaves the rules here as the text the player reads.
+                error = reason.Resolve(Catalog?.Texts);
                 return false;
             }
 
@@ -776,7 +779,8 @@ namespace Mmorpg.Client.Items
                         pendingRollback = new InventoryPredictionRollback(
                             new InventoryClientError(
                                 "item_move_superseded",
-                                "Your item move no longer fits the inventory and was undone: " + reason),
+                                ClientText.Of("ui/items/move-undone", ClientTextArgument.Nested("reason", reason))
+                                    .Resolve(Catalog.Texts)),
                             dropped);
                     }
 

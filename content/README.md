@@ -406,7 +406,8 @@ per text with a key below `ui/`, as `ui/<area>/<name>`: `ui/quests/accept`.
 The code names a text by its key and never holds the sentence. A text may hold
 placeholders like a message, which the code fills by name, with a plain value
 or with another text key, such as `currency/name` for the name of the
-currency.
+currency, or with another client text, such as the reason inside
+`The equipped item cannot move into the corpse slot: {reason}`.
 
 To add a text, add its entry to `text/ui.json`, run
 `dotnet run --project tools/TextTableCompiler`, and name the key in the code.
@@ -417,9 +418,10 @@ The pseudo-locale shows every text of every table with accented vowels, such
 as `Qúést Lóg`, and leaves placeholders and rich text tags alone.
 `MMORPG > Tools > Pseudo Locale` in the Unity Editor switches it on from the
 next start of Play Mode. A text that still reads as plain English on screen
-is a literal in the code. The quest windows, the quest tracker, and the quest
-messages take every text from the table; the other windows still hold
-literals.
+is a literal in the code. The quest windows, the quest tracker, the quest
+messages, and the reasons the item rules give, below `ui/items/`,
+`ui/corpse/`, and `ui/vendor/`, take every text from the table; the other
+windows still hold literals.
 
 ## Compile And Verify
 

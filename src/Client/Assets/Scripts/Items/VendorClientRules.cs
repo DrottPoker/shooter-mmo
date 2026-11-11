@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Items
 {
@@ -104,45 +106,49 @@ namespace Mmorpg.Client.Items
             string definitionId,
             int quantity,
             out long price,
-            out string reason)
+            out ClientText reason)
         {
             price = 0;
-            reason = string.Empty;
+            reason = ClientText.None;
             if (catalog == null || vendor == null || snapshot == null)
             {
-                reason = "The vendor or the inventory is not loaded yet.";
+                reason = ClientText.Of("ui/vendor/not-loaded");
                 return false;
             }
 
             if (!VendorPricing.Offers(vendor, definitionId)
                 || !catalog.TryGetDefinition(definitionId, out var definition))
             {
-                reason = "The vendor does not sell this item.";
+                reason = ClientText.Of("ui/vendor/not-sold");
                 return false;
             }
 
             if (quantity < 1 || quantity > definition.MaximumStackSize)
             {
-                reason = "Choose a quantity from 1 to "
-                    + definition.MaximumStackSize.ToString(CultureInfo.InvariantCulture) + ".";
+                reason = ClientText.Of(
+                    "ui/vendor/quantity-range",
+                    ClientTextArgument.Number("maximum", definition.MaximumStackSize));
                 return false;
             }
 
             if (!VendorPricing.TryGetPurchasePrice(definition, vendor, quantity, out price))
             {
-                reason = "The price is out of range.";
+                reason = ClientText.Of("ui/vendor/price-out-of-range");
                 return false;
             }
 
             if (price > snapshot.Currency)
             {
-                reason = "You need " + FormatAmount(catalog, price) + ".";
+                reason = ClientText.Of(
+                    "ui/vendor/need-amount",
+                    ClientTextArgument.Text("amount", price.ToString("N0", CultureInfo.InvariantCulture)),
+                    CurrencyNameArgument());
                 return false;
             }
 
             if (!FitsHardCap(snapshot, definition, quantity))
             {
-                reason = "That would be too heavy to carry.";
+                reason = ClientText.Of("ui/vendor/too-heavy");
                 return false;
             }
 
@@ -157,19 +163,19 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation location,
             int quantity,
             out long price,
-            out string reason)
+            out ClientText reason)
         {
             price = 0;
-            reason = string.Empty;
+            reason = ClientText.None;
             if (catalog == null || vendor == null || snapshot == null || item == null || location == null)
             {
-                reason = "The vendor or the inventory is not loaded yet.";
+                reason = ClientText.Of("ui/vendor/not-loaded");
                 return false;
             }
 
             if (!IsCarried(snapshot, item, location))
             {
-                reason = "Only unequipped items you carry can be sold.";
+                reason = ClientText.Of("ui/vendor/sell-needs-carried");
                 return false;
             }
 
@@ -177,42 +183,49 @@ namespace Mmorpg.Client.Items
                 || !VendorPricing.AcceptsSale(vendor, definition)
                 || string.Equals(definition.Category, ItemCategoryIds.QuestItem, StringComparison.Ordinal))
             {
-                reason = "The vendor does not buy this item.";
+                reason = ClientText.Of("ui/vendor/not-bought");
                 return false;
             }
 
             if (!ItemPolicyRules.Evaluate(definition, ToPolicyStates(item)).CanSellToVendor)
             {
-                reason = "Protected and insured items cannot be sold.";
+                reason = ClientText.Of("ui/vendor/sell-protected");
                 return false;
             }
 
             if (quantity < 1 || quantity > item.Quantity)
             {
-                reason = "Choose a quantity from 1 to "
-                    + item.Quantity.ToString(CultureInfo.InvariantCulture) + ".";
+                reason = ClientText.Of(
+                    "ui/vendor/quantity-range",
+                    ClientTextArgument.Number("maximum", item.Quantity));
                 return false;
             }
 
             if (!VendorPricing.TryGetSalePrice(definition, vendor, quantity, out price))
             {
-                reason = "The price is out of range.";
+                reason = ClientText.Of("ui/vendor/price-out-of-range");
                 return false;
             }
 
             if (price == 0)
             {
-                reason = "The vendor pays nothing for this quantity. Sell more at once.";
+                reason = ClientText.Of("ui/vendor/sale-worth-nothing");
                 return false;
             }
 
             if (price > VendorPricing.MaximumCurrencyBalance - snapshot.Currency)
             {
-                reason = "Your balance cannot hold more " + CurrencyName(catalog) + ".";
+                reason = ClientText.Of("ui/vendor/balance-full", CurrencyNameArgument());
                 return false;
             }
 
             return true;
+        }
+
+        // The currency name as FormatAmount and CurrencyName name it for a loaded catalog.
+        private static ClientTextArgument CurrencyNameArgument()
+        {
+            return ClientTextArgument.TextKey("currency", TextKeys.CurrencyName());
         }
 
         // Items in the inventory or the equipped Bag. An equipped item, a banked item, and the

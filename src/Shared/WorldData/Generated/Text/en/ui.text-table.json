@@ -2,11 +2,443 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "e65a4a32a980c63678c6be03f15be99f170a9cf3463044c39f768b2b164ae57b",
+  "revision": "a830ca7e896aba5a8c4cc82088a474813bbd511ccfb886f03426d34f3bb61492",
   "entries": [
     {
       "key": "ui/common/item-quantity",
       "text": "{quantity} x {item}"
+    },
+    {
+      "key": "ui/corpse/already-in-slot",
+      "text": "The corpse item is already in that slot."
+    },
+    {
+      "key": "ui/corpse/bag-goes-to-bag-slot",
+      "text": "A corpse Bag with contents goes onto the Bag equipment slot."
+    },
+    {
+      "key": "ui/corpse/bag-needs-empty-bag-slot",
+      "text": "A corpse Bag needs an empty Bag slot."
+    },
+    {
+      "key": "ui/corpse/bag-needs-empty-slot",
+      "text": "Drop a corpse Bag on an empty slot."
+    },
+    {
+      "key": "ui/corpse/bag-not-empty-move",
+      "text": "A non-empty corpse Bag cannot use an ordinary internal slot move."
+    },
+    {
+      "key": "ui/corpse/bag-slot-taken",
+      "text": "Your Bag slot is taken. Drag the corpse Bag onto your Bag to swap them."
+    },
+    {
+      "key": "ui/corpse/bag-swap-bags-gone",
+      "text": "Both Bags must still be in place."
+    },
+    {
+      "key": "ui/corpse/bag-swap-needs-bags",
+      "text": "Atomic corpse Bag swap requires both occupied Bag equipment aggregates."
+    },
+    {
+      "key": "ui/corpse/bag-swaps-with-bag",
+      "text": "A corpse Bag swaps only with the equipped Bag on the Bag slot."
+    },
+    {
+      "key": "ui/corpse/deposit-equipped-item",
+      "text": "Move ordinary equipped items into carried storage before depositing them."
+    },
+    {
+      "key": "ui/corpse/deposit-needs-carried-item",
+      "text": "Only a current carried inventory item can enter corpse custody."
+    },
+    {
+      "key": "ui/corpse/deposit-onto-bag",
+      "text": "An occupied corpse Bag aggregate must use the Bag equipment swap."
+    },
+    {
+      "key": "ui/corpse/deposit-storage-item",
+      "text": "Bank and Recovery Storage items cannot enter a corpse."
+    },
+    {
+      "key": "ui/corpse/deposit-swap-refused",
+      "text": "The corpse item cannot take the slot the deposit left."
+    },
+    {
+      "key": "ui/corpse/equipment-slot-incompatible",
+      "text": "The item is not compatible with corpse equipment slot \u0027{slot}\u0027."
+    },
+    {
+      "key": "ui/corpse/equipment-slot-maximum",
+      "text": "Corpse equipment slot \u0027{slot}\u0027 holds at most {maximum}."
+    },
+    {
+      "key": "ui/corpse/equipped-bag-swaps-with-corpse-bag",
+      "text": "The equipped Bag swaps only with a corpse Bag."
+    },
+    {
+      "key": "ui/corpse/equipped-to-corpse-blocked",
+      "text": "The equipped item cannot move into the corpse slot: {reason}"
+    },
+    {
+      "key": "ui/corpse/item-unavailable",
+      "text": "The corpse item is no longer available."
+    },
+    {
+      "key": "ui/corpse/item-unavailable-for-mutation",
+      "text": "The corpse item is no longer available for mutation."
+    },
+    {
+      "key": "ui/corpse/loot-all-changed",
+      "text": "The corpse or your inventory changed."
+    },
+    {
+      "key": "ui/corpse/loot-all-nothing-fits",
+      "text": "Nothing in the corpse fits in your equipment or inventory."
+    },
+    {
+      "key": "ui/corpse/loot-destination",
+      "text": "Corpse loot can enter only Permanent Inventory or the equipped Bag."
+    },
+    {
+      "key": "ui/corpse/loot-destination-unavailable",
+      "text": "The loot destination is no longer available."
+    },
+    {
+      "key": "ui/corpse/loot-merge-refused",
+      "text": "The loot cannot merge with the stack in that slot."
+    },
+    {
+      "key": "ui/corpse/loot-over-carry-cap",
+      "text": "The loot would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/corpse/mutation-unavailable",
+      "text": "Inventory or corpse mutation is unavailable while state is loading or busy."
+    },
+    {
+      "key": "ui/corpse/partial-deposit-quantity",
+      "text": "Partial deposit quantity must be greater than zero and smaller than the carried stack."
+    },
+    {
+      "key": "ui/corpse/partial-loot-quantity",
+      "text": "Partial loot quantity must be greater than zero and smaller than the corpse stack."
+    },
+    {
+      "key": "ui/corpse/partial-move-quantity",
+      "text": "Partial move quantity must be greater than zero and smaller than the corpse stack."
+    },
+    {
+      "key": "ui/corpse/source-unavailable",
+      "text": "The corpse source item is no longer available."
+    },
+    {
+      "key": "ui/items/already-equipped",
+      "text": "The item is already equipped in this slot."
+    },
+    {
+      "key": "ui/items/already-in-slot",
+      "text": "The item is already in this slot."
+    },
+    {
+      "key": "ui/items/bag-container-refused",
+      "text": "The Bag cannot enter this container."
+    },
+    {
+      "key": "ui/items/bag-contents-over-carry-cap",
+      "text": "The Bag and its contents would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/bag-definition-unavailable",
+      "text": "The Bag definition is unavailable."
+    },
+    {
+      "key": "ui/items/bag-equip-refused",
+      "text": "The Bag cannot take the Bag slot."
+    },
+    {
+      "key": "ui/items/bag-not-empty-move",
+      "text": "A non-empty Bag can move only through an atomic Bag-slot transfer."
+    },
+    {
+      "key": "ui/items/bag-not-empty-to-storage",
+      "text": "A non-empty equipped Bag cannot move to ordinary storage."
+    },
+    {
+      "key": "ui/items/bag-over-carry-cap",
+      "text": "The Bag would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/bag-slot-refused",
+      "text": "The Bag cannot enter this slot."
+    },
+    {
+      "key": "ui/items/bag-weight-invalid",
+      "text": "The Bag weight is invalid."
+    },
+    {
+      "key": "ui/items/bank-full",
+      "text": "The Bank has no room for the item."
+    },
+    {
+      "key": "ui/items/blocker-gone",
+      "text": "The item that blocks the slot is no longer equipped."
+    },
+    {
+      "key": "ui/items/blocker-no-room",
+      "text": "Your inventory has no room for the item that blocks the slot."
+    },
+    {
+      "key": "ui/items/cannot-equip",
+      "text": "The item cannot be equipped."
+    },
+    {
+      "key": "ui/items/claim-destination",
+      "text": "Claim a Recovery delivery into Permanent Inventory or the Bank."
+    },
+    {
+      "key": "ui/items/claim-no-room",
+      "text": "The destination has no free slot for every delivered item."
+    },
+    {
+      "key": "ui/items/claim-over-carry-cap",
+      "text": "Claiming this delivery would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/claim-unavailable",
+      "text": "The Recovery delivery or its destination is no longer available."
+    },
+    {
+      "key": "ui/items/definition-unavailable",
+      "text": "The item definition is unavailable."
+    },
+    {
+      "key": "ui/items/destination-container-full",
+      "text": "The destination container has no free slot for the item."
+    },
+    {
+      "key": "ui/items/destination-container-unavailable",
+      "text": "The destination container is unavailable."
+    },
+    {
+      "key": "ui/items/destination-invalid",
+      "text": "This inventory destination is not valid."
+    },
+    {
+      "key": "ui/items/destination-occupied",
+      "text": "The destination slot is occupied."
+    },
+    {
+      "key": "ui/items/destination-slot-unavailable",
+      "text": "The destination slot is unavailable."
+    },
+    {
+      "key": "ui/items/destroy-not-allowed",
+      "text": "This item cannot be destroyed by the player."
+    },
+    {
+      "key": "ui/items/dragged-item-unavailable",
+      "text": "The dragged item is no longer available."
+    },
+    {
+      "key": "ui/items/drop-equipment-slot-gone",
+      "text": "This equipment slot is no longer available."
+    },
+    {
+      "key": "ui/items/drop-slot-gone",
+      "text": "This slot is no longer available."
+    },
+    {
+      "key": "ui/items/equip-needs-current-item",
+      "text": "Only a current inventory item can be equipped."
+    },
+    {
+      "key": "ui/items/equip-part-needs-container",
+      "text": "Only a stack in a container can equip part of itself."
+    },
+    {
+      "key": "ui/items/equip-part-needs-empty-or-top-up",
+      "text": "Part of a stack equips only into an empty slot or tops up the equipped stack."
+    },
+    {
+      "key": "ui/items/equip-part-needs-empty-slot",
+      "text": "Part of a stack equips only into an empty slot."
+    },
+    {
+      "key": "ui/items/equipment-and-inventory-full",
+      "text": "Your equipment and inventory have no room for the item."
+    },
+    {
+      "key": "ui/items/equipment-slot-blocked",
+      "text": "The item equipped in {slot} blocks this equipment slot."
+    },
+    {
+      "key": "ui/items/equipment-slot-gone",
+      "text": "The equipment slot is no longer available."
+    },
+    {
+      "key": "ui/items/equipment-slot-incompatible",
+      "text": "The item is not compatible with this equipment slot."
+    },
+    {
+      "key": "ui/items/equipment-slot-maximum",
+      "text": "This equipment slot holds at most {maximum}. Split the stack first."
+    },
+    {
+      "key": "ui/items/equipment-slot-unavailable",
+      "text": "The equipment slot is unavailable."
+    },
+    {
+      "key": "ui/items/equipped-move-first",
+      "text": "Move the equipped item to an inventory slot before changing equipment slots."
+    },
+    {
+      "key": "ui/items/inventory-full",
+      "text": "Your inventory has no room for the item."
+    },
+    {
+      "key": "ui/items/inventory-loading",
+      "text": "Inventory mutation is unavailable while state is loading."
+    },
+    {
+      "key": "ui/items/inventory-unavailable",
+      "text": "Inventory state is unavailable."
+    },
+    {
+      "key": "ui/items/item-moved",
+      "text": "The item is no longer where it was."
+    },
+    {
+      "key": "ui/items/item-unavailable",
+      "text": "The item is no longer available."
+    },
+    {
+      "key": "ui/items/merge-incompatible",
+      "text": "The selected stacks are incompatible or would exceed the stack limit."
+    },
+    {
+      "key": "ui/items/merge-not-possible",
+      "text": "The selected stacks cannot be merged."
+    },
+    {
+      "key": "ui/items/merge-over-carry-cap",
+      "text": "Merging this stack would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/merge-over-slot-limit",
+      "text": "The equipped stack would exceed its equipment slot limit."
+    },
+    {
+      "key": "ui/items/move-over-carry-cap",
+      "text": "The move would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/move-undone",
+      "text": "Your item move no longer fits the inventory and was undone: {reason}"
+    },
+    {
+      "key": "ui/items/not-carried",
+      "text": "The item is no longer in carried storage."
+    },
+    {
+      "key": "ui/items/operation-not-predicted",
+      "text": "This operation cannot be shown before the server answers."
+    },
+    {
+      "key": "ui/items/opposite-slot-tags-mismatch",
+      "text": "An item does not match the opposite slot\u0027s accepted tags."
+    },
+    {
+      "key": "ui/items/partial-stack-target",
+      "text": "A partial stack can only enter an empty slot or merge with a compatible stack."
+    },
+    {
+      "key": "ui/items/recovery-definition-unavailable",
+      "text": "A Recovery item definition is unavailable."
+    },
+    {
+      "key": "ui/items/recovery-delivery-unavailable",
+      "text": "The Recovery delivery is no longer available."
+    },
+    {
+      "key": "ui/items/recovery-storage-drop",
+      "text": "Recovery Storage accepts system deliveries only. Drag a Recovery delivery to your inventory or the Bank to claim it."
+    },
+    {
+      "key": "ui/items/recovery-unavailable",
+      "text": "Recovery state is unavailable."
+    },
+    {
+      "key": "ui/items/recovery-weight-invalid",
+      "text": "The Recovery delivery weight is invalid."
+    },
+    {
+      "key": "ui/items/right-click-equips",
+      "text": "Right-click equips equipment; drag this item to move it."
+    },
+    {
+      "key": "ui/items/single-item-split",
+      "text": "A single item cannot be split."
+    },
+    {
+      "key": "ui/items/slot-tags-mismatch",
+      "text": "The item does not match this slot\u0027s accepted tags."
+    },
+    {
+      "key": "ui/items/split-quantity-invalid",
+      "text": "The split quantity must leave a positive source stack."
+    },
+    {
+      "key": "ui/items/stack-too-small",
+      "text": "The stack no longer holds that many items."
+    },
+    {
+      "key": "ui/items/swap-bag-not-empty",
+      "text": "Empty the equipped Bag before you swap it."
+    },
+    {
+      "key": "ui/items/swap-equipped-blocked",
+      "text": "The equipped item cannot move into the slot the new item comes from: {reason}"
+    },
+    {
+      "key": "ui/items/swap-equipped-needs-container",
+      "text": "Only an item in a container can swap with an equipped item."
+    },
+    {
+      "key": "ui/items/swap-needs-external-item",
+      "text": "A current carried item and external container item are required for a swap."
+    },
+    {
+      "key": "ui/items/swap-needs-two-items",
+      "text": "Two current container items are required for a slot swap."
+    },
+    {
+      "key": "ui/items/swap-over-carry-cap",
+      "text": "The swap would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/swap-weight-invalid",
+      "text": "The swap weight is invalid."
+    },
+    {
+      "key": "ui/items/unequip-over-carry-cap",
+      "text": "Unequipping this item would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/items/wait-for-bag",
+      "text": "Wait a moment until your equipped Bag is confirmed."
+    },
+    {
+      "key": "ui/items/wait-for-item",
+      "text": "Wait a moment until the item is confirmed."
+    },
+    {
+      "key": "ui/items/wait-for-stack",
+      "text": "Wait a moment until the stack is confirmed."
+    },
+    {
+      "key": "ui/items/weight-invalid",
+      "text": "The item weight is invalid."
     },
     {
       "key": "ui/quests/abandon",
@@ -191,6 +623,70 @@
     {
       "key": "ui/quests/tracker-ready",
       "text": "Ready to turn in"
+    },
+    {
+      "key": "ui/vendor/balance-full",
+      "text": "Your balance cannot hold more {currency}."
+    },
+    {
+      "key": "ui/vendor/cannot-afford",
+      "text": "You cannot afford this purchase."
+    },
+    {
+      "key": "ui/vendor/need-amount",
+      "text": "You need {amount} {currency}."
+    },
+    {
+      "key": "ui/vendor/not-bought",
+      "text": "The vendor does not buy this item."
+    },
+    {
+      "key": "ui/vendor/not-loaded",
+      "text": "The vendor or the inventory is not loaded yet."
+    },
+    {
+      "key": "ui/vendor/not-sold",
+      "text": "The vendor does not sell this item."
+    },
+    {
+      "key": "ui/vendor/offer-unavailable",
+      "text": "The offer is no longer available."
+    },
+    {
+      "key": "ui/vendor/price-out-of-range",
+      "text": "The price is out of range."
+    },
+    {
+      "key": "ui/vendor/purchase-no-room",
+      "text": "Your inventory has no free slot for this purchase."
+    },
+    {
+      "key": "ui/vendor/purchase-over-carry-cap",
+      "text": "The purchase would exceed the 140 percent carry cap."
+    },
+    {
+      "key": "ui/vendor/quantity-range",
+      "text": "Choose a quantity from 1 to {maximum}."
+    },
+    {
+      "key": "ui/vendor/sale-worth-nothing",
+      "text": "The vendor pays nothing for this quantity. Sell more at once."
+    },
+    {
+      "key": "ui/vendor/sell-needs-carried",
+      "text": "Only unequipped items you carry can be sold."
+    },
+    {
+      "key": "ui/vendor/sell-needs-carried-item",
+      "text": "Only a carried item can be sold."
+    },
+    {
+      "key": "ui/vendor/sell-protected",
+      "text": "Protected and insured items cannot be sold."
+    },
+    {
+      "key": "ui/vendor/too-heavy",
+      "text": "That would be too heavy to carry."
     }
   ]
 }

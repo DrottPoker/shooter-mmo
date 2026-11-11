@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 
 namespace Mmorpg.Client.Ui
@@ -27,7 +28,7 @@ namespace Mmorpg.Client.Ui
     {
         private InventoryDropPlan(
             InventoryDropPlanKind kind,
-            string reason,
+            ClientText reason,
             InventoryItem item = null,
             InventoryItem target = null,
             InventoryContainer container = null,
@@ -41,7 +42,7 @@ namespace Mmorpg.Client.Ui
             int quantity = 0)
         {
             Kind = kind;
-            Reason = reason ?? string.Empty;
+            Reason = reason;
             Item = item;
             Target = target;
             Container = container;
@@ -63,7 +64,7 @@ namespace Mmorpg.Client.Ui
         }
 
         // Why nothing is sent; empty for a valid plan.
-        public string Reason { get; }
+        public ClientText Reason { get; }
 
         public InventoryItem Item { get; }
 
@@ -96,37 +97,37 @@ namespace Mmorpg.Client.Ui
             get { return Kind >= InventoryDropPlanKind.CorpseLoot; }
         }
 
-        public static InventoryDropPlan Rejected(string reason)
+        public static InventoryDropPlan Rejected(ClientText reason)
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.None,
-                string.IsNullOrWhiteSpace(reason) ? "This inventory destination is not valid." : reason);
+                reason.IsEmpty ? ClientText.Of("ui/items/destination-invalid") : reason);
         }
 
         internal static InventoryDropPlan Relocate(InventoryItem item, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Relocate, string.Empty, item, container: container, slot: slot);
+            return new InventoryDropPlan(InventoryDropPlanKind.Relocate, ClientText.None, item, container: container, slot: slot);
         }
 
         internal static InventoryDropPlan Split(InventoryItem item, int quantity, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Split, string.Empty, item, container: container, slot: slot, quantity: quantity);
+            return new InventoryDropPlan(InventoryDropPlanKind.Split, ClientText.None, item, container: container, slot: slot, quantity: quantity);
         }
 
         internal static InventoryDropPlan Unequip(InventoryItem item, InventoryContainer container, InventorySlot slot)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Unequip, string.Empty, item, container: container, slot: slot);
+            return new InventoryDropPlan(InventoryDropPlanKind.Unequip, ClientText.None, item, container: container, slot: slot);
         }
 
         // A quantity tops up the target with that part of the stack; 0 merges it whole.
         internal static InventoryDropPlan Merge(InventoryItem item, InventoryItem target, int quantity = 0)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Merge, string.Empty, item, target, quantity: quantity);
+            return new InventoryDropPlan(InventoryDropPlanKind.Merge, ClientText.None, item, target, quantity: quantity);
         }
 
         internal static InventoryDropPlan Swap(InventoryItem item, InventoryItem target)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.Swap, string.Empty, item, target);
+            return new InventoryDropPlan(InventoryDropPlanKind.Swap, ClientText.None, item, target);
         }
 
         // A quantity equips that part of the stack into the empty slot; 0 equips it whole.
@@ -134,7 +135,7 @@ namespace Mmorpg.Client.Ui
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.Equip,
-                string.Empty,
+                ClientText.None,
                 item,
                 equipmentSlot.Item,
                 equipmentSlotId: equipmentSlot.SlotId,
@@ -144,7 +145,7 @@ namespace Mmorpg.Client.Ui
 
         internal static InventoryDropPlan ClaimRecovery(RecoveryDelivery delivery, InventoryContainer container)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.ClaimRecovery, string.Empty, container: container, delivery: delivery);
+            return new InventoryDropPlan(InventoryDropPlanKind.ClaimRecovery, ClientText.None, container: container, delivery: delivery);
         }
 
         internal static InventoryDropPlan CorpseLoot(
@@ -155,7 +156,7 @@ namespace Mmorpg.Client.Ui
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.CorpseLoot,
-                string.Empty,
+                ClientText.None,
                 container: container,
                 slot: slot,
                 corpseItem: corpseItem,
@@ -170,7 +171,7 @@ namespace Mmorpg.Client.Ui
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.CorpseLootToEquipment,
-                string.Empty,
+                ClientText.None,
                 equipmentSlotId: equipmentSlot.SlotId,
                 equipmentSlot: equipmentSlot,
                 corpseItem: corpseItem,
@@ -179,7 +180,7 @@ namespace Mmorpg.Client.Ui
 
         internal static InventoryDropPlan CorpseBagSwap(CorpseLootItem corpseBag)
         {
-            return new InventoryDropPlan(InventoryDropPlanKind.CorpseBagSwap, string.Empty, corpseItem: corpseBag);
+            return new InventoryDropPlan(InventoryDropPlanKind.CorpseBagSwap, ClientText.None, corpseItem: corpseBag);
         }
 
         internal static InventoryDropPlan CorpseMove(
@@ -190,7 +191,7 @@ namespace Mmorpg.Client.Ui
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.CorpseMove,
-                string.Empty,
+                ClientText.None,
                 corpseItem: corpseItem,
                 corpseSection: section,
                 corpseSlot: slot,
@@ -205,7 +206,7 @@ namespace Mmorpg.Client.Ui
         {
             return new InventoryDropPlan(
                 InventoryDropPlanKind.CorpseDeposit,
-                string.Empty,
+                ClientText.None,
                 item,
                 corpseSection: section,
                 corpseSlot: slot,
@@ -241,22 +242,22 @@ namespace Mmorpg.Client.Ui
         {
             if (!TryResolveCurrentSlot(state, drawnContainer, drawnSlot, out var container, out var slot))
             {
-                return InventoryDropPlan.Rejected("This slot is no longer available.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/drop-slot-gone"));
             }
 
             // Item moves show at once and may follow pending ones; corpse loot and Recovery
             // claims wait for a confirmed state.
             if (!CanMoveItem(state, null))
             {
-                return InventoryDropPlan.Rejected("Inventory mutation is unavailable while state is loading.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/inventory-loading"));
             }
 
-            string reason;
+            ClientText reason;
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
                 if (!TryFindCorpseItem(corpseView, canOperateOnCorpse, payload, out var corpseItem, out var sourceSection, out var sourceSlot))
                 {
-                    return InventoryDropPlan.Rejected("The corpse item is no longer available for mutation.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/corpse/item-unavailable-for-mutation"));
                 }
 
                 return CorpseTargetAdvisor.CanLoot(
@@ -279,7 +280,7 @@ namespace Mmorpg.Client.Ui
                     candidate.DeliveryId == payload.RecoveryDeliveryId);
                 if (delivery == null)
                 {
-                    return InventoryDropPlan.Rejected("The Recovery delivery is no longer available.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/items/recovery-delivery-unavailable"));
                 }
 
                 return InventoryTargetAdvisor.CanClaimRecovery(state, delivery, container, out reason)
@@ -290,14 +291,14 @@ namespace Mmorpg.Client.Ui
             if (payload.Kind != InventoryDragPayloadKind.Item
                 || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
             {
-                return InventoryDropPlan.Rejected("The dragged item is no longer available.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/dragged-item-unavailable"));
             }
 
             if (slot.Item != null)
             {
                 if (slot.Item.ItemInstanceId == item.ItemInstanceId)
                 {
-                    return InventoryDropPlan.Rejected("The item is already in this slot.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/items/already-in-slot"));
                 }
 
                 var targetLocation = new InventoryItemLocation(
@@ -370,20 +371,20 @@ namespace Mmorpg.Client.Ui
                 string.Equals(candidate.SlotId, drawnSlot.SlotId, StringComparison.Ordinal));
             if (equipmentSlot == null)
             {
-                return InventoryDropPlan.Rejected("This equipment slot is no longer available.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/drop-equipment-slot-gone"));
             }
 
             if (!CanMoveItem(state, null))
             {
-                return InventoryDropPlan.Rejected("Inventory mutation is unavailable while state is loading.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/inventory-loading"));
             }
 
-            string reason;
+            ClientText reason;
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
                 if (!TryFindCorpseItem(corpseView, canOperateOnCorpse, payload, out var corpseItem, out var sourceSection, out var sourceSlot))
                 {
-                    return InventoryDropPlan.Rejected("The corpse item is no longer available.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/corpse/item-unavailable"));
                 }
 
                 // A corpse Bag swaps with the equipped Bag, or takes an empty Bag slot with its
@@ -406,14 +407,14 @@ namespace Mmorpg.Client.Ui
                 {
                     if (quantity.Value < 1 || quantity.Value >= corpseItem.Quantity)
                     {
-                        return InventoryDropPlan.Rejected("The split quantity must leave a positive source stack.");
+                        return InventoryDropPlan.Rejected(ClientText.Of("ui/items/split-quantity-invalid"));
                     }
 
                     var part = corpseItem.WithQuantity(quantity.Value);
                     if (equipmentSlot.Item != null
                         && !InventoryTargetAdvisor.IsEquippedStackTopUp(state.Catalog, part.ToInventoryItem(), equipmentSlot.Item))
                     {
-                        return InventoryDropPlan.Rejected("Part of a stack equips only into an empty slot or tops up the equipped stack.");
+                        return InventoryDropPlan.Rejected(ClientText.Of("ui/items/equip-part-needs-empty-or-top-up"));
                     }
 
                     return CorpseTargetAdvisor.CanLootIntoEquipment(
@@ -443,7 +444,7 @@ namespace Mmorpg.Client.Ui
             if (payload.Kind != InventoryDragPayloadKind.Item
                 || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
             {
-                return InventoryDropPlan.Rejected("Only a current inventory item can be equipped.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/items/equip-needs-current-item"));
             }
 
             if (quantity != null && !InventoryTargetAdvisor.CanSplit(state.Catalog, item, quantity.Value, out reason))
@@ -472,12 +473,12 @@ namespace Mmorpg.Client.Ui
             {
                 if (source.Kind != InventoryItemLocationKind.Container)
                 {
-                    return InventoryDropPlan.Rejected("Move the equipped item to an inventory slot before changing equipment slots.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/items/equipped-move-first"));
                 }
 
                 if (equipmentSlot.Item != null)
                 {
-                    return InventoryDropPlan.Rejected("Part of a stack equips only into an empty slot.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/items/equip-part-needs-empty-slot"));
                 }
 
                 return InventoryTargetAdvisor.CanEquip(state, moving, source, equipmentSlot, out reason)
@@ -489,8 +490,8 @@ namespace Mmorpg.Client.Ui
             {
                 return InventoryDropPlan.Rejected(
                     equipmentSlot.Item != null && equipmentSlot.Item.ItemInstanceId == item.ItemInstanceId
-                        ? "The item is already equipped in this slot."
-                        : "Move the equipped item to an inventory slot before changing equipment slots.");
+                        ? ClientText.Of("ui/items/already-equipped")
+                        : ClientText.Of("ui/items/equipped-move-first"));
             }
 
             // An occupied slot swaps: the equipped item moves into the slot the new item came from.
@@ -517,10 +518,10 @@ namespace Mmorpg.Client.Ui
                 || !section.TryGetSlot(drawnSlot.SlotIndex, out var slot))
             {
                 return InventoryDropPlan.Rejected(
-                    "Inventory or corpse mutation is unavailable while state is loading or busy.");
+                    ClientText.Of("ui/corpse/mutation-unavailable"));
             }
 
-            string reason;
+            ClientText reason;
             if (payload.Kind == InventoryDragPayloadKind.CorpseItem)
             {
                 if (payload.CorpseId != corpseView.CorpseId
@@ -530,7 +531,7 @@ namespace Mmorpg.Client.Ui
                         out var sourceSection,
                         out var sourceSlot))
                 {
-                    return InventoryDropPlan.Rejected("The corpse source item is no longer available.");
+                    return InventoryDropPlan.Rejected(ClientText.Of("ui/corpse/source-unavailable"));
                 }
 
                 return CorpseTargetAdvisor.CanMoveWithinCorpse(
@@ -550,7 +551,7 @@ namespace Mmorpg.Client.Ui
             if (payload.Kind != InventoryDragPayloadKind.Item
                 || !state.TryFindItem(payload.ItemInstanceId, out var item, out var source))
             {
-                return InventoryDropPlan.Rejected("Only a current carried inventory item can enter corpse custody.");
+                return InventoryDropPlan.Rejected(ClientText.Of("ui/corpse/deposit-needs-carried-item"));
             }
 
             if (!CorpseTargetAdvisor.CanDeposit(state, item, source, section, slot, quantity, out reason))
