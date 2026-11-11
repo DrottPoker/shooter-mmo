@@ -25,7 +25,7 @@ namespace Mmorpg.Client.Tests.EditMode
             theme = ScriptableObject.CreateInstance<UiTheme>();
             theme.TitleFont = TMP_Settings.defaultFontAsset;
             theme.BodyFont = TMP_Settings.defaultFontAsset;
-            dialog = UiDialog.Create(theme, canvasObject.GetComponent<RectTransform>());
+            dialog = UiDialog.Create(theme, canvasObject.GetComponent<RectTransform>(), FixtureTexts.Ui());
         }
 
         [TearDown]

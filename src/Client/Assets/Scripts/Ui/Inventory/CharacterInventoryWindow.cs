@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -44,7 +45,7 @@ namespace Mmorpg.Client.Ui
                 parent,
                 InventoryWindows.InventoryWindowName,
                 theme.InventoryIcon,
-                "Inventory",
+                owner.Text("ui/inventory/inventory-title"),
                 gridWidth + 2f * theme.WindowPadding);
             var body = Window.Body;
 
@@ -53,7 +54,7 @@ namespace Mmorpg.Client.Ui
                 body,
                 "Search",
                 string.Empty,
-                "Search items",
+                owner.Text("ui/inventory/search-placeholder"),
                 theme.SearchIcon,
                 TMP_InputField.ContentType.Standard);
             search.onValueChanged.AddListener(owner.SetSearch);
@@ -87,7 +88,7 @@ namespace Mmorpg.Client.Ui
             permanentGrid = new ItemSlotGrid(theme, permanentSection, Columns, owner.DragCoordinator, owner.Tooltip, "PermanentGrid");
 
             bagSection = UiFactory.Column(body, "Bag", 8f).GetComponent<RectTransform>();
-            bagTitle = UiFactory.SectionHeading(theme, bagSection, "Bag", theme.BagIcon, out bagDetail);
+            bagTitle = UiFactory.SectionHeading(theme, bagSection, owner.Text("ui/inventory/bag"), theme.BagIcon, out bagDetail);
             bagGrid = new ItemSlotGrid(theme, bagSection, Columns, owner.DragCoordinator, owner.Tooltip, "BagGrid");
             noBag = UiFactory.BodyText(
                 theme,
@@ -96,7 +97,7 @@ namespace Mmorpg.Client.Ui
                 theme.LabelSize,
                 theme.MutedTextColor,
                 TextAlignmentOptions.MidlineLeft,
-                "Equip a Bag in the Bag slot for more slots and carry capacity.");
+                owner.Text("ui/inventory/no-bag"));
             noBag.textWrappingMode = TextWrappingModes.Normal;
 
             UiFactory.Spacer(Window.Footer);
@@ -133,16 +134,16 @@ namespace Mmorpg.Client.Ui
             get { return search != null && search.isFocused; }
         }
 
-        public static string StatusText(InventoryClientState state)
+        public static string StatusText(TextCatalog texts, InventoryClientState state)
         {
             return state?.Status switch
             {
-                InventoryClientStatus.Loading => "Loading your inventory...",
-                InventoryClientStatus.Busy => "Waiting for the committed operation...",
-                InventoryClientStatus.UpdateRequired => "Client update required.",
-                InventoryClientStatus.Error => "Inventory refresh failed.",
-                InventoryClientStatus.Ready => "Inventory ready.",
-                _ => "Inventory has not loaded."
+                InventoryClientStatus.Loading => texts.Get("ui/inventory/status-loading"),
+                InventoryClientStatus.Busy => texts.Get("ui/inventory/status-busy"),
+                InventoryClientStatus.UpdateRequired => texts.Get("ui/inventory/status-update-required"),
+                InventoryClientStatus.Error => texts.Get("ui/inventory/status-error"),
+                InventoryClientStatus.Ready => texts.Get("ui/inventory/status-ready"),
+                _ => texts.Get("ui/inventory/status-not-loaded")
             };
         }
 
@@ -152,7 +153,9 @@ namespace Mmorpg.Client.Ui
             if (state?.Catalog == null || state.FullSnapshot == null)
             {
                 ShowMessageOnly(state?.Error?.ToDisplayMessage()
-                    ?? (state?.Catalog == null ? "Inventory catalog is unavailable." : StatusText(state)));
+                    ?? (state?.Catalog == null
+                        ? owner.Text("ui/inventory/catalog-unavailable")
+                        : StatusText(owner.Texts, state)));
                 return;
             }
 
@@ -162,7 +165,7 @@ namespace Mmorpg.Client.Ui
             carry.gameObject.SetActive(true);
             permanentSection.gameObject.SetActive(true);
             bagSection.gameObject.SetActive(true);
-            balance.text = VendorClientRules.FormatAmount(state.Catalog, snapshot.Currency);
+            balance.text = owner.Text(VendorClientRules.FormatAmount(snapshot.Currency));
             RefreshCarryMeter(CarryLoadPresentation.From(snapshot));
 
             var permanent = snapshot.PermanentInventory;
@@ -175,7 +178,7 @@ namespace Mmorpg.Client.Ui
             bagGrid.SetActive(bag != null);
             if (bag == null)
             {
-                UiFactory.SetHeading(bagTitle, "Bag");
+                UiFactory.SetHeading(bagTitle, owner.Text("ui/inventory/bag"));
                 bagDetail.text = string.Empty;
                 bagGrid.Bind(System.Array.Empty<ItemSlotSpec>());
             }
@@ -209,8 +212,11 @@ namespace Mmorpg.Client.Ui
                 _ => theme.MeterNormalColor
             };
             weightText.text = load.WeightText;
-            loadText.text = "Load <color=" + UiFactory.ColorTag(color) + ">" + load.LoadPercentText + "</color>"
-                + "  |  Move speed <color=" + UiFactory.ColorTag(color) + ">" + load.SpeedPercentText + "</color>";
+            var colorTag = "<color=" + UiFactory.ColorTag(color) + ">";
+            loadText.text = owner.Text(
+                "ui/inventory/carry-load",
+                MessageArgument.Text("load", colorTag + load.LoadPercentText + "</color>"),
+                MessageArgument.Text("speed", colorTag + load.SpeedPercentText + "</color>"));
             meterFill.color = color;
             UiFactory.Stretch(meterFill.rectTransform, Vector2.zero, new Vector2(load.FillFraction, 1f), new Vector2(1f, 1f), new Vector2(-1f, -1f));
             meterFill.enabled = load.FillFraction > 0f;

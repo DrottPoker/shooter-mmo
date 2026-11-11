@@ -36,7 +36,7 @@ public sealed partial class UiTextTests
                 TextTableIds.Ui,
                 TextTableFormat.SourceLocale,
                 [
-                    new TextTableEntry { Key = "ui/quests/reward-gold", Text = "{amount} {currency}" },
+                    new TextTableEntry { Key = "ui/common/currency-amount", Text = "{amount} {currency}" },
                     new TextTableEntry { Key = "ui/quests/back", Text = "Back" }
                 ]),
             TextTable.Create(
@@ -49,7 +49,7 @@ public sealed partial class UiTextTests
         Assert.Equal(
             "25 Gold",
             texts.Format(
-                "ui/quests/reward-gold",
+                "ui/common/currency-amount",
                 MessageArgument.Text("amount", "25"),
                 MessageArgument.TextKey("currency", TextKeys.CurrencyName())));
         Assert.Equal("[ui/quests/missing]", texts.Format("ui/quests/missing"));

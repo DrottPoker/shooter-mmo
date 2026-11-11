@@ -37,19 +37,17 @@ namespace Mmorpg.Client.Items
     // and rejects a difference with vendor_price_changed.
     public static class VendorClientRules
     {
-        public const string DefaultCurrencyName = "Gold";
-
         public static bool TryResolve(
             ClientItemCatalog catalog,
             string vendorProfileId,
             out VendorProfileDefinition vendor,
-            out string error)
+            out ClientText error)
         {
             vendor = null;
-            error = string.Empty;
+            error = ClientText.None;
             if (catalog == null)
             {
-                error = "The item catalog is unavailable.";
+                error = ClientText.Of("ui/vendor/catalog-unavailable");
                 return false;
             }
 
@@ -59,7 +57,7 @@ namespace Mmorpg.Client.Items
                     && string.Equals(candidate.Id, vendorProfileId, StringComparison.Ordinal));
             if (vendor == null)
             {
-                error = "This vendor is not in the bundled item catalog. Update the client.";
+                error = ClientText.Of("ui/vendor/unknown-vendor");
                 return false;
             }
 
@@ -89,14 +87,13 @@ namespace Mmorpg.Client.Items
             return offers;
         }
 
-        public static string CurrencyName(ClientItemCatalog catalog)
+        // An amount of the currency, such as "1,250 Gold".
+        public static ClientText FormatAmount(long amount)
         {
-            return catalog != null ? catalog.CurrencyName : DefaultCurrencyName;
-        }
-
-        public static string FormatAmount(ClientItemCatalog catalog, long amount)
-        {
-            return amount.ToString("N0", CultureInfo.InvariantCulture) + " " + CurrencyName(catalog);
+            return ClientText.Of(
+                "ui/common/currency-amount",
+                ClientTextArgument.Text("amount", amount.ToString("N0", CultureInfo.InvariantCulture)),
+                CurrencyNameArgument());
         }
 
         public static bool CanBuy(
@@ -222,7 +219,7 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
-        // The currency name as FormatAmount and CurrencyName name it for a loaded catalog.
+        // The currency name, as the catalog's texts name it.
         private static ClientTextArgument CurrencyNameArgument()
         {
             return ClientTextArgument.TextKey("currency", TextKeys.CurrencyName());

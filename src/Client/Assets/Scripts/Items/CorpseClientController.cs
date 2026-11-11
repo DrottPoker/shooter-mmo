@@ -74,7 +74,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "A valid nearby corpse is required.";
+                    error = Text("ui/corpse/nearby-corpse-required");
                 }
 
                 return false;
@@ -82,14 +82,14 @@ namespace Mmorpg.Client.Items
 
             if (State.ActiveView != null && State.ActiveView.CorpseId != corpseId)
             {
-                error = "Close the active corpse before opening another corpse.";
+                error = Text("ui/corpse/close-active-first");
                 return false;
             }
 
             var operationId = Guid.NewGuid();
             return Send(
                 RealtimeCorpseInteractionIntent.CreateOpen(operationId, corpseId),
-                errorMessage: "The corpse-open request could not be sent.",
+                errorMessage: Text("ui/corpse/open-unsent"),
                 out error);
         }
 
@@ -100,7 +100,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "No corpse view is open.";
+                    error = Text("ui/corpse/no-view-open");
                 }
 
                 return false;
@@ -112,7 +112,7 @@ namespace Mmorpg.Client.Items
                     operationId,
                     State.ActiveView.CorpseId,
                     State.ActiveView.Revision),
-                "The corpse-close request could not be sent.",
+                Text("ui/corpse/close-unsent"),
                 out error);
         }
 
@@ -125,7 +125,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "No corpse view is open.";
+                    error = Text("ui/corpse/no-view-open");
                 }
 
                 return false;
@@ -137,7 +137,7 @@ namespace Mmorpg.Client.Items
                     operationId,
                     State.ActiveView.CorpseId,
                     State.ActiveView.Revision),
-                "The corpse-refresh request could not be sent.",
+                Text("ui/corpse/refresh-unsent"),
                 out error);
         }
 
@@ -154,26 +154,26 @@ namespace Mmorpg.Client.Items
                 || destination == null
                 || destinationSlot == null)
             {
-                error = Fallback(error, "Current corpse and destination state are required.");
+                error = Fallback(error, Text("ui/corpse/loot-state-required"));
                 return false;
             }
 
             if (!view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot))
             {
-                error = "The corpse item is no longer available.";
+                error = Text("ui/corpse/item-unavailable");
                 return false;
             }
 
             // An empty corpse Bag loots like any item; one with contents takes the Bag slot.
             if (view.BagHasContents(item))
             {
-                error = "A corpse Bag with contents goes into an empty Bag slot or swaps with your Bag.";
+                error = Text("ui/corpse/bag-with-contents-loot");
                 return false;
             }
 
             if (quantity <= 0 || quantity > item.Quantity)
             {
-                error = "Loot quantity must be within the current stack quantity.";
+                error = Text("ui/corpse/loot-quantity-range");
                 return false;
             }
 
@@ -220,7 +220,7 @@ namespace Mmorpg.Client.Items
             var items = view.Sections.SelectMany(section => section.Slots).Where(slot => slot.Item != null).ToArray();
             if (items.Length == 0)
             {
-                error = "The corpse is empty.";
+                error = ClientMessages.Text(messageTexts, "corpse_emptied");
                 return false;
             }
 
@@ -269,20 +269,20 @@ namespace Mmorpg.Client.Items
             var view = State.ShownView;
             if (!CanQueue(out error) || corpseItem == null || equipmentSlot == null)
             {
-                error = Fallback(error, "Current corpse and equipment state are required.");
+                error = Fallback(error, Text("ui/corpse/equip-state-required"));
                 return false;
             }
 
             if (!view.TryFindItem(corpseItem.ItemInstanceId, out var item, out var section, out var slot))
             {
-                error = "The corpse item is no longer available.";
+                error = Text("ui/corpse/item-unavailable");
                 return false;
             }
 
             var partial = quantity > 0 && quantity < item.Quantity;
             if (quantity > item.Quantity || (partial && item.HasBagContents))
             {
-                error = "Loot quantity must be within the current stack quantity.";
+                error = Text("ui/corpse/loot-quantity-range");
                 return false;
             }
 
@@ -295,7 +295,7 @@ namespace Mmorpg.Client.Items
                 if (!inventoryController.State.Catalog.TryGetDefinition(item.DefinitionId, out var bagDefinition)
                     || bagDefinition.Bag == null)
                 {
-                    error = "The corpse Bag definition is unavailable.";
+                    error = Text("ui/corpse/bag-definition-unavailable");
                     return false;
                 }
 
@@ -347,7 +347,7 @@ namespace Mmorpg.Client.Items
                 || !corpseBag.HasBagContents
                 || playerBag == null)
             {
-                error = Fallback(error, "Both the corpse Bag aggregate and equipped player Bag are required.");
+                error = Fallback(error, Text("ui/corpse/bag-swap-state-required"));
                 return false;
             }
 
@@ -356,13 +356,13 @@ namespace Mmorpg.Client.Items
                 || !view.TryGetSection(CorpseSectionKindIds.Bag, out var bagSection)
                 || bagSection.ContainerId != bag.BagContentsContainerId)
             {
-                error = "The corpse Bag equipment state changed.";
+                error = Text("ui/corpse/bag-state-changed");
                 return false;
             }
 
             if (inventoryController.State.IsPredictedContainer(playerBag.Contents.ContainerId))
             {
-                error = "Wait a moment until your equipped Bag is confirmed.";
+                error = Text("ui/items/wait-for-bag");
                 return false;
             }
 
@@ -407,7 +407,7 @@ namespace Mmorpg.Client.Items
                 || destination == null
                 || destinationSlot == null)
             {
-                error = Fallback(error, "Current inventory, corpse, and destination state are required.");
+                error = Fallback(error, Text("ui/corpse/deposit-state-required"));
                 return false;
             }
 
@@ -415,7 +415,7 @@ namespace Mmorpg.Client.Items
                 || sourceLocation.Kind != InventoryItemLocationKind.Container
                 || !ItemContainerTypeIds.IsCarried(sourceLocation.ContainerType))
             {
-                error = "Only items in carried inventory or Bag slots can enter a corpse.";
+                error = Text("ui/corpse/deposit-needs-carried-slot");
                 return false;
             }
 
@@ -423,19 +423,19 @@ namespace Mmorpg.Client.Items
                 || section.ContainerId != destination.ContainerId
                 || !section.TryGetSlot(destinationSlot.SlotIndex, out var slot))
             {
-                error = "The corpse destination is no longer available.";
+                error = Text("ui/corpse/destination-unavailable");
                 return false;
             }
 
             if (slot.Item != null && slot.Item.HasBagContents)
             {
-                error = "A corpse Bag must be exchanged through the atomic Bag aggregate swap.";
+                error = Text("ui/corpse/bag-needs-swap");
                 return false;
             }
 
             if (quantity <= 0 || quantity > currentItem.Quantity)
             {
-                error = "Deposit quantity must be within the current stack quantity.";
+                error = Text("ui/corpse/deposit-quantity-range");
                 return false;
             }
 
@@ -449,7 +449,7 @@ namespace Mmorpg.Client.Items
                     out _);
             if (target != null && !merges && partial)
             {
-                error = "A partial stack can only merge into a compatible corpse stack.";
+                error = Text("ui/corpse/partial-deposit-target");
                 return false;
             }
 
@@ -491,7 +491,7 @@ namespace Mmorpg.Client.Items
                 || destination == null
                 || destinationSlot == null)
             {
-                error = Fallback(error, "Current corpse source and destination state are required.");
+                error = Fallback(error, Text("ui/corpse/move-state-required"));
                 return false;
             }
 
@@ -500,25 +500,25 @@ namespace Mmorpg.Client.Items
                 || section.ContainerId != destination.ContainerId
                 || !section.TryGetSlot(destinationSlot.SlotIndex, out var slot))
             {
-                error = "The corpse source or destination is no longer available.";
+                error = Text("ui/corpse/move-unavailable");
                 return false;
             }
 
             if (sourceSection.ContainerId == section.ContainerId && sourceSlot.SlotIndex == slot.SlotIndex)
             {
-                error = "The corpse item is already in that slot.";
+                error = Text("ui/corpse/already-in-slot");
                 return false;
             }
 
             if (view.BagHasContents(currentItem) || view.BagHasContents(slot.Item))
             {
-                error = "A non-empty corpse Bag cannot use an ordinary internal slot move.";
+                error = Text("ui/corpse/bag-not-empty-move");
                 return false;
             }
 
             if (quantity <= 0 || quantity > currentItem.Quantity)
             {
-                error = "Move quantity must be within the current corpse stack quantity.";
+                error = Text("ui/corpse/move-quantity-range");
                 return false;
             }
 
@@ -532,7 +532,7 @@ namespace Mmorpg.Client.Items
                     out _);
             if (target != null && !merges && partial)
             {
-                error = "A partial stack can only merge into a compatible stack.";
+                error = Text("ui/corpse/partial-move-target");
                 return false;
             }
 
@@ -591,13 +591,13 @@ namespace Mmorpg.Client.Items
         {
             if (!initialized || simulationClient == null || !simulationClient.IsJoined || inventoryController == null)
             {
-                error = "Corpse interaction requires an active realtime shard session.";
+                error = Text("ui/corpse/session-required");
                 return false;
             }
 
             if (!State.CanShowOperations)
             {
-                error = "No corpse view is open.";
+                error = Text("ui/corpse/no-view-open");
                 return false;
             }
 
@@ -608,6 +608,12 @@ namespace Mmorpg.Client.Items
         private static string Fallback(string error, string fallback)
         {
             return string.IsNullOrWhiteSpace(error) ? fallback : error;
+        }
+
+        // The controller's own error, as the text the player reads.
+        private string Text(string key)
+        {
+            return ClientText.Of(key).Resolve(messageTexts);
         }
 
         private bool Queue(
@@ -635,7 +641,7 @@ namespace Mmorpg.Client.Items
             result = InventoryOperationSendResult.Sent;
             if (State.ActiveView == null || State.ActiveView.CorpseId != corpseId)
             {
-                error = "The corpse is no longer open.";
+                error = Text("ui/corpse/no-longer-open");
                 result = InventoryOperationSendResult.Failed;
                 return false;
             }
@@ -660,7 +666,7 @@ namespace Mmorpg.Client.Items
             operationId = Guid.Empty;
             if (!simulationClient.TrySendCorpseInteraction(intent))
             {
-                error = "The corpse request could not be sent.";
+                error = Text("ui/corpse/request-unsent");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -692,7 +698,7 @@ namespace Mmorpg.Client.Items
                 || !inventory.TryFindConfirmedContainer(destinationContainerId, out var destination)
                 || !destination.TryGetSlot(destinationSlotIndex, out var slot))
             {
-                error = "The corpse item or its destination changed before the loot could be sent.";
+                error = Text("ui/corpse/loot-changed");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -729,7 +735,7 @@ namespace Mmorpg.Client.Items
             var view = State.ActiveView;
             if (!view.TryFindItem(itemInstanceId, out var item, out _, out _))
             {
-                error = "The corpse item changed before the loot could be sent.";
+                error = Text("ui/corpse/equip-loot-changed");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -784,7 +790,7 @@ namespace Mmorpg.Client.Items
             var playerBag = inventory.ConfirmedSnapshot?.EquippedBag;
             if (playerBag == null || !view.TryFindItem(corpseBagId, out var bag, out _, out _))
             {
-                error = "A Bag changed before the swap could be sent.";
+                error = Text("ui/corpse/bag-swap-changed");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -827,7 +833,7 @@ namespace Mmorpg.Client.Items
                 || !view.TryGetSection(sectionKind, out var section)
                 || !section.TryGetSlot(slotIndex, out var slot))
             {
-                error = "The item or the corpse slot changed before the deposit could be sent.";
+                error = Text("ui/corpse/deposit-changed");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -867,7 +873,7 @@ namespace Mmorpg.Client.Items
                 || !view.TryGetSection(sectionKind, out var section)
                 || !section.TryGetSlot(slotIndex, out var slot))
             {
-                error = "The corpse changed before the move could be sent.";
+                error = Text("ui/corpse/move-changed");
                 return InventoryOperationSendResult.Failed;
             }
 
@@ -956,13 +962,13 @@ namespace Mmorpg.Client.Items
         {
             if (!initialized || simulationClient == null || !simulationClient.IsJoined)
             {
-                error = "Corpse interaction requires an active realtime shard session.";
+                error = Text("ui/corpse/session-required");
                 return false;
             }
 
             if (State.PendingOperationId != Guid.Empty)
             {
-                error = "Another item or corpse interaction is awaiting authority.";
+                error = Text("ui/corpse/interaction-pending");
                 return false;
             }
 

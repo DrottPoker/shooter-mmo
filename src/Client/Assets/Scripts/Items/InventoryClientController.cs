@@ -170,7 +170,7 @@ namespace Mmorpg.Client.Items
                 State.SetError(
                     new InventoryClientError(
                         "inventory_character_unavailable",
-                        "Select and join a character before opening inventory."),
+                        Text("ui/inventory/character-required")),
                     true);
                 return;
             }
@@ -307,7 +307,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "The target stack is stale or unavailable.";
+                    error = Text("ui/inventory/merge-target-unavailable");
                 }
 
                 return false;
@@ -338,7 +338,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "The swap target is stale or unavailable.";
+                    error = Text("ui/inventory/swap-target-unavailable");
                 }
 
                 return false;
@@ -365,7 +365,7 @@ namespace Mmorpg.Client.Items
             {
                 if (string.IsNullOrWhiteSpace(error))
                 {
-                    error = "The Recovery delivery is empty or unavailable.";
+                    error = Text("ui/inventory/recovery-delivery-empty");
                 }
 
                 return false;
@@ -393,8 +393,8 @@ namespace Mmorpg.Client.Items
                 if (string.IsNullOrWhiteSpace(error))
                 {
                     error = item != null && State.IsPredictedItem(item.ItemInstanceId)
-                        ? "Wait a moment until the split stack is confirmed."
-                        : "The selected item is stale or unavailable.";
+                        ? Text("ui/inventory/wait-for-split")
+                        : Text("ui/inventory/item-stale");
                 }
 
                 return false;
@@ -410,6 +410,12 @@ namespace Mmorpg.Client.Items
             return allowed;
         }
 
+        // The controller's own error, as the text the player reads.
+        private string Text(string key)
+        {
+            return messageTexts.Get(key);
+        }
+
         private bool CanStartOperation(out string error)
         {
             error = string.Empty;
@@ -420,8 +426,8 @@ namespace Mmorpg.Client.Items
                 || !simulationClient.IsJoined)
             {
                 error = State.PendingOperations.Count >= InventoryClientState.MaximumPendingOperations
-                    ? "Too many item moves are waiting for the server."
-                    : "Inventory must finish loading in an active simulation session.";
+                    ? Text("ui/inventory/too-many-pending")
+                    : Text("ui/inventory/session-required");
                 return false;
             }
 
@@ -495,7 +501,7 @@ namespace Mmorpg.Client.Items
             {
                 State.RollBackPredictions(new InventoryClientError(
                     "item_move_unsent",
-                    "The item operation could not be sent to SimulationWorker."));
+                    Text("ui/inventory/operation-unsent")));
                 return;
             }
 
@@ -512,7 +518,7 @@ namespace Mmorpg.Client.Items
         {
             intent = null;
             rejectionScope = InventoryRefreshScope.Full;
-            error = "The item changed before the operation could be sent.";
+            error = Text("ui/inventory/item-changed");
             var operationId = Guid.NewGuid();
             var revision = State.KnownItemStateRevision;
             if (operation.Kind == RealtimeItemOperationKind.ClaimRecoveryDelivery)
@@ -521,7 +527,7 @@ namespace Mmorpg.Client.Items
                     candidate.DeliveryId == operation.RecoveryDelivery.DeliveryId);
                 if (delivery == null || delivery.Items.Count == 0)
                 {
-                    error = "The Recovery delivery is empty or unavailable.";
+                    error = Text("ui/inventory/recovery-delivery-empty");
                     return false;
                 }
 
@@ -623,7 +629,7 @@ namespace Mmorpg.Client.Items
                     rejectionScope = InventoryRefreshScopes.ForLocations(State, location);
                     return true;
                 default:
-                    error = "The item operation is not supported.";
+                    error = Text("ui/inventory/operation-unsupported");
                     return false;
             }
         }
@@ -710,7 +716,7 @@ namespace Mmorpg.Client.Items
                 State.SetError(
                     new InventoryClientError(
                         "inventory_operation_result_mismatch",
-                        "The item operation result did not match the pending operation."),
+                        Text("ui/inventory/result-mismatch")),
                     true);
                 BeginRefresh(InventoryRefreshScope.Full, true, -1);
                 return;
@@ -939,7 +945,7 @@ namespace Mmorpg.Client.Items
                     State.SetError(
                         new InventoryClientError(
                             "inventory_state_diverged",
-                            "Equal item-state revisions contained different inventory state."),
+                            Text("ui/inventory/state-diverged")),
                         true);
                     break;
                 }
@@ -949,7 +955,7 @@ namespace Mmorpg.Client.Items
                     State.SetError(
                         new InventoryClientError(
                             "inventory_character_changed",
-                            "The inventory response belongs to a different character."),
+                            Text("ui/inventory/character-changed")),
                         true);
                     break;
                 }
@@ -978,7 +984,7 @@ namespace Mmorpg.Client.Items
                 State.SetError(
                     new InventoryClientError(
                         "inventory_refresh_stale",
-                        "Authoritative inventory state did not reach the required revision."),
+                        Text("ui/inventory/refresh-stale")),
                     true);
             }
 
@@ -1008,7 +1014,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = "This client build requires an item catalog update.";
+                error = Text("ui/inventory/catalog-update-required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }
@@ -1025,7 +1031,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = "This client build requires an item catalog update.";
+                error = Text("ui/inventory/catalog-update-required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }
@@ -1042,7 +1048,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = "This client build requires an item catalog update.";
+                error = Text("ui/inventory/catalog-update-required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }

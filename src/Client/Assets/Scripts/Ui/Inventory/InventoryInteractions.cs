@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
@@ -9,8 +8,8 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Ui
 {
-    // Whether an interaction sent an operation, and the message for the player: what was sent,
-    // or why nothing was.
+    // Whether an interaction sent an operation, and why nothing was sent for the player to read.
+    // A sent operation says nothing; its prediction shows at once.
     public readonly struct InventoryInteractionResult
     {
         private InventoryInteractionResult(bool sent, ClientText message)
@@ -23,9 +22,9 @@ namespace Mmorpg.Client.Ui
 
         public ClientText Message { get; }
 
-        public static InventoryInteractionResult Submitted(string message)
+        public static InventoryInteractionResult Submitted()
         {
-            return new InventoryInteractionResult(true, ClientText.Literal(message));
+            return new InventoryInteractionResult(true, ClientText.None);
         }
 
         public static InventoryInteractionResult Rejected(ClientText reason)
@@ -41,9 +40,9 @@ namespace Mmorpg.Client.Ui
             return Rejected(string.IsNullOrWhiteSpace(error) ? ClientText.None : ClientText.Literal(error));
         }
 
-        public static InventoryInteractionResult From(bool sent, string error, string success)
+        public static InventoryInteractionResult From(bool sent, string error)
         {
-            return sent ? Submitted(success) : Rejected(error);
+            return sent ? Submitted() : Rejected(error);
         }
     }
 
@@ -142,68 +141,49 @@ namespace Mmorpg.Client.Ui
                 case InventoryDropPlanKind.Relocate:
                     return InventoryInteractionResult.From(
                         inventory.TryRelocate(plan.Item, plan.Container.ContainerId, plan.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
+                        error);
                 case InventoryDropPlanKind.Split:
                     return InventoryInteractionResult.From(
                         inventory.TrySplit(plan.Item, plan.Quantity, plan.Container.ContainerId, plan.Slot.SlotIndex, out error),
-                        error,
-                        "Split submitted.");
+                        error);
                 case InventoryDropPlanKind.Unequip:
                     return InventoryInteractionResult.From(
                         inventory.TryUnequip(plan.Item, plan.Container.ContainerId, plan.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
+                        error);
                 case InventoryDropPlanKind.Merge:
                     return InventoryInteractionResult.From(
                         inventory.TryMerge(plan.Item, plan.Target, plan.Quantity, out error),
-                        error,
-                        "Merge submitted.");
+                        error);
                 case InventoryDropPlanKind.Swap:
                     return InventoryInteractionResult.From(
                         inventory.TrySwap(plan.Item, plan.Target, out error),
-                        error,
-                        "Swap submitted.");
+                        error);
                 case InventoryDropPlanKind.Equip:
                     return InventoryInteractionResult.From(
                         inventory.TryEquip(plan.Item, plan.EquipmentSlotId, plan.Quantity, out error),
-                        error,
-                        plan.Target != null ? "Swap submitted." : "Equip submitted.");
+                        error);
                 case InventoryDropPlanKind.ClaimRecovery:
                     return ClaimRecovery(plan.Delivery, plan.Container.ContainerId);
                 case InventoryDropPlanKind.CorpseLoot:
                     return InventoryInteractionResult.From(
                         corpses.TryLoot(plan.CorpseItem, plan.Container, plan.Slot, plan.Quantity, out error),
-                        error,
-                        plan.Quantity < plan.CorpseItem.Quantity
-                            ? "Partial corpse loot submitted."
-                            : "Corpse loot submitted.");
+                        error);
                 case InventoryDropPlanKind.CorpseLootToEquipment:
                     return InventoryInteractionResult.From(
                         corpses.TryLootToEquipment(plan.CorpseItem, plan.EquipmentSlot, plan.Quantity, out error),
-                        error,
-                        plan.Quantity > 0
-                            ? "Partial corpse equip submitted."
-                            : plan.EquipmentSlot.Item == null ? "Corpse equip submitted." : "Corpse equip swap submitted.");
+                        error);
                 case InventoryDropPlanKind.CorpseBagSwap:
                     return InventoryInteractionResult.From(
                         corpses.TrySwapBag(plan.CorpseItem, out error),
-                        error,
-                        "Atomic Bag swap submitted.");
+                        error);
                 case InventoryDropPlanKind.CorpseMove:
                     return InventoryInteractionResult.From(
                         corpses.TryMoveWithinCorpse(plan.CorpseItem, plan.CorpseSection, plan.CorpseSlot, plan.Quantity, out error),
-                        error,
-                        plan.Quantity < plan.CorpseItem.Quantity
-                            ? "Partial corpse rearrangement submitted."
-                            : "Corpse rearrangement submitted.");
+                        error);
                 case InventoryDropPlanKind.CorpseDeposit:
                     return InventoryInteractionResult.From(
                         corpses.TryDeposit(plan.Item, plan.CorpseSection, plan.CorpseSlot, plan.Quantity, out error),
-                        error,
-                        plan.Quantity < plan.Item.Quantity
-                            ? "Partial corpse deposit submitted."
-                            : "Corpse deposit submitted.");
+                        error);
                 default:
                     return InventoryInteractionResult.Rejected(plan.Reason);
             }
@@ -227,28 +207,23 @@ namespace Mmorpg.Client.Ui
 
                     return InventoryInteractionResult.From(
                         inventory.TryEquip(move.Item, move.EquipmentSlotId, move.Quantity, out error),
-                        error,
-                        "Equip submitted.");
+                        error);
                 case InventoryQuickMoveKind.Unequip:
                     return InventoryInteractionResult.From(
                         inventory.TryUnequip(move.Item, move.Container.ContainerId, move.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
+                        error);
                 case InventoryQuickMoveKind.Relocate:
                     return InventoryInteractionResult.From(
                         inventory.TryRelocate(move.Item, move.Container.ContainerId, move.Slot.SlotIndex, out error),
-                        error,
-                        "Move submitted.");
+                        error);
                 case InventoryQuickMoveKind.Merge:
                     return InventoryInteractionResult.From(
                         inventory.TryMerge(move.Item, move.Target, move.Quantity, out error),
-                        error,
-                        "Merge submitted.");
+                        error);
                 case InventoryQuickMoveKind.Split:
                     return InventoryInteractionResult.From(
                         inventory.TrySplit(move.Item, move.Quantity, move.Container.ContainerId, move.Slot.SlotIndex, out error),
-                        error,
-                        "Split submitted.");
+                        error);
                 case InventoryQuickMoveKind.ClaimRecovery:
                     return ClaimRecovery(move.Delivery, move.Container.ContainerId);
                 case InventoryQuickMoveKind.Loot:
@@ -259,8 +234,7 @@ namespace Mmorpg.Client.Ui
                             move.Slot,
                             move.Quantity > 0 ? move.Quantity : move.CorpseItem.Quantity,
                             out error),
-                        error,
-                        move.Quantity > 0 ? "Partial corpse loot submitted." : "Corpse loot submitted.");
+                        error);
                 case InventoryQuickMoveKind.LootToEquipment:
                 {
                     var equipmentSlot = State?.FullSnapshot?.Equipment.FirstOrDefault(slot =>
@@ -269,8 +243,7 @@ namespace Mmorpg.Client.Ui
                     if (equipmentSlot != null
                         && corpses.TryLootToEquipment(move.CorpseItem, equipmentSlot, move.Quantity, out error))
                     {
-                        return InventoryInteractionResult.Submitted(
-                            move.Quantity > 0 ? "Partial corpse equip submitted." : "Corpse equip submitted.");
+                        return InventoryInteractionResult.Submitted();
                     }
 
                     return string.IsNullOrEmpty(error)
@@ -351,8 +324,7 @@ namespace Mmorpg.Client.Ui
         {
             return InventoryInteractionResult.From(
                 corpses.TryLootAll(out var error),
-                error,
-                "Loot all submitted.");
+                error);
         }
 
         public bool CanDestroy(InventoryItem item, out ClientText reason)
@@ -388,26 +360,27 @@ namespace Mmorpg.Client.Ui
 
             return InventoryInteractionResult.From(
                 inventory.TryDestroy(item, out var error),
-                error,
-                "Destroy submitted.");
+                error);
         }
 
         public InventoryInteractionResult CloseCorpse()
         {
-            var error = "Corpse interaction state is unavailable.";
-            return InventoryInteractionResult.From(
-                worldInteraction != null && worldInteraction.TryCloseActive(out error),
-                error,
-                "Corpse close submitted.");
+            if (worldInteraction == null)
+            {
+                return InventoryInteractionResult.Rejected(ClientText.Of("ui/corpse/state-unavailable"));
+            }
+
+            return InventoryInteractionResult.From(worldInteraction.TryCloseActive(out var error), error);
         }
 
         public InventoryInteractionResult RefreshCorpse()
         {
-            var error = "Corpse interaction state is unavailable.";
-            return InventoryInteractionResult.From(
-                corpses != null && corpses.TryRefresh(out error),
-                error,
-                "Corpse refresh submitted.");
+            if (corpses == null)
+            {
+                return InventoryInteractionResult.Rejected(ClientText.Of("ui/corpse/state-unavailable"));
+            }
+
+            return InventoryInteractionResult.From(corpses.TryRefresh(out var error), error);
         }
 
         // Whether a dragged item may be offered to the vendor, whole or the dragged part.
@@ -463,9 +436,7 @@ namespace Mmorpg.Client.Ui
 
             return InventoryInteractionResult.From(
                 worldInteraction.TryPurchase(capability.Id, definitionId, quantity, price, out var error),
-                error,
-                "Buying " + quantity.ToString(CultureInfo.InvariantCulture) + " "
-                    + state.Catalog.GetDisplayName(definitionId) + "...");
+                error);
         }
 
         public InventoryInteractionResult Sell(
@@ -495,17 +466,14 @@ namespace Mmorpg.Client.Ui
 
             return InventoryInteractionResult.From(
                 worldInteraction.TrySell(capability.Id, item.ItemInstanceId, quantity, price, out var error),
-                error,
-                "Selling " + quantity.ToString(CultureInfo.InvariantCulture) + " "
-                    + state.Catalog.GetDisplayName(item.DefinitionId) + "...");
+                error);
         }
 
         private InventoryInteractionResult ClaimRecovery(RecoveryDelivery delivery, Guid destinationContainerId)
         {
             return InventoryInteractionResult.From(
                 inventory.TryClaimRecovery(delivery, destinationContainerId, out var error),
-                error,
-                "Recovery claim submitted.");
+                error);
         }
     }
 }

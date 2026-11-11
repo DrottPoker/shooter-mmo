@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -195,19 +196,23 @@ namespace Mmorpg.Client.Tests.EditMode
                 CreateItem("fixture.arrow", 30),
                 "Equipped in Ammunition");
             Assert.That(arrows, Does.Contain("<b>Fixture Arrow</b>"));
-            Assert.That(arrows, Does.Contain("Ammunition  ·  Quantity 30 / 60"));
-            Assert.That(arrows, Does.Contain("Weight 30 (1 each)"));
-            Assert.That(arrows, Does.Contain("Equips to Ammunition"));
+            Assert.That(
+                arrows,
+                Does.Contain(Ui("ui/inventory/tooltip-category-quantity", ("category", "Ammunition"), ("quantity", "30"), ("maximum", "60"))));
+            Assert.That(arrows, Does.Contain(Ui("ui/inventory/tooltip-weight-each", ("weight", "30"), ("unit", "1"))));
+            Assert.That(arrows, Does.Contain(Ui("ui/inventory/tooltip-equips", ("slots", "Ammunition"))));
             Assert.That(arrows, Does.EndWith("Equipped in Ammunition"));
-            Assert.That(arrows, Does.Not.Contain("Cannot be destroyed"));
+            Assert.That(arrows, Does.Not.Contain(Ui("ui/inventory/tooltip-indestructible")));
 
             var bow = InventorySlotPresentation.BuildItemTooltip(
                 catalog,
                 CreateItem("fixture.bow", 1),
                 string.Empty);
-            Assert.That(bow, Does.Contain("Equips to Main Hand, blocks Off Hand"));
+            Assert.That(
+                bow,
+                Does.Contain(Ui("ui/inventory/tooltip-equips-blocks", ("slots", "Main Hand"), ("blocked", "Off Hand"))));
             Assert.That(bow, Does.Not.Contain("Not allowed"));
-            Assert.That(bow, Does.Contain("Weight 25"));
+            Assert.That(bow, Does.Contain(Ui("ui/inventory/tooltip-weight", ("weight", "25"))));
             Assert.That(bow, Does.Not.Contain("each"));
 
             var letter = new InventoryItem(
@@ -221,9 +226,14 @@ namespace Mmorpg.Client.Tests.EditMode
                     new InventoryPolicy("insured", "consumed", "insurance_npc")
                 });
             var letterTooltip = InventorySlotPresentation.BuildItemTooltip(catalog, letter, null);
-            Assert.That(letterTooltip, Does.Contain("Protected on death (Catalog rule)"));
-            Assert.That(letterTooltip, Does.Not.Contain("Insured"));
-            Assert.That(letterTooltip, Does.Contain("Cannot be destroyed"));
+            Assert.That(
+                letterTooltip,
+                Does.Contain(Ui(
+                    "ui/inventory/tooltip-policy",
+                    ("policy", Ui("ui/inventory/policy-protected-on-death")),
+                    ("source", Ui("ui/inventory/protection-catalog-rule")))));
+            Assert.That(letterTooltip, Does.Not.Contain(Ui("ui/inventory/policy-insured")));
+            Assert.That(letterTooltip, Does.Contain(Ui("ui/inventory/tooltip-indestructible")));
             Assert.That(InventorySlotPresentation.PolicyBadge(letter), Is.EqualTo("P"));
             Assert.That(
                 InventorySlotPresentation.PolicyBadge(new InventoryItem(
@@ -240,7 +250,15 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(InventorySlotPresentation.PolicyBadge(CreateItem("fixture.ore", 5)), Is.Empty);
             Assert.That(
                 InventorySlotPresentation.BuildItemTooltip(catalog, CreateItem("fixture.missing", 2), "Bank slot 1"),
-                Is.EqualTo("<b>fixture.missing</b>\nQuantity 2\nBank slot 1"));
+                Is.EqualTo("<b>fixture.missing</b>\n" + Ui("ui/inventory/tooltip-quantity", ("quantity", "2")) + "\nBank slot 1"));
+        }
+
+        // A text of the checked-in ui table with its named values, as the player reads it.
+        private static string Ui(string key, params (string Name, string Value)[] values)
+        {
+            return FixtureTexts.Ui().Format(
+                key,
+                values.Select(value => MessageArgument.Text(value.Name, value.Value)).ToArray());
         }
 
         private static InventoryItem CreateItem(string definitionId, int quantity)

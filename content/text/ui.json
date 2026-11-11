@@ -3,12 +3,40 @@
   "tableId": "ui",
   "entries": [
     {
+      "key": "ui/common/both",
+      "text": "{first} and {second}"
+    },
+    {
+      "key": "ui/common/cancel",
+      "text": "Cancel"
+    },
+    {
+      "key": "ui/common/close",
+      "text": "Close"
+    },
+    {
+      "key": "ui/common/currency-amount",
+      "text": "{amount} {currency}"
+    },
+    {
+      "key": "ui/common/either",
+      "text": "{first} or {second}"
+    },
+    {
       "key": "ui/common/item-quantity",
       "text": "{quantity} x {item}"
     },
     {
+      "key": "ui/common/ok",
+      "text": "OK"
+    },
+    {
       "key": "ui/corpse/already-in-slot",
       "text": "The corpse item is already in that slot."
+    },
+    {
+      "key": "ui/corpse/bag-definition-unavailable",
+      "text": "The corpse Bag definition is unavailable."
     },
     {
       "key": "ui/corpse/bag-goes-to-bag-slot",
@@ -23,6 +51,10 @@
       "text": "Drop a corpse Bag on an empty slot."
     },
     {
+      "key": "ui/corpse/bag-needs-swap",
+      "text": "A corpse Bag must be exchanged through the atomic Bag aggregate swap."
+    },
+    {
       "key": "ui/corpse/bag-not-empty-move",
       "text": "A non-empty corpse Bag cannot use an ordinary internal slot move."
     },
@@ -31,16 +63,44 @@
       "text": "Your Bag slot is taken. Drag the corpse Bag onto your Bag to swap them."
     },
     {
+      "key": "ui/corpse/bag-state-changed",
+      "text": "The corpse Bag equipment state changed."
+    },
+    {
       "key": "ui/corpse/bag-swap-bags-gone",
       "text": "Both Bags must still be in place."
+    },
+    {
+      "key": "ui/corpse/bag-swap-changed",
+      "text": "A Bag changed before the swap could be sent."
     },
     {
       "key": "ui/corpse/bag-swap-needs-bags",
       "text": "Atomic corpse Bag swap requires both occupied Bag equipment aggregates."
     },
     {
+      "key": "ui/corpse/bag-swap-state-required",
+      "text": "Both the corpse Bag aggregate and equipped player Bag are required."
+    },
+    {
       "key": "ui/corpse/bag-swaps-with-bag",
       "text": "A corpse Bag swaps only with the equipped Bag on the Bag slot."
+    },
+    {
+      "key": "ui/corpse/bag-with-contents-loot",
+      "text": "A corpse Bag with contents goes into an empty Bag slot or swaps with your Bag."
+    },
+    {
+      "key": "ui/corpse/close-active-first",
+      "text": "Close the active corpse before opening another corpse."
+    },
+    {
+      "key": "ui/corpse/close-unsent",
+      "text": "The corpse-close request could not be sent."
+    },
+    {
+      "key": "ui/corpse/deposit-changed",
+      "text": "The item or the corpse slot changed before the deposit could be sent."
     },
     {
       "key": "ui/corpse/deposit-equipped-item",
@@ -51,8 +111,20 @@
       "text": "Only a current carried inventory item can enter corpse custody."
     },
     {
+      "key": "ui/corpse/deposit-needs-carried-slot",
+      "text": "Only items in carried inventory or Bag slots can enter a corpse."
+    },
+    {
       "key": "ui/corpse/deposit-onto-bag",
       "text": "An occupied corpse Bag aggregate must use the Bag equipment swap."
+    },
+    {
+      "key": "ui/corpse/deposit-quantity-range",
+      "text": "Deposit quantity must be within the current stack quantity."
+    },
+    {
+      "key": "ui/corpse/deposit-state-required",
+      "text": "Current inventory, corpse, and destination state are required."
     },
     {
       "key": "ui/corpse/deposit-storage-item",
@@ -61,6 +133,22 @@
     {
       "key": "ui/corpse/deposit-swap-refused",
       "text": "The corpse item cannot take the slot the deposit left."
+    },
+    {
+      "key": "ui/corpse/destination-unavailable",
+      "text": "The corpse destination is no longer available."
+    },
+    {
+      "key": "ui/corpse/equip-loot-changed",
+      "text": "The corpse item changed before the loot could be sent."
+    },
+    {
+      "key": "ui/corpse/equip-state-required",
+      "text": "Current corpse and equipment state are required."
+    },
+    {
+      "key": "ui/corpse/equipment-slot-description",
+      "text": "{section}, {slot}"
     },
     {
       "key": "ui/corpse/equipment-slot-incompatible",
@@ -79,6 +167,18 @@
       "text": "The equipped item cannot move into the corpse slot: {reason}"
     },
     {
+      "key": "ui/corpse/expires",
+      "text": "Expires {time}"
+    },
+    {
+      "key": "ui/corpse/hint",
+      "text": "Click a corpse in the world to walk to it and open it."
+    },
+    {
+      "key": "ui/corpse/interaction-pending",
+      "text": "Another item or corpse interaction is awaiting authority."
+    },
+    {
       "key": "ui/corpse/item-unavailable",
       "text": "The corpse item is no longer available."
     },
@@ -87,12 +187,20 @@
       "text": "The corpse item is no longer available for mutation."
     },
     {
+      "key": "ui/corpse/loot-all",
+      "text": "Loot All"
+    },
+    {
       "key": "ui/corpse/loot-all-changed",
       "text": "The corpse or your inventory changed."
     },
     {
       "key": "ui/corpse/loot-all-nothing-fits",
       "text": "Nothing in the corpse fits in your equipment or inventory."
+    },
+    {
+      "key": "ui/corpse/loot-changed",
+      "text": "The corpse item or its destination changed before the loot could be sent."
     },
     {
       "key": "ui/corpse/loot-destination",
@@ -111,12 +219,56 @@
       "text": "The loot would exceed the 140 percent carry cap."
     },
     {
+      "key": "ui/corpse/loot-quantity-range",
+      "text": "Loot quantity must be within the current stack quantity."
+    },
+    {
+      "key": "ui/corpse/loot-state-required",
+      "text": "Current corpse and destination state are required."
+    },
+    {
+      "key": "ui/corpse/move-changed",
+      "text": "The corpse changed before the move could be sent."
+    },
+    {
+      "key": "ui/corpse/move-quantity-range",
+      "text": "Move quantity must be within the current corpse stack quantity."
+    },
+    {
+      "key": "ui/corpse/move-state-required",
+      "text": "Current corpse source and destination state are required."
+    },
+    {
+      "key": "ui/corpse/move-unavailable",
+      "text": "The corpse source or destination is no longer available."
+    },
+    {
       "key": "ui/corpse/mutation-unavailable",
       "text": "Inventory or corpse mutation is unavailable while state is loading or busy."
     },
     {
+      "key": "ui/corpse/nearby-corpse-required",
+      "text": "A valid nearby corpse is required."
+    },
+    {
+      "key": "ui/corpse/no-longer-open",
+      "text": "The corpse is no longer open."
+    },
+    {
+      "key": "ui/corpse/no-view-open",
+      "text": "No corpse view is open."
+    },
+    {
+      "key": "ui/corpse/open-unsent",
+      "text": "The corpse-open request could not be sent."
+    },
+    {
       "key": "ui/corpse/partial-deposit-quantity",
       "text": "Partial deposit quantity must be greater than zero and smaller than the carried stack."
+    },
+    {
+      "key": "ui/corpse/partial-deposit-target",
+      "text": "A partial stack can only merge into a compatible corpse stack."
     },
     {
       "key": "ui/corpse/partial-loot-quantity",
@@ -127,8 +279,368 @@
       "text": "Partial move quantity must be greater than zero and smaller than the corpse stack."
     },
     {
+      "key": "ui/corpse/partial-move-target",
+      "text": "A partial stack can only merge into a compatible stack."
+    },
+    {
+      "key": "ui/corpse/refresh-unsent",
+      "text": "The corpse-refresh request could not be sent."
+    },
+    {
+      "key": "ui/corpse/request-unsent",
+      "text": "The corpse request could not be sent."
+    },
+    {
+      "key": "ui/corpse/section-bag",
+      "text": "Corpse Bag Contents"
+    },
+    {
+      "key": "ui/corpse/section-equipment",
+      "text": "Corpse Equipment"
+    },
+    {
+      "key": "ui/corpse/section-inventory",
+      "text": "Corpse Inventory"
+    },
+    {
+      "key": "ui/corpse/section-other",
+      "text": "Corpse {section}"
+    },
+    {
+      "key": "ui/corpse/session-required",
+      "text": "Corpse interaction requires an active realtime shard session."
+    },
+    {
       "key": "ui/corpse/source-unavailable",
       "text": "The corpse source item is no longer available."
+    },
+    {
+      "key": "ui/corpse/state-unavailable",
+      "text": "Corpse interaction state is unavailable."
+    },
+    {
+      "key": "ui/corpse/title",
+      "text": "Corpse"
+    },
+    {
+      "key": "ui/corpse/waiting",
+      "text": "Waiting for the corpse..."
+    },
+    {
+      "key": "ui/inventory/arrows-left",
+      "text": "{count} left; spent arrows commit in batches"
+    },
+    {
+      "key": "ui/inventory/bag",
+      "text": "Bag"
+    },
+    {
+      "key": "ui/inventory/bank",
+      "text": "Bank"
+    },
+    {
+      "key": "ui/inventory/carry-load",
+      "text": "Load {load}  |  Move speed {speed}"
+    },
+    {
+      "key": "ui/inventory/catalog-unavailable",
+      "text": "Inventory catalog is unavailable."
+    },
+    {
+      "key": "ui/inventory/catalog-update-required",
+      "text": "This client build requires an item catalog update."
+    },
+    {
+      "key": "ui/inventory/character-changed",
+      "text": "The inventory response belongs to a different character."
+    },
+    {
+      "key": "ui/inventory/character-required",
+      "text": "Select and join a character before opening inventory."
+    },
+    {
+      "key": "ui/inventory/destroy",
+      "text": "Destroy"
+    },
+    {
+      "key": "ui/inventory/destroy-heading",
+      "text": "Destroy Item"
+    },
+    {
+      "key": "ui/inventory/destroy-question",
+      "text": "Destroy {item}? It cannot be brought back."
+    },
+    {
+      "key": "ui/inventory/destroy-whole-stack",
+      "text": "Drag the whole stack out of the windows to destroy it."
+    },
+    {
+      "key": "ui/inventory/empty",
+      "text": "Empty"
+    },
+    {
+      "key": "ui/inventory/empty-stack-slot",
+      "text": "Empty. Holds a stack of up to {maximum}."
+    },
+    {
+      "key": "ui/inventory/equipment-title",
+      "text": "Equipment"
+    },
+    {
+      "key": "ui/inventory/equipped-in",
+      "text": "Equipped in {slot}"
+    },
+    {
+      "key": "ui/inventory/inventory-title",
+      "text": "Inventory"
+    },
+    {
+      "key": "ui/inventory/item-changed",
+      "text": "The item changed before the operation could be sent."
+    },
+    {
+      "key": "ui/inventory/item-count-many",
+      "text": "{count} items"
+    },
+    {
+      "key": "ui/inventory/item-count-one",
+      "text": "{count} item"
+    },
+    {
+      "key": "ui/inventory/item-move-undone",
+      "text": "Item move undone: {reason}"
+    },
+    {
+      "key": "ui/inventory/item-stale",
+      "text": "The selected item is stale or unavailable."
+    },
+    {
+      "key": "ui/inventory/lower-headwear",
+      "text": "Lower {item}"
+    },
+    {
+      "key": "ui/inventory/merge-target-unavailable",
+      "text": "The target stack is stale or unavailable."
+    },
+    {
+      "key": "ui/inventory/no-bag",
+      "text": "Equip a Bag in the Bag slot for more slots and carry capacity."
+    },
+    {
+      "key": "ui/inventory/operation-invalid",
+      "text": "The item operation is invalid."
+    },
+    {
+      "key": "ui/inventory/operation-uncertain",
+      "text": "The connection closed before the item operation was reconciled. Refresh after reconnect."
+    },
+    {
+      "key": "ui/inventory/operation-unsent",
+      "text": "The item operation could not be sent to SimulationWorker."
+    },
+    {
+      "key": "ui/inventory/operation-unsupported",
+      "text": "The item operation is not supported."
+    },
+    {
+      "key": "ui/inventory/permanent-inventory",
+      "text": "Permanent Inventory"
+    },
+    {
+      "key": "ui/inventory/policy-insured",
+      "text": "Insured"
+    },
+    {
+      "key": "ui/inventory/policy-protected-on-death",
+      "text": "Protected on death"
+    },
+    {
+      "key": "ui/inventory/protection-catalog-rule",
+      "text": "Catalog rule"
+    },
+    {
+      "key": "ui/inventory/protection-insurance-npc",
+      "text": "Insurance NPC"
+    },
+    {
+      "key": "ui/inventory/protection-quest-grant",
+      "text": "Quest grant"
+    },
+    {
+      "key": "ui/inventory/protection-system",
+      "text": "System"
+    },
+    {
+      "key": "ui/inventory/raise-headwear",
+      "text": "Raise {item}"
+    },
+    {
+      "key": "ui/inventory/recovered-cloak",
+      "text": "Recovered: cloaks can no longer be worn"
+    },
+    {
+      "key": "ui/inventory/recovered-insured",
+      "text": "Recovered: consumed insurance"
+    },
+    {
+      "key": "ui/inventory/recovered-other",
+      "text": "Recovered: {source}"
+    },
+    {
+      "key": "ui/inventory/recovered-protected",
+      "text": "Recovered: protected on death"
+    },
+    {
+      "key": "ui/inventory/recovered-warded-pouch",
+      "text": "Recovered: from the removed Warded Pouch"
+    },
+    {
+      "key": "ui/inventory/recovery-delivery-empty",
+      "text": "The Recovery delivery is empty or unavailable."
+    },
+    {
+      "key": "ui/inventory/recovery-delivery-slot",
+      "text": "Recovery delivery, claimed as a whole"
+    },
+    {
+      "key": "ui/inventory/recovery-storage-empty",
+      "text": "Recovery Storage has no deliveries."
+    },
+    {
+      "key": "ui/inventory/recovery-storage-hint",
+      "text": "Drag any item of a delivery to your inventory or the Bank, or right-click it, to claim the whole delivery."
+    },
+    {
+      "key": "ui/inventory/recovery-storage-title",
+      "text": "Recovery Storage"
+    },
+    {
+      "key": "ui/inventory/recovery-storage-unavailable",
+      "text": "Recovery Storage is unavailable."
+    },
+    {
+      "key": "ui/inventory/recovery-tab",
+      "text": "Recovery"
+    },
+    {
+      "key": "ui/inventory/refresh-stale",
+      "text": "Authoritative inventory state did not reach the required revision."
+    },
+    {
+      "key": "ui/inventory/result-mismatch",
+      "text": "The item operation result did not match the pending operation."
+    },
+    {
+      "key": "ui/inventory/search-placeholder",
+      "text": "Search items"
+    },
+    {
+      "key": "ui/inventory/session-required",
+      "text": "Inventory must finish loading in an active simulation session."
+    },
+    {
+      "key": "ui/inventory/slot-blocked",
+      "text": "Blocked by {item} in {slot}. Unequip it to use this slot."
+    },
+    {
+      "key": "ui/inventory/slot-number",
+      "text": "{place} slot {number}"
+    },
+    {
+      "key": "ui/inventory/slot-number-accepts",
+      "text": "{place} slot {number}, accepts {tags}"
+    },
+    {
+      "key": "ui/inventory/split-heading",
+      "text": "Split Stack"
+    },
+    {
+      "key": "ui/inventory/split-stack-changed",
+      "text": "The stack changed. Split it again."
+    },
+    {
+      "key": "ui/inventory/split-stack-size",
+      "text": "{item} ({quantity})"
+    },
+    {
+      "key": "ui/inventory/state-diverged",
+      "text": "Equal item-state revisions contained different inventory state."
+    },
+    {
+      "key": "ui/inventory/status-busy",
+      "text": "Waiting for the committed operation..."
+    },
+    {
+      "key": "ui/inventory/status-error",
+      "text": "Inventory refresh failed."
+    },
+    {
+      "key": "ui/inventory/status-loading",
+      "text": "Loading your inventory..."
+    },
+    {
+      "key": "ui/inventory/status-not-loaded",
+      "text": "Inventory has not loaded."
+    },
+    {
+      "key": "ui/inventory/status-ready",
+      "text": "Inventory ready."
+    },
+    {
+      "key": "ui/inventory/status-update-required",
+      "text": "Client update required."
+    },
+    {
+      "key": "ui/inventory/storage-hint",
+      "text": "Talk to an NPC who keeps storage or trades, or open a corpse."
+    },
+    {
+      "key": "ui/inventory/storage-title",
+      "text": "Storage"
+    },
+    {
+      "key": "ui/inventory/swap-target-unavailable",
+      "text": "The swap target is stale or unavailable."
+    },
+    {
+      "key": "ui/inventory/too-many-pending",
+      "text": "Too many item moves are waiting for the server."
+    },
+    {
+      "key": "ui/inventory/tooltip-category-quantity",
+      "text": "{category}  ·  Quantity {quantity} / {maximum}"
+    },
+    {
+      "key": "ui/inventory/tooltip-equips",
+      "text": "Equips to {slots}"
+    },
+    {
+      "key": "ui/inventory/tooltip-equips-blocks",
+      "text": "Equips to {slots}, blocks {blocked}"
+    },
+    {
+      "key": "ui/inventory/tooltip-indestructible",
+      "text": "Cannot be destroyed"
+    },
+    {
+      "key": "ui/inventory/tooltip-policy",
+      "text": "{policy} ({source})"
+    },
+    {
+      "key": "ui/inventory/tooltip-quantity",
+      "text": "Quantity {quantity}"
+    },
+    {
+      "key": "ui/inventory/tooltip-weight",
+      "text": "Weight {weight}"
+    },
+    {
+      "key": "ui/inventory/tooltip-weight-each",
+      "text": "Weight {weight} ({unit} each)"
+    },
+    {
+      "key": "ui/inventory/wait-for-split",
+      "text": "Wait a moment until the split stack is confirmed."
     },
     {
       "key": "ui/items/already-equipped",
@@ -583,10 +1095,6 @@
       "text": "Your balance cannot hold the Gold reward."
     },
     {
-      "key": "ui/quests/reward-gold",
-      "text": "{amount} {currency}"
-    },
-    {
       "key": "ui/quests/reward-no-room",
       "text": "Make room in your bags for the rewards first."
     },
@@ -623,12 +1131,32 @@
       "text": "Ready to turn in"
     },
     {
+      "key": "ui/vendor/balance",
+      "text": "You have {amount}"
+    },
+    {
       "key": "ui/vendor/balance-full",
       "text": "Your balance cannot hold more {currency}."
     },
     {
+      "key": "ui/vendor/buy",
+      "text": "Buy"
+    },
+    {
+      "key": "ui/vendor/buy-for",
+      "text": "Buy {price}"
+    },
+    {
       "key": "ui/vendor/cannot-afford",
       "text": "You cannot afford this purchase."
+    },
+    {
+      "key": "ui/vendor/catalog-unavailable",
+      "text": "The item catalog is unavailable."
+    },
+    {
+      "key": "ui/vendor/hint",
+      "text": "Talk to a vendor, such as Mira in the city, and choose Trade."
     },
     {
       "key": "ui/vendor/need-amount",
@@ -651,6 +1179,10 @@
       "text": "The offer is no longer available."
     },
     {
+      "key": "ui/vendor/offered-to",
+      "text": "Offered to {vendor}"
+    },
+    {
       "key": "ui/vendor/price-out-of-range",
       "text": "The price is out of range."
     },
@@ -667,8 +1199,28 @@
       "text": "Choose a quantity from 1 to {maximum}."
     },
     {
+      "key": "ui/vendor/sale-rate",
+      "text": "Pays {rate} of value"
+    },
+    {
       "key": "ui/vendor/sale-worth-nothing",
       "text": "The vendor pays nothing for this quantity. Sell more at once."
+    },
+    {
+      "key": "ui/vendor/sell",
+      "text": "Sell"
+    },
+    {
+      "key": "ui/vendor/sell-for",
+      "text": "Sell {quantity} for {price}"
+    },
+    {
+      "key": "ui/vendor/sell-hint",
+      "text": "Drop a carried item here to see what {vendor} pays for it."
+    },
+    {
+      "key": "ui/vendor/sell-item",
+      "text": "Sell {item}"
     },
     {
       "key": "ui/vendor/sell-needs-carried",
@@ -683,8 +1235,28 @@
       "text": "Protected and insured items cannot be sold."
     },
     {
+      "key": "ui/vendor/talk-to-sell",
+      "text": "Talk to a vendor to sell items."
+    },
+    {
       "key": "ui/vendor/too-heavy",
       "text": "That would be too heavy to carry."
+    },
+    {
+      "key": "ui/vendor/trade",
+      "text": "Trade"
+    },
+    {
+      "key": "ui/vendor/unit-price",
+      "text": "{price} each"
+    },
+    {
+      "key": "ui/vendor/unknown-vendor",
+      "text": "This vendor is not in the bundled item catalog. Update the client."
+    },
+    {
+      "key": "ui/vendor/whole-quantity",
+      "text": "Enter a whole quantity."
     }
   ]
 }

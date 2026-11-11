@@ -482,16 +482,30 @@ a number, a text key such as an equipment slot or currency name, or a nested
 sentence that is finished already, such as the error of a controller.
 `InventoryTargetAdvisor`, `CorpseTargetAdvisor`, the predictions,
 `VendorClientRules`, `InventoryQuickMoves`, and `InventoryDropPlanner` pass the
-reason on, and a test compares keys. Only the code that shows it calls
-`Resolve`: the inventory windows with `ClientItemCatalog.Texts` for a drop,
-right-click, or trade they refuse, and the inventory and corpse controllers
-and `InventoryClientState`, which turn the reason into the error text of an
-operation they do not send or a prediction they undo.
+reason on, and a test compares keys; `VendorClientRules.FormatAmount` returns
+an amount of the currency as a `ClientText` too. Only the code that shows it
+calls `Resolve`: the inventory windows for a drop, right-click, or trade they
+refuse, and the inventory and corpse controllers and `InventoryClientState`,
+which turn the reason into the error text of an operation they do not send or a
+prediction they undo. The controllers write their own errors from the table
+too, with the text catalog they hold, so an error leaves them as the text the
+player reads.
 
-The quest windows, the quest tracker, the quest messages, and the item rule
-reasons are converted; the labels of the inventory windows, the success
-messages of the item operations, and the `Temporary` panels still hold
-literals. `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
+The inventory windows take the text catalog from the bootstrap in
+`InventoryWindows.Initialize` and hand it to the Equipment, Inventory, and
+storage windows, `InventorySlotPresentation`, and `UiDialog`. A window joins
+texts only with a text that names both parts, such as
+`{place} slot {number}` or `{first} or {second}` for a list of slots; rich text
+tags, line breaks between tooltip lines, and numbers stay in the code. An item
+operation that was sent says nothing, so `InventoryInteractionResult` carries a
+text only for an operation that was not sent.
+
+The quest windows, the quest tracker, the quest messages, the item rule
+reasons, the inventory, equipment, storage, Bank, Recovery Storage, corpse, and
+vendor windows, and the errors of the item and corpse controllers are
+converted; the `Temporary` panels, the login and character selection panels,
+the combat HUD, the nameplates, and the world labels still hold literals.
+`ClientTexts.PseudoLocalePreference` makes the bootstrap load the
 pseudo-locale, which `PseudoText` builds from the same tables.
 
 ## Client Session State

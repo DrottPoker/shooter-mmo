@@ -512,7 +512,7 @@ namespace Mmorpg.Client.Ui
             {
                 AddParagraph(
                     T(
-                        "ui/quests/reward-gold",
+                        "ui/common/currency-amount",
                         MessageArgument.Text("amount", quest.RewardGold.ToString()),
                         MessageArgument.TextKey("currency", TextKeys.CurrencyName())),
                     theme.GoldTextColor);
@@ -722,7 +722,7 @@ namespace Mmorpg.Client.Ui
             log = new QuestLogWindow(theme, texts, root, Abandon, RefreshLog);
             log.Window.CloseRequested += () => SetLogOpen(false);
             PlaceWindows();
-            confirmation = UiDialog.Create(theme, root);
+            confirmation = UiDialog.Create(theme, root, texts);
             gameObject.AddComponent<UiDialogEscape>().Initialize(confirmation, worldMenu, () => localPlayerInput);
             RefreshTracker();
         }

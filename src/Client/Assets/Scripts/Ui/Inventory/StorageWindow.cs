@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -36,7 +37,7 @@ namespace Mmorpg.Client.Ui
                 parent,
                 InventoryWindows.StorageWindowName,
                 theme.StorageIcon,
-                "Storage",
+                owner.Text("ui/inventory/storage-title"),
                 ItemSlotGrid.Width(theme, CharacterInventoryWindow.Columns) + 2f * theme.WindowPadding);
             tabs = UiFactory.Row(Window.Body, "Tabs", theme.ButtonHeight, 6f).GetComponent<RectTransform>();
             message = UiFactory.BodyText(theme, Window.Body, "Message", theme.BodySize, theme.TextColor, TextAlignmentOptions.TopLeft);
@@ -59,7 +60,7 @@ namespace Mmorpg.Client.Ui
             var state = owner.State;
             if (state?.Catalog == null)
             {
-                ShowMessage(state?.Error?.ToDisplayMessage() ?? "Inventory catalog is unavailable.", true);
+                ShowMessage(state?.Error?.ToDisplayMessage() ?? owner.Text("ui/inventory/catalog-unavailable"), true);
                 return;
             }
 
@@ -78,10 +79,10 @@ namespace Mmorpg.Client.Ui
                     RefreshVendor(state);
                     break;
                 default:
-                    Window.SetTitle("Storage");
+                    Window.SetTitle(owner.Text("ui/inventory/storage-title"));
                     Window.SetDetail(string.Empty);
                     SetFooter(string.Empty, null);
-                    ShowMessage("Talk to an NPC who keeps storage or trades, or open a corpse.", true);
+                    ShowMessage(owner.Text("ui/inventory/storage-hint"), true);
                     break;
             }
 
@@ -120,12 +121,12 @@ namespace Mmorpg.Client.Ui
         private void RefreshBank(InventoryClientState state)
         {
             var ownerName = owner.StorageOwnerName();
-            Window.SetTitle(ownerName.Length > 0 ? ownerName : "Bank");
+            Window.SetTitle(ownerName.Length > 0 ? ownerName : owner.Text("ui/inventory/bank"));
             SetFooter(string.Empty, null);
             var bank = state.Bank;
             if (bank == null)
             {
-                ShowMessage(state.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(state), true);
+                ShowMessage(state.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(owner.Texts, state), true);
                 Window.SetDetail(string.Empty);
                 return;
             }
@@ -140,37 +141,39 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshRecovery(InventoryClientState state)
         {
-            Window.SetTitle("Recovery Storage");
+            Window.SetTitle(owner.Text("ui/inventory/recovery-storage-title"));
             Window.SetDetail(string.Empty);
             SetFooter(string.Empty, null);
             var recovery = state.RecoveryStorage;
             if (recovery == null)
             {
-                ShowMessage("Recovery Storage is unavailable.", true);
+                ShowMessage(owner.Text("ui/inventory/recovery-storage-unavailable"), true);
                 return;
             }
 
             if (recovery.Deliveries.Count == 0)
             {
-                ShowMessage("Recovery Storage has no deliveries.", true);
+                ShowMessage(owner.Text("ui/inventory/recovery-storage-empty"), true);
                 return;
             }
 
-            ShowMessage("Drag any item of a delivery to your inventory or the Bank, or right-click it, to claim the whole delivery.", false);
+            ShowMessage(owner.Text("ui/inventory/recovery-storage-hint"), false);
             var key = "recovery:" + string.Join(",", recovery.Deliveries.Select(delivery =>
                 delivery.DeliveryId + "/" + delivery.Items.Count.ToString(CultureInfo.InvariantCulture)));
             EnsureSections(key, () =>
             {
                 foreach (var delivery in recovery.Deliveries)
                 {
-                    AddSection(InventorySlotPresentation.RecoverySourceLabel(delivery.SourceKind), null, true);
+                    AddSection(InventorySlotPresentation.RecoverySourceLabel(owner.Texts, delivery.SourceKind), null, true);
                 }
             });
             for (var index = 0; index < recovery.Deliveries.Count; index++)
             {
                 var delivery = recovery.Deliveries[index];
-                sections[index].Detail.text = delivery.Items.Count.ToString(CultureInfo.InvariantCulture)
-                    + (delivery.Items.Count == 1 ? " item" : " items");
+                var count = MessageArgument.Text("count", delivery.Items.Count.ToString(CultureInfo.InvariantCulture));
+                sections[index].Detail.text = delivery.Items.Count == 1
+                    ? owner.Text("ui/inventory/item-count-one", count)
+                    : owner.Text("ui/inventory/item-count-many", count);
                 sections[index].Grid.Bind(delivery.Items
                     .Select(item => owner.RecoverySlot(delivery, item))
                     .ToArray());
@@ -182,29 +185,33 @@ namespace Mmorpg.Client.Ui
             var corpseState = owner.CorpseState;
             if (corpseState == null)
             {
-                Window.SetTitle("Corpse");
-                ShowMessage("Corpse interaction state is unavailable.", true);
+                Window.SetTitle(owner.Text("ui/corpse/title"));
+                ShowMessage(owner.Text("ui/corpse/state-unavailable"), true);
                 return;
             }
 
             var view = corpseState.ShownView;
             if (corpseState.ActiveView == null || view == null)
             {
-                Window.SetTitle("Corpse");
+                Window.SetTitle(owner.Text("ui/corpse/title"));
                 Window.SetDetail(string.Empty);
                 SetFooter(string.Empty, null);
-                ShowMessage(corpseState.Error?.ToDisplayMessage() ?? "Click a corpse in the world to walk to it and open it.", true);
+                ShowMessage(corpseState.Error?.ToDisplayMessage() ?? owner.Text("ui/corpse/hint"), true);
                 return;
             }
 
-            Window.SetTitle(string.IsNullOrWhiteSpace(view.SourceDisplayName) ? "Corpse" : view.SourceDisplayName);
-            Window.SetDetail("Expires " + DateTimeOffset.FromUnixTimeMilliseconds(view.ExpiresAtUnixMilliseconds)
-                .ToLocalTime()
-                .ToString("HH:mm", CultureInfo.InvariantCulture));
+            Window.SetTitle(string.IsNullOrWhiteSpace(view.SourceDisplayName) ? owner.Text("ui/corpse/title") : view.SourceDisplayName);
+            Window.SetDetail(owner.Text(
+                "ui/corpse/expires",
+                MessageArgument.Text(
+                    "time",
+                    DateTimeOffset.FromUnixTimeMilliseconds(view.ExpiresAtUnixMilliseconds)
+                        .ToLocalTime()
+                        .ToString("HH:mm", CultureInfo.InvariantCulture))));
             var notice = corpseState.Error != null
                 ? corpseState.Error.ToDisplayMessage()
                 : corpseState.Status == CorpseClientStatus.Busy
-                    ? "Waiting for the corpse..."
+                    ? owner.Text("ui/corpse/waiting")
                     : corpseState.Notice;
             ShowMessage(notice, false);
             var key = "corpse:" + view.CorpseId + ":" + string.Join(",", view.Sections.Select(section =>
@@ -213,7 +220,7 @@ namespace Mmorpg.Client.Ui
             {
                 foreach (var section in view.Sections)
                 {
-                    AddSection(InventorySlotPresentation.CorpseSectionTitle(section.SectionKind), null, true);
+                    AddSection(InventorySlotPresentation.CorpseSectionTitle(owner.Texts, section.SectionKind), null, true);
                 }
             });
             for (var index = 0; index < view.Sections.Count; index++)
@@ -230,8 +237,13 @@ namespace Mmorpg.Client.Ui
                 && view.Sections.Any(section => section.Slots.Any(slot => slot.Item != null));
             SetFooter("corpse", footer =>
             {
-                UiFactory.Button(theme, footer, "Close", () => owner.Report(owner.Interactions.CloseCorpse()));
-                lootAllButton = UiFactory.Button(theme, footer, "Loot All", () => owner.Report(owner.Interactions.LootAll()), UiButtonTone.Primary);
+                UiFactory.Button(theme, footer, owner.Text("ui/common/close"), () => owner.Report(owner.Interactions.CloseCorpse()));
+                lootAllButton = UiFactory.Button(
+                    theme,
+                    footer,
+                    owner.Text("ui/corpse/loot-all"),
+                    () => owner.Report(owner.Interactions.LootAll()),
+                    UiButtonTone.Primary);
             });
             if (lootAllButton != null)
             {
@@ -294,14 +306,14 @@ namespace Mmorpg.Client.Ui
             build?.Invoke(Window.Footer);
         }
 
-        private static string TabLabel(InventoryContextKind context)
+        private string TabLabel(InventoryContextKind context)
         {
             return context switch
             {
-                InventoryContextKind.Bank => "Bank",
-                InventoryContextKind.RecoveryStorage => "Recovery",
-                InventoryContextKind.Corpse => "Corpse",
-                InventoryContextKind.Vendor => "Trade",
+                InventoryContextKind.Bank => owner.Text("ui/inventory/bank"),
+                InventoryContextKind.RecoveryStorage => owner.Text("ui/inventory/recovery-tab"),
+                InventoryContextKind.Corpse => owner.Text("ui/corpse/title"),
+                InventoryContextKind.Vendor => owner.Text("ui/vendor/trade"),
                 _ => context.ToString()
             };
         }

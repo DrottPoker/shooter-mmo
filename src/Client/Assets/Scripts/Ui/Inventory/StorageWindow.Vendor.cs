@@ -5,6 +5,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -46,9 +47,9 @@ namespace Mmorpg.Client.Ui
             var state = owner.State;
             var capability = ActiveVendorCapability();
             if (capability == null
-                || !VendorClientRules.TryResolve(state.Catalog, capability.ProfileId, out var vendor, out var error))
+                || !VendorClientRules.TryResolve(state.Catalog, capability.ProfileId, out var vendor, out _))
             {
-                owner.Say("Talk to a vendor to sell items.");
+                owner.Say(ClientText.Of("ui/vendor/talk-to-sell"));
                 return;
             }
 
@@ -102,23 +103,23 @@ namespace Mmorpg.Client.Ui
             var capability = ActiveVendorCapability();
             if (capability == null)
             {
-                Window.SetTitle("Trade");
+                Window.SetTitle(owner.Text("ui/vendor/trade"));
                 Window.SetDetail(string.Empty);
-                ShowMessage("Talk to a vendor, such as Mira in the city, and choose Trade.", true);
+                ShowMessage(owner.Text("ui/vendor/hint"), true);
                 return;
             }
 
             if (!VendorClientRules.TryResolve(state.Catalog, capability.ProfileId, out var vendor, out var error))
             {
-                Window.SetTitle("Trade");
-                ShowMessage(error, true);
+                Window.SetTitle(owner.Text("ui/vendor/trade"));
+                ShowMessage(owner.Text(error), true);
                 return;
             }
 
             var snapshot = state.FullSnapshot;
             if (snapshot == null)
             {
-                ShowMessage(CharacterInventoryWindow.StatusText(state), true);
+                ShowMessage(CharacterInventoryWindow.StatusText(owner.Texts, state), true);
                 return;
             }
 
@@ -140,22 +141,32 @@ namespace Mmorpg.Client.Ui
             EnsureSections(key, () => BuildVendor(offers));
 
             var idle = InventoryDropPlanner.CanMoveItem(state, null);
-            vendorBalance.text = "You have <color=" + UiFactory.ColorTag(theme.GoldTextColor) + ">"
-                + VendorClientRules.FormatAmount(state.Catalog, snapshot.Currency) + "</color>";
+            vendorBalance.text = owner.Text(
+                "ui/vendor/balance",
+                MessageArgument.Text(
+                    "amount",
+                    "<color=" + UiFactory.ColorTag(theme.GoldTextColor) + ">"
+                        + owner.Text(VendorClientRules.FormatAmount(snapshot.Currency)) + "</color>"));
             for (var index = 0; index < offerRows.Count && index < offers.Count; index++)
             {
                 BindOffer(offerRows[index], state, capability, vendor, offers[index], idle);
             }
 
-            sections[1].Detail.text = "Pays " + RateText(vendor.SalePriceBasisPoints) + " of value";
+            sections[1].Detail.text = owner.Text(
+                "ui/vendor/sale-rate",
+                MessageArgument.Text("rate", RateText(vendor.SalePriceBasisPoints)));
             var sellSpec = owner.ItemSpec(pendingItem, "vendor:sell");
             sellSpec.Dimmed = false;
             sellSpec.DropValidator = (InventoryDragPayload candidate, out ClientText reason) =>
                 owner.Interactions.CanOfferToVendor(vendor, candidate, out reason);
             sellSpec.OnDrop = OfferForSale;
+            var vendorArgument = MessageArgument.Text("vendor", vendorName);
             sellSpec.Tooltip = pendingItem != null
-                ? InventorySlotPresentation.BuildItemTooltip(state.Catalog, pendingItem, "Offered to " + vendorName)
-                : "<b>Sell</b>\nDrop a carried item here to see what " + vendorName + " pays for it.";
+                ? InventorySlotPresentation.BuildItemTooltip(
+                    state.Catalog,
+                    pendingItem,
+                    owner.Text("ui/vendor/offered-to", vendorArgument))
+                : "<b>" + owner.Text("ui/vendor/sell") + "</b>\n" + owner.Text("ui/vendor/sell-hint", vendorArgument);
             sellGrid.Bind(new[] { sellSpec });
 
             sellRow.gameObject.SetActive(pendingItem != null);
@@ -179,14 +190,14 @@ namespace Mmorpg.Client.Ui
         private void BuildVendor(IReadOnlyList<VendorOffer> offers)
         {
             offerRows.Clear();
-            var buy = AddSection("Buy", null, false);
+            var buy = AddSection(owner.Text("ui/vendor/buy"), null, false);
             vendorBalance = UiFactory.BodyText(theme, buy.Root, "Balance", theme.LabelSize, theme.TextColor, TextAlignmentOptions.MidlineLeft);
             foreach (var _ in offers)
             {
                 offerRows.Add(CreateOfferRow(buy.Root));
             }
 
-            var sell = AddSection("Sell", null, false);
+            var sell = AddSection(owner.Text("ui/vendor/sell"), null, false);
             sellGrid = new ItemSlotGrid(theme, sell.Root, CharacterInventoryWindow.Columns, owner.DragCoordinator, owner.Tooltip, "SellGrid");
             var row = UiFactory.Row(sell.Root, "SellRow", theme.ButtonHeight, 6f);
             sellRow = row.GetComponent<RectTransform>();
@@ -205,8 +216,8 @@ namespace Mmorpg.Client.Ui
                     UiFactory.SetButtonLabel(sellButton, SellLabel(state, vendor, item, location, value));
                 }
             });
-            sellButton = UiFactory.Button(theme, row.transform, "Sell", SellPending, UiButtonTone.Primary);
-            UiFactory.Button(theme, row.transform, "Cancel", () =>
+            sellButton = UiFactory.Button(theme, row.transform, owner.Text("ui/vendor/sell"), SellPending, UiButtonTone.Primary);
+            UiFactory.Button(theme, row.transform, owner.Text("ui/common/cancel"), () =>
             {
                 pendingSaleItemId = Guid.Empty;
                 owner.Refresh();
@@ -227,7 +238,7 @@ namespace Mmorpg.Client.Ui
             var field = UiFactory.Field(theme, row.transform, "Quantity", "1", null, null, TMP_InputField.ContentType.IntegerNumber, TextAlignmentOptions.Center);
             UiFactory.Layout(field, 52f, theme.FieldHeight, 0f);
             var offerRow = new OfferRow { Slot = grid, Label = label, Quantity = field };
-            offerRow.Buy = UiFactory.Button(theme, row.transform, "Buy", () => BuyOffer(offerRow), UiButtonTone.Normal, 104f);
+            offerRow.Buy = UiFactory.Button(theme, row.transform, owner.Text("ui/vendor/buy"), () => BuyOffer(offerRow), UiButtonTone.Normal, 104f);
             return offerRow;
         }
 
@@ -243,6 +254,9 @@ namespace Mmorpg.Client.Ui
             row.Capability = capability;
             row.Vendor = vendor;
             var name = state.Catalog.GetDisplayName(offer.DefinitionId);
+            var unitPrice = owner.Text(
+                "ui/vendor/unit-price",
+                MessageArgument.Text("price", owner.Text(VendorClientRules.FormatAmount(offer.UnitPrice))));
             var spec = new ItemSlotSpec
             {
                 Key = "vendor:offer:" + offer.DefinitionId,
@@ -250,11 +264,11 @@ namespace Mmorpg.Client.Ui
                 DisplayName = name,
                 Icon = state.Catalog.LoadIcon(offer.DefinitionId),
                 FrameColor = ItemRarityPresentation.FrameColor(theme, state.Catalog, offer.DefinitionId),
-                Tooltip = "<b>" + name + "</b>\n" + VendorClientRules.FormatAmount(state.Catalog, offer.UnitPrice) + " each"
+                Tooltip = "<b>" + name + "</b>\n" + unitPrice
             };
             row.Slot.Bind(new[] { spec });
             row.Label.text = name + "\n<size=85%><color=" + UiFactory.ColorTag(theme.MutedTextColor) + ">"
-                + VendorClientRules.FormatAmount(state.Catalog, offer.UnitPrice) + " each</color></size>";
+                + unitPrice + "</color></size>";
             if (!vendorQuantityTexts.TryGetValue(offer.DefinitionId, out var quantityText))
             {
                 quantityText = "1";
@@ -280,7 +294,7 @@ namespace Mmorpg.Client.Ui
             vendorQuantityTexts.TryGetValue(row.DefinitionId, out var quantityText);
             if (!int.TryParse(quantityText ?? "1", NumberStyles.None, CultureInfo.InvariantCulture, out var quantity))
             {
-                owner.Say("Enter a whole quantity.");
+                owner.Say(ClientText.Of("ui/vendor/whole-quantity"));
                 return;
             }
 
@@ -294,7 +308,7 @@ namespace Mmorpg.Client.Ui
             if (capability == null
                 || !VendorClientRules.TryResolve(state.Catalog, capability.ProfileId, out var vendor, out _))
             {
-                owner.Say("Talk to a vendor to sell items.");
+                owner.Say(ClientText.Of("ui/vendor/talk-to-sell"));
                 return;
             }
 
@@ -308,7 +322,7 @@ namespace Mmorpg.Client.Ui
 
             if (!int.TryParse(pendingSaleQuantityText, NumberStyles.None, CultureInfo.InvariantCulture, out var quantity))
             {
-                owner.Say("Enter a whole quantity.");
+                owner.Say(ClientText.Of("ui/vendor/whole-quantity"));
                 return;
             }
 
@@ -321,7 +335,7 @@ namespace Mmorpg.Client.Ui
             owner.Report(result);
         }
 
-        private static string BuyLabel(
+        private string BuyLabel(
             InventoryClientState state,
             VendorProfileDefinition vendor,
             string definitionId,
@@ -332,21 +346,21 @@ namespace Mmorpg.Client.Ui
                 && state.Catalog.TryGetDefinition(definitionId, out var definition)
                 && quantity >= 1
                 && VendorPricing.TryGetPurchasePrice(definition, vendor, quantity, out var price)
-                    ? "Buy " + VendorClientRules.FormatAmount(state.Catalog, price)
-                    : "Buy";
+                    ? owner.Text("ui/vendor/buy-for", MessageArgument.Text("price", owner.Text(VendorClientRules.FormatAmount(price))))
+                    : owner.Text("ui/vendor/buy");
         }
 
-        private static string SellLabel(
+        private string SellLabel(
             InventoryClientState state,
             VendorProfileDefinition vendor,
             InventoryItem item,
             InventoryItemLocation location,
             string quantityText)
         {
-            var name = state.Catalog.GetDisplayName(item.DefinitionId);
+            var name = MessageArgument.Text("item", state.Catalog.GetDisplayName(item.DefinitionId));
             if (!int.TryParse(quantityText, NumberStyles.None, CultureInfo.InvariantCulture, out var quantity))
             {
-                return "Sell " + name;
+                return owner.Text("ui/vendor/sell-item", name);
             }
 
             return VendorClientRules.CanSell(
@@ -358,9 +372,11 @@ namespace Mmorpg.Client.Ui
                     quantity,
                     out var price,
                     out _)
-                ? "Sell " + quantity.ToString(CultureInfo.InvariantCulture) + " for "
-                    + VendorClientRules.FormatAmount(state.Catalog, price)
-                : "Sell " + name;
+                ? owner.Text(
+                    "ui/vendor/sell-for",
+                    MessageArgument.Text("quantity", quantity.ToString(CultureInfo.InvariantCulture)),
+                    MessageArgument.Text("price", owner.Text(VendorClientRules.FormatAmount(price))))
+                : owner.Text("ui/vendor/sell-item", name);
         }
 
         private static string RateText(int basisPoints)

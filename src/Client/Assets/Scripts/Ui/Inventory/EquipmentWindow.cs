@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -50,7 +51,7 @@ namespace Mmorpg.Client.Ui
                 parent,
                 InventoryWindows.EquipmentWindowName,
                 theme.EquipmentIcon,
-                "Equipment",
+                owner.Text("ui/inventory/equipment-title"),
                 InnerWidth + 2f * theme.WindowPadding);
             message = UiFactory.BodyText(theme, Window.Body, "Message", theme.BodySize, theme.TextColor, TextAlignmentOptions.TopLeft);
             message.textWrappingMode = TextWrappingModes.Normal;
@@ -118,7 +119,7 @@ namespace Mmorpg.Client.Ui
             if (state?.Catalog == null || state.FullSnapshot == null)
             {
                 message.gameObject.SetActive(true);
-                message.text = state?.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(state);
+                message.text = state?.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(owner.Texts, state);
                 doll.gameObject.SetActive(false);
                 Window.FitBody();
                 return;
@@ -201,7 +202,10 @@ namespace Mmorpg.Client.Ui
                 state.Catalog,
                 item,
                 InventorySlotPresentation.LiveQuantityDescription(
-                    "Equipped in " + InventorySlotPresentation.EquipmentSlotName(state.Catalog, ammunition.SlotId),
+                    owner.Texts,
+                    owner.Text(
+                        "ui/inventory/equipped-in",
+                        MessageArgument.Text("slot", InventorySlotPresentation.EquipmentSlotName(state.Catalog, ammunition.SlotId))),
                     item.Quantity,
                     live)));
         }
@@ -297,9 +301,12 @@ namespace Mmorpg.Client.Ui
             }
 
             var name = state.Catalog.GetDisplayName(headwear.DefinitionId);
+            var item = MessageArgument.Text("item", name);
             headwearTooltip.Configure(
                 owner.Tooltip,
-                (bodyLook.HeadwearLowered ? "<b>Raise " : "<b>Lower ") + name + "</b>");
+                "<b>" + (bodyLook.HeadwearLowered
+                    ? owner.Text("ui/inventory/raise-headwear", item)
+                    : owner.Text("ui/inventory/lower-headwear", item)) + "</b>");
             headwearToggle.targetGraphic.color = bodyLook.HeadwearLowered ? theme.AccentColor : theme.TitleColor;
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -15,6 +16,7 @@ namespace Mmorpg.Client.Ui
         private const float Width = 300f;
 
         private UiTheme theme;
+        private TextCatalog texts;
         private RectTransform rect;
         private RectTransform bounds;
         private TextMeshProUGUI title;
@@ -45,11 +47,11 @@ namespace Mmorpg.Client.Ui
             get { return Clamp(ParseQuantity()); }
         }
 
-        public static UiDialog Create(UiTheme theme, RectTransform parent)
+        public static UiDialog Create(UiTheme theme, RectTransform parent, TextCatalog texts)
         {
             var root = UiFactory.Create("Dialog", parent);
             var dialog = root.gameObject.AddComponent<UiDialog>();
-            dialog.Build(theme, parent);
+            dialog.Build(theme, parent, texts ?? throw new ArgumentNullException(nameof(texts)));
             return dialog;
         }
 
@@ -68,7 +70,7 @@ namespace Mmorpg.Client.Ui
             maximum = Math.Max(minimum, maximumQuantity);
             quantityRow.gameObject.SetActive(true);
             quantityField.text = Clamp(initialQuantity).ToString(CultureInfo.InvariantCulture);
-            Open(heading, text, "OK", UiButtonTone.Primary, onConfirmed);
+            Open(heading, text, texts.Get("ui/common/ok"), UiButtonTone.Primary, onConfirmed);
             PlaceNear(screenPosition);
             quantityField.ActivateInputField();
             quantityField.selectionAnchorPosition = 0;
@@ -169,9 +171,10 @@ namespace Mmorpg.Client.Ui
             quantityField.text = Clamp(ParseQuantity() + delta).ToString(CultureInfo.InvariantCulture);
         }
 
-        private void Build(UiTheme dialogTheme, RectTransform parent)
+        private void Build(UiTheme dialogTheme, RectTransform parent, TextCatalog dialogTexts)
         {
             theme = dialogTheme;
+            texts = dialogTexts;
             bounds = parent;
             rect = (RectTransform)transform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -220,8 +223,8 @@ namespace Mmorpg.Client.Ui
             UiFactory.Button(theme, row.transform, "+", () => Step(1), UiButtonTone.Normal, theme.FieldHeight);
 
             var buttons = UiFactory.Row(transform, "Buttons", theme.ButtonHeight, 8f);
-            confirmButton = UiFactory.Button(theme, buttons.transform, "OK", Confirm, UiButtonTone.Primary);
-            UiFactory.Button(theme, buttons.transform, "Cancel", Close);
+            confirmButton = UiFactory.Button(theme, buttons.transform, texts.Get("ui/common/ok"), Confirm, UiButtonTone.Primary);
+            UiFactory.Button(theme, buttons.transform, texts.Get("ui/common/cancel"), Close);
             gameObject.SetActive(false);
         }
     }

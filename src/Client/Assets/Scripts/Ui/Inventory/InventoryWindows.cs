@@ -7,6 +7,7 @@ using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -61,6 +62,7 @@ namespace Mmorpg.Client.Ui
         private const float RollbackMarkSeconds = 1.5f;
 
         private UiTheme theme;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private InventoryClientController controller;
         private CorpseClientController corpseController;
         private WorldInteractionClientController worldInteractionController;
@@ -150,6 +152,12 @@ namespace Mmorpg.Client.Ui
             get { return tooltip; }
         }
 
+        // The client's texts, which also name the items, slots, and the currency.
+        internal TextCatalog Texts
+        {
+            get { return texts; }
+        }
+
         internal InventoryInteractions Interactions
         {
             get { return interactions; }
@@ -196,10 +204,12 @@ namespace Mmorpg.Client.Ui
             WorldMenuController menu,
             GameMessageLog messages,
             InventoryWindowRequests windowRequests,
+            TextCatalog uiTexts,
             PlayerBodyLookSetting lookSetting = null,
             CharacterPreview preview = null,
             WorldPointerFocus focus = null)
         {
+            texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             characterPreview = preview;
             pointerFocus = focus;
             theme = uiTheme;
@@ -361,10 +371,28 @@ namespace Mmorpg.Client.Ui
             gameMessages?.Add(message, Time.unscaledTime);
         }
 
-        // Says a text in the words of the item catalog's text tables.
+        // Says a text in the words of the client's text tables.
         internal void Say(ClientText message)
         {
-            Say(message.Resolve(State?.Catalog?.Texts));
+            Say(message.Resolve(texts));
+        }
+
+        // The text of a ui key.
+        internal string Text(string key)
+        {
+            return texts.Get(key);
+        }
+
+        // The text of a ui key with its named values.
+        internal string Text(string key, params MessageArgument[] arguments)
+        {
+            return texts.Format(key, arguments);
+        }
+
+        // A text that rule code returned, in the words the player reads.
+        internal string Text(ClientText text)
+        {
+            return text.Resolve(texts);
         }
 
         internal bool IsRolledBack(InventoryItem item)
@@ -650,7 +678,7 @@ namespace Mmorpg.Client.Ui
             rolledBackItemIds.Clear();
             rolledBackItemIds.UnionWith(rollback.ItemInstanceIds);
             rollbackMarkUntil = Time.unscaledTime + RollbackMarkSeconds;
-            Say("Item move undone: " + rollback.Error.Message);
+            Say(Text("ui/inventory/item-move-undone", MessageArgument.Text("reason", rollback.Error.Message)));
             Refresh();
         }
 
@@ -775,7 +803,7 @@ namespace Mmorpg.Client.Ui
             inventory.Window.CloseRequested += () => SetInventoryOpen(false);
             storage.Window.CloseRequested += () => CloseStorage();
             tooltip.transform.SetAsLastSibling();
-            dialog = UiDialog.Create(theme, root);
+            dialog = UiDialog.Create(theme, root, texts);
             equipment.Window.SetOpen(false);
             inventory.Window.SetOpen(false);
             storage.Window.SetOpen(false);

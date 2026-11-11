@@ -380,7 +380,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 state.TryPredict(InventoryPredictedOperation.Relocate(ore.ItemInstanceId, inventory, 4), out var full),
                 Is.False);
-            Assert.That(full, Does.Contain("Too many"));
+            Assert.That(full, Is.EqualTo(FixtureTexts.Ui().Get("ui/inventory/too-many-pending")));
         }
 
         private void AssertRefused(
