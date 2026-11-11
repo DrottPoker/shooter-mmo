@@ -175,7 +175,6 @@ namespace Mmorpg.WorldData.Editor.Items
                 : new ItemPresentationCatalogDocument
                 {
                     formatVersion = ItemPresentationCatalogFormat.Version,
-                    sourceCatalogRevision = runtime.revision,
                     presentationRevision = string.Empty,
                     entries = Array.Empty<ItemPresentationEntry>()
                 };
@@ -239,13 +238,22 @@ namespace Mmorpg.WorldData.Editor.Items
                 try
                 {
                     candidatePresentation = ItemPresentationCatalogCompiler.Compile(
-                        candidateRuntime.revision,
-                        candidateRuntime.definitions.Select(definition => definition.id),
                         workspace.Presentation.entries);
                 }
                 catch (ItemPresentationCatalogValidationException exception)
                 {
                     return ItemCatalogEditorValidationResult.Failed(exception.Message);
+                }
+
+                // The client accepts any coverage, but the committed catalogs keep exactly one
+                // presentation entry per definition.
+                var coverage = ItemPresentationCoverage.Check(
+                    candidatePresentation,
+                    candidateRuntime.definitions.Select(definition => definition.id));
+                if (!coverage.IsExact)
+                {
+                    return ItemCatalogEditorValidationResult.Failed(
+                        new ItemPresentationCatalogValidationException(coverage.Describe()).Message);
                 }
 
                 var presentationJson = ItemPresentationCatalogJson.Serialize(
@@ -398,7 +406,6 @@ namespace Mmorpg.WorldData.Editor.Items
             ItemPresentationCatalogDocument candidate)
         {
             workspace.Presentation.formatVersion = candidate.formatVersion;
-            workspace.Presentation.sourceCatalogRevision = candidate.sourceCatalogRevision;
             workspace.Presentation.presentationRevision = candidate.presentationRevision;
             workspace.Presentation.entries = candidate.entries;
         }

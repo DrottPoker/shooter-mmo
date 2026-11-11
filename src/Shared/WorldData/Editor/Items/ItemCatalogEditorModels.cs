@@ -558,7 +558,6 @@ namespace Mmorpg.WorldData.Editor.Items
             Authoring.definitions = authoring.definitions ?? Array.Empty<ItemCatalogJsonDefinition>();
             Authoring.vendors = authoring.vendors ?? Array.Empty<ItemCatalogJsonVendor>();
             Presentation.formatVersion = presentation.formatVersion;
-            Presentation.sourceCatalogRevision = presentation.sourceCatalogRevision;
             Presentation.presentationRevision = presentation.presentationRevision;
             Presentation.entries = presentation.entries ?? Array.Empty<ItemPresentationEntry>();
         }
