@@ -101,7 +101,8 @@ namespace Mmorpg.WorldData.Text
             return TextTable.Create(TextTableIds.Actors, TextTableFormat.SourceLocale, entries);
         }
 
-        public static TextTableDocument FromQuestCatalog(QuestCatalogRuntimeDocument catalog)
+        // The texts of the authored quests. The compiled quest catalog carries none.
+        public static TextTableDocument FromQuestCatalog(QuestCatalogAuthoringDocument catalog)
         {
             if (catalog == null)
             {
@@ -109,15 +110,15 @@ namespace Mmorpg.WorldData.Text
             }
 
             var entries = new List<TextTableEntry>();
-            foreach (var quest in catalog.Quests ?? Array.Empty<QuestDefinition>())
+            foreach (var quest in catalog.Quests ?? Array.Empty<QuestAuthoringEntry>())
             {
                 Add(entries, TextKeys.QuestTitle(quest.Id), quest.Title);
                 Add(entries, TextKeys.QuestOffer(quest.Id), quest.OfferText);
                 Add(entries, TextKeys.QuestProgress(quest.Id), quest.ProgressText);
                 Add(entries, TextKeys.QuestCompletion(quest.Id), quest.CompletionText);
-                foreach (var step in quest.Steps ?? Array.Empty<QuestStepDefinition>())
+                foreach (var step in quest.Steps ?? Array.Empty<QuestStepAuthoringEntry>())
                 {
-                    foreach (var objective in step.Objectives ?? Array.Empty<QuestObjectiveDefinition>())
+                    foreach (var objective in step.Objectives ?? Array.Empty<QuestObjectiveAuthoringEntry>())
                     {
                         Add(
                             entries,

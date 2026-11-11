@@ -1,6 +1,6 @@
 using System.IO;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Quests;
-using Mmorpg.WorldData.Quests;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -35,14 +35,32 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The texts of the fixture quests, checked in next to the compiled fixture catalog.
+        public static string TextTablePath
+        {
+            get
+            {
+                return Path.GetFullPath(Path.Combine(
+                    Path.GetDirectoryName(RuntimePath),
+                    "..",
+                    "Text",
+                    "en",
+                    "quests.text-table.json"));
+            }
+        }
+
         public static ClientQuestCatalog Load()
         {
-            // The fixture quests are not in the bundled text tables, so their own texts make
-            // the text catalog, as the quest compiler builds the real table.
+            // The fixture quests are not in the bundled text tables, so their own table and
+            // the development actors, which name the Mob of a quest drop, make the catalog.
             var json = File.ReadAllText(RuntimePath);
-            var texts = FixtureTexts.For(JsonUtility.FromJson<QuestCatalogJsonDocument>(json).ToRuntime());
             Assert.That(
-                ClientQuestCatalog.TryParse(json, texts, out var catalog, out var error),
+                ClientTexts.TryParse(File.ReadAllText(TextTablePath), out var quests, out var error),
+                Is.True,
+                error);
+            var texts = FixtureTexts.WithDevelopmentActors(quests);
+            Assert.That(
+                ClientQuestCatalog.TryParse(json, texts, out var catalog, out error),
                 Is.True,
                 error);
             return catalog;

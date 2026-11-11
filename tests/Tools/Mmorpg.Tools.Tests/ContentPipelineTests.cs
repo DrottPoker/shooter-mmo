@@ -174,6 +174,30 @@ public sealed class ContentPipelineTests
         Assert.Equal(expected, StrictContentJson.NormalizeLineEndings(QuestCatalogTestData.FixtureRuntimeJson));
     }
 
+    // The compiled fixture catalog carries no text, so the texts of the fixture quests are
+    // checked in as their own table, which the Unity tests read as the client reads the real
+    // one. MMORPG_UPDATE_GOLDENS=1 rewrites it after a fixture change.
+    [Fact]
+    public void FixtureQuestTextTableMatchesItsAuthoring()
+    {
+        var expected = TextTableOutput.Serialize(
+            ContentText.FromQuestCatalog(QuestCatalogTestData.LoadFixtureAuthoring()));
+        var path = ContentLayout.GeneratedTextTablePath(
+            RepositoryPaths.QuestCatalogFixtureGenerated,
+            TextTableFormat.SourceLocale,
+            TextTableIds.Quests);
+        if (string.Equals(
+                Environment.GetEnvironmentVariable(GoldenFiles.UpdateVariable),
+                "1",
+                StringComparison.Ordinal))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, expected, new System.Text.UTF8Encoding(false));
+        }
+
+        Assert.Equal(expected, StrictContentJson.NormalizeLineEndings(File.ReadAllText(path)));
+    }
+
     [Fact]
     public void SpawnFileMustDeclareItsWorldDirectory()
     {

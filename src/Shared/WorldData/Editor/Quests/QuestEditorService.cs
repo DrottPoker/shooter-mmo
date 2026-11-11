@@ -311,9 +311,23 @@ namespace Mmorpg.WorldData.Editor.Quests
                     .Where(path => !written.Contains(path))
                     .ToArray();
                 var committed = ReadRuntime(paths.RuntimePath, out var unreadable);
-                var changes = (unreadable
-                        ? new[] { "Wrote the committed quest catalog again, which could not be read" }
-                        : ClassifyChanges(committed, ReadRuntimeJson(runtimeFile.Value)))
+                var classified = unreadable
+                    ? new[] { "Wrote the committed quest catalog again, which could not be read" }
+                    : ClassifyChanges(committed, ReadRuntimeJson(runtimeFile.Value));
+
+                // The compiled catalog carries no text, so a new wording shows only in the
+                // quest text table.
+                var committedTextTablePath = Path.Combine(paths.GeneratedRoot, textTablePath);
+                var reworded = unreadable
+                    ? Array.Empty<string>()
+                    : QuestsWithChangedTexts(
+                            File.Exists(committedTextTablePath) ? File.ReadAllText(committedTextTablePath) : string.Empty,
+                            textTableFile.Value)
+                        .Where(id => !classified.Any(change => change.EndsWith(": " + id, StringComparison.Ordinal)))
+                        .Select(id => "Changed quest text: " + id)
+                        .ToArray();
+                var changes = classified
+                    .Concat(reworded)
                     .Concat((catalog.retiredQuestIds ?? Array.Empty<string>())
                         .Where(id => !savedRetired.Contains(id, StringComparer.Ordinal))
                         .Select(id => "Retired quest id: " + id))
@@ -480,6 +494,49 @@ namespace Mmorpg.WorldData.Editor.Quests
             }
 
             return changes.ToArray();
+        }
+
+        // The ids of the quests whose texts differ between two quest text tables.
+        private static string[] QuestsWithChangedTexts(string committedJson, string candidateJson)
+        {
+            var before = TextsByKey(committedJson);
+            var after = TextsByKey(candidateJson);
+            return before.Keys.Union(after.Keys, StringComparer.Ordinal)
+                .Where(key => !before.TryGetValue(key, out var earlier)
+                    || !after.TryGetValue(key, out var later)
+                    || !string.Equals(earlier, later, StringComparison.Ordinal))
+                .Select(QuestIdOfKey)
+                .Where(id => id != null)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        // A table that is missing or unreadable counts as empty, so every text shows as new.
+        private static Dictionary<string, string> TextsByKey(string json)
+        {
+            TextTableJsonDocument table = null;
+            try
+            {
+                table = string.IsNullOrWhiteSpace(json) ? null : JsonUtility.FromJson<TextTableJsonDocument>(json);
+            }
+            catch (ArgumentException)
+            {
+            }
+
+            return (table?.entries ?? Array.Empty<TextTableJsonEntry>())
+                .Where(entry => entry != null && !string.IsNullOrEmpty(entry.key))
+                .GroupBy(entry => entry.key, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().text ?? string.Empty, StringComparer.Ordinal);
+        }
+
+        // "quest/<quest-id>/..." names its quest in the second segment.
+        private static string QuestIdOfKey(string key)
+        {
+            var segments = key.Split(TextKeys.Separator);
+            return segments.Length >= 3 && string.Equals(segments[0], "quest", StringComparison.Ordinal)
+                ? segments[1]
+                : null;
         }
 
         // Each quest's compiled JSON by id, so any change to a quest shows.

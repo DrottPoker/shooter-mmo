@@ -432,10 +432,10 @@ show messages.
   `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
   `CurrencyName`. An id that the gameplay catalog does not know is shown as it
   is.
-- `ClientQuestCatalog` owns its copy of the compiled quest catalog. Once the
-  copy validates, it replaces every title, offer, progress, and completion
-  text, objective text, and line in it with the text catalog's, so the quest
-  windows and notices read the quest definitions as before.
+- `ClientQuestCatalog` owns its copy of the compiled quest catalog, which
+  carries no text. Once the copy validates, it fills every title, offer,
+  progress, and completion text, objective text, and line in it from the text
+  catalog, so the quest windows and notices read a quest definition whole.
 - `WorldActorClientEntry` names an actor when it spawns: its `DisplayName`
   and `ExamineText` by the actor definition id of the spawn, and
   `MenuOptionLabel` and `CapabilityName` by that id and a capability id.

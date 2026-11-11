@@ -33,7 +33,7 @@ try
         runtime.Quests.Length);
     TextTableOutput.WriteOrVerify(
         options.GeneratedRoot,
-        ContentText.FromQuestCatalog(runtime),
+        ContentText.FromQuestCatalog(authoring),
         options.VerifyOnly);
     return 0;
 }

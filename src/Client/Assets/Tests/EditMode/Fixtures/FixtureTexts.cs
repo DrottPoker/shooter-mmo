@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.WorldActors;
-using Mmorpg.WorldData.Quests;
 using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 
@@ -18,14 +17,10 @@ namespace Mmorpg.Client.Tests.EditMode
             return texts;
         }
 
-        // The quest texts with the development actors, which name the Mob of a quest drop.
-        public static TextCatalog For(QuestCatalogRuntimeDocument quests)
+        // A text table with the development actors, which name the Mob of a quest drop.
+        public static TextCatalog WithDevelopmentActors(TextTableDocument table)
         {
-            return TextCatalog.Create(new[]
-            {
-                ContentText.FromQuestCatalog(quests),
-                DevelopmentActorTexts().BuildTable()
-            });
+            return TextCatalog.Create(new[] { table, DevelopmentActorTexts().BuildTable() });
         }
 
         // The actors that the client tests spawn, named as the tests expect: Mira of the city

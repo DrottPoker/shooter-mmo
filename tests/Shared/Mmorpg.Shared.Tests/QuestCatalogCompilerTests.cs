@@ -1,7 +1,9 @@
 using Mmorpg.Testing.Content;
+using Mmorpg.Tools.QuestCatalogCompiler;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Shared.Tests;
 
@@ -425,15 +427,54 @@ public sealed class QuestCatalogCompilerTests
     {
         var runtime = Compile(KillQuest());
         runtime.Quests[0].Steps[0].Objectives[0].Kind = QuestObjectiveKindIds.Gather;
-        var retitled = Compile(KillQuest());
-        retitled.Quests[0].Title = "Another Title";
+        var repriced = Compile(KillQuest());
+        repriced.Quests[0].RewardGold++;
+        var titled = Compile(KillQuest());
+        titled.Quests[0].Title = "A Smuggled Title";
+        var worded = Compile(KillQuest());
+        worded.Quests[0].Steps[0].Objectives[0].Text = "A smuggled text.";
 
         Assert.Contains(
             Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(runtime)).Errors,
             error => error.Contains("stale structural fingerprint", StringComparison.Ordinal));
         Assert.Contains(
-            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(retitled)).Errors,
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(repriced)).Errors,
             error => error.Contains("revision does not match", StringComparison.Ordinal));
+
+        // A compiled catalog carries no text, so one that holds a text is refused.
+        Assert.Contains(
+            Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(titled)).Errors,
+            error => error.Contains("holds a text", StringComparison.Ordinal));
+        Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.ValidateRuntime(worded));
+    }
+
+    // The texts go only into the quest text table: a new wording changes no compiled quest,
+    // no revision, and no structural fingerprint.
+    [Fact]
+    public void ATextChangeChangesNoCompiledCatalog()
+    {
+        var authoring = QuestCatalogTestData.LoadAuthoring();
+        var original = QuestCatalogTestData.Compile();
+        var originalTexts = ContentText.FromQuestCatalog(authoring);
+        var quest = authoring.Quests[0];
+        quest.Title += " Renamed";
+        quest.OfferText += " More.";
+        quest.ProgressText += " More.";
+        quest.CompletionText += " More.";
+        quest.Steps[0].Objectives[0].Text += " More.";
+        var talk = authoring.Quests
+            .SelectMany(candidate => candidate.Steps)
+            .SelectMany(step => step.Objectives)
+            .First(objective => objective.Kind == QuestObjectiveKindIds.TalkTo);
+        talk.Line += " More.";
+
+        var changed = QuestCatalogTestData.Compile(authoring);
+
+        Assert.Equal(original.Revision, changed.Revision);
+        Assert.Equal(QuestJson.SerializeRuntime(original), QuestJson.SerializeRuntime(changed));
+        Assert.NotEqual(originalTexts.Revision, ContentText.FromQuestCatalog(authoring).Revision);
+        QuestCatalogCompiler.ValidateRuntime(changed);
+        Assert.All(changed.Quests, compiled => Assert.Null(compiled.Title));
     }
 
     // A service relies on the shape of a loaded catalog, so it is checked before the hashes.

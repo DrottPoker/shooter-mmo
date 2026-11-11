@@ -1,13 +1,12 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "catalogId": "core",
-  "revision": "2119ae2e76347a974cd8f55cf1186c5b4ba3f2f1b45073271373d371c66ddc02",
+  "revision": "fdcc218c8f4459cee95f53daaa4ebc6176a2e4d8b3128db4415b3cca1d50e52a",
   "maximumActiveQuests": 25,
   "retiredQuestIds": [],
   "quests": [
     {
       "id": "quest.letter_for_the_outpost",
-      "title": "A Letter for the Outpost",
       "giverActorId": "npc.city_services",
       "turnInActorId": "npc.outpost_sergeant",
       "minimumLevel": 1,
@@ -16,9 +15,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "This letter must reach the sergeant at the western outpost before nightfall. Follow the road west and hand it over yourself.",
-      "progressText": "You have a letter for me? Let me see it.",
-      "completionText": "Orders from the Quartermaster, sealed and dry. Good work, runner.",
       "startItems": [
         {
           "definitionId": "quest_item.sealed_letter",
@@ -32,13 +28,11 @@
             {
               "id": "sealed_letter",
               "kind": "collect",
-              "text": "Sealed Letter delivered",
               "count": 1,
               "actorIds": [],
               "actorTag": "",
               "itemId": "quest_item.sealed_letter",
               "npcActorId": "",
-              "line": "",
               "dropSources": []
             }
           ]
@@ -51,7 +45,6 @@
     },
     {
       "id": "quest.ore_for_the_quartermaster",
-      "title": "Ore for the Quartermaster",
       "giverActorId": "npc.outpost_sergeant",
       "turnInActorId": "npc.outpost_sergeant",
       "minimumLevel": 1,
@@ -62,9 +55,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "The Quartermaster wants to see the ore before she sends her smith out here. Take her three Iron Ore, then come back and tell me what she said.",
-      "progressText": "Has the Quartermaster seen the ore yet?",
-      "completionText": "She liked it? Then the smith is on his way. Good work.",
       "startItems": [],
       "steps": [
         {
@@ -73,13 +63,11 @@
             {
               "id": "iron_ore",
               "kind": "deliver",
-              "text": "Iron Ore handed to the Quartermaster",
               "count": 3,
               "actorIds": [],
               "actorTag": "",
               "itemId": "material.iron_ore",
               "npcActorId": "npc.city_services",
-              "line": "",
               "dropSources": []
             }
           ]
@@ -92,7 +80,6 @@
     },
     {
       "id": "quest.pelts_and_fangs",
-      "title": "Pelts and Fangs",
       "giverActorId": "npc.city_services",
       "turnInActorId": "npc.city_services",
       "minimumLevel": 1,
@@ -103,9 +90,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "The tanner pays well for good pelts, and the healer grinds wolf fangs into her salves. Bring me three Wolf Pelts and two Wolf Fangs.",
-      "progressText": "Pelts and fangs, traveler. Have you brought them?",
-      "completionText": "Fine pelts, and sharp fangs. Choose something from my stores to keep you warm on the road.",
       "startItems": [],
       "steps": [
         {
@@ -114,25 +98,21 @@
             {
               "id": "wolf_pelts",
               "kind": "collect",
-              "text": "Wolf Pelts",
               "count": 3,
               "actorIds": [],
               "actorTag": "",
               "itemId": "material.wolf_pelt",
               "npcActorId": "",
-              "line": "",
               "dropSources": []
             },
             {
               "id": "wolf_fangs",
               "kind": "collect",
-              "text": "Wolf Fangs",
               "count": 2,
               "actorIds": [],
               "actorTag": "",
               "itemId": "quest_item.wolf_fang",
               "npcActorId": "",
-              "line": "",
               "dropSources": [
                 {
                   "actorId": "mob.feral_wolf",
@@ -160,7 +140,6 @@
     },
     {
       "id": "quest.sergeants_request",
-      "title": "The Sergeant\u0027s Request",
       "giverActorId": "npc.outpost_sergeant",
       "turnInActorId": "npc.outpost_sergeant",
       "minimumLevel": 1,
@@ -171,9 +150,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "The palisade needs iron for new hinges. Mine five Iron Ore in the quarry, then tell the Quartermaster in town that the iron is on its way.",
-      "progressText": "Did you mine the iron and speak with the Quartermaster?",
-      "completionText": "Iron for the gates and word to the town. The outpost owes you one.",
       "startItems": [],
       "steps": [
         {
@@ -182,7 +158,6 @@
             {
               "id": "iron_ore",
               "kind": "gather",
-              "text": "Iron Ore mined",
               "count": 5,
               "actorIds": [
                 "resource.iron_vein"
@@ -190,7 +165,6 @@
               "actorTag": "",
               "itemId": "",
               "npcActorId": "",
-              "line": "",
               "dropSources": []
             }
           ]
@@ -201,13 +175,11 @@
             {
               "id": "quartermaster",
               "kind": "talk_to",
-              "text": "Tell the Quartermaster",
               "count": 1,
               "actorIds": [],
               "actorTag": "",
               "itemId": "",
               "npcActorId": "npc.city_services",
-              "line": "Iron for the outpost? Tell the sergeant it is welcome, and that the road stays open.",
               "dropSources": []
             }
           ]
@@ -220,7 +192,6 @@
     },
     {
       "id": "quest.the_alpha",
-      "title": "The Alpha",
       "giverActorId": "npc.outpost_sergeant",
       "turnInActorId": "npc.outpost_sergeant",
       "minimumLevel": 1,
@@ -232,9 +203,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "The pack follows an alpha, a scarred brute that lairs southwest of the woods. Kill it and bring me its fang as proof.",
-      "progressText": "The alpha still lives. I can hear the pack at night.",
-      "completionText": "That is the alpha\u0027s fang, no doubt about it. The woods will be quieter now. Take your pick from the armory.",
       "startItems": [],
       "steps": [
         {
@@ -243,7 +211,6 @@
             {
               "id": "feral_alpha",
               "kind": "kill",
-              "text": "Feral Alpha slain",
               "count": 1,
               "actorIds": [
                 "mob.feral_alpha"
@@ -251,19 +218,16 @@
               "actorTag": "",
               "itemId": "",
               "npcActorId": "",
-              "line": "",
               "dropSources": []
             },
             {
               "id": "alpha_fang",
               "kind": "collect",
-              "text": "Alpha\u0027s Fang",
               "count": 1,
               "actorIds": [],
               "actorTag": "",
               "itemId": "quest_item.alpha_fang",
               "npcActorId": "",
-              "line": "",
               "dropSources": [
                 {
                   "actorId": "mob.feral_alpha",
@@ -299,7 +263,6 @@
     },
     {
       "id": "quest.wolves_at_the_gate",
-      "title": "Wolves at the Gate",
       "giverActorId": "npc.city_services",
       "turnInActorId": "npc.city_services",
       "minimumLevel": 1,
@@ -308,9 +271,6 @@
       "tags": [
         "development"
       ],
-      "offerText": "Feral wolves prowl the woods west of town, and the traders are scared to take the road. Thin the pack: bring down five of them.",
-      "progressText": "The wolves still howl at night. Have you thinned the pack?",
-      "completionText": "Five fewer wolves. The traders will sleep better tonight, and so will I. Take this for your trouble.",
       "startItems": [],
       "steps": [
         {
@@ -319,7 +279,6 @@
             {
               "id": "feral_wolves",
               "kind": "kill",
-              "text": "Feral Wolves slain",
               "count": 5,
               "actorIds": [
                 "mob.feral_wolf"
@@ -327,7 +286,6 @@
               "actorTag": "",
               "itemId": "",
               "npcActorId": "",
-              "line": "",
               "dropSources": []
             }
           ]

@@ -272,7 +272,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 var changes = service.Validate(workspace).Changes;
 
-                Assert.That(changes, Is.EqualTo(new[] { "Changed quest: quest.wolves_at_the_gate", "Changed quest catalog settings" }));
+                // A new title is a text, which the compiled catalog does not carry.
+                Assert.That(changes, Is.EqualTo(new[] { "Changed quest catalog settings", "Changed quest text: quest.wolves_at_the_gate" }));
 
                 File.WriteAllText(content.Paths.RuntimePath, "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> main\n");
                 var repair = service.Validate(workspace);
