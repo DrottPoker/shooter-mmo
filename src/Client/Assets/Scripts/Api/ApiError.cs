@@ -41,7 +41,8 @@ namespace Mmorpg.Client.Api
             get { return StatusCode == 401; }
         }
 
-        public string ToDisplayMessage()
+        // The English diagnostic for logs; the player reads the text of the code.
+        public string ToDiagnostic()
         {
             var status = StatusCode > 0 ? StatusCode + " " : string.Empty;
             var correlation = string.IsNullOrWhiteSpace(CorrelationId)

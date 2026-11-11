@@ -88,8 +88,9 @@ namespace Mmorpg.Client.Quests
             }
             else
             {
+                // The warning logs the diagnostic; the quest log shows the text of the code.
                 ClientLog.Warning(ClientLogCategory.Client, "The quest windows are unavailable: " + error);
-                State.SetFailed("quest_catalog_invalid", error);
+                State.SetFailed("quest_catalog_invalid", ClientMessages.Text(texts, "quest_catalog_invalid"));
             }
 
             simulationClient.QuestLogChanged += OnQuestLogChanged;

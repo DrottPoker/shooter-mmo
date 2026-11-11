@@ -2247,7 +2247,7 @@ namespace Mmorpg.Client.Networking
                 : ClientLogCategory.Client;
             ClientLog.Error(
                 category,
-                "Realtime operation failed: " + error.ToDisplayMessage());
+                "Realtime operation failed: " + error.ToDiagnostic());
         }
 
         private static RealtimeMovementPath ToRealtimePath(MovementPath path)

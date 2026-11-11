@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Quests;
 
@@ -173,6 +174,7 @@ namespace Mmorpg.Client.Quests
             Changed?.Invoke();
         }
 
+        // The message is the text of the code, which the quest log shows.
         public void SetFailed(string code, string message, bool updateRequired = false)
         {
             if (Status == QuestClientStatus.UpdateRequired)
@@ -209,7 +211,10 @@ namespace Mmorpg.Client.Quests
             if (!Catalog.MatchesServerRevision(response.questCatalogRevision))
             {
                 error = "This client build requires a quest catalog update.";
-                SetFailed("quest_catalog_update_required", error, true);
+                SetFailed(
+                    "quest_catalog_update_required",
+                    ClientMessages.Text(Catalog.Texts, "quest_catalog_update_required", error),
+                    true);
                 return false;
             }
 

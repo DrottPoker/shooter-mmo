@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
@@ -46,6 +47,8 @@ namespace Mmorpg.Client.Items
 
     public sealed class InventoryClientError
     {
+        // The message is the text for the player: a client text, or the text of the code. A
+        // creator without one leaves it empty, and the error then shows the text of its code.
         public InventoryClientError(
             string code,
             string message,
@@ -53,9 +56,7 @@ namespace Mmorpg.Client.Items
             bool updateRequired = false)
         {
             Code = string.IsNullOrWhiteSpace(code) ? "inventory_error" : code;
-            Message = string.IsNullOrWhiteSpace(message)
-                ? "The inventory request failed."
-                : message;
+            Message = message ?? string.Empty;
             CorrelationId = correlationId ?? string.Empty;
             UpdateRequired = updateRequired;
         }
@@ -76,14 +77,28 @@ namespace Mmorpg.Client.Items
             return new InventoryClientError(code, ClientMessages.Text(texts, code, error?.Message));
         }
 
-        // The message is the text for the player: the client's own sentence, or the text of
-        // the code that a server sent. The code stays for programs and logs.
-        public string ToDisplayMessage()
+        // A request that failed, with the text of its code and the correlation id that names
+        // it in the server logs.
+        public static InventoryClientError FromApi(ApiError error, TextCatalog texts)
         {
-            return Message
-                + (string.IsNullOrWhiteSpace(CorrelationId)
-                    ? string.Empty
-                    : " Correlation: " + CorrelationId + ".");
+            return new InventoryClientError(
+                error?.Code,
+                ClientMessages.Text(texts, error),
+                error?.CorrelationId);
+        }
+
+        // The text for the player, with the correlation id of a failed request. The code stays
+        // for programs and logs.
+        public string ToDisplayMessage(TextCatalog texts)
+        {
+            var catalog = texts ?? TextCatalog.Empty(TextTableFormat.SourceLocale);
+            var text = string.IsNullOrWhiteSpace(Message) ? MessageText.Resolve(catalog, Code) : Message;
+            return string.IsNullOrWhiteSpace(CorrelationId)
+                ? text
+                : catalog.Format(
+                    "ui/inventory/error-correlation",
+                    MessageArgument.Text("message", text),
+                    MessageArgument.Text("correlationId", CorrelationId));
         }
     }
 

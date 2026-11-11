@@ -41,9 +41,11 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(closure.Kind, Is.EqualTo(CorpseViewClosureKind.Failure));
             Assert.That(closure.Notice, Is.Empty);
             Assert.That(closure.Error.Code, Is.EqualTo(code));
-            Assert.That(closure.Error.ToDisplayMessage(), Is.EqualTo("The text of the code."));
+            Assert.That(closure.Error.ToDisplayMessage(FixtureTexts.Messages()), Is.EqualTo("The text of the code."));
         }
 
+        // An error without a text shows the text of its code, here the text for every code
+        // without one of its own; no English sentence of the client stands in for it.
         [TestCase(null)]
         [TestCase("")]
         public void ClosureWithoutACodeIsAnError(string code)
@@ -52,7 +54,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(closure.Kind, Is.EqualTo(CorpseViewClosureKind.Failure));
             Assert.That(closure.Error.Code, Is.EqualTo("corpse_error"));
-            Assert.That(closure.Error.ToDisplayMessage(), Is.EqualTo("The corpse interaction failed."));
+            Assert.That(
+                closure.Error.ToDisplayMessage(FixtureTexts.Messages()),
+                Is.EqualTo("That did not work. [corpse_error]"));
         }
     }
 }

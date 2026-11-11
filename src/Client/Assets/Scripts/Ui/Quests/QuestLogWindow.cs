@@ -144,7 +144,7 @@ namespace Mmorpg.Client.Ui
         }
 
         // What the quest windows show until the quest log is ready, with the reason a log or
-        // the bundled catalog failed.
+        // the bundled catalog failed: the text of its code, such as an outdated client.
         internal static string StatusText(QuestClientState state, TextCatalog texts)
         {
             switch (state?.Status ?? QuestClientStatus.Unavailable)
@@ -152,8 +152,6 @@ namespace Mmorpg.Client.Ui
                 case QuestClientStatus.Loading:
                 case QuestClientStatus.Unavailable:
                     return texts.Get("ui/quests/status-reading");
-                case QuestClientStatus.UpdateRequired:
-                    return texts.Get("ui/quests/status-update-required");
                 default:
                     return string.IsNullOrWhiteSpace(state.ErrorMessage)
                         ? texts.Get("ui/quests/status-unavailable")

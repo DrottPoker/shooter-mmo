@@ -1,4 +1,5 @@
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using Mmorpg.WorldData.Text;
@@ -104,15 +105,23 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo("That did not work. [internal_server_error]"));
         }
 
+        // A refusal by the worker and a failure that the client found itself both show the
+        // client's text for their code. The English explanation is for the log.
         [Test]
-        public void ARefusalByTheWorkerShowsTheClientsTextAndAClientFailureKeepsItsOwn()
+        public void ARefusalByTheWorkerAndAClientFailureShowTheTextOfTheirCode()
         {
-            var texts = FixtureTexts.Messages(("session_reconnected", "This character connected from another client."));
+            var texts = FixtureTexts.Messages(
+                ("session_reconnected", "This character connected from another client."),
+                ("realtime_busy", "Another connection to a shard is still active."));
             var server = new RealtimeClientError(
                 RealtimeClientErrorKind.Server,
                 "session_reconnected",
                 "This character connected from another client. (server words)");
-            var local = new RealtimeClientError(
+            var busy = new RealtimeClientError(
+                RealtimeClientErrorKind.Busy,
+                "realtime_busy",
+                "Another realtime connection is already active.");
+            var protocol = new RealtimeClientError(
                 RealtimeClientErrorKind.Protocol,
                 "invalid_join_rejection",
                 "The join rejection could not be read.");
@@ -121,9 +130,33 @@ namespace Mmorpg.Client.Tests.EditMode
                 AccountEntryPresentation.ErrorText(server, texts),
                 Is.EqualTo("This character connected from another client."));
             Assert.That(
-                AccountEntryPresentation.ErrorText(local, texts),
-                Is.EqualTo("The join rejection could not be read. [invalid_join_rejection]"));
+                AccountEntryPresentation.ErrorText(busy, texts),
+                Is.EqualTo("Another connection to a shard is still active."));
+            Assert.That(
+                AccountEntryPresentation.ErrorText(protocol, texts),
+                Is.EqualTo("That did not work. [invalid_join_rejection]"));
             Assert.That(AccountEntryPresentation.ErrorText((RealtimeClientError)null, texts), Is.Empty);
+        }
+
+        // A response that the client cannot read shows the text of the client's code, never
+        // the parser's explanation.
+        [Test]
+        public void AnInvalidResponseShowsTheTextOfItsCode()
+        {
+            var texts = FixtureTexts.Messages(("network_error", "The game service cannot be reached."));
+            var invalid = new ApiError(
+                ApiErrorKind.InvalidResponse,
+                0,
+                "invalid_response",
+                "The server returned invalid JSON: Unexpected token.",
+                null);
+            var network = new ApiError(ApiErrorKind.Network, 0, "network_error", "Cannot connect to destination host", null);
+
+            Assert.That(
+                AccountEntryPresentation.ErrorText(invalid, "http://localhost:5000", texts),
+                Is.EqualTo("That did not work. [invalid_response]"));
+            Assert.That(ClientMessages.Text(texts, invalid), Is.EqualTo("That did not work. [invalid_response]"));
+            Assert.That(ClientMessages.Text(texts, network), Is.EqualTo("The game service cannot be reached."));
         }
 
         [Test]

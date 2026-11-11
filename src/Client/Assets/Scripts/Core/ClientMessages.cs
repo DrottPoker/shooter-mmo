@@ -5,9 +5,10 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Core
 {
-    // The text the player sees for a code that a server sent. The servers send a stable code
-    // and, where a text needs them, named values; the client owns the sentence. The English
-    // explanation that a server sends along is written to the log and never shown.
+    // The text the player sees for a code: one that a server sent, or one that the client gave
+    // a failure it found itself. The servers send a stable code and, where a text needs them,
+    // named values; the client owns the sentence. The English diagnostic of a failure, a
+    // server's or the client's own, is written to the log and never shown.
     public static class ClientMessages
     {
         public static string Text(
@@ -18,14 +19,14 @@ namespace Mmorpg.Client.Core
         {
             if (!string.IsNullOrWhiteSpace(diagnostic))
             {
-                Debug.Log("Server message [" + code + "]: " + diagnostic);
+                Debug.Log("Message [" + code + "]: " + diagnostic);
             }
 
             return MessageText.Resolve(texts ?? TextCatalog.Empty(TextTableFormat.SourceLocale), code, arguments);
         }
 
-        // A request that GameService refused shows the text of its code. A request that never
-        // got an answer has no server code, so it keeps the client's own explanation.
+        // A request shows the text of its code: the one GameService refused it with, or the
+        // client's own code for a request that never got a usable answer.
         public static string Text(TextCatalog texts, ApiError error)
         {
             if (error == null)
@@ -33,9 +34,7 @@ namespace Mmorpg.Client.Core
                 return string.Empty;
             }
 
-            return error.Kind == ApiErrorKind.Http
-                ? Text(texts, error.Code, error.ToDisplayMessage())
-                : error.Message;
+            return Text(texts, error.Code, error.ToDiagnostic());
         }
     }
 }

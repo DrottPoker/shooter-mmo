@@ -20,10 +20,11 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // A quest text table with the development actors, which name the Mob of a quest drop,
-        // and the client's own texts.
-        public static TextCatalog WithDevelopmentActors(TextTableDocument table)
+        // the client's own texts, and any more tables a test adds.
+        public static TextCatalog WithDevelopmentActors(TextTableDocument table, params TextTableDocument[] moreTables)
         {
-            return TextCatalog.Create(new[] { table, DevelopmentActorTexts().BuildTable(), UiTable() });
+            return TextCatalog.Create(
+                new[] { table, DevelopmentActorTexts().BuildTable(), UiTable() }.Concat(moreTables));
         }
 
         // The client's own texts as they are checked in, so a test reads the sentences that

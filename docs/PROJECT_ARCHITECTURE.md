@@ -519,6 +519,10 @@ them, named values, and the client shows its own text for the code from the
 messages table, which `tools/TextTableCompiler` compiles from the hand-written
 `content/text/messages.json`, as [Messages](../content/README.md#messages)
 describes. The English sentence that a server sends next to a code is for logs.
+The messages table also holds the texts of the codes that the client gives the
+failures it finds itself, such as a request that timed out, a shard that
+cannot be reached, or an outdated catalog; their English diagnostics are for
+logs too.
 
 The pure item rules cover stack compatibility, Bag slot tag acceptance,
 equipment compatibility, empty and non-empty Bag locations, Bag containment-cycle rejection, item policy capabilities, unitless

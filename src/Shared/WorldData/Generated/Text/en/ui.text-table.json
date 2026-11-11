@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "f09eb221b088397ad9788d9961d5ddcc25ce07ba1740762fb51bcc6431ce21d9",
+  "revision": "616a915eb3c551464b722b75a58d849a632ff45ab154ab13c8482c285da9d2c9",
   "entries": [
     {
       "key": "ui/characters/character-count-many",
@@ -38,7 +38,7 @@
     },
     {
       "key": "ui/characters/enter-failed",
-      "text": "Cannot enter {scene}: the scene failed to load ({reason})."
+      "text": "Cannot enter {scene}: {reason}"
     },
     {
       "key": "ui/characters/enter-hint",
@@ -187,10 +187,6 @@
     {
       "key": "ui/characters/unknown-body",
       "text": "Unknown body"
-    },
-    {
-      "key": "ui/characters/unknown-error",
-      "text": "unknown error"
     },
     {
       "key": "ui/combat/arrows",
@@ -621,10 +617,6 @@
       "text": "Inventory catalog is unavailable."
     },
     {
-      "key": "ui/inventory/catalog-update-required",
-      "text": "This client build requires an item catalog update."
-    },
-    {
       "key": "ui/inventory/character-changed",
       "text": "The inventory response belongs to a different character."
     },
@@ -663,6 +655,10 @@
     {
       "key": "ui/inventory/equipped-in",
       "text": "Equipped in {slot}"
+    },
+    {
+      "key": "ui/inventory/error-correlation",
+      "text": "{message} Correlation: {correlationId}."
     },
     {
       "key": "ui/inventory/inventory-title",
@@ -1463,10 +1459,6 @@
     {
       "key": "ui/quests/status-unavailable-reason",
       "text": "Your quests are unavailable: {reason}"
-    },
-    {
-      "key": "ui/quests/status-update-required",
-      "text": "This client build requires a quest catalog update."
     },
     {
       "key": "ui/quests/tracker-more",

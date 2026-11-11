@@ -475,9 +475,9 @@ The client's own labels come from the `ui` text table, as
    `In combat` stay English. A label that still reads as plain English is a
    literal in the code. Texts that stay English by decision are the literals
    of the `Temporary` panels, the F2 Debug menu, and the F3 Admin menu.
-   Technical failure sentences, such as those of the API and realtime clients,
-   the World scene catalog, and a catalog or text table that cannot be read,
-   are not converted yet.
+   A technical failure that the client finds, such as a shard that cannot be
+   reached, shows the text of its code with accented vowels too; only a text
+   table that cannot be read at all shows the keys of the texts.
    Open the inventory (I) and drag an item onto an equipment slot that does
    not take it, then right-click an item that is not equipment. Expected
    result: the refusal messages show with accented vowels, such as
@@ -508,7 +508,7 @@ The client shows its own text for every code that a server sends, as
    Grants window gives one. Right-click an Iron Vein and choose `Mine`.
    Expected result: the interaction panel reads
    `Pickaxe required in the Tool slot.`, and the Console holds a line that
-   starts with `Server message [gathering_tool_required]:` and names the tool
+   starts with `Message [gathering_tool_required]:` and names the tool
    kind by its id. With an empty Tool slot the client refuses by itself and
    sends nothing.
 3. Open the vendor at Mira and buy an item. Expected result: the trade window
@@ -519,6 +519,22 @@ The client shows its own text for every code that a server sends, as
    reads `That did not work. [vendor_purchased]`, the text for a code without a
    text of its own. Restore both files with
    `git restore content/text src/Shared/WorldData/Generated/Text`.
+5. A failure that the client finds itself shows the text of its code too. Stop
+   Play Mode, start it again, and log in. On the character screen, end the
+   SimulationWorker process without a graceful stop, for example by closing
+   its terminal window, so GameService still lists the shard as online, and
+   click `Enter World`. Expected result: within the 10-second realtime timeout
+   the status reads the text of a realtime code, such as
+   `The shard did not answer in time. Try again shortly.` or
+   `The connection to the shard was lost. Try again shortly.`, with no English
+   diagnostic on screen, and the Console holds a line that starts with
+   `Message [realtime_timeout]:` or `Message [connection_lost]:` followed by
+   the diagnostic, such as `The realtime connection closed: ConnectionFailed.`
+   Then stop GameService and click `Refresh`. Expected result: the status
+   reads `GameService at http://localhost:5000 does not answer. Is it running?
+   [network_error]`, and the Console holds a line that starts with
+   `[CLIENT] API request failed: network_error:` followed by Unity's own
+   explanation.
 
 ### Busy Buttons And Lost Connections
 

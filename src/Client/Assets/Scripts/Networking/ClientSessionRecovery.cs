@@ -27,9 +27,9 @@ namespace Mmorpg.Client.Networking
                 ClientLogCategory.Auth,
                 wasReplaced
                     ? "This client was disconnected because the account logged in from another client. "
-                        + error.ToDisplayMessage()
+                        + error.ToDiagnostic()
                     : "The account session is no longer authorized. Clearing local session state and returning to LoginMenu. "
-                        + error.ToDisplayMessage());
+                        + error.ToDiagnostic());
             if (simulationClient != null)
             {
                 simulationClient.Abort();
