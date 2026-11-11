@@ -11,37 +11,6 @@ public sealed class ItemReadModelIntegrationTests
     private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
 
     [PostgresIntegrationFact]
-    public async Task CatalogQueryReturnsOneOrderedCurrentDefinitionGraph()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-
-        var result = await context.ItemCatalogQueryService.GetCurrentAsync(
-            CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Error?.Message);
-        var catalog = result.Value!;
-        var runtime = await ItemCatalogRuntimeLoader.LoadAsync(
-            context.CatalogSource.RuntimeCatalogPath,
-            CancellationToken.None);
-        Assert.Equal(runtime.CatalogId, catalog.CatalogId);
-        Assert.Equal(runtime.Revision, catalog.Revision);
-        Assert.Equal(runtime.FormatVersion, catalog.FormatVersion);
-        Assert.Equal(runtime.Definitions.Length, catalog.Definitions.Count);
-        Assert.Equal(
-            catalog.Definitions.Count,
-            catalog.Definitions.Select(definition => definition.Id).Distinct().Count());
-        Assert.Equal(
-            catalog.Definitions.Select(definition => definition.Id).Order(),
-            catalog.Definitions.Select(definition => definition.Id));
-
-        var bag = Assert.Single(catalog.Definitions, definition => definition.Id == "fixture.pack");
-        Assert.NotNull(bag.Bag);
-        Assert.Equal(50, bag.Bag.CarryCapacityBonus);
-        Assert.Equal(Enumerable.Range(0, 7), bag.Bag.Slots.Select(slot => slot.SlotIndex));
-        Assert.Equal(["ammunition"], bag.Bag.Slots[6].AcceptedTags);
-    }
-
-    [PostgresIntegrationFact]
     public async Task AnotherAccountCannotReadCharacterInventory()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -132,16 +101,15 @@ public sealed class ItemReadModelIntegrationTests
             new TestItemPolicy("protected_on_death", "recovery-policy-source"));
         await fixture.SetCarryStateAsync(210, 200, 7);
 
-        var catalogResult = await context.ItemCatalogQueryService.GetCurrentAsync(
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            context.CatalogSource.RuntimeCatalogPath,
             CancellationToken.None);
         var snapshotResult = await context.ItemQueryService.GetCharacterInventoryAsync(
             player.Registration.AccountId,
             player.Character.Id,
             CancellationToken.None);
 
-        Assert.True(catalogResult.Succeeded, catalogResult.Error?.Message);
         Assert.True(snapshotResult.Succeeded, snapshotResult.Error?.Message);
-        var catalog = catalogResult.Value!;
         var snapshot = snapshotResult.Value!;
         Assert.Equal(catalog.Revision, snapshot.CatalogRevision);
         Assert.Equal(7, snapshot.ItemStateRevision);
@@ -206,14 +174,14 @@ public sealed class ItemReadModelIntegrationTests
             "fixture.arrow",
             40);
 
-        var catalogResult = await context.ItemCatalogQueryService.GetCurrentAsync(
+        var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
+            context.CatalogSource.RuntimeCatalogPath,
             CancellationToken.None);
         var snapshotResult = await context.ItemQueryService.GetCharacterInventoryAsync(
             player.Registration.AccountId,
             player.Character.Id,
             CancellationToken.None);
 
-        var catalog = catalogResult.Value!;
         var snapshot = snapshotResult.Value!;
         Assert.Equal(
             2,
@@ -252,13 +220,11 @@ public sealed class ItemReadModelIntegrationTests
             "fixture.potion");
         await fixture.AddOperationSentinelAsync(operationSecret);
 
-        var catalog = (await context.ItemCatalogQueryService.GetCurrentAsync(
-            CancellationToken.None)).Value!;
         var snapshot = (await context.ItemQueryService.GetCharacterInventoryAsync(
             player.Registration.AccountId,
             player.Character.Id,
             CancellationToken.None)).Value!;
-        var json = JsonSerializer.Serialize(new { Catalog = catalog, Snapshot = snapshot }, WebJsonOptions);
+        var json = JsonSerializer.Serialize(snapshot, WebJsonOptions);
 
         AssertNotContains(json, policySecret);
         AssertNotContains(json, operationSecret);
@@ -288,8 +254,6 @@ public sealed class ItemReadModelIntegrationTests
 
         for (var index = 0; index < 3; index++)
         {
-            Assert.True((await context.ItemCatalogQueryService.GetCurrentAsync(
-                CancellationToken.None)).Succeeded);
             Assert.True((await context.ItemQueryService.GetCharacterInventoryAsync(
                 player.Registration.AccountId,
                 player.Character.Id,

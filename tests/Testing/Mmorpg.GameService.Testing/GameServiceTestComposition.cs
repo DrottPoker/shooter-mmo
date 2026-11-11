@@ -5,6 +5,7 @@ using Mmorpg.GameService;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Content;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.StackStress;
@@ -14,6 +15,7 @@ using Mmorpg.GameService.Quests;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Content;
+using Mmorpg.WorldData.Text;
 using Npgsql;
 
 namespace Mmorpg.GameService.Testing;
@@ -114,6 +116,20 @@ internal static class GameServiceTestComposition
                 DevelopmentItemPackages = new DevelopmentItemPackageSource(
                     ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent)),
                 DevelopmentQuestTools = true
-            });
+            },
+            CreateContentOptions());
+    }
+
+    // Content serves the same fixture catalogs that the Items and Quests modules run with,
+    // and the generated text tables of the source locale.
+    public static ContentModuleOptions CreateContentOptions(string? baseUrl = null)
+    {
+        return new ContentModuleOptions(
+            RepositoryPaths.ItemCatalogFixtureRuntimePath,
+            RepositoryPaths.QuestCatalogFixtureRuntimePath,
+            ContentLayout.GeneratedTextDirectory(RepositoryPaths.Generated, TextTableFormat.SourceLocale),
+            baseUrl,
+            ContentModuleOptions.DefaultRateLimitPermitLimit,
+            TimeSpan.FromSeconds(ContentModuleOptions.DefaultRateLimitWindowSeconds));
     }
 }

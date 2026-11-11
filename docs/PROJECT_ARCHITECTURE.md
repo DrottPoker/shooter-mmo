@@ -181,6 +181,8 @@ not a network authority relationship.
 - Transactional item catalog mirroring, the constrained durable item schema,
   and complete empty character item-state bootstrap.
 - Quest catalog mirroring and every character's quest log.
+- Serving the compiled item catalog, quest catalog, and text tables by
+  revision, exactly the files the other modules run with.
 - Every durable item mutation, durable corpses, the death partition, Recovery
   Storage, and item maintenance.
 - HTTP authentication, policies, rate limiting, Problem Details, correlation
@@ -194,7 +196,7 @@ GameService is one process and one deployable, but its code is a modular
 monolith whose project references enforce one dependency order:
 
 ```text
-Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- host
+Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- Content <- host
 ```
 
 Each module exposes only its module class, its options, and its `Contracts`
@@ -510,7 +512,11 @@ only: a Mob's corpse names its actor definition, and only a character's corpse
 carries a name, the one its player chose. The compiled item catalog carries no
 text, and GameService stores none of it: a rename changes neither the catalog
 revision nor a database row. The compiled actors of a World and the compiled
-quest catalog carry no text either, so no server holds a text of the content.
+quest catalog carry no text either, so no server holds a text of the content
+in its own data. GameService serves the text table files as they are, next to
+the catalogs, as [Content Files](SERVICE_FEATURES.md#content-files) describes,
+and still reads and uses no text from them; the Unity client still uses the
+tables baked into its build until it resolves them from GameService at start.
 The client fills the texts of a quest into its own copy of the quest catalog.
 
 The servers send no sentence for the player either. An error, a closure, and

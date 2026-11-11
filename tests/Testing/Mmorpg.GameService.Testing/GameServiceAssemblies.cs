@@ -1,6 +1,7 @@
 using System.Reflection;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
+using Mmorpg.GameService.Content;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Modules;
@@ -23,8 +24,10 @@ internal static class GameServiceAssemblies
 
     public static Assembly Items { get; } = typeof(ItemsModule).Assembly;
 
+    public static Assembly Content { get; } = typeof(ContentModule).Assembly;
+
     public static Assembly Host { get; } = typeof(Mmorpg.GameService.Database.GameServiceSchema).Assembly;
 
     public static IReadOnlyList<Assembly> All { get; } =
-        [Platform, Accounts, Characters, Placement, Quests, Items, Host];
+        [Platform, Accounts, Characters, Placement, Quests, Items, Content, Host];
 }

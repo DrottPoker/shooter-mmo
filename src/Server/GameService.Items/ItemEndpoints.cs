@@ -6,13 +6,8 @@ namespace Mmorpg.GameService.Items;
 
 internal static class ItemEndpoints
 {
-    private const string CatalogCacheControl = "public, max-age=0, must-revalidate";
-
     public static IEndpointRouteBuilder MapItemEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/item-catalog", GetCatalogAsync)
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
-
         app.MapGet("/api/characters/{characterId:guid}/item-state", GetItemStateAsync)
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
@@ -124,43 +119,6 @@ internal static class ItemEndpoints
             .WithMetadata(new SensitiveResponseAttribute());
 
         return app;
-    }
-
-    private static async Task<IResult> GetCatalogAsync(
-        HttpContext httpContext,
-        ItemCatalogQueryService catalogQueryService,
-        CancellationToken cancellationToken)
-    {
-        var result = await catalogQueryService.GetCurrentAsync(cancellationToken);
-        if (!result.Succeeded)
-        {
-            return result.ToHttpResult();
-        }
-
-        var etag = $"\"{result.Value!.Revision}\"";
-        httpContext.Response.Headers.ETag = etag;
-        httpContext.Response.Headers.CacheControl = CatalogCacheControl;
-        var requestEtags = httpContext.Request.Headers.IfNoneMatch.ToString()
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (requestEtags.Any(value => MatchesEtag(value, etag)))
-        {
-            return Results.StatusCode(StatusCodes.Status304NotModified);
-        }
-
-        return Results.Ok(result.Value);
-    }
-
-    private static bool MatchesEtag(string requestEtag, string currentEtag)
-    {
-        if (string.Equals(requestEtag, "*", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        var normalized = requestEtag.StartsWith("W/", StringComparison.OrdinalIgnoreCase)
-            ? requestEtag[2..].TrimStart()
-            : requestEtag;
-        return string.Equals(normalized, currentEtag, StringComparison.Ordinal);
     }
 
     private static async Task<IResult> GetItemStateAsync(

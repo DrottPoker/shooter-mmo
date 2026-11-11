@@ -49,10 +49,15 @@ public sealed class ModulePublicSurfaceTests
                 "Mmorpg.GameService.Items.ItemsModuleOptions",
                 "Mmorpg.GameService.Items.NpcItemLifecycleOptions",
                 "Mmorpg.GameService.Items.StackStress.StackStressFixtureOptions"
+            ],
+            ["Mmorpg.GameService.Content"] =
+            [
+                "Mmorpg.GameService.Content.ContentModule",
+                "Mmorpg.GameService.Content.ContentModuleOptions"
             ]
         };
 
-    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Quests", "Items"];
+    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Quests", "Items", "Content"];
 
     [Theory]
     [MemberData(nameof(Modules))]

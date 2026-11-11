@@ -8,6 +8,7 @@
     <Project Path="src/Server/GameService.Placement/Mmorpg.GameService.Placement.csproj" />
     <Project Path="src/Server/GameService.Quests/Mmorpg.GameService.Quests.csproj" />
     <Project Path="src/Server/GameService.Items/Mmorpg.GameService.Items.csproj" />
+    <Project Path="src/Server/GameService.Content/Mmorpg.GameService.Content.csproj" />
     <Project Path="src/Server/SimulationWorker/Mmorpg.SimulationWorker.csproj" />
     <Project Path="src/Server/Telemetry/Mmorpg.Server.Telemetry.csproj" />
   </Folder>
@@ -38,6 +39,7 @@
     <Project Path="tests/Server/Mmorpg.GameService.Placement.Tests/Mmorpg.GameService.Placement.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Quests.Tests/Mmorpg.GameService.Quests.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.GameService.Items.Tests/Mmorpg.GameService.Items.Tests.csproj" />
+    <Project Path="tests/Server/Mmorpg.GameService.Content.Tests/Mmorpg.GameService.Content.Tests.csproj" />
     <Project Path="tests/Server/Mmorpg.SimulationWorker.Tests/Mmorpg.SimulationWorker.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Integration/">

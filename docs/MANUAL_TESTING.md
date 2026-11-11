@@ -2472,9 +2472,7 @@ no-store` and `Pragma: no-cache`.
 ### Item Reads
 
 ```powershell
-$catalog = Invoke-RestMethod http://localhost:5000/api/item-catalog -Headers $headers
 $snapshot = Invoke-RestMethod "http://localhost:5000/api/characters/$($character.id)/item-state" -Headers $headers
-$catalog.definitions.Count
 $snapshot.permanentInventory.slots.Count
 $snapshot.bank.slots.Count
 $snapshot.currency
@@ -2482,32 +2480,64 @@ $snapshot.carriedWeight
 $snapshot.carryCapacity
 ```
 
-Expected result: one catalog definition per file in
-`content/items/definitions`, then `20`, `40`, `100`, `0`, and `2000`: the
-slot counts, the starting balance, and the base capacity of
+Expected result: `20`, `40`, `100`, `0`, and `2000`: the slot counts, the starting balance, and the base capacity of
 `content/items/catalog.json`. The snapshot is empty but complete, and it holds
 definition ids and item state only, no client icon, repeated definition data,
 operation payload, or credential.
 
-### Conditional Catalog And Item HTTP Contract
+### Content Files
+
+GameService serves the catalogs and text tables without a login, as
+[Content Files](SERVICE_FEATURES.md#content-files) describes. In any shell with
+`curl`:
+
+```powershell
+curl.exe -i http://localhost:5000/api/content
+```
+
+Expected result: `200` with `Cache-Control: no-cache`, an `ETag`, and a JSON
+manifest with `formatVersion` `1` and one entry each for `item-catalog` and
+`quest-catalog`, both with the id `core`, then one `text-table` entry with the
+locale `en` per file in `src/Shared/WorldData/Generated/Text/en`: `actors`,
+`items`, `messages`, `quests`, and `ui`. Every entry has a `revision`, a
+`sizeBytes`, and a `url` below `/api/content/`.
+
+Then fetch one file and compare its revision with the manifest, in `pwsh`:
+
+```powershell
+$manifest = Invoke-RestMethod http://localhost:5000/api/content
+$entry = $manifest.files | Where-Object { $_.kind -eq "text-table" -and $_.id -eq "ui" }
+$file = Invoke-WebRequest -Uri "http://localhost:5000$($entry.url)"
+$file.StatusCode
+$file.Headers.'Cache-Control'
+$file.Headers.ETag
+($file.Content | ConvertFrom-Json).revision -eq $entry.revision
+$file.RawContentLength -eq $entry.sizeBytes
+(Invoke-WebRequest -SkipHttpErrorCheck -Uri "http://localhost:5000/api/content/item-catalog/core/$('0' * 64)").StatusCode
+```
+
+Expected result: `200`, `public, max-age=31536000, immutable`, the ETag
+`"<revision>"`, `True`, `True`, and `404` for the unknown revision, whose body
+has the code `content_not_found`. The file is byte for byte
+`src/Shared/WorldData/Generated/Text/en/ui.text-table.json`. Sending
+`If-None-Match` with the manifest's ETag to `/api/content` returns `304`. The
+old route `/api/item-catalog` returns `404`. The Unity client still uses the
+files baked into its build until it resolves them from these routes.
+
+### Item HTTP Contract
 
 `-SkipHttpErrorCheck` needs PowerShell 7, so run this in `pwsh` with `$headers`
 and `$character` from above:
 
 ```powershell
-$catalogResponse = Invoke-WebRequest -Uri http://localhost:5000/api/item-catalog -Headers $headers
-$conditionalHeaders = $headers.Clone()
-$conditionalHeaders['If-None-Match'] = $catalogResponse.Headers.ETag
-$unchangedResponse = Invoke-WebRequest -SkipHttpErrorCheck -Uri http://localhost:5000/api/item-catalog -Headers $conditionalHeaders
 $itemStateResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/item-state" -Headers $headers
 $bankResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/bank" -Headers $headers
 $recoveryResponse = Invoke-WebRequest -Uri "http://localhost:5000/api/characters/$($character.id)/recovery" -Headers $headers
-@($catalogResponse, $unchangedResponse, $itemStateResponse, $bankResponse, $recoveryResponse).StatusCode
+@($itemStateResponse, $bankResponse, $recoveryResponse).StatusCode
 @($itemStateResponse, $bankResponse, $recoveryResponse) | ForEach-Object { $_.Headers.'Cache-Control' }
 ```
 
-Expected result: the status codes are `200`, `304`, `200`, `200`, and `200`.
-The catalog has an ETag, and the unchanged response has no body. Every
+Expected result: the status codes are `200`, `200`, and `200`, and every
 character response reports `no-store`.
 
 ### Quest Log HTTP Contract

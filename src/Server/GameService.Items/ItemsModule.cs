@@ -36,7 +36,6 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<ISimulationCharacterStateProvider, SimulationCharacterStateProvider>();
         services.AddSingleton<IShardWorldLocalStateProbe, OpenCorpseShardStateProbe>();
         services.AddSingleton<IItemCatalogRevisionProvider, ItemCatalogRevisionProvider>();
-        services.AddScoped<ItemCatalogQueryService>();
         services.AddScoped<ItemQueryService>();
         services.AddScoped<ItemTransactionService>();
         services.AddScoped<AccountItemMutationService>();

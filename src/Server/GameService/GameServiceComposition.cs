@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Content;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Health;
@@ -16,7 +17,7 @@ using Mmorpg.GameService.Quests;
 
 namespace Mmorpg.GameService;
 
-// Composes the platform services, the five modules, and the host-owned database and
+// Composes the platform services, the six modules, and the host-owned database and
 // health services in one place, so Program.cs and the tests build the same graph.
 internal static class GameServiceComposition
 {
@@ -43,7 +44,8 @@ internal static class GameServiceComposition
             new CharactersModule(configuration.Characters),
             new PlacementModule(configuration.Placement),
             new QuestsModule(configuration.Quests),
-            new ItemsModule(configuration.Items)
+            new ItemsModule(configuration.Items),
+            new ContentModule(configuration.Content)
         ];
     }
 

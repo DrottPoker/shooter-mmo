@@ -50,7 +50,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         CatalogSource = Services.GetRequiredService<ItemCatalogSource>();
         ItemCatalogSeeder = Services.GetRequiredService<ItemCatalogSeeder>();
         CharacterItemStateBootstrapper = Services.GetRequiredService<CharacterItemStateBootstrapper>();
-        ItemCatalogQueryService = Services.GetRequiredService<ItemCatalogQueryService>();
         ItemQueryService = Services.GetRequiredService<ItemQueryService>();
         ItemTransactionService = Services.GetRequiredService<ItemTransactionService>();
         AccountItemMutationService = Services.GetRequiredService<AccountItemMutationService>();
@@ -84,8 +83,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public ItemCatalogSeeder ItemCatalogSeeder { get; }
 
     public CharacterItemStateBootstrapper CharacterItemStateBootstrapper { get; }
-
-    public ItemCatalogQueryService ItemCatalogQueryService { get; }
 
     public ItemQueryService ItemQueryService { get; }
 
