@@ -76,7 +76,7 @@ namespace Mmorpg.Client.Items
         public void Initialize(
             ApiClient client,
             RealtimeSimulationClient realtimeClient,
-            TextAsset gameplayCatalog,
+            string gameplayCatalogJson,
             TextCatalog texts)
         {
             if (initialized)
@@ -88,7 +88,7 @@ namespace Mmorpg.Client.Items
             simulationClient = realtimeClient
                 ?? throw new ArgumentNullException(nameof(realtimeClient));
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
-            if (ClientItemCatalog.TryLoad(gameplayCatalog, texts, out var catalog, out var error))
+            if (ClientItemCatalog.TryLoad(gameplayCatalogJson, texts, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
             }

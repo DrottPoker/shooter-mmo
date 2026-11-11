@@ -69,7 +69,7 @@ namespace Mmorpg.Client.Quests
         public void Initialize(
             ApiClient client,
             RealtimeSimulationClient realtimeClient,
-            TextAsset questCatalog,
+            string questCatalogJson,
             TextCatalog texts,
             IInventoryOperationQueue inventoryQueue = null)
         {
@@ -82,7 +82,7 @@ namespace Mmorpg.Client.Quests
             simulationClient = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
             inventory = inventoryQueue;
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
-            if (ClientQuestCatalog.TryLoad(questCatalog, texts, out var catalog, out var error))
+            if (ClientQuestCatalog.TryParse(questCatalogJson, texts, out var catalog, out var error))
             {
                 State.SetCatalog(catalog);
             }

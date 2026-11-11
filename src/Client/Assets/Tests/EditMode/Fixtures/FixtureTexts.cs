@@ -15,8 +15,14 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         public static TextCatalog Bundled(ClientConfig config)
         {
-            Assert.That(ClientTexts.TryLoad(config.TextTables, out var texts, out var error), Is.True, error);
+            Assert.That(ClientTexts.TryLoad(BundledTables(config), out var texts, out var error), Is.True, error);
             return texts;
+        }
+
+        // The JSON of the text tables that the client configuration bundles.
+        public static string[] BundledTables(ClientConfig config)
+        {
+            return config.TextTables.Select(asset => asset.text).ToArray();
         }
 
         // A quest text table with the development actors, which name the Mob of a quest drop,

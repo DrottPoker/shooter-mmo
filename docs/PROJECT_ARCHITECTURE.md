@@ -610,6 +610,23 @@ SimulationWorker logs and metrics. The Admin menu (F3) holds development tools
 that the servers carry out only in the Development environment: the look, the
 walk speed, a teleport, full health, and invulnerability.
 
+#### Client And Server Agreement
+
+A client build agrees with the servers in four ways, and only the first two
+need a new build:
+
+| Agreement | What | Where the client has it | Must match |
+| --- | --- | --- | --- |
+| Code lockstep | The realtime protocol version and the simulation revision | In the build | Exactly, checked at placement and join, as [Realtime Admission](#realtime-admission) describes |
+| World build | The collision revision and the World scenes | In the build | Exactly, checked at join |
+| Rules data | The item catalog and the quest catalog | Fetched by revision from GameService at start, the bundled copies as fallback | The client runs with the server's revision; a change while it runs asks for a restart |
+| Presentation | The text tables, fetched by revision at start; the item presentation catalog and every binary asset, in the build | Both | Never required to match |
+
+How the client fetches, checks, and caches the rules data and the text tables is
+in [Content Resolution At Start](UNITY_CLIENT_ARCHITECTURE.md#content-resolution-at-start),
+and how GameService serves them in
+[Content Files](SERVICE_FEATURES.md#content-files).
+
 ### Tests And Tools
 
 Backend tests live in `tests`, one test project per server module plus shared,
@@ -928,7 +945,8 @@ once through the authenticated service channel.
 
 The client validates placement protocol and simulation revisions before opening
 UDP. Join acceptance must match the placed character, shard, World, simulation
-revision, and collision revision.
+revision, and collision revision. These are the in-build agreements of
+[Client And Server Agreement](#client-and-server-agreement).
 
 ### Development Surfaces
 

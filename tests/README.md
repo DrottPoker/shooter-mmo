@@ -392,6 +392,19 @@ name for tests of a receiver. `Mmorpg.Tools.Tests` links the golden files and
 feeds every server-to-client vector through the bot's `SimulationBotSession`, so
 a message type the bots do not handle fails there.
 
+### Content Manifest Samples
+
+`Fixtures/ContentManifest` holds the manifest that GameService writes for a
+fixed set of four content files, as `manifest.json` with relative URLs and
+`manifest-base-url.json` with `Content:BaseUrl` set. Like the item and quest
+fixtures, it is one checked-in file that both sides read:
+`ContentManifestSampleTests` in `Mmorpg.GameService.Content.Tests` requires
+the bytes `ContentFileStore` writes to equal a sample, without its final line
+feed, and the Unity `ClientContentManifestSampleTests` requires
+`ClientContentManifest.TryParse` to read every field of every entry from it.
+`RepositoryPaths.ContentManifestFixtureDirectory` names the folder. Change a
+sample only together with both sides of the manifest format.
+
 The shared movement scenario and when its pinned fingerprint and revision
 change are described under Movement determinism in
 [Test Architecture](../docs/UNITY_CLIENT_ARCHITECTURE.md#test-architecture).

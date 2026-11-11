@@ -36,6 +36,7 @@ namespace Mmorpg.Client.Ui
         private WorldDebugViewSettings viewSettings;
         private Material lineMaterial;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+        private ClientContentReport content;
         private LocalPlayerInput localPlayerInput;
         private LocalPlayerController localPlayerController;
         private TemporaryMenuWindow window;
@@ -117,13 +118,15 @@ namespace Mmorpg.Client.Ui
             PlayerBodyTintSetting tintSetting,
             WorldDebugViewSettings debugViewSettings,
             Material debugLineMaterial,
-            TextCatalog textCatalog)
+            TextCatalog textCatalog,
+            ClientContentReport contentReport)
         {
             simulationClient = realtimeClient;
             bodyTint = tintSetting;
             viewSettings = debugViewSettings;
             lineMaterial = debugLineMaterial;
             texts = textCatalog ?? TextCatalog.Empty(TextTableFormat.SourceLocale);
+            content = contentReport;
         }
 
         public void SetOpen(bool open)
@@ -322,6 +325,43 @@ namespace Mmorpg.Client.Ui
             networkTotals = TemporaryMenuWindow.AddValue(page, "Frames / packets total");
             networkEntities = TemporaryMenuWindow.AddValue(page, "Known / remote entities");
             networkWindow = TemporaryMenuWindow.AddValue(page, "Rate sample window");
+
+            BuildContentSection(page);
+        }
+
+        // The content files this client resolved at start: revision prefix and where each came from.
+        private void BuildContentSection(RectTransform page)
+        {
+            TemporaryMenuWindow.AddSection(page, "Content");
+            if (content == null)
+            {
+                TemporaryMenuWindow.AddNote(page, "The content of this client is unknown.");
+                return;
+            }
+
+            foreach (var file in content.Files)
+            {
+                var name = file.Kind + " " + (file.Locale.Length > 0 ? file.Locale + "/" + file.Id : file.Id);
+                var revision = file.Revision.Length >= 8 ? file.Revision.Substring(0, 8) : "unknown";
+                TemporaryMenuWindow.AddValue(page, name).text = revision + "  " + SourceName(file.Source);
+            }
+
+            TemporaryMenuWindow.AddValue(page, "Fell back to bundled").text = content.FellBackToBundled
+                ? "Yes: " + content.FallbackCode + ". " + content.FallbackDiagnostic
+                : "No";
+        }
+
+        private static string SourceName(ClientContentSource source)
+        {
+            switch (source)
+            {
+                case ClientContentSource.Cache:
+                    return "cache";
+                case ClientContentSource.Downloaded:
+                    return "downloaded";
+                default:
+                    return "bundled";
+            }
         }
 
         private void BuildMovementTab(RectTransform page)

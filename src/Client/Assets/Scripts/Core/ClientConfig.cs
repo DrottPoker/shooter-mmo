@@ -11,6 +11,9 @@ namespace Mmorpg.Client.Core
         [SerializeField] private int requestTimeoutSeconds = 10;
         [SerializeField] private int realtimeTimeoutSeconds = 10;
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
+        // The bundled content set: the seed and fallback of the content that the client resolves
+        // from GameService at start, as ClientContentResolver describes.
+        // The compiled item catalog, core.item-catalog.json.
         [SerializeField] private TextAsset itemGameplayCatalog;
 
         // The compiled quest catalog, core.quest-catalog.json, whose rules the quest windows read.

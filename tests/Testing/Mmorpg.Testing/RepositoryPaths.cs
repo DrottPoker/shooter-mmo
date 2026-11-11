@@ -46,6 +46,11 @@ public static class RepositoryPaths
     public static string WorldActorFixtureSpawnsPath =>
         Path.Combine(Root, "tests", "Fixtures", "WorldActors", "actor-spawns.json");
 
+    // The sample content manifests that GameService writes and the Unity client reads, which
+    // the tests of both sides compare against.
+    public static string ContentManifestFixtureDirectory =>
+        Path.Combine(Root, "tests", "Fixtures", "ContentManifest");
+
     // The source folder of a test project, for files the project keeps next to its tests.
     // Compile-time paths are not used because ContinuousIntegrationBuild remaps them.
     public static string ProjectDirectory(Assembly testAssembly)

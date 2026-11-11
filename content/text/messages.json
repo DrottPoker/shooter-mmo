@@ -67,6 +67,10 @@
       "text": "The character was not found."
     },
     {
+      "key": "message/client_update_required",
+      "text": "This client is out of date. Install the new version to keep playing."
+    },
+    {
       "key": "message/combat_character_dead",
       "text": "The character died."
     },
@@ -256,7 +260,7 @@
     },
     {
       "key": "message/item_catalog_update_required",
-      "text": "This client is out of date. Update it to use your items."
+      "text": "The items have changed. Restart the client to use your items."
     },
     {
       "key": "message/item_destroy_forbidden",
@@ -356,7 +360,7 @@
     },
     {
       "key": "message/quest_catalog_update_required",
-      "text": "This client is out of date. Update it to see your quests."
+      "text": "The quests have changed. Restart the client to see your quests."
     },
     {
       "key": "message/quest_completed",

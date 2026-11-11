@@ -26,6 +26,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             InventoryWindows inventoryWindows = null;
             try
             {
+                yield return PlayModeClient.WaitForContent();
                 var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
                 yield return worldLoad;
                 Assert.That(worldLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));

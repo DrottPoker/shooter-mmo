@@ -21,6 +21,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator ListenerThatRequestsStateDuringRefreshDoesNotStartAnotherRefresh()
         {
+            yield return PlayModeClient.WaitForContent();
             var loadOperation = SceneManager.LoadSceneAsync(SceneNames.LoginMenu);
             while (!loadOperation.isDone)
             {
@@ -86,6 +87,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator ARefreshOfThePreviousCharacterNeverReachesTheNextOne()
         {
+            yield return PlayModeClient.WaitForContent();
             var loadOperation = SceneManager.LoadSceneAsync(SceneNames.LoginMenu);
             while (!loadOperation.isDone)
             {

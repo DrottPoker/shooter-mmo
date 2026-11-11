@@ -142,7 +142,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var config = ClientConfig.Load(out var handle);
             try
             {
-                Assert.That(ClientTexts.TryLoad(config.TextTables, out var texts, out var error), Is.True, error);
+                Assert.That(ClientTexts.TryLoad(config.TextTables.Select(asset => asset.text).ToArray(), out var texts, out var error), Is.True, error);
                 return texts;
             }
             finally
@@ -153,6 +153,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
         private static IEnumerator LoadScene(string sceneName)
         {
+            yield return PlayModeClient.WaitForContent();
             var load = SceneManager.LoadSceneAsync(sceneName);
             while (!load.isDone)
             {

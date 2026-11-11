@@ -2521,8 +2521,41 @@ Expected result: `200`, `public, max-age=31536000, immutable`, the ETag
 has the code `content_not_found`. The file is byte for byte
 `src/Shared/WorldData/Generated/Text/en/ui.text-table.json`. Sending
 `If-None-Match` with the manifest's ETag to `/api/content` returns `304`. The
-old route `/api/item-catalog` returns `404`. The Unity client still uses the
-files baked into its build until it resolves them from these routes.
+old route `/api/item-catalog` returns `404`. The Unity client fetches these
+files at start, as the next check shows.
+
+### The Client Resolves Its Content At Start
+
+The client checks its catalogs and text tables against GameService once at
+start, as
+[Content Resolution At Start](UNITY_CLIENT_ARCHITECTURE.md#content-resolution-at-start)
+describes. With the stack from [Start The Stack](#start-the-stack) running:
+
+1. In the Unity Editor, turn on `MMORPG > Tools > Ignore Bundled Content`; the
+   menu item shows a check mark. Enter Play Mode from LoginMenu. Expected
+   result: for a moment the entry screen shows only the title and
+   `Checking for updated game content...`, then the login form. The Console
+   logs one `Content ... from Downloaded.` line for each of the seven files:
+   `item-catalog core`, `quest-catalog core`, and `text-table en/actors`,
+   `en/items`, `en/messages`, `en/quests`, and `en/ui`.
+2. Log in, join, press F2, and open the `Network` tab. Expected result: the
+   `Content` section lists the seven files, each with the first 8 characters of
+   its revision and `downloaded`, and `Fell back to bundled` says `No`. The
+   files are in
+   `%USERPROFILE%\AppData\LocalLow\Mmorpg\MMORPG\content`, one per folder,
+   named by revision.
+3. Leave Play Mode and enter it again. Expected result: the log and the F2
+   `Content` section say `Cache` and `cache` for every file.
+4. Leave Play Mode, stop GameService, and enter Play Mode again. Expected
+   result: after at most about 3 seconds the login form shows, the Console
+   warns `The client runs with its bundled content [content_unavailable]: The
+   content manifest could not be fetched: ...`, and a login attempt shows the
+   unreachable GameService text as before. Start GameService again, log in,
+   and join: F2 lists every file as `bundled`, and `Fell back to bundled` says
+   `Yes: content_unavailable.` with the reason.
+5. Turn `Ignore Bundled Content` off again. Expected result: the next Play Mode
+   lists every file as `bundled` with `Fell back to bundled` `No`, because the
+   bundled files equal the served ones.
 
 ### Item HTTP Contract
 
