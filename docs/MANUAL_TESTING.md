@@ -459,6 +459,11 @@ The client's own labels come from the `ui` text table, as
    `Qúést áccéptéd: Pélts ánd Fángs`, and so does every item, actor, and quest
    text. A label that still reads as plain English, such as those of the
    inventory windows, is a literal in the code.
+   Open the inventory (I) and drag an item onto an equipment slot that does
+   not take it, then right-click an item that is not equipment. Expected
+   result: the refusal messages show with accented vowels, such as
+   `Thé ítém ís nót cómpátíblé wíth thís éqúípmént slót.` and
+   `Ríght-clíck éqúíps éqúípmént; drág thís ítém tó móvé ít.`
 2. Choose `MMORPG > Tools > Pseudo Locale` again and restart Play Mode.
    Expected result: every text reads as plain English again.
 

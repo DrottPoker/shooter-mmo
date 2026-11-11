@@ -1,6 +1,8 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -36,7 +38,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var lootReason),
                 Is.True,
-                lootReason);
+                lootReason.ToString());
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
@@ -49,7 +51,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var bankReason),
                 Is.False);
-            Assert.That(bankReason, Does.Contain("Corpse loot can enter only"));
+            Assert.That(bankReason.Key, Is.EqualTo("ui/corpse/loot-destination"));
             Assert.That(
                 CorpseTargetAdvisor.CanLoot(
                     state,
@@ -74,7 +76,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     5,
                     out var partialReason),
                 Is.True,
-                partialReason);
+                partialReason.ToString());
         }
 
         [Test]
@@ -106,7 +108,12 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var limitReason),
                 Is.False);
-            Assert.That(limitReason, Does.Contain("holds at most 50"));
+            Assert.That(
+                limitReason,
+                Is.EqualTo(ClientText.Of(
+                    "ui/corpse/equipment-slot-maximum",
+                    ClientTextArgument.Text("slot", "ammunition"),
+                    ClientTextArgument.Number("maximum", 50))));
             Assert.That(
                 CorpseTargetAdvisor.CanDeposit(
                     state,
@@ -117,7 +124,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     10,
                     out var topUpReason),
                 Is.True,
-                topUpReason);
+                topUpReason.ToString());
 
             var bankSource = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
@@ -136,7 +143,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var bankReason),
                 Is.False);
-            Assert.That(bankReason, Does.Contain("cannot enter a corpse"));
+            Assert.That(bankReason.Key, Is.EqualTo("ui/corpse/deposit-storage-item"));
             Assert.That(
                 CorpseTargetAdvisor.CanDeposit(
                     state,
@@ -147,7 +154,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var equippedReason),
                 Is.False);
-            Assert.That(equippedReason, Does.Contain("equipped"));
+            Assert.That(equippedReason.Key, Is.EqualTo("ui/corpse/deposit-equipped-item"));
         }
 
         [Test]
@@ -178,7 +185,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     null,
                     out var sameSlotReason),
                 Is.False);
-            Assert.That(sameSlotReason, Does.Contain("already in that slot"));
+            Assert.That(sameSlotReason.Key, Is.EqualTo("ui/corpse/already-in-slot"));
             Assert.That(
                 CorpseTargetAdvisor.CanMoveWithinCorpse(
                     state,
@@ -203,7 +210,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     10,
                     out var partialReason),
                 Is.True,
-                partialReason);
+                partialReason.ToString());
         }
 
         [Test]
@@ -239,7 +246,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     bagSlot,
                     out var swapReason),
                 Is.True,
-                swapReason);
+                swapReason.ToString());
             Assert.That(
                 CorpseTargetAdvisor.CanSwapCorpseBagIntoEquipment(
                     state,
@@ -274,7 +281,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     emptyMainHand,
                     out var emptyReason),
                 Is.True,
-                emptyReason);
+                emptyReason.ToString());
 
             // An equipped sword swaps into the corpse slot that the bow leaves.
             var sword = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 1, Array.Empty<InventoryPolicy>());
@@ -289,7 +296,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     occupiedMainHand,
                     out var swapReason),
                 Is.True,
-                swapReason);
+                swapReason.ToString());
 
             // The bow still needs a free off hand.
             var shieldOffHand = new InventoryEquipmentSlot(
@@ -306,7 +313,11 @@ namespace Mmorpg.Client.Tests.EditMode
                     emptyMainHand,
                     out var blockedReason),
                 Is.False);
-            Assert.That(blockedReason, Does.Contain("Off Hand"));
+            Assert.That(
+                blockedReason,
+                Is.EqualTo(ClientText.Of(
+                    "ui/items/equipment-slot-blocked",
+                    ClientTextArgument.TextKey("slot", TextKeys.EquipmentSlotName("off_hand")))));
 
             // Corpse arrows top up the equipped arrows up to the 50 the fixture slot holds.
             var equippedArrows = new InventoryItem(Guid.NewGuid(), "fixture.arrow", 30, 1, Array.Empty<InventoryPolicy>());
@@ -324,7 +335,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     ammunition,
                     out var topUpReason),
                 Is.True,
-                topUpReason);
+                topUpReason.ToString());
             var tooManyArrows = CorpseItem("fixture.arrow", 25);
             var tooManySection = GeneralSection(tooManyArrows);
             Assert.That(
@@ -353,7 +364,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     bagSlot,
                     out var bagReason),
                 Is.False);
-            Assert.That(bagReason, Does.Contain("Bag"));
+            Assert.That(bagReason.Key, Is.EqualTo("ui/corpse/equipped-bag-swaps-with-corpse-bag"));
         }
 
         private InventoryClientState CreateState(

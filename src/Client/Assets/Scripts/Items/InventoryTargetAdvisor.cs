@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Items
 {
@@ -13,7 +15,7 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation source,
             InventoryContainer destination,
             InventorySlot destinationSlot,
-            out string reason)
+            out ClientText reason)
         {
             return CanPlaceInContainer(
                 state,
@@ -32,9 +34,9 @@ namespace Mmorpg.Client.Items
             InventoryContainer destination,
             InventorySlot destinationSlot,
             int movedQuantity,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || state.FullSnapshot == null
                 || item == null
@@ -44,19 +46,19 @@ namespace Mmorpg.Client.Items
                 || movedQuantity <= 0
                 || movedQuantity > item.Quantity)
             {
-                reason = "Inventory state is unavailable.";
+                reason = ClientText.Of("ui/items/inventory-unavailable");
                 return false;
             }
 
             if (destinationSlot.Item != null)
             {
-                reason = "The destination slot is occupied.";
+                reason = ClientText.Of("ui/items/destination-occupied");
                 return false;
             }
 
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
             {
-                reason = "The item definition is unavailable.";
+                reason = ClientText.Of("ui/items/definition-unavailable");
                 return false;
             }
 
@@ -68,7 +70,7 @@ namespace Mmorpg.Client.Items
             };
             if (!ItemSlotRules.Accepts(definition, slotDefinition))
             {
-                reason = "The item does not match this slot's accepted tags.";
+                reason = ClientText.Of("ui/items/slot-tags-mismatch");
                 return false;
             }
 
@@ -82,7 +84,7 @@ namespace Mmorpg.Client.Items
                 && ItemContainerTypeIds.IsCarried(destination.ContainerType)
                 && !FitsHardCap(state.FullSnapshot, definition, movedQuantity))
             {
-                reason = "The move would exceed the 140 percent carry cap.";
+                reason = ClientText.Of("ui/items/move-over-carry-cap");
                 return false;
             }
 
@@ -96,16 +98,16 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryItemLocation source,
             InventoryEquipmentSlot destination,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || state.FullSnapshot == null
                 || item == null
                 || source == null
                 || destination == null)
             {
-                reason = "Inventory state is unavailable.";
+                reason = ClientText.Of("ui/items/inventory-unavailable");
                 return false;
             }
 
@@ -124,12 +126,12 @@ namespace Mmorpg.Client.Items
             IInventoryView state,
             InventoryItem item,
             InventoryEquipmentSlot destination,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null || state.FullSnapshot == null || item == null || destination == null)
             {
-                reason = "Inventory state is unavailable.";
+                reason = ClientText.Of("ui/items/inventory-unavailable");
                 return false;
             }
 
@@ -137,15 +139,15 @@ namespace Mmorpg.Client.Items
                 || !ItemEquipmentRules.IsCompatible(definition, destination.SlotId)
                 || !state.Catalog.TryGetEquipmentSlot(destination.SlotId, out var slot))
             {
-                reason = "The item is not compatible with this equipment slot.";
+                reason = ClientText.Of("ui/items/equipment-slot-incompatible");
                 return false;
             }
 
             if (!ItemEquipmentRules.CanHoldQuantity(definition, slot, item.Quantity))
             {
-                reason = "This equipment slot holds at most "
-                    + ItemEquipmentRules.MaximumQuantity(definition, slot)
-                    + ". Split the stack first.";
+                reason = ClientText.Of(
+                    "ui/items/equipment-slot-maximum",
+                    ClientTextArgument.Number("maximum", ItemEquipmentRules.MaximumQuantity(definition, slot)));
                 return false;
             }
 
@@ -157,9 +159,9 @@ namespace Mmorpg.Client.Items
                 blockedSlots);
             if (blockingSlotId != null)
             {
-                reason = "The item equipped in "
-                    + EquipmentSlotName(state.Catalog, blockingSlotId)
-                    + " blocks this equipment slot.";
+                reason = ClientText.Of(
+                    "ui/items/equipment-slot-blocked",
+                    EquipmentSlotName(state.Catalog, "slot", blockingSlotId));
                 return false;
             }
 
@@ -187,38 +189,40 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryItemLocation source,
             InventoryEquipmentSlot destination,
-            out string reason)
+            out ClientText reason)
         {
             var occupant = destination.Item;
             if (occupant.ItemInstanceId == item.ItemInstanceId)
             {
-                reason = "The item is already equipped in this slot.";
+                reason = ClientText.Of("ui/items/already-equipped");
                 return false;
             }
 
             if (source.Kind != InventoryItemLocationKind.Container
                 || !TryResolveContainerSlot(state, source, out var sourceContainer, out var sourceSlot))
             {
-                reason = "Only an item in a container can swap with an equipped item.";
+                reason = ClientText.Of("ui/items/swap-equipped-needs-container");
                 return false;
             }
 
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition)
                 || !state.Catalog.TryGetDefinition(occupant.DefinitionId, out var occupantDefinition))
             {
-                reason = "The item definition is unavailable.";
+                reason = ClientText.Of("ui/items/definition-unavailable");
                 return false;
             }
 
             if (occupantDefinition.Bag != null && IsEquippedBagWithContents(state, occupant.ItemInstanceId))
             {
-                reason = "Empty the equipped Bag before you swap it.";
+                reason = ClientText.Of("ui/items/swap-bag-not-empty");
                 return false;
             }
 
             if (!CanOccupySlot(state, occupant, sourceContainer, sourceSlot, out reason))
             {
-                reason = "The equipped item cannot move into the slot the new item comes from: " + reason;
+                reason = ClientText.Of(
+                    "ui/items/swap-equipped-blocked",
+                    ClientTextArgument.Nested("reason", reason));
                 return false;
             }
 
@@ -244,17 +248,17 @@ namespace Mmorpg.Client.Items
                         finalWeight,
                         finalCapacity))
                 {
-                    reason = "The swap would exceed the 140 percent carry cap.";
+                    reason = ClientText.Of("ui/items/swap-over-carry-cap");
                     return false;
                 }
             }
             catch (OverflowException)
             {
-                reason = "The swap weight is invalid.";
+                reason = ClientText.Of("ui/items/swap-weight-invalid");
                 return false;
             }
 
-            reason = string.Empty;
+            reason = ClientText.None;
             return true;
         }
 
@@ -263,12 +267,12 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null || state.FullSnapshot == null || item == null)
             {
-                reason = "Inventory state is unavailable.";
+                reason = ClientText.Of("ui/items/inventory-unavailable");
                 return false;
             }
 
@@ -285,7 +289,7 @@ namespace Mmorpg.Client.Items
 
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
             {
-                reason = "The item definition is unavailable.";
+                reason = ClientText.Of("ui/items/definition-unavailable");
                 return false;
             }
 
@@ -294,7 +298,7 @@ namespace Mmorpg.Client.Items
                 var hasContents = IsEquippedBagWithContents(state, item.ItemInstanceId);
                 if (hasContents)
                 {
-                    reason = "A non-empty equipped Bag cannot move to ordinary storage.";
+                    reason = ClientText.Of("ui/items/bag-not-empty-to-storage");
                     return false;
                 }
             }
@@ -305,7 +309,7 @@ namespace Mmorpg.Client.Items
                 item.Quantity,
                 destination.ContainerType))
             {
-                reason = "Unequipping this item would exceed the 140 percent carry cap.";
+                reason = ClientText.Of("ui/items/unequip-over-carry-cap");
                 return false;
             }
 
@@ -318,9 +322,9 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation firstLocation,
             InventoryItem secondItem,
             InventoryItemLocation secondLocation,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || state.FullSnapshot == null
                 || firstItem == null
@@ -341,7 +345,7 @@ namespace Mmorpg.Client.Items
                     out var secondContainer,
                     out var secondSlot))
             {
-                reason = "Two current container items are required for a slot swap.";
+                reason = ClientText.Of("ui/items/swap-needs-two-items");
                 return false;
             }
 
@@ -382,13 +386,13 @@ namespace Mmorpg.Client.Items
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
-                    reason = "The swap would exceed the 140 percent carry cap.";
+                    reason = ClientText.Of("ui/items/swap-over-carry-cap");
                     return false;
                 }
             }
             catch (OverflowException)
             {
-                reason = "The swap weight is invalid.";
+                reason = ClientText.Of("ui/items/swap-weight-invalid");
                 return false;
             }
 
@@ -402,9 +406,9 @@ namespace Mmorpg.Client.Items
             InventoryItem externalItem,
             InventoryContainer externalContainer,
             InventorySlot externalSlot,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || state.FullSnapshot == null
                 || carriedItem == null
@@ -419,7 +423,7 @@ namespace Mmorpg.Client.Items
                     out var carriedContainer,
                     out var carriedSlot))
             {
-                reason = "A current carried item and external container item are required for a swap.";
+                reason = ClientText.Of("ui/items/swap-needs-external-item");
                 return false;
             }
 
@@ -459,13 +463,13 @@ namespace Mmorpg.Client.Items
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
-                    reason = "The swap would exceed the 140 percent carry cap.";
+                    reason = ClientText.Of("ui/items/swap-over-carry-cap");
                     return false;
                 }
             }
             catch (OverflowException)
             {
-                reason = "The swap weight is invalid.";
+                reason = ClientText.Of("ui/items/swap-weight-invalid");
                 return false;
             }
 
@@ -476,16 +480,16 @@ namespace Mmorpg.Client.Items
             ClientItemCatalog catalog,
             InventoryItem source,
             InventoryItem target,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (catalog == null
                 || source == null
                 || target == null
                 || source.ItemInstanceId == target.ItemInstanceId
                 || !catalog.TryGetDefinition(source.DefinitionId, out var definition))
             {
-                reason = "The selected stacks cannot be merged.";
+                reason = ClientText.Of("ui/items/merge-not-possible");
                 return false;
             }
 
@@ -493,7 +497,7 @@ namespace Mmorpg.Client.Items
             var targetState = ToStackState(target, definition);
             if (!ItemStackRules.CanMerge(definition, sourceState, targetState))
             {
-                reason = "The selected stacks are incompatible or would exceed the stack limit.";
+                reason = ClientText.Of("ui/items/merge-incompatible");
                 return false;
             }
 
@@ -506,9 +510,9 @@ namespace Mmorpg.Client.Items
             InventoryItemLocation sourceLocation,
             InventoryItem target,
             InventoryItemLocation targetLocation,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.FullSnapshot == null
                 || sourceLocation == null
                 || targetLocation == null
@@ -519,7 +523,7 @@ namespace Mmorpg.Client.Items
 
             if (!state.Catalog.TryGetDefinition(source.DefinitionId, out var definition))
             {
-                reason = "The item definition is unavailable.";
+                reason = ClientText.Of("ui/items/definition-unavailable");
                 return false;
             }
 
@@ -531,7 +535,7 @@ namespace Mmorpg.Client.Items
                         slot,
                         (long)source.Quantity + target.Quantity)))
             {
-                reason = "The equipped stack would exceed its equipment slot limit.";
+                reason = ClientText.Of("ui/items/merge-over-slot-limit");
                 return false;
             }
 
@@ -539,7 +543,7 @@ namespace Mmorpg.Client.Items
                 && !IsWeightless(targetLocation)
                 && !FitsHardCap(state.FullSnapshot, definition, source.Quantity))
             {
-                reason = "Merging this stack would exceed the 140 percent carry cap.";
+                reason = ClientText.Of("ui/items/merge-over-carry-cap");
                 return false;
             }
 
@@ -550,16 +554,16 @@ namespace Mmorpg.Client.Items
             IInventoryView state,
             RecoveryDelivery delivery,
             InventoryContainer destination,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || state.FullSnapshot == null
                 || delivery == null
                 || delivery.Items.Count == 0
                 || destination == null)
             {
-                reason = "Recovery state is unavailable.";
+                reason = ClientText.Of("ui/items/recovery-unavailable");
                 return false;
             }
 
@@ -571,7 +575,7 @@ namespace Mmorpg.Client.Items
             // GameService delivers a claim into Permanent Inventory or the Bank only.
             if (!string.Equals(destination.ContainerType, ItemContainerTypeIds.PermanentInventory, StringComparison.Ordinal))
             {
-                reason = "Claim a Recovery delivery into Permanent Inventory or the Bank.";
+                reason = ClientText.Of("ui/items/claim-destination");
                 return false;
             }
 
@@ -584,7 +588,7 @@ namespace Mmorpg.Client.Items
                         deliveryItem.Item.DefinitionId,
                         out var definition))
                     {
-                        reason = "A Recovery item definition is unavailable.";
+                        reason = ClientText.Of("ui/items/recovery-definition-unavailable");
                         return false;
                     }
 
@@ -600,7 +604,7 @@ namespace Mmorpg.Client.Items
                     finalWeight,
                     state.FullSnapshot.CarryCapacity))
                 {
-                    reason = "Claiming this delivery would exceed the 140 percent carry cap.";
+                    reason = ClientText.Of("ui/items/claim-over-carry-cap");
                     return false;
                 }
 
@@ -608,7 +612,7 @@ namespace Mmorpg.Client.Items
             }
             catch (OverflowException)
             {
-                reason = "The Recovery delivery weight is invalid.";
+                reason = ClientText.Of("ui/items/recovery-weight-invalid");
                 return false;
             }
         }
@@ -617,9 +621,9 @@ namespace Mmorpg.Client.Items
             ClientItemCatalog catalog,
             InventoryItem item,
             int quantity,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (catalog == null
                 || item == null
                 || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
@@ -627,7 +631,7 @@ namespace Mmorpg.Client.Items
                 || quantity >= item.Quantity
                 || quantity > definition.MaximumStackSize)
             {
-                reason = "The split quantity must leave a positive source stack.";
+                reason = ClientText.Of("ui/items/split-quantity-invalid");
                 return false;
             }
 
@@ -637,9 +641,9 @@ namespace Mmorpg.Client.Items
         public static bool CanDestroy(
             ClientItemCatalog catalog,
             InventoryItem item,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (catalog == null
                 || item == null
                 || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
@@ -652,7 +656,7 @@ namespace Mmorpg.Client.Items
                             string.Empty)))
                     .CanPlayerDestroy)
             {
-                reason = "This item cannot be destroyed by the player.";
+                reason = ClientText.Of("ui/items/destroy-not-allowed");
                 return false;
             }
 
@@ -688,7 +692,7 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
-            out string reason)
+            out ClientText reason)
         {
             var hasContents = IsEquippedBagWithContents(state, item.ItemInstanceId);
             if (!BagDestinationRules.TryResolve(
@@ -696,7 +700,7 @@ namespace Mmorpg.Client.Items
                     destinationSlot.SlotKind,
                     out var destinationKind))
             {
-                reason = "The Bag cannot enter this container.";
+                reason = ClientText.Of("ui/items/bag-container-refused");
                 return false;
             }
 
@@ -706,12 +710,12 @@ namespace Mmorpg.Client.Items
             if (!BagLocationRules.CanPlace(hasContents, destinationKind, wouldCycle))
             {
                 reason = hasContents
-                    ? "A non-empty Bag can move only through an atomic Bag-slot transfer."
-                    : "The Bag cannot enter this slot.";
+                    ? ClientText.Of("ui/items/bag-not-empty-move")
+                    : ClientText.Of("ui/items/bag-slot-refused");
                 return false;
             }
 
-            reason = string.Empty;
+            reason = ClientText.None;
             return true;
         }
 
@@ -786,11 +790,11 @@ namespace Mmorpg.Client.Items
             InventoryItem item,
             InventoryContainer destination,
             InventorySlot destinationSlot,
-            out string reason)
+            out ClientText reason)
         {
             if (!state.Catalog.TryGetDefinition(item.DefinitionId, out var definition))
             {
-                reason = "The item definition is unavailable.";
+                reason = ClientText.Of("ui/items/definition-unavailable");
                 return false;
             }
 
@@ -802,7 +806,7 @@ namespace Mmorpg.Client.Items
             };
             if (!ItemSlotRules.Accepts(definition, slotDefinition))
             {
-                reason = "An item does not match the opposite slot's accepted tags.";
+                reason = ClientText.Of("ui/items/opposite-slot-tags-mismatch");
                 return false;
             }
 
@@ -812,7 +816,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            reason = string.Empty;
+            reason = ClientText.None;
             return true;
         }
 
@@ -888,9 +892,13 @@ namespace Mmorpg.Client.Items
             return blockedSlots;
         }
 
-        private static string EquipmentSlotName(ClientItemCatalog catalog, string equipmentSlotId)
+        // The slot's name text, or its id for a slot the catalog does not know, as
+        // ClientItemCatalog.GetEquipmentSlotName names it.
+        private static ClientTextArgument EquipmentSlotName(ClientItemCatalog catalog, string name, string equipmentSlotId)
         {
-            return catalog.GetEquipmentSlotName(equipmentSlotId);
+            return catalog.TryGetEquipmentSlot(equipmentSlotId, out _)
+                ? ClientTextArgument.TextKey(name, TextKeys.EquipmentSlotName(equipmentSlotId))
+                : ClientTextArgument.Text(name, equipmentSlotId ?? string.Empty);
         }
 
         private static ItemStackState ToStackState(

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
@@ -43,21 +44,27 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var snapshot = CreateSnapshot(30, null);
 
-            Assert.That(Buy(snapshot, "fixture.potion", 1, out var price, out var reason), Is.True, reason);
+            Assert.That(Buy(snapshot, "fixture.potion", 1, out var price, out var reason), Is.True, reason.ToString());
             Assert.That(price, Is.EqualTo(25));
             Assert.That(Buy(snapshot, "fixture.potion", 2, out _, out reason), Is.False);
-            Assert.That(reason, Is.EqualTo("You need 50 Fixture Coins."));
+            Assert.That(
+                reason,
+                Is.EqualTo(ClientText.Of(
+                    "ui/vendor/need-amount",
+                    ClientTextArgument.Text("amount", "50"),
+                    ClientTextArgument.TextKey("currency", TextKeys.CurrencyName()))));
+            Assert.That(reason.Resolve(catalog.Texts), Is.EqualTo("You need 50 Fixture Coins."));
             Assert.That(Buy(snapshot, "fixture.potion", 0, out _, out reason), Is.False);
             Assert.That(Buy(snapshot, "fixture.potion", 11, out _, out reason), Is.False);
-            Assert.That(reason, Does.Contain("from 1 to 10"));
+            Assert.That(reason, Is.EqualTo(ClientText.Of("ui/vendor/quantity-range", ClientTextArgument.Number("maximum", 10))));
             Assert.That(Buy(snapshot, "fixture.ore", 1, out _, out reason), Is.False);
-            Assert.That(reason, Does.Contain("does not sell"));
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/not-sold"));
 
             // 30 arrows weigh 30 against a capacity of 20, above the 28 hard cap.
             var heavy = CreateSnapshot(1000, null, carriedWeight: 0, carryCapacity: 20);
             Assert.That(Buy(heavy, "fixture.arrow", 30, out _, out reason), Is.False);
-            Assert.That(reason, Does.Contain("too heavy"));
-            Assert.That(Buy(heavy, "fixture.arrow", 28, out price, out reason), Is.True, reason);
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/too-heavy"));
+            Assert.That(Buy(heavy, "fixture.arrow", 28, out price, out reason), Is.True, reason.ToString());
             Assert.That(price, Is.EqualTo(28));
         }
 
@@ -68,9 +75,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var snapshot = CreateSnapshot(0, ore);
             var location = InventoryLocation(snapshot);
 
-            Assert.That(Sell(snapshot, ore, location, 5, out var price, out var reason), Is.True, reason);
+            Assert.That(Sell(snapshot, ore, location, 5, out var price, out var reason), Is.True, reason.ToString());
             Assert.That(price, Is.EqualTo(20));
-            Assert.That(Sell(snapshot, ore, location, 3, out price, out reason), Is.True, reason);
+            Assert.That(Sell(snapshot, ore, location, 3, out price, out reason), Is.True, reason.ToString());
             Assert.That(price, Is.EqualTo(12));
             Assert.That(Sell(snapshot, ore, location, 6, out _, out reason), Is.False);
 
@@ -79,12 +86,12 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 Sell(arrowSnapshot, arrows, InventoryLocation(arrowSnapshot), 3, out price, out reason),
                 Is.True,
-                reason);
+                reason.ToString());
             Assert.That(price, Is.EqualTo(1));
             Assert.That(
                 Sell(arrowSnapshot, arrows, InventoryLocation(arrowSnapshot), 2, out _, out reason),
                 Is.False);
-            Assert.That(reason, Does.Contain("pays nothing"));
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/sale-worth-nothing"));
         }
 
         [Test]
@@ -95,7 +102,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 Sell(letterSnapshot, letter, InventoryLocation(letterSnapshot), 1, out _, out var reason),
                 Is.False);
-            Assert.That(reason, Does.Contain("does not buy"));
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/not-bought"));
 
             var insured = new InventoryItem(
                 Guid.NewGuid(),
@@ -107,14 +114,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 Sell(insuredSnapshot, insured, InventoryLocation(insuredSnapshot), 1, out _, out reason),
                 Is.False);
-            Assert.That(reason, Does.Contain("insured"));
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/sell-protected"));
 
             var sword = Item("fixture.sword", 1);
             var snapshot = CreateSnapshot(0, sword);
             Assert.That(
                 Sell(snapshot, sword, InventoryItemLocation.ForEquipment("main_hand"), 1, out _, out reason),
                 Is.False);
-            Assert.That(reason, Does.Contain("carry"));
+            Assert.That(reason.Key, Is.EqualTo("ui/vendor/sell-needs-carried"));
             var bank = new InventoryItemLocation(
                 InventoryItemLocationKind.Container,
                 snapshot.Bank.ContainerId,
@@ -318,7 +325,7 @@ namespace Mmorpg.Client.Tests.EditMode
             string definitionId,
             int quantity,
             out long price,
-            out string reason)
+            out ClientText reason)
         {
             return VendorClientRules.CanBuy(catalog, vendor, snapshot, definitionId, quantity, out price, out reason);
         }
@@ -329,7 +336,7 @@ namespace Mmorpg.Client.Tests.EditMode
             InventoryItemLocation location,
             int quantity,
             out long price,
-            out string reason)
+            out ClientText reason)
         {
             return VendorClientRules.CanSell(catalog, vendor, snapshot, item, location, quantity, out price, out reason);
         }

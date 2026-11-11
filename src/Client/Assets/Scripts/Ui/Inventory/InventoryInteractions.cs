@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
@@ -12,26 +13,32 @@ namespace Mmorpg.Client.Ui
     // or why nothing was.
     public readonly struct InventoryInteractionResult
     {
-        private InventoryInteractionResult(bool sent, string message)
+        private InventoryInteractionResult(bool sent, ClientText message)
         {
             Sent = sent;
-            Message = message ?? string.Empty;
+            Message = message;
         }
 
         public bool Sent { get; }
 
-        public string Message { get; }
+        public ClientText Message { get; }
 
         public static InventoryInteractionResult Submitted(string message)
         {
-            return new InventoryInteractionResult(true, message);
+            return new InventoryInteractionResult(true, ClientText.Literal(message));
         }
 
-        public static InventoryInteractionResult Rejected(string reason)
+        public static InventoryInteractionResult Rejected(ClientText reason)
         {
             return new InventoryInteractionResult(
                 false,
-                string.IsNullOrWhiteSpace(reason) ? "This inventory destination is not valid." : reason);
+                reason.IsEmpty ? ClientText.Of("ui/items/destination-invalid") : reason);
+        }
+
+        // A controller error, which is a finished sentence.
+        public static InventoryInteractionResult Rejected(string error)
+        {
+            return Rejected(string.IsNullOrWhiteSpace(error) ? ClientText.None : ClientText.Literal(error));
         }
 
         public static InventoryInteractionResult From(bool sent, string error, string success)
@@ -126,7 +133,7 @@ namespace Mmorpg.Client.Ui
         {
             if (plan == null || !plan.IsValid)
             {
-                return InventoryInteractionResult.Rejected(plan?.Reason);
+                return InventoryInteractionResult.Rejected(plan != null ? plan.Reason : ClientText.None);
             }
 
             string error;
@@ -259,11 +266,16 @@ namespace Mmorpg.Client.Ui
                     var equipmentSlot = State?.FullSnapshot?.Equipment.FirstOrDefault(slot =>
                         string.Equals(slot.SlotId, move.EquipmentSlotId, StringComparison.Ordinal));
                     error = string.Empty;
-                    return InventoryInteractionResult.From(
-                        equipmentSlot != null
-                            && corpses.TryLootToEquipment(move.CorpseItem, equipmentSlot, move.Quantity, out error),
-                        string.IsNullOrEmpty(error) ? "The equipment slot is unavailable." : error,
-                        move.Quantity > 0 ? "Partial corpse equip submitted." : "Corpse equip submitted.");
+                    if (equipmentSlot != null
+                        && corpses.TryLootToEquipment(move.CorpseItem, equipmentSlot, move.Quantity, out error))
+                    {
+                        return InventoryInteractionResult.Submitted(
+                            move.Quantity > 0 ? "Partial corpse equip submitted." : "Corpse equip submitted.");
+                    }
+
+                    return string.IsNullOrEmpty(error)
+                        ? InventoryInteractionResult.Rejected(ClientText.Of("ui/items/equipment-slot-unavailable"))
+                        : InventoryInteractionResult.Rejected(error);
                 }
 
                 default:
@@ -279,8 +291,8 @@ namespace Mmorpg.Client.Ui
             {
                 return InventoryInteractionResult.Rejected(
                     state != null && state.IsPredictedItem(item.ItemInstanceId)
-                        ? "Wait a moment until the stack is confirmed."
-                        : "Inventory mutation is unavailable while state is loading.");
+                        ? ClientText.Of("ui/items/wait-for-stack")
+                        : ClientText.Of("ui/items/inventory-loading"));
             }
 
             return RunQuickMove(InventoryQuickMoves.ForItem(state, item, bankShown));
@@ -295,13 +307,13 @@ namespace Mmorpg.Client.Ui
             {
                 return InventoryInteractionResult.Rejected(
                     state != null && state.IsPredictedItem(item.ItemInstanceId)
-                        ? "Wait a moment until the stack is confirmed."
-                        : "Inventory mutation is unavailable while state is loading.");
+                        ? ClientText.Of("ui/items/wait-for-stack")
+                        : ClientText.Of("ui/items/inventory-loading"));
             }
 
             return state.TryFindItem(item.ItemInstanceId, out var current, out _)
                 ? RunQuickMove(InventoryQuickMoves.ForItemPart(state, current, InventoryQuickMoves.HalfOf(current.Quantity), bankShown))
-                : InventoryInteractionResult.Rejected("The item is no longer available.");
+                : InventoryInteractionResult.Rejected(ClientText.Of("ui/items/item-unavailable"));
         }
 
         public InventoryInteractionResult QuickMoveCorpseItem(CorpseLootItem item)
@@ -309,7 +321,7 @@ namespace Mmorpg.Client.Ui
             if (!CanOperateOnCorpse || !InventoryDropPlanner.CanMoveItem(State, null))
             {
                 return InventoryInteractionResult.Rejected(
-                    "Inventory or corpse mutation is unavailable while state is loading or busy.");
+                    ClientText.Of("ui/corpse/mutation-unavailable"));
             }
 
             return RunQuickMove(InventoryQuickMoves.ForCorpseItem(State, CorpseView, item));
@@ -321,13 +333,13 @@ namespace Mmorpg.Client.Ui
             if (!CanOperateOnCorpse || !InventoryDropPlanner.CanMoveItem(State, null))
             {
                 return InventoryInteractionResult.Rejected(
-                    "Inventory or corpse mutation is unavailable while state is loading or busy.");
+                    ClientText.Of("ui/corpse/mutation-unavailable"));
             }
 
             var view = CorpseView;
             return view != null && item != null && view.TryFindItem(item.ItemInstanceId, out var current, out _, out _)
                 ? RunQuickMove(InventoryQuickMoves.ForCorpseItemPart(State, view, current, InventoryQuickMoves.HalfOf(current.Quantity)))
-                : InventoryInteractionResult.Rejected("The corpse item is no longer available.");
+                : InventoryInteractionResult.Rejected(ClientText.Of("ui/corpse/item-unavailable"));
         }
 
         public InventoryInteractionResult QuickMoveRecoveryDelivery(RecoveryDelivery delivery)
@@ -343,13 +355,13 @@ namespace Mmorpg.Client.Ui
                 "Loot all submitted.");
         }
 
-        public bool CanDestroy(InventoryItem item, out string reason)
+        public bool CanDestroy(InventoryItem item, out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             var state = State;
             if (item == null || state?.Catalog == null)
             {
-                reason = "The item is no longer available.";
+                reason = ClientText.Of("ui/items/item-unavailable");
                 return false;
             }
 
@@ -360,7 +372,7 @@ namespace Mmorpg.Client.Ui
 
             if (!InventoryDropPlanner.CanMoveItem(state, item))
             {
-                reason = "Wait a moment until the item is confirmed.";
+                reason = ClientText.Of("ui/items/wait-for-item");
                 return false;
             }
 
@@ -402,20 +414,20 @@ namespace Mmorpg.Client.Ui
         public bool CanOfferToVendor(
             VendorProfileDefinition vendor,
             InventoryDragPayload payload,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             var state = State;
             if (!InventoryDropPlanner.CanMoveItem(state, null))
             {
-                reason = "Inventory mutation is unavailable while state is loading.";
+                reason = ClientText.Of("ui/items/inventory-loading");
                 return false;
             }
 
             if (payload.Kind != InventoryDragPayloadKind.Item
                 || !state.TryFindItem(payload.ItemInstanceId, out var item, out var location))
             {
-                reason = "Only a carried item can be sold.";
+                reason = ClientText.Of("ui/vendor/sell-needs-carried-item");
                 return false;
             }
 
@@ -465,7 +477,7 @@ namespace Mmorpg.Client.Ui
             var state = State;
             if (!state.TryFindItem(itemInstanceId, out var item, out var location))
             {
-                return InventoryInteractionResult.Rejected("The item is no longer available.");
+                return InventoryInteractionResult.Rejected(ClientText.Of("ui/items/item-unavailable"));
             }
 
             if (!VendorClientRules.CanSell(

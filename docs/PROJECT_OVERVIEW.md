@@ -102,7 +102,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Module and assembly boundaries with their guard tests, and the quality gate | Foundation | |
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
 | Content delivery to the client | Provisional | The catalogs ship inside the client build and must match exactly |
-| Player-facing text | Provisional | Item, quest, and actor text and the text for every code that a server sends come from the text tables; no compiled content and no server holds a text of the content, only the codes of normal play have a text of their own, and of the client's own labels only the quest windows take theirs from a table |
+| Player-facing text | Provisional | Item, quest, and actor text and the text for every code that a server sends come from the text tables; no compiled content and no server holds a text of the content, only the codes of normal play have a text of their own, and of the client's own texts only the quest windows and the item rule reasons take theirs from a table |
 | Player presence: join, leave, and disconnect | Provisional | Nothing about a live character but its items is stored |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |

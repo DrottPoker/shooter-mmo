@@ -1,4 +1,5 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Ui;
 using NUnit.Framework;
 using TMPro;
@@ -33,9 +34,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     fixture.Highlight,
                     Color.green,
                     Color.red,
-                    (InventoryDragPayload candidate, out string reason) =>
+                    (InventoryDragPayload candidate, out ClientText reason) =>
                     {
-                        reason = string.Empty;
+                        reason = ClientText.None;
                         return candidate.Kind == InventoryDragPayloadKind.Item;
                     },
                     candidate => received = candidate,
@@ -78,7 +79,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var payload = InventoryDragPayload.ForRecoveryDelivery(Guid.NewGuid());
                 var operationInvoked = false;
-                string rejection = null;
+                var rejection = ClientText.None;
                 var source = fixture.Source.AddComponent<InventoryDragSource>();
                 source.Configure(
                     fixture.Coordinator,
@@ -93,9 +94,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     fixture.Highlight,
                     Color.green,
                     Color.red,
-                    (InventoryDragPayload candidate, out string reason) =>
+                    (InventoryDragPayload candidate, out ClientText reason) =>
                     {
-                        reason = "Recovery can be claimed only to Permanent Inventory or Bank.";
+                        reason = ClientText.Literal("Recovery can be claimed only to Permanent Inventory or Bank.");
                         return false;
                     },
                     _ => operationInvoked = true,
@@ -109,7 +110,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 target.OnDrop(eventData);
 
                 Assert.That(operationInvoked, Is.False);
-                Assert.That(rejection, Does.Contain("Permanent Inventory or Bank"));
+                Assert.That(rejection, Is.EqualTo(ClientText.Literal("Recovery can be claimed only to Permanent Inventory or Bank.")));
                 Assert.That(fixture.Coordinator.IsDragging, Is.False);
             }
             finally
@@ -264,16 +265,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 fixture.Coordinator.DragEnded += () => ended++;
                 var accepts = false;
                 InventoryDragPayload received = null;
-                string rejection = null;
+                var rejection = ClientText.None;
                 var target = fixture.Target.AddComponent<InventoryDropTarget>();
                 target.Configure(
                     fixture.Coordinator,
                     fixture.Highlight,
                     Color.green,
                     Color.red,
-                    (InventoryDragPayload candidate, out string reason) =>
+                    (InventoryDragPayload candidate, out ClientText reason) =>
                     {
-                        reason = "The slot is taken.";
+                        reason = ClientText.Literal("The slot is taken.");
                         return accepts;
                     },
                     candidate => received = candidate,
@@ -288,7 +289,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(fixture.Coordinator.BeginCarry(part, "Iron Ore", null, "4", Vector2.zero), Is.False);
 
                 target.DropCarried();
-                Assert.That(rejection, Is.EqualTo("The slot is taken."));
+                Assert.That(rejection, Is.EqualTo(ClientText.Literal("The slot is taken.")));
                 Assert.That(received, Is.Null);
                 Assert.That(fixture.Coordinator.IsCarrying, Is.True);
 
@@ -326,9 +327,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     fixture.Highlight,
                     Color.green,
                     Color.red,
-                    (InventoryDragPayload candidate, out string reason) =>
+                    (InventoryDragPayload candidate, out ClientText reason) =>
                     {
-                        reason = string.Empty;
+                        reason = ClientText.None;
                         return true;
                     },
                     _ => calls += "drop ",

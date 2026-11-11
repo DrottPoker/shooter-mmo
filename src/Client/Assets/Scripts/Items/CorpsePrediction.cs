@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
@@ -109,12 +110,12 @@ namespace Mmorpg.Client.Items
             int destinationSlotIndex,
             Guid createdItemId,
             out InventoryItem displaced,
-            out string reason)
+            out ClientText reason)
         {
             displaced = null;
             reason = edit.IsPredictedContainer(destinationContainerId)
-                ? "Wait a moment until your equipped Bag is confirmed."
-                : "The loot destination is no longer available.";
+                ? ClientText.Of("ui/items/wait-for-bag")
+                : ClientText.Of("ui/corpse/loot-destination-unavailable");
             var container = edit.FindContainer(destinationContainerId);
             if (container == null
                 || !container.TryGetSlot(destinationSlotIndex, out _)
@@ -146,12 +147,12 @@ namespace Mmorpg.Client.Items
             }
             else
             {
-                reason = "The loot cannot merge with the stack in that slot.";
+                reason = ClientText.Of("ui/corpse/loot-merge-refused");
                 return false;
             }
 
             edit.MoveWeight(definition, quantity, null, container.ContainerType);
-            reason = "The loot would exceed the 140 percent carry cap.";
+            reason = ClientText.Of("ui/corpse/loot-over-carry-cap");
             return edit.FitsHardCap();
         }
 
@@ -165,10 +166,10 @@ namespace Mmorpg.Client.Items
             InventoryContainer bagContents,
             bool allowSwap,
             out InventoryItem displaced,
-            out string reason)
+            out ClientText reason)
         {
             displaced = null;
-            reason = "The equipment slot is no longer available.";
+            reason = ClientText.Of("ui/items/equipment-slot-gone");
             if (!edit.Editor.HasEquipmentSlot(equipmentSlotId))
             {
                 return false;
@@ -179,7 +180,7 @@ namespace Mmorpg.Client.Items
             if (bagContents != null)
             {
                 // A corpse Bag takes the empty Bag slot with what it holds.
-                reason = "A corpse Bag needs an empty Bag slot.";
+                reason = ClientText.Of("ui/corpse/bag-needs-empty-bag-slot");
                 return occupant == null && TryEquipBag(edit, equipped, bagContents, out reason);
             }
             if (occupant == null)
@@ -196,7 +197,7 @@ namespace Mmorpg.Client.Items
 
             if (!allowSwap)
             {
-                reason = "Part of a stack equips only into an empty slot or tops up the equipped stack.";
+                reason = ClientText.Of("ui/items/equip-part-needs-empty-or-top-up");
                 return false;
             }
 
@@ -211,9 +212,9 @@ namespace Mmorpg.Client.Items
             Guid itemInstanceId,
             int quantity,
             CorpseLootItem swappedIn,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The item is no longer in carried storage.";
+            reason = ClientText.Of("ui/items/not-carried");
             if (!edit.Editor.TryFind(itemInstanceId, out var item, out var source)
                 || source.Kind != InventoryItemLocationKind.Container
                 || quantity > item.Quantity
@@ -241,12 +242,12 @@ namespace Mmorpg.Client.Items
             if (!edit.TryGetDefinition(swappedIn.DefinitionId, out var swappedDefinition)
                 || !edit.Editor.TryPlace(source.ContainerId, source.SlotIndex, swappedIn.ToInventoryItem()))
             {
-                reason = "The corpse item cannot take the slot the deposit left.";
+                reason = ClientText.Of("ui/corpse/deposit-swap-refused");
                 return false;
             }
 
             edit.MoveWeight(swappedDefinition, swappedIn.Quantity, null, source.ContainerType);
-            reason = "The swap would exceed the 140 percent carry cap.";
+            reason = ClientText.Of("ui/items/swap-over-carry-cap");
             return edit.FitsHardCap();
         }
 
@@ -256,9 +257,9 @@ namespace Mmorpg.Client.Items
             InventoryPredictionEdit edit,
             CorpseLootItem corpseBag,
             CorpseLootSection corpseBagContents,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "Both Bags must still be in place.";
+            reason = ClientText.Of("ui/corpse/bag-swap-bags-gone");
             var playerBag = edit.Editor.EquippedBag;
             var playerContents = edit.View.FullSnapshot.EquippedBag?.Contents;
             if (playerBag == null
@@ -315,9 +316,9 @@ namespace Mmorpg.Client.Items
             InventoryPredictionEdit edit,
             InventoryItem bag,
             InventoryContainer contents,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The Bag cannot take the Bag slot.";
+            reason = ClientText.Of("ui/items/bag-equip-refused");
             if (!edit.TryGetDefinition(bag.DefinitionId, out var definition) || definition.Bag == null)
             {
                 return false;
@@ -339,7 +340,7 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            reason = "The Bag would exceed the 140 percent carry cap.";
+            reason = ClientText.Of("ui/items/bag-over-carry-cap");
             return edit.FitsHardCap();
         }
 
@@ -469,16 +470,16 @@ namespace Mmorpg.Client.Items
             CorpseLootView corpse,
             bool wholeItemsOnly,
             IReadOnlyDictionary<Guid, Guid> createdItemIds,
-            out string reason)
+            out ClientText reason)
         {
             var plan = Plan(edit.View, corpse, wholeItemsOnly);
-            reason = "Nothing in the corpse fits in your equipment or inventory.";
+            reason = ClientText.Of("ui/corpse/loot-all-nothing-fits");
             if (plan.Steps.Count == 0)
             {
                 return false;
             }
 
-            reason = "The corpse or your inventory changed.";
+            reason = ClientText.Of("ui/corpse/loot-all-changed");
             var arrived = new Dictionary<Guid, Guid>();
             var taken = new Dictionary<Guid, int>();
             foreach (var step in plan.Steps)
@@ -550,7 +551,7 @@ namespace Mmorpg.Client.Items
 
             edit.Weight = plan.CarriedWeight;
             edit.Capacity = plan.CarryCapacity;
-            reason = string.Empty;
+            reason = ClientText.None;
             return true;
         }
 

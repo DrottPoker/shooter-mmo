@@ -1,4 +1,5 @@
 using System;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using TMPro;
 using UnityEngine;
@@ -116,7 +117,7 @@ namespace Mmorpg.Client.Ui
 
     public delegate bool InventoryDropValidator(
         InventoryDragPayload payload,
-        out string reason);
+        out ClientText reason);
 
     // The item the player moves between slots: dragged with the left button held, or a part of
     // a stack carried on the pointer after the split box, which a click on a slot puts down and
@@ -627,7 +628,7 @@ namespace Mmorpg.Client.Ui
         private Color invalidColor;
         private InventoryDropValidator validator;
         private Action<InventoryDragPayload> onDrop;
-        private Action<string> onRejected;
+        private Action<ClientText> onRejected;
 
         // The shown feedback: null without a drag over the slot.
         public bool? ShowsValidDrop { get; private set; }
@@ -639,7 +640,7 @@ namespace Mmorpg.Client.Ui
             Color invalid,
             InventoryDropValidator dropValidator,
             Action<InventoryDragPayload> accepted,
-            Action<string> rejected)
+            Action<ClientText> rejected)
         {
             coordinator = dragCoordinator;
             highlight = highlightImage;
@@ -711,8 +712,8 @@ namespace Mmorpg.Client.Ui
             }
             else
             {
-                onRejected?.Invoke(string.IsNullOrWhiteSpace(reason)
-                    ? "This inventory destination is not valid."
+                onRejected?.Invoke(reason.IsEmpty
+                    ? ClientText.Of("ui/items/destination-invalid")
                     : reason);
             }
         }
@@ -722,9 +723,9 @@ namespace Mmorpg.Client.Ui
             ClearHighlight();
         }
 
-        private bool Validate(InventoryDragPayload payload, out string reason)
+        private bool Validate(InventoryDragPayload payload, out ClientText reason)
         {
-            reason = "This inventory destination is not valid.";
+            reason = ClientText.Of("ui/items/destination-invalid");
             return payload != null
                 && validator != null
                 && validator(payload, out reason);

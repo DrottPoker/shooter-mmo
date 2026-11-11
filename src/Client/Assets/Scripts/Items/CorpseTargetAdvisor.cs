@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Client.Items
@@ -21,9 +22,9 @@ namespace Mmorpg.Client.Items
             InventoryContainer destination,
             InventorySlot destinationSlot,
             int? partialQuantity,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.FullSnapshot == null
                 || corpseItem == null
                 || sourceSection == null
@@ -31,13 +32,13 @@ namespace Mmorpg.Client.Items
                 || destination == null
                 || destinationSlot == null)
             {
-                reason = "The corpse item is no longer available for mutation.";
+                reason = ClientText.Of("ui/corpse/item-unavailable-for-mutation");
                 return false;
             }
 
             if (!IsCarriedLootDestination(state.FullSnapshot, destination))
             {
-                reason = "Corpse loot can enter only Permanent Inventory or the equipped Bag.";
+                reason = ClientText.Of("ui/corpse/loot-destination");
                 return false;
             }
 
@@ -45,20 +46,20 @@ namespace Mmorpg.Client.Items
             {
                 if (BagMayHoldItems(view, corpseItem, sourceSection))
                 {
-                    reason = "A corpse Bag with contents goes onto the Bag equipment slot.";
+                    reason = ClientText.Of("ui/corpse/bag-goes-to-bag-slot");
                     return false;
                 }
 
                 if (destinationSlot.Item != null)
                 {
-                    reason = "Drop a corpse Bag on an empty slot.";
+                    reason = ClientText.Of("ui/corpse/bag-needs-empty-slot");
                     return false;
                 }
             }
 
             if (!TryResolveQuantity(corpseItem.Quantity, partialQuantity, out var quantity))
             {
-                reason = "Partial loot quantity must be greater than zero and smaller than the corpse stack.";
+                reason = ClientText.Of("ui/corpse/partial-loot-quantity");
                 return false;
             }
 
@@ -101,7 +102,7 @@ namespace Mmorpg.Client.Items
 
             if (partialQuantity != null)
             {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                reason = ClientText.Of("ui/items/partial-stack-target");
                 return false;
             }
 
@@ -125,16 +126,16 @@ namespace Mmorpg.Client.Items
             CorpseLootSection section,
             CorpseLootSlot slot,
             int? partialQuantity,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.FullSnapshot == null
                 || item == null
                 || source == null
                 || section == null
                 || slot == null)
             {
-                reason = "Only a current carried inventory item can enter corpse custody.";
+                reason = ClientText.Of("ui/corpse/deposit-needs-carried-item");
                 return false;
             }
 
@@ -145,26 +146,26 @@ namespace Mmorpg.Client.Items
                     return true;
                 }
 
-                reason = "Move ordinary equipped items into carried storage before depositing them.";
+                reason = ClientText.Of("ui/corpse/deposit-equipped-item");
                 return false;
             }
 
             if (source.Kind != InventoryItemLocationKind.Container
                 || !ItemContainerTypeIds.IsCarried(source.ContainerType))
             {
-                reason = "Bank and Recovery Storage items cannot enter a corpse.";
+                reason = ClientText.Of("ui/corpse/deposit-storage-item");
                 return false;
             }
 
             if (slot.Item != null && slot.Item.HasBagContents)
             {
-                reason = "An occupied corpse Bag aggregate must use the Bag equipment swap.";
+                reason = ClientText.Of("ui/corpse/deposit-onto-bag");
                 return false;
             }
 
             if (!TryResolveQuantity(item.Quantity, partialQuantity, out var quantity))
             {
-                reason = "Partial deposit quantity must be greater than zero and smaller than the carried stack.";
+                reason = ClientText.Of("ui/corpse/partial-deposit-quantity");
                 return false;
             }
 
@@ -196,7 +197,7 @@ namespace Mmorpg.Client.Items
 
             if (partialQuantity != null)
             {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                reason = ClientText.Of("ui/items/partial-stack-target");
                 return false;
             }
 
@@ -220,9 +221,9 @@ namespace Mmorpg.Client.Items
             CorpseLootSection destinationSection,
             CorpseLootSlot destinationSlot,
             int? partialQuantity,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.Catalog == null
                 || view == null
                 || sourceItem == null
@@ -231,26 +232,26 @@ namespace Mmorpg.Client.Items
                 || destinationSection == null
                 || destinationSlot == null)
             {
-                reason = "The corpse source item is no longer available.";
+                reason = ClientText.Of("ui/corpse/source-unavailable");
                 return false;
             }
 
             if (sourceSection.ContainerId == destinationSection.ContainerId
                 && sourceSlot.SlotIndex == destinationSlot.SlotIndex)
             {
-                reason = "The corpse item is already in that slot.";
+                reason = ClientText.Of("ui/corpse/already-in-slot");
                 return false;
             }
 
             if (view.BagHasContents(sourceItem) || view.BagHasContents(destinationSlot.Item))
             {
-                reason = "A non-empty corpse Bag cannot use an ordinary internal slot move.";
+                reason = ClientText.Of("ui/corpse/bag-not-empty-move");
                 return false;
             }
 
             if (!TryResolveQuantity(sourceItem.Quantity, partialQuantity, out var quantity))
             {
-                reason = "Partial move quantity must be greater than zero and smaller than the corpse stack.";
+                reason = ClientText.Of("ui/corpse/partial-move-quantity");
                 return false;
             }
 
@@ -283,7 +284,7 @@ namespace Mmorpg.Client.Items
 
             if (partialQuantity != null)
             {
-                reason = "A partial stack can only enter an empty slot or merge with a compatible stack.";
+                reason = ClientText.Of("ui/items/partial-stack-target");
                 return false;
             }
 
@@ -315,16 +316,16 @@ namespace Mmorpg.Client.Items
             CorpseLootSection sourceSection,
             CorpseLootSlot sourceSlot,
             InventoryEquipmentSlot equipmentSlot,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (state?.FullSnapshot == null
                 || corpseItem == null
                 || sourceSection == null
                 || sourceSlot == null
                 || equipmentSlot == null)
             {
-                reason = "The corpse item is no longer available for mutation.";
+                reason = ClientText.Of("ui/corpse/item-unavailable-for-mutation");
                 return false;
             }
 
@@ -336,7 +337,7 @@ namespace Mmorpg.Client.Items
             {
                 if (occupant != null)
                 {
-                    reason = "A corpse Bag swaps only with the equipped Bag on the Bag slot.";
+                    reason = ClientText.Of("ui/corpse/bag-swaps-with-bag");
                     return false;
                 }
 
@@ -359,7 +360,7 @@ namespace Mmorpg.Client.Items
                 if (state.FullSnapshot.EquippedBag != null
                     && state.FullSnapshot.EquippedBag.Item.ItemInstanceId == occupant.ItemInstanceId)
                 {
-                    reason = "The equipped Bag swaps only with a corpse Bag.";
+                    reason = ClientText.Of("ui/corpse/equipped-bag-swaps-with-corpse-bag");
                     return false;
                 }
 
@@ -372,7 +373,9 @@ namespace Mmorpg.Client.Items
                         ToEmptyInventorySlot(sourceSlot),
                         out reason))
                 {
-                    reason = "The equipped item cannot move into the corpse slot: " + reason;
+                    reason = ClientText.Of(
+                        "ui/corpse/equipped-to-corpse-blocked",
+                        ClientTextArgument.Nested("reason", reason));
                     return false;
                 }
             }
@@ -387,9 +390,9 @@ namespace Mmorpg.Client.Items
             CorpseLootItem corpseBag,
             CorpseLootSection sourceSection,
             InventoryEquipmentSlot equipmentSlot,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (corpseBag == null
                 || sourceSection == null
                 || equipmentSlot == null
@@ -403,7 +406,7 @@ namespace Mmorpg.Client.Items
                     CorpseSectionKindIds.Equipment,
                     StringComparison.Ordinal))
             {
-                reason = "Atomic corpse Bag swap requires both occupied Bag equipment aggregates.";
+                reason = ClientText.Of("ui/corpse/bag-swap-needs-bags");
                 return false;
             }
 
@@ -437,9 +440,9 @@ namespace Mmorpg.Client.Items
             ClientItemCatalog catalog,
             InventoryItem item,
             CorpseLootSlot slot,
-            out string reason)
+            out ClientText reason)
         {
-            reason = string.Empty;
+            reason = ClientText.None;
             if (string.IsNullOrWhiteSpace(slot.EquipmentSlotId))
             {
                 return true;
@@ -449,8 +452,9 @@ namespace Mmorpg.Client.Items
                 || !catalog.TryGetDefinition(item.DefinitionId, out var definition)
                 || !ItemEquipmentRules.IsCompatible(definition, slot.EquipmentSlotId))
             {
-                reason = "The item is not compatible with corpse equipment slot '"
-                    + slot.EquipmentSlotId + "'.";
+                reason = ClientText.Of(
+                    "ui/corpse/equipment-slot-incompatible",
+                    ClientTextArgument.Text("slot", slot.EquipmentSlotId));
                 return false;
             }
 
@@ -464,8 +468,10 @@ namespace Mmorpg.Client.Items
 
             if (!ItemEquipmentRules.CanHoldQuantity(definition, equipmentSlot, quantity))
             {
-                reason = "Corpse equipment slot '" + slot.EquipmentSlotId + "' holds at most "
-                    + ItemEquipmentRules.MaximumQuantity(definition, equipmentSlot) + ".";
+                reason = ClientText.Of(
+                    "ui/corpse/equipment-slot-maximum",
+                    ClientTextArgument.Text("slot", slot.EquipmentSlotId),
+                    ClientTextArgument.Number("maximum", ItemEquipmentRules.MaximumQuantity(definition, equipmentSlot)));
                 return false;
             }
 
@@ -487,9 +493,9 @@ namespace Mmorpg.Client.Items
             InventoryClientState state,
             CorpseLootView view,
             CorpseLootItem bag,
-            out string reason)
+            out ClientText reason)
         {
-            reason = "The Bag definition is unavailable.";
+            reason = ClientText.Of("ui/items/bag-definition-unavailable");
             if (!state.Catalog.TryGetDefinition(bag.DefinitionId, out var definition) || definition.Bag == null)
             {
                 return false;
@@ -511,7 +517,7 @@ namespace Mmorpg.Client.Items
                         content.Item.Quantity));
                 }
 
-                reason = "The Bag and its contents would exceed the 140 percent carry cap.";
+                reason = ClientText.Of("ui/items/bag-contents-over-carry-cap");
                 return EncumbranceRules.IsAllowedVoluntaryTransition(
                     state.FullSnapshot.CarriedWeight,
                     state.FullSnapshot.CarryCapacity,
@@ -520,7 +526,7 @@ namespace Mmorpg.Client.Items
             }
             catch (OverflowException)
             {
-                reason = "The Bag weight is invalid.";
+                reason = ClientText.Of("ui/items/bag-weight-invalid");
                 return false;
             }
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
@@ -32,9 +33,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 ring,
                 false);
 
-            Assert.That(free.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), free.Reason);
+            Assert.That(free.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), free.Reason.ToString());
             Assert.That(free.EquipmentSlotId, Is.EqualTo("ring_2"));
-            Assert.That(replace.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), replace.Reason);
+            Assert.That(replace.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), replace.Reason.ToString());
             Assert.That(replace.EquipmentSlotId, Is.EqualTo("ring_1"));
             Assert.That(replace.Before, Is.Empty);
         }
@@ -48,7 +49,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var move = InventoryQuickMoves.ForItem(state, bow, false);
 
-            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), move.Reason);
+            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), move.Reason.ToString());
             Assert.That(move.EquipmentSlotId, Is.EqualTo("main_hand"));
             var unequip = move.Before.Single();
             Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Unequip));
@@ -66,10 +67,10 @@ namespace Mmorpg.Client.Tests.EditMode
             var topUp = InventoryQuickMoves.ForItem(state, arrows, false);
             var unequip = InventoryQuickMoves.ForItem(state, equippedArrows, false);
 
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), topUp.Reason.ToString());
             Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
             // The carried arrows take the whole equipped stack before a free slot does.
-            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), unequip.Reason);
+            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), unequip.Reason.ToString());
             Assert.That(unequip.Target.ItemInstanceId, Is.EqualTo(arrows.ItemInstanceId));
         }
 
@@ -84,9 +85,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var withdraw = InventoryQuickMoves.ForItem(state, bankedPotion, true);
             var nothing = InventoryQuickMoves.ForItem(state, ore, false);
 
-            Assert.That(deposit.Kind, Is.EqualTo(InventoryQuickMoveKind.Relocate), deposit.Reason);
+            Assert.That(deposit.Kind, Is.EqualTo(InventoryQuickMoveKind.Relocate), deposit.Reason.ToString());
             Assert.That(deposit.Container.ContainerType, Is.EqualTo("bank"));
-            Assert.That(withdraw.Kind, Is.EqualTo(InventoryQuickMoveKind.Relocate), withdraw.Reason);
+            Assert.That(withdraw.Kind, Is.EqualTo(InventoryQuickMoveKind.Relocate), withdraw.Reason.ToString());
             Assert.That(withdraw.Container.ContainerType, Is.EqualTo("permanent_inventory"));
             Assert.That(nothing.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
         }
@@ -103,9 +104,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 view,
                 corpseSword);
 
-            Assert.That(equip.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), equip.Reason);
+            Assert.That(equip.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), equip.Reason.ToString());
             Assert.That(equip.EquipmentSlotId, Is.EqualTo("main_hand"));
-            Assert.That(carry.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), carry.Reason);
+            Assert.That(carry.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), carry.Reason.ToString());
             Assert.That(carry.Container.ContainerType, Is.EqualTo("permanent_inventory"));
             Assert.That(carry.Slot.SlotIndex, Is.EqualTo(0));
         }
@@ -127,24 +128,24 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(InventoryQuickMoves.HalfOf(1), Is.EqualTo(0));
 
             var deposit = InventoryQuickMoves.ForItemPart(state, ore, 3, true);
-            Assert.That(deposit.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), deposit.Reason);
+            Assert.That(deposit.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), deposit.Reason.ToString());
             Assert.That(deposit.Quantity, Is.EqualTo(3));
             Assert.That(deposit.Container.ContainerType, Is.EqualTo("bank"));
             Assert.That(deposit.Slot.SlotIndex, Is.EqualTo(1));
 
             var withdraw = InventoryQuickMoves.ForItemPart(state, bankedPotion, 2, true);
-            Assert.That(withdraw.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), withdraw.Reason);
+            Assert.That(withdraw.Kind, Is.EqualTo(InventoryQuickMoveKind.Split), withdraw.Reason.ToString());
             Assert.That(withdraw.Container.ContainerType, Is.EqualTo("permanent_inventory"));
             Assert.That(withdraw.Slot.SlotIndex, Is.EqualTo(2));
 
             var unequip = InventoryQuickMoves.ForItemPart(state, equippedArrows, 15, false);
-            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), unequip.Reason);
+            Assert.That(unequip.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), unequip.Reason.ToString());
             Assert.That(unequip.Item.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
             Assert.That(unequip.Target.ItemInstanceId, Is.EqualTo(carriedArrows.ItemInstanceId));
             Assert.That(unequip.Quantity, Is.EqualTo(15));
 
             var topUp = InventoryQuickMoves.ForItemPart(state, carriedArrows, 5, false);
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Merge), topUp.Reason.ToString());
             Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
             Assert.That(topUp.Quantity, Is.EqualTo(5));
             Assert.That(InventoryQuickMoves.ForItemPart(state, ore, 3, false).Kind, Is.EqualTo(InventoryQuickMoveKind.None));
@@ -161,11 +162,11 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var move = InventoryQuickMoves.ForItemPart(state, arrows, 20, false);
 
-            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), move.Reason);
+            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.Equip), move.Reason.ToString());
             Assert.That(move.EquipmentSlotId, Is.EqualTo("ammunition"));
             Assert.That(move.Quantity, Is.EqualTo(20));
             var operation = InventoryPredictedOperation.Equip(arrows.ItemInstanceId, "ammunition", 20);
-            Assert.That(InventoryOperationPredictor.TryApply(state, operation, out var predicted, out var reason), Is.True, reason);
+            Assert.That(InventoryOperationPredictor.TryApply(state, operation, out var predicted, out var reason), Is.True, reason.ToString());
             Assert.That(predicted.PermanentInventory.Slots[0].Item.Quantity, Is.EqualTo(20));
             var equipped = predicted.Equipment.Single(slot => slot.SlotId == "ammunition").Item;
             Assert.That(equipped.ItemInstanceId, Is.EqualTo(operation.PredictedItemInstanceId));
@@ -177,7 +178,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var full = Item("fixture.arrow", 60);
             var tooMany = InventoryQuickMoves.ForItemPart(CreateState(new[] { full }, Slot("ammunition", null)), full, 55, false);
             Assert.That(tooMany.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
-            Assert.That(tooMany.Reason, Does.Contain("at most 50"));
+            Assert.That(
+                tooMany.Reason,
+                Is.EqualTo(ClientText.Of("ui/items/equipment-slot-maximum", ClientTextArgument.Number("maximum", 50))));
         }
 
         // Half of the corpse arrows goes where right-click sends them: onto the equipped arrows
@@ -200,10 +203,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 corpseArrows,
                 10);
 
-            Assert.That(fill.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), fill.Reason);
+            Assert.That(fill.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), fill.Reason.ToString());
             Assert.That(fill.EquipmentSlotId, Is.EqualTo("ammunition"));
             Assert.That(fill.Quantity, Is.EqualTo(10));
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.LootToEquipment), topUp.Reason.ToString());
             Assert.That(topUp.Quantity, Is.EqualTo(10));
             Assert.That(carried.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), "45 and 10 exceed the 50 the slot holds");
             Assert.That(carried.Quantity, Is.EqualTo(10));
@@ -220,10 +223,10 @@ namespace Mmorpg.Client.Tests.EditMode
             var free = InventoryQuickMoves.ForCorpseItemPart(CreateState(new[] { Item("fixture.potion", 1) }), view, corpseOre, 4);
             var whole = InventoryQuickMoves.ForCorpseItemPart(CreateState(Array.Empty<InventoryItem>()), view, corpseOre, 9);
 
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), topUp.Reason.ToString());
             Assert.That(topUp.Quantity, Is.EqualTo(4));
             Assert.That(topUp.Slot.SlotIndex, Is.EqualTo(0));
-            Assert.That(free.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), free.Reason);
+            Assert.That(free.Kind, Is.EqualTo(InventoryQuickMoveKind.Loot), free.Reason.ToString());
             Assert.That(free.Slot.SlotIndex, Is.EqualTo(1));
             Assert.That(whole.Kind, Is.EqualTo(InventoryQuickMoveKind.None));
         }
@@ -245,7 +248,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             var move = InventoryQuickMoves.ForRecoveryDelivery(state, delivery);
 
-            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.ClaimRecovery), move.Reason);
+            Assert.That(move.Kind, Is.EqualTo(InventoryQuickMoveKind.ClaimRecovery), move.Reason.ToString());
             Assert.That(move.Container.ContainerType, Is.EqualTo("permanent_inventory"));
         }
 
@@ -308,7 +311,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var createdIds = contents.Append(pack).ToDictionary(item => item.ItemInstanceId, _ => Guid.NewGuid());
             var edit = new InventoryPredictionEdit(view);
 
-            Assert.That(CorpseLootAllPrediction.TryApply(edit, corpse, false, createdIds, out var reason), Is.True, reason);
+            Assert.That(CorpseLootAllPrediction.TryApply(edit, corpse, false, createdIds, out var reason), Is.True, reason.ToString());
 
             var predicted = edit.Build();
             Assert.That(predicted.EquippedBag, Is.Not.Null);

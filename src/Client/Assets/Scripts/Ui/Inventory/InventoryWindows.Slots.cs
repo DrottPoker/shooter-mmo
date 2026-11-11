@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
@@ -33,7 +34,7 @@ namespace Mmorpg.Client.Ui
             spec.DragPayload = item == null ? null : InventoryDragPayload.ForItem(item.ItemInstanceId);
             spec.CanDrag = InventoryDropPlanner.CanMoveItem(state, item);
             OfferStackParts(spec, item?.Quantity ?? 0, () => OnItemRightClicked(item, true));
-            spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
+            spec.DropValidator = (InventoryDragPayload payload, out ClientText reason) =>
                 CanDropOnContainer(container, slot, payload, out reason);
             spec.OnDrop = payload => DropOnContainer(container, slot, payload);
             spec.Tooltip = item != null
@@ -59,7 +60,7 @@ namespace Mmorpg.Client.Ui
             spec.DragPayload = item == null ? null : InventoryDragPayload.ForItem(item.ItemInstanceId);
             spec.CanDrag = InventoryDropPlanner.CanMoveItem(state, item);
             OfferStackParts(spec, item?.Quantity ?? 0, () => OnItemRightClicked(item, true));
-            spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
+            spec.DropValidator = (InventoryDragPayload payload, out ClientText reason) =>
                 CanDropOnEquipment(equipmentSlot, payload, out reason);
             spec.OnDrop = payload => Report(interactions.Execute(
                 interactions.PlanEquipmentDrop(equipmentSlot, payload, payload.Quantity)));
@@ -122,7 +123,7 @@ namespace Mmorpg.Client.Ui
                 spec,
                 WorldActorCorpseRules.IsMobCorpsePresentationKey(view.PresentationKey) ? 0 : corpseItem?.Quantity ?? 0,
                 () => Report(interactions.QuickMoveCorpseItemPart(corpseItem)));
-            spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
+            spec.DropValidator = (InventoryDragPayload payload, out ClientText reason) =>
                 CanDropOnCorpse(section, slot, payload, out reason);
             spec.OnDrop = payload => DropOnCorpse(section, slot, payload);
             spec.Tooltip = item != null
@@ -142,10 +143,9 @@ namespace Mmorpg.Client.Ui
             spec.OnRightClick = () => Report(interactions.QuickMoveRecoveryDelivery(delivery));
             spec.DragPayload = InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId);
             spec.CanDrag = InventoryDropPlanner.CanMoveItem(state, null);
-            spec.DropValidator = (InventoryDragPayload payload, out string reason) =>
+            spec.DropValidator = (InventoryDragPayload payload, out ClientText reason) =>
             {
-                reason = "Recovery Storage accepts system deliveries only. "
-                    + "Drag a Recovery delivery to your inventory or the Bank to claim it.";
+                reason = ClientText.Of("ui/items/recovery-storage-drop");
                 return false;
             };
             spec.Tooltip = InventorySlotPresentation.BuildItemTooltip(
@@ -199,7 +199,7 @@ namespace Mmorpg.Client.Ui
             InventoryContainer container,
             InventorySlot slot,
             InventoryDragPayload payload,
-            out string reason)
+            out ClientText reason)
         {
             var plan = interactions.PlanContainerDrop(container, slot, payload, payload.Quantity);
             reason = plan.Reason;
@@ -211,14 +211,14 @@ namespace Mmorpg.Client.Ui
             Report(interactions.Execute(interactions.PlanContainerDrop(container, slot, payload, payload.Quantity)));
         }
 
-        private bool CanDropOnEquipment(InventoryEquipmentSlot equipmentSlot, InventoryDragPayload payload, out string reason)
+        private bool CanDropOnEquipment(InventoryEquipmentSlot equipmentSlot, InventoryDragPayload payload, out ClientText reason)
         {
             var plan = interactions.PlanEquipmentDrop(equipmentSlot, payload, payload.Quantity);
             reason = plan.Reason;
             return plan.IsValid;
         }
 
-        private bool CanDropOnCorpse(CorpseLootSection section, CorpseLootSlot slot, InventoryDragPayload payload, out string reason)
+        private bool CanDropOnCorpse(CorpseLootSection section, CorpseLootSlot slot, InventoryDragPayload payload, out ClientText reason)
         {
             var plan = interactions.PlanCorpseDrop(section, slot, payload, payload.Quantity);
             reason = plan.Reason;
@@ -236,13 +236,13 @@ namespace Mmorpg.Client.Ui
         {
             if (!TryFindStack(payload, out var definitionId, out var stack))
             {
-                Say("The item is no longer available.");
+                Say(ClientText.Of("ui/items/item-unavailable"));
                 return;
             }
 
             if (stack < 2)
             {
-                Say("A single item cannot be split.");
+                Say(ClientText.Of("ui/items/single-item-split"));
                 return;
             }
 
@@ -349,8 +349,8 @@ namespace Mmorpg.Client.Ui
             if (!InventoryDropPlanner.CanMoveItem(state, item))
             {
                 Say(state.IsPredictedItem(item.ItemInstanceId)
-                    ? "Wait a moment until the stack is confirmed."
-                    : "Inventory mutation is unavailable while state is loading.");
+                    ? ClientText.Of("ui/items/wait-for-stack")
+                    : ClientText.Of("ui/items/inventory-loading"));
                 return;
             }
 

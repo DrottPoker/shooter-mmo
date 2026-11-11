@@ -29,9 +29,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var move = Plan(state, inventory, empty, ore, null);
             var split = Plan(state, inventory, empty, ore, 4);
 
-            Assert.That(move.Kind, Is.EqualTo(InventoryDropPlanKind.Relocate), move.Reason);
+            Assert.That(move.Kind, Is.EqualTo(InventoryDropPlanKind.Relocate), move.Reason.ToString());
             Assert.That(move.Slot.SlotIndex, Is.EqualTo(2));
-            Assert.That(split.Kind, Is.EqualTo(InventoryDropPlanKind.Split), split.Reason);
+            Assert.That(split.Kind, Is.EqualTo(InventoryDropPlanKind.Split), split.Reason.ToString());
             Assert.That(split.Quantity, Is.EqualTo(4));
             Assert.That(split.IsCorpseOperation, Is.False);
         }
@@ -53,12 +53,12 @@ namespace Mmorpg.Client.Tests.EditMode
             var whole = Plan(state, inventory, inventory.Slots[3], ore, 10);
 
             Assert.That(ontoItem.Kind, Is.EqualTo(InventoryDropPlanKind.None));
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason.ToString());
             Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(moreOre.ItemInstanceId));
             Assert.That(topUp.Quantity, Is.EqualTo(4));
             Assert.That(overTop.Kind, Is.EqualTo(InventoryDropPlanKind.None));
             Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.None));
-            Assert.That(whole.Reason, Is.Not.Empty);
+            Assert.That(whole.Reason.IsEmpty, Is.False);
         }
 
         [Test]
@@ -74,9 +74,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var swap = Plan(state, inventory, inventory.Slots[2], ore, null);
             var self = Plan(state, inventory, inventory.Slots[0], ore, null);
 
-            Assert.That(merge.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), merge.Reason);
+            Assert.That(merge.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), merge.Reason.ToString());
             Assert.That(merge.Target.ItemInstanceId, Is.EqualTo(moreOre.ItemInstanceId));
-            Assert.That(swap.Kind, Is.EqualTo(InventoryDropPlanKind.Swap), swap.Reason);
+            Assert.That(swap.Kind, Is.EqualTo(InventoryDropPlanKind.Swap), swap.Reason.ToString());
             Assert.That(swap.Target.ItemInstanceId, Is.EqualTo(potion.ItemInstanceId));
             Assert.That(self.Kind, Is.EqualTo(InventoryDropPlanKind.None));
         }
@@ -91,8 +91,8 @@ namespace Mmorpg.Client.Tests.EditMode
             var unequip = Plan(state, inventory, inventory.Slots[0], arrows, null);
             var split = Plan(state, inventory, inventory.Slots[0], arrows, 10);
 
-            Assert.That(unequip.Kind, Is.EqualTo(InventoryDropPlanKind.Unequip), unequip.Reason);
-            Assert.That(split.Kind, Is.EqualTo(InventoryDropPlanKind.Split), split.Reason);
+            Assert.That(unequip.Kind, Is.EqualTo(InventoryDropPlanKind.Unequip), unequip.Reason.ToString());
+            Assert.That(split.Kind, Is.EqualTo(InventoryDropPlanKind.Split), split.Reason.ToString());
             Assert.That(split.Quantity, Is.EqualTo(10));
         }
 
@@ -115,19 +115,19 @@ namespace Mmorpg.Client.Tests.EditMode
             var topUp = PlanEquipment(state, ammunition, arrows, null);
             var partTopUp = PlanEquipment(state, ammunition, arrows, 5);
 
-            Assert.That(equip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), equip.Reason);
+            Assert.That(equip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), equip.Reason.ToString());
             Assert.That(equip.EquipmentSlotId, Is.EqualTo("main_hand"));
             Assert.That(equip.Target, Is.Null);
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), topUp.Reason.ToString());
             Assert.That(topUp.Target.ItemInstanceId, Is.EqualTo(equippedArrows.ItemInstanceId));
             Assert.That(topUp.Quantity, Is.EqualTo(0));
-            Assert.That(partTopUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), partTopUp.Reason);
+            Assert.That(partTopUp.Kind, Is.EqualTo(InventoryDropPlanKind.Merge), partTopUp.Reason.ToString());
             Assert.That(partTopUp.Quantity, Is.EqualTo(5));
 
             var emptyAmmunition = CreateState(new[] { arrows }, Slot("ammunition", null));
             var emptySlot = emptyAmmunition.FullSnapshot.Equipment.Single(slot => slot.SlotId == "ammunition");
             var partEquip = PlanEquipment(emptyAmmunition, emptySlot, arrows, 5);
-            Assert.That(partEquip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), partEquip.Reason);
+            Assert.That(partEquip.Kind, Is.EqualTo(InventoryDropPlanKind.Equip), partEquip.Reason.ToString());
             Assert.That(partEquip.Quantity, Is.EqualTo(5));
             Assert.That(PlanEquipment(emptyAmmunition, emptySlot, arrows, 10).Kind, Is.EqualTo(InventoryDropPlanKind.None));
         }
@@ -157,7 +157,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 InventoryDragPayload.ForRecoveryDelivery(delivery.DeliveryId),
                 null);
 
-            Assert.That(claim.Kind, Is.EqualTo(InventoryDropPlanKind.ClaimRecovery), claim.Reason);
+            Assert.That(claim.Kind, Is.EqualTo(InventoryDropPlanKind.ClaimRecovery), claim.Reason.ToString());
             Assert.That(claim.Delivery.DeliveryId, Is.EqualTo(delivery.DeliveryId));
         }
 
@@ -174,10 +174,10 @@ namespace Mmorpg.Client.Tests.EditMode
             var part = InventoryDropPlanner.PlanContainerDrop(state, view, true, inventory, inventory.Slots[0], payload, 3);
             var busy = InventoryDropPlanner.PlanContainerDrop(state, view, false, inventory, inventory.Slots[0], payload, null);
 
-            Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLoot), whole.Reason);
+            Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLoot), whole.Reason.ToString());
             Assert.That(whole.Quantity, Is.EqualTo(8));
             Assert.That(whole.IsCorpseOperation, Is.True);
-            Assert.That(part.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLoot), part.Reason);
+            Assert.That(part.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLoot), part.Reason.ToString());
             Assert.That(part.Quantity, Is.EqualTo(3));
             Assert.That(busy.Kind, Is.EqualTo(InventoryDropPlanKind.None));
         }
@@ -198,9 +198,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var overTop = InventoryDropPlanner.PlanEquipmentDrop(topped, view, true, AmmunitionSlot(topped), payload, 19);
             var whole = InventoryDropPlanner.PlanEquipmentDrop(empty, view, true, AmmunitionSlot(empty), payload, 20);
 
-            Assert.That(fill.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), fill.Reason);
+            Assert.That(fill.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), fill.Reason.ToString());
             Assert.That(fill.Quantity, Is.EqualTo(10));
-            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), topUp.Reason);
+            Assert.That(topUp.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseLootToEquipment), topUp.Reason.ToString());
             Assert.That(topUp.Quantity, Is.EqualTo(10));
             Assert.That(overTop.Kind, Is.EqualTo(InventoryDropPlanKind.None), "the ammunition slot holds 50");
             Assert.That(whole.Kind, Is.EqualTo(InventoryDropPlanKind.None));
@@ -223,7 +223,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 InventoryDragPayload.ForItem(ore.ItemInstanceId),
                 null);
 
-            Assert.That(deposit.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseDeposit), deposit.Reason);
+            Assert.That(deposit.Kind, Is.EqualTo(InventoryDropPlanKind.CorpseDeposit), deposit.Reason.ToString());
             Assert.That(deposit.Quantity, Is.EqualTo(10));
         }
 
@@ -237,7 +237,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var plan = Plan(state, stale, stale.Slots[0], ore, null);
 
             Assert.That(plan.Kind, Is.EqualTo(InventoryDropPlanKind.None));
-            Assert.That(plan.Reason, Is.EqualTo("This slot is no longer available."));
+            Assert.That(plan.Reason.Key, Is.EqualTo("ui/items/drop-slot-gone"));
         }
 
         private static InventoryDropPlan Plan(

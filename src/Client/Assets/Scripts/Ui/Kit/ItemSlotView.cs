@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using TMPro;
 using UnityEngine;
@@ -43,7 +44,7 @@ namespace Mmorpg.Client.Ui
         public int HalfQuantity;
         public InventoryDropValidator DropValidator;
         public Action<InventoryDragPayload> OnDrop;
-        public Action<string> OnRejected;
+        public Action<ClientText> OnRejected;
         public string Tooltip = string.Empty;
     }
 

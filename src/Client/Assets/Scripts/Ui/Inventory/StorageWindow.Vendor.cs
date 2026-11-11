@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
@@ -51,15 +52,15 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            if (!owner.Interactions.CanOfferToVendor(vendor, payload, out error))
+            if (!owner.Interactions.CanOfferToVendor(vendor, payload, out var reason))
             {
-                owner.Say(error);
+                owner.Say(reason);
                 return;
             }
 
             if (!state.TryFindItem(payload.ItemInstanceId, out var item, out _))
             {
-                owner.Say("The item is no longer available.");
+                owner.Say(ClientText.Of("ui/items/item-unavailable"));
                 return;
             }
 
@@ -149,7 +150,7 @@ namespace Mmorpg.Client.Ui
             sections[1].Detail.text = "Pays " + RateText(vendor.SalePriceBasisPoints) + " of value";
             var sellSpec = owner.ItemSpec(pendingItem, "vendor:sell");
             sellSpec.Dimmed = false;
-            sellSpec.DropValidator = (InventoryDragPayload candidate, out string reason) =>
+            sellSpec.DropValidator = (InventoryDragPayload candidate, out ClientText reason) =>
                 owner.Interactions.CanOfferToVendor(vendor, candidate, out reason);
             sellSpec.OnDrop = OfferForSale;
             sellSpec.Tooltip = pendingItem != null
@@ -300,7 +301,7 @@ namespace Mmorpg.Client.Ui
             if (!state.TryFindItem(pendingSaleItemId, out _, out _))
             {
                 pendingSaleItemId = Guid.Empty;
-                owner.Say("The item is no longer available.");
+                owner.Say(ClientText.Of("ui/items/item-unavailable"));
                 owner.Refresh();
                 return;
             }

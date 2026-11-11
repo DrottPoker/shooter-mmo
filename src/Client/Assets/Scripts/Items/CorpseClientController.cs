@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Actors;
@@ -180,8 +181,9 @@ namespace Mmorpg.Client.Items
             var containerId = destination.ContainerId;
             var slotIndex = destinationSlot.SlotIndex;
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TryLoot(probe, item, quantity, containerId, slotIndex, createdId, out var displaced, out error))
+            if (!CorpseInventoryPrediction.TryLoot(probe, item, quantity, containerId, slotIndex, createdId, out var displaced, out var probeReason))
             {
+                error = probeReason.Resolve(messageTexts);
                 return false;
             }
 
@@ -196,7 +198,7 @@ namespace Mmorpg.Client.Items
 
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                         CorpseInventoryPrediction.TryLoot(edit, item, quantity, containerId, slotIndex, createdId, out _, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendLoot(state, view.CorpseId, item.ItemInstanceId, quantity, containerId, slotIndex, out operationId, out sendError),
@@ -227,15 +229,16 @@ namespace Mmorpg.Client.Items
             var wholeItemsOnly = WorldActorCorpseRules.IsMobCorpsePresentationKey(view.PresentationKey);
             var createdIds = items.ToDictionary(slot => slot.Item.ItemInstanceId, _ => Guid.NewGuid());
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseLootAllPrediction.TryApply(probe, view, wholeItemsOnly, createdIds, out error))
+            if (!CorpseLootAllPrediction.TryApply(probe, view, wholeItemsOnly, createdIds, out var probeReason))
             {
+                error = probeReason.Resolve(messageTexts);
                 return false;
             }
 
             var plan = CorpseLootAllPrediction.Plan(inventoryController.State, view, wholeItemsOnly);
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                         CorpseLootAllPrediction.TryApply(edit, view, wholeItemsOnly, createdIds, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendLootAll(view.CorpseId, out operationId, out sendError),
@@ -303,8 +306,9 @@ namespace Mmorpg.Client.Items
             var slotId = equipmentSlot.SlotId;
             var loot = partial ? item.WithQuantity(quantity) : item;
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, loot, slotId, createdId, bagContents, !partial, out var displaced, out error))
+            if (!CorpseInventoryPrediction.TryLootToEquipment(probe, loot, slotId, createdId, bagContents, !partial, out var displaced, out var probeReason))
             {
+                error = probeReason.Resolve(messageTexts);
                 return false;
             }
 
@@ -324,7 +328,7 @@ namespace Mmorpg.Client.Items
 
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                         CorpseInventoryPrediction.TryLootToEquipment(edit, loot, slotId, createdId, bagContents, !partial, out _, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendLootToEquipment(state, view.CorpseId, item.ItemInstanceId, slotId, partial ? quantity : 0, out operationId, out sendError),
@@ -363,14 +367,15 @@ namespace Mmorpg.Client.Items
             }
 
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TrySwapBag(probe, bag, bagSection, out error))
+            if (!CorpseInventoryPrediction.TrySwapBag(probe, bag, bagSection, out var probeReason))
             {
+                error = probeReason.Resolve(messageTexts);
                 return false;
             }
 
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                         CorpseInventoryPrediction.TrySwapBag(edit, bag, bagSection, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendSwapBag(state, view.CorpseId, bag.ItemInstanceId, out operationId, out sendError),
@@ -452,8 +457,9 @@ namespace Mmorpg.Client.Items
             var createdId = partial ? Guid.NewGuid() : currentItem.ItemInstanceId;
             var itemId = currentItem.ItemInstanceId;
             var probe = new InventoryPredictionEdit(inventoryController.State, inventoryController.State.IsPredictedContainer);
-            if (!CorpseInventoryPrediction.TryDeposit(probe, itemId, quantity, swappedIn, out error))
+            if (!CorpseInventoryPrediction.TryDeposit(probe, itemId, quantity, swappedIn, out var probeReason))
             {
+                error = probeReason.Resolve(messageTexts);
                 return false;
             }
 
@@ -462,7 +468,7 @@ namespace Mmorpg.Client.Items
                 : new CorpseLootItem(createdId, currentItem.DefinitionId, quantity, currentItem.Revision, Guid.Empty, 0);
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                         CorpseInventoryPrediction.TryDeposit(edit, itemId, quantity, swappedIn, out reason),
                     (InventoryClientState state, out Guid operationId, out string sendError) =>
                         SendDeposit(state, view.CorpseId, itemId, quantity, section.SectionKind, slot.SlotIndex, out operationId, out sendError),
@@ -542,9 +548,9 @@ namespace Mmorpg.Client.Items
                     : currentItem;
             return Queue(
                 InventoryPredictedOperation.External(
-                    (InventoryPredictionEdit edit, out string reason) =>
+                    (InventoryPredictionEdit edit, out ClientText reason) =>
                     {
-                        reason = string.Empty;
+                        reason = ClientText.None;
                         return true;
                     },
                     (InventoryClientState state, out Guid operationId, out string sendError) =>

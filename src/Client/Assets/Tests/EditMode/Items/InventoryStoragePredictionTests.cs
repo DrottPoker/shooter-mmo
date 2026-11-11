@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
@@ -118,11 +119,11 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             var state = CreateState(Array.Empty<InventoryItem>());
             var overweight = InventoryPredictedOperation.External(
-                (InventoryPredictionEdit edit, out string reason) =>
+                (InventoryPredictionEdit edit, out ClientText reason) =>
                 {
                     // Like a swap to a smaller Bag, the step itself never checks the cap.
                     edit.Capacity = 1;
-                    reason = string.Empty;
+                    reason = ClientText.None;
                     return true;
                 },
                 (InventoryClientState _, out Guid operationId, out string sendError) =>
@@ -246,7 +247,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseInventoryPrediction.TryLoot(merge, CorpseItem("fixture.ore", 5), 5, inventory, 0, Guid.NewGuid(), out var displaced, out var error),
                 Is.True,
-                error);
+                error.ToString());
             Assert.That(displaced, Is.Null);
             Assert.That(Slot(merge.Build().PermanentInventory, 0).Item.Quantity, Is.EqualTo(15));
 
@@ -255,7 +256,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 CorpseInventoryPrediction.TryLoot(swap, helm, 1, inventory, 1, Guid.NewGuid(), out displaced, out error),
                 Is.True,
-                error);
+                error.ToString());
             Assert.That(displaced.ItemInstanceId, Is.EqualTo(sword.ItemInstanceId));
             Assert.That(Slot(swap.Build().PermanentInventory, 1).Item.DefinitionId, Is.EqualTo("fixture.helm"));
 
@@ -273,7 +274,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var helm = CorpseItem("fixture.helm", 1);
             var edit = new InventoryPredictionEdit(state);
 
-            Assert.That(CorpseInventoryPrediction.TryDeposit(edit, ore.ItemInstanceId, 10, helm, out var error), Is.True, error);
+            Assert.That(CorpseInventoryPrediction.TryDeposit(edit, ore.ItemInstanceId, 10, helm, out var error), Is.True, error.ToString());
 
             var built = edit.Build();
             Assert.That(Slot(built.PermanentInventory, 0).Item.ItemInstanceId, Is.EqualTo(helm.ItemInstanceId));
