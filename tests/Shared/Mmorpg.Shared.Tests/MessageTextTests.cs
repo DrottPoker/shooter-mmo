@@ -6,8 +6,9 @@ using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Shared.Tests;
 
-// The servers send a code and named values, and the client owns the sentence. These tests
-// cover the text lookup, the source file of the messages, and the committed messages table.
+// The servers send a code and named values, the client gives a code to a failure it finds
+// itself, and the client owns the sentence. These tests cover the text lookup, the source
+// file of the messages, and the committed messages table.
 public sealed partial class MessageTextTests
 {
     [Fact]
@@ -166,17 +167,19 @@ public sealed partial class MessageTextTests
         Assert.Equal(TextSource.Compile(source).Revision, committed.Revision);
     }
 
-    // A text whose code no server sends would never show, which is how a misspelled key
-    // hides. Every message key must be the code of a string in the server or protocol code.
+    // A text whose code neither a server sends nor the client gives a failure it finds itself
+    // would never show, which is how a misspelled key hides. Every message key must be the
+    // code of a string in the server, protocol, or client code.
     [Fact]
-    public void EveryMessageBelongsToACodeThatAServerSends()
+    public void EveryMessageBelongsToACodeThatAServerSendsOrTheClientMakes()
     {
         var codes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var directory in new[]
                  {
                      Path.Combine(RepositoryPaths.Root, "src", "Server"),
                      Path.Combine(RepositoryPaths.Root, "src", "Shared", "GameProtocol", "Runtime"),
-                     Path.Combine(RepositoryPaths.Root, "src", "Shared", "WorldData", "Runtime")
+                     Path.Combine(RepositoryPaths.Root, "src", "Shared", "WorldData", "Runtime"),
+                     Path.Combine(RepositoryPaths.Root, "src", "Client", "Assets", "Scripts")
                  })
         {
             foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
@@ -202,7 +205,7 @@ public sealed partial class MessageTextTests
             .Where(code => !codes.Contains(code))
             .ToArray();
 
-        Assert.True(unknown.Length == 0, "No server sends these codes: " + string.Join(", ", unknown));
+        Assert.True(unknown.Length == 0, "Neither a server nor the client makes these codes: " + string.Join(", ", unknown));
     }
 
     // The values that the servers send by name. A text that names another placeholder would

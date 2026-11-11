@@ -25,7 +25,8 @@ namespace Mmorpg.Client.Networking
 
         public string Message { get; private set; }
 
-        public string ToDisplayMessage()
+        // The English diagnostic for logs; the player reads the text of the code.
+        public string ToDiagnostic()
         {
             return Message + " [" + Code + "]";
         }

@@ -60,7 +60,7 @@ namespace Mmorpg.Client.Ui
             var state = owner.State;
             if (state?.Catalog == null)
             {
-                ShowMessage(state?.Error?.ToDisplayMessage() ?? owner.Text("ui/inventory/catalog-unavailable"), true);
+                ShowMessage(state?.Error?.ToDisplayMessage(owner.Texts) ?? owner.Text("ui/inventory/catalog-unavailable"), true);
                 return;
             }
 
@@ -126,12 +126,12 @@ namespace Mmorpg.Client.Ui
             var bank = state.Bank;
             if (bank == null)
             {
-                ShowMessage(state.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(owner.Texts, state), true);
+                ShowMessage(state.Error?.ToDisplayMessage(owner.Texts) ?? CharacterInventoryWindow.StatusText(owner.Texts, state), true);
                 Window.SetDetail(string.Empty);
                 return;
             }
 
-            ShowMessage(state.Error?.ToDisplayMessage(), false);
+            ShowMessage(state.Error?.ToDisplayMessage(owner.Texts), false);
             Window.SetDetail(CharacterInventoryWindow.UsedSlotsText(bank));
             // The window's title already names the Bank, so its grid has no heading.
             EnsureSections("bank:" + bank.ContainerId + ":" + bank.Slots.Count, () =>
@@ -196,7 +196,7 @@ namespace Mmorpg.Client.Ui
                 Window.SetTitle(owner.Text("ui/corpse/title"));
                 Window.SetDetail(string.Empty);
                 SetFooter(string.Empty, null);
-                ShowMessage(corpseState.Error?.ToDisplayMessage() ?? owner.Text("ui/corpse/hint"), true);
+                ShowMessage(corpseState.Error?.ToDisplayMessage(owner.Texts) ?? owner.Text("ui/corpse/hint"), true);
                 return;
             }
 
@@ -209,7 +209,7 @@ namespace Mmorpg.Client.Ui
                         .ToLocalTime()
                         .ToString("HH:mm", CultureInfo.InvariantCulture))));
             var notice = corpseState.Error != null
-                ? corpseState.Error.ToDisplayMessage()
+                ? corpseState.Error.ToDisplayMessage(owner.Texts)
                 : corpseState.Status == CorpseClientStatus.Busy
                     ? owner.Text("ui/corpse/waiting")
                     : corpseState.Notice;

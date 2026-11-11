@@ -287,7 +287,7 @@ namespace Mmorpg.Client.Ui
             SetStatus(
                 AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
                 TemporaryUiKit.DangerColor);
-            ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDisplayMessage());
+            ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDiagnostic());
             // The form is enabled again once the routine ends, so the field takes the caret then.
             StartCoroutine(FocusWhenIdle(retryField));
         }

@@ -181,10 +181,11 @@ namespace Mmorpg.Client.Items
             NotifyChanged();
         }
 
-        public void SetCatalogError(string code, string message, bool updateRequired)
+        // The text is the text of the code, which the windows show.
+        public void SetCatalogError(string code, string text, bool updateRequired)
         {
             Catalog = null;
-            Error = new InventoryClientError(code, message, updateRequired: updateRequired);
+            Error = new InventoryClientError(code, text, updateRequired: updateRequired);
             Status = updateRequired
                 ? InventoryClientStatus.UpdateRequired
                 : InventoryClientStatus.Error;

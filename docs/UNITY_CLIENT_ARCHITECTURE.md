@@ -425,8 +425,8 @@ the text tables that `ClientConfig` lists, checks each against its revision,
 and joins them; [Text Tables](../content/README.md#text-tables) describes the
 tables and their keys. The bootstrap loads the catalog once and passes it to
 the inventory, quest, world actor, corpse, and world interaction controllers,
-and to the look link, the combat HUD, and the login and character panels, which
-show messages.
+and to the look link, the combat HUD, the login and character panels, and the
+F2 Debug menu, which show messages.
 
 - `ClientItemCatalog` answers every name from it: `GetDisplayName`,
   `GetEquipmentSlotName`, `GetCategoryName`, `GetTagName`, `GetVendorName`, and
@@ -448,16 +448,36 @@ show messages.
   Mob's corpse carries. `CorpseClientState` names the corpses near the player
   and the open corpse view with it, and `ClientQuestCatalog.ActorName` names
   the Mob of a quest drop message.
-- `ClientMessages.Text` gives the text for a code that a server sent: an
-  error, a closure, or the notice of a committed action, as
+- `ClientMessages.Text` gives the text for a code: one that a server sent
+  with an error, a closure, or the notice of a committed action, or one that
+  the client gave a failure it found itself, as
   [Messages](../content/README.md#messages) describes. It fills the
   placeholders of the text with the named values of the message, writes the
-  English explanation of the server to the log, and shows the unlisted text
-  with the code for a code that has no text. The inventory, corpse, quest,
-  world interaction, and gathering states store that text, never the server's
-  sentence, and a request that GameService refused shows the text of the code
-  in its problem details. A failure that the client finds itself, such as a
-  request that got no answer, keeps the client's own sentence.
+  English diagnostic to the log, and shows the unlisted text with the code for
+  a code that has no text. The inventory, corpse, quest, world interaction,
+  and gathering states store that text, never a diagnostic, and a request
+  that GameService refused shows the text of the code in its problem details.
+- A failure that the client finds itself follows the same rule: it has a
+  stable code and an English diagnostic, the player reads the text of the
+  code, and the diagnostic goes to the log and never to the screen. A request
+  that got no usable answer has the code `request_timeout`, `network_error`,
+  or `invalid_response`, or `invalid_inventory_response` and
+  `quest_log_invalid` for a snapshot or quest log that cannot be read; a
+  realtime failure carries its code in `RealtimeClientError`; a World that the
+  World scene catalog cannot resolve is `world_scene_unavailable`, and a World
+  scene that fails to load is `world_scene_load_failed`; a catalog that cannot
+  load is `item_catalog_invalid` or `quest_catalog_invalid`, and an outdated
+  one `item_catalog_update_required` or `quest_catalog_update_required`.
+  `ClientMessages.Text(texts, ApiError)` and
+  `AccountEntryPresentation.ErrorText` resolve every kind of failure by its
+  code, except that the login and character screens name the GameService
+  address for a request that never reached it. The creators of
+  `InventoryClientError`, `CorpseClientError`, and `QuestClientState.SetFailed`
+  pass the text of the code; an error without a text shows the text of its
+  code, and `InventoryClientError.ToDisplayMessage` adds the correlation id of
+  a failed request with the client text `ui/inventory/error-correlation`.
+  `ApiError.ToDiagnostic` and `RealtimeClientError.ToDiagnostic` build log
+  lines only. `ClientFailureTextTests` and `AccountEntryTests` pin the rule.
 - A text that the catalog lacks shows its key in brackets, such as
   `[item/weapon.iron_sword/name]`, so a missing text is seen on screen. When
   the tables cannot be read at all, the client logs an error and runs with an
@@ -511,9 +531,8 @@ Attack, and Loot options, corpse names, and game messages are converted.
 `CombatTargetingController` take the text catalog from the bootstrap in
 `Initialize`, and `ItemSlotView` and `ItemSlotGrid` take it from the inventory
 windows. The literals inside the `Temporary` panels and the F2 Debug and F3
-Admin menus stay English by decision; the technical failure sentences of the
-API and realtime clients, the World scene catalog, the catalog loaders, and
-the client state checks are not converted yet.
+Admin menus stay English by decision. A technical failure that the client finds
+itself shows the text of its code, as [Content Text](#content-text) describes.
 `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
 pseudo-locale, which `PseudoText` builds from the same tables.
 
@@ -546,8 +565,10 @@ loading LoginMenu.
   iterator, so each owner disposes its client in `OnDestroy`, which aborts and
   releases any request that has not completed.
 
-`ApiError` carries the failure kind, HTTP status, stable server code, message,
-and correlation id. Panels display a safe message rather than raw JSON. Array
+`ApiError` carries the failure kind, HTTP status, stable code, message, and
+correlation id. The code is the server's, or the client's own for a request
+that got no usable answer; the message is the diagnostic for the log, and
+panels display the text of the code. Array
 responses are validated through `JsonArrayUtility` before they reach UI state.
 
 ## Client Diagnostics

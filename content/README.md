@@ -376,13 +376,15 @@ text of the content is in a text table, which only the client reads.
 ### Messages
 
 A server never sends a sentence for the player. It sends a stable code, such
-as `item_slot_occupied`, and the client shows its own text for that code. No
-content owns these texts, so they are written by hand in `text/messages.json`,
-one entry per code:
+as `item_slot_occupied`, and the client shows its own text for that code. A
+failure that the client finds itself, such as a request that timed out or a
+catalog that cannot load, has a code of its own, such as `request_timeout`,
+and shows the text of that code the same way. No content owns these texts, so
+they are written by hand in `text/messages.json`, one entry per code:
 
 | Text | Key |
 | --- | --- |
-| The text for a code: an error, a closure, or the notice of a committed action | `message/<code>` |
+| The text for a code: an error, a closure, or the notice of a committed action, from a server or from the client itself | `message/<code>` |
 | The text for every code that has no text of its own, which names the code as `{code}` | `message-unlisted/text` |
 
 A text may hold placeholders, a name in braces such as `{toolKind}`, for the
@@ -391,12 +393,16 @@ else. `gathering_tool_required` reads `{toolKind} required in the Tool slot.`,
 and the worker sends the tool kind as a text key, so the client fills in the
 name from the item text table.
 
-Give a code a text when a player can meet it in normal play. A code that only a
-defect or a tampered client produces needs none: it shows the unlisted text
-with the code, and the English explanation of the server is in the client log.
-`MessageTextTests` fails for a text whose code no server sends and for a
-placeholder that no server fills, and `MessageCoverageTests` fails when a code
-of the worker's notices, gathering, combat, or corpse closures has no text.
+Give a code a text when a player can meet it in normal play and act on it,
+such as a shard that cannot be reached or a client that is out of date. A code
+that only a defect or a tampered client produces needs none, and neither does
+a protocol violation that the client finds, such as `invalid_join_response` or
+`unexpected_join_response`: it shows the unlisted text with the code, and the
+English diagnostic of the server or the client is in the client log.
+`MessageTextTests` fails for a text whose code neither a server sends nor the
+client code names and for a placeholder that no server fills, and
+`MessageCoverageTests` fails when a code of the worker's notices, gathering,
+combat, or corpse closures has no text.
 
 ### Client Texts
 
@@ -427,9 +433,9 @@ login and character screens below `ui/login/` and `ui/characters/`, the status
 texts of the combat HUD below `ui/combat/`, and the world menu, its game
 messages, and the errors of the world interaction controller below
 `ui/world/`. The literals of the `Temporary` panels and of the F2 Debug and F3
-Admin menus stay English by decision, and the technical failure sentences of
-the API and realtime clients, the World scene catalog, and the catalog loaders
-are not converted yet.
+Admin menus stay English by decision. A technical failure of the API and
+realtime clients, the World scene catalog, or the catalog loaders shows the
+text of its code from the messages, as [Messages](#messages) describes.
 
 ## Compile And Verify
 

@@ -94,7 +94,10 @@ namespace Mmorpg.Client.Items
             }
             else
             {
-                State.SetCatalogError("item_catalog_invalid", error, false);
+                State.SetCatalogError(
+                    "item_catalog_invalid",
+                    ClientMessages.Text(texts, "item_catalog_invalid", error),
+                    false);
             }
 
             simulationClient.ItemOperationCompleted += OnItemOperationCompleted;
@@ -929,12 +932,7 @@ namespace Mmorpg.Client.Items
                             apiError,
                             simulationClient))
                     {
-                        State.SetError(
-                            new InventoryClientError(
-                                apiError.Code,
-                                ClientMessages.Text(messageTexts, apiError),
-                                apiError.CorrelationId),
-                            true);
+                        State.SetError(InventoryClientError.FromApi(apiError, messageTexts), true);
                     }
 
                     break;
@@ -1014,7 +1012,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = Text("ui/inventory/catalog-update-required");
+                error = ClientMessages.Text(messageTexts, "item_catalog_update_required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }
@@ -1031,7 +1029,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = Text("ui/inventory/catalog-update-required");
+                error = ClientMessages.Text(messageTexts, "item_catalog_update_required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }
@@ -1048,7 +1046,7 @@ namespace Mmorpg.Client.Items
                 && !State.Catalog.MatchesServerRevision(response.catalogRevision))
             {
                 snapshot = null;
-                error = Text("ui/inventory/catalog-update-required");
+                error = ClientMessages.Text(messageTexts, "item_catalog_update_required");
                 State.SetCatalogError("item_catalog_update_required", error, true);
                 return false;
             }
@@ -1136,7 +1134,9 @@ namespace Mmorpg.Client.Items
             BeginRefresh(scope, operationRefresh, minimumRevision);
         }
 
-        private static ApiError InvalidResponse(string message)
+        // A snapshot that cannot be read fails like an invalid response, with the mapper's
+        // sentence as its diagnostic.
+        internal static ApiError InvalidResponse(string message)
         {
             return new ApiError(
                 ApiErrorKind.InvalidResponse,

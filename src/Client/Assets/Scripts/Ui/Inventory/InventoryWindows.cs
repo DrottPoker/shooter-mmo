@@ -697,7 +697,7 @@ namespace Mmorpg.Client.Ui
             {
                 CloseStorage(false);
                 var corpse = corpseController.State;
-                Say(corpse.Error != null ? corpse.Error.ToDisplayMessage() : corpse.Notice);
+                Say(corpse.Error != null ? corpse.Error.ToDisplayMessage(Texts) : corpse.Notice);
             }
 
             Refresh();

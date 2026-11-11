@@ -95,6 +95,14 @@
       "text": "You cannot attack yourself."
     },
     {
+      "key": "message/connection_closed",
+      "text": "The connection to the shard closed. Try again."
+    },
+    {
+      "key": "message/connection_lost",
+      "text": "The connection to the shard was lost. Try again shortly."
+    },
+    {
       "key": "message/corpse_emptied",
       "text": "The corpse is empty."
     },
@@ -179,6 +187,14 @@
       "text": "Gathering is not available right now."
     },
     {
+      "key": "message/incompatible_protocol",
+      "text": "This client is out of date. Update it to play on this shard."
+    },
+    {
+      "key": "message/incompatible_simulation",
+      "text": "This client is out of date. Update it to play on this shard."
+    },
+    {
       "key": "message/insurance_applied",
       "text": "Insurance applied. It covers one death."
     },
@@ -233,6 +249,14 @@
     {
       "key": "message/item_already_looted",
       "text": "That item is no longer on the corpse."
+    },
+    {
+      "key": "message/item_catalog_invalid",
+      "text": "The items of this client could not be loaded. Reinstall the client."
+    },
+    {
+      "key": "message/item_catalog_update_required",
+      "text": "This client is out of date. Update it to use your items."
     },
     {
       "key": "message/item_destroy_forbidden",
@@ -295,12 +319,20 @@
       "text": "The shard could not let the character in. Try again."
     },
     {
+      "key": "message/join_ticket_expired",
+      "text": "Entering the World took too long. Try again."
+    },
+    {
       "key": "message/join_timeout",
       "text": "The shard did not answer in time. Try again."
     },
     {
       "key": "message/leave_failed",
       "text": "The shard could not let the character leave. Try again."
+    },
+    {
+      "key": "message/network_error",
+      "text": "The game service cannot be reached. Check your connection and try again."
     },
     {
       "key": "message/quest_abandoned",
@@ -317,6 +349,14 @@
     {
       "key": "message/quest_already_completed",
       "text": "You have already completed that quest."
+    },
+    {
+      "key": "message/quest_catalog_invalid",
+      "text": "The quests of this client could not be loaded. Reinstall the client."
+    },
+    {
+      "key": "message/quest_catalog_update_required",
+      "text": "This client is out of date. Update it to see your quests."
     },
     {
       "key": "message/quest_completed",
@@ -395,12 +435,24 @@
       "text": "Choose one of the rewards."
     },
     {
+      "key": "message/realtime_busy",
+      "text": "Another connection to a shard is still active. Wait a moment and try again."
+    },
+    {
+      "key": "message/realtime_timeout",
+      "text": "The shard did not answer in time. Try again shortly."
+    },
+    {
       "key": "message/recovery_access_required",
       "text": "Recovery Storage only gives items back."
     },
     {
       "key": "message/recovery_delivery_not_found",
       "text": "That delivery is no longer in Recovery Storage."
+    },
+    {
+      "key": "message/request_timeout",
+      "text": "The game service did not answer in time. Try again shortly."
     },
     {
       "key": "message/resource_node_depleted",
@@ -431,8 +483,16 @@
       "text": "The character entered the world from another client. Try again."
     },
     {
+      "key": "message/udp_connect_failed",
+      "text": "The shard cannot be reached right now. Try again shortly."
+    },
+    {
       "key": "message/udp_rate_limited",
       "text": "The connection sent too much at once and was closed."
+    },
+    {
+      "key": "message/udp_socket_error",
+      "text": "A network error interrupted the connection to the shard. Try again."
     },
     {
       "key": "message/username_already_used",
@@ -505,6 +565,14 @@
     {
       "key": "message/world_interaction_target_changed",
       "text": "That changed. Try again."
+    },
+    {
+      "key": "message/world_scene_load_failed",
+      "text": "The World could not be loaded. Restart the client and try again."
+    },
+    {
+      "key": "message/world_scene_unavailable",
+      "text": "This World is not part of this client. Update the client to play on this shard."
     }
   ]
 }

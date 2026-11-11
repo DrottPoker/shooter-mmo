@@ -152,7 +152,7 @@ namespace Mmorpg.Client.Ui
             var state = owner.State;
             if (state?.Catalog == null || state.FullSnapshot == null)
             {
-                ShowMessageOnly(state?.Error?.ToDisplayMessage()
+                ShowMessageOnly(state?.Error?.ToDisplayMessage(owner.Texts)
                     ?? (state?.Catalog == null
                         ? owner.Text("ui/inventory/catalog-unavailable")
                         : StatusText(owner.Texts, state)));
@@ -160,7 +160,7 @@ namespace Mmorpg.Client.Ui
             }
 
             var snapshot = state.FullSnapshot;
-            message.text = state.Error?.ToDisplayMessage() ?? string.Empty;
+            message.text = state.Error?.ToDisplayMessage(owner.Texts) ?? string.Empty;
             message.gameObject.SetActive(message.text.Length > 0);
             carry.gameObject.SetActive(true);
             permanentSection.gameObject.SetActive(true);

@@ -20,6 +20,10 @@ namespace Mmorpg.Client.Ui
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         public const string ScreenName = "CharacterSelect";
 
+        // The codes of the join failures that the client finds itself.
+        public const string WorldSceneUnavailableCode = "world_scene_unavailable";
+        public const string WorldSceneLoadFailedCode = "world_scene_load_failed";
+
         private readonly ClientOperationState operationState = new ClientOperationState();
         private readonly CharacterSelectState state = new CharacterSelectState();
 
@@ -314,7 +318,7 @@ namespace Mmorpg.Client.Ui
                     out var worldSceneName,
                     out var worldSceneError))
             {
-                SetJoinError(JoinFailed(shard, worldSceneError));
+                SetJoinError(JoinFailed(shard, WorldSceneUnavailable(worldSceneError)));
                 yield break;
             }
 
@@ -359,7 +363,7 @@ namespace Mmorpg.Client.Ui
                     out worldSceneName,
                     out worldSceneError))
             {
-                SetJoinError(JoinFailed(shard, worldSceneError));
+                SetJoinError(JoinFailed(shard, WorldSceneUnavailable(worldSceneError)));
                 yield break;
             }
 
@@ -419,13 +423,15 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            var loadError = sceneLoad.OperationException != null
-                ? MessageArgument.Text("reason", sceneLoad.OperationException.Message)
-                : MessageArgument.TextKey("reason", "ui/characters/unknown-error");
             SetJoinError(texts.Format(
                 "ui/characters/enter-failed",
                 MessageArgument.Text("scene", worldSceneName),
-                loadError));
+                MessageArgument.Text(
+                    "reason",
+                    ClientMessages.Text(
+                        texts,
+                        WorldSceneLoadFailedCode,
+                        sceneLoad.OperationException?.Message))));
             RealtimeClientError leaveError = null;
             yield return simulationClient.Leave(
                 activeSession.simulationSessionId,
@@ -485,7 +491,7 @@ namespace Mmorpg.Client.Ui
                 SetStatus(
                     AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
                     TemporaryUiKit.DangerColor);
-                ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDisplayMessage());
+                ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDiagnostic());
             }
 
             return true;
@@ -501,6 +507,13 @@ namespace Mmorpg.Client.Ui
             operationStepFailed = true;
             SetStatus(AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
             return true;
+        }
+
+        // A World that the scene catalog of this client cannot resolve. The catalog's
+        // explanation goes to the log.
+        private string WorldSceneUnavailable(string diagnostic)
+        {
+            return ClientMessages.Text(texts, WorldSceneUnavailableCode, diagnostic);
         }
 
         // A join failure whose reason another class explains.

@@ -119,7 +119,7 @@ namespace Mmorpg.Client.Ui
             if (state?.Catalog == null || state.FullSnapshot == null)
             {
                 message.gameObject.SetActive(true);
-                message.text = state?.Error?.ToDisplayMessage() ?? CharacterInventoryWindow.StatusText(owner.Texts, state);
+                message.text = state?.Error?.ToDisplayMessage(owner.Texts) ?? CharacterInventoryWindow.StatusText(owner.Texts, state);
                 doll.gameObject.SetActive(false);
                 Window.FitBody();
                 return;
@@ -127,7 +127,7 @@ namespace Mmorpg.Client.Ui
 
             var snapshot = state.FullSnapshot;
             message.gameObject.SetActive(state.Error != null);
-            message.text = state.Error?.ToDisplayMessage() ?? string.Empty;
+            message.text = state.Error?.ToDisplayMessage(owner.Texts) ?? string.Empty;
             doll.gameObject.SetActive(true);
             var equipment = new Dictionary<string, InventoryEquipmentSlot>(StringComparer.Ordinal);
             foreach (var equipmentSlot in snapshot.Equipment)

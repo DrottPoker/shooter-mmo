@@ -145,8 +145,8 @@ namespace Mmorpg.Client.Ui
             return null;
         }
 
-        // The client's text for the code of a refused request; a request that never reached
-        // GameService names the address it tried.
+        // The client's text for the code of a failed request. A request that never reached
+        // GameService names the address it tried instead, and its caller logs the diagnostic.
         public static string ErrorText(ApiError error, string gameServiceBaseUrl, TextCatalog texts)
         {
             if (error == null)
@@ -165,8 +165,8 @@ namespace Mmorpg.Client.Ui
             return ClientMessages.Text(texts, error);
         }
 
-        // A refusal by the worker shows the client's text for its code. A failure that the
-        // client found itself keeps its own explanation and code.
+        // A refusal by the worker and a failure that the client found itself both show the
+        // client's text for their code; the explanation goes to the log.
         public static string ErrorText(RealtimeClientError error, TextCatalog texts)
         {
             if (error == null)
@@ -174,9 +174,7 @@ namespace Mmorpg.Client.Ui
                 return string.Empty;
             }
 
-            return error.Kind == RealtimeClientErrorKind.Server
-                ? ClientMessages.Text(texts, error.Code, error.Message)
-                : error.ToDisplayMessage();
+            return ClientMessages.Text(texts, error.Code, error.Message);
         }
 
         public static string ConnectionLine(

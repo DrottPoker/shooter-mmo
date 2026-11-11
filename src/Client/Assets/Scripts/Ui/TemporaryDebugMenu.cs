@@ -7,6 +7,7 @@ using Mmorpg.Client.Networking;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -34,6 +35,7 @@ namespace Mmorpg.Client.Ui
         private PlayerBodyTintSetting bodyTint;
         private WorldDebugViewSettings viewSettings;
         private Material lineMaterial;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private LocalPlayerInput localPlayerInput;
         private LocalPlayerController localPlayerController;
         private TemporaryMenuWindow window;
@@ -114,12 +116,14 @@ namespace Mmorpg.Client.Ui
             RealtimeSimulationClient realtimeClient,
             PlayerBodyTintSetting tintSetting,
             WorldDebugViewSettings debugViewSettings,
-            Material debugLineMaterial)
+            Material debugLineMaterial,
+            TextCatalog textCatalog)
         {
             simulationClient = realtimeClient;
             bodyTint = tintSetting;
             viewSettings = debugViewSettings;
             lineMaterial = debugLineMaterial;
+            texts = textCatalog ?? TextCatalog.Empty(TextTableFormat.SourceLocale);
         }
 
         public void SetOpen(bool open)
@@ -795,7 +799,7 @@ namespace Mmorpg.Client.Ui
 
             if (error != null)
             {
-                SetStatus("Error: " + error.ToDisplayMessage(), TemporaryUiKit.DangerColor);
+                SetStatus("Error: " + AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
                 if (simulationClient.IsJoined)
                 {
                     yield break;

@@ -368,7 +368,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.ActiveView, Is.Null);
             Assert.That(state.Notice, Is.Empty);
             Assert.That(
-                state.Error.ToDisplayMessage(),
+                state.Error.ToDisplayMessage(FixtureTexts.Messages()),
                 Is.EqualTo("The corpse is gone for good."));
         }
 
@@ -641,7 +641,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.PendingOperationId, Is.EqualTo(Guid.Empty));
             Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Ready));
             Assert.That(state.CanMutate, Is.True);
-            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo("Shown for " + code));
+            Assert.That(state.Error.ToDisplayMessage(FixtureTexts.Messages()), Is.EqualTo("Shown for " + code));
             Assert.That(state.Notice, Is.Empty);
 
             Begin(state, operationKind, corpseId);
@@ -729,7 +729,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.IsAutomaticRefreshPending, Is.True);
             Assert.That(state.Status, Is.EqualTo(CorpseClientStatus.Busy));
             Assert.That(state.CanMutate, Is.False);
-            Assert.That(state.Error.ToDisplayMessage(), Is.EqualTo("Shown for " + code));
+            Assert.That(state.Error.ToDisplayMessage(FixtureTexts.Messages()), Is.EqualTo("Shown for " + code));
 
             AssertCompletes(state, Succeeded(refresh, RealtimeCorpseInteractionKind.Refresh, corpseId));
 

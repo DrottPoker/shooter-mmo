@@ -31,12 +31,12 @@ namespace Mmorpg.Client.Items
 
     public sealed class CorpseClientError
     {
+        // The message is the text of the code. A creator without one leaves it empty, and the
+        // error then shows the text of its code.
         public CorpseClientError(string code, string message)
         {
             Code = string.IsNullOrWhiteSpace(code) ? "corpse_error" : code;
-            Message = string.IsNullOrWhiteSpace(message)
-                ? "The corpse interaction failed."
-                : message;
+            Message = message ?? string.Empty;
         }
 
         public string Code { get; }
@@ -44,9 +44,9 @@ namespace Mmorpg.Client.Items
         public string Message { get; }
 
         // The text for the player; the code stays for programs and logs.
-        public string ToDisplayMessage()
+        public string ToDisplayMessage(TextCatalog texts)
         {
-            return Message;
+            return string.IsNullOrWhiteSpace(Message) ? ClientMessages.Text(texts, Code) : Message;
         }
     }
 

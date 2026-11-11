@@ -304,7 +304,7 @@ namespace Mmorpg.Client.App
             {
                 ClientLog.Warning(
                     ClientLogCategory.Client,
-                    "Fallback shard leave did not complete. Closing UDP locally: " + error.ToDisplayMessage());
+                    "Fallback shard leave did not complete. Closing UDP locally: " + error.ToDiagnostic());
                 if (simulationClient != null)
                 {
                     simulationClient.Abort();
@@ -328,7 +328,7 @@ namespace Mmorpg.Client.App
                 ClientLog.Error(
                     ClientLogCategory.Auth,
                     "This client was disconnected because the account logged in from another client. "
-                    + error.ToDisplayMessage());
+                    + error.ToDiagnostic());
                 ClientSession.Clear();
                 if (SceneManager.GetActiveScene().name != SceneNames.LoginMenu)
                 {
@@ -341,7 +341,7 @@ namespace Mmorpg.Client.App
             ClientLog.Warning(
                 ClientLogCategory.Client,
                 "The active simulation connection closed. Clearing local shard state and leaving the world scene: "
-                + error.ToDisplayMessage());
+                + error.ToDiagnostic());
             ClientSession.ActiveSimulationSession = null;
 
             if (WorldSceneCatalog.IsWorldScene(SceneManager.GetActiveScene().name))
@@ -424,7 +424,7 @@ namespace Mmorpg.Client.App
             }
 
             AddSceneComponentIfMissing<TemporaryDebugMenu>(
-                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial));
+                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial, texts));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(

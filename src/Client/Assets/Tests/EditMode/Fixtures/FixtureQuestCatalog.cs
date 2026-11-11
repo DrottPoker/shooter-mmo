@@ -1,6 +1,7 @@
 using System.IO;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Quests;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -49,7 +50,8 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        public static ClientQuestCatalog Load()
+        // More tables join the catalog's texts, such as the messages of a test.
+        public static ClientQuestCatalog Load(params TextTableDocument[] moreTables)
         {
             // The fixture quests are not in the bundled text tables, so their own table and
             // the development actors, which name the Mob of a quest drop, make the catalog.
@@ -58,7 +60,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ClientTexts.TryParse(File.ReadAllText(TextTablePath), out var quests, out var error),
                 Is.True,
                 error);
-            var texts = FixtureTexts.WithDevelopmentActors(quests);
+            var texts = FixtureTexts.WithDevelopmentActors(quests, moreTables);
             Assert.That(
                 ClientQuestCatalog.TryParse(json, texts, out var catalog, out error),
                 Is.True,
