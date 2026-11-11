@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${TEST_POSTGRES_USER:?Configure TEST_POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?Configure TEST_POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:15432:5432"
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
@@ -21,7 +21,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "no", "--save", ""]
     ports:
-      - "127.0.0.1:56380:6379"
+      - "127.0.0.1:16379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s

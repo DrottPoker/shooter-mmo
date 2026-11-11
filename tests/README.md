@@ -82,8 +82,11 @@ and stops the containers it started when it ends. It also warns when
 `MMORPG_TEST_POSTGRES` uses `Host=localhost`. Use the steps below to run
 integration tests by hand.
 
-`docker-compose.test.yml` runs PostgreSQL 16 on `127.0.0.1:55432` and Redis 7
-on `127.0.0.1:56380`. Its Compose project name, `shooter-mmo-tests`, is fixed,
+`docker-compose.test.yml` runs PostgreSQL 16 on `127.0.0.1:15432` and Redis 7
+on `127.0.0.1:16379`. Both ports are below `49152`, where the dynamic port
+range of Windows starts: Windows may reserve any part of that range after a
+restart, and a container whose port is reserved fails to start with `ports are
+not available`. Its Compose project name, `shooter-mmo-tests`, is fixed,
 so every checkout and worktree shares the same containers. Both keep their data
 in memory, PostgreSQL on a tmpfs and Redis without persistence, so `down`
 removes every test database. Compose takes the PostgreSQL credentials from
