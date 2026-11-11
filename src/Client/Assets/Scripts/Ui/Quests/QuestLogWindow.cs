@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Mmorpg.Client.Quests;
 using Mmorpg.WorldData.Text;
@@ -82,7 +83,9 @@ namespace Mmorpg.Client.Ui
             foreach (var entry in active)
             {
                 var chosen = entry;
-                var label = entry.Quest.Title + (entry.IsReady ? " (Ready)" : string.Empty);
+                var label = entry.IsReady
+                    ? texts.Format("ui/quests/label-ready", MessageArgument.Text("quest", entry.Quest.Title))
+                    : entry.Quest.Title;
                 UiFactory.Button(
                     theme,
                     Window.Body,
@@ -123,7 +126,10 @@ namespace Mmorpg.Client.Ui
                 {
                     AddParagraph(
                         entry.CompletionCount > 1
-                            ? entry.Quest.Title + " (" + entry.CompletionCount + " times)"
+                            ? texts.Format(
+                                "ui/quests/label-completed-times",
+                                MessageArgument.Text("quest", entry.Quest.Title),
+                                MessageArgument.Text("count", entry.CompletionCount.ToString(CultureInfo.InvariantCulture)))
                             : entry.Quest.Title,
                         theme.MutedTextColor);
                 }

@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Ui;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -61,7 +62,10 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             Assert.That(
                 panel.StatusText,
-                Is.EqualTo("GameService at " + UnreachableGameServiceUrl + " does not answer. Is it running? [network_error]"));
+                Is.EqualTo(BundledTexts().Format(
+                    "ui/login/service-unreachable",
+                    MessageArgument.Text("url", UnreachableGameServiceUrl),
+                    MessageArgument.Text("code", "network_error"))));
             Assert.That(panel.GetComponentInChildren<CanvasGroup>().interactable, Is.True);
             Assert.That(ClientSession.IsAuthenticated, Is.False);
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(SceneNames.LoginMenu));
@@ -81,7 +85,13 @@ namespace Mmorpg.Client.Tests.PlayMode
             var panel = UnityEngine.Object.FindAnyObjectByType<CharacterSelectPanel>();
             Assert.That(panel, Is.Not.Null);
             yield return WaitUntilIdle(() => panel.IsBusy);
-            StringAssert.Contains("does not answer", panel.StatusText);
+            var texts = BundledTexts();
+            Assert.That(
+                panel.StatusText,
+                Is.EqualTo(texts.Format(
+                    "ui/login/service-unreachable",
+                    MessageArgument.Text("url", UnreachableGameServiceUrl),
+                    MessageArgument.Text("code", "network_error"))));
 
             var state = panel.State;
             state.SetShards(new[] { Shard("local-shard-1", true), Shard("local-shard-2", false) }, null);
@@ -93,7 +103,10 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(createPage.activeInHierarchy, Is.True);
             Assert.That(Page(panel, "EnterPage").activeInHierarchy, Is.False);
             Assert.That(ButtonLabels(createPage), Does.Contain("Human Male").And.Contain("Human Female"));
-            Assert.That(ButtonLabels(createPage), Does.Not.Contain("Cancel"), "Without a character there is nothing to go back to.");
+            Assert.That(
+                ButtonLabels(createPage),
+                Does.Not.Contain(texts.Get("ui/common/cancel")),
+                "Without a character there is nothing to go back to.");
             var nameField = createPage.GetComponentInChildren<TMP_InputField>();
             Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(nameField.gameObject));
 
@@ -112,7 +125,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var shardRows = Rows(enterPage);
             Assert.That(shardRows.Select(row => row.interactable), Is.EqualTo(new[] { true, false }), "An offline shard cannot be chosen.");
             Assert.That(Rows(Page(panel, "CharactersCard")), Has.Length.EqualTo(2));
-            var enterWorld = enterPage.GetComponentsInChildren<Button>().Single(button => Label(button) == "Enter World");
+            var enterWorld = enterPage.GetComponentsInChildren<Button>().Single(button => Label(button) == texts.Get("ui/characters/enter-world"));
             Assert.That(enterWorld.interactable, Is.True);
 
             state.SetShards(new[] { Shard("local-shard-1", false) }, null);
@@ -120,7 +133,22 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(enterWorld.interactable, Is.False);
             Assert.That(
                 enterPage.GetComponentsInChildren<TMP_Text>().Select(text => text.text),
-                Does.Contain("No shard is online. Start a SimulationWorker, then press Refresh."));
+                Does.Contain(texts.Get("ui/characters/no-shard-online")));
+        }
+
+        // The texts the screens show: the tables that the client configuration lists.
+        private static TextCatalog BundledTexts()
+        {
+            var config = ClientConfig.Load(out var handle);
+            try
+            {
+                Assert.That(ClientTexts.TryLoad(config.TextTables, out var texts, out var error), Is.True, error);
+                return texts;
+            }
+            finally
+            {
+                ClientAssets.Release(handle);
+            }
         }
 
         private static IEnumerator LoadScene(string sceneName)

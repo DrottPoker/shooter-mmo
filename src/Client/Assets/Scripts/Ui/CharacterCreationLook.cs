@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Mmorpg.Client.Api;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Ui
 {
@@ -75,11 +76,13 @@ namespace Mmorpg.Client.Ui
             return Offer(offer).slot ?? string.Empty;
         }
 
-        // The chosen option of the offer, or "none".
-        public string OptionLabel(int offer)
+        // The chosen option of the offer as words, such as "Dark Brown Hair", or the text for none.
+        public string OptionLabel(int offer, TextCatalog texts)
         {
             var index = chosen[offer];
-            return index < 0 ? "none" : Offer(offer).options[index];
+            return index < 0
+                ? texts.Get("ui/characters/look-none")
+                : AccountEntryPresentation.Words(Offer(offer).options[index]);
         }
 
         public void StepBodyModel(int step)

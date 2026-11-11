@@ -175,11 +175,12 @@ namespace Mmorpg.Client.Ui
             ownerMana.Set(
                 CombatHudPresentation.HealthFraction(owner.Mana, owner.MaximumMana),
                 CombatHudPresentation.ManaColor);
-            ownerManaText.text = CombatHudPresentation.ManaText(owner.Mana, owner.MaximumMana);
+            ownerManaText.text = CombatHudPresentation.ManaText(owner.Mana, owner.MaximumMana, texts);
             ownerArrowText.text = CombatHudPresentation.ArrowCountText(
                 lines.HasAmmunition,
-                owner.AmmunitionQuantity);
-            ownerStatusText.text = CombatHudPresentation.AttackStatusLabel(owner.AttackStatus)
+                owner.AmmunitionQuantity,
+                texts);
+            ownerStatusText.text = CombatHudPresentation.AttackStatusLabel(owner.AttackStatus, texts)
                 + (owner.InCombat ? "    In combat" : string.Empty);
         }
 
@@ -245,7 +246,8 @@ namespace Mmorpg.Client.Ui
             shownCountdownSeconds = seconds;
             deathCountdownText.text = CombatHudPresentation.RespawnCountdownText(
                 clock.IsKnown,
-                clock.SecondsUntil(owner.RespawnTick));
+                clock.SecondsUntil(owner.RespawnTick),
+                texts);
         }
 
         private void UpdateHealthBars(RealtimeOwnerCombatState owner)

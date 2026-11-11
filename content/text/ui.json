@@ -3,6 +3,270 @@
   "tableId": "ui",
   "entries": [
     {
+      "key": "ui/characters/character-count-many",
+      "text": "{count} characters"
+    },
+    {
+      "key": "ui/characters/character-count-one",
+      "text": "{count} character"
+    },
+    {
+      "key": "ui/characters/character-detail",
+      "text": "{body}  ·  {gold} gold"
+    },
+    {
+      "key": "ui/characters/choose-character",
+      "text": "Choose a character."
+    },
+    {
+      "key": "ui/characters/create-character",
+      "text": "Create Character"
+    },
+    {
+      "key": "ui/characters/create-first",
+      "text": "Create a character first."
+    },
+    {
+      "key": "ui/characters/created",
+      "text": "Created {character}. Choose a shard and enter the World."
+    },
+    {
+      "key": "ui/characters/creating",
+      "text": "Creating the character..."
+    },
+    {
+      "key": "ui/characters/enter-failed",
+      "text": "Cannot enter {scene}: the scene failed to load ({reason})."
+    },
+    {
+      "key": "ui/characters/enter-hint",
+      "text": "Press Enter, or double-click a character, to enter the World."
+    },
+    {
+      "key": "ui/characters/enter-world",
+      "text": "Enter World"
+    },
+    {
+      "key": "ui/characters/entering-world",
+      "text": "Entering World..."
+    },
+    {
+      "key": "ui/characters/heading-body",
+      "text": "Body"
+    },
+    {
+      "key": "ui/characters/heading-characters",
+      "text": "Characters"
+    },
+    {
+      "key": "ui/characters/heading-look",
+      "text": "Look"
+    },
+    {
+      "key": "ui/characters/heading-shard",
+      "text": "Shard"
+    },
+    {
+      "key": "ui/characters/join-failed",
+      "text": "Cannot join {shard}: {reason}"
+    },
+    {
+      "key": "ui/characters/join-incomplete",
+      "text": "Cannot join {shard}: GameService returned incomplete placement data."
+    },
+    {
+      "key": "ui/characters/join-scene-missing",
+      "text": "Cannot join {shard}: scene '{scene}' is not an Addressables World scene in this client build."
+    },
+    {
+      "key": "ui/characters/joined",
+      "text": "Joined shard {shard} as {character}. Loading {scene}."
+    },
+    {
+      "key": "ui/characters/joining",
+      "text": "Joining {shard} as {character}..."
+    },
+    {
+      "key": "ui/characters/loading",
+      "text": "Loading..."
+    },
+    {
+      "key": "ui/characters/loading-selection",
+      "text": "Loading characters and shards..."
+    },
+    {
+      "key": "ui/characters/log-out",
+      "text": "Log Out"
+    },
+    {
+      "key": "ui/characters/logging-out",
+      "text": "Logging out..."
+    },
+    {
+      "key": "ui/characters/look-none",
+      "text": "None"
+    },
+    {
+      "key": "ui/characters/look-not-loaded",
+      "text": "What a new character may look like is not loaded yet. Press Refresh."
+    },
+    {
+      "key": "ui/characters/name",
+      "text": "Name"
+    },
+    {
+      "key": "ui/characters/name-hint",
+      "text": "3 to 24 letters, numbers, spaces, hyphens, or underscores."
+    },
+    {
+      "key": "ui/characters/name-placeholder",
+      "text": "Character name"
+    },
+    {
+      "key": "ui/characters/new-character",
+      "text": "New Character"
+    },
+    {
+      "key": "ui/characters/no-body-offered",
+      "text": "GameService offers no body to create a character with."
+    },
+    {
+      "key": "ui/characters/no-character-chosen",
+      "text": "No character chosen"
+    },
+    {
+      "key": "ui/characters/no-characters",
+      "text": "No characters yet."
+    },
+    {
+      "key": "ui/characters/no-shard-online",
+      "text": "No shard is online. Start a SimulationWorker, then press Refresh."
+    },
+    {
+      "key": "ui/characters/no-shards",
+      "text": "GameService lists no shard. Press Refresh once a SimulationWorker runs."
+    },
+    {
+      "key": "ui/characters/refresh",
+      "text": "Refresh"
+    },
+    {
+      "key": "ui/characters/refreshing",
+      "text": "Refreshing characters and shards..."
+    },
+    {
+      "key": "ui/characters/selection-summary",
+      "text": "{characters}  ·  {online} of {shards} online"
+    },
+    {
+      "key": "ui/characters/shard-count-many",
+      "text": "{count} shards"
+    },
+    {
+      "key": "ui/characters/shard-count-one",
+      "text": "{count} shard"
+    },
+    {
+      "key": "ui/characters/shard-offline",
+      "text": "Offline"
+    },
+    {
+      "key": "ui/characters/shard-online",
+      "text": "Online {players} / {capacity}"
+    },
+    {
+      "key": "ui/characters/signed-in",
+      "text": "Signed in as {username}"
+    },
+    {
+      "key": "ui/characters/title",
+      "text": "Character Select"
+    },
+    {
+      "key": "ui/characters/unknown-body",
+      "text": "Unknown body"
+    },
+    {
+      "key": "ui/characters/unknown-error",
+      "text": "unknown error"
+    },
+    {
+      "key": "ui/combat/arrows",
+      "text": "Arrows {count}"
+    },
+    {
+      "key": "ui/combat/mana",
+      "text": "Mana {mana} / {maximum}"
+    },
+    {
+      "key": "ui/combat/no-arrows",
+      "text": "No arrows equipped"
+    },
+    {
+      "key": "ui/combat/no-mana",
+      "text": "No mana"
+    },
+    {
+      "key": "ui/combat/respawning",
+      "text": "Respawning..."
+    },
+    {
+      "key": "ui/combat/respawning-in",
+      "text": "Respawning in {seconds} s"
+    },
+    {
+      "key": "ui/combat/respawning-soon",
+      "text": "Respawning soon"
+    },
+    {
+      "key": "ui/combat/status-attacking",
+      "text": "Attacking"
+    },
+    {
+      "key": "ui/combat/status-dead",
+      "text": "Dead"
+    },
+    {
+      "key": "ui/combat/status-equipment-changed",
+      "text": "Equipment changed"
+    },
+    {
+      "key": "ui/combat/status-idle",
+      "text": "No target"
+    },
+    {
+      "key": "ui/combat/status-moving",
+      "text": "Stop moving to attack"
+    },
+    {
+      "key": "ui/combat/status-no-ammunition",
+      "text": "No ammunition"
+    },
+    {
+      "key": "ui/combat/status-no-line-of-sight",
+      "text": "No line of sight"
+    },
+    {
+      "key": "ui/combat/status-no-weapon",
+      "text": "No weapon equipped"
+    },
+    {
+      "key": "ui/combat/status-not-enough-mana",
+      "text": "Not enough mana"
+    },
+    {
+      "key": "ui/combat/status-out-of-range",
+      "text": "Out of range"
+    },
+    {
+      "key": "ui/combat/status-wrong-ammunition",
+      "text": "Wrong ammunition"
+    },
+    {
+      "key": "ui/combat/unknown-status",
+      "text": "Unknown"
+    },
+    {
       "key": "ui/common/both",
       "text": "{first} and {second}"
     },
@@ -23,8 +287,16 @@
       "text": "{first} or {second}"
     },
     {
+      "key": "ui/common/item-drag-label",
+      "text": "{item}  x{quantity}"
+    },
+    {
       "key": "ui/common/item-quantity",
       "text": "{quantity} x {item}"
+    },
+    {
+      "key": "ui/common/item-stack",
+      "text": "{item} x{quantity}"
     },
     {
       "key": "ui/common/ok",
@@ -951,6 +1223,70 @@
       "text": "The item weight is invalid."
     },
     {
+      "key": "ui/login/connection",
+      "text": "Game Service: {url}  ·  Request Timeout: {request} seconds  ·  Realtime Timeout: {realtime} seconds"
+    },
+    {
+      "key": "ui/login/create-account",
+      "text": "Create Account"
+    },
+    {
+      "key": "ui/login/creating-account",
+      "text": "Creating account..."
+    },
+    {
+      "key": "ui/login/development-client",
+      "text": "Development client"
+    },
+    {
+      "key": "ui/login/email",
+      "text": "Email"
+    },
+    {
+      "key": "ui/login/email-or-username",
+      "text": "Email or username"
+    },
+    {
+      "key": "ui/login/example-email",
+      "text": "you@example.com"
+    },
+    {
+      "key": "ui/login/example-username",
+      "text": "player_one"
+    },
+    {
+      "key": "ui/login/log-in",
+      "text": "Log In"
+    },
+    {
+      "key": "ui/login/logged-in",
+      "text": "Logged in as {username}. Loading characters..."
+    },
+    {
+      "key": "ui/login/logging-in",
+      "text": "Logging in..."
+    },
+    {
+      "key": "ui/login/password",
+      "text": "Password"
+    },
+    {
+      "key": "ui/login/password-hint",
+      "text": "8 to 128 characters."
+    },
+    {
+      "key": "ui/login/service-unreachable",
+      "text": "GameService at {url} does not answer. Is it running? [{code}]"
+    },
+    {
+      "key": "ui/login/username",
+      "text": "Username"
+    },
+    {
+      "key": "ui/login/username-hint",
+      "text": "3 to 32 letters, numbers, or underscores."
+    },
+    {
       "key": "ui/quests/abandon",
       "text": "Abandon"
     },
@@ -1023,6 +1359,10 @@
       "text": "{quest} (Complete)"
     },
     {
+      "key": "ui/quests/label-completed-times",
+      "text": "{quest} ({count} times)"
+    },
+    {
       "key": "ui/quests/label-in-progress",
       "text": "{quest} (in progress)"
     },
@@ -1033,6 +1373,10 @@
     {
       "key": "ui/quests/label-objective",
       "text": "{quest}: {objective}"
+    },
+    {
+      "key": "ui/quests/label-ready",
+      "text": "{quest} (Ready)"
     },
     {
       "key": "ui/quests/log-active",
@@ -1257,6 +1601,94 @@
     {
       "key": "ui/vendor/whole-quantity",
       "text": "Enter a whole quantity."
+    },
+    {
+      "key": "ui/world/attack",
+      "text": "Attack"
+    },
+    {
+      "key": "ui/world/cannot-get-close",
+      "text": "You can't get close enough to {name}."
+    },
+    {
+      "key": "ui/world/capability-not-offered",
+      "text": "{npc} does not offer that right now."
+    },
+    {
+      "key": "ui/world/capability-unavailable",
+      "text": "The selected capability is not currently available."
+    },
+    {
+      "key": "ui/world/capability-unsent",
+      "text": "The capability action request could not be sent."
+    },
+    {
+      "key": "ui/world/close-unsent",
+      "text": "The world interaction close request could not be sent."
+    },
+    {
+      "key": "ui/world/corpse-examine",
+      "text": "The remains of {name}."
+    },
+    {
+      "key": "ui/world/corpse-of",
+      "text": "Corpse of {name}"
+    },
+    {
+      "key": "ui/world/examine",
+      "text": "Examine"
+    },
+    {
+      "key": "ui/world/gathering-tool-required",
+      "text": "Equip a gathering tool in the Tool slot to gather here."
+    },
+    {
+      "key": "ui/world/idle-interaction-required",
+      "text": "An idle world interaction is required."
+    },
+    {
+      "key": "ui/world/item-changed-before-sale",
+      "text": "The item changed before the sale could be sent."
+    },
+    {
+      "key": "ui/world/loot",
+      "text": "Loot"
+    },
+    {
+      "key": "ui/world/no-idle-interaction",
+      "text": "No idle world interaction is open."
+    },
+    {
+      "key": "ui/world/no-quests",
+      "text": "This NPC has no quests."
+    },
+    {
+      "key": "ui/world/no-route",
+      "text": "There is no way to reach {name}."
+    },
+    {
+      "key": "ui/world/nothing-open",
+      "text": "No world interaction or corpse view is open."
+    },
+    {
+      "key": "ui/world/session-unavailable",
+      "text": "The active simulation session is unavailable."
+    },
+    {
+      "key": "ui/world/someone",
+      "text": "someone"
+    },
+    {
+      "key": "ui/world/wait-for-corpse",
+      "text": "Wait for the pending corpse interaction operation to finish."
+    },
+    {
+      "key": "ui/world/wait-for-interaction",
+      "text": "Wait for the pending world interaction operation to finish."
+    },
+    {
+      "key": "ui/world/walk-here",
+      "text": "Walk here"
     }
   ]
 }

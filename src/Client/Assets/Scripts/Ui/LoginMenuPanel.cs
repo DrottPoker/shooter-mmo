@@ -79,11 +79,11 @@ namespace Mmorpg.Client.Ui
         {
             if (IsRegistering)
             {
-                BeginAuthentication(RegisterRoutine(), "Creating account...");
+                BeginAuthentication(RegisterRoutine(), texts.Get("ui/login/creating-account"));
             }
             else
             {
-                BeginAuthentication(LoginRoutine(), "Logging in...");
+                BeginAuthentication(LoginRoutine(), texts.Get("ui/login/logging-in"));
             }
         }
 
@@ -118,12 +118,12 @@ namespace Mmorpg.Client.Ui
             var card = TemporaryEntryScreen.AddCard(screen.Root, "LoginCard", new Vector2(0f, 260f), new Vector2(440f, 0f), true);
             form = card.gameObject.AddComponent<CanvasGroup>();
             TemporaryEntryScreen.AddHeading(card, TemporaryEntryScreen.GameTitle, 30);
-            TemporaryEntryScreen.AddText(card, "Development client", 14, TemporaryUiKit.TextMuted);
+            TemporaryEntryScreen.AddText(card, texts.Get("ui/login/development-client"), 14, TemporaryUiKit.TextMuted);
             TemporaryEntryScreen.AddSpace(card, 8f, false);
 
             var tabs = TemporaryEntryScreen.AddButtonRow(card, 34f);
-            logInTab = TemporaryUiKit.CreateButton(tabs, "Log In", () => ShowRegistration(false), true, TemporaryButtonTone.Active);
-            registerTab = TemporaryUiKit.CreateButton(tabs, "Create Account", () => ShowRegistration(true), true, TemporaryButtonTone.Quiet);
+            logInTab = TemporaryUiKit.CreateButton(tabs, texts.Get("ui/login/log-in"), () => ShowRegistration(false), true, TemporaryButtonTone.Active);
+            registerTab = TemporaryUiKit.CreateButton(tabs, texts.Get("ui/login/create-account"), () => ShowRegistration(true), true, TemporaryButtonTone.Quiet);
             TemporaryEntryScreen.AddSpace(card, 4f, false);
 
             var debugBuild = Debug.isDebugBuild;
@@ -131,50 +131,50 @@ namespace Mmorpg.Client.Ui
             logInPage = TemporaryEntryScreen.AddPage(card, "LogInPage");
             loginField = screen.AddField(
                 logInPage,
-                "Email or username",
+                texts.Get("ui/login/email-or-username"),
                 lastLogin.Length > 0 ? lastLogin : (debugBuild ? DevelopmentLogin : string.Empty),
-                "player_one",
+                texts.Get("ui/login/example-username"),
                 TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.EmailLimit,
                 null);
             logInPasswordField = screen.AddField(
                 logInPage,
-                "Password",
+                texts.Get("ui/login/password"),
                 debugBuild ? DevelopmentPassword : string.Empty,
-                "Password",
+                texts.Get("ui/login/password"),
                 TMP_InputField.ContentType.Password,
                 AccountEntryPresentation.PasswordLimit,
                 null);
             TemporaryEntryScreen.AddSpace(logInPage, 6f, false);
-            TemporaryEntryScreen.AddMainButton(logInPage, "Log In", Submit);
+            TemporaryEntryScreen.AddMainButton(logInPage, texts.Get("ui/login/log-in"), Submit);
 
             registerPage = TemporaryEntryScreen.AddPage(card, "RegisterPage");
             emailField = screen.AddField(
                 registerPage,
-                "Email",
+                texts.Get("ui/login/email"),
                 string.Empty,
-                "you@example.com",
+                texts.Get("ui/login/example-email"),
                 TMP_InputField.ContentType.EmailAddress,
                 AccountEntryPresentation.EmailLimit,
                 null);
             usernameField = screen.AddField(
                 registerPage,
-                "Username",
+                texts.Get("ui/login/username"),
                 string.Empty,
-                "player_one",
+                texts.Get("ui/login/example-username"),
                 TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.UsernameLimit,
-                AccountEntryPresentation.UsernameHint);
+                texts.Get("ui/login/username-hint"));
             registerPasswordField = screen.AddField(
                 registerPage,
-                "Password",
+                texts.Get("ui/login/password"),
                 debugBuild ? DevelopmentPassword : string.Empty,
-                "Password",
+                texts.Get("ui/login/password"),
                 TMP_InputField.ContentType.Password,
                 AccountEntryPresentation.PasswordLimit,
-                AccountEntryPresentation.PasswordHint);
+                texts.Get("ui/login/password-hint"));
             TemporaryEntryScreen.AddSpace(registerPage, 6f, false);
-            TemporaryEntryScreen.AddMainButton(registerPage, "Create Account", Submit);
+            TemporaryEntryScreen.AddMainButton(registerPage, texts.Get("ui/login/create-account"), Submit);
 
             status = TemporaryEntryScreen.AddStatus(card);
 
@@ -183,7 +183,8 @@ namespace Mmorpg.Client.Ui
                 AccountEntryPresentation.ConnectionLine(
                     ClientSession.GameServiceBaseUrl,
                     ClientSession.RequestTimeoutSeconds,
-                    ClientSession.RealtimeTimeoutSeconds),
+                    ClientSession.RealtimeTimeoutSeconds,
+                    texts),
                 13,
                 FontStyles.Normal,
                 TextAlignmentOptions.Center,
@@ -272,7 +273,9 @@ namespace Mmorpg.Client.Ui
             ClientSession.SelectedShard = null;
             ClientSession.ActiveSimulationSession = null;
             AccountEntryPreferences.RememberLogin(login);
-            SetStatus("Logged in as " + response.username + ". Loading characters...", TemporaryUiKit.SuccessColor);
+            SetStatus(
+                texts.Format("ui/login/logged-in", MessageArgument.Text("username", response.username)),
+                TemporaryUiKit.SuccessColor);
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Account '" + response.username + "' (" + response.accountId + ") " + action + ".");

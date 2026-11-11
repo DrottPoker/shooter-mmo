@@ -1,6 +1,7 @@
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 
 namespace Mmorpg.Client.Tests.EditMode
@@ -23,17 +24,44 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void CharactersAndShardsReadAsOneLine()
         {
+            var texts = FixtureTexts.Ui();
             var character = new CharacterResponse { name = "Mira", bodyModel = "Human_Female", currency = 100 };
             Assert.That(
-                AccountEntryPresentation.CharacterDetail(character),
-                Is.EqualTo("Human Female" + AccountEntryPresentation.Separator + "100 gold"));
+                AccountEntryPresentation.CharacterDetail(character, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/characters/character-detail",
+                    MessageArgument.Text("body", "Human Female"),
+                    MessageArgument.Text("gold", "100"))));
 
             var online = Shard("local-shard-1", true);
             Assert.That(
                 AccountEntryPresentation.ShardDetail(online),
                 Is.EqualTo("LOCAL" + AccountEntryPresentation.Separator + "Local Development"));
-            Assert.That(AccountEntryPresentation.ShardAvailability(online), Is.EqualTo("Online 3 / 100"));
-            Assert.That(AccountEntryPresentation.ShardAvailability(Shard("local-shard-2", false)), Is.EqualTo("Offline"));
+            Assert.That(
+                AccountEntryPresentation.ShardAvailability(online, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/characters/shard-online",
+                    MessageArgument.Text("players", "3"),
+                    MessageArgument.Text("capacity", "100"))));
+            Assert.That(
+                AccountEntryPresentation.ShardAvailability(Shard("local-shard-2", false), texts),
+                Is.EqualTo(texts.Get("ui/characters/shard-offline")));
+        }
+
+        // A character without a body model still shows its gold.
+        [Test]
+        public void ACharacterWithoutABodyModelReadsAsAnUnknownBody()
+        {
+            var texts = FixtureTexts.Ui();
+            var character = new CharacterResponse { name = "Mira", bodyModel = string.Empty, currency = 7 };
+
+            Assert.That(
+                AccountEntryPresentation.CharacterDetail(character, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/characters/character-detail",
+                    MessageArgument.Text("body", texts.Get("ui/characters/unknown-body")),
+                    MessageArgument.Text("gold", "7"))));
+            Assert.That(AccountEntryPresentation.CharacterDetail(null, texts), Is.Empty);
         }
 
         [Test]
@@ -42,11 +70,18 @@ namespace Mmorpg.Client.Tests.EditMode
             var network = new ApiError(ApiErrorKind.Network, 0, "network_error", "Cannot connect to destination host", null);
             var refused = new ApiError(ApiErrorKind.Http, 401, "invalid_credentials", "Login or password is incorrect.", "c-1");
 
-            var texts = FixtureTexts.Messages(("invalid_credentials", "The login or the password is incorrect."));
+            var texts = TextCatalog.Create(new[]
+            {
+                FixtureTexts.MessageTable(("invalid_credentials", "The login or the password is incorrect.")),
+                FixtureTexts.UiTable()
+            });
 
             Assert.That(
                 AccountEntryPresentation.ErrorText(network, "http://localhost:5000", texts),
-                Is.EqualTo("GameService at http://localhost:5000 does not answer. Is it running? [network_error]"));
+                Is.EqualTo(texts.Format(
+                    "ui/login/service-unreachable",
+                    MessageArgument.Text("url", "http://localhost:5000"),
+                    MessageArgument.Text("code", "network_error"))));
             Assert.That(
                 AccountEntryPresentation.ErrorText(refused, "http://localhost:5000", texts),
                 Is.EqualTo("The login or the password is incorrect."));
@@ -94,6 +129,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void TheChosenCharacterAndShardSurviveARefresh()
         {
+            var texts = FixtureTexts.Ui();
             var state = new CharacterSelectState();
             var changes = 0;
             state.Changed += () => changes++;
@@ -127,13 +163,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.SelectedShard, Is.Null);
             Assert.That(state.CanEnterWorld, Is.False);
             Assert.That(
-                AccountEntryPresentation.EnterWorldBlocker(state),
-                Is.EqualTo("No shard is online. Start a SimulationWorker, then press Refresh."));
+                AccountEntryPresentation.EnterWorldBlocker(state, texts),
+                Is.EqualTo(texts.Get("ui/characters/no-shard-online")));
         }
 
         [Test]
         public void CreationOpensWithoutCharactersAndClosesOnAChoice()
         {
+            var texts = FixtureTexts.Ui();
             var state = new CharacterSelectState();
             Assert.That(state.IsCreating, Is.False, "Nothing is shown as missing before the list loaded.");
 
@@ -142,7 +179,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.CanCancelCreation, Is.False);
             state.SetCreating(false);
             Assert.That(state.IsCreating, Is.True, "Without a character, creation stays open.");
-            Assert.That(AccountEntryPresentation.EnterWorldBlocker(state), Is.EqualTo("Create a character first."));
+            Assert.That(
+                AccountEntryPresentation.EnterWorldBlocker(state, texts),
+                Is.EqualTo(texts.Get("ui/characters/create-first")));
 
             state.SetCharacters(new[] { Character("a") }, "a");
             Assert.That(state.IsCreating, Is.False);
@@ -162,13 +201,42 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void TheSummaryCountsCharactersAndOnlineShards()
         {
+            var texts = FixtureTexts.Ui();
             var state = new CharacterSelectState();
             state.SetCharacters(new[] { Character("a") }, null);
             state.SetShards(new[] { Shard("one", true), Shard("two", false) }, null);
 
             Assert.That(
-                AccountEntryPresentation.SelectionSummary(state),
-                Is.EqualTo("1 character" + AccountEntryPresentation.Separator + "1 of 2 shards online"));
+                AccountEntryPresentation.SelectionSummary(state, texts),
+                Is.EqualTo(Summary(texts, "ui/characters/character-count-one", 1, 1, "ui/characters/shard-count-many", 2)));
+
+            // Several characters and one shard pick the other count texts.
+            state.SetCharacters(new[] { Character("a"), Character("b") }, null);
+            state.SetShards(new[] { Shard("one", false) }, null);
+            Assert.That(
+                AccountEntryPresentation.SelectionSummary(state, texts),
+                Is.EqualTo(Summary(texts, "ui/characters/character-count-many", 2, 0, "ui/characters/shard-count-one", 1)));
+
+            state.SetCharacters(new CharacterResponse[0], null);
+            state.SetShards(new ShardResponse[0], null);
+            Assert.That(
+                AccountEntryPresentation.SelectionSummary(state, texts),
+                Is.EqualTo(Summary(texts, "ui/characters/character-count-many", 0, 0, "ui/characters/shard-count-many", 0)));
+        }
+
+        private static string Summary(
+            TextCatalog texts,
+            string charactersKey,
+            int characters,
+            int online,
+            string shardsKey,
+            int shards)
+        {
+            return texts.Format(
+                "ui/characters/selection-summary",
+                MessageArgument.Text("characters", texts.Format(charactersKey, MessageArgument.Text("count", characters.ToString()))),
+                MessageArgument.Text("online", online.ToString()),
+                MessageArgument.Text("shards", texts.Format(shardsKey, MessageArgument.Text("count", shards.ToString()))));
         }
 
         private static CharacterResponse Character(string id)

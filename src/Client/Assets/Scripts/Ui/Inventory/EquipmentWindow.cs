@@ -279,7 +279,7 @@ namespace Mmorpg.Client.Ui
         {
             if (!slots.TryGetValue(slotId, out var view))
             {
-                view = ItemSlotView.Create(theme, doll, owner.DragCoordinator, owner.Tooltip);
+                view = ItemSlotView.Create(theme, doll, owner.DragCoordinator, owner.Tooltip, owner.Texts);
                 slots.Add(slotId, view);
             }
 

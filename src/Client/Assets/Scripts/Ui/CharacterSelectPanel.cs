@@ -47,23 +47,23 @@ namespace Mmorpg.Client.Ui
         // Loads the characters and the shards again, keeping what is chosen.
         public void Refresh()
         {
-            BeginOperation(ClientOperation.LoadSelection, LoadSelectionRoutine(null, null), "Refreshing characters and shards...");
+            BeginOperation(ClientOperation.LoadSelection, LoadSelectionRoutine(null, null), texts.Get("ui/characters/refreshing"));
         }
 
         public void CreateCharacter()
         {
-            BeginOperation(ClientOperation.CreateCharacter, CreateCharacterRoutine(), "Creating the character...");
+            BeginOperation(ClientOperation.CreateCharacter, CreateCharacterRoutine(), texts.Get("ui/characters/creating"));
         }
 
         public void LogOut()
         {
-            BeginOperation(ClientOperation.Logout, LogoutRoutine(), "Logging out...");
+            BeginOperation(ClientOperation.Logout, LogoutRoutine(), texts.Get("ui/characters/logging-out"));
         }
 
         // Enters the World of the chosen shard with the chosen character.
         public void BeginJoin()
         {
-            var blocker = AccountEntryPresentation.EnterWorldBlocker(state);
+            var blocker = AccountEntryPresentation.EnterWorldBlocker(state, texts);
             if (!EnsureAuthenticated() || blocker != null)
             {
                 SetStatus(blocker, TemporaryUiKit.WarningColor);
@@ -73,7 +73,10 @@ namespace Mmorpg.Client.Ui
             BeginOperation(
                 ClientOperation.JoinShard,
                 JoinSelectedShardRoutine(),
-                "Joining " + state.SelectedShard.displayName + " as " + state.SelectedCharacter.name + "...");
+                texts.Format(
+                    "ui/characters/joining",
+                    MessageArgument.Text("shard", state.SelectedShard.displayName),
+                    MessageArgument.Text("character", state.SelectedCharacter.name)));
         }
 
         private void Awake()
@@ -94,7 +97,7 @@ namespace Mmorpg.Client.Ui
             BeginOperation(
                 ClientOperation.LoadSelection,
                 LoadSelectionRoutine(AccountEntryPreferences.LastCharacterId, AccountEntryPreferences.LastShardId),
-                "Loading characters and shards...");
+                texts.Get("ui/characters/loading-selection"));
         }
 
         private void OnDestroy()
@@ -181,7 +184,7 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
-            SetStatus(AccountEntryPresentation.SelectionSummary(state), TemporaryUiKit.TextSecondary);
+            SetStatus(AccountEntryPresentation.SelectionSummary(state, texts), TemporaryUiKit.TextSecondary);
         }
 
         private IEnumerator CreateCharacterRoutine()
@@ -200,7 +203,7 @@ namespace Mmorpg.Client.Ui
                 {
                     if (!operationStepFailed)
                     {
-                        SetStatus("GameService offers no body to create a character with.", TemporaryUiKit.DangerColor);
+                        SetStatus(texts.Get("ui/characters/no-body-offered"), TemporaryUiKit.DangerColor);
                     }
 
                     yield break;
@@ -238,7 +241,9 @@ namespace Mmorpg.Client.Ui
 
             ClearCharacterNameInput();
             state.SetCreating(false);
-            SetStatus("Created " + createdCharacter.name + ". Choose a shard and enter the World.", TemporaryUiKit.SuccessColor);
+            SetStatus(
+                texts.Format("ui/characters/created", MessageArgument.Text("character", createdCharacter.name)),
+                TemporaryUiKit.SuccessColor);
         }
 
         // What character creation offers; without it no character can be created.
@@ -309,14 +314,13 @@ namespace Mmorpg.Client.Ui
                     out var worldSceneName,
                     out var worldSceneError))
             {
-                SetJoinError("Cannot join " + shard.displayName + ": " + worldSceneError);
+                SetJoinError(JoinFailed(shard, worldSceneError));
                 yield break;
             }
 
             if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
-                SetJoinError("Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not an Addressables World scene in this client build.");
+                SetJoinError(SceneMissing(shard, worldSceneName));
                 yield break;
             }
 
@@ -344,8 +348,9 @@ namespace Mmorpg.Client.Ui
 
             if (joinTicket == null || joinTicket.shard == null)
             {
-                SetJoinError("Cannot join " + shard.displayName
-                    + ": GameService returned incomplete placement data.");
+                SetJoinError(texts.Format(
+                    "ui/characters/join-incomplete",
+                    MessageArgument.Text("shard", shard.displayName)));
                 yield break;
             }
 
@@ -354,14 +359,13 @@ namespace Mmorpg.Client.Ui
                     out worldSceneName,
                     out worldSceneError))
             {
-                SetJoinError("Cannot join " + shard.displayName + ": " + worldSceneError);
+                SetJoinError(JoinFailed(shard, worldSceneError));
                 yield break;
             }
 
             if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
             {
-                SetJoinError("Cannot join " + shard.displayName + ": scene '" + worldSceneName
-                    + "' is not an Addressables World scene in this client build.");
+                SetJoinError(SceneMissing(shard, worldSceneName));
                 yield break;
             }
 
@@ -399,8 +403,11 @@ namespace Mmorpg.Client.Ui
             ClientSession.ActiveSimulationSession = activeSession;
             AccountEntryPreferences.RememberWorldEntry(character.id, shard.id);
             SetStatus(
-                "Joined shard " + activeSession.shardId + " as " + activeSession.characterName
-                + ". Loading " + worldSceneName + ".",
+                texts.Format(
+                    "ui/characters/joined",
+                    MessageArgument.Text("shard", activeSession.shardId),
+                    MessageArgument.Text("character", activeSession.characterName),
+                    MessageArgument.Text("scene", worldSceneName)),
                 TemporaryUiKit.SuccessColor);
 
             // A successful load replaces this scene and ends the routine. A failed load keeps
@@ -413,9 +420,12 @@ namespace Mmorpg.Client.Ui
             }
 
             var loadError = sceneLoad.OperationException != null
-                ? sceneLoad.OperationException.Message
-                : "unknown error";
-            SetJoinError("Cannot enter " + worldSceneName + ": the scene failed to load (" + loadError + ").");
+                ? MessageArgument.Text("reason", sceneLoad.OperationException.Message)
+                : MessageArgument.TextKey("reason", "ui/characters/unknown-error");
+            SetJoinError(texts.Format(
+                "ui/characters/enter-failed",
+                MessageArgument.Text("scene", worldSceneName),
+                loadError));
             RealtimeClientError leaveError = null;
             yield return simulationClient.Leave(
                 activeSession.simulationSessionId,
@@ -491,6 +501,23 @@ namespace Mmorpg.Client.Ui
             operationStepFailed = true;
             SetStatus(AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
             return true;
+        }
+
+        // A join failure whose reason another class explains.
+        private string JoinFailed(ShardResponse shard, string reason)
+        {
+            return texts.Format(
+                "ui/characters/join-failed",
+                MessageArgument.Text("shard", shard.displayName),
+                MessageArgument.Text("reason", reason));
+        }
+
+        private string SceneMissing(ShardResponse shard, string sceneName)
+        {
+            return texts.Format(
+                "ui/characters/join-scene-missing",
+                MessageArgument.Text("shard", shard.displayName),
+                MessageArgument.Text("scene", sceneName));
         }
 
         private void SetJoinError(string message)

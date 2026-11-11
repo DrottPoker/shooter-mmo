@@ -119,39 +119,49 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void RespawnCountdownRoundsUpToWholeSeconds()
         {
-            Assert.That(CombatHudPresentation.RespawnCountdownText(false, 3f), Is.EqualTo("Respawning soon"));
-            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 4.2f), Is.EqualTo("Respawning in 5 s"));
-            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 5f), Is.EqualTo("Respawning in 5 s"));
-            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 0.01f), Is.EqualTo("Respawning in 1 s"));
-            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 0f), Is.EqualTo("Respawning..."));
-            Assert.That(CombatHudPresentation.RespawnCountdownText(true, -2f), Is.EqualTo("Respawning..."));
+            var texts = FixtureTexts.Ui();
+            Assert.That(
+                CombatHudPresentation.RespawnCountdownText(false, 3f, texts),
+                Is.EqualTo(texts.Get("ui/combat/respawning-soon")));
+            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 4.2f, texts), Is.EqualTo(RespawningIn(texts, "5")));
+            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 5f, texts), Is.EqualTo(RespawningIn(texts, "5")));
+            Assert.That(CombatHudPresentation.RespawnCountdownText(true, 0.01f, texts), Is.EqualTo(RespawningIn(texts, "1")));
+            Assert.That(
+                CombatHudPresentation.RespawnCountdownText(true, 0f, texts),
+                Is.EqualTo(texts.Get("ui/combat/respawning")));
+            Assert.That(
+                CombatHudPresentation.RespawnCountdownText(true, -2f, texts),
+                Is.EqualTo(texts.Get("ui/combat/respawning")));
 
             var clock = new CombatServerClock(1_000, 0.25f, 30);
             Assert.That(
-                CombatHudPresentation.RespawnCountdownText(clock.IsKnown, clock.SecondsUntil(1_150)),
-                Is.EqualTo("Respawning in 5 s"));
+                CombatHudPresentation.RespawnCountdownText(clock.IsKnown, clock.SecondsUntil(1_150), texts),
+                Is.EqualTo(RespawningIn(texts, "5")));
         }
 
         [Test]
         public void EveryAttackStatusHasItsOwnShortLabel()
         {
+            var texts = FixtureTexts.Ui();
+            var unknown = texts.Get(CombatHudPresentation.UnknownStatusKey);
             var labels = new Dictionary<RealtimeCombatAttackStatus, string>();
             foreach (RealtimeCombatAttackStatus status in Enum.GetValues(typeof(RealtimeCombatAttackStatus)))
             {
-                var label = CombatHudPresentation.AttackStatusLabel(status);
+                var label = CombatHudPresentation.AttackStatusLabel(status, texts);
                 Assert.That(label, Is.Not.Empty, status.ToString());
-                Assert.That(label, Is.Not.EqualTo(CombatHudPresentation.UnknownStatusLabel), status.ToString());
+                Assert.That(label, Does.Not.StartWith("["), status + " has no text.");
+                Assert.That(label, Is.Not.EqualTo(unknown), status.ToString());
                 Assert.That(label.Length, Is.LessThanOrEqualTo(24), status.ToString());
                 labels.Add(status, label);
             }
 
             Assert.That(labels.Values.Distinct().Count(), Is.EqualTo(labels.Count));
-            Assert.That(labels[RealtimeCombatAttackStatus.OutOfRange], Is.EqualTo("Out of range"));
-            Assert.That(labels[RealtimeCombatAttackStatus.WeaponMissing], Is.EqualTo("No weapon equipped"));
-            Assert.That(labels[RealtimeCombatAttackStatus.NotEnoughMana], Is.EqualTo("Not enough mana"));
+            Assert.That(labels[RealtimeCombatAttackStatus.OutOfRange], Is.EqualTo(texts.Get("ui/combat/status-out-of-range")));
+            Assert.That(labels[RealtimeCombatAttackStatus.WeaponMissing], Is.EqualTo(texts.Get("ui/combat/status-no-weapon")));
+            Assert.That(labels[RealtimeCombatAttackStatus.NotEnoughMana], Is.EqualTo(texts.Get("ui/combat/status-not-enough-mana")));
             Assert.That(
-                CombatHudPresentation.AttackStatusLabel((RealtimeCombatAttackStatus)200),
-                Is.EqualTo(CombatHudPresentation.UnknownStatusLabel));
+                CombatHudPresentation.AttackStatusLabel((RealtimeCombatAttackStatus)200, texts),
+                Is.EqualTo(unknown));
         }
 
         [Test]
@@ -167,13 +177,28 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(CombatHudPresentation.HealthFraction(80, 50), Is.EqualTo(1f));
             Assert.That(CombatHudPresentation.HealthFraction(10, 0), Is.Zero);
             Assert.That(CombatHudPresentation.HealthText(87, 100), Is.EqualTo("87 / 100"));
-            Assert.That(CombatHudPresentation.ArrowCountText(true, 482), Is.EqualTo("Arrows 482"));
-            Assert.That(CombatHudPresentation.ArrowCountText(false, 0), Is.EqualTo("No arrows equipped"));
-            Assert.That(CombatHudPresentation.ManaText(95, 100), Is.EqualTo("Mana 95 / 100"));
-            Assert.That(CombatHudPresentation.ManaText(0, 0), Is.EqualTo("No mana"));
+            var texts = FixtureTexts.Ui();
+            Assert.That(
+                CombatHudPresentation.ArrowCountText(true, 482, texts),
+                Is.EqualTo(texts.Format("ui/combat/arrows", MessageArgument.Text("count", "482"))));
+            Assert.That(
+                CombatHudPresentation.ArrowCountText(false, 0, texts),
+                Is.EqualTo(texts.Get("ui/combat/no-arrows")));
+            Assert.That(
+                CombatHudPresentation.ManaText(95, 100, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/combat/mana",
+                    MessageArgument.Text("mana", "95"),
+                    MessageArgument.Text("maximum", "100"))));
+            Assert.That(CombatHudPresentation.ManaText(0, 0, texts), Is.EqualTo(texts.Get("ui/combat/no-mana")));
             Assert.That(
                 CombatHudPresentation.DamageColor(RealtimeCombatDamageType.Normal),
                 Is.EqualTo(Color.white));
+        }
+
+        private static string RespawningIn(TextCatalog texts, string seconds)
+        {
+            return texts.Format("ui/combat/respawning-in", MessageArgument.Text("seconds", seconds));
         }
 
         [Test]

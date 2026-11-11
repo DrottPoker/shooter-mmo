@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
@@ -144,14 +145,14 @@ namespace Mmorpg.Client.WorldActors
                 default(Ray));
         }
 
-        public static WorldMenuOption ForWalk(IWorldMenuProvider provider, int action, Ray ray)
+        public static WorldMenuOption ForWalk(IWorldMenuProvider provider, int action, string verb, Ray ray)
         {
             return new WorldMenuOption(
                 provider,
                 action,
                 WorldMenuOptionGroup.Walk,
                 -1,
-                "Walk here",
+                verb,
                 string.Empty,
                 WorldMenuTargetStyle.None,
                 default(WorldPointerCandidate),
@@ -183,6 +184,7 @@ namespace Mmorpg.Client.WorldActors
             int action,
             int targetIndex,
             WorldPointerCandidate candidate,
+            string verb,
             string targetName,
             WorldMenuTargetStyle style,
             string examineText)
@@ -192,7 +194,7 @@ namespace Mmorpg.Client.WorldActors
                 action,
                 WorldMenuOptionGroup.Examine,
                 targetIndex,
-                "Examine",
+                verb,
                 targetName,
                 style,
                 candidate,
@@ -309,14 +311,22 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        public static string CorpseName(string sourceName)
+        public static string CorpseName(string sourceName, TextCatalog texts)
         {
-            return "Corpse of " + (string.IsNullOrWhiteSpace(sourceName) ? "someone" : sourceName);
+            return texts.Format("ui/world/corpse-of", SourceName(sourceName));
         }
 
-        public static string CorpseExamineText(string sourceName)
+        public static string CorpseExamineText(string sourceName, TextCatalog texts)
         {
-            return "The remains of " + (string.IsNullOrWhiteSpace(sourceName) ? "someone" : sourceName) + ".";
+            return texts.Format("ui/world/corpse-examine", SourceName(sourceName));
+        }
+
+        // A corpse without a known source belongs to "someone".
+        private static MessageArgument SourceName(string sourceName)
+        {
+            return string.IsNullOrWhiteSpace(sourceName)
+                ? MessageArgument.TextKey("name", "ui/world/someone")
+                : MessageArgument.Text("name", sourceName);
         }
     }
 }

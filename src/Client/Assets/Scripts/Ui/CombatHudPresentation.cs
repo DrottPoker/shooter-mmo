@@ -1,5 +1,6 @@
 using System.Globalization;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Ui
@@ -8,39 +9,44 @@ namespace Mmorpg.Client.Ui
     // combat state only.
     public static class CombatHudPresentation
     {
-        public const string UnknownStatusLabel = "Unknown";
+        public const string UnknownStatusKey = "ui/combat/unknown-status";
         public static readonly Color NormalDamageColor = Color.white;
         public static readonly Color ManaColor = new Color(0.27f, 0.55f, 1f, 1f);
 
         // A short label for every attack status the worker reports.
-        public static string AttackStatusLabel(RealtimeCombatAttackStatus status)
+        public static string AttackStatusLabel(RealtimeCombatAttackStatus status, TextCatalog texts)
+        {
+            return texts.Get(AttackStatusKey(status));
+        }
+
+        private static string AttackStatusKey(RealtimeCombatAttackStatus status)
         {
             switch (status)
             {
                 case RealtimeCombatAttackStatus.Idle:
-                    return "No target";
+                    return "ui/combat/status-idle";
                 case RealtimeCombatAttackStatus.Attacking:
-                    return "Attacking";
+                    return "ui/combat/status-attacking";
                 case RealtimeCombatAttackStatus.Moving:
-                    return "Stop moving to attack";
+                    return "ui/combat/status-moving";
                 case RealtimeCombatAttackStatus.OutOfRange:
-                    return "Out of range";
+                    return "ui/combat/status-out-of-range";
                 case RealtimeCombatAttackStatus.LineOfSightBlocked:
-                    return "No line of sight";
+                    return "ui/combat/status-no-line-of-sight";
                 case RealtimeCombatAttackStatus.EquipmentLockout:
-                    return "Equipment changed";
+                    return "ui/combat/status-equipment-changed";
                 case RealtimeCombatAttackStatus.WeaponMissing:
-                    return "No weapon equipped";
+                    return "ui/combat/status-no-weapon";
                 case RealtimeCombatAttackStatus.AmmunitionMissing:
-                    return "No ammunition";
+                    return "ui/combat/status-no-ammunition";
                 case RealtimeCombatAttackStatus.AmmunitionIncompatible:
-                    return "Wrong ammunition";
+                    return "ui/combat/status-wrong-ammunition";
                 case RealtimeCombatAttackStatus.NotEnoughMana:
-                    return "Not enough mana";
+                    return "ui/combat/status-not-enough-mana";
                 case RealtimeCombatAttackStatus.Dead:
-                    return "Dead";
+                    return "ui/combat/status-dead";
                 default:
-                    return UnknownStatusLabel;
+                    return UnknownStatusKey;
             }
         }
 
@@ -56,9 +62,14 @@ namespace Mmorpg.Client.Ui
         }
 
         // Mana uses the health format; a character without mana shows none.
-        public static string ManaText(int mana, int maximumMana)
+        public static string ManaText(int mana, int maximumMana, TextCatalog texts)
         {
-            return maximumMana > 0 ? "Mana " + HealthText(mana, maximumMana) : "No mana";
+            return maximumMana > 0
+                ? texts.Format(
+                    "ui/combat/mana",
+                    MessageArgument.Text("mana", mana.ToString(CultureInfo.InvariantCulture)),
+                    MessageArgument.Text("maximum", maximumMana.ToString(CultureInfo.InvariantCulture)))
+                : texts.Get("ui/combat/no-mana");
         }
 
         // Green while healthy, amber below half, red below a quarter.
@@ -80,25 +91,25 @@ namespace Mmorpg.Client.Ui
                 && health < maximumHealth;
         }
 
-        public static string ArrowCountText(bool hasAmmunition, int quantity)
+        public static string ArrowCountText(bool hasAmmunition, int quantity, TextCatalog texts)
         {
             return hasAmmunition
-                ? "Arrows " + quantity.ToString(CultureInfo.InvariantCulture)
-                : "No arrows equipped";
+                ? texts.Format("ui/combat/arrows", MessageArgument.Text("count", quantity.ToString(CultureInfo.InvariantCulture)))
+                : texts.Get("ui/combat/no-arrows");
         }
 
         // The whole seconds left, rounded up, so the countdown reaches 0 when the respawn is due.
-        public static string RespawnCountdownText(bool clockKnown, float secondsRemaining)
+        public static string RespawnCountdownText(bool clockKnown, float secondsRemaining, TextCatalog texts)
         {
             if (!clockKnown)
             {
-                return "Respawning soon";
+                return texts.Get("ui/combat/respawning-soon");
             }
 
             var seconds = Mathf.CeilToInt(Mathf.Max(0f, secondsRemaining));
             return seconds > 0
-                ? "Respawning in " + seconds.ToString(CultureInfo.InvariantCulture) + " s"
-                : "Respawning...";
+                ? texts.Format("ui/combat/respawning-in", MessageArgument.Text("seconds", seconds.ToString(CultureInfo.InvariantCulture)))
+                : texts.Get("ui/combat/respawning");
         }
 
         // Normal damage is white; the elements have their own tint until final art.

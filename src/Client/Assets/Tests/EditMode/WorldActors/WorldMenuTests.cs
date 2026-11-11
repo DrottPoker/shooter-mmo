@@ -6,6 +6,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -45,12 +46,12 @@ namespace Mmorpg.Client.Tests.EditMode
             var menu = new WorldMenuBuilder();
             menu.Begin(default(Ray), new[] { near, far });
 
-            menu.Add(WorldMenuOption.ForExamine(first, 9, 0, near, "Near", WorldMenuTargetStyle.Npc, "Near text."));
-            menu.Add(WorldMenuOption.ForWalk(first, 8, default(Ray)));
+            menu.Add(WorldMenuOption.ForExamine(first, 9, 0, near, "Examine", "Near", WorldMenuTargetStyle.Npc, "Near text."));
+            menu.Add(WorldMenuOption.ForWalk(first, 8, "Walk here", default(Ray)));
             menu.Add(WorldMenuOption.ForTarget(first, 1, 1, far, "Attack", "Far", WorldMenuTargetStyle.Mob));
             menu.Add(WorldMenuOption.ForTarget(second, 2, 0, near, "Trade", "Near", WorldMenuTargetStyle.Npc));
             menu.Add(WorldMenuOption.ForTarget(second, 3, 0, near, "Bank", "Near", WorldMenuTargetStyle.Npc));
-            menu.Add(WorldMenuOption.ForExamine(first, 9, 1, far, "Far", WorldMenuTargetStyle.Mob, "Far text."));
+            menu.Add(WorldMenuOption.ForExamine(first, 9, 1, far, "Examine", "Far", WorldMenuTargetStyle.Mob, "Far text."));
             menu.Finish();
 
             Assert.That(
@@ -81,8 +82,8 @@ namespace Mmorpg.Client.Tests.EditMode
             foreach (var first in new[] { false, true })
             {
                 menu.Begin(default(Ray), new[] { near });
-                menu.Add(WorldMenuOption.ForExamine(provider, 9, 0, near, "Near", WorldMenuTargetStyle.Npc, "Near text."));
-                menu.Add(WorldMenuOption.ForWalk(provider, 8, default(Ray)));
+                menu.Add(WorldMenuOption.ForExamine(provider, 9, 0, near, "Examine", "Near", WorldMenuTargetStyle.Npc, "Near text."));
+                menu.Add(WorldMenuOption.ForWalk(provider, 8, "Walk here", default(Ray)));
                 menu.Add(WorldMenuOption.ForTarget(provider, 2, 0, near, "Trade", "Near", WorldMenuTargetStyle.Npc));
                 menu.Add(WorldMenuOption.ForGround(provider, 7, TemporaryAdminMenu.TeleportVerb, default(Ray), first));
                 menu.Finish();
@@ -136,10 +137,10 @@ namespace Mmorpg.Client.Tests.EditMode
             var provider = new FakeProvider();
             var menu = new WorldMenuBuilder();
             menu.Begin(default(Ray), null);
-            menu.Add(WorldMenuOption.ForWalk(provider, 1, default(Ray)));
+            menu.Add(WorldMenuOption.ForWalk(provider, 1, "Walk here", default(Ray)));
 
             menu.Block();
-            menu.Add(WorldMenuOption.ForWalk(provider, 1, default(Ray)));
+            menu.Add(WorldMenuOption.ForWalk(provider, 1, "Walk here", default(Ray)));
             menu.Finish();
 
             Assert.That(menu.IsBlocked, Is.True);
@@ -160,8 +161,9 @@ namespace Mmorpg.Client.Tests.EditMode
                 new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering)
             }));
             Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, Array.Empty<RealtimeWorldActorMenuOption>()));
+            var texts = FixtureTexts.Ui();
             var targeting = Create<WorldInteractionTargetingController>("Targeting");
-            targeting.Initialize(null, actors, null, null);
+            targeting.Initialize(null, actors, null, null, texts);
             var menu = new WorldMenuBuilder();
 
             menu.Begin(default(Ray), new[]
@@ -182,7 +184,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Trade Mira",
                     "Bank Mira",
                     "Mine Iron Vein",
-                    "Loot Corpse of Feral Wolf"
+                    LootCorpse(texts, "Feral Wolf")
                 }));
             Assert.That(menu.Options[0].Style, Is.EqualTo(WorldMenuTargetStyle.Npc));
             Assert.That(menu.Options[1].Argument, Is.EqualTo("services.vendor"));
@@ -201,9 +203,10 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ACorpseTheLocalPlayerMayNotLootOffersNoLoot()
         {
+            var texts = FixtureTexts.Ui();
             var actors = Create<WorldActorClientController>("Actors");
             var targeting = Create<WorldInteractionTargetingController>("Targeting");
-            targeting.Initialize(null, actors, null, null);
+            targeting.Initialize(null, actors, null, null, texts);
             var menu = new WorldMenuBuilder();
 
             menu.Begin(default(Ray), new[]
@@ -216,7 +219,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(
                 menu.Options.Select(option => option.Label),
-                Is.EqualTo(new[] { "Loot Corpse of Grey Wolf" }));
+                Is.EqualTo(new[] { LootCorpse(texts, "Grey Wolf") }));
         }
 
         [Test]
@@ -225,14 +228,17 @@ namespace Mmorpg.Client.Tests.EditMode
             var actors = CreateActors();
             Apply(actors.State, Spawn(NpcId, RealtimeWorldActorKind.Npc, MiraOptions()));
             Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, Array.Empty<RealtimeWorldActorMenuOption>()));
+            var texts = FixtureTexts.Ui();
+            var walkHere = texts.Get("ui/world/walk-here");
+            var examine = texts.Get("ui/world/examine");
             var messages = new GameMessageLog();
             var worldMenu = Create<WorldMenuController>("WorldMenu");
-            worldMenu.Initialize(actors, messages);
+            worldMenu.Initialize(actors, messages, texts);
 
             // Nothing under the pointer leaves Walk here alone.
             var empty = new WorldMenuBuilder();
             worldMenu.BuildMenu(new Ray(new Vector3(0f, 1000f, 0f), Vector3.up), empty);
-            Assert.That(empty.Options.Select(option => option.Label), Is.EqualTo(new[] { "Walk here" }));
+            Assert.That(empty.Options.Select(option => option.Label), Is.EqualTo(new[] { walkHere }));
 
             var menu = new WorldMenuBuilder();
             menu.Begin(default(Ray), new[]
@@ -248,10 +254,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 menu.Options.Select(option => option.Label),
                 Is.EqualTo(new[]
                 {
-                    "Walk here",
-                    "Examine Feral Wolf",
-                    "Examine Mira",
-                    "Examine Corpse of Ada"
+                    walkHere,
+                    examine + " Feral Wolf",
+                    examine + " Mira",
+                    examine + " " + texts.Format("ui/world/corpse-of", MessageArgument.Text("name", "Ada"))
                 }));
             Assert.That(menu.Options[1].Style, Is.EqualTo(WorldMenuTargetStyle.Mob));
 
@@ -259,7 +265,11 @@ namespace Mmorpg.Client.Tests.EditMode
             worldMenu.ExecuteWorldMenuOption(menu.Options[3]);
             Assert.That(
                 messages.Messages.Select(message => message.Text),
-                Is.EqualTo(new[] { "Feral Wolf examine text.", "The remains of Ada." }));
+                Is.EqualTo(new[]
+                {
+                    "Feral Wolf examine text.",
+                    texts.Format("ui/world/corpse-examine", MessageArgument.Text("name", "Ada"))
+                }));
 
             // The menu can outlive its targets: a target that left is no longer described.
             UnityEngine.Object.DestroyImmediate(((Component)menu.Options[3].Candidate.Target).gameObject);
@@ -273,6 +283,34 @@ namespace Mmorpg.Client.Tests.EditMode
             worldMenu.ExecuteWorldMenuOption(menu.Options[1]);
             worldMenu.ExecuteWorldMenuOption(menu.Options[3]);
             Assert.That(messages.Messages.Count, Is.EqualTo(2));
+        }
+
+        // A corpse whose source has no name belongs to someone.
+        [Test]
+        public void ACorpseWithoutASourceNameIsSomeones()
+        {
+            var texts = FixtureTexts.Ui();
+            var someone = MessageArgument.Text("name", texts.Get("ui/world/someone"));
+
+            foreach (var name in new[] { null, string.Empty, "  " })
+            {
+                Assert.That(
+                    WorldMenuTargets.CorpseName(name, texts),
+                    Is.EqualTo(texts.Format("ui/world/corpse-of", someone)));
+                Assert.That(
+                    WorldMenuTargets.CorpseExamineText(name, texts),
+                    Is.EqualTo(texts.Format("ui/world/corpse-examine", someone)));
+            }
+
+            Assert.That(
+                WorldMenuTargets.CorpseName("Ada", texts),
+                Is.EqualTo(texts.Format("ui/world/corpse-of", MessageArgument.Text("name", "Ada"))));
+        }
+
+        private static string LootCorpse(TextCatalog texts, string sourceName)
+        {
+            return texts.Get("ui/world/loot") + " "
+                + texts.Format("ui/world/corpse-of", MessageArgument.Text("name", sourceName));
         }
 
         private static WorldActorClientEntry LookUp(WorldActorClientState actors, ulong entityId)
@@ -364,7 +402,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(TemporaryWorldContextMenu.RichLabel(npc), Is.EqualTo("Talk-to <color=#FFFF00>Mira</color>"));
             Assert.That(TemporaryWorldContextMenu.RichLabel(node), Is.EqualTo("Mine <color=#00FFFF>Iron Vein</color>"));
-            Assert.That(TemporaryWorldContextMenu.RichLabel(WorldMenuOption.ForWalk(provider, 1, default(Ray))), Is.EqualTo("Walk here"));
+            Assert.That(TemporaryWorldContextMenu.RichLabel(WorldMenuOption.ForWalk(provider, 1, "Walk here", default(Ray))), Is.EqualTo("Walk here"));
             Assert.That(
                 TemporaryWorldContextMenu.NameColor(WorldMenuTargetStyle.Mob),
                 Is.EqualTo(TemporaryWorldContextMenu.NpcNameColor));
@@ -373,8 +411,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(TemporaryWorldContextMenu.CorpseNameColor));
 
             // The hint names the left-click option and counts the others; bare ground has none.
-            var walk = WorldMenuOption.ForWalk(provider, 1, default(Ray));
-            var examine = WorldMenuOption.ForExamine(provider, 2, 0, default(WorldPointerCandidate), "Mira", WorldMenuTargetStyle.Npc, "Text.");
+            var walk = WorldMenuOption.ForWalk(provider, 1, "Walk here", default(Ray));
+            var examine = WorldMenuOption.ForExamine(provider, 2, 0, default(WorldPointerCandidate), "Examine", "Mira", WorldMenuTargetStyle.Npc, "Text.");
             Assert.That(TemporaryWorldContextMenu.HoverLabel(new[] { walk }), Is.Empty);
             Assert.That(TemporaryWorldContextMenu.HoverLabel(Array.Empty<WorldMenuOption>()), Is.Empty);
             Assert.That(TemporaryWorldContextMenu.HoverLabel(null), Is.Empty);

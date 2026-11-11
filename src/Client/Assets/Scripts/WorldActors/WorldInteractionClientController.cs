@@ -348,7 +348,9 @@ namespace Mmorpg.Client.WorldActors
             {
                 State.SetLocalError(
                     "world_interaction_capability_missing",
-                    State.ActiveDisplayName + " does not offer that right now.");
+                    messageTexts.Format(
+                        "ui/world/capability-not-offered",
+                        MessageArgument.Text("npc", State.ActiveDisplayName)));
                 return;
             }
 
@@ -373,7 +375,7 @@ namespace Mmorpg.Client.WorldActors
                     {
                         State.SetLocalError(
                             "gathering_tool_required",
-                            "Equip a gathering tool in the Tool slot to gather here.");
+                            Text("ui/world/gathering-tool-required"));
                         return;
                     }
 
@@ -412,7 +414,7 @@ namespace Mmorpg.Client.WorldActors
             var active = State.ActiveInteraction;
             if (active == null || State.PendingOperationId != Guid.Empty)
             {
-                error = "No idle world interaction is open.";
+                error = Text("ui/world/no-idle-interaction");
                 return false;
             }
 
@@ -420,7 +422,7 @@ namespace Mmorpg.Client.WorldActors
                     ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
-                error = "The active simulation session is unavailable.";
+                error = Text("ui/world/session-unavailable");
                 return false;
             }
 
@@ -435,7 +437,7 @@ namespace Mmorpg.Client.WorldActors
                 active.TargetRevision);
             if (!simulationClient.TrySendWorldInteraction(intent))
             {
-                error = "The world interaction close request could not be sent.";
+                error = Text("ui/world/close-unsent");
                 return false;
             }
 
@@ -452,7 +454,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (State.PendingOperationId != Guid.Empty)
             {
-                error = "Wait for the pending world interaction operation to finish.";
+                error = Text("ui/world/wait-for-interaction");
                 return false;
             }
 
@@ -463,11 +465,11 @@ namespace Mmorpg.Client.WorldActors
 
             if (corpseController?.State.PendingOperationId != Guid.Empty)
             {
-                error = "Wait for the pending corpse interaction operation to finish.";
+                error = Text("ui/world/wait-for-corpse");
                 return false;
             }
 
-            error = "No world interaction or corpse view is open.";
+            error = Text("ui/world/nothing-open");
             return false;
         }
 
@@ -533,7 +535,7 @@ namespace Mmorpg.Client.WorldActors
                         if (!inventory.TryFindConfirmedItem(itemInstanceId, out var item, out _))
                         {
                             operationId = Guid.Empty;
-                            sendError = "The item changed before the sale could be sent.";
+                            sendError = Text("ui/world/item-changed-before-sale");
                             return InventoryOperationSendResult.Failed;
                         }
 
@@ -562,7 +564,7 @@ namespace Mmorpg.Client.WorldActors
                     State.ActiveInteraction.Capabilities,
                     value => string.Equals(value.Id, capabilityId, StringComparison.Ordinal) && value.IsAvailable))
             {
-                error = "The selected capability is not currently available.";
+                error = Text("ui/world/capability-unavailable");
                 return false;
             }
 
@@ -648,7 +650,7 @@ namespace Mmorpg.Client.WorldActors
             var active = State.ActiveInteraction;
             if (active == null || State.PendingOperationId != Guid.Empty)
             {
-                error = "An idle world interaction is required.";
+                error = Text("ui/world/idle-interaction-required");
                 return false;
             }
 
@@ -657,7 +659,7 @@ namespace Mmorpg.Client.WorldActors
                 value => string.Equals(value.Id, capabilityId, StringComparison.Ordinal));
             if (capability == null || !capability.IsAvailable)
             {
-                error = "The selected capability is not currently available.";
+                error = Text("ui/world/capability-unavailable");
                 return false;
             }
 
@@ -665,7 +667,7 @@ namespace Mmorpg.Client.WorldActors
                     ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
-                error = "The active simulation session is unavailable.";
+                error = Text("ui/world/session-unavailable");
                 return false;
             }
 
@@ -695,7 +697,7 @@ namespace Mmorpg.Client.WorldActors
                 rewardChoiceDefinitionId ?? string.Empty);
             if (!simulationClient.TrySendWorldInteraction(intent))
             {
-                error = "The capability action request could not be sent.";
+                error = Text("ui/world/capability-unsent");
                 return false;
             }
 
@@ -723,7 +725,7 @@ namespace Mmorpg.Client.WorldActors
                     value => value.Kind == RealtimeWorldActorCapabilityKind.Quests);
             if (capability == null)
             {
-                error = "This NPC has no quests.";
+                error = Text("ui/world/no-quests");
                 return false;
             }
 
@@ -796,6 +798,12 @@ namespace Mmorpg.Client.WorldActors
             }
 
             return true;
+        }
+
+        // The controller's own error, as the text the player reads.
+        private string Text(string key)
+        {
+            return messageTexts.Get(key);
         }
 
         private void OnOpened(RealtimeWorldInteractionOpened opened)

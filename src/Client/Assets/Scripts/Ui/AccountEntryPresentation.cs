@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
@@ -10,10 +11,6 @@ namespace Mmorpg.Client.Ui
     public static class AccountEntryPresentation
     {
         public const string Separator = "  ·  ";
-
-        public const string UsernameHint = "3 to 32 letters, numbers, or underscores.";
-        public const string PasswordHint = "8 to 128 characters.";
-        public const string CharacterNameHint = "3 to 24 letters, numbers, spaces, hyphens, or underscores.";
 
         // The limits GameService enforces, so a field cannot take more.
         public const int EmailLimit = 320;
@@ -58,15 +55,20 @@ namespace Mmorpg.Client.Ui
         }
 
         // Such as "Human Male  ·  100 gold".
-        public static string CharacterDetail(CharacterResponse character)
+        public static string CharacterDetail(CharacterResponse character, TextCatalog texts)
         {
             if (character == null)
             {
                 return string.Empty;
             }
 
-            var body = string.IsNullOrEmpty(character.bodyModel) ? "Unknown body" : Words(character.bodyModel);
-            return body + Separator + character.currency + " gold";
+            var body = string.IsNullOrEmpty(character.bodyModel)
+                ? MessageArgument.TextKey("body", "ui/characters/unknown-body")
+                : MessageArgument.Text("body", Words(character.bodyModel));
+            return texts.Format(
+                "ui/characters/character-detail",
+                body,
+                MessageArgument.Text("gold", character.currency.ToString(CultureInfo.InvariantCulture)));
         }
 
         // Such as "LOCAL  ·  Local Development".
@@ -83,15 +85,18 @@ namespace Mmorpg.Client.Ui
         }
 
         // Such as "Online 3 / 100", or "Offline".
-        public static string ShardAvailability(ShardResponse shard)
+        public static string ShardAvailability(ShardResponse shard, TextCatalog texts)
         {
             return shard != null && shard.isOnline
-                ? "Online " + shard.activePlayers + " / " + shard.capacity
-                : "Offline";
+                ? texts.Format(
+                    "ui/characters/shard-online",
+                    MessageArgument.Text("players", shard.activePlayers.ToString(CultureInfo.InvariantCulture)),
+                    MessageArgument.Text("capacity", shard.capacity.ToString(CultureInfo.InvariantCulture)))
+                : texts.Get("ui/characters/shard-offline");
         }
 
         // Such as "2 characters  ·  1 of 2 shards online".
-        public static string SelectionSummary(CharacterSelectState state)
+        public static string SelectionSummary(CharacterSelectState state, TextCatalog texts)
         {
             var online = 0;
             foreach (var shard in state.Shards)
@@ -99,31 +104,42 @@ namespace Mmorpg.Client.Ui
                 online += shard.isOnline ? 1 : 0;
             }
 
-            return Count(state.Characters.Count, "character")
-                + Separator + online + " of " + Count(state.Shards.Count, "shard") + " online";
+            var characters = state.Characters.Count;
+            var shards = state.Shards.Count;
+            return texts.Format(
+                "ui/characters/selection-summary",
+                MessageArgument.Text("characters", Count(
+                    texts,
+                    characters == 1 ? "ui/characters/character-count-one" : "ui/characters/character-count-many",
+                    characters)),
+                MessageArgument.Text("online", online.ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("shards", Count(
+                    texts,
+                    shards == 1 ? "ui/characters/shard-count-one" : "ui/characters/shard-count-many",
+                    shards)));
         }
 
         // Why Enter World cannot run, or null when it can.
-        public static string EnterWorldBlocker(CharacterSelectState state)
+        public static string EnterWorldBlocker(CharacterSelectState state, TextCatalog texts)
         {
             if (state.Characters.Count == 0)
             {
-                return "Create a character first.";
+                return texts.Get("ui/characters/create-first");
             }
 
             if (state.SelectedCharacter == null)
             {
-                return "Choose a character.";
+                return texts.Get("ui/characters/choose-character");
             }
 
             if (state.Shards.Count == 0)
             {
-                return "GameService lists no shard. Press Refresh once a SimulationWorker runs.";
+                return texts.Get("ui/characters/no-shards");
             }
 
             if (state.SelectedShard == null)
             {
-                return "No shard is online. Start a SimulationWorker, then press Refresh.";
+                return texts.Get("ui/characters/no-shard-online");
             }
 
             return null;
@@ -140,8 +156,10 @@ namespace Mmorpg.Client.Ui
 
             if (error.Kind == ApiErrorKind.Network || error.Kind == ApiErrorKind.Timeout)
             {
-                return "GameService at " + gameServiceBaseUrl + " does not answer. Is it running? ["
-                    + error.Code + "]";
+                return texts.Format(
+                    "ui/login/service-unreachable",
+                    MessageArgument.Text("url", gameServiceBaseUrl),
+                    MessageArgument.Text("code", error.Code));
             }
 
             return ClientMessages.Text(texts, error);
@@ -161,16 +179,23 @@ namespace Mmorpg.Client.Ui
                 : error.ToDisplayMessage();
         }
 
-        public static string ConnectionLine(string gameServiceBaseUrl, int requestTimeoutSeconds, int realtimeTimeoutSeconds)
+        public static string ConnectionLine(
+            string gameServiceBaseUrl,
+            int requestTimeoutSeconds,
+            int realtimeTimeoutSeconds,
+            TextCatalog texts)
         {
-            return "Game Service: " + gameServiceBaseUrl
-                + Separator + "Request Timeout: " + requestTimeoutSeconds + " seconds"
-                + Separator + "Realtime Timeout: " + realtimeTimeoutSeconds + " seconds";
+            return texts.Format(
+                "ui/login/connection",
+                MessageArgument.Text("url", gameServiceBaseUrl),
+                MessageArgument.Text("request", requestTimeoutSeconds.ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("realtime", realtimeTimeoutSeconds.ToString(CultureInfo.InvariantCulture)));
         }
 
-        private static string Count(int count, string noun)
+        // A count with the text that fits it, such as "1 character" or "2 characters".
+        private static string Count(TextCatalog texts, string key, int count)
         {
-            return count + " " + noun + (count == 1 ? string.Empty : "s");
+            return texts.Format(key, MessageArgument.Text("count", count.ToString(CultureInfo.InvariantCulture)));
         }
     }
 }
