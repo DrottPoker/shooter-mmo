@@ -486,67 +486,114 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void CheckedInPresentationHasExactCoverageAndDeterministicRevision()
         {
-            var workspace = LoadCheckedInWorkspace();
-            var expectedIds = workspace.CurrentRuntime.definitions
+            // The files as committed, not through a workspace, which adds and drops entries.
+            var paths = ItemCatalogEditorPaths.CreateDefault();
+            var presentation = ItemPresentationCatalogJson.Deserialize(
+                File.ReadAllText(paths.PresentationPath));
+            var expectedIds = ItemCatalogEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath))
+                .definitions
                 .Select(definition => definition.id)
                 .ToArray();
-            var compiled = ItemPresentationCatalogCompiler.Compile(
-                workspace.CurrentRuntime.revision,
-                expectedIds,
-                workspace.Presentation.entries);
+            var compiled = ItemPresentationCatalogCompiler.Compile(presentation.entries);
 
+            var coverage = ItemPresentationCoverage.Check(presentation, expectedIds);
+            Assert.That(coverage.IsExact, Is.True, string.Join(" ", coverage.Describe()));
             Assert.That(compiled.entries.Select(entry => entry.definitionId),
                 Is.EquivalentTo(expectedIds));
             Assert.That(compiled.entries.GroupBy(entry => entry.definitionId),
                 Has.All.Matches<IGrouping<string, ItemPresentationEntry>>(
                     group => group.Count() == 1));
+            Assert.That(presentation.formatVersion, Is.EqualTo(ItemPresentationCatalogFormat.Version));
             Assert.That(
-                workspace.Presentation.sourceCatalogRevision,
-                Is.EqualTo(workspace.CurrentRuntime.revision));
-            Assert.That(
-                workspace.Presentation.presentationRevision,
+                presentation.presentationRevision,
                 Is.EqualTo(compiled.presentationRevision));
+            Assert.That(
+                ItemPresentationCatalogJson.Serialize(compiled),
+                Is.EqualTo(File.ReadAllText(paths.PresentationPath).Replace("\r\n", "\n")),
+                "The committed presentation catalog is not in its compiled form.");
 
             Assert.That(ItemPresentationCatalogIndex.TryCreate(
-                workspace.Presentation,
-                workspace.CurrentRuntime.revision,
-                expectedIds,
+                presentation,
                 out var index,
                 out var error), Is.True, error);
             Assert.That(index, Is.Not.Null);
         }
 
         [Test]
-        public void DuplicateUnknownAndMissingPresentationIdsFailValidation()
+        public void DuplicatePresentationIdsFailCompilation()
         {
             var workspace = LoadCheckedInWorkspace();
-            var expectedIds = workspace.CurrentRuntime.definitions
-                .Select(definition => definition.id)
-                .ToArray();
 
             AssertPresentationInvalid(
                 workspace,
-                expectedIds,
                 entries => entries.Concat(new[] { CloneEntry(entries[0]) }).ToArray(),
                 "duplicate definition id");
-            AssertPresentationInvalid(
-                workspace,
-                expectedIds,
-                entries => entries.Concat(new[]
-                {
-                    new ItemPresentationEntry
-                    {
-                        definitionId = "unknown.definition",
-                        iconAddress = string.Empty,
-                        prefabPresentationKey = string.Empty
-                    }
-                }).ToArray(),
-                "unknown definition");
-            AssertPresentationInvalid(
-                workspace,
-                expectedIds,
-                entries => entries.Skip(1).ToArray(),
-                "Missing presentation entry");
+        }
+
+        [Test]
+        public void CoverageNamesMissingAndUnknownDefinitions()
+        {
+            var presentation = ItemPresentationCatalogCompiler.Compile(new[]
+            {
+                PresentationEntry("test.b"),
+                PresentationEntry("test.unknown"),
+                PresentationEntry("test.a"),
+            });
+
+            var coverage = ItemPresentationCoverage.Check(
+                presentation,
+                new[] { "test.c", "test.a", "test.b", "test.d" });
+
+            Assert.That(coverage.IsExact, Is.False);
+            Assert.That(coverage.MissingDefinitionIds, Is.EqualTo(new[] { "test.c", "test.d" }));
+            Assert.That(coverage.UnknownDefinitionIds, Is.EqualTo(new[] { "test.unknown" }));
+            Assert.That(coverage.Describe(), Is.EqualTo(new[]
+            {
+                "Missing presentation entry for definition 'test.c'.",
+                "Missing presentation entry for definition 'test.d'.",
+                "Presentation entry references unknown definition 'test.unknown'.",
+            }));
+
+            var exact = ItemPresentationCoverage.Check(presentation, new[] { "test.a", "test.b", "test.unknown" });
+            Assert.That(exact.IsExact, Is.True);
+            Assert.That(exact.Describe(), Is.Empty);
+        }
+
+        [Test]
+        public void EditorValidationRequiresExactPresentationCoverage()
+        {
+            var temporaryDirectory = CreateTemporaryDirectory();
+            try
+            {
+                var service = new ItemCatalogEditorService(
+                    CreateTemporaryPaths(temporaryDirectory),
+                    new CheckedInCompilerRunner());
+
+                Assert.That(service.Validate(LoadCheckedInWorkspace()).Success, Is.True);
+
+                var missing = LoadCheckedInWorkspace();
+                var missingId = missing.Presentation.entries[0].definitionId;
+                missing.Presentation.entries = missing.Presentation.entries.Skip(1).ToArray();
+                var missingResult = service.Validate(missing);
+                Assert.That(missingResult.Success, Is.False);
+                Assert.That(
+                    missingResult.Message,
+                    Does.Contain("Missing presentation entry for definition '" + missingId + "'."));
+
+                var unknown = LoadCheckedInWorkspace();
+                unknown.Presentation.entries = unknown.Presentation.entries
+                    .Concat(new[] { PresentationEntry("unknown.definition") })
+                    .ToArray();
+                var unknownResult = service.Validate(unknown);
+                Assert.That(unknownResult.Success, Is.False);
+                Assert.That(
+                    unknownResult.Message,
+                    Does.Contain("Presentation entry references unknown definition 'unknown.definition'."));
+            }
+            finally
+            {
+                DeleteTemporaryDirectory(temporaryDirectory);
+            }
         }
 
         [Test]
@@ -555,19 +602,11 @@ namespace Mmorpg.Client.Tests.EditMode
             var workspace = LoadCheckedInWorkspace();
             var gameplayBefore = ItemCatalogCompiler.Compile(
                 workspace.Authoring.ToAuthoringDocument());
-            var expectedIds = gameplayBefore.Definitions
-                .Select(definition => definition.Id)
-                .ToArray();
             var presentationBefore = ItemPresentationCatalogCompiler.Compile(
-                gameplayBefore.Revision,
-                expectedIds,
                 workspace.Presentation.entries);
             var changedEntries = presentationBefore.entries.Select(CloneEntry).ToArray();
             changedEntries[0].iconAddress = "Items/Icons/test-ammunition.png";
-            var presentationAfter = ItemPresentationCatalogCompiler.Compile(
-                gameplayBefore.Revision,
-                expectedIds,
-                changedEntries);
+            var presentationAfter = ItemPresentationCatalogCompiler.Compile(changedEntries);
             var gameplayAfter = ItemCatalogCompiler.Compile(
                 workspace.Authoring.ToAuthoringDocument());
 
@@ -579,28 +618,17 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 presentationAfter.presentationRevision,
                 Is.Not.EqualTo(presentationBefore.presentationRevision));
-            Assert.That(
-                presentationAfter.sourceCatalogRevision,
-                Is.EqualTo(gameplayBefore.Revision));
         }
 
         [Test]
         public void PresentationLoaderCachesValidatedClientCatalog()
         {
-            var workspace = LoadCheckedInWorkspace();
-            var expectedIds = workspace.CurrentRuntime.definitions
-                .Select(definition => definition.id)
-                .ToArray();
             ItemPresentationCatalogLoader.ResetCache();
 
             Assert.That(ItemPresentationCatalogLoader.TryLoadOnce(
-                workspace.CurrentRuntime.revision,
-                expectedIds,
                 out var first,
                 out var firstError), Is.True, firstError);
             Assert.That(ItemPresentationCatalogLoader.TryLoadOnce(
-                workspace.CurrentRuntime.revision,
-                expectedIds,
                 out var second,
                 out var secondError), Is.True, secondError);
             Assert.That(second, Is.SameAs(first));
@@ -696,17 +724,23 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static void AssertPresentationInvalid(
             ItemCatalogEditorWorkspace workspace,
-            string[] expectedIds,
             Func<ItemPresentationEntry[], ItemPresentationEntry[]> mutate,
             string expectedMessage)
         {
             var entries = workspace.Presentation.entries.Select(CloneEntry).ToArray();
             var exception = Assert.Throws<ItemPresentationCatalogValidationException>(() =>
-                ItemPresentationCatalogCompiler.Compile(
-                    workspace.CurrentRuntime.revision,
-                    expectedIds,
-                    mutate(entries)));
+                ItemPresentationCatalogCompiler.Compile(mutate(entries)));
             Assert.That(exception.Message, Does.Contain(expectedMessage).IgnoreCase);
+        }
+
+        private static ItemPresentationEntry PresentationEntry(string definitionId)
+        {
+            return new ItemPresentationEntry
+            {
+                definitionId = definitionId,
+                iconAddress = string.Empty,
+                prefabPresentationKey = string.Empty
+            };
         }
 
         private static ItemPresentationEntry CloneEntry(ItemPresentationEntry entry)
@@ -779,6 +813,28 @@ namespace Mmorpg.Client.Tests.EditMode
                 return new ContentCompilerRunResult(
                     false,
                     "definitions[0].unitWeight has an invalid definition field.");
+            }
+
+            public ContentCompilerRunResult Verify(string contentRoot, string generatedRoot)
+            {
+                return Compile(contentRoot, generatedRoot);
+            }
+        }
+
+        // Writes the committed item catalog and text table as its output, for checks that need a
+        // successful compile but not the compiler process.
+        private sealed class CheckedInCompilerRunner : IContentCompilerRunner
+        {
+            public ContentCompilerRunResult Compile(string contentRoot, string generatedRoot)
+            {
+                var paths = ItemCatalogEditorPaths.CreateDefault();
+                WriteText(
+                    ContentLayout.GeneratedItemCatalogPath(generatedRoot),
+                    File.ReadAllText(paths.RuntimePath));
+                WriteText(
+                    ItemTextTablePath(generatedRoot),
+                    File.ReadAllText(ItemTextTablePath(paths.GeneratedRoot)));
+                return new ContentCompilerRunResult(true, string.Empty);
             }
 
             public ContentCompilerRunResult Verify(string contentRoot, string generatedRoot)

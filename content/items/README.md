@@ -202,10 +202,18 @@ is their display order.
   windups, therefore keeps every persisted definition compatible and needs no
   item migration or development database reset. Change that version only when
   the meaning of a structural field changes.
+- The client presentation file has its own `presentationRevision`, which covers
+  its format version and its entries only, never the rules. A rules change
+  leaves the presentation file and its revision as they are, and a presentation
+  change leaves the catalog revision and every fingerprint as they are. The
+  client accepts a presentation file with any runtime catalog, as
+  [Unity Editor Workflow](#unity-editor-workflow) describes for the
+  presentation file.
 
 After a compile, inspect the `structuralFingerprint` of every changed definition
-in the diff of the runtime catalog. A display-only
-edit changes the catalog revision without changing a structural fingerprint.
+in the diff of the runtime catalog. A rules edit that does not touch custody,
+such as a value or a level requirement, changes the catalog revision without
+changing a structural fingerprint, and a rename changes neither.
 
 GameService mirrors the catalog into PostgreSQL at startup and refuses to start
 when the change would invalidate live state. The error names the affected
@@ -346,12 +354,21 @@ Icon files are client-owned assets below `Assets/Content/Items/Icons` and use
 one Sprite per file. Save an icon as a square PNG of 256 by 256 pixels; the
 client's icon import rules make every image in that folder a UI Sprite, as
 [Unity Client Architecture](../../docs/UNITY_CLIENT_ARCHITECTURE.md#item-operations-and-catalog)
-describes. The presentation file has its own deterministic
-presentation revision and records the exact gameplay catalog revision it was
-baked against; the client checks the pair once when it loads them and caches the
-lookup. Presentation fields never alter gameplay structural fingerprints, and
-inventory responses therefore carry definition ids and instance state, never
-icons or complete definitions.
+describes. The presentation file has its own deterministic presentation
+revision, which covers presentation only. The client loads it once, accepts it
+when its format version is current and its stored revision matches its entries,
+and caches the lookup; it never compares it with the gameplay catalog, so a
+rules change needs no new presentation file and no client build for it. An
+item without an entry shows the placeholder icon and no garment, attachment, or
+tool, and an entry for an id the gameplay catalog does not know is ignored.
+Exact coverage stays a rule of the repository: the Item Catalog window adds an
+entry for every new definition, drops the entries of removed ones, and refuses
+to validate or save a presentation file without exactly one entry per
+definition, and `CheckedInPresentationHasExactCoverageAndDeterministicRevision`
+in `ItemCatalogEditorTests` requires it of the committed files. Both use
+`ItemPresentationCoverage.Check`. Presentation fields never alter gameplay
+structural fingerprints, and inventory responses therefore carry definition ids
+and instance state, never icons or complete definitions.
 
 A failed validation writes nothing. A failed multi-file bake restores every
 previous file. Correct the field paths that the error names, or select `Reload`

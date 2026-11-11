@@ -140,6 +140,27 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
+        public void AnEquippedItemWithoutAPresentationEntryShowsNothing()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(BodyCatalogPaths[0]);
+            // The presentation lacks the boots, which a newer rules catalog may have added, and
+            // has an entry for an item the rules catalog does not know.
+            var presentation = Presentation(
+                Entry("clothing.wool_robe", new[] { "WoolRobe" }),
+                Entry("test.retired_item", new[] { "LeatherBoots" }));
+
+            var dressed = EquipmentGarments.Dress(BodyLook.Default, catalog, new[]
+            {
+                new EquippedItem("body", "clothing.wool_robe"),
+                new EquippedItem("feet", "armor.leather_boots"),
+            }, presentation, true, "armor.leather_boots");
+
+            Assert.That(dressed.Garments, Is.EqualTo(new[] { "WoolRobe" }));
+            Assert.That(dressed.Attachments, Is.Empty);
+            Assert.That(EquipmentGarments.ToolNamed(catalog, presentation, "tool.unknown"), Is.Null);
+        }
+
+        [Test]
         public void TheGarmentShaderTakesAnItemsDyeColors()
         {
             var cloak = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(BodyCatalogPaths[0]).GarmentNamed("WoolCloak");
@@ -175,10 +196,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void ThePresentationCatalogRejectsBrokenGarmentsAndDyes()
         {
-            var revision = new string('a', 64);
             var error = Assert.Throws<ItemPresentationCatalogValidationException>(() => ItemPresentationCatalogCompiler.Compile(
-                revision,
-                new[] { "test.a", "test.b", "test.c", "test.d" },
                 new[]
                 {
                     Entry("test.a", new[] { "Wool Robe" }),
@@ -199,10 +217,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static ItemPresentationCatalogIndex Presentation(params ItemPresentationEntry[] entries)
         {
-            var revision = new string('b', 64);
-            var ids = entries.Select(entry => entry.definitionId).ToArray();
-            var document = ItemPresentationCatalogCompiler.Compile(revision, ids, entries);
-            Assert.That(ItemPresentationCatalogIndex.TryCreate(document, revision, ids, out var index, out var error), Is.True, error);
+            var document = ItemPresentationCatalogCompiler.Compile(entries);
+            Assert.That(ItemPresentationCatalogIndex.TryCreate(document, out var index, out var error), Is.True, error);
             return index;
         }
 

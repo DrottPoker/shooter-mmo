@@ -1,14 +1,17 @@
 using System;
+using System.IO;
 using System.Linq;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Items.Presentation;
 using Mmorpg.WorldData.Text;
 using NUnit.Framework;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -78,6 +81,118 @@ namespace Mmorpg.Client.Tests.EditMode
             }
 
             Assert.That(bundled.LoadIcon("unknown_definition"), Is.SameAs(placeholder));
+        }
+
+        // A presentation catalog is valid with any rules catalog: it may lack an entry for a new
+        // definition and keep one for a definition the rules catalog no longer has.
+        [Test]
+        public void APresentationIndexDoesNotDependOnTheRulesCatalog()
+        {
+            var gameplay = FixtureGameplay();
+            var ids = DefinitionIds(gameplay);
+
+            Assert.That(
+                ItemPresentationCatalogIndex.TryCreate(PresentationWithoutFirst(ids), out var index, out var error),
+                Is.True,
+                error);
+            Assert.That(index.TryGet(ids[0], out _), Is.False);
+            Assert.That(index.TryGet(UnknownDefinitionId, out _), Is.True);
+            Assert.That(index.TryGet(null, out _), Is.False);
+        }
+
+        [Test]
+        public void AnItemWithoutAPresentationEntryShowsThePlaceholderAndNoPrefab()
+        {
+            var gameplay = FixtureGameplay();
+            var ids = DefinitionIds(gameplay);
+            Assert.That(
+                ItemPresentationCatalogIndex.TryCreate(PresentationWithoutFirst(ids), out var index, out var error),
+                Is.True,
+                error);
+
+            Assert.That(
+                ClientItemCatalog.TryCreate(gameplay, index, FixtureItemCatalog.Texts(), out var items, out error),
+                Is.True,
+                error);
+            var placeholder = ItemPresentationCatalogLoader.LoadIcon(
+                ItemPresentationCatalogLoader.PlaceholderIconAddress);
+            Assert.That(placeholder, Is.Not.Null);
+
+            Assert.That(items.LoadIcon(ids[0]), Is.SameAs(placeholder));
+            Assert.That(items.GetPrefabPresentationKey(ids[0]), Is.Empty);
+            Assert.That(items.GetDisplayName(ids[0]), Is.Not.Empty);
+            // The others show what their entries name. The placeholder is the only icon asset, so
+            // each entry names it as its own icon.
+            foreach (var id in ids.Skip(1))
+            {
+                Assert.That(items.Presentation.TryGet(id, out var entry), Is.True, id);
+                Assert.That(items.LoadIcon(id), Is.SameAs(ItemPresentationCatalogLoader.LoadIcon(entry.iconAddress)), id);
+                Assert.That(items.GetPrefabPresentationKey(id), Is.EqualTo(OwnPrefabKey), id);
+            }
+
+            // The entry for an item the rules catalog does not know is never shown as an item.
+            Assert.That(items.TryGetDefinition(UnknownDefinitionId, out _), Is.False);
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void APresentationWhoseRevisionDoesNotMatchItsEntriesIsRefused()
+        {
+            var document = PresentationWithoutFirst(DefinitionIds(FixtureGameplay()));
+            document.entries[0].prefabPresentationKey = "Changed";
+
+            Assert.That(ItemPresentationCatalogIndex.TryCreate(document, out var index, out var error), Is.False);
+            Assert.That(index, Is.Null);
+            Assert.That(error, Does.Contain("stale"));
+
+            var older = PresentationWithoutFirst(DefinitionIds(FixtureGameplay()));
+            older.formatVersion = ItemPresentationCatalogFormat.Version - 1;
+            Assert.That(ItemPresentationCatalogIndex.TryCreate(older, out _, out error), Is.False);
+            Assert.That(error, Does.Contain("format version"));
+        }
+
+        private const string UnknownDefinitionId = "test.retired_item";
+        private const string OwnPrefabKey = "OwnPrefab";
+
+        private static ItemCatalogRuntimeDocument FixtureGameplay()
+        {
+            Assert.That(
+                ClientItemCatalog.TryParseGameplay(
+                    File.ReadAllText(FixtureItemCatalog.RuntimePath),
+                    out var gameplay,
+                    out var error),
+                Is.True,
+                error);
+            return gameplay;
+        }
+
+        private static string[] DefinitionIds(ItemCatalogRuntimeDocument gameplay)
+        {
+            return gameplay.Definitions
+                .Select(definition => definition.Id)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        // Entries for every definition but the first, and one for a definition that is unknown.
+        private static ItemPresentationCatalogDocument PresentationWithoutFirst(string[] ids)
+        {
+            return ItemPresentationCatalogCompiler.Compile(ids.Skip(1)
+                .Select(id => new ItemPresentationEntry
+                {
+                    definitionId = id,
+                    iconAddress = ItemPresentationCatalogLoader.PlaceholderIconAddress,
+                    prefabPresentationKey = OwnPrefabKey
+                })
+                .Concat(new[]
+                {
+                    new ItemPresentationEntry
+                    {
+                        definitionId = UnknownDefinitionId,
+                        iconAddress = string.Empty,
+                        prefabPresentationKey = string.Empty
+                    }
+                }));
         }
 
         [Test]

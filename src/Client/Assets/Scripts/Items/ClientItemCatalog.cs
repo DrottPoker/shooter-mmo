@@ -81,11 +81,7 @@ namespace Mmorpg.Client.Items
             }
 
             if (!TryParseGameplay(gameplayAsset.text, out var gameplay, out error)
-                || !ItemPresentationCatalogLoader.TryLoadOnce(
-                    gameplay.Revision,
-                    gameplay.Definitions.Select(definition => definition.Id),
-                    out var presentation,
-                    out error))
+                || !ItemPresentationCatalogLoader.TryLoadOnce(out var presentation, out error))
             {
                 return false;
             }
@@ -94,8 +90,9 @@ namespace Mmorpg.Client.Items
             return true;
         }
 
-        // Combines a verified gameplay catalog with a presentation index built for it and the
-        // texts that name it, such as a test catalog that has no bundled presentation.
+        // Combines a verified gameplay catalog with any presentation index and the texts that
+        // name it, such as a test catalog that has no bundled presentation. Items without a
+        // presentation entry show the fallbacks.
         public static bool TryCreate(
             ItemCatalogRuntimeDocument gameplay,
             ItemPresentationCatalogIndex presentation,
@@ -107,16 +104,7 @@ namespace Mmorpg.Client.Items
             error = string.Empty;
             if (gameplay == null || presentation == null || texts == null)
             {
-                error = "A gameplay catalog, its presentation, and the text catalog are required.";
-                return false;
-            }
-
-            if (!string.Equals(
-                presentation.Catalog.sourceCatalogRevision,
-                gameplay.Revision,
-                StringComparison.Ordinal))
-            {
-                error = "The item presentation does not belong to the gameplay catalog revision.";
+                error = "A gameplay catalog, a presentation, and the text catalog are required.";
                 return false;
             }
 
@@ -224,6 +212,7 @@ namespace Mmorpg.Client.Items
                 && entries.Any(entry => entry != null && string.Equals(entry.Id, id, StringComparison.Ordinal));
         }
 
+        // Empty for an item without a presentation entry.
         public string GetPrefabPresentationKey(string definitionId)
         {
             return Presentation.TryGet(definitionId, out var entry)

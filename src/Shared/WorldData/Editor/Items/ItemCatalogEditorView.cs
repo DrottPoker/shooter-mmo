@@ -216,10 +216,11 @@ namespace Mmorpg.WorldData.Editor.Items
             var entries = workspace.Presentation.entries;
             try
             {
-                ItemPresentationCatalogCompiler.Compile(
-                    workspace.CurrentRuntime.revision,
-                    definitions.Select(definition => definition.id),
-                    entries);
+                var presentation = ItemPresentationCatalogCompiler.Compile(entries);
+                var coverage = ItemPresentationCoverage.Check(
+                    presentation,
+                    definitions.Select(definition => definition.id));
+                found.AddRange(coverage.Describe().Select(error => new ContentIssue(string.Empty, string.Empty, error)));
             }
             catch (ItemPresentationCatalogValidationException exception)
             {

@@ -12,8 +12,9 @@ namespace Mmorpg.WorldData.Items.Presentation
     {
         // Version 2 replaced the Resources icon path with an Addressables icon address, version 3
         // added the garments an item shows and its dye colors, and version 4 the attachment it
-        // holds on a socket.
-        public const int Version = 5;
+        // holds on a socket. Version 6 dropped the rules revision it was baked against, so a
+        // presentation catalog is valid with any rules catalog.
+        public const int Version = 6;
 
         // The dye channels a garment texture may have, and so the most dye colors of an item.
         public const int MaximumDyes = 3;
@@ -29,7 +30,6 @@ namespace Mmorpg.WorldData.Items.Presentation
     public sealed class ItemPresentationCatalogDocument
     {
         public int formatVersion;
-        public string sourceCatalogRevision;
         public string presentationRevision;
         public ItemPresentationEntry[] entries;
     }
@@ -81,32 +81,15 @@ namespace Mmorpg.WorldData.Items.Presentation
         }
     }
 
+    // Validates and normalizes presentation entries by themselves. Which definitions they cover
+    // is not checked here: the client accepts a presentation catalog with any rules catalog.
     public static class ItemPresentationCatalogCompiler
     {
         public static ItemPresentationCatalogDocument Compile(
-            string sourceCatalogRevision,
-            IEnumerable<string> expectedDefinitionIds,
             IEnumerable<ItemPresentationEntry> entries)
         {
             var errors = new List<string>();
-            if (!IsSha256(sourceCatalogRevision))
-            {
-                errors.Add("sourceCatalogRevision must be a lowercase SHA-256 value.");
-            }
-
-            var expectedIds = BuildExpectedIds(expectedDefinitionIds, errors);
-            var compiledEntries = BuildEntries(entries, expectedIds, errors);
-            foreach (var expectedId in expectedIds)
-            {
-                if (!compiledEntries.Any(entry => string.Equals(
-                    entry.definitionId,
-                    expectedId,
-                    StringComparison.Ordinal)))
-                {
-                    errors.Add("Missing presentation entry for definition '" + expectedId + "'.");
-                }
-            }
-
+            var compiledEntries = BuildEntries(entries, errors);
             if (errors.Count > 0)
             {
                 throw new ItemPresentationCatalogValidationException(errors);
@@ -115,7 +98,6 @@ namespace Mmorpg.WorldData.Items.Presentation
             var catalog = new ItemPresentationCatalogDocument
             {
                 formatVersion = ItemPresentationCatalogFormat.Version,
-                sourceCatalogRevision = sourceCatalogRevision,
                 presentationRevision = string.Empty,
                 entries = compiledEntries
                     .OrderBy(entry => entry.definitionId, StringComparer.Ordinal)
@@ -125,42 +107,8 @@ namespace Mmorpg.WorldData.Items.Presentation
             return catalog;
         }
 
-        private static HashSet<string> BuildExpectedIds(
-            IEnumerable<string> expectedDefinitionIds,
-            ICollection<string> errors)
-        {
-            var expectedIds = new HashSet<string>(StringComparer.Ordinal);
-            if (expectedDefinitionIds == null)
-            {
-                errors.Add("Expected definition ids are required.");
-                return expectedIds;
-            }
-
-            foreach (var definitionId in expectedDefinitionIds)
-            {
-                if (string.IsNullOrWhiteSpace(definitionId))
-                {
-                    errors.Add("Expected definition ids must not contain empty values.");
-                    continue;
-                }
-
-                if (!expectedIds.Add(definitionId))
-                {
-                    errors.Add("Expected definition ids contain duplicate id '" + definitionId + "'.");
-                }
-            }
-
-            if (expectedIds.Count == 0)
-            {
-                errors.Add("At least one expected definition id is required.");
-            }
-
-            return expectedIds;
-        }
-
         private static ItemPresentationEntry[] BuildEntries(
             IEnumerable<ItemPresentationEntry> entries,
-            ISet<string> expectedIds,
             ICollection<string> errors)
         {
             if (entries == null)
@@ -187,19 +135,10 @@ namespace Mmorpg.WorldData.Items.Presentation
                 {
                     errors.Add(path + ".definitionId is required.");
                 }
-                else
+                else if (!seenIds.Add(definitionId))
                 {
-                    if (!seenIds.Add(definitionId))
-                    {
-                        errors.Add("Presentation entries contain duplicate definition id '"
-                            + definitionId + "'.");
-                    }
-
-                    if (!expectedIds.Contains(definitionId))
-                    {
-                        errors.Add("Presentation entry references unknown definition '"
-                            + definitionId + "'.");
-                    }
+                    errors.Add("Presentation entries contain duplicate definition id '"
+                        + definitionId + "'.");
                 }
 
                 var iconAddress = NormalizeOptional(entry.iconAddress);
@@ -316,7 +255,6 @@ namespace Mmorpg.WorldData.Items.Presentation
             using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
             {
                 writer.Write(ItemPresentationCatalogFormat.Version);
-                writer.Write(catalog.sourceCatalogRevision);
                 writer.Write(catalog.entries.Length);
                 foreach (var entry in catalog.entries)
                 {
@@ -353,24 +291,54 @@ namespace Mmorpg.WorldData.Items.Presentation
             }
         }
 
-        private static bool IsSha256(string value)
+    }
+
+    // Which definitions a presentation catalog covers. The client never requires coverage; the
+    // item catalog editor and the repository test require it for the committed catalogs.
+    public sealed class ItemPresentationCoverage
+    {
+        private ItemPresentationCoverage(string[] missingDefinitionIds, string[] unknownDefinitionIds)
         {
-            if (string.IsNullOrWhiteSpace(value) || value.Length != 64)
-            {
-                return false;
-            }
+            MissingDefinitionIds = missingDefinitionIds;
+            UnknownDefinitionIds = unknownDefinitionIds;
+        }
 
-            for (var index = 0; index < value.Length; index++)
-            {
-                var character = value[index];
-                if (!((character >= '0' && character <= '9')
-                    || (character >= 'a' && character <= 'f')))
-                {
-                    return false;
-                }
-            }
+        // Definition ids without a presentation entry, in ordinal order.
+        public IReadOnlyList<string> MissingDefinitionIds { get; }
 
-            return true;
+        // Presentation entries whose definition id is not a definition, in ordinal order.
+        public IReadOnlyList<string> UnknownDefinitionIds { get; }
+
+        public bool IsExact
+        {
+            get { return MissingDefinitionIds.Count == 0 && UnknownDefinitionIds.Count == 0; }
+        }
+
+        public static ItemPresentationCoverage Check(
+            ItemPresentationCatalogDocument catalog,
+            IEnumerable<string> definitionIds)
+        {
+            var definitions = new HashSet<string>(
+                (definitionIds ?? Array.Empty<string>()).Where(id => !string.IsNullOrEmpty(id)),
+                StringComparer.Ordinal);
+            var covered = new HashSet<string>(
+                (catalog?.entries ?? Array.Empty<ItemPresentationEntry>())
+                    .Where(entry => entry != null && !string.IsNullOrEmpty(entry.definitionId))
+                    .Select(entry => entry.definitionId),
+                StringComparer.Ordinal);
+            return new ItemPresentationCoverage(
+                definitions.Where(id => !covered.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray(),
+                covered.Where(id => !definitions.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToArray());
+        }
+
+        // One error per missing or unknown id, empty when the coverage is exact.
+        public IReadOnlyList<string> Describe()
+        {
+            return MissingDefinitionIds
+                .Select(id => "Missing presentation entry for definition '" + id + "'.")
+                .Concat(UnknownDefinitionIds
+                    .Select(id => "Presentation entry references unknown definition '" + id + "'."))
+                .ToArray();
         }
     }
 
@@ -389,10 +357,11 @@ namespace Mmorpg.WorldData.Items.Presentation
 
         public ItemPresentationCatalogDocument Catalog { get; }
 
+        // Accepts any valid presentation catalog whose stored revision matches its entries. It
+        // does not depend on the rules catalog: an item without an entry shows the fallbacks, and
+        // an entry for an unknown item is never looked up.
         public static bool TryCreate(
             ItemPresentationCatalogDocument catalog,
-            string expectedSourceCatalogRevision,
-            IEnumerable<string> expectedDefinitionIds,
             out ItemPresentationCatalogIndex index,
             out string error)
         {
@@ -410,21 +379,9 @@ namespace Mmorpg.WorldData.Items.Presentation
                 return false;
             }
 
-            if (!string.Equals(
-                catalog.sourceCatalogRevision,
-                expectedSourceCatalogRevision,
-                StringComparison.Ordinal))
-            {
-                error = "Item presentation catalog source revision does not match gameplay catalog.";
-                return false;
-            }
-
             try
             {
-                var compiled = ItemPresentationCatalogCompiler.Compile(
-                    catalog.sourceCatalogRevision,
-                    expectedDefinitionIds,
-                    catalog.entries);
+                var compiled = ItemPresentationCatalogCompiler.Compile(catalog.entries);
                 if (!string.Equals(
                     compiled.presentationRevision,
                     catalog.presentationRevision,
@@ -444,9 +401,10 @@ namespace Mmorpg.WorldData.Items.Presentation
             }
         }
 
+        // False for an item without an entry, including a null id.
         public bool TryGet(string definitionId, out ItemPresentationEntry entry)
         {
-            return entries.TryGetValue(definitionId, out entry);
+            return entries.TryGetValue(definitionId ?? string.Empty, out entry);
         }
     }
 
