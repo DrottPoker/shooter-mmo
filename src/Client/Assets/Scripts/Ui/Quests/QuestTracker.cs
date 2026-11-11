@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using Mmorpg.Client.Quests;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -21,12 +22,14 @@ namespace Mmorpg.Client.Ui
         private const float Width = 300f;
 
         private readonly UiTheme theme;
+        private readonly TextCatalog texts;
         private readonly RectTransform panel;
         private readonly TextMeshProUGUI text;
         private readonly StringBuilder builder = new StringBuilder();
 
-        public QuestTracker(UiTheme theme, RectTransform parent)
+        public QuestTracker(UiTheme theme, TextCatalog texts, RectTransform parent)
         {
+            this.texts = texts ?? throw new ArgumentNullException(nameof(texts));
             this.theme = theme;
             panel = UiFactory.Create(PanelName, parent);
             panel.anchorMin = new Vector2(1f, 0.5f);
@@ -91,7 +94,8 @@ namespace Mmorpg.Client.Ui
                 builder.Append("<color=#").Append(title).Append("><b>").Append(Escape(entry.Quest.Title)).Append("</b></color>");
                 if (entry.IsReady)
                 {
-                    builder.Append("\n  <color=#").Append(ready).Append(">Ready to turn in</color>");
+                    builder.Append("\n  <color=#").Append(ready).Append('>')
+                        .Append(Escape(texts.Get("ui/quests/tracker-ready"))).Append("</color>");
                     continue;
                 }
 
@@ -111,9 +115,11 @@ namespace Mmorpg.Client.Ui
 
             if (active.Count > MaximumShownQuests)
             {
-                builder.Append("\n<color=#").Append(done).Append(">+")
-                    .Append(active.Count - MaximumShownQuests)
-                    .Append(" more in the quest log (L)</color>");
+                builder.Append("\n<color=#").Append(done).Append('>')
+                    .Append(Escape(texts.Format(
+                        "ui/quests/tracker-more",
+                        MessageArgument.Text("count", (active.Count - MaximumShownQuests).ToString()))))
+                    .Append("</color>");
             }
 
             text.text = builder.ToString();

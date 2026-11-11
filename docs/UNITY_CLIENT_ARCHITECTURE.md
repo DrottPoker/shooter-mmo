@@ -464,8 +464,19 @@ show messages.
   empty catalog.
 
 `ClientTextsTests` fails when the configuration does not list every table of
-`TextTableIds.All`, so a new table cannot be forgotten. The panels' own labels
-and the client's own failure sentences are still literals in the code.
+`TextTableIds.All`, so a new table cannot be forgotten.
+
+The client's own labels and sentences come from the `ui` table, as
+[Client Texts](../content/README.md#client-texts) describes. A window gets the
+text catalog from the bootstrap and asks it for a text by key, with
+`TextCatalog.Get`, or with `TextCatalog.Format` and named `MessageArgument`
+values for a text with placeholders. Rule code that explains itself to the
+player, such as `QuestRewardFit`, reads the texts of the catalog it already
+takes: `ClientItemCatalog.Texts` and `ClientQuestCatalog.Texts`. The quest
+windows, the quest tracker, and the quest messages are converted; the
+inventory windows, the item rules, and the `Temporary` panels still hold
+literals. `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
+pseudo-locale, which `PseudoText` builds from the same tables.
 
 ## Client Session State
 

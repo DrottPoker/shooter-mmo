@@ -7,6 +7,7 @@ using Mmorpg.Client.Quests;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -34,6 +35,7 @@ namespace Mmorpg.Client.Ui
         public const float DialogWidth = 460f;
 
         private UiTheme theme;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private QuestClientController quests;
         private InventoryClientController inventory;
         private WorldInteractionClientController interaction;
@@ -91,10 +93,12 @@ namespace Mmorpg.Client.Ui
             InventoryClientController inventoryController,
             WorldInteractionClientController worldInteraction,
             GameMessageLog gameMessages,
+            TextCatalog uiTexts,
             WorldMenuController menu = null,
             InventoryWindows inventoryWindowsBeside = null)
         {
             theme = uiTheme;
+            texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             quests = questController;
             inventory = inventoryController;
             interaction = worldInteraction;
@@ -254,9 +258,9 @@ namespace Mmorpg.Client.Ui
 
             var questId = entry.Quest.Id;
             confirmation.AskConfirmation(
-                "Abandon Quest",
-                "Abandon " + entry.Quest.Title + "? Its progress and its quest items are lost.",
-                "Abandon",
+                T("ui/quests/abandon-heading"),
+                T("ui/quests/abandon-question", MessageArgument.Text("quest", entry.Quest.Title)),
+                T("ui/quests/abandon"),
                 () =>
                 {
                     if (!quests.TryAbandon(questId, out var error))
@@ -373,7 +377,7 @@ namespace Mmorpg.Client.Ui
             var state = quests.State;
             if (!state.IsReady)
             {
-                AddParagraph(QuestLogWindow.StatusText(state), theme.MutedTextColor);
+                AddParagraph(QuestLogWindow.StatusText(state, texts), theme.MutedTextColor);
                 dialog.FitBody();
                 return;
             }
@@ -415,7 +419,7 @@ namespace Mmorpg.Client.Ui
         {
             if (entries.Count == 0)
             {
-                AddParagraph("There is nothing more to do here for now.", theme.MutedTextColor);
+                AddParagraph(T("ui/quests/dialog-nothing"), theme.MutedTextColor);
                 return;
             }
 
@@ -442,7 +446,7 @@ namespace Mmorpg.Client.Ui
                 : QuestProgress.CurrentObjectives(quest, entry.Active, carried);
             if (objectives.Count > 0)
             {
-                UiFactory.SectionHeading(theme, dialog.Body, "Objectives", null, out _);
+                UiFactory.SectionHeading(theme, dialog.Body, T("ui/quests/objectives"), null, out _);
                 foreach (var line in objectives)
                 {
                     AddParagraph(line.Text, line.IsComplete ? theme.MutedTextColor : theme.TextColor);
@@ -455,11 +459,11 @@ namespace Mmorpg.Client.Ui
             }
 
             var idle = interaction.State.PendingOperationId == Guid.Empty;
-            UiFactory.Button(theme, dialog.Footer, "Back", Back);
+            UiFactory.Button(theme, dialog.Footer, T("ui/quests/back"), Back);
             switch (entry.Kind)
             {
                 case QuestDialogEntryKind.Offer:
-                    AddAction("Accept", idle, () => Send(RealtimeCapabilityActionKind.AcceptQuest, string.Empty, string.Empty));
+                    AddAction(T("ui/quests/accept"), idle, () => Send(RealtimeCapabilityActionKind.AcceptQuest, string.Empty, string.Empty));
                     break;
                 case QuestDialogEntryKind.TurnIn:
                     var needsChoice = quest.RewardChoiceItems != null && quest.RewardChoiceItems.Length > 0;
@@ -475,21 +479,21 @@ namespace Mmorpg.Client.Ui
                     }
 
                     AddAction(
-                        "Complete",
+                        T("ui/quests/complete"),
                         idle && rewardsFit && (!needsChoice || !string.IsNullOrEmpty(rewardChoice)),
                         () => Send(RealtimeCapabilityActionKind.TurnInQuest, string.Empty, needsChoice ? rewardChoice : string.Empty));
                     break;
                 case QuestDialogEntryKind.TalkTo:
-                    AddAction("Continue", idle, () => Send(RealtimeCapabilityActionKind.TalkToQuestNpc, entry.Objective.Id, string.Empty));
+                    AddAction(T("ui/quests/continue"), idle, () => Send(RealtimeCapabilityActionKind.TalkToQuestNpc, entry.Objective.Id, string.Empty));
                     break;
                 case QuestDialogEntryKind.Deliver:
                     AddAction(
-                        "Hand over",
+                        T("ui/quests/hand-over"),
                         idle && QuestDialogEntries.CanHandOver(entry, carried),
                         () => Send(RealtimeCapabilityActionKind.DeliverQuestItems, entry.Objective.Id, string.Empty));
                     break;
                 case QuestDialogEntryKind.LostStartItems:
-                    AddAction("Ask again", idle, () => Send(RealtimeCapabilityActionKind.RegrantQuestItems, string.Empty, string.Empty));
+                    AddAction(T("ui/quests/ask-again"), idle, () => Send(RealtimeCapabilityActionKind.RegrantQuestItems, string.Empty, string.Empty));
                     break;
             }
         }
@@ -503,10 +507,15 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            UiFactory.SectionHeading(theme, dialog.Body, "Rewards", null, out _);
+            UiFactory.SectionHeading(theme, dialog.Body, T("ui/quests/rewards"), null, out _);
             if (quest.RewardGold > 0)
             {
-                AddParagraph(quest.RewardGold + " Gold", theme.GoldTextColor);
+                AddParagraph(
+                    T(
+                        "ui/quests/reward-gold",
+                        MessageArgument.Text("amount", quest.RewardGold.ToString()),
+                        MessageArgument.TextKey("currency", TextKeys.CurrencyName())),
+                    theme.GoldTextColor);
             }
 
             foreach (var item in items)
@@ -519,7 +528,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            AddParagraph("Choose one of:", theme.MutedTextColor);
+            AddParagraph(T("ui/quests/choose-one"), theme.MutedTextColor);
             foreach (var choice in choices)
             {
                 var definitionId = choice.DefinitionId;
@@ -600,15 +609,20 @@ namespace Mmorpg.Client.Ui
                 case QuestDialogEntryKind.TalkTo:
                     return string.IsNullOrWhiteSpace(entry.Objective.Line) ? entry.Quest.ProgressText : entry.Objective.Line;
                 case QuestDialogEntryKind.Deliver:
-                    return "Hand over " + ItemText(new QuestItemQuantityDefinition
-                    {
-                        DefinitionId = entry.Objective.ItemId,
-                        Quantity = QuestDialogEntries.RemainingDelivery(entry)
-                    }) + ". You carry " + carried(entry.Objective.ItemId) + ".";
+                    return T(
+                        "ui/quests/deliver-text",
+                        MessageArgument.Text(
+                            "items",
+                            ItemText(new QuestItemQuantityDefinition
+                            {
+                                DefinitionId = entry.Objective.ItemId,
+                                Quantity = QuestDialogEntries.RemainingDelivery(entry)
+                            })),
+                        MessageArgument.Text("carried", carried(entry.Objective.ItemId).ToString()));
                 case QuestDialogEntryKind.LostStartItems:
-                    return "You no longer have what you were given for this quest: "
-                        + string.Join(", ", entry.Quest.StartItems.Select(ItemText))
-                        + ". Ask for it again.";
+                    return T(
+                        "ui/quests/lost-items-text",
+                        MessageArgument.Text("items", string.Join(", ", entry.Quest.StartItems.Select(ItemText))));
                 default:
                     return entry.Quest.ProgressText;
             }
@@ -619,14 +633,17 @@ namespace Mmorpg.Client.Ui
             switch (entry.Kind)
             {
                 case QuestDialogEntryKind.TurnIn:
-                    return entry.Quest.Title + " (Complete)";
+                    return T("ui/quests/label-complete", MessageArgument.Text("quest", entry.Quest.Title));
                 case QuestDialogEntryKind.TalkTo:
                 case QuestDialogEntryKind.Deliver:
-                    return entry.Quest.Title + ": " + entry.Objective.Text;
+                    return T(
+                        "ui/quests/label-objective",
+                        MessageArgument.Text("quest", entry.Quest.Title),
+                        MessageArgument.Text("objective", entry.Objective.Text));
                 case QuestDialogEntryKind.LostStartItems:
-                    return entry.Quest.Title + ": lost items";
+                    return T("ui/quests/label-lost-items", MessageArgument.Text("quest", entry.Quest.Title));
                 case QuestDialogEntryKind.InProgress:
-                    return entry.Quest.Title + " (in progress)";
+                    return T("ui/quests/label-in-progress", MessageArgument.Text("quest", entry.Quest.Title));
                 default:
                     return entry.Quest.Title;
             }
@@ -642,7 +659,18 @@ namespace Mmorpg.Client.Ui
         private string ItemText(QuestItemQuantityDefinition item)
         {
             var name = ItemName(item.DefinitionId);
-            return item.Quantity > 1 ? item.Quantity + " x " + name : name;
+            return item.Quantity > 1
+                ? T(
+                    "ui/common/item-quantity",
+                    MessageArgument.Text("quantity", item.Quantity.ToString()),
+                    MessageArgument.Text("item", name))
+                : name;
+        }
+
+        // A text of the client's own, with its named values filled in.
+        private string T(string key, params MessageArgument[] arguments)
+        {
+            return texts.Format(key, arguments);
         }
 
         private string ItemName(string definitionId)
@@ -685,13 +713,13 @@ namespace Mmorpg.Client.Ui
             // reaches the world.
             var root = UiFactory.Create("QuestRoot", canvasObject.transform);
             UiFactory.Fill(root);
-            tracker = new QuestTracker(theme, root);
-            dialog = UiWindow.Create(theme, root, DialogWindowName, null, "Quests", DialogWidth);
+            tracker = new QuestTracker(theme, texts, root);
+            dialog = UiWindow.Create(theme, root, DialogWindowName, null, T("ui/quests/dialog-title"), DialogWidth);
             dialog.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
             dialog.CloseRequested += CloseDialog;
             dialog.SetOpen(false);
             // The log stands beside the dialog, so both show at once.
-            log = new QuestLogWindow(theme, root, Abandon, RefreshLog);
+            log = new QuestLogWindow(theme, texts, root, Abandon, RefreshLog);
             log.Window.CloseRequested += () => SetLogOpen(false);
             PlaceWindows();
             confirmation = UiDialog.Create(theme, root);

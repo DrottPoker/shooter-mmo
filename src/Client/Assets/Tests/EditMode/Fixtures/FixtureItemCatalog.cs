@@ -51,7 +51,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ClientTexts.TryParse(File.ReadAllText(TextTablePath), out var table, out var error),
                 Is.True,
                 error);
-            return TextCatalog.Create(new[] { table });
+            return TextCatalog.Create(new[] { table, FixtureTexts.UiTable() });
         }
 
         public static ClientItemCatalog Load()

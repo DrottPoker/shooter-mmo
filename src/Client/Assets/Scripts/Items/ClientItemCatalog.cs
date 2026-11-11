@@ -40,6 +40,12 @@ namespace Mmorpg.Client.Items
 
         public ItemCatalogRuntimeDocument Gameplay { get; }
 
+        // The texts that name the items, which also hold the client's own sentences.
+        public TextCatalog Texts
+        {
+            get { return texts; }
+        }
+
         public ItemPresentationCatalogIndex Presentation { get; }
 
         public string Revision

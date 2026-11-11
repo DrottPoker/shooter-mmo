@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Quests;
+using Mmorpg.WorldData.Text;
 
 namespace Mmorpg.Client.Quests
 {
@@ -33,9 +35,11 @@ namespace Mmorpg.Client.Quests
                 {
                     if (change.Before != null)
                     {
-                        notices.Add(change.CompletionsAfter > change.CompletionsBefore
-                            ? "Quest completed: " + quest.Title
-                            : "Quest abandoned: " + quest.Title);
+                        notices.Add(catalog.Texts.Format(
+                            change.CompletionsAfter > change.CompletionsBefore
+                                ? "ui/quests/notice-completed"
+                                : "ui/quests/notice-abandoned",
+                            MessageArgument.Text("quest", quest.Title)));
                     }
 
                     continue;
@@ -43,7 +47,9 @@ namespace Mmorpg.Client.Quests
 
                 if (change.Before == null)
                 {
-                    notices.Add("Quest accepted: " + quest.Title);
+                    notices.Add(catalog.Texts.Format(
+                        "ui/quests/notice-accepted",
+                        MessageArgument.Text("quest", quest.Title)));
                 }
                 else if (!string.Equals(change.Before.StepId, change.After.StepId, StringComparison.Ordinal))
                 {
@@ -57,7 +63,9 @@ namespace Mmorpg.Client.Quests
                         }
                     }
 
-                    notices.Add("Quest updated: " + quest.Title);
+                    notices.Add(catalog.Texts.Format(
+                        "ui/quests/notice-updated",
+                        MessageArgument.Text("quest", quest.Title)));
                 }
                 else
                 {
@@ -81,12 +89,13 @@ namespace Mmorpg.Client.Quests
             ClientQuestCatalog catalog,
             Func<string, string> itemName)
         {
-            if (drop == null)
+            // Without the quest catalog there are no texts to say it with.
+            if (drop == null || catalog == null)
             {
                 return string.Empty;
             }
 
-            var quest = catalog != null && catalog.TryGet(drop.QuestId, out var definition)
+            var quest = catalog.TryGet(drop.QuestId, out var definition)
                 ? definition.Title
                 : drop.QuestId;
             var item = itemName?.Invoke(drop.DefinitionId);
@@ -95,12 +104,12 @@ namespace Mmorpg.Client.Quests
                 item = drop.DefinitionId;
             }
 
-            var source = catalog != null
-                ? catalog.ActorName(drop.SourceActorDefinitionId)
-                : drop.SourceActorDefinitionId;
-            return source + " dropped "
-                + (drop.Quantity > 1 ? drop.Quantity + " x " + item : item)
-                + " for " + quest + ".";
+            return catalog.Texts.Format(
+                drop.Quantity > 1 ? "ui/quests/notice-drop-many" : "ui/quests/notice-drop",
+                MessageArgument.Text("source", catalog.ActorName(drop.SourceActorDefinitionId)),
+                MessageArgument.Text("quantity", drop.Quantity.ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("item", item),
+                MessageArgument.Text("quest", quest));
         }
     }
 }

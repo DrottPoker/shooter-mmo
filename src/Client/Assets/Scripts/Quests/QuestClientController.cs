@@ -108,7 +108,7 @@ namespace Mmorpg.Client.Quests
             error = string.Empty;
             if (!initialized || !State.IsReady || !State.IsActive(questId))
             {
-                error = "That quest is not active.";
+                error = messageTexts.Get("ui/quests/error-not-active");
                 return false;
             }
 
@@ -127,7 +127,7 @@ namespace Mmorpg.Client.Quests
 
             if (!initialized || !State.IsReady)
             {
-                error = "Your quests are not loaded yet.";
+                error = messageTexts.Get("ui/quests/error-not-loaded");
                 return false;
             }
 
@@ -139,13 +139,13 @@ namespace Mmorpg.Client.Quests
             error = string.Empty;
             if (pendingIntentId != Guid.Empty)
             {
-                error = "Wait for the last quest action to finish.";
+                error = messageTexts.Get("ui/quests/error-busy");
                 return false;
             }
 
             if (!simulationClient.TrySendQuestIntent(intent))
             {
-                error = "The quest request could not be sent.";
+                error = messageTexts.Get("ui/quests/error-unsent");
                 return false;
             }
 

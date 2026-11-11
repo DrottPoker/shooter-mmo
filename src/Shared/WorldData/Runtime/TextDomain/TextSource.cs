@@ -32,7 +32,7 @@ namespace Mmorpg.WorldData.Text
     {
         // The tables that are written by hand. Every other table is extracted from content.
         public static readonly IReadOnlyList<string> TableIds = Array.AsReadOnly(
-            new[] { TextTableIds.Messages });
+            new[] { TextTableIds.Messages, TextTableIds.Ui });
 
         public static TextTableDocument Compile(TextSourceDocument source)
         {
@@ -87,7 +87,31 @@ namespace Mmorpg.WorldData.Text
 
             var table = TextTable.Create(source.TableId, TextTableFormat.SourceLocale, entries);
             RequireMessageKeys(table);
+            RequireUiKeys(table);
             return table;
+        }
+
+        // The ui table holds the client's own texts, each below "ui/".
+        private static void RequireUiKeys(TextTableDocument table)
+        {
+            if (!string.Equals(table.TableId, TextTableIds.Ui, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var errors = new List<string>();
+            foreach (var entry in table.Entries)
+            {
+                if (!TextKeys.IsUi(entry.Key))
+                {
+                    errors.Add("'" + entry.Key + "' is not a ui key such as 'ui/inventory/title'.");
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                throw new TextTableValidationException(errors);
+            }
         }
 
         // The messages table holds one text per code and the text for a code without one.

@@ -299,6 +299,7 @@ at `src/Shared/WorldData/Generated/`:
 | `Text/en/actors.text-table.json` | the names, examine texts, and capability texts in `actors/` | `tools/WorldActorCompiler` |
 | `Text/en/quests.text-table.json` | the texts in `quests/` | `tools/QuestCatalogCompiler` |
 | `Text/en/messages.text-table.json` | `text/messages.json` | `tools/TextTableCompiler` |
+| `Text/en/ui.text-table.json` | `text/ui.json` | `tools/TextTableCompiler` |
 
 Generated data is committed, so the services and the client run without a
 content build step, and CI verifies that it matches its sources. The client
@@ -397,6 +398,29 @@ with the code, and the English explanation of the server is in the client log.
 placeholder that no server fills, and `MessageCoverageTests` fails when a code
 of the worker's notices, gathering, combat, or corpse closures has no text.
 
+### Client Texts
+
+The client's own labels and sentences, such as a window title, a button, or
+`Quest accepted: {quest}`, are written by hand in `text/ui.json`, one entry
+per text with a key below `ui/`, as `ui/<area>/<name>`: `ui/quests/accept`.
+The code names a text by its key and never holds the sentence. A text may hold
+placeholders like a message, which the code fills by name, with a plain value
+or with another text key, such as `currency/name` for the name of the
+currency.
+
+To add a text, add its entry to `text/ui.json`, run
+`dotnet run --project tools/TextTableCompiler`, and name the key in the code.
+`UiTextTests` fails for a key in the client code that has no text and for a
+text that no client code names.
+
+The pseudo-locale shows every text of every table with accented vowels, such
+as `Qúést Lóg`, and leaves placeholders and rich text tags alone.
+`MMORPG > Tools > Pseudo Locale` in the Unity Editor switches it on from the
+next start of Play Mode. A text that still reads as plain English on screen
+is a literal in the code. The quest windows, the quest tracker, and the quest
+messages take every text from the table; the other windows still hold
+literals.
+
 ## Compile And Verify
 
 The actor and collision compilers work on every World at once. Every compiler
@@ -416,6 +440,9 @@ dotnet run --project tools/WorldCollisionCompiler
 dotnet run --project tools/QuestCatalogCompiler
 dotnet run --project tools/TextTableCompiler
 ```
+
+The text table compiler writes both hand-written tables, the messages and the
+client texts.
 
 Add `-- --verify` to check that the committed generated data matches the
 content without writing anything; this is what CI runs. Verify mode fails when
