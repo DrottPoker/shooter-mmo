@@ -174,17 +174,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 },
             });
 
+            var texts = FixtureTexts.Ui();
+            var none = texts.Get("ui/characters/look-none");
             Assert.That(look.IsAvailable, Is.True);
             Assert.That(look.BodyModel, Is.EqualTo("Human_Male"));
-            Assert.That(look.OptionLabel(0), Is.EqualTo("Stubble"));
-            Assert.That(look.OptionLabel(1), Is.EqualTo("none"));
+            Assert.That(look.OptionLabel(0, texts), Is.EqualTo("Stubble"));
+            Assert.That(look.OptionLabel(1, texts), Is.EqualTo(none));
 
             look.StepOption(0, -1);
             look.StepOption(1, 1);
             Assert.That(Describe(look.ToRequest()), Is.EqualTo("Human_Male face=Clean hair=DarkBrownHair"));
+            Assert.That(look.OptionLabel(1, texts), Is.EqualTo("Dark Brown Hair"));
             // An optional kind steps through none.
             look.StepOption(1, 1);
-            Assert.That(look.OptionLabel(1), Is.EqualTo("none"));
+            Assert.That(look.OptionLabel(1, texts), Is.EqualTo(none));
 
             look.StepBodyModel(1);
             Assert.That(Describe(look.ToRequest()), Is.EqualTo("Human_Female face=Blush"));

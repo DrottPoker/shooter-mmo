@@ -85,11 +85,11 @@ namespace Mmorpg.Client.Ui
             meterMarker = UiFactory.Image(meterTrack, "FullCapacityMarker", theme.MeterMarker, theme.TitleColor).rectTransform;
 
             permanentSection = UiFactory.Column(body, "PermanentInventory", 8f).GetComponent<RectTransform>();
-            permanentGrid = new ItemSlotGrid(theme, permanentSection, Columns, owner.DragCoordinator, owner.Tooltip, "PermanentGrid");
+            permanentGrid = new ItemSlotGrid(theme, permanentSection, Columns, owner.DragCoordinator, owner.Tooltip, owner.Texts, "PermanentGrid");
 
             bagSection = UiFactory.Column(body, "Bag", 8f).GetComponent<RectTransform>();
             bagTitle = UiFactory.SectionHeading(theme, bagSection, owner.Text("ui/inventory/bag"), theme.BagIcon, out bagDetail);
-            bagGrid = new ItemSlotGrid(theme, bagSection, Columns, owner.DragCoordinator, owner.Tooltip, "BagGrid");
+            bagGrid = new ItemSlotGrid(theme, bagSection, Columns, owner.DragCoordinator, owner.Tooltip, owner.Texts, "BagGrid");
             noBag = UiFactory.BodyText(
                 theme,
                 bagSection,

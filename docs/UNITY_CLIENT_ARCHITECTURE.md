@@ -502,9 +502,18 @@ text only for an operation that was not sent.
 
 The quest windows, the quest tracker, the quest messages, the item rule
 reasons, the inventory, equipment, storage, Bank, Recovery Storage, corpse, and
-vendor windows, and the errors of the item and corpse controllers are
-converted; the `Temporary` panels, the login and character selection panels,
-the combat HUD, the nameplates, and the world labels still hold literals.
+vendor windows, the errors of the item, corpse, and world interaction
+controllers, the login and character selection panels with
+`AccountEntryPresentation`, the status texts of the combat HUD from
+`CombatHudPresentation`, and the world menu with its Walk here, Examine,
+Attack, and Loot options, corpse names, and game messages are converted.
+`WorldMenuController`, `WorldInteractionTargetingController`, and
+`CombatTargetingController` take the text catalog from the bootstrap in
+`Initialize`, and `ItemSlotView` and `ItemSlotGrid` take it from the inventory
+windows. The literals inside the `Temporary` panels and the F2 Debug and F3
+Admin menus stay English by decision; the technical failure sentences of the
+API and realtime clients, the World scene catalog, the catalog loaders, and
+the client state checks are not converted yet.
 `ClientTexts.PseudoLocalePreference` makes the bootstrap load the
 pseudo-locale, which `PseudoText` builds from the same tables.
 

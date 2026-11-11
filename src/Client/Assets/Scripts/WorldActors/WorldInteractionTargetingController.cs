@@ -3,6 +3,7 @@ using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
@@ -35,6 +36,7 @@ namespace Mmorpg.Client.WorldActors
         private WorldActorClientController actorController;
         private WorldMenuController menu;
         private GameMessageLog messages;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private IWorldInteractionTarget approachTarget;
         private string approachCapabilityId = string.Empty;
         private int approachIntentId;
@@ -53,12 +55,14 @@ namespace Mmorpg.Client.WorldActors
             WorldInteractionClientController worldInteraction,
             WorldActorClientController worldActors,
             WorldMenuController worldMenu,
-            GameMessageLog gameMessages)
+            GameMessageLog gameMessages,
+            TextCatalog uiTexts)
         {
             interactionController = worldInteraction;
             actorController = worldActors;
             menu = worldMenu;
             messages = gameMessages;
+            texts = uiTexts;
         }
 
         private void OnEnable()
@@ -123,8 +127,8 @@ namespace Mmorpg.Client.WorldActors
                         LootCorpseAction,
                         index,
                         candidate,
-                        "Loot",
-                        WorldMenuTargets.CorpseName(target.TargetDisplayName),
+                        texts.Get("ui/world/loot"),
+                        WorldMenuTargets.CorpseName(target.TargetDisplayName, texts),
                         WorldMenuTargetStyle.Corpse));
                     continue;
                 }
@@ -243,7 +247,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (navigation == NavigationResult.NoRoute)
             {
-                ReportUnreachable("There is no way to reach " + approachTarget.TargetDisplayName + ".");
+                ReportUnreachable("ui/world/no-route");
                 CancelApproach();
                 return;
             }
@@ -279,7 +283,7 @@ namespace Mmorpg.Client.WorldActors
             }
             else if (Time.unscaledTime - approachEndedAt > ApproachSettleSeconds)
             {
-                ReportUnreachable("You can't get close enough to " + approachTarget.TargetDisplayName + ".");
+                ReportUnreachable("ui/world/cannot-get-close");
                 CancelApproach();
             }
         }
@@ -340,8 +344,10 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        private void ReportUnreachable(string message)
+        // A game message that names the target, such as "There is no way to reach Mira."
+        private void ReportUnreachable(string key)
         {
+            var message = texts.Format(key, MessageArgument.Text("name", approachTarget.TargetDisplayName));
             messages?.Add(message, Time.unscaledTime);
             LogSubmissionFailure(message);
         }

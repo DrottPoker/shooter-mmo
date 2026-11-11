@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -65,6 +66,7 @@ namespace Mmorpg.Client.Ui
         private UiTheme theme;
         private InventoryDragCoordinator coordinator;
         private InventoryTooltipView tooltip;
+        private TextCatalog texts;
         private Image background;
         private CanvasGroup content;
         private Image silhouette;
@@ -100,12 +102,13 @@ namespace Mmorpg.Client.Ui
             UiTheme theme,
             Transform parent,
             InventoryDragCoordinator coordinator,
-            InventoryTooltipView tooltip)
+            InventoryTooltipView tooltip,
+            TextCatalog texts)
         {
             var root = UiFactory.Create("Slot", parent);
             root.sizeDelta = new Vector2(theme.SlotSize, theme.SlotSize);
             var view = root.gameObject.AddComponent<ItemSlotView>();
-            view.Build(theme, coordinator, tooltip);
+            view.Build(theme, coordinator, tooltip, texts);
             return view;
         }
 
@@ -162,7 +165,12 @@ namespace Mmorpg.Client.Ui
             dragSource.Configure(
                 coordinator,
                 Spec.DragPayload,
-                Spec.DisplayName + (quantityText.Length > 0 ? "  x" + quantityText : string.Empty),
+                quantityText.Length > 0
+                    ? texts.Format(
+                        "ui/common/item-drag-label",
+                        MessageArgument.Text("item", Spec.DisplayName),
+                        MessageArgument.Text("quantity", quantityText))
+                    : Spec.DisplayName,
                 Spec.Icon,
                 quantityText,
                 Spec.CanDrag && item != null,
@@ -230,11 +238,16 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void Build(UiTheme slotTheme, InventoryDragCoordinator dragCoordinator, InventoryTooltipView tooltipView)
+        private void Build(
+            UiTheme slotTheme,
+            InventoryDragCoordinator dragCoordinator,
+            InventoryTooltipView tooltipView,
+            TextCatalog slotTexts)
         {
             theme = slotTheme;
             coordinator = dragCoordinator;
             tooltip = tooltipView;
+            texts = slotTexts;
             background = gameObject.AddComponent<Image>();
             if (theme.SlotBackground != null)
             {
@@ -357,6 +370,7 @@ namespace Mmorpg.Client.Ui
         private readonly UiTheme theme;
         private readonly InventoryDragCoordinator coordinator;
         private readonly InventoryTooltipView tooltip;
+        private readonly TextCatalog texts;
         private readonly List<ItemSlotView> slots = new List<ItemSlotView>();
         private readonly LayoutElement layout;
         private readonly int columns;
@@ -367,11 +381,13 @@ namespace Mmorpg.Client.Ui
             int columns,
             InventoryDragCoordinator coordinator,
             InventoryTooltipView tooltip,
+            TextCatalog texts,
             string name = "SlotGrid")
         {
             this.theme = theme;
             this.coordinator = coordinator;
             this.tooltip = tooltip;
+            this.texts = texts;
             this.columns = Mathf.Max(1, columns);
             Rect = UiFactory.Create(name, parent);
             var grid = Rect.gameObject.AddComponent<GridLayoutGroup>();
@@ -400,7 +416,7 @@ namespace Mmorpg.Client.Ui
             var count = specs != null ? specs.Count : 0;
             while (slots.Count < count)
             {
-                slots.Add(ItemSlotView.Create(theme, Rect, coordinator, tooltip));
+                slots.Add(ItemSlotView.Create(theme, Rect, coordinator, tooltip, texts));
             }
 
             for (var index = 0; index < slots.Count; index++)

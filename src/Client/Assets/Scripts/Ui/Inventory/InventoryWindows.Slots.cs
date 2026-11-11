@@ -354,8 +354,12 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var name = State.Catalog.GetDisplayName(item.DefinitionId)
-                + (item.Quantity > 1 ? " x" + item.Quantity.ToString(CultureInfo.InvariantCulture) : string.Empty);
+            var name = item.Quantity > 1
+                ? Text(
+                    "ui/common/item-stack",
+                    MessageArgument.Text("item", State.Catalog.GetDisplayName(item.DefinitionId)),
+                    MessageArgument.Text("quantity", item.Quantity.ToString(CultureInfo.InvariantCulture)))
+                : State.Catalog.GetDisplayName(item.DefinitionId);
             dialog.AskConfirmation(
                 Text("ui/inventory/destroy-heading"),
                 Text("ui/inventory/destroy-question", MessageArgument.Text("item", name)),

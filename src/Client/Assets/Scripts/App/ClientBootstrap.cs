@@ -428,7 +428,7 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
-                menu => menu.Initialize(worldActorController, gameMessages));
+                menu => menu.Initialize(worldActorController, gameMessages, texts));
             AddSceneComponentIfMissing<TemporaryAdminMenu>(
                 menu => menu.Initialize(
                     simulationClient,
@@ -485,7 +485,8 @@ namespace Mmorpg.Client.App
                     worldInteractionController,
                     worldActorController,
                     worldMenu,
-                    gameMessages));
+                    gameMessages,
+                    texts));
             AddSceneComponentIfMissing<TemporaryWorldInteractionPanel>(
                 panel => panel.Initialize(worldInteractionController, inventoryController));
             AddSceneComponentIfMissing<TemporaryWorldContextMenu>(
@@ -504,7 +505,8 @@ namespace Mmorpg.Client.App
                     worldActorController,
                     inventoryController,
                     combatantViews,
-                    worldMenu));
+                    worldMenu,
+                    texts));
             AddSceneComponentIfMissing<CombatProjectilePresentation>(
                 presentation => presentation.Initialize(
                     combatController,

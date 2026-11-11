@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.WorldActors
@@ -32,6 +33,7 @@ namespace Mmorpg.Client.WorldActors
         private readonly WalkSteering walkSteering = new WalkSteering();
         private WorldActorClientController actorController;
         private GameMessageLog messages;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private LocalPlayerController localPlayer;
         // The navigation intent and destination of the latest Walk here.
         private int walkIntentId;
@@ -78,10 +80,11 @@ namespace Mmorpg.Client.WorldActors
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(WorldActorClientController worldActors, GameMessageLog gameMessages)
+        public void Initialize(WorldActorClientController worldActors, GameMessageLog gameMessages, TextCatalog uiTexts)
         {
             actorController = worldActors;
             messages = gameMessages;
+            texts = uiTexts;
             AddProvider(this, WorldMenuOrder.WalkAndExamine);
         }
 
@@ -169,7 +172,7 @@ namespace Mmorpg.Client.WorldActors
 
         public void AddWorldMenuOptions(WorldMenuBuilder menu)
         {
-            menu.Add(WorldMenuOption.ForWalk(this, WalkAction, menu.Ray));
+            menu.Add(WorldMenuOption.ForWalk(this, WalkAction, texts.Get("ui/world/walk-here"), menu.Ray));
             var targets = menu.Candidates;
             for (var index = 0; index < targets.Count; index++)
             {
@@ -353,9 +356,10 @@ namespace Mmorpg.Client.WorldActors
                     ExamineAction,
                     index,
                     candidate,
-                    WorldMenuTargets.CorpseName(target.TargetDisplayName),
+                    texts.Get("ui/world/examine"),
+                    WorldMenuTargets.CorpseName(target.TargetDisplayName, texts),
                     WorldMenuTargetStyle.Corpse,
-                    WorldMenuTargets.CorpseExamineText(target.TargetDisplayName)));
+                    WorldMenuTargets.CorpseExamineText(target.TargetDisplayName, texts)));
                 return;
             }
 
@@ -368,6 +372,7 @@ namespace Mmorpg.Client.WorldActors
                     ExamineAction,
                     index,
                     candidate,
+                    texts.Get("ui/world/examine"),
                     actor.DisplayName,
                     WorldMenuTargets.StyleOf(actor.Kind),
                     actor.ExamineText));

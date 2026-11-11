@@ -287,7 +287,7 @@ namespace Mmorpg.Client.Ui
                 Title = heading,
                 Detail = detail,
                 Grid = withGrid
-                    ? new ItemSlotGrid(theme, root, CharacterInventoryWindow.Columns, owner.DragCoordinator, owner.Tooltip)
+                    ? new ItemSlotGrid(theme, root, CharacterInventoryWindow.Columns, owner.DragCoordinator, owner.Tooltip, owner.Texts)
                     : null
             };
             sections.Add(section);

@@ -5,6 +5,7 @@ using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
+using Mmorpg.WorldData.Text;
 using UnityEngine;
 
 namespace Mmorpg.Client.Combat
@@ -29,6 +30,7 @@ namespace Mmorpg.Client.Combat
         private InventoryClientController inventoryController;
         private CombatantViewLocator views;
         private WorldMenuController menu;
+        private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private LocalPlayerController localPlayer;
         private int approachIntentId;
         private ulong notifiedTarget;
@@ -61,7 +63,8 @@ namespace Mmorpg.Client.Combat
             WorldActorClientController worldActors,
             InventoryClientController inventory,
             CombatantViewLocator combatantViews,
-            WorldMenuController worldMenu)
+            WorldMenuController worldMenu,
+            TextCatalog uiTexts)
         {
             combatController = combat;
             realtimeClient = realtime;
@@ -69,6 +72,7 @@ namespace Mmorpg.Client.Combat
             inventoryController = inventory;
             views = combatantViews;
             menu = worldMenu;
+            texts = uiTexts;
         }
 
         private void OnEnable()
@@ -163,7 +167,7 @@ namespace Mmorpg.Client.Combat
                     AttackAction,
                     index,
                     candidate,
-                    "Attack",
+                    texts.Get("ui/world/attack"),
                     candidate.DisplayName,
                     candidate.Player != null ? WorldMenuTargetStyle.Player : WorldMenuTargetStyle.Mob,
                     entityId: targetEntityId));

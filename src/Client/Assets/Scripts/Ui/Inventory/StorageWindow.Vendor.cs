@@ -198,7 +198,7 @@ namespace Mmorpg.Client.Ui
             }
 
             var sell = AddSection(owner.Text("ui/vendor/sell"), null, false);
-            sellGrid = new ItemSlotGrid(theme, sell.Root, CharacterInventoryWindow.Columns, owner.DragCoordinator, owner.Tooltip, "SellGrid");
+            sellGrid = new ItemSlotGrid(theme, sell.Root, CharacterInventoryWindow.Columns, owner.DragCoordinator, owner.Tooltip, owner.Texts, "SellGrid");
             var row = UiFactory.Row(sell.Root, "SellRow", theme.ButtonHeight, 6f);
             sellRow = row.GetComponent<RectTransform>();
             sellQuantity = UiFactory.Field(theme, row.transform, "SellQuantity", "1", null, null, TMP_InputField.ContentType.IntegerNumber, TextAlignmentOptions.Center);
@@ -230,7 +230,7 @@ namespace Mmorpg.Client.Ui
         {
             var row = UiFactory.Row(parent, "Offer", theme.SlotSize, 8f);
             row.childForceExpandHeight = false;
-            var grid = new ItemSlotGrid(theme, row.transform, 1, owner.DragCoordinator, owner.Tooltip, "OfferSlot");
+            var grid = new ItemSlotGrid(theme, row.transform, 1, owner.DragCoordinator, owner.Tooltip, owner.Texts, "OfferSlot");
             UiFactory.Layout(grid.Rect, theme.SlotSize, theme.SlotSize, 0f);
             var label = UiFactory.BodyText(theme, row.transform, "Label", theme.LabelSize, theme.TextColor, TextAlignmentOptions.MidlineLeft);
             label.textWrappingMode = TextWrappingModes.Normal;

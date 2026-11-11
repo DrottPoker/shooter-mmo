@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mmorpg.Client.Core;
+using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -96,7 +97,7 @@ namespace Mmorpg.Client.Ui
             var title = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Title", bar),
                 TemporaryEntryScreen.GameTitle + "   <size=15><color=" + TemporaryUiKit.ColorTag(TemporaryUiKit.TextMuted)
-                    + ">Character Select</color></size>",
+                    + ">" + texts.Get("ui/characters/title") + "</color></size>",
                 22,
                 FontStyles.Bold,
                 TextAlignmentOptions.Left,
@@ -118,17 +119,17 @@ namespace Mmorpg.Client.Ui
                 TextAlignmentOptions.Right,
                 TemporaryUiKit.TextSecondary);
             accountText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-            TemporaryUiKit.CreateButton(actions, "Refresh", Refresh, true, TemporaryButtonTone.Normal, 110f);
-            TemporaryUiKit.CreateButton(actions, "Log Out", LogOut, true, TemporaryButtonTone.Quiet, 110f);
+            TemporaryUiKit.CreateButton(actions, texts.Get("ui/characters/refresh"), Refresh, true, TemporaryButtonTone.Normal, 110f);
+            TemporaryUiKit.CreateButton(actions, texts.Get("ui/characters/log-out"), LogOut, true, TemporaryButtonTone.Quiet, 110f);
         }
 
         private void BuildCharacterCard(RectTransform parent)
         {
             var card = TemporaryEntryScreen.AddCard(parent, "CharactersCard", new Vector2(-320f, -4f), new Vector2(340f, 660f), false);
-            TemporaryMenuWindow.AddSection(card, "Characters");
+            TemporaryMenuWindow.AddSection(card, texts.Get("ui/characters/heading-characters"));
             characterList = TemporaryEntryScreen.AddScrollList(card, "CharacterList");
             var row = TemporaryEntryScreen.AddButtonRow(card, 40f);
-            TemporaryUiKit.CreateButton(row, "New Character", () => OpenCreation(), true, TemporaryButtonTone.Normal);
+            TemporaryUiKit.CreateButton(row, texts.Get("ui/characters/new-character"), () => OpenCreation(), true, TemporaryButtonTone.Normal);
         }
 
         private void BuildWorldCard(RectTransform parent)
@@ -139,41 +140,41 @@ namespace Mmorpg.Client.Ui
             characterTitle = TemporaryEntryScreen.AddHeading(enterPage, string.Empty, 28);
             characterDetail = TemporaryEntryScreen.AddText(enterPage, string.Empty, 14, TemporaryUiKit.TextSecondary);
             TemporaryEntryScreen.AddSpace(enterPage, 8f, false);
-            TemporaryMenuWindow.AddSection(enterPage, "Shard");
+            TemporaryMenuWindow.AddSection(enterPage, texts.Get("ui/characters/heading-shard"));
             shardList = TemporaryEntryScreen.AddScrollList(enterPage, "ShardList");
             enterWorldBlocker = TemporaryEntryScreen.AddText(enterPage, string.Empty, 13, TemporaryUiKit.WarningColor);
-            enterWorldButton = TemporaryEntryScreen.AddMainButton(enterPage, "Enter World", BeginJoin);
+            enterWorldButton = TemporaryEntryScreen.AddMainButton(enterPage, texts.Get("ui/characters/enter-world"), BeginJoin);
             enterWorldLabel = enterWorldButton.GetComponentInChildren<TextMeshProUGUI>();
             TemporaryEntryScreen.AddText(
                 enterPage,
-                "Press Enter, or double-click a character, to enter the World.",
+                texts.Get("ui/characters/enter-hint"),
                 12,
                 TemporaryUiKit.TextMuted);
 
             createPage = TemporaryEntryScreen.AddPage(card, "CreatePage");
-            TemporaryEntryScreen.AddHeading(createPage, "New Character", 24);
+            TemporaryEntryScreen.AddHeading(createPage, texts.Get("ui/characters/new-character"), 24);
             nameField = screen.AddField(
                 createPage,
-                "Name",
+                texts.Get("ui/characters/name"),
                 string.Empty,
-                "Character name",
+                texts.Get("ui/characters/name-placeholder"),
                 TMP_InputField.ContentType.Standard,
                 AccountEntryPresentation.CharacterNameLimit,
-                AccountEntryPresentation.CharacterNameHint);
-            TemporaryMenuWindow.AddSection(createPage, "Body");
+                texts.Get("ui/characters/name-hint"));
+            TemporaryMenuWindow.AddSection(createPage, texts.Get("ui/characters/heading-body"));
             bodyRow = TemporaryEntryScreen.AddButtonRow(createPage, 34f);
-            TemporaryMenuWindow.AddSection(createPage, "Look");
+            TemporaryMenuWindow.AddSection(createPage, texts.Get("ui/characters/heading-look"));
             lookNote = TemporaryEntryScreen.AddText(createPage, string.Empty, 13, TemporaryUiKit.TextMuted);
             lookList = TemporaryEntryScreen.AddScrollList(createPage, "LookList");
             var buttons = TemporaryEntryScreen.AddButtonRow(createPage, 44f);
             cancelCreationButton = TemporaryUiKit.CreateButton(
                 buttons,
-                "Cancel",
+                texts.Get("ui/common/cancel"),
                 () => state.SetCreating(false),
                 true,
                 TemporaryButtonTone.Quiet,
                 140f);
-            var create = TemporaryUiKit.CreateButton(buttons, "Create Character", CreateCharacter, true, TemporaryButtonTone.Active);
+            var create = TemporaryUiKit.CreateButton(buttons, texts.Get("ui/characters/create-character"), CreateCharacter, true, TemporaryButtonTone.Active);
             create.GetComponentInChildren<TextMeshProUGUI>().fontSize = 17;
         }
 
@@ -190,7 +191,9 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            accountText.text = ClientSession.Auth != null ? "Signed in as " + ClientSession.Auth.username : string.Empty;
+            accountText.text = ClientSession.Auth != null
+                ? texts.Format("ui/characters/signed-in", MessageArgument.Text("username", ClientSession.Auth.username))
+                : string.Empty;
             RefreshCharacterRows();
             RefreshShardRows();
 
@@ -221,7 +224,9 @@ namespace Mmorpg.Client.Ui
             var busy = operationState.IsBusy;
             controls.interactable = !busy;
             enterWorldButton.interactable = state.CanEnterWorld;
-            enterWorldLabel.text = operationState.Current == ClientOperation.JoinShard ? "Entering World..." : "Enter World";
+            enterWorldLabel.text = texts.Get(operationState.Current == ClientOperation.JoinShard
+                ? "ui/characters/entering-world"
+                : "ui/characters/enter-world");
             cancelCreationButton.gameObject.SetActive(state.CanCancelCreation);
 
             // A field takes the caret only while the controls are enabled.
@@ -245,7 +250,7 @@ namespace Mmorpg.Client.Ui
                     var row = TemporaryEntryScreen.AddListRow(
                         characterList,
                         character.name,
-                        AccountEntryPresentation.CharacterDetail(character),
+                        AccountEntryPresentation.CharacterDetail(character, texts),
                         null,
                         TemporaryUiKit.TextSecondary,
                         () => state.SelectCharacter(id));
@@ -264,7 +269,7 @@ namespace Mmorpg.Client.Ui
                 {
                     TemporaryEntryScreen.AddText(
                         characterList,
-                        state.CharactersLoaded ? "No characters yet." : "Loading...",
+                        texts.Get(state.CharactersLoaded ? "ui/characters/no-characters" : "ui/characters/loading"),
                         14,
                         TemporaryUiKit.TextMuted);
                 }
@@ -288,7 +293,7 @@ namespace Mmorpg.Client.Ui
                         shardList,
                         shard.displayName,
                         AccountEntryPresentation.ShardDetail(shard),
-                        AccountEntryPresentation.ShardAvailability(shard),
+                        AccountEntryPresentation.ShardAvailability(shard, texts),
                         shard.isOnline ? TemporaryUiKit.SuccessColor : TemporaryUiKit.TextMuted,
                         () => state.SelectShard(id));
                     row.interactable = shard.isOnline;
@@ -312,9 +317,9 @@ namespace Mmorpg.Client.Ui
             var character = state.SelectedCharacter;
             characterTitle.text = character != null
                 ? character.name
-                : state.CharactersLoaded ? "No character chosen" : "Loading...";
-            characterDetail.text = AccountEntryPresentation.CharacterDetail(character);
-            var blocker = state.CharactersLoaded ? AccountEntryPresentation.EnterWorldBlocker(state) : null;
+                : texts.Get(state.CharactersLoaded ? "ui/characters/no-character-chosen" : "ui/characters/loading");
+            characterDetail.text = AccountEntryPresentation.CharacterDetail(character, texts);
+            var blocker = state.CharactersLoaded ? AccountEntryPresentation.EnterWorldBlocker(state, texts) : null;
             enterWorldBlocker.text = blocker ?? string.Empty;
             enterWorldBlocker.gameObject.SetActive(blocker != null);
         }
@@ -327,7 +332,7 @@ namespace Mmorpg.Client.Ui
             var available = look != null && look.IsAvailable;
             lookNote.text = available
                 ? string.Empty
-                : "What a new character may look like is not loaded yet. Press Refresh.";
+                : texts.Get("ui/characters/look-not-loaded");
             lookNote.gameObject.SetActive(!available);
             if (look != shownLook || (available && look.BodyModelIndex != shownBodyIndex))
             {
@@ -350,7 +355,7 @@ namespace Mmorpg.Client.Ui
 
             for (var offer = 0; offer < lookValues.Count; offer++)
             {
-                lookValues[offer].text = AccountEntryPresentation.Words(look.OptionLabel(offer));
+                lookValues[offer].text = look.OptionLabel(offer, texts);
             }
         }
 

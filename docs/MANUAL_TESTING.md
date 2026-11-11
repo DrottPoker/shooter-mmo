@@ -452,13 +452,32 @@ The client's own labels come from the `ui` text table, as
 [Client Texts](../content/README.md#client-texts) describes.
 
 1. In the Unity Editor, choose `MMORPG > Tools > Pseudo Locale`, so the menu
-   entry is checked, and start Play Mode. Join, accept a quest at Mira, and
+   entry is checked, and start Play Mode from the LoginMenu scene. Expected
+   result: every label, tab, button, field placeholder, field hint, and the
+   connection line of the login screen shows with accented vowels, such as
+   `Lóg Ín`, `Créáté Áccóúnt`, and `Émáíl ór úsérnámé`; so do the status
+   lines `Lóggíng ín...` and `Lóggéd ín ás ...`. On the character screen,
+   the title, Refresh, Log Out, the headings, the character and shard rows,
+   `Éntér Wórld`, the hints, the creation page with its `Nóné` look option,
+   and the summary such as `1 cháráctér  ·  1 óf 1 shárd ónlíné` show the
+   same. Only the game title, which a `Temporary` panel draws, stays English.
+   Join, accept a quest at Mira, and
    open the quest log (L). Expected result: every text of the quest dialog,
    the quest log, the quest tracker, and the quest messages shows with
    accented vowels, such as `Qúést Lóg`, `Áccépt`, and
    `Qúést áccéptéd: Pélts ánd Fángs`, and so does every item, actor, and quest
-   text. A label that still reads as plain English, such as those of the
-   `Temporary` panels, is a literal in the code.
+   text. Right-click the ground, Mira, a wolf, and a corpse. Expected result:
+   `Wálk héré`, `Éxámíné`, `Áttáck`, `Lóót`, and `Córpsé óf ...` show with
+   accented vowels, and so does the examine text of a corpse. Attack a wolf
+   and watch the status line of the combat HUD: `Áttáckíng`, `Óút óf rángé`,
+   or `Nó tárgét`, and the mana and arrow lines such as `Máná 95 / 100` and
+   `Árróws 482`, show with accented vowels; the HUD's own `Health` and
+   `In combat` stay English. A label that still reads as plain English is a
+   literal in the code. Texts that stay English by decision are the literals
+   of the `Temporary` panels, the F2 Debug menu, and the F3 Admin menu.
+   Technical failure sentences, such as those of the API and realtime clients,
+   the World scene catalog, and a catalog or text table that cannot be read,
+   are not converted yet.
    Open the inventory (I) and drag an item onto an equipment slot that does
    not take it, then right-click an item that is not equipment. Expected
    result: the refusal messages show with accented vowels, such as
