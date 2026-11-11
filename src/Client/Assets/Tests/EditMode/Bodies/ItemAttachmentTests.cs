@@ -264,8 +264,6 @@ namespace Mmorpg.Client.Tests.EditMode
         public void ThePresentationCatalogRejectsABrokenAttachmentName()
         {
             var error = Assert.Throws<ItemPresentationCatalogValidationException>(() => ItemPresentationCatalogCompiler.Compile(
-                new string('a', 64),
-                new[] { "test.a" },
                 new[]
                 {
                     new ItemPresentationEntry

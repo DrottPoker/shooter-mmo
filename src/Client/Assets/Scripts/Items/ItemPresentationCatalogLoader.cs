@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Mmorpg.Client.Core;
 using Mmorpg.WorldData.Items.Presentation;
 using UnityEngine;
@@ -8,8 +7,8 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Mmorpg.Client.Items
 {
-    // Loads the bundled item presentation catalog through Addressables once per gameplay
-    // revision, and keeps every icon it resolves loaded for the lifetime of the process.
+    // Loads the bundled item presentation catalog through Addressables once, and keeps every
+    // icon it resolves loaded for the lifetime of the process.
     public static class ItemPresentationCatalogLoader
     {
         // The icon of every item that has no approved icon of its own yet.
@@ -20,7 +19,6 @@ namespace Mmorpg.Client.Items
             new Dictionary<string, AsyncOperationHandle<Sprite>>(StringComparer.Ordinal);
         private static readonly HashSet<string> MissingIcons =
             new HashSet<string>(StringComparer.Ordinal);
-        private static string cachedKey;
         private static ItemPresentationCatalogIndex cachedIndex;
 
         // Static state survives entering Play Mode when domain reload is disabled. Handles from
@@ -28,23 +26,16 @@ namespace Mmorpg.Client.Items
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
         {
-            cachedKey = null;
             cachedIndex = null;
             IconLoads.Clear();
             MissingIcons.Clear();
         }
 
-        public static bool TryLoadOnce(
-            string expectedSourceCatalogRevision,
-            IEnumerable<string> expectedDefinitionIds,
-            out ItemPresentationCatalogIndex index,
-            out string error)
+        // The presentation catalog does not depend on the rules catalog, so the first one that
+        // loads serves every caller.
+        public static bool TryLoadOnce(out ItemPresentationCatalogIndex index, out string error)
         {
-            var expectedIds = expectedDefinitionIds == null
-                ? Array.Empty<string>()
-                : expectedDefinitionIds.OrderBy(value => value, StringComparer.Ordinal).ToArray();
-            var cacheKey = expectedSourceCatalogRevision + "|" + string.Join("|", expectedIds);
-            if (cachedIndex != null && string.Equals(cachedKey, cacheKey, StringComparison.Ordinal))
+            if (cachedIndex != null)
             {
                 index = cachedIndex;
                 error = string.Empty;
@@ -72,17 +63,11 @@ namespace Mmorpg.Client.Items
                 return false;
             }
 
-            if (!ItemPresentationCatalogIndex.TryCreate(
-                document,
-                expectedSourceCatalogRevision,
-                expectedIds,
-                out index,
-                out error))
+            if (!ItemPresentationCatalogIndex.TryCreate(document, out index, out error))
             {
                 return false;
             }
 
-            cachedKey = cacheKey;
             cachedIndex = index;
             return true;
         }

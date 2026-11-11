@@ -64,8 +64,6 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.True,
                 error);
             var presentation = ItemPresentationCatalogCompiler.Compile(
-                gameplay.Revision,
-                gameplay.Definitions.Select(definition => definition.Id),
                 gameplay.Definitions.Select(definition => new ItemPresentationEntry
                 {
                     definitionId = definition.Id,
@@ -73,12 +71,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     prefabPresentationKey = string.Empty
                 }));
             Assert.That(
-                ItemPresentationCatalogIndex.TryCreate(
-                    presentation,
-                    gameplay.Revision,
-                    gameplay.Definitions.Select(definition => definition.Id),
-                    out var index,
-                    out error),
+                ItemPresentationCatalogIndex.TryCreate(presentation, out var index, out error),
                 Is.True,
                 error);
             Assert.That(

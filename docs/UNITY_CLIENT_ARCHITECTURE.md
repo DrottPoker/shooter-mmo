@@ -1270,9 +1270,14 @@ safely.
 
 `ClientItemCatalog` compiles and revision-checks the bundled gameplay TextAsset
 through the shared `ItemCatalogJsonDocument` shape that the Item Catalog editor
-also uses, loads the presentation catalog once through Addressables and caches it
-per gameplay revision, and indexes definitions and equipment slots by stable id.
-Gameplay and presentation source revisions must match before item UI can render.
+also uses, loads the presentation catalog once through Addressables and caches
+it, and indexes definitions and equipment slots by stable id. The presentation
+catalog is valid with any gameplay catalog: the client checks only its format
+version and that its stored revision matches its entries. An item without a
+presentation entry shows the placeholder icon and no garment, attachment, or
+tool, and an entry for an unknown id is ignored, so a rules change never
+blocks item UI. Exact coverage is a repository rule that
+[Items content](../content/items/README.md#unity-editor-workflow) describes.
 Every HTTP snapshot must also match the bundled gameplay revision. A mismatch
 clears renderable item state and produces `item_catalog_update_required` instead
 of accepting stale definitions. Icons and optional prefab presentation keys
