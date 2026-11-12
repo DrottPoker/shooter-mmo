@@ -39,12 +39,16 @@ Implemented:
 - Worn clothes, armor, weapons, and shields show on the body, and a gathering
   tool shows in the hands while it is used, as
   [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md) describes.
+- A character whose player leaves or loses the connection stays in the world
+  for 20 seconds, longer while it is attacked, and its player resumes it by
+  coming back in time, as
+  [Logout And Disconnect Rules](#logout-and-disconnect-rules) describes.
 
 Planned, as this document describes: abilities and the ability bar, the combat
 triangle with armor and misses, elemental damage and resistances, threat,
 healing abilities, potions, food, and drinking, movement impairments,
 experience and talents, profession levels and crafting, the other gathering
-professions, gameplay rule areas with the logout risk timer, the hostile flag
+professions, gameplay rule areas with their own body times, the hostile flag
 and criminal reputation, achievements and the cloaks they reward, player
 trading, and social systems. Quests have their own document,
 [Quest System Design](QUEST_SYSTEM_DESIGN.md), with its own status. The status
@@ -789,8 +793,9 @@ the wolves' behavior in [Combat](GAME_FEATURES.md#combat).
 
 Implemented: player versus player follows the Shard's rule set, which allows it
 on the development Shard; PvP and PvE use the same numbers; the equipment
-lockout; and the killer recorded with every death. Movement impairments, their
-counters, and the logout risk timer are planned.
+lockout; the killer recorded with every death; and the body that a leave or a
+lost connection leaves behind. Movement impairments and their counters are
+planned.
 
 #### Decided
 
@@ -808,8 +813,8 @@ counters, and the logout risk timer are planned.
 - PvP and PvE use the same numbers. Abilities, weapons, and effects have no
   separate PvP values. PvE balance is adjusted on the Mob side, mainly through
   Mob health and defense.
-- Logging out or disconnecting outside a safe city leaves the character in the
-  world for a risk timer that combat resets, as
+- Logging out or disconnecting outside a safe city leaves the character's body
+  in the world for a time that every hit it takes starts again, as
   [Logout And Disconnect Rules](#logout-and-disconnect-rules) describes. Logout
   cannot be used to escape a fight.
 - Where player versus player is allowed is a Shard rule today. Gameplay rule
@@ -916,7 +921,8 @@ The **Open Risk Rule Area** has:
 - Gathering and loot containers.
 - Management of carried inventory under the server's action and policy rules.
 - Durable corpse custody at death under the current protection rules.
-- A risk timer that keeps the character in the world after logout.
+- A body that stays in the world after logout, as
+  [Logout And Disconnect Rules](#logout-and-disconnect-rules) describes.
 
 ### Direction
 
@@ -939,11 +945,46 @@ PvP-off areas:
 
 ## Logout And Disconnect Rules
 
-Not implemented. Today a leave or a disconnect removes the character from the
-world at once, so a player can still escape a fight by disconnecting; only the
-release of the session waits until its spent arrows and a pending death have
-committed. The server already tracks when each character was last in combat,
-which the risk timer will use.
+Implemented with one body time for the whole world: until gameplay rule areas
+exist, a body stays 20 seconds everywhere. The table of body times per rule
+area below is the later design.
+
+### The Body That Stays
+
+Implemented. When a joined player's connection ends while its session goes on,
+the character's body stays in the world without a player. This holds alike for
+a voluntary leave, a lost or timed-out connection, and a connection that the
+server ends because the client broke the protocol, flooded it, or failed. The
+leave is answered at once, so the player returns to character select, and the
+answer says how long the body stays.
+
+- The body stands where it was and does not move: its walk ends, an attack in
+  its windup is cancelled and its target dropped, gathering stops, and an open
+  corpse or interaction closes. It does not fight back.
+- Everything else stays live. Other players see it, Mobs and players can target
+  and hit it, it takes damage and regenerates as usual, and it counts as a
+  player for Mobs and nearby world actors.
+- The body stays 20 seconds after the connection ended. Every hit it takes
+  sets its end to 20 seconds after that hit when that is later, with no upper
+  limit, so a fight keeps it in the world.
+- When its time is up, the body leaves the world, and its place and vitals are
+  saved as at any leave.
+- A body that dies dies as any player: the death event, the corpse, and the
+  loot rules apply. It never respawns: once its death committed, it leaves the
+  world, saved as its respawn would leave it, at the World spawn with full
+  health and mana.
+- A player who enters the same character again while the body stands resumes
+  it where it stands, with its health and mana, and its time ends.
+- While the body stands, the account cannot enter another character; it is
+  told that its previous character is still in the world for a short while.
+- The spent arrows and the quest credits of the character still commit while
+  the body stands, and a kill that the body tagged or helped with still counts
+  for its quests.
+- The body leaves at once when its session ends: when GameService revoked it,
+  when a new login on the account replaced it, when its lease expired, and when
+  the worker stops, which saves it like a connected player. An account logout
+  or a new login therefore ends the body within the session heartbeat interval.
+- Development bots follow the same rules.
 
 ### What A Character Keeps
 
@@ -957,8 +998,9 @@ out does not heal: a wounded character comes back wounded and regenerates as
 usual. Dying and respawning are unchanged, as
 [Health, Death, And Respawn](#health-death-and-respawn) describes: a character
 that logs out while dead comes back as its respawn would leave it, at the World
-spawn with full health and mana. The worker saves every 30 seconds and at every
-leave, so a crash of the worker loses at most the last 30 seconds.
+spawn with full health and mana. The worker saves every 30 seconds, a body
+too, and whenever a character leaves the world, so a crash of the worker loses
+at most the last 30 seconds.
 
 ### Decided
 
@@ -1184,7 +1226,7 @@ The MVP is built in named slices:
 | Vendor and gathering | Complete | One NPC vendor, persistent Gold, shared resource nodes gathered with a tool in the Tool slot, gathering through the item transaction service, and buying from and selling to the vendor |
 | Target-based combat and simple Mob | Complete | Ranged, Melee, and Magic weapons with consumed ammunition or mana, target selection and auto attack, health and Normal damage, authoritative death events, aggressive Mobs with live loot, and a boss with a durable corpse |
 | Death, Recovery, and corpse looting | Complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
-| Gameplay rule areas and presence lifecycle | Deferred until a larger authored map exists | Content-authored Safe City and Open Risk rule areas, instant logout in the Safe City, a five-minute body after a disconnect in the Open Risk area, and reconnect to the same body |
+| Gameplay rule areas and presence lifecycle | Partly complete | Done: a body that stays 20 seconds everywhere after a leave or a lost connection, kept longer by every hit, and reconnect to the same body. Deferred until a larger authored map exists: content-authored Safe City and Open Risk rule areas, instant logout in the Safe City, and a five-minute body in the Open Risk area |
 
 ## Deferred Features
 

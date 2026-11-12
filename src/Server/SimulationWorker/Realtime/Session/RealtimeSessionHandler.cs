@@ -11,9 +11,10 @@ using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Accepts join and leave requests and finalizes them: a join registers the entity,
-// binds the peer and sends the accept, the baseline and the spawns in that order.
-// Loop-confined; GameService calls run in SessionAuthorityOperations.
+// Accepts join and leave requests and finalizes joins: a join registers the entity, or resumes a
+// lingering body of its session, binds the peer and sends the accept, the baseline and the spawns
+// in that order. A leave ends the connection at once: the entity stays as a lingering body while
+// the session goes on. Loop-confined; GameService calls run in SessionAuthorityOperations.
 internal sealed class RealtimeSessionHandler(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
@@ -28,6 +29,7 @@ internal sealed class RealtimeSessionHandler(
     EntityPresenceReplicator presence,
     RealtimeLifecycleHooks hooks,
     RealtimeSessionTeardown teardown,
+    LingeringBodies bodies,
     SessionAuthorityOperations sessionOperations,
     RealtimeOperationTracker operationTracker,
     SimulationWorkerRegistrationLease? registrationLease,
@@ -37,7 +39,8 @@ internal sealed class RealtimeSessionHandler(
     SimulationShardRules? shardRules = null,
     PlayerCombatAuthority? combatAuthority = null) : IRealtimeCompletionHandler
 {
-    // A peer without a session may send one join request, and a joined peer one leave request.
+    // A peer without a session may send one join request, and a joined peer a leave request, which
+    // ends its session on the peer at once.
     public static void AddRoutes(
         RealtimeMessageRoutes routes,
         RealtimeMessageHandler join,
@@ -51,8 +54,7 @@ internal sealed class RealtimeSessionHandler(
         routes.AddAuthenticated(
             RealtimeMessageType.LeaveRequest,
             RealtimeMessageRoutes.UnexpectedMessage,
-            leave,
-            static context => context.LeaveStarted);
+            leave);
     }
 
     public void HandleJoinRequest(in RealtimeInboundMessage message)
@@ -101,7 +103,8 @@ internal sealed class RealtimeSessionHandler(
             return;
         }
 
-        if (context.Session!.SimulationSessionId != parsedSessionId)
+        var session = context.Session!;
+        if (session.SimulationSessionId != parsedSessionId)
         {
             sender.SendControl(
                 peer,
@@ -111,48 +114,49 @@ internal sealed class RealtimeSessionHandler(
             return;
         }
 
-        context.LeaveStarted = true;
-        // Spent arrows and a death that did not commit yet commit before the session ends.
-        if (combatAuthority?.TryDeferLeave(context, context.Session) == true)
+        // A leave follows the rule of a lost connection: while the session goes on, the character
+        // stays in the world as a lingering body, and the session is released when the body goes.
+        // A session that ended already takes its entity with it.
+        var lingers = sessionStore.IsCurrent(session, DateTime.UtcNow)
+            || sessionStore.IsSupersededByReconnect(session);
+        if (lingers)
         {
-            return;
+            teardown.LeaveBody(context, session);
+        }
+        else
+        {
+            teardown.RemoveBoundEntity(context, session, "left_shard");
+            context.Session = null;
+            peers.RefreshPopulationMetrics();
         }
 
-        StartLeave(context, context.Session);
-    }
-
-    public void StartLeave(RealtimePeerContext context, ActiveSimulationSession session)
-    {
-        hooks.RaiseLeaveStarting(context, session);
-        operationTracker.Track(sessionOperations.RunLeaveAsync(this, context, session));
+        LogLeave(context, session, lingers);
+        sender.SendControl(
+            peer,
+            RealtimeProtocol.EncodeLeaveAccepted((ushort)(lingers ? bodies.Seconds : 0)));
+        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     public void Complete(RealtimeOperationResult operation)
     {
-        switch (operation)
+        if (operation is not JoinCompleted joinCompleted)
         {
-            case JoinCompleted joinCompleted:
-                {
-                    var joinStarted = Stopwatch.GetTimestamp();
-                    performanceMetrics.RecordJoinQueueDelay(
-                        Stopwatch.GetElapsedTime(
-                            joinCompleted.EnqueuedTimestamp,
-                            joinStarted));
-                    try
-                    {
-                        ProcessJoinCompleted(joinCompleted);
-                    }
-                    finally
-                    {
-                        performanceMetrics.RecordJoinFinalization(
-                            Stopwatch.GetElapsedTime(joinStarted));
-                    }
+            return;
+        }
 
-                    break;
-                }
-            case LeaveCompleted leaveCompleted:
-                ProcessLeaveCompleted(leaveCompleted);
-                break;
+        var joinStarted = Stopwatch.GetTimestamp();
+        performanceMetrics.RecordJoinQueueDelay(
+            Stopwatch.GetElapsedTime(
+                joinCompleted.EnqueuedTimestamp,
+                joinStarted));
+        try
+        {
+            ProcessJoinCompleted(joinCompleted);
+        }
+        finally
+        {
+            performanceMetrics.RecordJoinFinalization(
+                Stopwatch.GetElapsedTime(joinStarted));
         }
     }
 
@@ -164,7 +168,7 @@ internal sealed class RealtimeSessionHandler(
             && joinCompleted.Context.Session is null
             && joinCompleted.Result.Value is not null)
         {
-            sessionOperations.ReleaseDetachedInBackground(joinCompleted.Result.Value);
+            EndUnboundJoin(joinCompleted.Result.Value);
         }
     }
 
@@ -175,7 +179,7 @@ internal sealed class RealtimeSessionHandler(
             if (completed.Result.Succeeded
                 && completed.Result.Value is not null)
             {
-                sessionOperations.ReleaseDetachedInBackground(completed.Result.Value);
+                EndUnboundJoin(completed.Result.Value);
             }
 
             return;
@@ -254,6 +258,10 @@ internal sealed class RealtimeSessionHandler(
             completed.Context.PeerId,
             entity.NetworkEntityId);
         completed.Context.Session = session;
+
+        // A reconnect resumes the lingering body of its session where it stands, with its
+        // vitals, and its time ends.
+        bodies.Remove(entity.NetworkEntityId);
         admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
         peers.RefreshPopulationMetrics();
         teardown.DisconnectReplacedConnection(binding.ReplacedConnectionId);
@@ -315,60 +323,54 @@ internal sealed class RealtimeSessionHandler(
         }
     }
 
-    private void ProcessLeaveCompleted(LeaveCompleted completed)
+    private void LogLeave(RealtimePeerContext context, ActiveSimulationSession session, bool lingers)
     {
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer))
-        {
-            return;
-        }
-
-        if (completed.Context.Session != completed.Session)
-        {
-            return;
-        }
-
-        if (!completed.Result.Succeeded)
-        {
-            logger.LogWarning(
-                "[SIMULATION] Leave failed for character {CharacterId} in simulation session {SimulationSessionId} with code {Code}: {Message}",
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                completed.Result.Code,
-                completed.Result.Message);
-            completed.Context.LeaveStarted = false;
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeLeaveRejected(
-                    completed.Result.Code!,
-                    completed.Result.Message!));
-            return;
-        }
-
-        if (completed.Session.IsSyntheticBot)
+        if (session.IsSyntheticBot)
         {
             logger.LogDebug(
                 "[SIMULATION] Synthetic bot {CharacterName} left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
-                completed.Session.CharacterName,
-                completed.Session.ShardId,
-                completed.Session.SimulationSessionId,
-                completed.Context.PeerId);
+                session.CharacterName,
+                session.ShardId,
+                session.SimulationSessionId,
+                context.PeerId);
         }
         else
         {
             logger.LogInformation(
                 "[SIMULATION] Account {AccountId} with character {CharacterName} ({CharacterId}) left shard {ShardId}. Simulation session {SimulationSessionId}, UDP peer {PeerId}.",
-                completed.Session.AccountId,
-                completed.Session.CharacterName,
-                completed.Session.CharacterId,
-                completed.Session.ShardId,
-                completed.Session.SimulationSessionId,
-                completed.Context.PeerId);
+                session.AccountId,
+                session.CharacterName,
+                session.CharacterId,
+                session.ShardId,
+                session.SimulationSessionId,
+                context.PeerId);
         }
-        teardown.RemoveBoundEntity(completed.Context, completed.Session, "left_shard");
-        completed.Context.Session = null;
-        peers.RefreshPopulationMetrics();
-        sender.SendControl(peer, RealtimeProtocol.EncodeLeaveAccepted());
-        completed.Context.ScheduleDisconnect(DateTime.UtcNow);
+
+        if (lingers)
+        {
+            logger.LogDebug(
+                "[SIMULATION] The body of character {CharacterId} stays in the world for {Seconds} seconds.",
+                session.CharacterId,
+                bodies.Seconds);
+        }
+    }
+
+    // A join whose peer went before it was bound. A reconnect of a lingering body keeps the body
+    // in the world under the session's new generation, since the session goes on; any other join
+    // releases its session.
+    private void EndUnboundJoin(ActiveSimulationSession session)
+    {
+        if (bodies.TryGet(session.CharacterId, out var body)
+            && body.Session.SimulationSessionId == session.SimulationSessionId
+            && IsCurrentSession(session))
+        {
+            body.Session = session;
+            body.Entity.RefreshSession(session);
+            combatAuthority?.RenewSession(session);
+            return;
+        }
+
+        sessionOperations.ReleaseDetachedInBackground(session);
     }
 
     private bool IsCurrentSession(ActiveSimulationSession session)

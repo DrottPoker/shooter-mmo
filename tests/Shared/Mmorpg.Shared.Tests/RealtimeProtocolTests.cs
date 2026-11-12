@@ -266,10 +266,10 @@ public sealed class RealtimeProtocolTests
     [Fact]
     public void DecoderRejectsTrailingPacketData()
     {
-        var packet = RealtimeProtocol.EncodeLeaveAccepted();
+        var packet = RealtimeProtocol.EncodeLeaveAccepted(20);
         var malformed = packet.Append((byte)1).ToArray();
 
-        var decoded = RealtimeProtocol.TryDecodeLeaveAccepted(malformed, out var error);
+        var decoded = RealtimeProtocol.TryDecodeLeaveAccepted(malformed, out _, out var error);
 
         Assert.False(decoded);
         Assert.Equal("Packet contains trailing data.", error);

@@ -8,8 +8,8 @@ using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // A character's place and vitals over real UDP against the scripted GameService: a join restores
-// them, the checkpoint saves the changed players, and a leave, a disconnect, and a shutdown each
-// send the final state with the release.
+// them, the checkpoint saves the changed players, and a leave and a disconnect send the final state
+// with the release once the body went, as a shutdown does at once.
 public sealed class RealtimeCharacterPersistenceTests
 {
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromMilliseconds(300);
@@ -81,7 +81,7 @@ public sealed class RealtimeCharacterPersistenceTests
     [Fact]
     public async Task ALeaveSendsTheFinalStateWithTheRelease()
     {
-        await using var harness = Create();
+        await using var harness = Create(bodySeconds: 1);
         var character = harness.AddCharacter("Leaving Hero") with
         {
             SavedState = Saved(harness, -4f, 6.5f, yaw: 180f, health: 51, mana: 7)
@@ -93,6 +93,7 @@ public sealed class RealtimeCharacterPersistenceTests
         client.SendLeave(character.SimulationSessionId.ToString("D"));
 
         await harness.PollUntilAsync(() => client.Has(RealtimeMessageType.LeaveAccepted), "the leave");
+        await harness.PollUntilAsync(() => harness.GameService.Releases.Count == 1, "the release after the body");
         var release = Assert.Single(harness.GameService.Releases);
         Assert.Equal(character.SimulationSessionId, release.SimulationSessionId);
         AssertState(release.Request.FinalState, -4f, 6.5f, 180f, 51, 7);
@@ -101,7 +102,7 @@ public sealed class RealtimeCharacterPersistenceTests
     [Fact]
     public async Task ADisconnectSendsTheFinalStateWithTheRelease()
     {
-        await using var harness = Create();
+        await using var harness = Create(bodySeconds: 1);
         var character = harness.AddCharacter("Vanishing Hero") with
         {
             SavedState = Saved(harness, 2f, 3f, yaw: 45f, health: 22, mana: 99)
@@ -117,8 +118,9 @@ public sealed class RealtimeCharacterPersistenceTests
         await harness.PollUntilAsync(() => harness.ReleaseService.FinalStates.Count == 0, "the release to forget the state");
     }
 
-    // The player died and its leave waited for the death to commit; the respawn would place it
-    // at the World spawn with full health and mana, so that is what is saved.
+    // The player died and left before its respawn; a body whose death committed goes at once, and
+    // the respawn would place it at the World spawn with full health and mana, so that is what is
+    // saved.
     [Fact]
     public async Task ADeadPlayerIsSavedAtTheSpawnWithFullVitals()
     {
@@ -259,7 +261,7 @@ public sealed class RealtimeCharacterPersistenceTests
     [Fact]
     public async Task ASyntheticBotHasNoSavedState()
     {
-        await using var harness = Create(checkpoint: true);
+        await using var harness = Create(checkpoint: true, bodySeconds: 1);
         var bot = harness.AddCharacter("Active Bot 1", isSyntheticBot: true);
         await harness.StartAsync();
         var client = await harness.JoinAsync(bot);
@@ -268,6 +270,7 @@ public sealed class RealtimeCharacterPersistenceTests
         client.SendLeave(bot.SimulationSessionId.ToString("D"));
 
         await harness.PollUntilAsync(() => client.Has(RealtimeMessageType.LeaveAccepted), "the leave");
+        await harness.PollUntilAsync(() => harness.GameService.Releases.Count == 1, "the release after the body");
         Assert.Empty(harness.GameService.Checkpoints);
         Assert.Null(Assert.Single(harness.GameService.Releases).Request.FinalState);
     }
@@ -363,13 +366,14 @@ public sealed class RealtimeCharacterPersistenceTests
         Assert.Equal(0, harness.ReleaseService.FinalStates.Count);
     }
 
-    private static RealtimeServerHarness Create(bool checkpoint = false)
+    private static RealtimeServerHarness Create(bool checkpoint = false, int? bodySeconds = null)
     {
         return RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
             // Without regeneration the vitals stay as restored.
             CombatRules = TestRules(),
-            CharacterCheckpointInterval = checkpoint ? CheckpointInterval : null
+            CharacterCheckpointInterval = checkpoint ? CheckpointInterval : null,
+            LingeringBodySeconds = bodySeconds
         });
     }
 

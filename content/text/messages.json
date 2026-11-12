@@ -12,7 +12,7 @@
     },
     {
       "key": "message/account_character_already_active",
-      "text": "Another character on this account is already in the world."
+      "text": "Another character on this account is still in the world. A character stays for a short while after it leaves; try again in a moment."
     },
     {
       "key": "message/account_not_found",
@@ -329,10 +329,6 @@
     {
       "key": "message/join_timeout",
       "text": "The shard did not answer in time. Try again."
-    },
-    {
-      "key": "message/leave_failed",
-      "text": "The shard could not let the character leave. Try again."
     },
     {
       "key": "message/network_error",

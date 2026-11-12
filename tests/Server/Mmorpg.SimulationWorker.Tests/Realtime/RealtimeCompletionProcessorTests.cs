@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 
@@ -19,7 +20,7 @@ public sealed class RealtimeCompletionProcessorTests
         var (context, _) = fixture.AddPeer(1);
         for (var index = 0; index < 3; index++)
         {
-            fixture.Completions.Post(handler, CreateLeave(context));
+            fixture.Completions.Post(handler, CreateJoin(context));
         }
 
         fixture.Processor.ProcessCompleted(TimeSpan.Zero);
@@ -42,9 +43,9 @@ public sealed class RealtimeCompletionProcessorTests
         var second = new RecordingCompletionHandler("second", order);
         var (context, _) = fixture.AddPeer(1);
 
-        fixture.Completions.Post(first, CreateLeave(context));
-        fixture.Completions.Post(second, CreateLeave(context));
-        fixture.Completions.Post(first, CreateLeave(context));
+        fixture.Completions.Post(first, CreateJoin(context));
+        fixture.Completions.Post(second, CreateJoin(context));
+        fixture.Completions.Post(first, CreateJoin(context));
         fixture.Processor.ProcessCompleted(TimeSpan.FromMinutes(1));
 
         Assert.Equal(["first", "second", "first"], order);
@@ -64,8 +65,8 @@ public sealed class RealtimeCompletionProcessorTests
             OnFailed = () => Assert.Empty(failedPeer.Sent)
         };
 
-        fixture.Completions.Post(failing, CreateLeave(failedContext));
-        fixture.Completions.Post(failing, CreateLeave(otherContext));
+        fixture.Completions.Post(failing, CreateJoin(failedContext));
+        fixture.Completions.Post(failing, CreateJoin(otherContext));
         fixture.Processor.ProcessCompleted(TimeSpan.FromMinutes(1));
 
         Assert.Equal(["failing:failed", "failing"], order);
@@ -74,7 +75,7 @@ public sealed class RealtimeCompletionProcessorTests
         Assert.Equal(
             "[SIMULATION] Could not process a completed {OperationType} for UDP peer {PeerId}.",
             entry.Template);
-        Assert.Contains("LeaveCompleted", entry.Message, StringComparison.Ordinal);
+        Assert.Contains("JoinCompleted", entry.Message, StringComparison.Ordinal);
         var sent = Assert.Single(failedPeer.Sent);
         Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(sent.Data, out var reason, out _));
@@ -92,19 +93,19 @@ public sealed class RealtimeCompletionProcessorTests
         var (_, currentPeer) = fixture.AddPeer(1);
         var failing = new RecordingCompletionHandler { ThrowFor = staleContext };
 
-        fixture.Completions.Post(failing, CreateLeave(staleContext));
+        fixture.Completions.Post(failing, CreateJoin(staleContext));
         fixture.Processor.ProcessCompleted(TimeSpan.FromMinutes(1));
 
         Assert.True(failing.FailureNotified);
         Assert.Empty(currentPeer.Sent);
     }
 
-    private static LeaveCompleted CreateLeave(RealtimePeerContext context)
+    private static JoinCompleted CreateJoin(RealtimePeerContext context)
     {
-        return new LeaveCompleted(
+        return new JoinCompleted(
             context,
-            RealtimeTestSessions.Create(),
-            SimulationSessionReleaseResult.Success());
+            SimulationJoinResult<ActiveSimulationSession>.Success(RealtimeTestSessions.Create()),
+            0);
     }
 
     private sealed class ProcessorFixture

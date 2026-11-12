@@ -71,7 +71,7 @@ public sealed class RealtimeProtocolRejectionTests
                 client.Send(WithTrailingByte(RealtimeProtocol.EncodeJoinRequest("ticket")));
                 break;
             case "server_message_before_join":
-                client.Send(RealtimeProtocol.EncodeLeaveAccepted());
+                client.Send(RealtimeProtocol.EncodeLeaveAccepted(0));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
@@ -253,7 +253,7 @@ public sealed class RealtimeProtocolRejectionTests
                 client.SendJoin(character.Ticket);
                 break;
             case "server_message":
-                client.Send(RealtimeProtocol.EncodeLeaveAccepted());
+                client.Send(RealtimeProtocol.EncodeLeaveAccepted(0));
                 break;
             case "leave_unordered":
                 client.Send(
@@ -285,35 +285,25 @@ public sealed class RealtimeProtocolRejectionTests
         await AssertRejectedAsync(harness, client, "invalid_world_interaction");
     }
 
+    // A leave ends the peer's session at once and schedules its disconnect, so a second leave
+    // right behind it is dropped instead of answered.
     [Fact]
-    public async Task SecondLeaveWhileTheFirstIsPendingIsRejected()
+    public async Task ASecondLeaveRightAfterTheFirstIsDropped()
     {
         await using var harness = RealtimeServerHarness.Create();
         var character = harness.AddCharacter("Leaving Hero");
-        var gate = new TestGate();
-        harness.GameService.OnRelease = async (sessionId, _, _) =>
-        {
-            await gate.WaitAsync();
-            return harness.GameService.DefaultRelease(sessionId);
-        };
         await harness.StartAsync();
-        try
-        {
-            var client = await harness.JoinAsync(character);
-            client.SendLeave(character.SimulationSessionId.ToString("D"));
-            await harness.PollUntilAsync(() => gate.HasEntered, "the leave to start");
+        var client = await harness.JoinAsync(character);
 
-            client.SendLeave(character.SimulationSessionId.ToString("D"));
+        client.SendLeave(character.SimulationSessionId.ToString("D"));
+        client.SendLeave(character.SimulationSessionId.ToString("D"));
 
-            await AssertRejectedAsync(harness, client, "unexpected_message");
-            Assert.Equal(
-                "The message is not valid for the current connection state.",
-                client.ServerDisconnect!.Message);
-        }
-        finally
-        {
-            gate.Release();
-        }
+        await harness.PollUntilAsync(
+            () => client.Has(RealtimeMessageType.LeaveAccepted) && client.IsDisconnected,
+            "the leave and the disconnect");
+        Assert.Equal(1, client.Count(RealtimeMessageType.LeaveAccepted));
+        Assert.Null(client.ServerDisconnect);
+        Assert.Empty(client.LeaveRejections);
     }
 
     [Theory]

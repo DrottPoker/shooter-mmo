@@ -287,10 +287,13 @@ public sealed class SimulationBotSessionTests
             1,
             Guid.NewGuid())));
 
-        bot.Receive(VectorOf(RealtimeMessageType.LeaveAccepted));
+        bot.Receive(RealtimeProtocol.EncodeLeaveAccepted(20));
         bot.Session.OnDisconnected("RemoteConnectionClose");
 
         AssertState(bot.Session, SimulationBotClientState.Completed);
+
+        // The body stays as long, and with it the bot's session.
+        Assert.Equal(20, bot.Session.Capture().BodySeconds);
     }
 
     [Fact]

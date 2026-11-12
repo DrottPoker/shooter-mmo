@@ -61,6 +61,8 @@ public interface ISimulationBotRealtimeObserver
     void OnCorpseViewClosed(RealtimeCorpseViewClosed closed);
 }
 
+// BodySeconds is how long the worker keeps the bot's body in the world after a completed leave,
+// during which the bot's session stays active.
 public sealed record SimulationBotClientSnapshot(
     int BotIndex,
     string CharacterName,
@@ -77,4 +79,5 @@ public sealed record SimulationBotClientSnapshot(
     long UnacknowledgedInputsDropped,
     uint LatestServerTick,
     string? FailureCode,
-    string? FailureMessage);
+    string? FailureMessage,
+    int BodySeconds = 0);

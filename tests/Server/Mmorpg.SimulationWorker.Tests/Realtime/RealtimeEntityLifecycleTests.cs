@@ -214,7 +214,11 @@ public sealed class RealtimeEntityLifecycleTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(10),
             "127.0.0.1:6379",
-            TimeSpan.FromSeconds(1));
+            TimeSpan.FromSeconds(1))
+        {
+            // The body of a player that left stays a second, so its despawn follows soon.
+            LingeringBodySeconds = 1
+        };
     }
 
     private static int FindAvailableUdpPort()
@@ -344,6 +348,7 @@ public sealed class RealtimeEntityLifecycleTests
                     case RealtimeMessageType.LeaveAccepted:
                         Assert.True(RealtimeProtocol.TryDecodeLeaveAccepted(
                             packet,
+                            out _,
                             out var leaveError), leaveError);
                         leaveAccepted.TrySetResult();
                         break;

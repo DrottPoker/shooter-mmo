@@ -52,7 +52,7 @@ internal static class RealtimeServerComposition
         ItemFeature.Add(core, dependencies.Items, playerCombat);
         var corpses = new CorpseFeature(core, dependencies.Corpses, appearance, playerCombat);
         var worldActors = new WorldActorFeature(core, dependencies.WorldActors, quests, playerCombat);
-        var session = new SessionFeature(core, playerCombat);
+        SessionFeature.Add(core, playerCombat);
         var combat = new CombatFeature(core, dependencies.Combat, playerCombat, quests, corpses, worldActors);
         QuestFeature.Add(core, quests, playerCombat);
         AdminFeature.Add(core, combat);
@@ -63,8 +63,6 @@ internal static class RealtimeServerComposition
         // The cycles that constructor arguments cannot close, each closed by a settable property.
         // Presence sends a spawned player's look, and the appearance replicator sends through presence.
         core.Presence.Appearances = appearance.Replicator;
-        // Combat starts a leave it deferred, and the session handler defers leaves to combat.
-        playerCombat.Authority.StartLeave = session.Handler.StartLeave;
         // The world actor driver activates and respawns the Mobs of combat, which takes its timers.
         worldActors.Driver.Activated = combat.Combat.RegisterWorldActors;
         worldActors.Driver.RespawnMob = combat.MobDeaths.Respawn;
@@ -78,6 +76,7 @@ internal static class RealtimeServerComposition
             core.Sender,
             core.SessionStore,
             core.Teardown,
+            core.Bodies,
             core.SessionOperations,
             networkMetrics,
             logger);
@@ -90,10 +89,8 @@ internal static class RealtimeServerComposition
             core.WorldInteractionLeases,
             core.SessionStore,
             core.Teardown,
-            core.SessionOperations,
             networkMetrics,
-            logger,
-            playerCombat.Authority);
+            logger);
         AddShutdownSteps(core, host.ReleaseService.CharacterStores, supervisor);
         var registries = core.Registries;
         return new RealtimeServer(
@@ -144,6 +141,7 @@ internal static class RealtimeServerComposition
             networkMetrics,
             clock,
             registries.Hooks);
+        var bodies = new LingeringBodies(config.LingeringBodySeconds, config.MovementSimulation.TickRateHz, clock);
         return new RealtimeCoreServices
         {
             Config = config,
@@ -197,7 +195,9 @@ internal static class RealtimeServerComposition
                 host.ConnectionBindings,
                 host.EntityRegistry,
                 networkMetrics,
-                registries.Hooks)
+                registries.Hooks,
+                bodies),
+            Bodies = bodies
         };
     }
 

@@ -6,10 +6,10 @@ using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Detaches peers from sessions and entities: leave, invalidation, reconnect replacement
-// and authority failures. Every path releases the corpse view and interaction lease the
-// peer held, and a removed entity takes its character's state out of the registered
-// per-character stores. Loop-confined.
+// Detaches peers from sessions and entities: a connection that ends while its session goes on,
+// invalidation, reconnect replacement, authority failures, and the end of a lingering body.
+// Every path releases the corpse view and interaction lease the peer held, and a removed entity
+// takes its character's state out of the registered per-character stores. Loop-confined.
 internal sealed class RealtimeSessionTeardown(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -21,7 +21,8 @@ internal sealed class RealtimeSessionTeardown(
     ConnectionEntityBindingRegistry connectionBindings,
     SimulationEntityRegistry entityRegistry,
     RealtimeNetworkMetrics networkMetrics,
-    RealtimeLifecycleHooks hooks)
+    RealtimeLifecycleHooks hooks,
+    LingeringBodies bodies)
 {
     public void RemoveBoundEntity(
         RealtimePeerContext context,
@@ -48,15 +49,50 @@ internal sealed class RealtimeSessionTeardown(
         hooks.RaisePlayerRemoved(context, session, entityId);
     }
 
-    public void DetachSupersededPeer(RealtimePeerContext context)
+    // The connection of a joined player ended while its session goes on: by a leave, a lost or
+    // kicked connection, or a reconnect from another client that takes the session over. The
+    // peer lets go of everything it held and of the session, and the entity stays in the world
+    // as a lingering body: it stops where it stands, and the connection-ended hooks let the
+    // features drop what only a connected player does. False when the peer held no entity of the
+    // session.
+    public bool LeaveBody(RealtimePeerContext context, ActiveSimulationSession session)
     {
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.AuthorityOperationQueue.Clear();
-        connectionBindings.UnbindConnection(context.PeerId, out _);
-        presence.ForgetConnection(context.PeerId);
         context.Session = null;
         peers.RefreshPopulationMetrics();
+        var bound = connectionBindings.UnbindConnection(context.PeerId, out var entityId);
+        presence.ForgetConnection(context.PeerId);
+        if (!bound
+            || !entityRegistry.TryGetPlayer(entityId, out var entity)
+            || entity!.Session.SimulationSessionId != session.SimulationSessionId)
+        {
+            return false;
+        }
+
+        entity.Movement.Halt();
+        bodies.Begin(entity, session);
+        hooks.RaiseConnectionEnded(context, session, entity);
+        return true;
+    }
+
+    // Takes a lingering body out of the world, as RemoveBoundEntity does for a player with a
+    // peer. Whoever ends the body decides whether its session is released.
+    public void RemoveBody(LingeringBody body, string reason)
+    {
+        var entityId = body.Entity.NetworkEntityId;
+        var session = body.Session;
+        bodies.Remove(entityId);
+        if (!entityRegistry.RemovePlayer(entityId, session.SimulationSessionId, out _))
+        {
+            return;
+        }
+
+        characterStores.Remove(session.CharacterId, session.SimulationSessionId);
+        presence.BroadcastEntityDespawn(entityId, reason, null);
+        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
+        hooks.RaisePlayerRemoved(RealtimePeerContext.System, session, entityId);
     }
 
     public void DisconnectReplacedConnection(int? replacedConnectionId)
@@ -87,6 +123,7 @@ internal sealed class RealtimeSessionTeardown(
 
     public void RemoveReplacedEntity(PlayerSimulationEntity replacedEntity)
     {
+        bodies.Remove(replacedEntity.NetworkEntityId);
         characterStores.Remove(
             CharacterSessionRemovals.ReplacedEntity,
             replacedEntity.Session.CharacterId,

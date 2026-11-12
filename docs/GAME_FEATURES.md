@@ -102,6 +102,14 @@ character, progression, and statistics are not implemented.
   then returns to CharacterSelect.
 - An unexpected disconnect returns the player to CharacterSelect, and an expired
   account session returns it to LoginMenu.
+- After a leave or a lost connection the character's body stays in the world
+  for 20 seconds, and longer while it is attacked: others see it standing,
+  Mobs and players can attack and kill it, and entering the same character
+  again in time takes it over where it stands, with its health and mana. While
+  it stands, entering another character of the account shows `Another
+  character on this account is still in the world.` with the hint to try again
+  in a moment. The rules are in
+  [The Body That Stays](GAME_DESIGN.md#the-body-that-stays).
 - A character enters where it left the World, facing the same way, with the
   health and mana it had, after a leave, a logout, a disconnect, or a worker
   restart. In another World, or after that World's collision changed, it enters

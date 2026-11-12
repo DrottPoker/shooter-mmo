@@ -7,7 +7,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs once per loop iteration: completes delayed disconnects, drops peers that stop
 // acknowledging, times out joins, detaches invalidated or superseded sessions and
-// releases sessions that no peer owns. Loop-confined.
+// releases sessions that neither a peer nor a lingering body owns. Loop-confined.
 internal sealed class RealtimePeerSupervisor(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
@@ -15,6 +15,7 @@ internal sealed class RealtimePeerSupervisor(
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
     RealtimeSessionTeardown teardown,
+    LingeringBodies bodies,
     SessionAuthorityOperations sessionOperations,
     RealtimeNetworkMetrics networkMetrics,
     ILogger logger)
@@ -75,18 +76,18 @@ internal sealed class RealtimePeerSupervisor(
                 continue;
             }
 
-            var isCurrentSession = IsCurrentSession(activeSession);
-            if (ShouldEnforceSessionInvalidation(context.LeaveStarted, isCurrentSession))
+            if (!IsCurrentSession(activeSession))
             {
                 if (sessionStore.IsSupersededByReconnect(activeSession))
                 {
-                    // The reconnecting client owns the entity and carry state now.
+                    // The reconnecting client takes the entity and carry state over; until its
+                    // join binds them, the entity stands as a lingering body.
                     sender.SendControl(
                         peer,
                         RealtimeProtocol.EncodeServerDisconnect(
                             "session_reconnected",
                             "This character connected from another client."));
-                    teardown.DetachSupersededPeer(context);
+                    teardown.LeaveBody(context, activeSession);
                     context.ScheduleDisconnect(now);
                     continue;
                 }
@@ -112,7 +113,8 @@ internal sealed class RealtimePeerSupervisor(
     }
 
     // Safety net: a local session that no peer has owned for a while is released, so a
-    // missed cleanup path can never keep renewing a lease for a player who is gone.
+    // missed cleanup path can never keep renewing a lease for a player who is gone. A lingering
+    // body owns its session without a peer on purpose, and its own time ends it.
     public void ReleaseOrphanedSessions()
     {
         var now = DateTime.UtcNow;
@@ -131,7 +133,7 @@ internal sealed class RealtimePeerSupervisor(
         foreach (var session in sessionStore.ListActiveSessions())
         {
             activeSessionIds.Add(session.SimulationSessionId);
-            if (boundSessionIds.Contains(session.SimulationSessionId))
+            if (boundSessionIds.Contains(session.SimulationSessionId) || bodies.Holds(session))
             {
                 unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
                 continue;
@@ -163,14 +165,6 @@ internal sealed class RealtimePeerSupervisor(
                 unboundSessionsSinceUtc.Remove(sessionId);
             }
         }
-    }
-
-    internal static bool ShouldEnforceSessionInvalidation(
-        bool leaveStarted,
-        bool isCurrentSession)
-    {
-        // Leave completion owns cleanup after the release operation removes the local lease.
-        return !leaveStarted && !isCurrentSession;
     }
 
     private bool IsCurrentSession(ActiveSimulationSession session)

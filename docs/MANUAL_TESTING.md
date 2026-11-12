@@ -354,11 +354,16 @@ Expected result:
 1. Press F2 and click `Leave Shard`.
 2. Click `Log Out`.
 
-Expected result: `Leave Shard` gets the server's acknowledgement, closes UDP,
-and returns to CharacterSelect with the same character and shard chosen, and
-SimulationWorker logs the released simulation session. `Log Out` revokes the
-GameService session before the client clears its local state and returns to
-LoginMenu, whose `Log In` tab shows the account's login name.
+Expected result: `Leave Shard` gets the server's acknowledgement at once,
+closes UDP, and returns to CharacterSelect with the same character and shard
+chosen, and SimulationWorker logs the leave. The character's body stays in the
+world, as [The Body That Stays](#the-body-that-stays) describes. `Log Out`
+revokes the GameService session before the client clears its local state and
+returns to LoginMenu, whose `Log In` tab shows the account's login name. The
+revoked session ends the body within the 10-second session heartbeat, and the
+worker logs `The body of character <name> (<character-id>) left shard
+local-shard-1: session_revoked.` with its simulation session; without the
+logout the body leaves 20 seconds after the leave with `left_shard` instead.
 
 ### Place And Vitals Across A Logout
 
@@ -370,14 +375,16 @@ start the second worker with the `StressArena` launch profile too.
 2. Lose some health, for example by letting a Feral Wolf bite you, and spend
    some mana with a staff if you carry one. Walk out of combat and note the
    health and mana in the combat HUD.
-3. Press F2, click `Leave Shard`, and click `Enter World` again.
+3. Press F2, click `Leave Shard`, wait at least 25 seconds, so the body left
+   the world and its state was saved with the release, and click `Enter World`
+   again.
 4. Read the stored row through [Look Into The Database](#look-into-the-database)
    with the query `select world_id, position_x, position_z, yaw_degrees,
    health, mana, session_sequence, saved_at from character_simulation_states;`.
 5. While the character stands somewhere else away from the spawn, stop the
    worker with `Ctrl+C`, start it again, and click `Enter World` again.
-6. Leave and enter `Local Stress Arena` with the same character, then leave
-   and enter `Local Shard 1` again.
+6. Leave and, after 25 seconds, enter `Local Stress Arena` with the same
+   character, then leave and, after 25 seconds, enter `Local Shard 1` again.
 7. Die, for example to the wolves, press F2 and click `Leave Shard` while
    `You died` counts down, and enter again.
 
@@ -399,6 +406,58 @@ Expected result:
   mana, as a respawn would leave it.
 - A character that never entered a World enters at the spawn with full health
   and mana.
+
+### The Body That Stays
+
+Needs the stack, the [second client](#add-a-second-client), two accounts with a
+character each, the first one with a second character too, and a bow and
+arrows or a staff for the second account's character. A worker started with
+`dotnet run --project src/Server/SimulationWorker -- --SimulationWorker:LingeringBodySeconds=60`
+keeps a body a minute instead of 20 seconds, which leaves more time to watch,
+and the steps below then have a minute where they say 20 seconds; restart the
+worker without the option afterwards.
+
+1. Join `Local Shard 1` with the first account in the Editor and with the
+   second account in the standalone player. Walk both to the wolf woods
+   southwest of the town, and keep the standalone player a little away from the
+   wolves.
+2. With the Editor character next to a wolf, press F2 and click `Leave Shard`.
+   Watch the place from the standalone player.
+3. In the Editor, enter the World again with the same character within 20
+   seconds of the leave.
+4. Leave again with the Editor character, this time far from the wolves, and
+   attack its body from the standalone player every few seconds for longer than
+   20 seconds; then stop.
+5. Leave once more and, within 20 seconds, choose the account's other character
+   and click `Enter World`.
+6. Join with the Editor character, stand still somewhere, and close the Editor
+   Play Mode without leaving, so the connection simply ends; then enter the
+   World again from Play Mode within 20 seconds.
+
+Expected result:
+
+- After step 2 the Editor returns to CharacterSelect at once, while the
+  standalone player still sees the character standing where it left: it does
+  not move, its health bar stays, and the wolves attack it. Each bite keeps it
+  in the world. It either dies, leaves a corpse that the standalone player can
+  loot under the usual rules, and disappears without a respawn, or, when the
+  wolves leave it alone, it disappears 20 seconds after the last bite. The
+  worker logs `The body of character <name> (<character-id>) left shard
+  local-shard-1: died.` or `...: left_shard.`, each with its simulation
+  session.
+- In step 3, entering within the time resumes the body: the character stands
+  where the body stood, with the health and mana the body had, and the
+  standalone player never sees it disappear and appear again. A body that died
+  before step 3 is gone, and the character enters at the World spawn with full
+  health and mana instead.
+- In step 4 the body stays as long as the attacks go on and disappears 20
+  seconds after the last hit, and the next entry starts at its place with the
+  health it had left.
+- In step 5 CharacterSelect reads `Another character on this account is still
+  in the world. A character stays for a short while after it leaves; try again
+  in a moment.`, and after the body is gone `Enter World` works.
+- In step 6 the body stays as after a leave, and entering again within 20
+  seconds resumes it where it stood.
 
 ### Remembered Choices And Shortcuts
 
@@ -588,8 +647,9 @@ The client shows its own text for every code that a server sends, as
    10-second realtime timeout.
 3. Start SimulationWorker again, join, and click `Leave Shard`. Expected result:
    only one leave runs, CharacterSelect loads after the acknowledgement, the
-   worker logs the released session, and a snapshot that arrives during the
-   leave causes no `invalid_snapshot_delivery` error.
+   worker logs the leave and, once the body left, the end of the body, and a
+   snapshot that arrives during the leave causes no `invalid_snapshot_delivery`
+   error.
 4. Join again and stop SimulationWorker while the World scene is open. Expected
    result: the client clears its shard state and returns to CharacterSelect.
 5. While the client shows CharacterSelect, log into the same account

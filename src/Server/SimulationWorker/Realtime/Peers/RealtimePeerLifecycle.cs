@@ -19,10 +19,8 @@ internal sealed class RealtimePeerLifecycle(
     WorldInteractionLeaseRegistry? worldInteractionLeases,
     ActiveSimulationSessionStore sessionStore,
     RealtimeSessionTeardown teardown,
-    SessionAuthorityOperations sessionOperations,
     RealtimeNetworkMetrics networkMetrics,
-    ILogger logger,
-    PlayerCombatAuthority? combatAuthority = null)
+    ILogger logger)
 {
     public void OnPeerConnected(int peerId, IPAddress address)
     {
@@ -36,6 +34,9 @@ internal sealed class RealtimePeerLifecycle(
             address);
     }
 
+    // A lost, timed out, or kicked connection leaves the character in the world as a lingering
+    // body while its session goes on, also when a reconnect from another client takes the
+    // session over. A session that ended already takes its entity with it.
     public void OnPeerDisconnected(int peerId, DisconnectReason reason)
     {
         admissionGuard.OnPeerDisconnected(peerId);
@@ -50,23 +51,17 @@ internal sealed class RealtimePeerLifecycle(
         networkMetrics.SetActivePeers(peers.Count);
         peers.RefreshPopulationMetrics();
 
-        if (context.Session is not null)
+        if (context.Session is { } session)
         {
-            if (sessionStore.IsSupersededByReconnect(context.Session))
+            if (sessionStore.IsCurrent(session, DateTime.UtcNow)
+                || sessionStore.IsSupersededByReconnect(session))
             {
-                teardown.DetachSupersededPeer(context);
+                teardown.LeaveBody(context, session);
             }
             else
             {
-                // Spent arrows and a death that did not commit yet keep the session until
-                // they committed; combat then releases it.
-                var session = context.Session;
-                var deferred = combatAuthority?.TryDeferRelease(context, session) == true;
                 teardown.RemoveBoundEntity(context, session, "connection_closed");
-                if (!deferred)
-                {
-                    sessionOperations.ReleaseDetachedInBackground(session);
-                }
+                context.Session = null;
             }
         }
 

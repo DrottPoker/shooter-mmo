@@ -347,8 +347,10 @@ public sealed class RealtimeCombatTests
         Assert.Single(harness.GameService.PlayerDeaths);
     }
 
+    // The arrows that the archer shot before it left commit at once, without waiting for its body
+    // to go; the session is released only after the body went.
     [Fact]
-    public async Task ALeaveCommitsUncommittedShotsBeforeTheSessionIsReleased()
+    public async Task ALeaveCommitsUncommittedShotsWithoutWaitingForTheBody()
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
@@ -384,9 +386,14 @@ public sealed class RealtimeCombatTests
         await harness.PollUntilAsync(
             () => archerClient.Has(RealtimeMessageType.LeaveAccepted),
             "the leave");
+        await harness.PollUntilAsync(
+            () => harness.GameService.AmmunitionConsumptions.Count == 1,
+            "the batch of the body");
         var batch = Assert.Single(harness.GameService.AmmunitionConsumptions);
         Assert.True(batch.Quantity >= 1);
         Assert.Equal(0, releasesAtConsumption);
+        Assert.Equal(0, harness.GameService.ReleaseCount);
+        Assert.Equal(2, harness.EntityRegistry.PlayerCount);
     }
 
     // A batch that finished while the worker stopped is settled, so the shots fired after
@@ -442,8 +449,10 @@ public sealed class RealtimeCombatTests
         Assert.True(lastBatch.Quantity >= 2);
     }
 
+    // The arrows that the archer shot before its connection ended commit at once, without waiting
+    // for its body to go.
     [Fact]
-    public async Task ADisconnectCommitsUncommittedShotsBeforeTheSessionIsReleased()
+    public async Task ADisconnectCommitsUncommittedShotsWithoutWaitingForTheBody()
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
@@ -476,10 +485,11 @@ public sealed class RealtimeCombatTests
         archerClient.Stop();
 
         await harness.PollUntilAsync(
-            () => harness.GameService.ReleaseCount >= 1,
-            "the detached release");
-        Assert.Single(harness.GameService.AmmunitionConsumptions);
+            () => harness.GameService.AmmunitionConsumptions.Count == 1,
+            "the batch of the body");
         Assert.Equal(0, releasesAtConsumption);
+        Assert.Equal(0, harness.GameService.ReleaseCount);
+        Assert.Equal(2, harness.EntityRegistry.PlayerCount);
     }
 
     [Fact]

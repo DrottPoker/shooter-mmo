@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "75f9704f7dc9944b6a11f8282ed5e98c8b74f87479d25f3753c08ba0dd52704d",
+  "revision": "f888fbdabb511288eb88a93af3ae5400a070bbe29e39a23fc10ff2a741217b65",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -14,7 +14,7 @@
     },
     {
       "key": "message/account_character_already_active",
-      "text": "Another character on this account is already in the world."
+      "text": "Another character on this account is still in the world. A character stays for a short while after it leaves; try again in a moment."
     },
     {
       "key": "message/account_not_found",
@@ -331,10 +331,6 @@
     {
       "key": "message/join_timeout",
       "text": "The shard did not answer in time. Try again."
-    },
-    {
-      "key": "message/leave_failed",
-      "text": "The shard could not let the character leave. Try again."
     },
     {
       "key": "message/network_error",

@@ -8,9 +8,10 @@ using static Mmorpg.SimulationWorker.Tests.Realtime.RealtimeCombatTests;
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // A credited Mob kill that the player's quest log asks for commits in the player's lane, at the
-// place it took at the kill, also across a reconnect. It asks again with the same operation after
-// an uncertain answer and commits before the player's session or the worker ends. The quests it
-// advanced reach the player without an operation.
+// place it took at the kill, also across a reconnect and for the lingering body of a player who
+// left. It asks again with the same operation after an uncertain answer and commits before the
+// player's session or the worker ends. The quests it advanced reach the player without an
+// operation.
 public sealed class RealtimeQuestCreditTests
 {
     private const string Wolves = "quest.fixture.wolves";
@@ -121,8 +122,10 @@ public sealed class RealtimeQuestCreditTests
         Assert.Equal(1, log!.ActiveQuests[Wolves].Progress["wolves"]);
     }
 
+    // A leave is accepted at once and leaves a body; the credit of the last kill still commits
+    // without a peer, and the session is not released before it.
     [Fact]
-    public async Task ALeaveWaitsForTheCreditOfTheLastKill()
+    public async Task ALeaveIsAcceptedAtOnceAndTheCreditOfTheLastKillStillCommits()
     {
         await using var harness = Create();
         var archer = AddArcher(harness, "Leaving Hunter");
@@ -145,14 +148,15 @@ public sealed class RealtimeQuestCreditTests
             await harness.PollUntilAsync(() => gate.HasEntered, "the credit to reach GameService");
 
             client.SendLeave(client.JoinAccepted!.SimulationSessionId);
-            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
-            Assert.False(client.Has(RealtimeMessageType.LeaveAccepted));
+            await harness.PollUntilAsync(() => client.Has(RealtimeMessageType.LeaveAccepted), "the leave");
             Assert.Equal(0, harness.GameService.ReleaseCount);
 
             gate.Release();
-            await harness.PollUntilAsync(() => client.Has(RealtimeMessageType.LeaveAccepted), "the leave");
+            await harness.PollUntilAsync(() => Volatile.Read(ref releasesAtCredit) >= 0, "the credit to commit");
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
             Assert.Equal(0, releasesAtCredit);
             Assert.Single(harness.GameService.QuestOperations);
+            Assert.Equal(0, harness.GameService.ReleaseCount);
         }
         finally
         {
@@ -160,10 +164,10 @@ public sealed class RealtimeQuestCreditTests
         }
     }
 
-    // A player who started to leave left before the kill, so a wolf that the player tagged and
-    // another player killed while the leave waited credits nobody, and the leave goes through.
+    // A player who left stays in the world as a body, so a wolf that it tagged and another player
+    // killed counts for its quests, committed after the arrows it shot.
     [Fact]
-    public async Task AKillAfterTheTaggerStartedToLeaveCountsForNobody()
+    public async Task AKillOfAMobThatALingeringBodyTaggedCountsForTheBody()
     {
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
@@ -181,7 +185,7 @@ public sealed class RealtimeQuestCreditTests
             ScriptedGameServiceHandler.QuestLog(request.CharacterId, 3, Hunting(0)));
         harness.GameService.OnQuestOperation = (_, request, _) => Task.FromResult(KillCounted(request, 4, 1));
 
-        // The tagger's spent arrows commit only once the gate opens, so its leave waits for them.
+        // The arrows of the tagger commit only once the gate opens, so the credit waits for them.
         harness.GameService.OnAmmunitionConsumption = async (simulationSessionId, request, _) =>
         {
             if (simulationSessionId == tagger.SimulationSessionId)
@@ -204,19 +208,21 @@ public sealed class RealtimeQuestCreditTests
                 () => States(finisherClient).Any(value => value.EntityId == wolf.EntityId && value.TaggedByEntityId == taggerEntityId),
                 "the tagger to tag the wolf");
             taggerClient.SendLeave(taggerClient.JoinAccepted!.SimulationSessionId);
-            await harness.PollUntilAsync(() => gate.HasEntered, "the leave to wait for the tagger's arrows");
+            await harness.PollUntilAsync(() => taggerClient.Has(RealtimeMessageType.LeaveAccepted), "the leave");
+            await harness.PollUntilAsync(() => gate.HasEntered, "the body to commit the arrows of the tagger");
 
             finisherClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
             await harness.PollUntilAsync(
                 () => Events(finisherClient).Any(value => value.Kind == RealtimeCombatEventKind.Died && value.TargetEntityId == wolf.EntityId),
                 "the finisher to kill the wolf");
-            Assert.False(taggerClient.Has(RealtimeMessageType.LeaveAccepted));
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+            Assert.Empty(harness.GameService.QuestOperations);
 
             gate.Release();
-            await harness.PollUntilAsync(() => taggerClient.Has(RealtimeMessageType.LeaveAccepted), "the leave");
-            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
-
-            Assert.Empty(harness.GameService.QuestOperations);
+            await harness.PollUntilAsync(() => harness.GameService.QuestOperations.Count == 1, "the credit of the body");
+            var credit = Assert.Single(harness.GameService.QuestOperations);
+            Assert.Equal(("credit_quest_kill", tagger.CharacterId), (credit.OperationKind, credit.CharacterId));
+            Assert.Equal(0, harness.GameService.ReleaseCount);
         }
         finally
         {
@@ -414,9 +420,10 @@ public sealed class RealtimeQuestCreditTests
         }
     }
 
-    // A death while a leave waits for a credit keeps the leave, which follows the death.
+    // A body that dies while the credit of its last kill is in flight commits the credit and then
+    // its death, in the order of its lane, and goes once its death committed.
     [Fact]
-    public async Task ALeaveThatWaitsForACreditSurvivesTheCharactersDeath()
+    public async Task ABodyThatDiesWhileItsCreditIsInFlightCommitsBothAndGoes()
     {
         await using var harness = Create(playerVersusPlayer: true);
         var hunter = AddArcher(harness, "Doomed Hunter");
@@ -439,6 +446,7 @@ public sealed class RealtimeQuestCreditTests
             hunterClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), wolf.EntityId));
             await harness.PollUntilAsync(() => gate.HasEntered, "the credit to reach GameService");
             hunterClient.SendLeave(hunterClient.JoinAccepted!.SimulationSessionId);
+            await harness.PollUntilAsync(() => hunterClient.Has(RealtimeMessageType.LeaveAccepted), "the leave");
             var hunterEntityId = hunterClient.JoinAccepted.ControlledEntityId;
             await harness.PollUntilAsync(
                 () => States(rivalClient).Any(value => value.EntityId == hunterEntityId),
@@ -447,13 +455,21 @@ public sealed class RealtimeQuestCreditTests
             rivalClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), hunterEntityId));
             await harness.PollUntilAsync(
                 () => Events(rivalClient).Any(value => value.Kind == RealtimeCombatEventKind.Died && value.TargetEntityId == hunterEntityId),
-                "the hunter to die");
-            Assert.False(hunterClient.Has(RealtimeMessageType.LeaveAccepted));
+                "the body to die");
+            await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+            Assert.Empty(harness.GameService.PlayerDeaths);
+            Assert.DoesNotContain(rivalClient.Despawns, despawn => despawn.EntityId == hunterEntityId);
 
             gate.Release();
-            await harness.PollUntilAsync(() => hunterClient.Has(RealtimeMessageType.LeaveAccepted), "the leave after the death");
+            await harness.PollUntilAsync(
+                () => rivalClient.Despawns.Any(despawn => despawn.EntityId == hunterEntityId),
+                "the dead body to go");
+            await harness.PollUntilAsync(
+                () => harness.GameService.Releases.Any(release => release.SimulationSessionId == hunter.SimulationSessionId),
+                "the release of the hunter");
             Assert.Single(harness.GameService.PlayerDeaths);
             Assert.Single(harness.GameService.QuestOperations);
+            Assert.Equal("died", rivalClient.Despawns.Single(despawn => despawn.EntityId == hunterEntityId).Reason);
         }
         finally
         {

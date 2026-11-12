@@ -42,6 +42,15 @@ public sealed record SimulationWorkerConfig(
     // How often the realtime loop saves the place and vitals of the players whose state changed.
     public TimeSpan CharacterCheckpointInterval { get; init; } = TimeSpan.FromSeconds(30);
 
+    // How long a character's body stays in the world after its connection ended while its
+    // session goes on, counted again from every hit it takes.
+    public int LingeringBodySeconds { get; init; } = DefaultLingeringBodySeconds;
+
+    public const int DefaultLingeringBodySeconds = 20;
+
+    // The longest stay a body may have; it also fits the LeaveAccepted field.
+    public const int MaximumLingeringBodySeconds = 3_600;
+
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
 
     public AdmissionConfig Admission { get; init; } = AdmissionConfig.Default;
@@ -276,6 +285,13 @@ public sealed record SimulationWorkerConfig(
                 section["CharacterCheckpointSeconds"],
                 "SimulationWorker:CharacterCheckpointSeconds",
                 errors);
+        var lingeringBodySeconds = string.IsNullOrWhiteSpace(
+                section["LingeringBodySeconds"])
+            ? DefaultLingeringBodySeconds
+            : PositiveInt(
+                section["LingeringBodySeconds"],
+                "SimulationWorker:LingeringBodySeconds",
+                errors);
         var udpQuotaSection = section.GetSection("UdpQuotas");
         var inboundPacketsPerSecond = PositiveInt(
             udpQuotaSection["InboundPacketsPerSecond"],
@@ -431,6 +447,11 @@ public sealed record SimulationWorkerConfig(
         if (characterCheckpointSeconds > 3_600)
         {
             errors.Add("SimulationWorker:CharacterCheckpointSeconds must not exceed 3600.");
+        }
+
+        if (lingeringBodySeconds > MaximumLingeringBodySeconds)
+        {
+            errors.Add("SimulationWorker:LingeringBodySeconds must not exceed 3600.");
         }
 
         if (inboundPacketBurst < inboundPacketsPerSecond
@@ -599,6 +620,7 @@ public sealed record SimulationWorkerConfig(
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
+            LingeringBodySeconds = lingeringBodySeconds,
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,
                 inboundPacketBurst,

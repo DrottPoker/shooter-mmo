@@ -225,6 +225,8 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
 - UDP admission, protocol validation, and join and leave handshakes.
 - Exact worker runtime identity and its GameService registration lease.
 - Active simulation sessions and connection-to-entity bindings.
+- Lingering bodies: the entity of a character whose connection ended while its
+  session goes on stays in the world for its body time.
 - Server-assigned network entity ids and reliable spawn and despawn.
 - Fixed-rate authoritative movement and collision queries.
 - Input sequence processing, fixed-rate owner snapshots, and budget-scheduled
@@ -323,10 +325,11 @@ contract:
   collision streaming around the players, the World spawn, and moving Mobs;
   carry state and movement per player in entity id order; the grid of player
   positions; due world actor timers and world actor activity; Mob brains and
-  movement; the combat phase; interaction revalidation every fifth of a second
-  while world interactions run; the gathering pass; changed looks and then
-  snapshots at the snapshot rate; corpse presence twice per second; and the
-  character checkpoint at its interval. The loop fills the players of the tick
+  movement; the combat phase; the lingering bodies whose time is up, whose
+  death committed, or whose session ended; interaction revalidation every fifth
+  of a second while world interactions run; the gathering pass; changed looks
+  and then snapshots at the snapshot rate; corpse presence twice per second;
+  and the character checkpoint at its interval. The loop fills the players of the tick
   once, in entity id order, and hands every phase the server tick, those
   players, and the player grid; a phase that runs less often than every tick
   decides that itself. At most five ticks catch up before
@@ -337,12 +340,12 @@ contract:
   commits the arrow shots it can still name exactly and the quest credits that
   wait, the place and vitals of every remaining player go into one last
   checkpoint and stay for the session releases, and then combat state, peers,
-  interest, bindings, entities, item and carry state, corpse viewers,
-  interaction leases, world actors, cached corpse views, and the orphan sweep
-  state are cleared and the population gauges zeroed. `Realtime transport
-  stopped.` is logged last. Other completions produced during shutdown are not
-  finalized. The host runs this shutdown before
-  it stops any other hosted service, as
+  interest, bindings, entities, lingering bodies, item and carry state, corpse
+  viewers, interaction leases, world actors, cached corpse views, and the
+  orphan sweep state are cleared and the population gauges zeroed. `Realtime
+  transport stopped.` is logged last. Other completions produced during
+  shutdown are not finalized. The host runs this shutdown before it stops any
+  other hosted service, as
   [Hosted Services And Stop Order](#hosted-services-and-stop-order) describes.
 - A failing packet or completion disconnects only its own peer with
   `internal_error`. An exception in a tick, peer supervision, or the orphan
@@ -410,18 +413,20 @@ constructor. A unit registers:
   receives the `SimulationTick` and must not allocate per tick. Two phases with
   one position fail the composition with a message that names both.
 - A lifecycle hook. `RealtimeLifecycleHooks` has player-placement,
-  player-joined, leave-starting, player-removed, and spawn-sent hooks. The hooks
-  of a player's way in, placement, joined, and spawn-sent, run in the order the
-  units add them. The hooks of its way out, leave-starting and removed, run in
-  reverse: teardown mirrors setup, so the last feature to join a player is the
-  first to see it go, while the features it builds on still hold the player. A
-  placement is asked where the entity of a joining session starts before the
-  join knows whether it creates the entity or a reconnect keeps it; the first
-  placement that returns a state wins, and without one the player starts at the
-  World spawn. A leave-starting hook runs right before the release of a leave
-  starts, while the entity still exists. A join reaches combat, then the admin
-  tools, and then persistence, and a removal reaches persistence and then
-  combat.
+  player-joined, connection-ended, player-removed, and spawn-sent hooks. The
+  hooks of a player's way in, placement, joined, and spawn-sent, run in the
+  order the units add them. The hooks of its way out, connection-ended and
+  removed, run in reverse: teardown mirrors setup, so the last feature to join a
+  player is the first to see it go, while the features it builds on still hold
+  the player. A placement is asked where the entity of a joining session starts
+  before the join knows whether it creates the entity or a reconnect keeps it;
+  the first placement that returns a state wins, and without one the player
+  starts at the World spawn. A connection-ended hook runs when a player's
+  connection ended while its session goes on, right after its entity became a
+  lingering body; the entity stays, and a removed hook follows only when the
+  body goes. A join reaches combat, then the admin tools, and then persistence,
+  a connection that ends reaches combat, and a removal reaches persistence and
+  then combat.
 - Per-character state. A store that keeps state per character and simulation
   session implements `ICharacterSessionStore` and joins
   `CharacterSessionStores.Create`, which `Program.cs` registers once. Session
@@ -456,18 +461,34 @@ each of the five test constructions.
 
 Persistence, `Realtime/Persistence/PersistenceFeature.cs` with
 `PersistenceDependencies`, is the first feature written against this structure.
-It registers a placement, the joined, leave-starting, and removed hooks, the
-character checkpoint phase, and the character state flush shutdown step. It
-takes combat's unit and reads the vitals from combat's combatants when it needs
-them, also in its removed hook, which runs before combat's. It also takes the
-release service's `CharacterFinalStateStore`, which carries a captured final
-state to whichever path releases the session.
+It registers a placement, the joined and removed hooks, the character
+checkpoint phase, and the character state flush shutdown step. It takes
+combat's unit and reads the vitals from combat's combatants when it needs them,
+also in its removed hook, which runs before combat's. It also takes the release
+service's `CharacterFinalStateStore`, which carries a captured final state to
+whichever path releases the session. A lingering body is an entity like any
+other to it: the checkpoint saves it, and its removed hook captures its final
+state when the body goes.
+
+Lingering bodies are session plumbing in `RealtimeCoreServices`, because the
+teardown, the peer lifecycle, the supervisor, and combat need them before the
+session unit exists. `Realtime/Session/LingeringBodies.cs` holds the bodies by
+character and by entity with each body's end tick, and
+`RealtimeSessionTeardown.LeaveBody` turns the entity of a connection that ended
+into a body: it unbinds the peer, halts the movement, starts the body, and
+raises the connection-ended hooks. The session unit, `SessionFeature`, registers
+the leave route, the `LingeringBodyTimer` tick phase, and the step that clears
+the bodies at shutdown. Combat registers the connection-ended hook, which drops
+the body's target and attack in its windup and lets the combat authority commit
+the body's work without a peer; it puts a body's end after every hit and asks
+for its end once its death committed.
 
 `RealtimeFeatureRegistrationTests` pins the composed tick phases, routes, hooks,
 the order the hooks run in, and shutdown steps, `SimulationTickLoopTests` pins
-that a tick allocates nothing beyond its phases and that the character
-checkpoint phase allocates nothing on a tick when it is not due, and `CharacterSessionStoresTests` pins the occasions of each
-store.
+that a tick allocates nothing beyond its phases, that the character checkpoint
+phase allocates nothing on a tick when it is not due, and that 500 lingering
+bodies add nothing to a tick that ends none of them, and
+`CharacterSessionStoresTests` pins the occasions of each store.
 
 #### Hosted Services And Stop Order
 
@@ -488,8 +509,8 @@ order:
 1. The realtime shutdown: the transport stops, in-flight operations finish, the
    combat flush commits arrow shots and quest credits with the session
    credentials, and the character state flush saves the place and vitals of
-   every remaining player in one last checkpoint, while every session and the
-   registration still hold.
+   every remaining player, a lingering body like a connected one, in one last
+   checkpoint, while every session and the registration still hold.
 2. The metrics reporter, corpse restoration, and the lease monitor stop.
 3. The worker heartbeat clears the registration lease and marks the runtime
    offline through `/offline`.
@@ -1203,46 +1224,85 @@ The rules of each step are in
 A reconnect is valid only for the exact active shard, worker, and runtime. It
 preserves session and entity state, rotates the secret simulation-session token,
 and disconnects the older peer generation. While the reconnect is still being
-finalized, the older peer only detaches its connection. It never removes the
-shared entity or carry state that the reconnecting client takes over. The reused
-entity resets its movement input sequence, because the new client generation
-starts its input sequence from the beginning. An authority operation that still
-runs on the older peer's lane keeps the new peer's lane closed until it ends, so
-the session's operations keep their order across the reconnect.
+finalized, the older peer only detaches its connection, and the entity stands
+as a lingering body until the join binds it. It never removes the shared entity
+or carry state that the reconnecting client takes over. The reused entity
+resets its movement input sequence, because the new client generation starts
+its input sequence from the beginning. An authority operation that still runs
+on the older peer's lane keeps the new peer's lane closed until it ends, so the
+session's operations keep their order across the reconnect.
+
+A lingering body keeps its session active, so the reconnect path is how a player
+comes back to it:
+
+1. GameService finds the active session of the character and places the ticket
+   on the exact worker runtime that holds it, without a capacity check; a ticket
+   for another character of the account is refused with
+   `account_character_already_active`.
+2. Consuming the ticket rotates the session token, and the worker's session
+   store registers the new generation of the same session as a reconnect.
+   Until the join completes, the body's timer treats its older generation as
+   taken over and keeps the body.
+3. The join reuses the body's entity, binds the new peer to it, and ends the
+   body, so its timer stops. The client gets the body's place in its join
+   acceptance and its vitals in the owner state that follows, and the combat
+   authority moves the body's waiting work to the new peer's lane.
+4. When the new client is gone before the join binds it, the body stays under
+   the session's new generation instead of releasing the session.
 
 ### Leave, Disconnect, Expiry, And Failover
 
-1. Unity requests leave with the exact simulation-session id.
-2. SimulationWorker captures the character's final place and vitals and
-   releases the exact session token generation through GameService, which
-   saves that state in the transaction of the release.
-3. The worker removes the peer binding and entity and sends reliable despawn.
-4. Unexpected disconnect uses the same cleanup path. The worker captures the
-   final state when it removes the entity, drops the local session, so its
-   heartbeat stops renewing the lease, and then calls release with two bounded
-   retries, each with that state.
+1. Unity requests leave with the exact simulation-session id. The worker
+   answers at once with `LeaveAccepted`, which says how many seconds the body
+   stays, and disconnects the peer after the answer.
+2. A leave, a lost or timed-out connection, and a connection that the worker
+   ends because the client broke the protocol, exceeded a quota, overflowed
+   its reliable queue, or failed a packet or completion all end the connection
+   the same way while the session goes on: the peer lets go of the session,
+   its corpse view, its interaction, and its waiting operations, and the entity
+   stays in the world as a lingering body, as
+   [The Body That Stays](GAME_DESIGN.md#the-body-that-stays) describes. Other
+   players keep seeing it in their snapshots, and its session stays in the
+   session store, so the heartbeat keeps its lease.
+3. The body's time is counted in ticks from the end of the connection, and
+   every hit moves its end to the full time after the hit. When the time is up,
+   or once its death committed, the worker removes the entity, sends reliable
+   despawn, captures its final place and vitals, drops the local session, so
+   its heartbeat stops renewing the lease, and calls release with two bounded
+   retries, each with that state; GameService saves it in the transaction of
+   the release. A body that dies never respawns, so its saved state is the
+   World spawn with full health and mana.
+4. A session that ended takes its entity at once and is not released: a
+   session that GameService revoked or replaced, whose heartbeat it refused,
+   whose lease expired, or that an authority failure invalidated. This holds
+   for a connected player and for a body.
 5. If release is unavailable, the database lease expires on its own because
    nothing renews it. A join that is rejected during finalization releases its
    session the same way. As a safety net, the worker releases any local session
-   that no peer has owned for twice the join handshake timeout.
-6. A leave or disconnect never cancels durable combat work: the session is
-   released only after the character's death, its last arrow batch, and the
-   quest credits of its kills committed. A death keeps a requested leave behind
-   it, and a reconnect moves the work that holds or waits in the old peer's
-   lane to the new peer's lane, so the new client's operations still wait for
-   it.
+   that neither a peer nor a lingering body has owned for twice the join
+   handshake timeout.
+6. A connection that ends never cancels durable combat work, and neither does
+   a body that goes. The body commits its spent arrows at once, its death first
+   when it died, and the quest credits of its kills, also those it gathers
+   while it stands, one operation per tick without a peer. When the body goes
+   while work is left, the session is released only after the work committed.
+   A reconnect moves the work that holds or waits in the old peer's lane to the
+   new peer's lane, so the new client's operations still wait for it.
 7. An unexpected failure while processing one packet or one completed
-   operation disconnects only that peer. The simulation loop and every other
-   player keep running. GameService error codes and messages are normalized to
-   short printable text before they enter realtime protocol fields.
+   operation disconnects only that peer, which leaves its body. The simulation
+   loop and every other player keep running. GameService error codes and
+   messages are normalized to short printable text before they enter realtime
+   protocol fields.
 8. Worker shutdown or authoritative failover releases its assignment, pending
    tickets, and bound sessions. A graceful stop first commits the combat work
-   and saves every remaining player's state, as
+   and saves every remaining player's state, a lingering body like a connected
+   player, and the bodies leave the world with the stop, as
    [Hosted Services And Stop Order](#hosted-services-and-stop-order)
    describes.
-9. Between leaves, the worker saves the players whose place or vitals changed
-   in one checkpoint call every `SimulationWorker:CharacterCheckpointSeconds`,
-   so a worker crash loses at most that interval of movement, damage, and mana.
+9. Between leaves, the worker saves the players whose place or vitals changed,
+   lingering bodies too, in one checkpoint call every
+   `SimulationWorker:CharacterCheckpointSeconds`, so a worker crash loses at
+   most that interval of movement, damage, and mana.
    GameService accepts a state only from the character's active session on that
    worker runtime and only when it is newer than the stored state of the same
    session, as
@@ -1321,7 +1381,8 @@ shared motor and route planner for Mob movement without changing them.
    corpse with quest drops retries its read of what the owner still needs
    until GameService answers.
 5. A dead player respawns only after its death committed and the committed
-   carry state was applied.
+   carry state was applied. A lingering body never respawns: its committed
+   death ends it.
 
 The implemented combat rules, timings, and failure handling are in
 [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat) and

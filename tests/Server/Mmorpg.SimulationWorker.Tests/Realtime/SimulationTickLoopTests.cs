@@ -1,6 +1,9 @@
+using LiteNetLib;
 using Microsoft.Extensions.Logging.Abstractions;
+using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -154,6 +157,92 @@ public sealed class SimulationTickLoopTests
         RunTicks(loop, ref nextTick, 6_000 - 100 - (allocated.Count * 1_000) + 1);
         await harness.PollUntilAsync(() => harness.GameService.Checkpoints.Count == 1, "the due checkpoint");
         Assert.Equal(50, Assert.Single(harness.GameService.Checkpoints).States.Count);
+    }
+
+    // 500 lingering bodies, made through the composed leave route, add nothing to a tick that ends
+    // none of them: not to the body phase, nor to movement, which steps them, combat, which still
+    // holds them, or the character checkpoint, which saves them at its interval.
+    [Fact]
+    public async Task FiveHundredLingeringBodiesAllocateNothingOnATickThatEndsNone()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            CombatRules = RealtimeCombatTests.TestRules(),
+            CharacterCheckpointInterval = TimeSpan.FromSeconds(3_600),
+            LingeringBodySeconds = 3_600
+        });
+        var config = harness.Config;
+        var server = harness.Service.Server;
+        var leave = server.Registries.Routes.Authenticated.Single(route => route.Type == RealtimeMessageType.LeaveRequest);
+        var initialState = PlayerMovementSimulation.CreateInitialState(
+            config.MovementSimulation,
+            harness.CollisionWorld,
+            config.MovementSpawn.X,
+            config.MovementSpawn.Y,
+            config.MovementSpawn.Z,
+            config.MovementSpawn.YawDegrees);
+
+        // The harness is not started, so this thread is the loop: each player joins through the
+        // joined hooks and leaves through the leave route, which leaves its body.
+        for (var peerId = 1; peerId <= 500; peerId++)
+        {
+            var session = RealtimeTestSessions.Create($"Lingering Player {peerId}");
+            Assert.Equal(ActiveSimulationSessionRegistration.Joined, harness.SessionStore.Register(session));
+            harness.CharacterItemStateStore.Register(
+                session.CharacterId,
+                session.SimulationSessionId,
+                CharacterStateTestData.ItemState(session.CarryState),
+                out _);
+            var entity = harness.EntityRegistry.RegisterPlayer(
+                    session,
+                    () => new AuthoritativePlayerMovement(
+                        initialState,
+                        config.MovementSimulation,
+                        session.CarryState,
+                        harness.CollisionWorld))
+                .Entity;
+            harness.Bindings.Bind(peerId, entity.NetworkEntityId);
+            var context = new RealtimePeerContext(peerId, DateTime.UtcNow, config.UdpQuotas) { Session = session };
+            server.Registries.Hooks.RaisePlayerJoined(context, entity);
+            leave.Handler(new RealtimeInboundMessage(
+                new RecordingPeerConnection(peerId),
+                context,
+                RealtimeMessageType.LeaveRequest,
+                RealtimeProtocol.EncodeLeaveRequest(session.SimulationSessionId.ToString("D")),
+                RealtimeProtocol.ControlChannel,
+                DeliveryMethod.ReliableOrdered));
+            Assert.Null(context.Session);
+            Assert.False(harness.Bindings.TryGetConnectionId(entity.NetworkEntityId, out _));
+        }
+
+        var phases = new SimulationTickPhases();
+        foreach (var phase in server.TickPhases.Where(phase => phase.Name is "movement" or "combat" or "lingering bodies" or "character checkpoint"))
+        {
+            phases.Add(phase.Order, phase.Name, phase.Run);
+        }
+
+        Assert.Equal(4, phases.InTickOrder().Length);
+        using var metrics = new RealtimePerformanceMetrics();
+        var loop = new SimulationTickLoop(
+            new RealtimeSimulationClock(),
+            harness.EntityRegistry,
+            phases,
+            metrics,
+            NullLogger.Instance);
+        var nextTick = TimeSpan.Zero;
+        RunTicks(loop, ref nextTick, 100);
+
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            RunTicks(loop, ref nextTick, 1_000);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Contains(0L, allocated);
+        Assert.Equal(500, harness.EntityRegistry.PlayerCount);
+        Assert.Empty(harness.GameService.Releases);
     }
 
     // One due tick per call, so the loop never resynchronizes.

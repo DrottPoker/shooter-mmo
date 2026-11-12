@@ -287,6 +287,33 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    [Theory]
+    [InlineData(null, 20, null)]
+    [InlineData("1", 1, null)]
+    [InlineData("3600", 3600, null)]
+    [InlineData("0", 0, "SimulationWorker:LingeringBodySeconds must be a positive integer.")]
+    [InlineData("-5", 0, "SimulationWorker:LingeringBodySeconds must be a positive integer.")]
+    [InlineData("3601", 0, "SimulationWorker:LingeringBodySeconds must not exceed 3600.")]
+    public void TheLingeringBodyTimeDefaultsToTwentySecondsAndIsBounded(
+        string? value,
+        int expectedSeconds,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:LingeringBodySeconds"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            Assert.Equal(expectedSeconds, SimulationWorkerConfig.FromConfiguration(configuration).LingeringBodySeconds);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     private static Dictionary<string, string?> WorkerSettings()
     {
         return new Dictionary<string, string?>

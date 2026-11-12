@@ -58,6 +58,7 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
     private readonly CorpseViewDistributor corpseViews;
     private readonly CombatMetrics? metrics;
     private readonly ICollisionWorld collisionWorld;
+    private readonly LingeringBodies bodies;
     private readonly PriorityQueue<Projectile, (uint ImpactTick, long Sequence)> projectiles = new();
     private readonly List<Combatant> combatantBuffer = [];
     private readonly List<Combatant> retagBuffer = [];
@@ -92,9 +93,11 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         CorpseViewerRegistry corpseViewers,
         CorpseViewDistributor corpseViews,
         ICollisionWorld collisionWorld,
+        LingeringBodies bodies,
         CombatMetrics? metrics)
     {
         this.collisionWorld = collisionWorld;
+        this.bodies = bodies;
         this.config = config;
         this.rules = rules;
         this.clock = clock;
@@ -182,6 +185,19 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         // The owner state follows at the end of the next combat phase, after the baseline.
         combatant.MarkOwnerStateChanged();
         RetagMobsOf(entity);
+    }
+
+    // The connection ended and the player stays as a lingering body: it stands still and does
+    // not fight back, so its target and an attack in its windup go, while it can still be hit.
+    // Its durable work goes on without a peer.
+    public void OnConnectionEnded(RealtimePeerContext context, ActiveSimulationSession session, PlayerSimulationEntity entity)
+    {
+        if (combatants.TryGet(entity.NetworkEntityId, out var combatant) && combatant.IsAlive)
+        {
+            SetTarget(combatant, 0);
+        }
+
+        authority.Detach(session);
     }
 
     public void OnPlayerEntityRemoved(RealtimePeerContext context, ActiveSimulationSession session, ulong entityId)
@@ -607,7 +623,6 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         }
 
         if (combatSession.EquipmentChangePending
-            || combatSession.LeaveRequested
             || !CombatTicks.IsReached(serverTick, attacker.LockoutEndTick))
         {
             return RealtimeCombatAttackStatus.EquipmentLockout;
@@ -720,6 +735,11 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
 
             mobs.OnEngaged(target.EntityId, serverTick);
         }
+        else
+        {
+            // A hit keeps a lingering body in the world for its full time again.
+            bodies.ExtendAfterHit(target.EntityId, serverTick);
+        }
 
         EnterCombat(target, serverTick);
         if (hasAttacker)
@@ -793,7 +813,8 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
     }
 
     // A dead character respawns at the World spawn once its death committed and the
-    // respawn delay passed; a living one out of combat regains health and mana every second.
+    // respawn delay passed; a living one out of combat regains health and mana every second. A
+    // lingering body never respawns: its committed death ends it.
     private void RegenerateOrRespawn(Combatant combatant, uint serverTick)
     {
         var player = combatant.Player!;
@@ -801,7 +822,8 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         {
             if (CombatTicks.IsReached(serverTick, combatant.RespawnTick)
                 && authority.TryGet(player.Session.SimulationSessionId, out var combatSession)
-                && combatSession.Death is { Committed: true })
+                && combatSession.Death is { Committed: true }
+                && !combatSession.Detached)
             {
                 Respawn(combatant, combatSession);
             }

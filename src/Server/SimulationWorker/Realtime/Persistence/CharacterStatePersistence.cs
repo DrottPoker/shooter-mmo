@@ -12,8 +12,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // A new entity starts where the character was saved when the save names this World and the
 // collision revision the worker runs, and otherwise at the World spawn; it keeps the saved health
 // and mana in any World. The players whose state changed are saved at the checkpoint interval,
-// at most one call at a time, and a failed call's players go again with the next one. When a
-// leave starts, when the entity of a session the worker still holds is removed, and at shutdown,
+// lingering bodies too, since they can still lose health, at most one call at a time, and a failed
+// call's players go again with the next one. When the entity of a session the worker still holds
+// is removed, such as a lingering body whose time is up or whose death committed, and at shutdown,
 // the final state is captured for the release that follows, whichever path runs it. A dead
 // player is saved as its respawn leaves it: at the World spawn with full health and mana. The
 // vitals are read from combat whenever they are needed: the removed hooks run in reverse
@@ -113,20 +114,10 @@ internal sealed class CharacterStatePersistence(
         });
     }
 
-    // The release of a leave starts before the entity goes, so its state is captured now.
-    public void OnLeaveStarting(RealtimePeerContext context, ActiveSimulationSession session)
-    {
-        if (entityRegistry.TryGetPlayerByCharacterId(session.CharacterId, out var entity)
-            && entity!.Session.SimulationSessionId == session.SimulationSessionId
-            && players.TryGetValue(entity.NetworkEntityId, out var player))
-        {
-            Capture(player, session);
-        }
-    }
-
-    // A disconnect releases the session after its entity went; an invalidated or replaced
-    // session is released by nobody here, so a state captured for it is dropped. Combat still
-    // holds the player, because its removed hook runs after this one.
+    // A session whose entity went while the worker holds it, such as a lingering body's, is
+    // released after this; an invalidated or replaced session is released by nobody here, so a
+    // state captured for it is dropped. Combat still holds the player, because its removed hook
+    // runs after this one.
     public void OnPlayerRemoved(RealtimePeerContext context, ActiveSimulationSession session, ulong entityId)
     {
         if (!players.Remove(entityId, out var player))

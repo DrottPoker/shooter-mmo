@@ -1,13 +1,15 @@
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Joins and leaves. The session plumbing that other features share, the session operations and
-// the teardown, is part of RealtimeCoreServices, because the combat authority and every other
-// operation feature need it before this handler, which defers leaves to combat, can exist.
-internal sealed class SessionFeature
+// Joins, leaves, and the lingering bodies that a connection which ended leaves in the world. The
+// session plumbing that other features share, the session operations, the teardown, and the
+// lingering bodies, is part of RealtimeCoreServices, because the combat authority and every other
+// operation feature need it before this handler exists. The body timer releases a body's session
+// through the combat authority, which keeps it until its durable work committed.
+internal static class SessionFeature
 {
-    public SessionFeature(RealtimeCoreServices core, PlayerCombatFeature playerCombat)
+    public static void Add(RealtimeCoreServices core, PlayerCombatFeature playerCombat)
     {
-        Handler = new RealtimeSessionHandler(
+        var handler = new RealtimeSessionHandler(
             core.Config,
             core.Peers,
             core.Sender,
@@ -21,6 +23,7 @@ internal sealed class SessionFeature
             core.Presence,
             core.Registries.Hooks,
             core.Teardown,
+            core.Bodies,
             core.SessionOperations,
             core.OperationTracker,
             core.RegistrationLease,
@@ -29,8 +32,15 @@ internal sealed class SessionFeature
             core.Logger,
             core.ShardRules,
             playerCombat.Authority);
-        RealtimeSessionHandler.AddRoutes(core.Registries.Routes, Handler.HandleJoinRequest, Handler.HandleLeaveRequest);
+        RealtimeSessionHandler.AddRoutes(core.Registries.Routes, handler.HandleJoinRequest, handler.HandleLeaveRequest);
+        var timer = new LingeringBodyTimer(
+            core.Bodies,
+            core.SessionStore,
+            core.Teardown,
+            core.SessionOperations,
+            playerCombat.Authority,
+            core.Logger);
+        timer.AddTickPhase(core.Registries.TickPhases);
+        core.Registries.ShutdownSteps.Add(RealtimeShutdownOrder.LingeringBodies, "lingering bodies", timer.Clear);
     }
-
-    public RealtimeSessionHandler Handler { get; }
 }

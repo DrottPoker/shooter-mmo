@@ -28,6 +28,12 @@ internal static class SimulationTickOrder
     // every combat change at its end.
     public const int Combat = 600;
 
+    // Ends the lingering bodies whose time is up, whose death committed, or whose session ended,
+    // after combat, so a hit of this tick still keeps a body and a death that combat resolved
+    // counts, and before the looks and snapshots, so a body that goes leaves its viewers before
+    // they get another snapshot of it.
+    public const int LingeringBodies = 650;
+
     // Revalidates open world interactions against this tick's positions, five times a second.
     public const int InteractionRevalidation = 700;
 

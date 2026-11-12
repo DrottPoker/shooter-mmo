@@ -7,7 +7,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // The lifecycle hooks that features add during composition. The hooks of a player's way in, the
 // placements, the joined hooks, and the spawn-sent hooks, run in registration order, so the order
 // in which the composition creates the feature units that add them is the call order. The hooks
-// of its way out, the leave-starting and the removed hooks, run in reverse registration order:
+// of its way out, the connection-ended and the removed hooks, run in reverse registration order:
 // teardown mirrors setup, so the last feature to join a player is the first to see it go, while
 // the features it builds on still hold the player. The lists keep registration order.
 // Loop-confined once composed.
@@ -15,7 +15,7 @@ internal sealed class RealtimeLifecycleHooks
 {
     private readonly List<Func<ActiveSimulationSession, PlayerMovementState?>> playerPlacements = [];
     private readonly List<Action<RealtimePeerContext, PlayerSimulationEntity>> playerJoined = [];
-    private readonly List<Action<RealtimePeerContext, ActiveSimulationSession>> leaveStarting = [];
+    private readonly List<Action<RealtimePeerContext, ActiveSimulationSession, PlayerSimulationEntity>> connectionEnded = [];
     private readonly List<Action<RealtimePeerContext, ActiveSimulationSession, ulong>> playerRemoved = [];
     private readonly List<Action<IRealtimePeerConnection, ulong>> spawnSent = [];
 
@@ -23,7 +23,7 @@ internal sealed class RealtimeLifecycleHooks
 
     public IReadOnlyList<Action<RealtimePeerContext, PlayerSimulationEntity>> PlayerJoined => playerJoined;
 
-    public IReadOnlyList<Action<RealtimePeerContext, ActiveSimulationSession>> LeaveStarting => leaveStarting;
+    public IReadOnlyList<Action<RealtimePeerContext, ActiveSimulationSession, PlayerSimulationEntity>> ConnectionEnded => connectionEnded;
 
     public IReadOnlyList<Action<RealtimePeerContext, ActiveSimulationSession, ulong>> PlayerRemoved => playerRemoved;
 
@@ -38,19 +38,20 @@ internal sealed class RealtimeLifecycleHooks
         playerPlacements.Add(placement);
     }
 
-    // Hears every character that joined, after its accept was sent and before its baseline.
+    // Hears every character that joined, after its accept was sent and before its baseline, also
+    // a reconnect that resumes a lingering body.
     public void AddPlayerJoined(Action<RealtimePeerContext, PlayerSimulationEntity> hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
         playerJoined.Add(hook);
     }
 
-    // Hears every leave right before its release starts, while the player's entity still exists.
-    // Runs in reverse registration order.
-    public void AddLeaveStarting(Action<RealtimePeerContext, ActiveSimulationSession> hook)
+    // Hears every player whose connection ended while its session goes on, right after its entity
+    // became a lingering body without a peer. Runs in reverse registration order.
+    public void AddConnectionEnded(Action<RealtimePeerContext, ActiveSimulationSession, PlayerSimulationEntity> hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        leaveStarting.Add(hook);
+        connectionEnded.Add(hook);
     }
 
     // Hears every player entity that teardown removes, with the session it belonged to. Runs in
@@ -91,11 +92,11 @@ internal sealed class RealtimeLifecycleHooks
         }
     }
 
-    public void RaiseLeaveStarting(RealtimePeerContext context, ActiveSimulationSession session)
+    public void RaiseConnectionEnded(RealtimePeerContext context, ActiveSimulationSession session, PlayerSimulationEntity entity)
     {
-        for (var index = leaveStarting.Count - 1; index >= 0; index--)
+        for (var index = connectionEnded.Count - 1; index >= 0; index--)
         {
-            leaveStarting[index](context, session);
+            connectionEnded[index](context, session, entity);
         }
     }
 

@@ -628,18 +628,65 @@ namespace Mmorpg.GameProtocol
         }
 
         /// <summary>
-        /// Confirms a leave.
+        /// Confirms a leave. The client returns to character select at once, while the character's body may stay in the world.
         /// </summary>
-        public static byte[] EncodeLeaveAccepted()
+        public static byte[] EncodeLeaveAccepted(ushort bodySeconds)
         {
-            var writer = StartPacket(RealtimeMessageType.LeaveAccepted, 0);
+            if (!IsValidLeaveAccepted(bodySeconds))
+            {
+                throw new ArgumentException("Leave accepted is invalid.", nameof(bodySeconds));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.LeaveAccepted, 2);
+            WriteLeaveAccepted(ref writer, bodySeconds);
             return writer.Finish();
         }
 
-        public static bool TryDecodeLeaveAccepted(byte[] data, out string error)
+        public static bool TryDecodeLeaveAccepted(byte[] data, out ushort bodySeconds, out string error)
         {
-            return TryStartPacket(data, RealtimeMessageType.LeaveAccepted, out var reader, out error)
-                && reader.TryFinish(out error);
+            bodySeconds = default;
+            if (!TryStartPacket(data, RealtimeMessageType.LeaveAccepted, out var reader, out error)
+                || !TryReadLeaveAccepted(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidLeaveAccepted(decoded))
+            {
+                error = "Leave accepted is invalid.";
+                return false;
+            }
+
+            bodySeconds = decoded;
+            return true;
+        }
+
+        private static void WriteLeaveAccepted(ref PacketWriter writer, ushort value)
+        {
+            writer.WriteUInt16(value);
+        }
+
+        private static bool TryReadLeaveAccepted(ref PacketReader reader, out ushort value, out string error)
+        {
+            value = default;
+            if (!reader.TryReadUInt16(out var bodySeconds, out error))
+            {
+                return false;
+            }
+
+            value = bodySeconds;
+            return true;
+        }
+
+        private static bool IsValidLeaveAccepted(ushort value)
+        {
+            if (value > 3600)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

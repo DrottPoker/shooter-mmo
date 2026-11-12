@@ -22,9 +22,10 @@ internal sealed record PersistenceDependencies(GameServiceClient? GameServiceCli
 }
 
 // Where a character stands and its health and mana survive a logout: a joining player starts
-// where it was saved, the changed players are saved at the checkpoint interval, and the final
-// state goes with the release of every session the worker lets go of. It takes combat, whose
-// combatants hold the vitals, so a join reaches combat first and a removal reaches it last.
+// where it was saved, the changed players are saved at the checkpoint interval, lingering bodies
+// too, and the final state goes with the release of every session the worker lets go of. It
+// takes combat, whose combatants hold the vitals, so a join reaches combat first and a removal
+// reaches it last.
 internal static class PersistenceFeature
 {
     public static void Add(
@@ -55,7 +56,6 @@ internal static class PersistenceFeature
         var hooks = core.Registries.Hooks;
         hooks.AddPlayerPlacement(persistence.Place);
         hooks.AddPlayerJoined(persistence.OnPlayerJoined);
-        hooks.AddLeaveStarting(persistence.OnLeaveStarting);
         hooks.AddPlayerRemoved(persistence.OnPlayerRemoved);
         persistence.AddTickPhase(core.Registries.TickPhases);
         core.Registries.ShutdownSteps.AddAsync(

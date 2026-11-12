@@ -157,6 +157,17 @@ Expected result:
 - Every 30 seconds the worker logs its network counters and a status line,
   which [Monitoring](MONITORING.md#logs) describes.
 
+A character whose player leaves or loses the connection stays in the world for
+`SimulationWorker:LingeringBodySeconds`, 20 seconds by default, as
+[Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes. Until it is
+gone, the account can enter only that character again. To watch a body longer,
+or to wait less while testing, pass another time to one run; the next run
+without the option uses the default again:
+
+```powershell
+dotnet run --project src/Server/SimulationWorker -- --SimulationWorker:LingeringBodySeconds=60
+```
+
 ### Run The Stress Arena Shard
 
 GameService seeds two local shards: `local-shard-1` (`Local Shard 1`), which the

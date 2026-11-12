@@ -72,6 +72,9 @@ internal sealed class RealtimeServerHarnessOptions
 
     // Replaces the default checkpoint interval of 30 seconds.
     public TimeSpan? CharacterCheckpointInterval { get; init; }
+
+    // Replaces the default 20 seconds that a body stays after its connection ended.
+    public int? LingeringBodySeconds { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -552,7 +555,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             UdpQuotas = options.UdpQuotas ?? UdpQuotaConfig.Default,
             InterestManagement = options.InterestManagement
                 ?? InterestManagementConfig.Default,
-            CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30)
+            CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30),
+            LingeringBodySeconds = options.LingeringBodySeconds ?? SimulationWorkerConfig.DefaultLingeringBodySeconds
         };
     }
 

@@ -26,11 +26,9 @@ namespace Mmorpg.SharedTests
                 [RealtimeMessageType.LeaveRequest] = Typed<string>(
                     RealtimeProtocol.TryDecodeLeaveRequest,
                     RealtimeProtocol.EncodeLeaveRequest),
-                [RealtimeMessageType.LeaveAccepted] = new Codec(
-                    data => RealtimeProtocol.TryDecodeLeaveAccepted(data, out _)
-                        ? new Decoded(true, null)
-                        : Decoded.Rejected,
-                    _ => RealtimeProtocol.EncodeLeaveAccepted()),
+                [RealtimeMessageType.LeaveAccepted] = Typed<ushort>(
+                    RealtimeProtocol.TryDecodeLeaveAccepted,
+                    RealtimeProtocol.EncodeLeaveAccepted),
                 [RealtimeMessageType.LeaveRejected] = Typed<RealtimeError>(
                     RealtimeProtocol.TryDecodeLeaveRejected,
                     value => RealtimeProtocol.EncodeLeaveRejected(value.Code, value.Message)),
