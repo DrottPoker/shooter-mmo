@@ -36,9 +36,9 @@ internal static class ItemFeature
             core.Sender,
             core.SessionStore,
             core.ItemStateStore,
-            core.EntityRegistry,
             core.CarrySync,
             core.Teardown,
+            core.CompletionTargets,
             core.AuthorityScheduler,
             core.OperationTracker,
             new ItemInteractionAccessService(

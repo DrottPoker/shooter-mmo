@@ -400,9 +400,18 @@ valid, the character's entity stays in the world as a lingering body for
   end. It stays in the interest index and in the remote snapshots of others,
   keeps its look and its combat state, can be targeted and hit, and
   regenerates as usual.
+- An item, corpse, world interaction, gathering, or quest operation that was
+  already running at GameService when the connection ended still commits, and
+  what it committed reaches the body: its item and carry state, its equipment
+  and so its look, its quest log, and the corpse it looted. The body's spent
+  arrows and death then build on that revision. Only the operation's result
+  needs the peer that sent it; a player who came back in the meantime gets the
+  item and quest log changes and the carry state. An answer that ends the
+  session invalidates the body's session, so the body goes without a release.
 - The time is counted in simulation ticks from the end of the connection. Every
   hit that the body takes moves its end to the full time after the hit when
-  that is later, without an upper limit.
+  that is later, without an upper limit. A body whose time is up or whose death
+  committed waits for the operation that still runs for it before it goes.
 - When the time is up, the worker despawns the body with reason `left_shard`,
   saves its final state with the release of the session, and releases it as a
   disconnect did before. A body whose death committed goes with reason `died`

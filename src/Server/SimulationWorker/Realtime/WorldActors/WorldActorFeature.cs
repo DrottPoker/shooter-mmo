@@ -43,9 +43,9 @@ internal sealed class WorldActorFeature
             core.Presence,
             core.SessionStore,
             core.ItemStateStore,
-            core.EntityRegistry,
             core.CarrySync,
             core.Teardown,
+            core.CompletionTargets,
             core.AuthorityScheduler,
             core.OperationTracker,
             new GatheringAuthorityOperations(
@@ -59,9 +59,9 @@ internal sealed class WorldActorFeature
             dependencies.InteractionAuthority,
             core.Peers,
             core.Sender,
-            core.EntityRegistry,
             core.CarrySync,
             core.Teardown,
+            core.CompletionTargets,
             core.AuthorityScheduler,
             core.OperationTracker,
             new WorldInteractionAuthorityOperations(

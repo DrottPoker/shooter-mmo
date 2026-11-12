@@ -197,7 +197,12 @@ internal static class RealtimeServerComposition
                 networkMetrics,
                 registries.Hooks,
                 bodies),
-            Bodies = bodies
+            Bodies = bodies,
+            CompletionTargets = new OperationCompletionTargets(
+                peers,
+                host.ConnectionBindings,
+                host.EntityRegistry,
+                host.SessionStore)
         };
     }
 

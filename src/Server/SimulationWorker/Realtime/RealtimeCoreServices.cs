@@ -86,4 +86,7 @@ internal sealed record RealtimeCoreServices
     public required RealtimeSessionTeardown Teardown { get; init; }
 
     public required LingeringBodies Bodies { get; init; }
+
+    // Where the answer to a player's operation goes, with or without the peer that sent it.
+    public required OperationCompletionTargets CompletionTargets { get; init; }
 }

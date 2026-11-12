@@ -24,9 +24,9 @@ internal sealed record QuestIntentCompleted(
 internal sealed class QuestIntentHandler(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
-    SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     RealtimeCompletionQueue completions,
@@ -156,50 +156,52 @@ internal sealed class QuestIntentHandler(
             ObjectiveId: string.IsNullOrEmpty(intent.ObjectiveId) ? null : intent.ObjectiveId);
     }
 
+    // The executor applied what the action committed to the character's item state and quest log
+    // off the loop, whether or not the peer that sent it is still there. Here the carry state
+    // reaches the character, the item and quest log changes the peer that plays it now, and the
+    // result the peer that sent the action. A session that cannot go on ends, a lingering body's
+    // too.
     private void FinalizeIntent(QuestIntentCompleted completed)
     {
+        combatGate?.ClientOperationFinished(completed.Session);
         authorityScheduler.Release(completed.Context);
-        combatGate?.ClientOperationFinished(completed.Context);
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
 
+        var requester = target.Requester;
         var outcome = completed.Outcome;
         if (outcome.ShouldDisconnect)
         {
-            SendResult(peer, completed.Intent, outcome);
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                outcome.Code,
-                outcome.Message);
+            if (requester is not null)
+            {
+                SendResult(requester, completed.Intent, outcome);
+            }
+
+            teardown.EndForAuthorityFailure(target, outcome.Code, outcome.Message);
             return;
         }
 
-        if (outcome.ItemStateChange is not null)
+        if (target.Owner is { } owner)
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
+            if (outcome.ItemStateChange is not null)
+            {
+                sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(outcome.ItemStateChange));
+            }
+
+            if (outcome.QuestLogChange is not null)
+            {
+                sender.SendControl(owner, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));
+            }
         }
 
-        if (outcome.QuestLogChange is not null)
+        carrySync.ApplyLatest(target.Entity);
+        if (requester is not null)
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeQuestLogChanged(outcome.QuestLogChange));
+            SendResult(requester, completed.Intent, outcome);
         }
 
-        if (entityRegistry.TryGetPlayerByCharacterId(completed.Session.CharacterId, out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
-        SendResult(peer, completed.Intent, outcome);
         authorityScheduler.StartNext(completed.Context);
     }
 

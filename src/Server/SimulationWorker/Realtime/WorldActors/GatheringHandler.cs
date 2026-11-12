@@ -29,9 +29,9 @@ internal sealed class GatheringHandler(
     EntityPresenceReplicator presence,
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
-    SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     GatheringAuthorityOperations authority,
@@ -270,44 +270,43 @@ internal sealed class GatheringHandler(
         authorityScheduler.StartNext(completed.Context);
     }
 
+    // The yield committed at GameService whether or not the gathering peer is still there, so the
+    // character's item state takes it while the worker holds the session, and the item and quest
+    // log changes reach the peer that plays the character now. The gathering state belongs to the
+    // interaction of the peer that gathered.
     private void FinalizeYield(GatheringCycleCompleted completed, GatheringActivity? activity)
     {
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId != completed.Session.SimulationSessionId)
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
 
         if (!CommittedCarryApplier.TryGetCommittedState(completed.Result.Transaction!, out var committed))
         {
-            TerminateForDivergence(peer, completed);
+            EndForDivergence(target);
             return;
         }
 
-        var applyResult = carryApplier.Apply(completed.Session, committed, out var carry);
+        var session = target.Session;
+        var applyResult = carryApplier.Apply(session, committed, out var carry);
         if (CommittedCarryApplier.IsDiverged(applyResult))
         {
-            TerminateForDivergence(peer, completed);
+            EndForDivergence(target);
             return;
         }
 
         // The change goes before the carry state, so the client patches its inventory instead
         // of reloading it.
         var change = applyResult == ItemStateApplyResult.Applied
-            ? OwnerItemStateChangeMapper.TryCreate(Guid.Empty, completed.Session.CharacterId, completed.Result.Transaction!)
+            ? OwnerItemStateChangeMapper.TryCreate(Guid.Empty, session.CharacterId, completed.Result.Transaction!)
             : null;
-        if (change is not null)
+        if (change is not null && target.Owner is { } owner)
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
+            sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
         }
 
-        SendQuestLogChange(peer, completed);
-        if (entityRegistry.TryGetPlayerByCharacterId(completed.Session.CharacterId, out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
+        SendQuestLogChange(target, completed);
+        carrySync.ApplyLatest(target.Entity);
         var profile = completed.Request.Profile;
         if (activity is not null)
         {
@@ -318,30 +317,31 @@ internal sealed class GatheringHandler(
 
         // The yield committed even when gathering stopped while it was in flight, so the client
         // always learns the item-state revision that holds it.
-        sender.SendControl(peer, RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateYielded(
-            completed.Request.InteractionSessionId,
-            completed.Node.NetworkEntityId,
-            completed.Node.RuntimeActorId,
-            CycleMilliseconds(profile.CycleSeconds),
-            profile.YieldDefinitionId,
-            profile.YieldQuantity,
-            carry.ItemStateRevision)));
-    }
-
-    private void SendQuestLogChange(IRealtimePeerConnection peer, GatheringCycleCompleted completed)
-    {
-        if (completed.QuestLogChange is { } change)
+        if (target.Requester is { } requester)
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeQuestLogChanged(change));
+            sender.SendControl(requester, RealtimeProtocol.EncodeGatheringState(RealtimeGatheringState.CreateYielded(
+                completed.Request.InteractionSessionId,
+                completed.Node.NetworkEntityId,
+                completed.Node.RuntimeActorId,
+                CycleMilliseconds(profile.CycleSeconds),
+                profile.YieldDefinitionId,
+                profile.YieldQuantity,
+                carry.ItemStateRevision)));
         }
     }
 
-    private void TerminateForDivergence(IRealtimePeerConnection peer, GatheringCycleCompleted completed)
+    private void SendQuestLogChange(in OperationCompletionTarget target, GatheringCycleCompleted completed)
     {
-        teardown.TerminateForAuthorityFailure(
-            peer,
-            completed.Context,
-            completed.Session,
+        if (completed.QuestLogChange is { } change && target.Owner is { } owner)
+        {
+            sender.SendControl(owner, RealtimeProtocol.EncodeQuestLogChanged(change));
+        }
+    }
+
+    private void EndForDivergence(in OperationCompletionTarget target)
+    {
+        teardown.EndForAuthorityFailure(
+            target,
             "item_state_diverged",
             "Committed gathering state diverged from the active simulation state.");
     }
@@ -349,9 +349,7 @@ internal sealed class GatheringHandler(
     private void FinalizeRejection(GatheringCycleCompleted completed, GatheringActivity? activity)
     {
         var error = completed.Result.Error!;
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId != completed.Session.SimulationSessionId)
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
@@ -359,18 +357,13 @@ internal sealed class GatheringHandler(
         if (GameServiceOutcome.EndsItemSession(error.Code))
         {
             metrics?.RecordGatheringCycle("rejected");
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                error.Code,
-                error.Message);
+            teardown.EndForAuthorityFailure(target, error.Code, error.Message);
             return;
         }
 
         // A yield that may have counted for a quest before its answer was lost had the worker
         // read the quest log again.
-        SendQuestLogChange(peer, completed);
+        SendQuestLogChange(target, completed);
         if (activity is null)
         {
             metrics?.RecordGatheringCycle("rejected");

@@ -8,8 +8,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // replaced it or its lease expired, goes at once and its session is not released. A body whose
 // death committed, or whose time is up, goes as a disconnected player went before: its final
 // state is captured, and its session is released once the durable combat work it still holds
-// committed. A body whose session a reconnect took over waits for that join. Nothing is done and
-// nothing is allocated while no body is in the world. Loop-confined.
+// committed. It first waits for the operation that still runs in its lane, so what that operation
+// commits always finds the entity. A body whose session a reconnect took over waits for that
+// join. Nothing is done and nothing is allocated while no body is in the world. Loop-confined.
 internal sealed class LingeringBodyTimer(
     LingeringBodies bodies,
     ActiveSimulationSessionStore sessionStore,
@@ -56,6 +57,13 @@ internal sealed class LingeringBodyTimer(
                 }
 
                 EndWithSession(body);
+                continue;
+            }
+
+            // An operation that the player sent before its connection ended, or durable combat
+            // work, still runs: what it commits belongs to the body, so the body waits for it.
+            if (body.Lane.AuthorityOperationInFlight)
+            {
                 continue;
             }
 

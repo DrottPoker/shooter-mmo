@@ -7,13 +7,21 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // The entity of a character whose connection ended while its simulation session goes on. It
 // stays in the world without a peer until its end tick, which every hit it takes pushes on,
 // unless the player comes back, it dies, or its session ends. Loop-confined.
-internal sealed class LingeringBody(PlayerSimulationEntity entity, ActiveSimulationSession session, uint endTick)
+internal sealed class LingeringBody(
+    PlayerSimulationEntity entity,
+    ActiveSimulationSession session,
+    RealtimePeerContext lane,
+    uint endTick)
 {
     public PlayerSimulationEntity Entity { get; } = entity;
 
     // The session generation the body belongs to. A reconnect whose client went before its join
     // finished renews it.
     public ActiveSimulationSession Session { get; set; } = session;
+
+    // The peer whose connection ended. Its lane still holds the operation that the player sent
+    // last, until GameService answered it, and the durable combat work that the body commits.
+    public RealtimePeerContext Lane { get; } = lane;
 
     public uint EndTick { get; set; } = endTick;
 
@@ -38,13 +46,14 @@ internal sealed class LingeringBodies(int seconds, int tickRateHz, RealtimeSimul
 
     public int Count => ordered.Count;
 
-    // The entity of the session stays in the world from now on, without a peer.
-    public LingeringBody Begin(PlayerSimulationEntity entity, ActiveSimulationSession session)
+    // The entity of the session stays in the world from now on, without the given peer.
+    public LingeringBody Begin(PlayerSimulationEntity entity, ActiveSimulationSession session, RealtimePeerContext lane)
     {
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(lane);
         Remove(entity.NetworkEntityId);
-        var body = new LingeringBody(entity, session, clock.ServerTick + DurationTicks);
+        var body = new LingeringBody(entity, session, lane, clock.ServerTick + DurationTicks);
         byCharacter[session.CharacterId] = body;
         byEntity[entity.NetworkEntityId] = body;
         ordered.Add(body);

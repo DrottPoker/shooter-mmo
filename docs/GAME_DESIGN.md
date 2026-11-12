@@ -980,6 +980,10 @@ answer says how long the body stays.
 - The spent arrows and the quest credits of the character still commit while
   the body stands, and a kill that the body tagged or helped with still counts
   for its quests.
+- An action that the player sent just before the connection ended, such as
+  moving, equipping, or looting an item, still completes, and the body shows its
+  outcome: what it wears, carries, and looted. The body leaves only after that
+  action completed.
 - The body leaves at once when its session ends: when GameService revoked it,
   when a new login on the account replaced it, when its lease expired, and when
   the worker stops, which saves it like a connected player. An account logout

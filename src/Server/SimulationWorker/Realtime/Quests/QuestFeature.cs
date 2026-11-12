@@ -62,9 +62,9 @@ internal static class QuestFeature
         var intents = new QuestIntentHandler(
             core.Peers,
             core.Sender,
-            core.EntityRegistry,
             core.CarrySync,
             core.Teardown,
+            core.CompletionTargets,
             core.AuthorityScheduler,
             core.OperationTracker,
             core.Completions,

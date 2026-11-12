@@ -112,9 +112,10 @@ internal sealed class PlayerCombatAuthority(
         }
     }
 
-    public void ClientOperationFinished(RealtimePeerContext context)
+    // By the session, since a reconnect may have moved it to another peer while the operation ran.
+    public void ClientOperationFinished(ActiveSimulationSession session)
     {
-        if (TryGetAttached(context, out var combatSession))
+        if (sessions.TryGetValue(session.SimulationSessionId, out var combatSession))
         {
             combatSession.EquipmentChangePending = false;
         }

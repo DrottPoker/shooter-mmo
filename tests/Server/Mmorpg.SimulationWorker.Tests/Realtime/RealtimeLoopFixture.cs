@@ -79,6 +79,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Hooks,
             Bodies);
         Scheduler = new AuthorityOperationScheduler(Registry);
+        CompletionTargets = new OperationCompletionTargets(Registry, Bindings, Entities, SessionStore);
     }
 
     public SimulationWorkerConfig Config { get; }
@@ -137,6 +138,8 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
     public AuthorityOperationScheduler Scheduler { get; }
 
+    public OperationCompletionTargets CompletionTargets { get; }
+
     // Registers a joined player at the movement spawn, bound to a connected peer.
     public ConnectedPlayer ConnectPlayer(int peerId, string name = "Loop Hero")
     {
@@ -182,9 +185,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Sender,
             SessionStore,
             CharacterItemStateStore,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             new ItemInteractionAccessService(
@@ -201,9 +204,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             WorldInteractionAuthority,
             Registry,
             Sender,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             CreateWorldInteractionOperations(),
@@ -224,9 +227,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Presence,
             SessionStore,
             CharacterItemStateStore,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             new GatheringAuthorityOperations(gatheringService, Completions, NullLogger.Instance),

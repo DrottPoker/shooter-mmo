@@ -307,10 +307,21 @@ contract:
 - All completions use one FIFO queue across peers and features, and each
   completion names the handler that finalizes it. A pass processes at least one
   completion and stops when the budget of one eighth of a tick is used.
-- Every finalizer first checks that the peer context still owns its id and is
-  connected, then that the session id and token still match. A stale corpse
-  completion releases a view reservation only for a context that still owns its
-  id.
+- A player's operation commits at GameService whether or not the peer that
+  sent it is still connected, so every finalizer resolves its target through
+  `OperationCompletionTargets`: the operation counts while the worker's session
+  store holds the same session, current, and the character's entity exists,
+  with the peer that sent it, with a peer that a reconnect bound since, or with
+  none while the character is a lingering body. What the operation committed
+  then reaches the character: its item, carry, and corpse state and its look.
+  Its result goes only to the peer that sent it, while it still plays the same
+  session generation; the item and quest log changes and the carry state go to
+  the peer that plays the character now. A session that ended takes nothing. A
+  failure that ends the session ends it only for the generation that ran the
+  operation: a connected peer is disconnected, and a body's session is
+  invalidated, so the body goes at the next tick without a release. A stale
+  corpse completion releases a view reservation only for a context that still
+  owns its id.
 - Every durable operation of one character runs in that peer's authority lane,
   one at a time: item, corpse, world interaction, and gathering operations,
   arrow batches, and the death. Client operations queue at most eight behind
@@ -475,8 +486,12 @@ teardown, the peer lifecycle, the supervisor, and combat need them before the
 session unit exists. `Realtime/Session/LingeringBodies.cs` holds the bodies by
 character and by entity with each body's end tick, and
 `RealtimeSessionTeardown.LeaveBody` turns the entity of a connection that ended
-into a body: it unbinds the peer, halts the movement, starts the body, and
-raises the connection-ended hooks. The session unit, `SessionFeature`, registers
+into a body: it unbinds the peer, halts the movement, starts the body with the
+peer whose lane still holds the operation that runs for it, and raises the
+connection-ended hooks. The completion target that every operation finalizer
+resolves, `Realtime/Operations/OperationCompletionTargets.cs`, is core too, so
+an answer that arrives after the connection ended reaches the body or the peer
+that came back. The session unit, `SessionFeature`, registers
 the leave route, the `LingeringBodyTimer` tick phase, and the step that clears
 the bodies at shutdown. Combat registers the connection-ended hook, which drops
 the body's target and attack in its windup and lets the combat authority commit
@@ -487,8 +502,11 @@ for its end once its death committed.
 the order the hooks run in, and shutdown steps, `SimulationTickLoopTests` pins
 that a tick allocates nothing beyond its phases, that the character checkpoint
 phase allocates nothing on a tick when it is not due, and that 500 lingering
-bodies add nothing to a tick that ends none of them, and
-`CharacterSessionStoresTests` pins the occasions of each store.
+bodies add nothing to a tick that ends none of them,
+`RealtimeInFlightOperationTests` pins that an operation answered after the
+connection ended reaches the body or the peer that came back, and nothing of a
+session that ended, and `CharacterSessionStoresTests` pins the occasions of each
+store.
 
 #### Hosted Services And Stop Order
 
@@ -1230,7 +1248,12 @@ or carry state that the reconnecting client takes over. The reused entity
 resets its movement input sequence, because the new client generation starts
 its input sequence from the beginning. An authority operation that still runs
 on the older peer's lane keeps the new peer's lane closed until it ends, so the
-session's operations keep their order across the reconnect.
+session's operations keep their order across the reconnect. What that operation
+commits reaches the character, and the new peer gets the item and quest log
+changes and the carry state, but not the operation's result: the client ends
+every operation it waited for when its session ends, and a result for an
+operation it does not know makes it report a mismatch and read its whole
+inventory again.
 
 A lingering body keeps its session active, so the reconnect path is how a player
 comes back to it:
@@ -1263,15 +1286,20 @@ comes back to it:
    stays in the world as a lingering body, as
    [The Body That Stays](GAME_DESIGN.md#the-body-that-stays) describes. Other
    players keep seeing it in their snapshots, and its session stays in the
-   session store, so the heartbeat keeps its lease.
+   session store, so the heartbeat keeps its lease. An operation that was
+   already running at GameService still commits, and its answer reaches the
+   body: its item and carry state, its look, and the corpse it looted, so the
+   body's spent arrows and death build on the revision it committed.
 3. The body's time is counted in ticks from the end of the connection, and
-   every hit moves its end to the full time after the hit. When the time is up,
-   or once its death committed, the worker removes the entity, sends reliable
-   despawn, captures its final place and vitals, drops the local session, so
-   its heartbeat stops renewing the lease, and calls release with two bounded
-   retries, each with that state; GameService saves it in the transaction of
-   the release. A body that dies never respawns, so its saved state is the
-   World spawn with full health and mana.
+   every hit moves its end to the full time after the hit. While an operation
+   still runs in the lane of the peer whose connection ended, the body waits
+   for its answer, so what it committed always finds the entity. When the time
+   is up, or once its death committed, the worker removes the entity, sends
+   reliable despawn, captures its final place and vitals, drops the local
+   session, so its heartbeat stops renewing the lease, and calls release with
+   two bounded retries, each with that state; GameService saves it in the
+   transaction of the release. A body that dies never respawns, so its saved
+   state is the World spawn with full health and mana.
 4. A session that ended takes its entity at once and is not released: a
    session that GameService revoked or replaced, whose heartbeat it refused,
    whose lease expired, or that an authority failure invalidated. This holds

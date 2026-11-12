@@ -72,7 +72,7 @@ internal sealed class RealtimeSessionTeardown(
         }
 
         entity.Movement.Halt();
-        bodies.Begin(entity, session);
+        bodies.Begin(entity, session, context);
         hooks.RaiseConnectionEnded(context, session, entity);
         return true;
     }
@@ -145,6 +145,39 @@ internal sealed class RealtimeSessionTeardown(
             RealtimePeerContext.System,
             replacedEntity.Session,
             replacedEntity.NetworkEntityId);
+    }
+
+    // Ends the session of a completed operation whose answer says the session cannot go on, as
+    // TerminateForAuthorityFailure does for the peer that plays it. A lingering body has no peer:
+    // its session is invalidated, so the body goes at the next tick without a release. The answer
+    // to an operation of an earlier generation, which a reconnect replaced, ends nothing, since
+    // the session went on with what GameService held at the reconnect.
+    public void EndForAuthorityFailure(in OperationCompletionTarget target, string code, string message)
+    {
+        if (!target.SameGeneration)
+        {
+            return;
+        }
+
+        var session = target.Session;
+        if (target.Requester is { } requester)
+        {
+            TerminateForAuthorityFailure(requester, target.RequesterContext, session, code, message);
+            return;
+        }
+
+        if (target.Owner is { } owner)
+        {
+            TerminateForAuthorityFailure(owner, target.OwnerContext!, session, code, message);
+            return;
+        }
+
+        sessionStore.Invalidate(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            code,
+            message);
     }
 
     // Ends a session whose authoritative state can no longer be trusted.
