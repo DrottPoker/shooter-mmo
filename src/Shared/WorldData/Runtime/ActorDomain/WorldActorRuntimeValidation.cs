@@ -7,126 +7,92 @@ namespace Mmorpg.WorldData.Actors
 {
     public static partial class WorldActorCompiler
     {
-        public static void ValidateRuntime(WorldActorRuntimeDocument runtime)
+        // Checks a compiled actor catalog on its own: shapes, references inside it, every
+        // structural fingerprint, and the revision.
+        public static void ValidateRuntime(WorldActorCatalogRuntimeDocument catalog)
         {
-            if (runtime == null)
+            if (catalog == null)
             {
-                throw new ArgumentNullException(nameof(runtime));
+                throw new ArgumentNullException(nameof(catalog));
             }
 
             var errors = new List<string>();
-            if (runtime.FormatVersion != WorldActorDataFormat.Version)
+            if (catalog.FormatVersion != WorldActorDataFormat.Version)
             {
                 errors.Add("runtime formatVersion is unsupported.");
             }
 
-            ValidateIdentifier(runtime.CatalogId, "runtime.catalogId", errors);
-            ValidateIdentifier(runtime.WorldId, "runtime.worldId", errors);
-            if (!HasRuntimeCollections(runtime, errors))
+            ValidateIdentifier(catalog.CatalogId, "runtime.catalogId", errors);
+            if (!HasCatalogCollections(catalog, errors))
             {
                 throw new WorldActorValidationException(errors);
             }
 
             var factionIds = ValidateOrderedRuntimeIds(
-                runtime.Factions.Select(value => value.Id).ToArray(),
+                catalog.Factions.Select(value => value.Id).ToArray(),
                 "runtime.factions",
                 errors);
             ValidateOrderedRuntimeIds(
-                runtime.PresentationArchetypes.Select(value => value.Id).ToArray(),
+                catalog.PresentationArchetypes.Select(value => value.Id).ToArray(),
                 "runtime.presentationArchetypes",
                 errors);
             var presentationKinds = ToRuntimeMap(
-                runtime.PresentationArchetypes,
+                catalog.PresentationArchetypes,
                 value => value.Id,
                 value => value.ActorKind);
             var activityIds = ValidateOrderedRuntimeIds(
-                runtime.ActivityProfiles.Select(value => value.Id).ToArray(),
+                catalog.ActivityProfiles.Select(value => value.Id).ToArray(),
                 "runtime.activityProfiles",
                 errors);
             var respawnIds = ValidateOrderedRuntimeIds(
-                runtime.RespawnProfiles.Select(value => value.Id).ToArray(),
+                catalog.RespawnProfiles.Select(value => value.Id).ToArray(),
                 "runtime.respawnProfiles",
                 errors);
             var resourceIds = ValidateOrderedRuntimeIds(
-                runtime.ResourceProfiles.Select(value => value.Id).ToArray(),
+                catalog.ResourceProfiles.Select(value => value.Id).ToArray(),
                 "runtime.resourceProfiles",
                 errors);
             var mobProfiles = new MobProfileIds(
                 activityIds,
                 respawnIds,
                 ValidateOrderedRuntimeIds(
-                    runtime.CombatProfiles.Select(value => value.Id).ToArray(),
+                    catalog.CombatProfiles.Select(value => value.Id).ToArray(),
                     "runtime.combatProfiles",
                     errors),
                 ValidateOrderedRuntimeIds(
-                    runtime.BrainProfiles.Select(value => value.Id).ToArray(),
+                    catalog.BrainProfiles.Select(value => value.Id).ToArray(),
                     "runtime.brainProfiles",
                     errors),
                 ValidateOrderedRuntimeIds(
-                    runtime.LocomotionProfiles.Select(value => value.Id).ToArray(),
+                    catalog.LocomotionProfiles.Select(value => value.Id).ToArray(),
                     "runtime.locomotionProfiles",
                     errors),
                 ValidateOrderedRuntimeIds(
-                    runtime.LootProfiles.Select(value => value.Id).ToArray(),
+                    catalog.LootProfiles.Select(value => value.Id).ToArray(),
                     "runtime.lootProfiles",
                     errors));
-            var actorIds = ValidateOrderedRuntimeIds(
-                runtime.Actors.Select(value => value.Id).ToArray(),
+            ValidateOrderedRuntimeIds(
+                catalog.Actors.Select(value => value.Id).ToArray(),
                 "runtime.actors",
                 errors);
-            var actorKinds = ToRuntimeMap(
-                runtime.Actors,
-                value => value.Id,
-                value => value.Kind);
-            var sourceIds = ValidateOrderedRuntimeIds(
-                runtime.SpawnSources.Select(value => value.Id).ToArray(),
-                "runtime.spawnSources",
-                errors);
-            var sourcesById = ToRuntimeMap(
-                runtime.SpawnSources,
-                value => value.Id,
-                value => value);
-            var patrolIds = ValidateOrderedRuntimeIds(
-                runtime.PatrolPaths.Select(value => value.Id).ToArray(),
-                "runtime.patrolPaths",
-                errors);
-            ValidateOrderedRuntimeIds(
-                runtime.SpawnInstances.Select(value => value.Id).ToArray(),
-                "runtime.spawnInstances",
-                errors,
-                true);
 
-            ValidateRuntimeFactions(runtime.Factions, errors);
-            ValidateRuntimePresentations(runtime.PresentationArchetypes, errors);
-            ValidateRuntimeActivityProfiles(runtime.ActivityProfiles, errors);
-            ValidateRuntimeRespawnProfiles(runtime.RespawnProfiles, errors);
-            ValidateRuntimeResourceProfiles(runtime.ResourceProfiles, errors);
-            ValidateRuntimeMobProfiles(runtime, errors);
+            ValidateRuntimeFactions(catalog.Factions, errors);
+            ValidateRuntimePresentations(catalog.PresentationArchetypes, errors);
+            ValidateRuntimeActivityProfiles(catalog.ActivityProfiles, errors);
+            ValidateRuntimeRespawnProfiles(catalog.RespawnProfiles, errors);
+            ValidateRuntimeResourceProfiles(catalog.ResourceProfiles, errors);
+            ValidateRuntimeMobProfiles(catalog, errors);
             ValidateRuntimeActors(
-                runtime.Actors,
+                catalog.Actors,
                 factionIds,
                 presentationKinds,
                 mobProfiles,
                 resourceIds,
                 errors);
-            ValidateRuntimePatrols(runtime.PatrolPaths, errors);
-            ValidateRuntimeSources(
-                runtime.SpawnSources,
-                actorIds,
-                actorKinds,
-                patrolIds,
-                errors);
-            ValidateRuntimeInstances(
-                runtime.SpawnInstances,
-                actorIds,
-                sourceIds,
-                sourcesById,
-                patrolIds,
-                errors);
 
             if (!string.Equals(
-                    runtime.Revision,
-                    ComputeRuntimeRevision(runtime),
+                    catalog.Revision,
+                    ComputeCatalogRevision(catalog),
                     StringComparison.Ordinal))
             {
                 errors.Add("runtime revision does not match its structural fingerprints.");
@@ -138,103 +104,224 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
-        private static bool HasRuntimeCollections(
-            WorldActorRuntimeDocument runtime,
+        // Checks one World's compiled spawns on their own. The actors they place are checked
+        // against a catalog by ValidateRuntime(WorldActorRuntime).
+        public static void ValidateRuntime(WorldActorSpawnRuntimeDocument spawns)
+        {
+            if (spawns == null)
+            {
+                throw new ArgumentNullException(nameof(spawns));
+            }
+
+            var errors = new List<string>();
+            if (spawns.FormatVersion != WorldActorDataFormat.Version)
+            {
+                errors.Add("runtime formatVersion is unsupported.");
+            }
+
+            ValidateIdentifier(spawns.CatalogId, "runtime.catalogId", errors);
+            ValidateIdentifier(spawns.WorldId, "runtime.worldId", errors);
+            if (!HasSpawnCollections(spawns, errors))
+            {
+                throw new WorldActorValidationException(errors);
+            }
+
+            var sourceIds = ValidateOrderedRuntimeIds(
+                spawns.SpawnSources.Select(value => value.Id).ToArray(),
+                "runtime.spawnSources",
+                errors);
+            var sourcesById = ToRuntimeMap(
+                spawns.SpawnSources,
+                value => value.Id,
+                value => value);
+            var patrolIds = ValidateOrderedRuntimeIds(
+                spawns.PatrolPaths.Select(value => value.Id).ToArray(),
+                "runtime.patrolPaths",
+                errors);
+            ValidateOrderedRuntimeIds(
+                spawns.SpawnInstances.Select(value => value.Id).ToArray(),
+                "runtime.spawnInstances",
+                errors,
+                true);
+
+            ValidateRuntimePatrols(spawns.PatrolPaths, errors);
+            ValidateRuntimeSources(spawns.SpawnSources, patrolIds, errors);
+            ValidateRuntimeInstances(
+                spawns.SpawnInstances,
+                sourceIds,
+                sourcesById,
+                patrolIds,
+                errors);
+
+            if (!string.Equals(
+                    spawns.Revision,
+                    ComputeSpawnRevision(spawns),
+                    StringComparison.Ordinal))
+            {
+                errors.Add("runtime revision does not match its structural fingerprints.");
+            }
+
+            if (errors.Count > 0)
+            {
+                throw new WorldActorValidationException(errors);
+            }
+        }
+
+        // Checks both documents of one World and that its spawns fit the catalog: the same
+        // catalog id, actors the catalog defines, and patrols only on Mobs.
+        public static void ValidateRuntime(WorldActorRuntime runtime)
+        {
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
+            ValidateRuntime(runtime.Catalog);
+            ValidateRuntime(runtime.Spawns);
+            var errors = new List<string>();
+            if (!string.Equals(
+                    runtime.Spawns.CatalogId,
+                    runtime.Catalog.CatalogId,
+                    StringComparison.Ordinal))
+            {
+                errors.Add("runtime spawn catalogId '" + runtime.Spawns.CatalogId
+                    + "' does not match actor catalog '" + runtime.Catalog.CatalogId + "'.");
+            }
+
+            var actorKinds = ToRuntimeMap(
+                runtime.Catalog.Actors,
+                value => value.Id,
+                value => value.Kind);
+            var actorIds = new HashSet<string>(actorKinds.Keys, StringComparer.Ordinal);
+            foreach (var value in runtime.Spawns.SpawnSources)
+            {
+                ValidateReference(value.ActorId, actorIds, "runtime spawn actorId", errors);
+                if (!string.IsNullOrEmpty(value.PatrolPathId)
+                    && actorKinds.TryGetValue(value.ActorId ?? string.Empty, out var actorKind)
+                    && actorKind != WorldActorKindIds.Mob)
+                {
+                    errors.Add("runtime spawn " + value.Id
+                        + " assigns a patrol to a non-Mob actor.");
+                }
+            }
+
+            foreach (var value in runtime.Spawns.SpawnInstances)
+            {
+                ValidateReference(value.ActorId, actorIds, "runtime instance actorId", errors);
+            }
+
+            if (errors.Count > 0)
+            {
+                throw new WorldActorValidationException(errors);
+            }
+        }
+
+        private static bool HasCatalogCollections(
+            WorldActorCatalogRuntimeDocument catalog,
             ICollection<string> errors)
         {
             var valid = true;
-            valid &= RequireRuntimeCollection(runtime.Factions, "runtime.factions", errors, true);
+            valid &= RequireRuntimeCollection(catalog.Factions, "runtime.factions", errors, true);
             valid &= RequireRuntimeCollection(
-                runtime.PresentationArchetypes,
+                catalog.PresentationArchetypes,
                 "runtime.presentationArchetypes",
                 errors,
                 true);
             valid &= RequireRuntimeCollection(
-                runtime.ActivityProfiles,
+                catalog.ActivityProfiles,
                 "runtime.activityProfiles",
                 errors,
                 true);
             valid &= RequireRuntimeCollection(
-                runtime.RespawnProfiles,
+                catalog.RespawnProfiles,
                 "runtime.respawnProfiles",
                 errors,
                 true);
             valid &= RequireRuntimeCollection(
-                runtime.ResourceProfiles,
+                catalog.ResourceProfiles,
                 "runtime.resourceProfiles",
                 errors,
                 false);
             valid &= RequireRuntimeCollection(
-                runtime.CombatProfiles,
+                catalog.CombatProfiles,
                 "runtime.combatProfiles",
                 errors,
                 false);
             valid &= RequireRuntimeCollection(
-                runtime.BrainProfiles,
+                catalog.BrainProfiles,
                 "runtime.brainProfiles",
                 errors,
                 false);
             valid &= RequireRuntimeCollection(
-                runtime.LocomotionProfiles,
+                catalog.LocomotionProfiles,
                 "runtime.locomotionProfiles",
                 errors,
                 false);
             valid &= RequireRuntimeCollection(
-                runtime.LootProfiles,
+                catalog.LootProfiles,
                 "runtime.lootProfiles",
                 errors,
                 false);
-            valid &= RequireRuntimeCollection(runtime.Actors, "runtime.actors", errors, true);
-            valid &= RequireRuntimeCollection(
-                runtime.SpawnSources,
-                "runtime.spawnSources",
-                errors,
-                true);
-            valid &= RequireRuntimeCollection(
-                runtime.SpawnInstances,
-                "runtime.spawnInstances",
-                errors,
-                true);
-            valid &= RequireRuntimeCollection(
-                runtime.PatrolPaths,
-                "runtime.patrolPaths",
-                errors,
-                false);
-            if (runtime.Factions != null
-                && runtime.Factions.Length > MaximumDefinitionsPerCollection
-                || runtime.PresentationArchetypes != null
-                && runtime.PresentationArchetypes.Length > MaximumDefinitionsPerCollection
-                || runtime.ActivityProfiles != null
-                && runtime.ActivityProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.RespawnProfiles != null
-                && runtime.RespawnProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.ResourceProfiles != null
-                && runtime.ResourceProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.CombatProfiles != null
-                && runtime.CombatProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.BrainProfiles != null
-                && runtime.BrainProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.LocomotionProfiles != null
-                && runtime.LocomotionProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.LootProfiles != null
-                && runtime.LootProfiles.Length > MaximumDefinitionsPerCollection
-                || runtime.Actors != null
-                && runtime.Actors.Length > MaximumDefinitionsPerCollection)
+            valid &= RequireRuntimeCollection(catalog.Actors, "runtime.actors", errors, true);
+            if (catalog.Factions != null
+                && catalog.Factions.Length > MaximumDefinitionsPerCollection
+                || catalog.PresentationArchetypes != null
+                && catalog.PresentationArchetypes.Length > MaximumDefinitionsPerCollection
+                || catalog.ActivityProfiles != null
+                && catalog.ActivityProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.RespawnProfiles != null
+                && catalog.RespawnProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.ResourceProfiles != null
+                && catalog.ResourceProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.CombatProfiles != null
+                && catalog.CombatProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.BrainProfiles != null
+                && catalog.BrainProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.LocomotionProfiles != null
+                && catalog.LocomotionProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.LootProfiles != null
+                && catalog.LootProfiles.Length > MaximumDefinitionsPerCollection
+                || catalog.Actors != null
+                && catalog.Actors.Length > MaximumDefinitionsPerCollection)
             {
                 errors.Add("runtime definition collections exceed the supported bound.");
                 valid = false;
             }
 
-            if (runtime.SpawnSources != null
-                && runtime.SpawnSources.Length > MaximumSpawnSources
-                || runtime.SpawnInstances != null
-                && runtime.SpawnInstances.Length > MaximumRuntimeInstances
-                || runtime.PatrolPaths != null
-                && runtime.PatrolPaths.Length > MaximumSpawnSources)
+            return valid;
+        }
+
+        private static bool HasSpawnCollections(
+            WorldActorSpawnRuntimeDocument spawns,
+            ICollection<string> errors)
+        {
+            var valid = true;
+            valid &= RequireRuntimeCollection(
+                spawns.SpawnSources,
+                "runtime.spawnSources",
+                errors,
+                true);
+            valid &= RequireRuntimeCollection(
+                spawns.SpawnInstances,
+                "runtime.spawnInstances",
+                errors,
+                true);
+            valid &= RequireRuntimeCollection(
+                spawns.PatrolPaths,
+                "runtime.patrolPaths",
+                errors,
+                false);
+            if (spawns.SpawnSources != null
+                && spawns.SpawnSources.Length > MaximumSpawnSources
+                || spawns.SpawnInstances != null
+                && spawns.SpawnInstances.Length > MaximumRuntimeInstances
+                || spawns.PatrolPaths != null
+                && spawns.PatrolPaths.Length > MaximumSpawnSources)
             {
                 errors.Add("runtime actor population exceeds the supported bound.");
                 valid = false;
             }
+
             return valid;
         }
 
@@ -453,10 +540,10 @@ namespace Mmorpg.WorldData.Actors
         }
 
         private static void ValidateRuntimeMobProfiles(
-            WorldActorRuntimeDocument runtime,
+            WorldActorCatalogRuntimeDocument catalog,
             ICollection<string> errors)
         {
-            foreach (var value in runtime.CombatProfiles)
+            foreach (var value in catalog.CombatProfiles)
             {
                 var path = "runtime combat profile " + value.Id;
                 AddRuntimeProblem(
@@ -477,7 +564,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
             }
 
-            foreach (var value in runtime.BrainProfiles)
+            foreach (var value in catalog.BrainProfiles)
             {
                 var path = "runtime brain profile " + value.Id;
                 AddRuntimeProblem(
@@ -495,7 +582,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
             }
 
-            foreach (var value in runtime.LocomotionProfiles)
+            foreach (var value in catalog.LocomotionProfiles)
             {
                 var path = "runtime locomotion profile " + value.Id;
                 AddRuntimeProblem(
@@ -513,7 +600,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
             }
 
-            foreach (var value in runtime.LootProfiles)
+            foreach (var value in catalog.LootProfiles)
             {
                 var path = "runtime loot profile " + value.Id;
                 if (value.Entries == null
@@ -856,8 +943,6 @@ namespace Mmorpg.WorldData.Actors
 
         private static void ValidateRuntimeSources(
             WorldActorSpawnSourceDefinition[] values,
-            ISet<string> actorIds,
-            IReadOnlyDictionary<string, string> actorKinds,
             ISet<string> patrolIds,
             ICollection<string> errors)
         {
@@ -868,7 +953,7 @@ namespace Mmorpg.WorldData.Actors
                     SupportedSpawnKinds,
                     "runtime spawn kind",
                     errors);
-                ValidateReference(value.ActorId, actorIds, "runtime spawn actorId", errors);
+                ValidateIdentifier(value.ActorId, "runtime spawn actorId", errors);
                 if (!string.IsNullOrEmpty(value.PatrolPathId))
                 {
                     ValidateReference(
@@ -876,12 +961,6 @@ namespace Mmorpg.WorldData.Actors
                         patrolIds,
                         "runtime spawn patrolPathId",
                         errors);
-                    if (actorKinds.TryGetValue(value.ActorId ?? string.Empty, out var actorKind)
-                        && actorKind != WorldActorKindIds.Mob)
-                    {
-                        errors.Add("runtime spawn " + value.Id
-                            + " assigns a patrol to a non-Mob actor.");
-                    }
                 }
 
                 ValidateTransform(
@@ -968,7 +1047,6 @@ namespace Mmorpg.WorldData.Actors
 
         private static void ValidateRuntimeInstances(
             WorldActorSpawnInstanceDefinition[] values,
-            ISet<string> actorIds,
             ISet<string> sourceIds,
             IReadOnlyDictionary<string, WorldActorSpawnSourceDefinition> sourcesById,
             ISet<string> patrolIds,
@@ -976,7 +1054,6 @@ namespace Mmorpg.WorldData.Actors
         {
             foreach (var value in values)
             {
-                ValidateReference(value.ActorId, actorIds, "runtime instance actorId", errors);
                 ValidateReference(
                     value.SpawnDefinitionId,
                     sourceIds,

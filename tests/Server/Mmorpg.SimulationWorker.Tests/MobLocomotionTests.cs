@@ -13,7 +13,7 @@ public sealed class MobLocomotionTests
     public void APatrolWalksAtThePatrolSpeedAndEverythingElseAtTheWalkSpeed()
     {
         var document = WorldActorTestData.Compile();
-        var profile = document.LocomotionProfiles.Single(value => value.Id == "mob.quadruped");
+        var profile = document.Catalog.LocomotionProfiles.Single(value => value.Id == "mob.quadruped");
         var world = new MovementSimulationSettings(30, 5f, 720f, -24f, -2f, 0f, -100f, 100f, -100f, 100f);
 
         var locomotion = new MobLocomotion(profile, world, CollisionTestWorldFactory.Create(), 40f);

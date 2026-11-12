@@ -466,7 +466,8 @@ describes the layout and the pipeline.
 `tools/ContentPipeline` library for their command line, strict JSON parsing, and
 generated-file verification. Each compiles every World at once and fails
 verification for stale or orphaned generated data. The quest compiler reads the
-compiled items and the compiled actors of every World, so it runs after both. `tools/WorldCollisionCompiler` builds and verifies the same data
+compiled items, the compiled actor catalog, and the compiled spawns of every
+World, so it runs after both. `tools/WorldCollisionCompiler` builds and verifies the same data
 consumed by SimulationWorker and Unity. Static collision is deterministic and
 shared. Dynamic collision uses a mutable spatial hash behind the same
 collision-query interface, leaving room for doors, lifts, and other server-owned
@@ -482,10 +483,13 @@ Neither compilation target becomes an authority. GameService validates and
 mirrors the compiled catalog at startup, and every durable mutation reapplies
 the authoritative rules in GameService.
 
-Neutral actor definitions live below `content/actors`. Each World owns its
-spawn authoring at `content/worlds/<WorldId>/actor-spawns.json` and
-deterministic runtime content at
-`src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`.
+Neutral actor definitions live below `content/actors` and compile once into the
+shared actor catalog at `src/Shared/WorldData/Generated/Actors/core.actor-catalog.json`.
+Each World owns its spawn authoring at
+`content/worlds/<WorldId>/actor-spawns.json` and its compiled spawns at
+`src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actor-spawns.json`, which
+compile against the catalog, so a changed actor rewrites the catalog and no
+World file.
 `tools/WorldActorCompiler`, SimulationWorker startup, Unity Editor authoring,
 and tests use the same framework-neutral compiler and runtime validator. Unity
 scene authoring imports and exports that content but does not replace it as the
@@ -511,8 +515,8 @@ the servers do not read them, and the world actor and corpse messages carry ids
 only: a Mob's corpse names its actor definition, and only a character's corpse
 carries a name, the one its player chose. The compiled item catalog carries no
 text, and GameService stores none of it: a rename changes neither the catalog
-revision nor a database row. The compiled actors of a World and the compiled
-quest catalog carry no text either, so no server holds a text of the content
+revision nor a database row. The compiled actor catalog, the compiled World
+spawns, and the compiled quest catalog carry no text either, so no server holds a text of the content
 in its own data. GameService serves the text table files as they are, next to
 the catalogs, as [Content Files](SERVICE_FEATURES.md#content-files) describes,
 and still reads and uses no text from them; the Unity client still uses the
@@ -981,7 +985,8 @@ adds a production code path:
 ### Worker Registration
 
 1. SimulationWorker validates its configuration and loads the output
-   `WorldData/Worlds/<WorldId>/world.json`, the actor runtime, the item catalog,
+   `WorldData/Worlds/<WorldId>/world.json`, the actor catalog and the World's
+   actor spawns, the item catalog,
    the combat rules, the character appearance content, and the collision
    runtime.
 2. It binds UDP and reports transport readiness.

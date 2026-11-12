@@ -238,6 +238,7 @@ namespace Mmorpg.WorldData.Editor.Quests
                 QuestCatalogCompiler.Compile(
                     catalog.ToDomain(),
                     workspace.References.Items,
+                    workspace.References.ActorCatalog,
                     workspace.References.Worlds);
                 var contentRoot = Path.Combine(temporaryDirectory, "content");
                 var generatedRoot = Path.Combine(temporaryDirectory, "generated");
@@ -263,10 +264,13 @@ namespace Mmorpg.WorldData.Editor.Quests
                     }
 
                     Copy(
-                        ContentLayout.GeneratedWorldActorsPath(paths.GeneratedRoot, worldId),
-                        ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId));
+                        ContentLayout.GeneratedWorldActorSpawnsPath(paths.GeneratedRoot, worldId),
+                        ContentLayout.GeneratedWorldActorSpawnsPath(generatedRoot, worldId));
                 }
 
+                Copy(
+                    ContentLayout.GeneratedActorCatalogPath(paths.GeneratedRoot),
+                    ContentLayout.GeneratedActorCatalogPath(generatedRoot));
                 Copy(
                     ContentLayout.GeneratedItemCatalogPath(paths.GeneratedRoot),
                     ContentLayout.GeneratedItemCatalogPath(generatedRoot));

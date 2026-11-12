@@ -29,6 +29,10 @@
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Shared\WorldData\Generated\Actors\core.actor-catalog.json"
+             Link="WorldData\Actors\core.actor-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\Shared\WorldData\Generated\Items\core.item-catalog.json"
              Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
@@ -45,7 +49,7 @@
              Link="WorldData\Combat\combat-rules.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actors.json"
+    <Content Include="..\..\Shared\WorldData\Generated\Worlds\**\world-actor-spawns.json"
              Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

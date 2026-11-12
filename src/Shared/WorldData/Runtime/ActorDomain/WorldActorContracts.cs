@@ -4,7 +4,7 @@ namespace Mmorpg.WorldData.Actors
 {
     public static class WorldActorDataFormat
     {
-        public const int Version = 9;
+        public const int Version = 10;
     }
 
     // Collision bounds block character movement. Only resource nodes have them: they never move,
@@ -463,12 +463,12 @@ namespace Mmorpg.WorldData.Actors
         public float WaitSeconds;
     }
 
+    // The compiled actor catalog that every World shares, compiled once.
     [Serializable]
-    public sealed class WorldActorRuntimeDocument
+    public sealed class WorldActorCatalogRuntimeDocument
     {
         public int FormatVersion;
         public string CatalogId;
-        public string WorldId;
         public string Revision;
         public WorldActorFactionDefinition[] Factions;
         public WorldActorPresentationDefinition[] PresentationArchetypes;
@@ -480,9 +480,36 @@ namespace Mmorpg.WorldData.Actors
         public WorldActorLocomotionProfileDefinition[] LocomotionProfiles;
         public WorldActorLootProfileDefinition[] LootProfiles;
         public WorldActorDefinition[] Actors;
+    }
+
+    // One World's compiled spawns. They name actors of the catalog CatalogId but do not carry
+    // its revision, so an actor change rewrites no World file.
+    [Serializable]
+    public sealed class WorldActorSpawnRuntimeDocument
+    {
+        public int FormatVersion;
+        public string CatalogId;
+        public string WorldId;
+        public string Revision;
         public WorldActorSpawnSourceDefinition[] SpawnSources;
         public WorldActorSpawnInstanceDefinition[] SpawnInstances;
         public WorldActorPatrolPathDefinition[] PatrolPaths;
+    }
+
+    // One World's actors: the shared catalog and that World's spawns. Never serialized.
+    public sealed class WorldActorRuntime
+    {
+        public WorldActorRuntime(
+            WorldActorCatalogRuntimeDocument catalog,
+            WorldActorSpawnRuntimeDocument spawns)
+        {
+            Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+            Spawns = spawns ?? throw new ArgumentNullException(nameof(spawns));
+        }
+
+        public WorldActorCatalogRuntimeDocument Catalog { get; }
+
+        public WorldActorSpawnRuntimeDocument Spawns { get; }
     }
 
     [Serializable]

@@ -54,12 +54,17 @@ public sealed record SimulationWorkerConfig(
 
     public ItemInteractionConfig ItemInteraction { get; init; } = ItemInteractionConfig.Empty;
 
+    public const string DefaultActorCatalogPath = "WorldData/Actors/core.actor-catalog.json";
     public const string DefaultItemCatalogPath = "WorldData/Items/core.item-catalog.json";
     public const string DefaultQuestCatalogPath = "WorldData/Quests/core.quest-catalog.json";
     public const string DefaultCombatRulesPath = "WorldData/Combat/combat-rules.json";
     public const string DefaultCharacterAppearancePath = "WorldData/Characters/appearance.json";
 
-    public string ActorDataPath { get; init; } = string.Empty;
+    // The compiled actor catalog that every World shares.
+    public string ActorCatalogPath { get; init; } = string.Empty;
+
+    // The compiled actor spawns of the configured World, next to its world.json.
+    public string ActorSpawnsPath { get; init; } = string.Empty;
 
     // The compiled item catalog that combat data and Mob loot come from.
     public string ItemCatalogPath { get; init; } = string.Empty;
@@ -604,7 +609,8 @@ public sealed record SimulationWorkerConfig(
                 collisionLoadRadiusChunks,
                 collisionUnloadRadiusChunks),
             ItemInteraction = itemInteraction,
-            ActorDataPath = WorldManifestFileStore.ResolveActorRuntimePath(
+            ActorCatalogPath = ResolveOutputPath(section["ActorCatalogPath"], DefaultActorCatalogPath),
+            ActorSpawnsPath = WorldManifestFileStore.ResolveActorSpawnsPath(
                 worldDataPath!,
                 worldId!),
             ItemCatalogPath = ResolveOutputPath(section["ItemCatalogPath"], DefaultItemCatalogPath),

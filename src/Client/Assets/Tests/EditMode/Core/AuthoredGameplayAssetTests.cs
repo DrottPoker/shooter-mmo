@@ -596,8 +596,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 workspace.Catalog.ToDomain(),
                 workspace.Spawns.ToDomain());
 
-            Assert.That(compiled.Actors, Is.Not.Empty);
-            foreach (var actor in compiled.Actors)
+            Assert.That(compiled.Catalog.Actors, Is.Not.Empty);
+            foreach (var actor in compiled.Catalog.Actors)
             {
                 Assert.That(
                     registry.TryResolve(actor.PresentationArchetypeId, out var reference),
@@ -627,7 +627,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var resourceNodes = WorldActorCompiler.Compile(
                     workspace.Catalog.ToDomain(),
                     workspace.Spawns.ToDomain())
-                .Actors
+                .Catalog.Actors
                 .Where(actor => actor.Kind == WorldActorKindIds.ResourceNode)
                 .ToArray();
 

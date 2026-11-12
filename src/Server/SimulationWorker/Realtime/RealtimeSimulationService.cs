@@ -58,7 +58,7 @@ public sealed class RealtimeSimulationService(
     ItemCatalogRuntimeDocument? itemCatalog = null,
     CombatRules? combatRules = null,
     SimulationShardRules? shardRules = null,
-    WorldActorRuntimeDocument? worldActorRuntime = null,
+    WorldActorRuntime? worldActorRuntime = null,
     GameServiceClient? gameServiceClient = null,
     MobCorpseLifecycleService? mobCorpses = null,
     CombatMetrics? combatMetrics = null,

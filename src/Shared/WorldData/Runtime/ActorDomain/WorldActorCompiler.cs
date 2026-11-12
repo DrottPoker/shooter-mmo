@@ -110,27 +110,21 @@ namespace Mmorpg.WorldData.Actors
                 WorldActorSpawnKindIds.Area
             };
 
-        public static WorldActorRuntimeDocument Compile(
-            WorldActorCatalogAuthoringDocument actorAuthoring,
-            WorldActorSpawnAuthoringDocument spawnAuthoring)
+        // Compiles the shared actor catalog once. Every World's spawns compile against it.
+        public static WorldActorCatalogRuntimeDocument CompileCatalog(
+            WorldActorCatalogAuthoringDocument actorAuthoring)
         {
             if (actorAuthoring == null)
             {
                 throw new ArgumentNullException(nameof(actorAuthoring));
             }
 
-            if (spawnAuthoring == null)
-            {
-                throw new ArgumentNullException(nameof(spawnAuthoring));
-            }
+            ValidateCatalogAuthoring(actorAuthoring);
 
-            Validate(actorAuthoring, spawnAuthoring);
-
-            var runtime = new WorldActorRuntimeDocument
+            var catalog = new WorldActorCatalogRuntimeDocument
             {
                 FormatVersion = WorldActorDataFormat.Version,
                 CatalogId = actorAuthoring.CatalogId,
-                WorldId = spawnAuthoring.WorldId,
                 Revision = string.Empty,
                 Factions = actorAuthoring.Factions
                     .Select(CompileFaction)
@@ -171,7 +165,36 @@ namespace Mmorpg.WorldData.Actors
                 Actors = actorAuthoring.Actors
                     .Select(CompileActor)
                     .OrderBy(value => value.Id, StringComparer.Ordinal)
-                    .ToArray(),
+                    .ToArray()
+            };
+            StampCatalog(catalog);
+            ValidateRuntime(catalog);
+            return catalog;
+        }
+
+        // Compiles one World's spawns against the compiled catalog, whose actors they place.
+        public static WorldActorSpawnRuntimeDocument CompileSpawns(
+            WorldActorCatalogRuntimeDocument catalog,
+            WorldActorSpawnAuthoringDocument spawnAuthoring)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            if (spawnAuthoring == null)
+            {
+                throw new ArgumentNullException(nameof(spawnAuthoring));
+            }
+
+            ValidateSpawnAuthoring(catalog, spawnAuthoring);
+
+            var spawns = new WorldActorSpawnRuntimeDocument
+            {
+                FormatVersion = WorldActorDataFormat.Version,
+                CatalogId = catalog.CatalogId,
+                WorldId = spawnAuthoring.WorldId,
+                Revision = string.Empty,
                 PatrolPaths = spawnAuthoring.PatrolPaths
                     .Select(CompilePatrolPath)
                     .OrderBy(value => value.Id, StringComparer.Ordinal)
@@ -195,15 +218,24 @@ namespace Mmorpg.WorldData.Actors
                 CompileArea(area, spawnSources, spawnInstances);
             }
 
-            runtime.SpawnSources = spawnSources
+            spawns.SpawnSources = spawnSources
                 .OrderBy(value => value.Id, StringComparer.Ordinal)
                 .ToArray();
-            runtime.SpawnInstances = spawnInstances
+            spawns.SpawnInstances = spawnInstances
                 .OrderBy(value => value.Id, StringComparer.Ordinal)
                 .ToArray();
-            Stamp(runtime);
-            ValidateRuntime(runtime);
-            return runtime;
+            StampSpawns(spawns);
+            ValidateRuntime(new WorldActorRuntime(catalog, spawns));
+            return spawns;
+        }
+
+        // The catalog and one World's spawns, for tools and tests that need a single World.
+        public static WorldActorRuntime Compile(
+            WorldActorCatalogAuthoringDocument actorAuthoring,
+            WorldActorSpawnAuthoringDocument spawnAuthoring)
+        {
+            var catalog = CompileCatalog(actorAuthoring);
+            return new WorldActorRuntime(catalog, CompileSpawns(catalog, spawnAuthoring));
         }
 
         public static string ComputeSha256Hex(byte[] bytes)
@@ -219,9 +251,7 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
-        private static void Validate(
-            WorldActorCatalogAuthoringDocument actors,
-            WorldActorSpawnAuthoringDocument spawns)
+        private static void ValidateCatalogAuthoring(WorldActorCatalogAuthoringDocument actors)
         {
             var errors = new List<string>();
             if (actors.FormatVersion != WorldActorDataFormat.Version)
@@ -229,23 +259,7 @@ namespace Mmorpg.WorldData.Actors
                 errors.Add("actor formatVersion is unsupported.");
             }
 
-            if (spawns.FormatVersion != WorldActorDataFormat.Version)
-            {
-                errors.Add("spawn formatVersion is unsupported.");
-            }
-
             ValidateIdentifier(actors.CatalogId, "catalogId", errors);
-            ValidateIdentifier(spawns.WorldId, "worldId", errors);
-            ValidateIdentifier(spawns.ActorCatalogId, "actorCatalogId", errors);
-            if (!string.IsNullOrWhiteSpace(actors.CatalogId)
-                && !string.Equals(
-                    actors.CatalogId,
-                    spawns.ActorCatalogId,
-                    StringComparison.Ordinal))
-            {
-                errors.Add("actorCatalogId must match catalogId.");
-            }
-
             ValidateCollectionLimit(
                 actors.Factions,
                 MaximumDefinitionsPerCollection,
@@ -296,11 +310,6 @@ namespace Mmorpg.WorldData.Actors
                 MaximumDefinitionsPerCollection,
                 "actors",
                 errors);
-            ValidateCollectionLimit(
-                spawns.PatrolPaths,
-                MaximumSpawnSources,
-                "patrolPaths",
-                errors);
 
             var factionIds = ValidateFactions(actors.Factions, errors);
             var presentationIds = ValidatePresentations(
@@ -322,13 +331,51 @@ namespace Mmorpg.WorldData.Actors
                 ValidateBrainProfiles(actors.BrainProfiles, errors),
                 ValidateLocomotionProfiles(actors.LocomotionProfiles, errors),
                 ValidateLootProfiles(actors.LootProfiles, errors));
-            var actorKinds = ValidateActors(
+            ValidateActors(
                 actors.Actors,
                 factionIds,
                 presentationIds,
                 mobProfiles,
                 resourceProfileIds,
                 errors);
+
+            if (errors.Count > 0)
+            {
+                throw new WorldActorValidationException(errors);
+            }
+        }
+
+        private static void ValidateSpawnAuthoring(
+            WorldActorCatalogRuntimeDocument catalog,
+            WorldActorSpawnAuthoringDocument spawns)
+        {
+            var errors = new List<string>();
+            if (spawns.FormatVersion != WorldActorDataFormat.Version)
+            {
+                errors.Add("spawn formatVersion is unsupported.");
+            }
+
+            ValidateIdentifier(spawns.WorldId, "worldId", errors);
+            ValidateIdentifier(spawns.ActorCatalogId, "actorCatalogId", errors);
+            if (!string.IsNullOrWhiteSpace(catalog.CatalogId)
+                && !string.Equals(
+                    catalog.CatalogId,
+                    spawns.ActorCatalogId,
+                    StringComparison.Ordinal))
+            {
+                errors.Add("actorCatalogId must match catalogId.");
+            }
+
+            ValidateCollectionLimit(
+                spawns.PatrolPaths,
+                MaximumSpawnSources,
+                "patrolPaths",
+                errors);
+
+            var actorKinds = ToRuntimeMap(
+                catalog.Actors ?? Array.Empty<WorldActorDefinition>(),
+                value => value.Id,
+                value => value.Kind);
             var patrolPathIds = ValidatePatrolPaths(spawns.PatrolPaths, errors);
             ValidateSpawns(spawns, actorKinds, patrolPathIds, errors);
 
@@ -1451,62 +1498,62 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
-        // Writes every hash of a compiled document from its content: each element's structural
+        // Writes every hash of a compiled catalog from its content: each element's structural
         // fingerprint, then the revision, which covers the fingerprints. The hash coverage tests
         // require every serialized field to change the revision.
-        public static void Stamp(WorldActorRuntimeDocument runtime)
+        public static void StampCatalog(WorldActorCatalogRuntimeDocument catalog)
         {
-            if (runtime == null)
+            if (catalog == null)
             {
-                throw new ArgumentNullException(nameof(runtime));
+                throw new ArgumentNullException(nameof(catalog));
             }
 
-            foreach (var value in runtime.Factions)
+            foreach (var value in catalog.Factions)
             {
                 value.StructuralFingerprint = FactionFingerprint(value);
             }
 
-            foreach (var value in runtime.PresentationArchetypes)
+            foreach (var value in catalog.PresentationArchetypes)
             {
                 value.StructuralFingerprint = PresentationFingerprint(value);
             }
 
-            foreach (var value in runtime.ActivityProfiles)
+            foreach (var value in catalog.ActivityProfiles)
             {
                 value.StructuralFingerprint = ActivityProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.RespawnProfiles)
+            foreach (var value in catalog.RespawnProfiles)
             {
                 value.StructuralFingerprint = RespawnProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.ResourceProfiles)
+            foreach (var value in catalog.ResourceProfiles)
             {
                 value.StructuralFingerprint = ResourceProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.CombatProfiles)
+            foreach (var value in catalog.CombatProfiles)
             {
                 value.StructuralFingerprint = CombatProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.BrainProfiles)
+            foreach (var value in catalog.BrainProfiles)
             {
                 value.StructuralFingerprint = BrainProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.LocomotionProfiles)
+            foreach (var value in catalog.LocomotionProfiles)
             {
                 value.StructuralFingerprint = LocomotionProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.LootProfiles)
+            foreach (var value in catalog.LootProfiles)
             {
                 value.StructuralFingerprint = LootProfileFingerprint(value);
             }
 
-            foreach (var value in runtime.Actors)
+            foreach (var value in catalog.Actors)
             {
                 foreach (var capability in value.Capabilities)
                 {
@@ -1516,22 +1563,33 @@ namespace Mmorpg.WorldData.Actors
                 value.StructuralFingerprint = ActorFingerprint(value);
             }
 
-            foreach (var value in runtime.SpawnSources)
+            catalog.Revision = ComputeCatalogRevision(catalog);
+        }
+
+        // Writes every hash of one World's compiled spawns, as StampCatalog does for the catalog.
+        public static void StampSpawns(WorldActorSpawnRuntimeDocument spawns)
+        {
+            if (spawns == null)
+            {
+                throw new ArgumentNullException(nameof(spawns));
+            }
+
+            foreach (var value in spawns.SpawnSources)
             {
                 value.StructuralFingerprint = SpawnSourceFingerprint(value);
             }
 
-            foreach (var value in runtime.SpawnInstances)
+            foreach (var value in spawns.SpawnInstances)
             {
                 value.StructuralFingerprint = SpawnInstanceFingerprint(value);
             }
 
-            foreach (var value in runtime.PatrolPaths)
+            foreach (var value in spawns.PatrolPaths)
             {
                 value.StructuralFingerprint = PatrolPathFingerprint(value);
             }
 
-            runtime.Revision = ComputeRuntimeRevision(runtime);
+            spawns.Revision = ComputeSpawnRevision(spawns);
         }
 
         private static WorldActorFactionDefinition CompileFaction(
@@ -2088,25 +2146,32 @@ namespace Mmorpg.WorldData.Actors
                 value.PatrolPathId);
         }
 
-        private static string ComputeRuntimeRevision(WorldActorRuntimeDocument runtime)
+        private static string ComputeCatalogRevision(WorldActorCatalogRuntimeDocument catalog)
         {
             return Fingerprint(
-                runtime.FormatVersion.ToString(CultureInfo.InvariantCulture),
-                runtime.CatalogId,
-                runtime.WorldId,
-                Join(runtime.Factions.Select(value => value.StructuralFingerprint)),
-                Join(runtime.PresentationArchetypes.Select(value => value.StructuralFingerprint)),
-                Join(runtime.ActivityProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.RespawnProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.ResourceProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.CombatProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.BrainProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.LocomotionProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.LootProfiles.Select(value => value.StructuralFingerprint)),
-                Join(runtime.Actors.Select(value => value.StructuralFingerprint)),
-                Join(runtime.SpawnSources.Select(value => value.StructuralFingerprint)),
-                Join(runtime.SpawnInstances.Select(value => value.StructuralFingerprint)),
-                Join(runtime.PatrolPaths.Select(value => value.StructuralFingerprint)));
+                catalog.FormatVersion.ToString(CultureInfo.InvariantCulture),
+                catalog.CatalogId,
+                Join(catalog.Factions.Select(value => value.StructuralFingerprint)),
+                Join(catalog.PresentationArchetypes.Select(value => value.StructuralFingerprint)),
+                Join(catalog.ActivityProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.RespawnProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.ResourceProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.CombatProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.BrainProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.LocomotionProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.LootProfiles.Select(value => value.StructuralFingerprint)),
+                Join(catalog.Actors.Select(value => value.StructuralFingerprint)));
+        }
+
+        private static string ComputeSpawnRevision(WorldActorSpawnRuntimeDocument spawns)
+        {
+            return Fingerprint(
+                spawns.FormatVersion.ToString(CultureInfo.InvariantCulture),
+                spawns.CatalogId,
+                spawns.WorldId,
+                Join(spawns.SpawnSources.Select(value => value.StructuralFingerprint)),
+                Join(spawns.SpawnInstances.Select(value => value.StructuralFingerprint)),
+                Join(spawns.PatrolPaths.Select(value => value.StructuralFingerprint)));
         }
 
         private static string Join(IEnumerable<string> values)

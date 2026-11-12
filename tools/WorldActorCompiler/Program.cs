@@ -15,7 +15,7 @@ if (!ContentToolOptions.TryParse(args, out var options, out var argumentError))
 try
 {
     var contentRoot = options!.ContentRoot;
-    var catalog = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
+    var catalogAuthoring = WorldActorContent.LoadCatalog(ContentLayout.ActorsDirectory(contentRoot));
     var itemCatalog = LoadItemCatalog(options.GeneratedRoot);
     var worldIds = WorldActorContent.ListWorldIds(contentRoot);
     if (worldIds.Length == 0)
@@ -24,32 +24,44 @@ try
             $"No World exists below '{ContentLayout.WorldsDirectory(contentRoot)}'.");
     }
 
+    var catalog = CompileCatalog(catalogAuthoring, itemCatalog);
+    GeneratedOutput.WriteOrVerifyText(
+        ContentLayout.GeneratedActorCatalogPath(options.GeneratedRoot),
+        WorldActorJson.SerializeCatalogRuntime(catalog),
+        options.VerifyOnly,
+        "Compiled world actor catalog");
+    Console.WriteLine(
+        "World actor catalog {0} for catalog {1} at revision {2} with {3} definitions.",
+        options.VerifyOnly ? "verified" : "compiled",
+        catalog.CatalogId,
+        catalog.Revision,
+        catalog.Actors.Length);
+
     foreach (var worldId in worldIds)
     {
-        var runtime = CompileWorld(catalog, itemCatalog, contentRoot, worldId);
+        var spawns = CompileSpawns(catalog, contentRoot, worldId);
         GeneratedOutput.WriteOrVerifyText(
-            ContentLayout.GeneratedWorldActorsPath(options.GeneratedRoot, worldId),
-            WorldActorJson.SerializeRuntime(runtime),
+            ContentLayout.GeneratedWorldActorSpawnsPath(options.GeneratedRoot, worldId),
+            WorldActorJson.SerializeSpawnRuntime(spawns),
             options.VerifyOnly,
-            $"Compiled world actors for World '{worldId}'");
+            $"Compiled world actor spawns for World '{worldId}'");
         Console.WriteLine(
-            "World actors {0} for world {1} at revision {2} with {3} definitions and {4} runtime instances.",
+            "World actor spawns {0} for world {1} at revision {2} with {3} runtime instances.",
             options.VerifyOnly ? "verified" : "compiled",
-            runtime.WorldId,
-            runtime.Revision,
-            runtime.Actors.Length,
-            runtime.SpawnInstances.Length);
+            spawns.WorldId,
+            spawns.Revision,
+            spawns.SpawnInstances.Length);
     }
 
     GeneratedOutput.RemoveOrRejectStale(
-        FindStaleRuntimeFiles(options.GeneratedRoot, worldIds),
+        WorldActorContent.FindStaleOutputs(options.GeneratedRoot, worldIds),
         options.VerifyOnly,
-        "Compiled world actors");
+        "Compiled world actor data");
 
     // The actor texts belong to the authored actor catalog. The compiled actors carry none.
     TextTableOutput.WriteOrVerify(
         options.GeneratedRoot,
-        ContentText.FromWorldActors(catalog),
+        ContentText.FromWorldActors(catalogAuthoring),
         options.VerifyOnly);
     return 0;
 }
@@ -59,19 +71,33 @@ catch (Exception exception)
     return 1;
 }
 
-static WorldActorRuntimeDocument CompileWorld(
-    WorldActorCatalogAuthoringDocument catalog,
-    ItemCatalogRuntimeDocument itemCatalog,
+// Only the catalog refers to items, so its item references are checked once, not per World.
+static WorldActorCatalogRuntimeDocument CompileCatalog(
+    WorldActorCatalogAuthoringDocument authoring,
+    ItemCatalogRuntimeDocument itemCatalog)
+{
+    try
+    {
+        var catalog = WorldActorCompiler.CompileCatalog(authoring);
+        WorldActorItemReferences.Validate(catalog, itemCatalog);
+        return catalog;
+    }
+    catch (WorldActorValidationException exception)
+    {
+        throw new InvalidDataException($"Actor catalog: {exception.Message}", exception);
+    }
+}
+
+static WorldActorSpawnRuntimeDocument CompileSpawns(
+    WorldActorCatalogRuntimeDocument catalog,
     string contentRoot,
     string worldId)
 {
     try
     {
-        var runtime = WorldActorCompiler.Compile(
+        return WorldActorCompiler.CompileSpawns(
             catalog,
             WorldActorContent.LoadSpawns(contentRoot, worldId));
-        WorldActorItemReferences.Validate(runtime, itemCatalog);
-        return runtime;
     }
     catch (WorldActorValidationException exception)
     {
@@ -88,20 +114,4 @@ static ItemCatalogRuntimeDocument LoadItemCatalog(string generatedRoot)
         path,
         "Compiled item catalog");
     return ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(runtime);
-}
-
-static string[] FindStaleRuntimeFiles(string generatedRoot, string[] worldIds)
-{
-    var directory = ContentLayout.GeneratedWorldsDirectory(generatedRoot);
-    if (!Directory.Exists(directory))
-    {
-        return [];
-    }
-
-    return Directory.EnumerateDirectories(directory)
-        .Where(path => !worldIds.Contains(Path.GetFileName(path), StringComparer.Ordinal))
-        .Select(path => Path.Combine(path, ContentLayout.WorldActorsFileName))
-        .Where(File.Exists)
-        .Order(StringComparer.Ordinal)
-        .ToArray();
 }

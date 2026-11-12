@@ -70,6 +70,28 @@ public static class WorldActorContent
         return ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot));
     }
 
+    // Everything in the compiled actor folders that a compile of these Worlds does not write: a
+    // World folder that is no World, and any other file next to the catalog or a World's
+    // spawns, such as a world-actors.json from an older format.
+    public static string[] FindStaleOutputs(string generatedRoot, IReadOnlyCollection<string> worldIds)
+    {
+        var stale = new List<string>();
+        stale.AddRange(GeneratedOutput.UnexpectedEntries(
+            ContentLayout.GeneratedActorsDirectory(generatedRoot),
+            [ContentLayout.ActorCatalogFileName]));
+        stale.AddRange(GeneratedOutput.UnexpectedEntries(
+            ContentLayout.GeneratedWorldsDirectory(generatedRoot),
+            worldIds));
+        foreach (var worldId in worldIds)
+        {
+            stale.AddRange(GeneratedOutput.UnexpectedEntries(
+                Path.GetDirectoryName(ContentLayout.GeneratedWorldActorSpawnsPath(generatedRoot, worldId))!,
+                [ContentLayout.WorldActorSpawnsFileName]));
+        }
+
+        return stale.Order(StringComparer.Ordinal).ToArray();
+    }
+
     private static WorldActorAuthoringEntry LoadDefinition(ContentDefinitionFile file)
     {
         var actor = StrictContentJson.DeserializeFile<WorldActorAuthoringEntry>(

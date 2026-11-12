@@ -1130,17 +1130,17 @@ public sealed class RealtimeCombatTests
     }
 
     // One wolf a few metres from the World spawn, with a short respawn.
-    internal static WorldActorRuntimeDocument WolfNextToTheSpawn(float respawnSeconds, float x = 4f)
+    internal static WorldActorRuntime WolfNextToTheSpawn(float respawnSeconds, float x = 4f)
     {
         var document = WorldActorTestData.Compile();
-        var wolf = document.SpawnInstances.First(spawn => spawn.ActorId == "mob.feral_wolf");
-        document.SpawnInstances = document.SpawnInstances
+        var wolf = document.Spawns.SpawnInstances.First(spawn => spawn.ActorId == "mob.feral_wolf");
+        document.Spawns.SpawnInstances = document.Spawns.SpawnInstances
             .Where(spawn => spawn.ActorId != "mob.feral_wolf" || ReferenceEquals(spawn, wolf))
             .ToArray();
         wolf.X = x;
         wolf.Z = -1f;
         wolf.PatrolPathId = string.Empty;
-        foreach (var profile in document.RespawnProfiles)
+        foreach (var profile in document.Catalog.RespawnProfiles)
         {
             profile.DelaySeconds = respawnSeconds;
         }

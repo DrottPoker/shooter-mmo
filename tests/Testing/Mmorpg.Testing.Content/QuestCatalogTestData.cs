@@ -1,5 +1,6 @@
 using Mmorpg.Testing;
 using Mmorpg.Tools.QuestCatalogCompiler;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Quests;
 
@@ -27,10 +28,11 @@ public static class QuestCatalogTestData
     // The checked-in items and Worlds with the quests of a test.
     public static QuestCatalogRuntimeDocument Compile(QuestCatalogAuthoringDocument authoring)
     {
+        var actors = WorldActorTestData.CompileCatalog();
         var worlds = WorldActorTestData.CheckedInWorldIds()
-            .Select(WorldActorTestData.CompileWorld)
+            .Select(worldId => WorldActorCompiler.CompileSpawns(actors, WorldActorTestData.LoadWorldSpawns(worldId)))
             .ToArray();
-        return QuestCatalogCompiler.Compile(authoring, ItemCatalogTestData.Compile(), worlds);
+        return QuestCatalogCompiler.Compile(authoring, ItemCatalogTestData.Compile(), actors, worlds);
     }
 
     public static QuestCatalogAuthoringDocument LoadFixtureAuthoring()
@@ -40,10 +42,12 @@ public static class QuestCatalogTestData
 
     public static QuestCatalogRuntimeDocument CompileFixture()
     {
+        var world = WorldActorTestData.Compile();
         return QuestCatalogCompiler.Compile(
             LoadFixtureAuthoring(),
             ItemCatalogTestData.CompileFixture(),
-            [WorldActorTestData.Compile()]);
+            world.Catalog,
+            [world.Spawns]);
     }
 
     public static string RuntimeJson => File.ReadAllText(

@@ -48,11 +48,11 @@ public sealed class MobPathPlanningQueueTests
         var collisionWorld = CollisionTestWorldFactory.Create();
         var settings = new MovementSimulationSettings(30, 5f, 720f, -24f, -2f, 0f, -100f, 100f, -100f, 100f);
         var locomotion = new MobLocomotion(
-            document.LocomotionProfiles.Single(profile => profile.Id == actor.Definition.LocomotionProfileId),
+            document.Catalog.LocomotionProfiles.Single(profile => profile.Id == actor.Definition.LocomotionProfileId),
             settings,
             collisionWorld,
             40f);
-        var brain = document.BrainProfiles.Single(profile => profile.Id == actor.Definition.BrainProfileId);
+        var brain = document.Catalog.BrainProfiles.Single(profile => profile.Id == actor.Definition.BrainProfileId);
         return Enumerable.Range(0, count)
             .Select(_ =>
             {

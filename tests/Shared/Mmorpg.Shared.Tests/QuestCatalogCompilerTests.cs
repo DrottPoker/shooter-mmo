@@ -12,7 +12,7 @@ namespace Mmorpg.Shared.Tests;
 public sealed class QuestCatalogCompilerTests
 {
     private static readonly Lazy<ItemCatalogRuntimeDocument> Items = new(ItemCatalogTestData.Compile);
-    private static readonly Lazy<WorldActorRuntimeDocument> World = new(WorldActorTestData.Compile);
+    private static readonly Lazy<WorldActorRuntime> World = new(WorldActorTestData.Compile);
 
     [Fact]
     public void AValidQuestCompilesToTheSameRevisionEveryTime()
@@ -182,7 +182,7 @@ public sealed class QuestCatalogCompilerTests
         ];
 
         var errors = Assert.Throws<QuestValidationException>(
-            () => QuestCatalogCompiler.Compile(Catalog(fangs), items, [World.Value])).Errors;
+            () => QuestCatalogCompiler.Compile(Catalog(fangs), items, World.Value.Catalog, [World.Value.Spawns])).Errors;
 
         Assert.Contains(errors, error => error.Contains("dropSources may only drop protected quest items", StringComparison.Ordinal));
     }
@@ -211,7 +211,7 @@ public sealed class QuestCatalogCompilerTests
             Objective("fangs", QuestObjectiveKindIds.Collect, 2, itemId: "quest_item.wolf_fang", dropSources: [Drop("mob.feral_wolf", 5000)])
         ];
         var world = WorldActorTestData.Compile();
-        foreach (var mob in world.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob))
+        foreach (var mob in world.Catalog.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob))
         {
             mob.DamagePolicy = WorldActorDamagePolicyIds.Invulnerable;
         }
@@ -229,11 +229,13 @@ public sealed class QuestCatalogCompilerTests
         var itemErrors = Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.Compile(
             Catalog(insuredCollect, insuredDelivery, equippableStart, equippableDrop),
             items,
-            [World.Value])).Errors;
+            World.Value.Catalog,
+            [World.Value.Spawns])).Errors;
         var mobErrors = Assert.Throws<QuestValidationException>(() => QuestCatalogCompiler.Compile(
             Catalog(immortalTarget, immortalTag, immortalDrop),
             Items.Value,
-            [world])).Errors;
+            world.Catalog,
+            [world.Spawns])).Errors;
 
         Assert.Contains(itemErrors, error => error.StartsWith("quests[0].steps[0].objectives[0].itemId 'armor.leather_gloves' has default policies", StringComparison.Ordinal));
         Assert.Contains(itemErrors, error => error.StartsWith("quests[1].steps[0].objectives[0].itemId 'armor.leather_gloves' has default policies", StringComparison.Ordinal));
@@ -603,7 +605,7 @@ public sealed class QuestCatalogCompilerTests
 
     private static QuestCatalogRuntimeDocument Compile(QuestCatalogAuthoringDocument catalog)
     {
-        return QuestCatalogCompiler.Compile(catalog, Items.Value, [World.Value]);
+        return QuestCatalogCompiler.Compile(catalog, Items.Value, World.Value.Catalog, [World.Value.Spawns]);
     }
 
     private static IReadOnlyList<string> Errors(QuestAuthoringEntry quest)

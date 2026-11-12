@@ -61,19 +61,22 @@ namespace Mmorpg.WorldData.Editor.Quests
         public bool Rewardable { get; }
     }
 
-    // What quest content may name, read from the compiled item catalog and every World's
-    // compiled actors, which the item and actor compilers write before the quest compiler runs.
-    // The same documents feed the shared quest compiler for live validation.
+    // What quest content may name, read from the compiled item catalog, the compiled actor
+    // catalog, and every World's compiled spawns, which the item and actor compilers write before
+    // the quest compiler runs. The same documents feed the shared quest compiler for live
+    // validation.
     public sealed class QuestEditorReferences
     {
         // The compiled item catalog and the compiled actors carry no names, so they come from
         // the item and actor text tables. Without a table an item or an actor shows its id.
         public QuestEditorReferences(
             ItemCatalogRuntimeDocument items,
-            IReadOnlyList<WorldActorRuntimeDocument> worlds,
+            WorldActorCatalogRuntimeDocument actorCatalog,
+            IReadOnlyList<WorldActorSpawnRuntimeDocument> worlds,
             params TextTableDocument[] texts)
         {
             Items = items ?? throw new ArgumentNullException(nameof(items));
+            ActorCatalog = actorCatalog ?? throw new ArgumentNullException(nameof(actorCatalog));
             var names = (texts ?? Array.Empty<TextTableDocument>())
                 .Where(table => table != null)
                 .SelectMany(table => table.Entries ?? Array.Empty<TextTableEntry>())
@@ -84,9 +87,7 @@ namespace Mmorpg.WorldData.Editor.Quests
                 worlds.SelectMany(world => world.SpawnInstances ?? Array.Empty<WorldActorSpawnInstanceDefinition>())
                     .Select(spawn => spawn.ActorId),
                 StringComparer.Ordinal);
-            Actors = worlds.SelectMany(world => world.Actors ?? Array.Empty<WorldActorDefinition>())
-                .GroupBy(actor => actor.Id, StringComparer.Ordinal)
-                .Select(group => group.First())
+            Actors = (actorCatalog.Actors ?? Array.Empty<WorldActorDefinition>())
                 .Select(actor => new QuestEditorActorChoice(
                     actor.Id,
                     names.TryGetValue(TextKeys.ActorName(actor.Id), out var actorName) ? actorName : actor.Id,
@@ -115,7 +116,10 @@ namespace Mmorpg.WorldData.Editor.Quests
         }
 
         public ItemCatalogRuntimeDocument Items { get; }
-        public IReadOnlyList<WorldActorRuntimeDocument> Worlds { get; }
+        public WorldActorCatalogRuntimeDocument ActorCatalog { get; }
+
+        // The compiled spawns of every World, which tell which actors some World places.
+        public IReadOnlyList<WorldActorSpawnRuntimeDocument> Worlds { get; }
         public IReadOnlyList<QuestEditorActorChoice> Actors { get; }
         public IReadOnlyList<QuestEditorItemChoice> ItemChoices { get; }
 
@@ -136,10 +140,11 @@ namespace Mmorpg.WorldData.Editor.Quests
             }
 
             var worlds = ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot))
-                .Select(worldId => LoadWorld(ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId)))
+                .Select(worldId => LoadSpawns(ContentLayout.GeneratedWorldActorSpawnsPath(generatedRoot, worldId)))
                 .ToArray();
             return new QuestEditorReferences(
                 LoadItems(itemCatalogPath),
+                LoadActorCatalog(ContentLayout.GeneratedActorCatalogPath(generatedRoot)),
                 worlds,
                 LoadTexts(generatedRoot, TextTableIds.Items),
                 LoadTexts(generatedRoot, TextTableIds.Actors));
@@ -189,30 +194,46 @@ namespace Mmorpg.WorldData.Editor.Quests
             return table;
         }
 
-        // Only the fields that quest content refers to: each actor's kind, tags, and capability
-        // kinds, and which actors the World places.
-        private static WorldActorRuntimeDocument LoadWorld(string path)
+        // Only the fields that quest content refers to: each actor's kind, damage policy, tags,
+        // and capability kinds.
+        private static WorldActorCatalogRuntimeDocument LoadActorCatalog(string path)
         {
             if (!File.Exists(path))
             {
-                throw new FileNotFoundException("A compiled World is missing; run the actor compiler first.", path);
+                throw new FileNotFoundException("The compiled actor catalog is missing; run the actor compiler first.", path);
             }
 
-            var world = JsonUtility.FromJson<WorldJson>(File.ReadAllText(path))
-                ?? throw new InvalidDataException("The compiled World at '" + path + "' has no root object.");
-            return new WorldActorRuntimeDocument
+            var catalog = JsonUtility.FromJson<ActorCatalogJson>(File.ReadAllText(path))
+                ?? throw new InvalidDataException("The compiled actor catalog at '" + path + "' has no root object.");
+            return new WorldActorCatalogRuntimeDocument
             {
-                Actors = (world.actors ?? Array.Empty<ActorJson>())
+                Actors = (catalog.actors ?? Array.Empty<ActorJson>())
                     .Select(actor => new WorldActorDefinition
                     {
                         Id = actor.id,
                         Kind = actor.kind,
+                        DamagePolicy = actor.damagePolicy,
                         Tags = actor.tags ?? Array.Empty<string>(),
                         Capabilities = (actor.capabilities ?? Array.Empty<CapabilityJson>())
                             .Select(capability => new WorldActorCapabilityDefinition { Kind = capability.kind })
                             .ToArray()
                     })
-                    .ToArray(),
+                    .ToArray()
+            };
+        }
+
+        // Only which actors the World places.
+        private static WorldActorSpawnRuntimeDocument LoadSpawns(string path)
+        {
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException("A World's compiled spawns are missing; run the actor compiler first.", path);
+            }
+
+            var world = JsonUtility.FromJson<SpawnsJson>(File.ReadAllText(path))
+                ?? throw new InvalidDataException("The compiled World spawns at '" + path + "' have no root object.");
+            return new WorldActorSpawnRuntimeDocument
+            {
                 SpawnInstances = (world.spawnInstances ?? Array.Empty<SpawnJson>())
                     .Select(spawn => new WorldActorSpawnInstanceDefinition { ActorId = spawn.actorId })
                     .ToArray()
@@ -220,9 +241,14 @@ namespace Mmorpg.WorldData.Editor.Quests
         }
 
         [Serializable]
-        private sealed class WorldJson
+        private sealed class ActorCatalogJson
         {
             public ActorJson[] actors;
+        }
+
+        [Serializable]
+        private sealed class SpawnsJson
+        {
             public SpawnJson[] spawnInstances;
         }
 
@@ -231,6 +257,7 @@ namespace Mmorpg.WorldData.Editor.Quests
         {
             public string id;
             public string kind;
+            public string damagePolicy;
             public string[] tags;
             public CapabilityJson[] capabilities;
         }

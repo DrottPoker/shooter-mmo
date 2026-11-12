@@ -26,7 +26,8 @@ namespace Mmorpg.WorldData.Editor.Actors
             GeneratedRoot = Path.GetFullPath(generatedRoot);
             WorldId = worldId;
             SpawnPath = ContentLayout.ActorSpawnsPath(ContentRoot, worldId);
-            RuntimePath = ContentLayout.GeneratedWorldActorsPath(GeneratedRoot, worldId);
+            CatalogRuntimePath = ContentLayout.GeneratedActorCatalogPath(GeneratedRoot);
+            SpawnRuntimePath = ContentLayout.GeneratedWorldActorSpawnsPath(GeneratedRoot, worldId);
         }
 
         public string RepositoryRoot { get; }
@@ -42,7 +43,11 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         public string SpawnPath { get; }
 
-        public string RuntimePath { get; }
+        // The compiled actor catalog that every World shares.
+        public string CatalogRuntimePath { get; }
+
+        // The compiled spawns of the edited World.
+        public string SpawnRuntimePath { get; }
 
         public static WorldActorEditorPaths CreateDefault(string worldId = DefaultWorldId)
         {
@@ -186,15 +191,17 @@ namespace Mmorpg.WorldData.Editor.Actors
             string message,
             WorldActorEditorFile[] files,
             string[] removedFiles,
-            string runtimeJson,
-            WorldActorRuntimeDocument candidate,
+            string catalogRuntimeJson,
+            string spawnRuntimeJson,
+            WorldActorRuntime candidate,
             string[] changes)
         {
             Success = success;
             Message = message ?? string.Empty;
             Files = files ?? Array.Empty<WorldActorEditorFile>();
             RemovedFiles = removedFiles ?? Array.Empty<string>();
-            RuntimeJson = runtimeJson;
+            CatalogRuntimeJson = catalogRuntimeJson;
+            SpawnRuntimeJson = spawnRuntimeJson;
             Candidate = candidate;
             Changes = changes ?? Array.Empty<string>();
         }
@@ -208,9 +215,10 @@ namespace Mmorpg.WorldData.Editor.Actors
         // Actor definition files whose actors were removed from the catalog.
         public string[] RemovedFiles { get; }
 
-        // Compiled runtime of the edited World.
-        public string RuntimeJson { get; }
-        public WorldActorRuntimeDocument Candidate { get; }
+        // The compiled actor catalog and the compiled spawns of the edited World.
+        public string CatalogRuntimeJson { get; }
+        public string SpawnRuntimeJson { get; }
+        public WorldActorRuntime Candidate { get; }
         public string[] Changes { get; }
 
         public static WorldActorEditorValidationResult Failed(string message)
@@ -222,6 +230,7 @@ namespace Mmorpg.WorldData.Editor.Actors
                 null,
                 null,
                 null,
+                null,
                 null);
         }
 
@@ -229,8 +238,9 @@ namespace Mmorpg.WorldData.Editor.Actors
             string message,
             WorldActorEditorFile[] files,
             string[] removedFiles,
-            string runtimeJson,
-            WorldActorRuntimeDocument candidate,
+            string catalogRuntimeJson,
+            string spawnRuntimeJson,
+            WorldActorRuntime candidate,
             string[] changes)
         {
             return new WorldActorEditorValidationResult(
@@ -238,7 +248,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                 message,
                 files,
                 removedFiles,
-                runtimeJson,
+                catalogRuntimeJson,
+                spawnRuntimeJson,
                 candidate,
                 changes);
         }
@@ -276,18 +287,21 @@ namespace Mmorpg.WorldData.Editor.Actors
         public WorldActorEditorWorkspace Load()
         {
             RequireFile(paths.SpawnPath);
-            RequireFile(paths.RuntimePath);
+            RequireFile(paths.CatalogRuntimePath);
+            RequireFile(paths.SpawnRuntimePath);
             var diskState = ReadDiskState();
             return new WorldActorEditorWorkspace(
                 WorldActorEditorContent.Load(paths.ActorsDirectory),
                 WorldActorEditorJson.DeserializeSpawns(File.ReadAllText(paths.SpawnPath)),
-                WorldActorEditorJson.DeserializeRuntime(File.ReadAllText(paths.RuntimePath)),
+                new WorldActorEditorRuntime(
+                    WorldActorEditorJson.DeserializeCatalogRuntime(File.ReadAllText(paths.CatalogRuntimePath)),
+                    WorldActorEditorJson.DeserializeSpawnRuntime(File.ReadAllText(paths.SpawnRuntimePath))),
                 WorldActorEditorItemReferences.Load(paths.GeneratedRoot),
                 diskState);
         }
 
         // Compiles the edited catalog and spawns together with the committed spawns of every
-        // other World, because each World's runtime embeds the shared actor catalog. Actor or
+        // other World, because every World's spawns compile against the one catalog. Actor or
         // spawn files that changed on disk since the workspace read them stop it, because the
         // save would delete or write over them.
         public WorldActorEditorValidationResult Validate(
@@ -373,14 +387,26 @@ namespace Mmorpg.WorldData.Editor.Actors
                 }
 
                 var generatedFiles = new List<KeyValuePair<string, string>>();
+                var catalogRelativePath = ContentLayout.GeneratedActorCatalogPath(string.Empty);
+                var catalogPath = Path.Combine(generatedRoot, catalogRelativePath);
+                if (!File.Exists(catalogPath))
+                {
+                    return WorldActorEditorValidationResult.Failed(
+                        CompilerToolName + " did not produce the actor catalog runtime JSON.");
+                }
+
+                var catalogRuntimeJson = Normalize(File.ReadAllText(catalogPath));
+                generatedFiles.Add(new KeyValuePair<string, string>(
+                    catalogRelativePath,
+                    catalogRuntimeJson));
                 foreach (var worldId in worldIds)
                 {
-                    var relativePath = ContentLayout.GeneratedWorldActorsPath(string.Empty, worldId);
+                    var relativePath = ContentLayout.GeneratedWorldActorSpawnsPath(string.Empty, worldId);
                     var path = Path.Combine(generatedRoot, relativePath);
                     if (!File.Exists(path))
                     {
                         return WorldActorEditorValidationResult.Failed(
-                            CompilerToolName + " did not produce runtime JSON for World '"
+                            CompilerToolName + " did not produce spawn runtime JSON for World '"
                             + worldId + "'.");
                     }
 
@@ -389,9 +415,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                         Normalize(File.ReadAllText(path))));
                 }
 
-                var runtimeJson = generatedFiles.Single(file => string.Equals(
+                var spawnRuntimeJson = generatedFiles.Single(file => string.Equals(
                     file.Key,
-                    ContentLayout.GeneratedWorldActorsPath(string.Empty, paths.WorldId),
+                    ContentLayout.GeneratedWorldActorSpawnsPath(string.Empty, paths.WorldId),
                     StringComparison.Ordinal)).Value;
 
                 // The compiler writes the actor text table with the runtimes, and a save keeps
@@ -409,10 +435,15 @@ namespace Mmorpg.WorldData.Editor.Actors
                 generatedFiles.Add(new KeyValuePair<string, string>(
                     textTablePath,
                     Normalize(File.ReadAllText(Path.Combine(generatedRoot, textTablePath)))));
-                var parsedRuntime = WorldActorEditorJson.DeserializeRuntime(runtimeJson);
+                var parsedCatalog = WorldActorEditorJson.DeserializeCatalogRuntime(catalogRuntimeJson);
+                var parsedSpawns = WorldActorEditorJson.DeserializeSpawnRuntime(spawnRuntimeJson);
                 if (!string.Equals(
-                        candidate.Revision,
-                        parsedRuntime.revision,
+                        candidate.Catalog.Revision,
+                        parsedCatalog.revision,
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        candidate.Spawns.Revision,
+                        parsedSpawns.revision,
                         StringComparison.Ordinal))
                 {
                     return WorldActorEditorValidationResult.Failed(
@@ -432,11 +463,13 @@ namespace Mmorpg.WorldData.Editor.Actors
                     .Where(path => !written.Contains(path))
                     .ToArray();
                 var changes = ClassifyChanges(workspace.CurrentRuntime, candidate).ToList();
+                // Another World's spawns change only when something they share changes, such as
+                // the catalog id or the format.
                 foreach (var worldId in worldIds.Where(worldId => worldId != paths.WorldId))
                 {
                     var runtimeFile = files.Single(file => string.Equals(
                         file.FullPath,
-                        Path.GetFullPath(ContentLayout.GeneratedWorldActorsPath(
+                        Path.GetFullPath(ContentLayout.GeneratedWorldActorSpawnsPath(
                             paths.GeneratedRoot,
                             worldId)),
                         StringComparison.OrdinalIgnoreCase));
@@ -460,7 +493,8 @@ namespace Mmorpg.WorldData.Editor.Actors
                     message.Trim(),
                     files,
                     removedFiles,
-                    runtimeJson,
+                    catalogRuntimeJson,
+                    spawnRuntimeJson,
                     candidate,
                     changes.ToArray());
             }
@@ -482,7 +516,7 @@ namespace Mmorpg.WorldData.Editor.Actors
         }
 
         // Writes the validated files, then recompiles the World collision from the new actor
-        // runtime, since each resource node adds a box to it. A failed collision compile leaves
+        // catalog and spawns, since each resource node adds a box to it. A failed collision compile leaves
         // the actor files written and the collision stale until WorldCollisionCompiler runs.
         public ContentCompilerRunResult SaveAndCompile(
             WorldActorEditorWorkspace workspace,
@@ -511,8 +545,9 @@ namespace Mmorpg.WorldData.Editor.Actors
                     new KeyValuePair<string, string>(file.FullPath, file.Text)),
                 validation.RemovedFiles);
             workspace.MarkFilesWritten(ReadDiskState());
-            workspace.ApplyRuntime(
-                WorldActorEditorJson.DeserializeRuntime(validation.RuntimeJson));
+            workspace.ApplyRuntime(new WorldActorEditorRuntime(
+                WorldActorEditorJson.DeserializeCatalogRuntime(validation.CatalogRuntimeJson),
+                WorldActorEditorJson.DeserializeSpawnRuntime(validation.SpawnRuntimeJson)));
             return collisionCompilerRunner.Compile(paths.ContentRoot, paths.GeneratedRoot);
         }
 
@@ -578,25 +613,25 @@ namespace Mmorpg.WorldData.Editor.Actors
 
         private static string[] ClassifyChanges(
             WorldActorEditorRuntime baseline,
-            WorldActorRuntimeDocument candidate)
+            WorldActorRuntime candidate)
         {
             var changes = new List<string>();
             Compare(
                 "actor",
-                baseline.actors,
-                candidate.Actors.Select(value =>
+                baseline.Catalog.actors,
+                candidate.Catalog.Actors.Select(value =>
                     new KeyValuePair<string, string>(value.Id, value.StructuralFingerprint)),
                 changes);
             Compare(
                 "spawn source",
-                baseline.spawnSources,
-                candidate.SpawnSources.Select(value =>
+                baseline.Spawns.spawnSources,
+                candidate.Spawns.SpawnSources.Select(value =>
                     new KeyValuePair<string, string>(value.Id, value.StructuralFingerprint)),
                 changes);
             Compare(
                 "spawn instance",
-                baseline.spawnInstances,
-                candidate.SpawnInstances.Select(value =>
+                baseline.Spawns.spawnInstances,
+                candidate.Spawns.SpawnInstances.Select(value =>
                     new KeyValuePair<string, string>(value.Id, value.StructuralFingerprint)),
                 changes);
             return changes.ToArray();

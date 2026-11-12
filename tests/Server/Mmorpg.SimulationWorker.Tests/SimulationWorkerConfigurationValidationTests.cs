@@ -6,6 +6,7 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
+using Mmorpg.Tools.WorldActorCompiler;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -45,10 +46,10 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal("local-shard-1", config.ShardId);
         Assert.Equal("development-world-1", config.WorldId);
         Assert.Equal(
-            WorldManifestFileStore.ResolveActorRuntimePath(
+            WorldManifestFileStore.ResolveActorSpawnsPath(
                 WorldDataRootPath(),
                 "development-world-1"),
-            config.ActorDataPath);
+            config.ActorSpawnsPath);
         Assert.Equal("127.0.0.1", config.AdvertisedHost);
         Assert.Equal(27015, config.AdvertisedUdpPort);
         Assert.Equal(100, config.MaxConnections);
@@ -95,6 +96,31 @@ public sealed class SimulationWorkerConfigurationValidationTests
             configured.ItemCatalogPath);
     }
 
+    // The actor catalog lies outside the World directories, which hold only Worlds.
+    [Fact]
+    public void SimulationWorkerReadsTheActorCatalogCopiedToItsOutputUnlessConfigured()
+    {
+        var defaults = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(WorkerSettings())
+            .Build());
+        var configuredPath = Path.Combine(Path.GetTempPath(), "actors", "core.actor-catalog.json");
+        var settings = WorkerSettings();
+        settings["SimulationWorker:ActorCatalogPath"] = configuredPath;
+        var configured = SimulationWorkerConfig.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
+            .Build());
+
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                SimulationWorkerConfig.DefaultActorCatalogPath)),
+            defaults.ActorCatalogPath);
+        Assert.Equal(
+            WorldActorTestData.CompileCatalog().Revision,
+            WorldActorJson.DeserializeCatalogRuntime(File.ReadAllText(defaults.ActorCatalogPath)).Revision);
+        Assert.Equal(Path.GetFullPath(configuredPath), configured.ActorCatalogPath);
+    }
+
     [Fact]
     public void SimulationWorkerReadsTheQuestCatalogCopiedToItsOutputUnlessConfigured()
     {
@@ -121,7 +147,7 @@ public sealed class SimulationWorkerConfigurationValidationTests
     }
 
     [Fact]
-    public void SimulationWorkerDerivesActorDataPathFromWorldIdentity()
+    public void SimulationWorkerDerivesActorSpawnsPathFromWorldIdentity()
     {
         var settings = WorkerSettings();
         settings["SimulationWorker:WorldId"] = "development-world-2";
@@ -133,10 +159,10 @@ public sealed class SimulationWorkerConfigurationValidationTests
         var manifest = WorldManifestFileStore.Load(WorldDataRootPath(), "development-world-2");
 
         Assert.Equal(
-            WorldManifestFileStore.ResolveActorRuntimePath(
+            WorldManifestFileStore.ResolveActorSpawnsPath(
                 WorldDataRootPath(),
                 "development-world-2"),
-            config.ActorDataPath);
+            config.ActorSpawnsPath);
         Assert.Equal(manifest.bounds.minimumX, config.MovementSimulation.MinimumX);
         Assert.Equal(manifest.bounds.maximumX, config.MovementSimulation.MaximumX);
         Assert.Equal(manifest.spawn.z, config.MovementSpawn.Z);

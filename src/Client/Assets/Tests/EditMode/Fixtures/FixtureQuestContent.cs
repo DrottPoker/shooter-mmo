@@ -36,10 +36,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 Copy(
-                    ContentLayout.GeneratedWorldActorsPath(source.GeneratedRoot, worldId),
-                    ContentLayout.GeneratedWorldActorsPath(Paths.GeneratedRoot, worldId));
+                    ContentLayout.GeneratedWorldActorSpawnsPath(source.GeneratedRoot, worldId),
+                    ContentLayout.GeneratedWorldActorSpawnsPath(Paths.GeneratedRoot, worldId));
             }
 
+            Copy(ContentLayout.GeneratedActorCatalogPath(source.GeneratedRoot), ContentLayout.GeneratedActorCatalogPath(Paths.GeneratedRoot));
             Copy(ContentLayout.GeneratedItemCatalogPath(source.GeneratedRoot), ContentLayout.GeneratedItemCatalogPath(Paths.GeneratedRoot));
             Copy(source.RuntimePath, Paths.RuntimePath);
 

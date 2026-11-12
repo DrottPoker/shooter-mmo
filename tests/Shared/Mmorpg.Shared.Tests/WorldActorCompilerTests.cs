@@ -15,12 +15,23 @@ public sealed class WorldActorCompilerTests
     {
         var runtime = WorldActorTestData.Compile();
 
-        Assert.Equal(WorldActorDataFormat.Version, runtime.FormatVersion);
-        Assert.Equal("core", runtime.CatalogId);
-        Assert.Equal(WorldActorTestData.FixtureWorldId, runtime.WorldId);
-        Assert.Equal(64, runtime.Revision.Length);
-        Assert.Equal(8, runtime.Actors.Length);
-        Assert.Equal(6, runtime.SpawnInstances.Length);
+        Assert.Equal(WorldActorDataFormat.Version, runtime.Catalog.FormatVersion);
+        Assert.Equal(WorldActorDataFormat.Version, runtime.Spawns.FormatVersion);
+        Assert.Equal("core", runtime.Catalog.CatalogId);
+        Assert.Equal("core", runtime.Spawns.CatalogId);
+        Assert.Equal(WorldActorTestData.FixtureWorldId, runtime.Spawns.WorldId);
+        Assert.Equal(64, runtime.Catalog.Revision.Length);
+        Assert.Equal(64, runtime.Spawns.Revision.Length);
+        Assert.Equal(8, runtime.Catalog.Actors.Length);
+        Assert.Equal(6, runtime.Spawns.SpawnInstances.Length);
+    }
+
+    [Fact]
+    public void CheckedInActorCatalogMatchesItsGeneratedRuntime()
+    {
+        Assert.Equal(
+            WorldActorJson.SerializeCatalogRuntime(WorldActorTestData.CompileCatalog()),
+            NormalizeLineEndings(WorldActorTestData.CatalogRuntimeJson));
     }
 
     [Theory]
@@ -29,11 +40,86 @@ public sealed class WorldActorCompilerTests
     {
         var runtime = WorldActorTestData.CompileWorld(worldId);
 
-        Assert.Equal(worldId, runtime.WorldId);
-        Assert.NotEmpty(runtime.SpawnInstances);
+        Assert.Equal(worldId, runtime.Spawns.WorldId);
+        Assert.NotEmpty(runtime.Spawns.SpawnInstances);
         Assert.Equal(
-            WorldActorJson.SerializeRuntime(runtime),
-            NormalizeLineEndings(WorldActorTestData.RuntimeJsonFor(worldId)));
+            WorldActorJson.SerializeSpawnRuntime(runtime.Spawns),
+            NormalizeLineEndings(WorldActorTestData.SpawnRuntimeJsonFor(worldId)));
+    }
+
+    // The point of the split: a changed actor changes the one compiled catalog and no World file.
+    [Fact]
+    public void AnActorChangeChangesTheCatalogAndNoWorldSpawns()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var before = CompileCheckedIn(actors, WorldActorTestData.LoadWorldSpawns);
+
+        actors.Actors.Single(value => value.Id == "mob.feral_wolf").Level++;
+        var after = CompileCheckedIn(actors, WorldActorTestData.LoadWorldSpawns);
+
+        Assert.NotEqual(before.Catalog.Revision, after.Catalog.Revision);
+        Assert.NotEmpty(before.Spawns);
+        Assert.Equal(before.Spawns.Keys, after.Spawns.Keys);
+        foreach (var worldId in before.Spawns.Keys)
+        {
+            Assert.Equal(
+                WorldActorJson.SerializeSpawnRuntime(before.Spawns[worldId]),
+                WorldActorJson.SerializeSpawnRuntime(after.Spawns[worldId]));
+        }
+    }
+
+    [Fact]
+    public void ASpawnChangeInOneWorldChangesOnlyThatWorld()
+    {
+        var actors = WorldActorTestData.LoadActors();
+        var before = CompileCheckedIn(actors, WorldActorTestData.LoadWorldSpawns);
+        var changedWorldId = before.Spawns.Keys.First();
+
+        var after = CompileCheckedIn(actors, worldId =>
+        {
+            var spawns = WorldActorTestData.LoadWorldSpawns(worldId);
+            if (worldId == changedWorldId)
+            {
+                spawns.SpawnPoints[0].YawDegrees = spawns.SpawnPoints[0].YawDegrees == 0f ? 90f : 0f;
+            }
+
+            return spawns;
+        });
+
+        Assert.True(before.Spawns.Count > 1);
+        Assert.Equal(
+            WorldActorJson.SerializeCatalogRuntime(before.Catalog),
+            WorldActorJson.SerializeCatalogRuntime(after.Catalog));
+        foreach (var worldId in before.Spawns.Keys)
+        {
+            var beforeJson = WorldActorJson.SerializeSpawnRuntime(before.Spawns[worldId]);
+            var afterJson = WorldActorJson.SerializeSpawnRuntime(after.Spawns[worldId]);
+            if (worldId == changedWorldId)
+            {
+                Assert.NotEqual(before.Spawns[worldId].Revision, after.Spawns[worldId].Revision);
+                Assert.NotEqual(beforeJson, afterJson);
+            }
+            else
+            {
+                Assert.Equal(beforeJson, afterJson);
+            }
+        }
+    }
+
+    // The spawns compile against the catalog they place actors of.
+    [Fact]
+    public void SpawnsOfAnActorTheCatalogLacksDoNotCompile()
+    {
+        var catalog = WorldActorTestData.CompileCatalog();
+        var spawns = WorldActorTestData.LoadSpawns();
+        spawns.SpawnPoints[0].ActorId = "npc.missing";
+
+        var exception = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileSpawns(catalog, spawns));
+
+        Assert.Contains(
+            "spawnPoints[0].actorId references missing id 'npc.missing'.",
+            exception.Errors);
     }
 
     [Fact]
@@ -41,13 +127,13 @@ public sealed class WorldActorCompilerTests
     {
         var runtime = WorldActorTestData.CompileWorld("development-world-2");
 
-        Assert.Equal(8, runtime.Actors.Length);
-        Assert.Equal(25, runtime.SpawnInstances.Length);
-        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
-        Assert.Equal(3, runtime.SpawnInstances.Count(value => value.ActorId == "mob.grey_wolf"));
-        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "resource.iron_vein");
-        Assert.Equal(4, runtime.SpawnInstances.Count(value => value.ActorId == "resource.oak_tree"));
-        Assert.Contains(runtime.SpawnInstances, value => value.ActorId == "npc.outpost_sergeant");
+        Assert.Equal(8, runtime.Catalog.Actors.Length);
+        Assert.Equal(25, runtime.Spawns.SpawnInstances.Length);
+        Assert.Contains(runtime.Spawns.SpawnInstances, value => value.ActorId == "mob.feral_alpha");
+        Assert.Equal(3, runtime.Spawns.SpawnInstances.Count(value => value.ActorId == "mob.grey_wolf"));
+        Assert.Contains(runtime.Spawns.SpawnInstances, value => value.ActorId == "resource.iron_vein");
+        Assert.Equal(4, runtime.Spawns.SpawnInstances.Count(value => value.ActorId == "resource.oak_tree"));
+        Assert.Contains(runtime.Spawns.SpawnInstances, value => value.ActorId == "npc.outpost_sergeant");
     }
 
     [Fact]
@@ -78,10 +164,14 @@ public sealed class WorldActorCompilerTests
         Array.Reverse(spawns.PatrolPaths);
         var reordered = WorldActorCompiler.Compile(actors, spawns);
 
-        Assert.Equal(expected.Revision, reordered.Revision);
+        Assert.Equal(expected.Catalog.Revision, reordered.Catalog.Revision);
+        Assert.Equal(expected.Spawns.Revision, reordered.Spawns.Revision);
         Assert.Equal(
-            WorldActorJson.SerializeRuntime(expected),
-            WorldActorJson.SerializeRuntime(reordered));
+            WorldActorJson.SerializeCatalogRuntime(expected.Catalog),
+            WorldActorJson.SerializeCatalogRuntime(reordered.Catalog));
+        Assert.Equal(
+            WorldActorJson.SerializeSpawnRuntime(expected.Spawns),
+            WorldActorJson.SerializeSpawnRuntime(reordered.Spawns));
     }
 
     // The authored capability order is the right-click menu order, so it is content.
@@ -91,7 +181,7 @@ public sealed class WorldActorCompilerTests
         var actors = WorldActorTestData.LoadActors();
         var spawns = WorldActorTestData.LoadSpawns();
         var expected = WorldActorCompiler.Compile(actors, spawns);
-        var mira = expected.Actors.Single(value => value.Id == "npc.city_services");
+        var mira = expected.Catalog.Actors.Single(value => value.Id == "npc.city_services");
 
         // The capabilities keep the authored order, which is the order of the menu.
         Assert.Equal(
@@ -104,10 +194,10 @@ public sealed class WorldActorCompilerTests
         Array.Reverse(actors.Actors.Single(value => value.Id == "npc.city_services").Capabilities);
         var reordered = WorldActorCompiler.Compile(actors, spawns);
 
-        Assert.NotEqual(expected.Revision, reordered.Revision);
+        Assert.NotEqual(expected.Catalog.Revision, reordered.Catalog.Revision);
         Assert.Equal(
             mira.Capabilities.Select(value => value.Id).Reverse(),
-            reordered.Actors.Single(value => value.Id == "npc.city_services")
+            reordered.Catalog.Actors.Single(value => value.Id == "npc.city_services")
                 .Capabilities.Select(value => value.Id));
         WorldActorCompiler.ValidateRuntime(reordered);
     }
@@ -178,7 +268,7 @@ public sealed class WorldActorCompilerTests
     public void NpcComposesCapabilitiesWithoutActorSubclass()
     {
         var runtime = WorldActorTestData.Compile();
-        var actor = runtime.Actors.Single(value => value.Id == "npc.city_services");
+        var actor = runtime.Catalog.Actors.Single(value => value.Id == "npc.city_services");
 
         Assert.Equal(WorldActorKindIds.Npc, actor.Kind);
         Assert.Equal(7, actor.Capabilities.Length);
@@ -187,15 +277,15 @@ public sealed class WorldActorCompilerTests
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Vendor);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Quests);
         Assert.Contains(actor.Capabilities, value => value.Kind == WorldActorCapabilityKindIds.Crafting);
-        Assert.All(runtime.Actors, value => Assert.IsType<WorldActorDefinition>(value));
+        Assert.All(runtime.Catalog.Actors, value => Assert.IsType<WorldActorDefinition>(value));
     }
 
     [Fact]
     public void MobCorpseLifetimeAndPersistenceAreContentControlledPerDefinition()
     {
         var runtime = WorldActorTestData.Compile();
-        var normalMob = runtime.Actors.Single(value => value.Id == "mob.feral_wolf");
-        var bossMob = runtime.Actors.Single(value => value.Id == "mob.feral_alpha");
+        var normalMob = runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf");
+        var bossMob = runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_alpha");
 
         Assert.Equal(WorldActorCorpsePersistenceModeIds.Live, normalMob.CorpsePersistenceMode);
         Assert.Equal(120f, normalMob.CorpseLifetimeSeconds);
@@ -207,15 +297,15 @@ public sealed class WorldActorCompilerTests
     public void MobLevelsAndAggressionAreContentControlledPerDefinition()
     {
         var runtime = WorldActorTestData.Compile();
-        var brains = runtime.BrainProfiles.ToDictionary(value => value.Id, StringComparer.Ordinal);
+        var brains = runtime.Catalog.BrainProfiles.ToDictionary(value => value.Id, StringComparer.Ordinal);
 
-        Assert.Equal(2, runtime.Actors.Single(value => value.Id == "mob.feral_wolf").Level);
-        Assert.Equal(5, runtime.Actors.Single(value => value.Id == "mob.feral_alpha").Level);
-        var greyWolf = runtime.Actors.Single(value => value.Id == "mob.grey_wolf");
+        Assert.Equal(2, runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").Level);
+        Assert.Equal(5, runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_alpha").Level);
+        var greyWolf = runtime.Catalog.Actors.Single(value => value.Id == "mob.grey_wolf");
         Assert.Equal(1, greyWolf.Level);
         Assert.Equal(WorldActorAggressionIds.Defensive, brains[greyWolf.BrainProfileId].Aggression);
         Assert.All(
-            runtime.Actors.Where(value => value.Kind != WorldActorKindIds.Mob),
+            runtime.Catalog.Actors.Where(value => value.Kind != WorldActorKindIds.Mob),
             value => Assert.Equal(0, value.Level));
     }
 
@@ -243,7 +333,7 @@ public sealed class WorldActorCompilerTests
     public void RuntimeValidationRejectsATamperedMobLevel()
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.Actors.Single(value => value.Id == "mob.feral_wolf").Level = 0;
+        runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").Level = 0;
 
         var exception = Assert.Throws<WorldActorValidationException>(
             () => WorldActorCompiler.ValidateRuntime(runtime));
@@ -257,12 +347,12 @@ public sealed class WorldActorCompilerTests
     public void MobsReferenceTheirCombatBrainLocomotionAndLootProfiles()
     {
         var runtime = WorldActorTestData.Compile();
-        var wolf = runtime.Actors.Single(value => value.Id == "mob.feral_wolf");
-        var guard = runtime.Actors.Single(value => value.Id == "npc.city_guard");
-        var combat = runtime.CombatProfiles.Single(value => value.Id == wolf.CombatProfileId);
-        var brain = runtime.BrainProfiles.Single(value => value.Id == wolf.BrainProfileId);
-        var locomotion = runtime.LocomotionProfiles.Single(value => value.Id == wolf.LocomotionProfileId);
-        var loot = runtime.LootProfiles.Single(value => value.Id == wolf.LootProfileId);
+        var wolf = runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf");
+        var guard = runtime.Catalog.Actors.Single(value => value.Id == "npc.city_guard");
+        var combat = runtime.Catalog.CombatProfiles.Single(value => value.Id == wolf.CombatProfileId);
+        var brain = runtime.Catalog.BrainProfiles.Single(value => value.Id == wolf.BrainProfileId);
+        var locomotion = runtime.Catalog.LocomotionProfiles.Single(value => value.Id == wolf.LocomotionProfileId);
+        var loot = runtime.Catalog.LootProfiles.Single(value => value.Id == wolf.LootProfileId);
 
         Assert.Equal(
             (50, CombatStyleIds.Melee, DamageTypeIds.Normal, 4, 9, 1.8f, 1.5f),
@@ -396,13 +486,13 @@ public sealed class WorldActorCompilerTests
 
         var runtime = WorldActorCompiler.Compile(actors, WorldActorTestData.LoadSpawns());
 
-        Assert.Empty(runtime.Actors.Single(value => value.Id == "mob.feral_wolf").LootProfileId);
+        Assert.Empty(runtime.Catalog.Actors.Single(value => value.Id == "mob.feral_wolf").LootProfileId);
     }
 
     [Fact]
     public void CommittedLootReferencesFitTheCompiledItemCatalog()
     {
-        WorldActorItemReferences.Validate(WorldActorTestData.Compile(), ItemCatalogTestData.Compile());
+        WorldActorItemReferences.Validate(WorldActorTestData.CompileCatalog(), ItemCatalogTestData.Compile());
     }
 
     [Theory]
@@ -412,7 +502,7 @@ public sealed class WorldActorCompilerTests
     public void LootThatTheItemCatalogCannotHoldFailsValidation(string mutation, string expectedError)
     {
         var runtime = WorldActorTestData.Compile();
-        var entry = runtime.LootProfiles.Single(value => value.Id == "mob.feral_wolf").Entries[0];
+        var entry = runtime.Catalog.LootProfiles.Single(value => value.Id == "mob.feral_wolf").Entries[0];
         var items = ItemCatalogTestData.Compile();
         switch (mutation)
         {
@@ -434,7 +524,7 @@ public sealed class WorldActorCompilerTests
         }
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorItemReferences.Validate(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime.Catalog, items));
 
         Assert.Contains(
             exception.Errors,
@@ -445,7 +535,7 @@ public sealed class WorldActorCompilerTests
     public void RuntimeValidationRejectsATamperedMobProfile()
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.CombatProfiles[0].MaximumHealth++;
+        runtime.Catalog.CombatProfiles[0].MaximumHealth++;
 
         var exception = Assert.Throws<WorldActorValidationException>(
             () => WorldActorCompiler.ValidateRuntime(runtime));
@@ -502,12 +592,12 @@ public sealed class WorldActorCompilerTests
         var runtime = WorldActorTestData.Compile();
 
         Assert.All(
-            runtime.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob),
+            runtime.Catalog.Actors.Where(actor => actor.Kind == WorldActorKindIds.Mob),
             actor => Assert.Equal(
                 actor.Id == "mob.feral_alpha" ? WorldActorKillCreditIds.Contributors : WorldActorKillCreditIds.Tag,
                 actor.KillCredit));
         Assert.All(
-            runtime.Actors.Where(actor => actor.Kind != WorldActorKindIds.Mob),
+            runtime.Catalog.Actors.Where(actor => actor.Kind != WorldActorKindIds.Mob),
             actor => Assert.Equal(string.Empty, actor.KillCredit));
     }
 
@@ -530,14 +620,18 @@ public sealed class WorldActorCompilerTests
     {
         var actors = WorldActorTestData.LoadActors();
         var spawns = WorldActorTestData.LoadSpawns();
+        var catalog = WorldActorTestData.CompileCatalog();
         actors.Actors[0].FactionId = "missing.faction";
         spawns.SpawnPoints[0].ActorId = "missing.actor";
         spawns.SpawnAreas[0].PatrolPathId = "missing.path";
 
-        var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.Compile(actors, spawns));
+        var catalogException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileCatalog(actors));
+        var spawnException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileSpawns(catalog, spawns));
 
-        Assert.True(exception.Errors.Count(value => value.Contains("missing id", StringComparison.Ordinal)) >= 3);
+        Assert.Contains(catalogException.Errors, value => value.Contains("missing id", StringComparison.Ordinal));
+        Assert.True(spawnException.Errors.Count(value => value.Contains("missing id", StringComparison.Ordinal)) >= 2);
     }
 
     [Fact]
@@ -545,16 +639,19 @@ public sealed class WorldActorCompilerTests
     {
         var actors = WorldActorTestData.LoadActors();
         var spawns = WorldActorTestData.LoadSpawns();
+        var catalog = WorldActorTestData.CompileCatalog();
         actors.Actors[0].InteractionBounds.SizeX = 0f;
         spawns.SpawnPoints[0].X = float.NaN;
         spawns.SpawnAreas[0].MaximumZ = spawns.SpawnAreas[0].MinimumZ;
 
-        var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.Compile(actors, spawns));
+        var catalogException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileCatalog(actors));
+        var spawnException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileSpawns(catalog, spawns));
 
-        Assert.Contains(exception.Errors, value => value.Contains("sizeX", StringComparison.Ordinal));
-        Assert.Contains(exception.Errors, value => value.Contains("spawnPoints[0].x", StringComparison.Ordinal));
-        Assert.Contains(exception.Errors, value => value.Contains("positive X and Z size", StringComparison.Ordinal));
+        Assert.Contains(catalogException.Errors, value => value.Contains("sizeX", StringComparison.Ordinal));
+        Assert.Contains(spawnException.Errors, value => value.Contains("spawnPoints[0].x", StringComparison.Ordinal));
+        Assert.Contains(spawnException.Errors, value => value.Contains("positive X and Z size", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -562,17 +659,20 @@ public sealed class WorldActorCompilerTests
     {
         var actors = WorldActorTestData.LoadActors();
         var spawns = WorldActorTestData.LoadSpawns();
+        var catalog = WorldActorTestData.CompileCatalog();
         actors.Actors[0].InteractionBounds.SizeX = 1_000_001f;
         spawns.SpawnPoints[0].X = 1_000_001f;
 
-        var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorCompiler.Compile(actors, spawns));
+        var catalogException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileCatalog(actors));
+        var spawnException = Assert.Throws<WorldActorValidationException>(
+            () => WorldActorCompiler.CompileSpawns(catalog, spawns));
 
         Assert.Contains(
-            exception.Errors,
+            catalogException.Errors,
             value => value.Contains("supported bound", StringComparison.Ordinal));
         Assert.Contains(
-            exception.Errors,
+            spawnException.Errors,
             value => value.Contains("supported World bounds", StringComparison.Ordinal));
     }
 
@@ -644,7 +744,7 @@ public sealed class WorldActorCompilerTests
     public void RuntimeInstanceMustMatchItsDeterministicSpawnSource()
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.SpawnInstances[0].X += 0.5f;
+        runtime.Spawns.SpawnInstances[0].X += 0.5f;
 
         var exception = Assert.Throws<WorldActorValidationException>(
             () => WorldActorCompiler.ValidateRuntime(runtime));
@@ -654,6 +754,22 @@ public sealed class WorldActorCompilerTests
             value => value.Contains(
                 "deterministic source placement",
                 StringComparison.Ordinal));
+    }
+
+    // The catalog and the spawns of every checked-in World, as the actor compiler writes them.
+    private static (WorldActorCatalogRuntimeDocument Catalog, SortedDictionary<string, WorldActorSpawnRuntimeDocument> Spawns)
+        CompileCheckedIn(
+            WorldActorCatalogAuthoringDocument actors,
+            Func<string, WorldActorSpawnAuthoringDocument> loadSpawns)
+    {
+        var catalog = WorldActorCompiler.CompileCatalog(actors);
+        var spawns = new SortedDictionary<string, WorldActorSpawnRuntimeDocument>(StringComparer.Ordinal);
+        foreach (var worldId in WorldActorTestData.CheckedInWorldIds())
+        {
+            spawns.Add(worldId, WorldActorCompiler.CompileSpawns(catalog, loadSpawns(worldId)));
+        }
+
+        return (catalog, spawns);
     }
 
     private static string NormalizeLineEndings(string value)

@@ -25,7 +25,7 @@ namespace Mmorpg.WorldData.Editor.Quests
 
             try
             {
-                QuestCatalogCompiler.Compile(catalog.ToDomain(), references.Items, references.Worlds);
+                QuestCatalogCompiler.Compile(catalog.ToDomain(), references.Items, references.ActorCatalog, references.Worlds);
                 return Array.Empty<ContentIssue>();
             }
             catch (QuestValidationException exception)

@@ -58,7 +58,7 @@ internal sealed class RealtimeServerHarnessOptions
     public ICombatRandom? CombatRandom { get; init; }
 
     // Replaces the compiled actor runtime of the development World.
-    public WorldActorRuntimeDocument? WorldActorDocument { get; init; }
+    public WorldActorRuntime? WorldActorDocument { get; init; }
 
     // Mobs that die leave corpses through the real lifecycle service.
     public bool EnableMobCorpses { get; init; }
@@ -267,7 +267,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
 
     public CharacterLookStore Looks { get; } = new();
 
-    public WorldActorRuntimeDocument? WorldActorDocument { get; }
+    public WorldActorRuntime? WorldActorDocument { get; }
 
     public SimulationShardRules ShardRules { get; } = new();
 

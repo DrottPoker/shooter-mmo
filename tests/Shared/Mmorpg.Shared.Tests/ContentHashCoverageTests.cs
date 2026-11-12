@@ -115,16 +115,33 @@ public sealed class ContentHashCoverageTests
     }
 
     [Fact]
-    public void TheWorldActorStampCoversEveryField()
+    public void TheWorldActorCatalogStampCoversEveryField()
     {
         var findings = HashCoverage.Check(
-            HashCoverage.Sample<WorldActorRuntimeDocument>,
-            runtime =>
+            HashCoverage.Sample<WorldActorCatalogRuntimeDocument>,
+            catalog =>
             {
-                WorldActorCompiler.Stamp(runtime);
-                return runtime.Revision;
+                WorldActorCompiler.StampCatalog(catalog);
+                return catalog.Revision;
             },
-            "WorldActorCompiler.Stamp",
+            "WorldActorCompiler.StampCatalog",
+            null,
+            null);
+
+        Assert.True(findings.Count == 0, string.Join(Environment.NewLine, findings));
+    }
+
+    [Fact]
+    public void TheWorldActorSpawnStampCoversEveryField()
+    {
+        var findings = HashCoverage.Check(
+            HashCoverage.Sample<WorldActorSpawnRuntimeDocument>,
+            spawns =>
+            {
+                WorldActorCompiler.StampSpawns(spawns);
+                return spawns.Revision;
+            },
+            "WorldActorCompiler.StampSpawns",
             null,
             null);
 

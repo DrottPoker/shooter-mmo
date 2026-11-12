@@ -34,7 +34,7 @@ public sealed class RealtimeQuestCreditTests
         Assert.Equal(("credit_quest_kill", "mob.feral_wolf"), (credit.OperationKind, credit.MobActorId));
         Assert.Null(credit.QuestId);
         Assert.Null(credit.QuestNpcActorId);
-        var definition = harness.WorldActorDocument!.Actors.Single(actor => actor.Id == "mob.feral_wolf");
+        var definition = harness.WorldActorDocument!.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf");
         Assert.Equal(definition.Tags, credit.MobTags);
         Assert.Equal(4, credit.OperationId.Version);
         var change = QuestChanges(client)[0];
@@ -630,13 +630,13 @@ public sealed class RealtimeQuestCreditTests
     }
 
     // The Feral Wolf next to the spawn and a Grey Wolf on its other side.
-    private static WorldActorRuntimeDocument WolvesNextToTheSpawn()
+    private static WorldActorRuntime WolvesNextToTheSpawn()
     {
         var document = WolfNextToTheSpawn(respawnSeconds: 30f);
-        var wolf = document.SpawnInstances.Single(spawn => spawn.ActorId == "mob.feral_wolf");
-        document.SpawnInstances =
+        var wolf = document.Spawns.SpawnInstances.Single(spawn => spawn.ActorId == "mob.feral_wolf");
+        document.Spawns.SpawnInstances =
         [
-            .. document.SpawnInstances,
+            .. document.Spawns.SpawnInstances,
             new WorldActorSpawnInstanceDefinition
             {
                 Id = wolf.Id + ".grey",

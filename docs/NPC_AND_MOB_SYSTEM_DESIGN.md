@@ -124,14 +124,18 @@ content/
   worlds/<WorldId>/
     actor-spawns.json             spawn points, groups, areas, and patrol paths
 src/Shared/WorldData/Generated/
+  Actors/
+    core.actor-catalog.json       compiled actor catalog that every World shares
   Worlds/<WorldId>/
-    world-actors.json             compiled runtime content for one World
+    world-actor-spawns.json       compiled spawns of one World
 ```
 
 A definition file is named after its actor id. The compiled runtime result is
 deterministic, framework-neutral, and independent from a Unity scene or asset
-database. Every World's runtime embeds the shared catalog, so an actor change
-recompiles every World. The content rules and the compile and verify commands
+database. The catalog compiles once and every World's spawns compile against
+it, so an actor change rewrites the catalog and no World file. SimulationWorker
+loads the catalog and its World's spawns and checks at startup that they fit
+together. The content rules and the compile and verify commands
 are in [Game Content](../content/README.md).
 
 The same compiler and validation rules are consumed by the Unity Editor

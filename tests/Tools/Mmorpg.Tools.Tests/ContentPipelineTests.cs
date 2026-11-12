@@ -347,7 +347,7 @@ public sealed class ContentPipelineTests
     {
         using var output = TemporaryContent.Empty();
         var worldDirectory = Path.Combine(output.Path, "Worlds", "removed-world");
-        var stale = Path.Combine(worldDirectory, ContentLayout.WorldActorsFileName);
+        var stale = Path.Combine(worldDirectory, ContentLayout.WorldActorSpawnsFileName);
         Directory.CreateDirectory(worldDirectory);
         File.WriteAllText(stale, "{}\n");
         File.WriteAllText(stale + ".meta", "guid");
@@ -363,6 +363,45 @@ public sealed class ContentPipelineTests
         Assert.False(File.Exists(stale + ".meta"));
         Assert.False(Directory.Exists(worldDirectory));
         Assert.False(File.Exists(worldDirectory + ".meta"));
+    }
+
+    // The actor compiler writes the shared catalog and one spawn file per World. Anything else in
+    // those folders, such as a world-actors.json of the older format, a World that no longer
+    // exists, or a stray file next to the catalog, is stale; the .meta files of written files are not.
+    [Fact]
+    public void WorldActorOutputOutsideTheCatalogAndTheSpawnFilesIsStale()
+    {
+        using var output = TemporaryContent.Empty();
+        var worldIds = new[] { "development-world-1", "development-world-2" };
+        var catalog = ContentLayout.GeneratedActorCatalogPath(output.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(catalog)!);
+        File.WriteAllText(catalog, "{}\n");
+        File.WriteAllText(catalog + ".meta", "guid");
+        foreach (var worldId in worldIds)
+        {
+            var spawns = ContentLayout.GeneratedWorldActorSpawnsPath(output.Path, worldId);
+            Directory.CreateDirectory(Path.GetDirectoryName(spawns)!);
+            File.WriteAllText(spawns, "{}\n");
+            File.WriteAllText(spawns + ".meta", "guid");
+            File.WriteAllText(Path.GetDirectoryName(spawns) + ".meta", "guid");
+        }
+
+        Assert.Empty(WorldActorContent.FindStaleOutputs(output.Path, worldIds));
+
+        var worldDirectory = Path.GetDirectoryName(
+            ContentLayout.GeneratedWorldActorSpawnsPath(output.Path, worldIds[0]))!;
+        var oldFormat = Path.Combine(worldDirectory, "world-actors.json");
+        File.WriteAllText(oldFormat, "{}\n");
+        File.WriteAllText(oldFormat + ".meta", "guid");
+        var removedWorld = Path.Combine(ContentLayout.GeneratedWorldsDirectory(output.Path), "removed-world");
+        Directory.CreateDirectory(removedWorld);
+        File.WriteAllText(removedWorld + ".meta", "guid");
+        var strayCatalogFile = Path.Combine(ContentLayout.GeneratedActorsDirectory(output.Path), "old.actor-catalog.json");
+        File.WriteAllText(strayCatalogFile, "{}\n");
+
+        Assert.Equal(
+            new[] { strayCatalogFile, removedWorld, oldFormat }.Order(StringComparer.Ordinal),
+            WorldActorContent.FindStaleOutputs(output.Path, worldIds));
     }
 
     private sealed class TemporaryContent : IDisposable

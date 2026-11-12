@@ -18,8 +18,9 @@ try
     var contentRoot = options!.ContentRoot;
     var authoring = QuestContent.LoadCatalog(ContentLayout.QuestsDirectory(contentRoot));
     var items = LoadItemCatalog(options.GeneratedRoot);
-    var worlds = LoadWorlds(contentRoot, options.GeneratedRoot);
-    var runtime = QuestCatalogCompiler.Compile(authoring, items, worlds);
+    var actors = LoadActorCatalog(options.GeneratedRoot);
+    var worlds = LoadWorlds(contentRoot, options.GeneratedRoot, actors);
+    var runtime = QuestCatalogCompiler.Compile(authoring, items, actors, worlds);
     GeneratedOutput.WriteOrVerifyText(
         ContentLayout.GeneratedQuestCatalogPath(options.GeneratedRoot),
         QuestJson.SerializeRuntime(runtime),
@@ -52,8 +53,20 @@ static ItemCatalogRuntimeDocument LoadItemCatalog(string generatedRoot)
     return ItemCatalogRuntimeVerifier.VerifyAndCanonicalize(runtime);
 }
 
-// Every World's compiled actors, so a quest can only name actors that some World places.
-static WorldActorRuntimeDocument[] LoadWorlds(string contentRoot, string generatedRoot)
+static WorldActorCatalogRuntimeDocument LoadActorCatalog(string generatedRoot)
+{
+    var catalog = StrictContentJson.DeserializeFile<WorldActorCatalogRuntimeDocument>(
+        ContentLayout.GeneratedActorCatalogPath(generatedRoot),
+        "Compiled world actor catalog");
+    WorldActorCompiler.ValidateRuntime(catalog);
+    return catalog;
+}
+
+// Every World's compiled spawns, so a quest can only name actors that some World places.
+static WorldActorSpawnRuntimeDocument[] LoadWorlds(
+    string contentRoot,
+    string generatedRoot,
+    WorldActorCatalogRuntimeDocument actors)
 {
     var worldIds = ContentLayout.ListWorldIds(ContentLayout.WorldsDirectory(contentRoot));
     if (worldIds.Length == 0)
@@ -65,11 +78,11 @@ static WorldActorRuntimeDocument[] LoadWorlds(string contentRoot, string generat
     return worldIds
         .Select(worldId =>
         {
-            var runtime = StrictContentJson.DeserializeFile<WorldActorRuntimeDocument>(
-                ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId),
-                "Compiled world actors");
-            WorldActorCompiler.ValidateRuntime(runtime);
-            return runtime;
+            var spawns = StrictContentJson.DeserializeFile<WorldActorSpawnRuntimeDocument>(
+                ContentLayout.GeneratedWorldActorSpawnsPath(generatedRoot, worldId),
+                "Compiled world actor spawns");
+            WorldActorCompiler.ValidateRuntime(new WorldActorRuntime(actors, spawns));
+            return spawns;
         })
         .ToArray();
 }

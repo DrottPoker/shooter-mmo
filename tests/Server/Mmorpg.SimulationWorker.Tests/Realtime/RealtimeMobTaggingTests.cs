@@ -111,8 +111,8 @@ public sealed class RealtimeMobTaggingTests
     public async Task AMobThatGivesUpTheFightIsFreeAgain()
     {
         var document = WolfNextToTheSpawn(respawnSeconds: 30f, x: 6f);
-        var definition = document.Actors.Single(actor => actor.Id == "mob.feral_wolf");
-        document.BrainProfiles.Single(profile => profile.Id == definition.BrainProfileId).LeashRange = 3f;
+        var definition = document.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf");
+        document.Catalog.BrainProfiles.Single(profile => profile.Id == definition.BrainProfileId).LeashRange = 3f;
         await using var harness = Create(document, minimumDamage: 1);
         var tagger = AddArcher(harness, "Fleeting Tagger");
         await harness.StartAsync();
@@ -139,7 +139,7 @@ public sealed class RealtimeMobTaggingTests
     public async Task AWorldBossGivesEveryContributorACorpseOfTheirOwn()
     {
         var document = WolfNextToTheSpawn(respawnSeconds: 30f, x: 1f);
-        document.Actors.Single(actor => actor.Id == "mob.feral_wolf").KillCredit = WorldActorKillCreditIds.Contributors;
+        document.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf").KillCredit = WorldActorKillCreditIds.Contributors;
         await using var harness = Create(document, minimumDamage: 20);
         var first = AddArcher(harness, "First Contributor");
         var second = AddArcher(harness, "Second Contributor");
@@ -203,7 +203,7 @@ public sealed class RealtimeMobTaggingTests
     }
 
     private static RealtimeServerHarness Create(
-        WorldActorRuntimeDocument document,
+        WorldActorRuntime document,
         int minimumDamage,
         float killCreditRangeMeters = 100f)
     {
