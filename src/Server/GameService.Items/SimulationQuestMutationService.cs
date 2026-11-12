@@ -64,7 +64,7 @@ internal sealed class SimulationQuestMutationService(
             request.WorkerRuntimeId!.Trim(),
             request.ShardId!.Trim(),
             TokenGenerator.HashToken(request.SessionToken!.Trim()),
-            new ItemTransactionLiveAccess(false, false, false, QuestNpcActorId: request.QuestNpcActorId?.Trim()));
+            QuestNpcAccess.Claim(ItemTransactionLiveAccess.None, request.QuestNpcActorId?.Trim()));
         var questId = request.QuestId?.Trim() ?? string.Empty;
         var objectiveId = request.ObjectiveId?.Trim() ?? string.Empty;
         var operationKind = request.OperationKind.Trim();

@@ -25,7 +25,7 @@ and the check before every push in
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
 | `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares |
-| `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel boundary tests under `ItemTransactions` |
+| `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel and area boundary tests under `ItemTransactions` |
 | `Mmorpg.GameService.Content.Tests` | `Server/Mmorpg.GameService.Content.Tests` | Content: the content file loader and its startup refusals, the manifest and file routes with their cache headers and rate limit on an in-process host, and the PostgreSQL test of the startup revision check |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |

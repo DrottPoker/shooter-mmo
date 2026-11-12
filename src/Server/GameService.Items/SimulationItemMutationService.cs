@@ -5,7 +5,9 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items;
 
-internal sealed class SimulationItemMutationService(
+// The worker item route. The vendor and gathering operations are in the
+// SimulationItemMutationService.Economy.cs part.
+internal sealed partial class SimulationItemMutationService(
     ItemTransactionService transactionService,
     SimulationCharacterStates characterStates,
     NpcItemLifecycleOptions npcOptions)
@@ -95,13 +97,12 @@ internal sealed class SimulationItemMutationService(
             request.WorkerRuntimeId!.Trim(),
             request.ShardId!.Trim(),
             TokenGenerator.HashToken(request.SessionToken!.Trim()),
-            new ItemTransactionLiveAccess(
-                request.Access!.Bank,
-                request.Access.RecoveryStorage,
-                request.Access.InsuranceNpc,
-                string.IsNullOrWhiteSpace(request.Access.VendorProfileId)
-                    ? null
-                    : request.Access.VendorProfileId.Trim()));
+            ClaimEconomyCapabilities(
+                new ItemTransactionLiveAccess(
+                    request.Access!.Bank,
+                    request.Access.RecoveryStorage,
+                    request.Access.InsuranceNpc),
+                request.Access));
 
         var operationKind = request.OperationKind!.Trim();
         var operation = operationKind switch
@@ -146,19 +147,11 @@ internal sealed class SimulationItemMutationService(
                 actor,
                 request,
                 cancellationToken),
-            ItemOperationKinds.VendorPurchase => ExecuteVendorPurchaseAsync(
+            _ => ExecuteEconomyOperation(
+                operationKind,
                 actor,
                 request,
-                cancellationToken),
-            ItemOperationKinds.VendorSale => ExecuteVendorSaleAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.GatherResource => ExecuteGatherAsync(
-                actor,
-                request,
-                cancellationToken),
-            _ => null
+                cancellationToken)
         };
 
         return operation is null
@@ -389,89 +382,6 @@ internal sealed class SimulationItemMutationService(
                         request.ExpectedCharacterRevision,
                         request.ItemInstanceId!.Value,
                         request.ExpectedItemRevision!.Value)),
-                cancellationToken)
-            : null;
-    }
-
-    // The vendor is the profile of the capability the worker validated, never a client value.
-    private Task<ItemTransactionResult>? ExecuteVendorPurchaseAsync(
-        ItemTransactionActor actor,
-        SimulationItemOperationRequest request,
-        CancellationToken cancellationToken)
-    {
-        return HasNpcContext(request)
-            && Identifiers.IsContentIdentifier(request.Access!.VendorProfileId)
-            && Identifiers.IsContentIdentifier(request.DefinitionId)
-            && request.Quantity > 0
-            && request.ExpectedPrice >= 0
-            ? transactionService.ExecuteAsync(
-                new ItemTransactionRequest<PurchaseFromVendorCommand>(
-                    request.OperationId,
-                    actor,
-                    new PurchaseFromVendorCommand(
-                        request.CharacterId,
-                        request.ExpectedCharacterRevision,
-                        request.Access.VendorProfileId!.Trim(),
-                        request.DefinitionId!.Trim(),
-                        request.Quantity!.Value,
-                        request.ExpectedPrice!.Value)),
-                cancellationToken)
-            : null;
-    }
-
-    private Task<ItemTransactionResult>? ExecuteVendorSaleAsync(
-        ItemTransactionActor actor,
-        SimulationItemOperationRequest request,
-        CancellationToken cancellationToken)
-    {
-        return HasItem(request)
-            && HasNpcContext(request)
-            && Identifiers.IsContentIdentifier(request.Access!.VendorProfileId)
-            && request.Quantity > 0
-            && request.ExpectedPrice >= 0
-            ? transactionService.ExecuteAsync(
-                new ItemTransactionRequest<SellToVendorCommand>(
-                    request.OperationId,
-                    actor,
-                    new SellToVendorCommand(
-                        request.CharacterId,
-                        request.ExpectedCharacterRevision,
-                        request.Access.VendorProfileId!.Trim(),
-                        request.ItemInstanceId!.Value,
-                        request.ExpectedItemRevision!.Value,
-                        request.Quantity!.Value,
-                        request.ExpectedPrice!.Value)),
-                cancellationToken)
-            : null;
-    }
-
-    // The worker resolved the yield and the tool kind from the node's resource profile and
-    // names the node's actor definition for gather objectives; the handler checks the
-    // equipped tool and the item rules.
-    private Task<ItemTransactionResult>? ExecuteGatherAsync(
-        ItemTransactionActor actor,
-        SimulationItemOperationRequest request,
-        CancellationToken cancellationToken)
-    {
-        return HasNpcContext(request)
-            && Identifiers.IsContentIdentifier(request.ResourceProfileId)
-            && !string.IsNullOrWhiteSpace(request.ResourceNodeId)
-            && Identifiers.IsContentIdentifier(request.RequiredToolKind)
-            && Identifiers.IsContentIdentifier(request.DefinitionId)
-            && request.Quantity > 0
-            && (request.ResourceActorId is null || Identifiers.IsContentIdentifier(request.ResourceActorId))
-            ? transactionService.ExecuteAsync(
-                new ItemTransactionRequest<GatherResourceCommand>(
-                    request.OperationId,
-                    actor,
-                    new GatherResourceCommand(
-                        request.CharacterId,
-                        request.ResourceProfileId!.Trim(),
-                        request.ResourceNodeId!.Trim(),
-                        request.RequiredToolKind!.Trim(),
-                        request.DefinitionId!.Trim(),
-                        request.Quantity!.Value,
-                        request.ResourceActorId?.Trim())),
                 cancellationToken)
             : null;
     }

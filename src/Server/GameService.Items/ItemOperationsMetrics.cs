@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Mmorpg.GameService.Items.Transactions;
 
 namespace Mmorpg.GameService.Items;
 
@@ -21,17 +22,12 @@ internal sealed record ItemOperationsMetricsSnapshot(
     long RemovedAuditOperations,
     long RemovedClaimedRecoveryDeliveries = 0);
 
+// The item operation metrics. A transaction is labeled with its registration's operation kind,
+// so the kinds are exactly those of the item command catalog, and the registration's flags
+// decide where else it counts.
 internal sealed class ItemOperationsMetrics : IDisposable
 {
     public const string MeterName = "Mmorpg.GameService.Items";
-
-    private static readonly HashSet<string> PolicyOperationKinds = new(StringComparer.Ordinal)
-    {
-        ItemOperationKinds.ApplyItemPolicy,
-        ItemOperationKinds.RemoveInsurancePolicy,
-        ItemOperationKinds.AbandonQuestItems,
-        ItemOperationKinds.ProcessPlayerDeath
-    };
 
     private readonly Meter meter = new(MeterName);
     private readonly Histogram<double> transactionLatency;
@@ -85,19 +81,17 @@ internal sealed class ItemOperationsMetrics : IDisposable
     }
 
     public void RecordTransaction(
-        string operationKind,
+        ItemCommandRegistration registration,
         ItemTransactionResult result,
         TimeSpan duration)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(operationKind);
+        ArgumentNullException.ThrowIfNull(registration);
         ArgumentNullException.ThrowIfNull(result);
-        var metricOperationKind = KnownOperationKinds.Contains(operationKind)
-            ? operationKind
-            : "unknown";
+        var operationKind = registration.OperationKind;
         var outcome = result.Succeeded ? "committed" : "rejected";
         var tags = new TagList
         {
-            { "operation.kind", metricOperationKind },
+            { "operation.kind", operationKind },
             { "outcome", outcome }
         };
         transactionLatency.Record(Math.Max(0d, duration.TotalMilliseconds), tags);
@@ -113,6 +107,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
             RecordConflict(result.Error?.Code);
         }
 
+        // Player death is an Items command, so Items' own metrics may name it.
         if (result.Succeeded
             && string.Equals(
                 operationKind,
@@ -123,7 +118,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
             deathPartitionCounter.Add(1);
         }
 
-        if (PolicyOperationKinds.Contains(operationKind))
+        if (registration.PolicyAction)
         {
             Interlocked.Increment(ref policyActions);
             var policyTags = new TagList
@@ -139,17 +134,14 @@ internal sealed class ItemOperationsMetrics : IDisposable
     // transaction counter and duration with outcome "failed", or "cancelled" when the
     // caller cancelled it, and not in the committed and rejected totals.
     public void RecordFailedTransaction(
-        string operationKind,
+        ItemCommandRegistration registration,
         TimeSpan duration,
         bool cancelled)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(operationKind);
-        var metricOperationKind = KnownOperationKinds.Contains(operationKind)
-            ? operationKind
-            : "unknown";
+        ArgumentNullException.ThrowIfNull(registration);
         var tags = new TagList
         {
-            { "operation.kind", metricOperationKind },
+            { "operation.kind", registration.OperationKind },
             { "outcome", cancelled ? "cancelled" : "failed" }
         };
         transactionLatency.Record(Math.Max(0d, duration.TotalMilliseconds), tags);
@@ -289,56 +281,4 @@ internal sealed class ItemOperationsMetrics : IDisposable
             1,
             new KeyValuePair<string, object?>("kind", kind));
     }
-
-    private static readonly HashSet<string> KnownOperationKinds = new(StringComparer.Ordinal)
-    {
-        ItemOperationKinds.Grant,
-        ItemOperationKinds.Relocate,
-        ItemOperationKinds.Equip,
-        ItemOperationKinds.Unequip,
-        ItemOperationKinds.SplitStack,
-        ItemOperationKinds.MergeStacks,
-        ItemOperationKinds.SwapContainerItems,
-        ItemOperationKinds.ConsumeQuantity,
-        ItemOperationKinds.ConsumeEquippedAmmunition,
-        ItemOperationKinds.Destroy,
-        ItemOperationKinds.SwapBagAggregates,
-        ItemOperationKinds.AddRecoveryDelivery,
-        ItemOperationKinds.ClaimRecoveryDelivery,
-        ItemOperationKinds.ApplyItemPolicy,
-        ItemOperationKinds.RemoveInsurancePolicy,
-        ItemOperationKinds.AbandonQuestItems,
-        ItemOperationKinds.AcceptQuest,
-        ItemOperationKinds.AbandonQuest,
-        ItemOperationKinds.RegrantQuestItems,
-        ItemOperationKinds.TalkToQuestNpc,
-        ItemOperationKinds.DeliverQuestItems,
-        ItemOperationKinds.CreditQuestKill,
-        ItemOperationKinds.TurnInQuest,
-        ItemOperationKinds.AdminAcceptQuest,
-        ItemOperationKinds.AdminCompleteQuestObjective,
-        ItemOperationKinds.AdminCompleteQuestStep,
-        ItemOperationKinds.AdminMakeQuestReady,
-        ItemOperationKinds.AdminResetQuest,
-        ItemOperationKinds.AdminResetQuestChain,
-        ItemOperationKinds.AdminResetQuests,
-        ItemOperationKinds.ProcessPlayerDeath,
-        ItemOperationKinds.CreatePersistentMobCorpse,
-        ItemOperationKinds.GrantMobLoot,
-        ItemOperationKinds.GrantMobLootAll,
-        ItemOperationKinds.ExpireCorpse,
-        ItemOperationKinds.ExpireRecoveryDelivery,
-        ItemOperationKinds.LootCorpseItem,
-        ItemOperationKinds.LootCorpsePartialStack,
-        ItemOperationKinds.LootCorpseItemToEquipment,
-        ItemOperationKinds.DepositCorpseItem,
-        ItemOperationKinds.DepositCorpsePartialStack,
-        ItemOperationKinds.MoveCorpseItem,
-        ItemOperationKinds.MoveCorpsePartialStack,
-        ItemOperationKinds.SwapCorpseBag,
-        ItemOperationKinds.LootAllCorpseItems,
-        ItemOperationKinds.VendorPurchase,
-        ItemOperationKinds.VendorSale,
-        ItemOperationKinds.GatherResource
-    };
 }

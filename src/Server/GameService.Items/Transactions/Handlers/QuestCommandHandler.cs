@@ -1,4 +1,3 @@
-using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Quests.Contracts;
@@ -37,16 +36,13 @@ internal sealed partial class QuestCommandHandler(
         CancellationToken cancellationToken)
     {
         var quest = FindQuest(command.QuestId);
-        context.Authority.EnsureQuestNpcAccess(quest.GiverActorId);
+        QuestNpcAccess.Ensure(context.Authority, quest.GiverActorId);
         var character = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
         var log = await questLog.ReadAsync(context.Scope, command.CharacterId, cancellationToken);
-        var level = await context.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            $"select {CharactersSql.LevelOf("@CharacterId")};",
-            new { command.CharacterId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
+        // The character is locked as active, so it has a level.
+        var level = await context.Placement.LoadCharacterLevelAsync(command.CharacterId, cancellationToken) ?? 0;
         RejectUnavailable(QuestRules.Evaluate(
             quest,
             level,
@@ -72,7 +68,7 @@ internal sealed partial class QuestCommandHandler(
         var log = await questLog.ReadAsync(context.Scope, command.CharacterId, cancellationToken);
         var active = RequireActive(log, quest.Id);
 
-        var removed = await QuestLineageItems.RemoveAbandonedAsync(
+        var removed = await QuestLineage.RemoveAbandonedAsync(
             context,
             command.CharacterId,
             quest.Id,
@@ -98,7 +94,7 @@ internal sealed partial class QuestCommandHandler(
         CancellationToken cancellationToken)
     {
         var quest = FindQuest(command.QuestId);
-        context.Authority.EnsureQuestNpcAccess(quest.GiverActorId);
+        QuestNpcAccess.Ensure(context.Authority, quest.GiverActorId);
         var character = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
@@ -125,7 +121,7 @@ internal sealed partial class QuestCommandHandler(
     {
         var quest = FindQuest(command.QuestId);
         var objective = FindObjective(quest, command.ObjectiveId, QuestObjectiveKindIds.TalkTo);
-        context.Authority.EnsureQuestNpcAccess(objective.NpcActorId);
+        QuestNpcAccess.Ensure(context.Authority, objective.NpcActorId);
         await context.Locks.LockCharacterStateForIdempotentEventAsync(command.CharacterId, cancellationToken);
         var (step, progress) = await OpenObjectiveAsync(context, command.CharacterId, quest, objective, cancellationToken);
 
@@ -144,7 +140,7 @@ internal sealed partial class QuestCommandHandler(
     {
         var quest = FindQuest(command.QuestId);
         var objective = FindObjective(quest, command.ObjectiveId, QuestObjectiveKindIds.Deliver);
-        context.Authority.EnsureQuestNpcAccess(objective.NpcActorId);
+        QuestNpcAccess.Ensure(context.Authority, objective.NpcActorId);
         var character = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
@@ -153,7 +149,7 @@ internal sealed partial class QuestCommandHandler(
         // A count raised since a part was handed over asks only for the rest.
         var quantity = QuestRules.RemainingDeliveryQuantity(objective, progress.GetValueOrDefault(objective.Id));
         var definition = await context.State.LoadDefinitionAsync(objective.ItemId, cancellationToken);
-        await QuestCarriedItems.TakeAsync(
+        await QuestLineage.TakeCarriedAsync(
             context,
             character,
             quest.Id,
@@ -220,7 +216,7 @@ internal sealed partial class QuestCommandHandler(
         CancellationToken cancellationToken)
     {
         var quest = FindQuest(command.QuestId);
-        context.Authority.EnsureQuestNpcAccess(quest.TurnInActorId);
+        QuestNpcAccess.Ensure(context.Authority, quest.TurnInActorId);
         var character = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
@@ -241,7 +237,7 @@ internal sealed partial class QuestCommandHandler(
             collects.Add((objective, definition));
             ready &= QuestRules.IsObjectiveComplete(
                 objective,
-                await QuestCarriedItems.CountAsync(context, character, quest.Id, definition, cancellationToken));
+                await QuestLineage.CountCarriedAsync(context, character, quest.Id, definition, cancellationToken));
         }
 
         if (!ready)
@@ -254,7 +250,7 @@ internal sealed partial class QuestCommandHandler(
         var choice = RewardChoice(quest, command.RewardChoiceDefinitionId);
         foreach (var (objective, definition) in collects)
         {
-            await QuestCarriedItems.TakeAsync(
+            await QuestLineage.TakeCarriedAsync(
                 context,
                 character,
                 quest.Id,
@@ -264,7 +260,7 @@ internal sealed partial class QuestCommandHandler(
                 cancellationToken);
         }
 
-        if (await QuestLineageItems.RemoveCompletedAsync(context, command.CharacterId, quest.Id, cancellationToken) > 0)
+        if (await QuestLineage.RemoveCompletedAsync(context, command.CharacterId, quest.Id, cancellationToken) > 0)
         {
             context.Journal.TouchCharacter(command.CharacterId);
         }
@@ -521,7 +517,7 @@ internal sealed partial class QuestCommandHandler(
         var granted = 0;
         foreach (var startItem in quest.StartItems)
         {
-            var owned = await QuestLineageItems.CountOwnedAsync(
+            var owned = await QuestLineage.CountOwnedAsync(
                 context,
                 character.CharacterId,
                 quest.Id,

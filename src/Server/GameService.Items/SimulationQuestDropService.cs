@@ -37,19 +37,18 @@ internal sealed record SimulationQuestDropResponse(IReadOnlyList<SimulationQuest
 // the corpse's owner the owner's quests still need, so a quest drop never lies in a corpse for a
 // player who has enough. A live corpse is worker state, so this only reads; the grant checks the
 // need again. The credentials must name the active simulation session, as for every other
-// worker read.
+// worker read. What a quest asks for comes from the quest side, and what the owner already has
+// and how drops of one item share it from the item primitives.
 internal sealed class SimulationQuestDropService(
     NpgsqlDataSource dataSource,
     ISimulationSessionAuthority sessionAuthority,
     IQuestDefinitions questDefinitions,
-    ICharacterQuestLog questLog)
+    IQuestDropDemand questDropDemand)
 {
     // The codes of the other worker reads, so the worker handles every read alike.
     private const string WrongSimulationWorker = "wrong_simulation_worker";
     private const string WorkerRuntimeChanged = "worker_runtime_changed";
     private const string SessionInvalid = "simulation_session_invalid";
-
-    private readonly QuestDrops questDrops = new(questDefinitions, questLog);
 
     public async Task<ServiceResult<SimulationQuestDropResponse>> ResolveAsync(
         string authenticatedWorkerId,
@@ -98,17 +97,26 @@ internal sealed class SimulationQuestDropService(
                 return rejection;
             }
 
-            var plan = questDrops.Plan();
+            var plan = new LineageNeedPlan();
             var needed = new List<SimulationQuestDrop>(request.Drops!.Count);
             foreach (var drop in request.Drops)
             {
+                var questId = drop.QuestId!.Trim();
+                var sourceActorDefinitionId = request.SourceActorDefinitionId!.Trim();
+                var definitionId = drop.DefinitionId!.Trim();
                 var quantity = await plan.TakeAsync(
                     scope,
                     request.CharacterId,
-                    drop.QuestId!.Trim(),
-                    request.SourceActorDefinitionId!.Trim(),
-                    drop.DefinitionId!.Trim(),
+                    QuestLineage.Of(questId),
+                    definitionId,
                     drop.Quantity,
+                    token => questDropDemand.WantedAsync(
+                        scope,
+                        request.CharacterId,
+                        questId,
+                        sourceActorDefinitionId,
+                        definitionId,
+                        token),
                     cancellationToken);
                 if (quantity > 0)
                 {

@@ -3,44 +3,43 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
-// The items that count for a collect or deliver objective: carried stacks of the definition in
-// the permanent inventory and the equipped Bag, never the Bank, Recovery Storage, or equipment.
-// An ordinary item counts when it carries no active policy, and a quest item when it carries
-// the quest's lineage.
-internal static class QuestCarriedItems
+// The carried stacks of one definition that count for a lineage: stacks in the permanent
+// inventory and the equipped Bag, never the Bank, Recovery Storage, or equipment. An ordinary
+// item counts when it carries no active policy, and an item of the quest item category when it
+// carries the lineage.
+internal static class CarriedStacks
 {
     public static async Task<int> CountAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
-        string questId,
+        ItemLineage lineage,
         ResolvedItemDefinition definition,
         CancellationToken cancellationToken)
     {
-        return (await ListAsync(context, character, questId, definition, cancellationToken))
+        return (await ListAsync(context, character, lineage, definition, cancellationToken))
             .Sum(stack => stack.Quantity);
     }
 
     // Takes the quantity from the counted stacks, the permanent inventory first, all or nothing.
-    public static async Task TakeAsync(
+    // Returns false and takes nothing when the counted stacks hold less.
+    public static async Task<bool> TryTakeAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
-        string questId,
+        ItemLineage lineage,
         ResolvedItemDefinition definition,
         int quantity,
         string auditPrefix,
         CancellationToken cancellationToken)
     {
-        var stacks = await ListAsync(context, character, questId, definition, cancellationToken);
+        var stacks = await ListAsync(context, character, lineage, definition, cancellationToken);
         await context.Locks.LockMutationScopeAsync(
             stacks.Select(stack => stack.ItemInstanceId),
             [],
             cancellationToken);
-        stacks = await ListAsync(context, character, questId, definition, cancellationToken);
+        stacks = await ListAsync(context, character, lineage, definition, cancellationToken);
         if (stacks.Sum(stack => stack.Quantity) < quantity)
         {
-            ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.QuestItemsMissing,
-                "The character does not carry enough of the items the quest asks for.");
+            return false;
         }
 
         var remaining = quantity;
@@ -66,15 +65,17 @@ internal static class QuestCarriedItems
         }
 
         context.Journal.TouchCharacter(character.CharacterId);
+        return true;
     }
 
     private static async Task<IReadOnlyList<CarriedStack>> ListAsync(
         ItemTransactionContext context,
         LockedCharacterState character,
-        string questId,
+        ItemLineage lineage,
         ResolvedItemDefinition definition,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(lineage);
         var bagContentsContainerId = await CarriedAcquisition.FindEquippedBagContentsAsync(
             context,
             character,
@@ -82,19 +83,19 @@ internal static class QuestCarriedItems
         Guid[] containerIds = bagContentsContainerId is null
             ? [character.PermanentInventoryContainerId]
             : [character.PermanentInventoryContainerId, bagContentsContainerId.Value];
-        var questItem = string.Equals(
+        var lineageItem = string.Equals(
             definition.RuntimeDefinition.Category,
             ItemCategoryIds.QuestItem,
             StringComparison.Ordinal);
         return (await context.Connection.QueryAsync<CarriedStack>(new CommandDefinition(
-                questItem ? LineageStacksSql : PolicyFreeStacksSql,
+                lineageItem ? LineageStacksSql : PolicyFreeStacksSql,
                 new
                 {
                     ContainerIds = containerIds,
                     character.PermanentInventoryContainerId,
                     DefinitionId = definition.RuntimeDefinition.Id,
-                    QuestId = questId,
-                    SourceKind = ItemPolicySourceKinds.QuestGrant,
+                    QuestId = lineage.SourceId,
+                    lineage.SourceKind,
                     PolicyKind = ItemPolicyIds.ProtectedOnDeath,
                     ActiveStatus = ItemPolicyRules.ActiveStatus
                 },

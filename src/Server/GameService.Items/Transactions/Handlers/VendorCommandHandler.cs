@@ -1,4 +1,3 @@
-using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Items;
@@ -19,7 +18,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         PurchaseFromVendorCommand command,
         CancellationToken cancellationToken)
     {
-        context.Authority.EnsureVendorAccess(command.VendorId);
+        VendorAccess.Ensure(context.Authority, command.VendorId);
         var states = await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
@@ -99,7 +98,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         SellToVendorCommand command,
         CancellationToken cancellationToken)
     {
-        context.Authority.EnsureVendorAccess(command.VendorId);
+        VendorAccess.Ensure(context.Authority, command.VendorId);
         await context.Locks.LockCharacterStatesAsync(
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
@@ -182,69 +181,15 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
                 "The vendor price changed before the sale committed.");
         }
 
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
+        // A whole stack leaves an item_destructions row with reason vendor_sale.
+        await ItemQuantityConsumption.RemoveForReasonAsync(
+            context,
+            item,
+            command.Quantity,
+            "vendor_sale",
+            "item_sold_to_vendor",
+            "item_quantity_sold_to_vendor",
             cancellationToken);
-        if (command.Quantity == item.Quantity)
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_destructions (
-                    item_instance_id,
-                    definition_id,
-                    source_operation_id,
-                    quantity,
-                    reason)
-                values (
-                    @ItemInstanceId,
-                    @DefinitionId,
-                    @OperationId,
-                    @Quantity,
-                    'vendor_sale');
-
-                delete from item_instances
-                where id = @ItemInstanceId;
-                """,
-                new
-                {
-                    item.ItemInstanceId,
-                    item.DefinitionId,
-                    context.OperationId,
-                    item.Quantity
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            context.Journal.AddItemAudit(
-                "item_sold_to_vendor",
-                item.ItemInstanceId,
-                beforeState,
-                null);
-        }
-        else
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                update item_instances
-                set quantity = quantity - @Quantity,
-                    revision = revision + 1,
-                    updated_at = now()
-                where id = @ItemInstanceId;
-                """,
-                new { command.Quantity, item.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                item.ItemInstanceId,
-                cancellationToken);
-            context.Journal.AddItemAudit(
-                "item_quantity_sold_to_vendor",
-                item.ItemInstanceId,
-                beforeState,
-                afterState);
-            context.Journal.IncludeResultItem(item.ItemInstanceId);
-        }
-
-        context.Journal.TouchContainer(item.ContainerId!.Value);
         context.Journal.TouchCharacter(command.CharacterId);
 
         var currencyBefore = 0L;

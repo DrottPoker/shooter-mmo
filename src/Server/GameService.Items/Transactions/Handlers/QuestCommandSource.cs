@@ -19,7 +19,8 @@ internal sealed class QuestCommandSource : IItemCommandSource
                 static command => command.CharacterId,
                 new QuestItemCommandHandler())
             {
-                OperationallySignificant = true
+                OperationallySignificant = true,
+                PolicyAction = true
             },
             new ItemCommandRegistration<AcceptQuestCommand>(
                 ItemOperationKinds.AcceptQuest,

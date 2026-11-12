@@ -161,7 +161,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // Composition only: the command sources pass the contracts to the handlers they build.
         "GameService.Items/Transactions/Handlers/RecoveryAndPolicyCommandSource.cs",
         "GameService.Items/Transactions/Handlers/QuestCommandSource.cs",
-        "GameService.Items/Transactions/Handlers/CorpseCommandSource.cs",
         "GameService.Items/Transactions/Handlers/EconomyCommandSource.cs",
         // S32: the operation claim references the actor account and character.
         "GameService.Items/Transactions/Kernel/ItemOperationLedger.cs",
@@ -179,7 +178,8 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Context/ItemSlotPlacement.cs",
         // S51: the result reports each touched character's balance.
         "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs",
-        // S56: quest commands read the quest catalog and the character level and change the quest log.
+        // S56 and S59: quest commands read the quest catalog, change the quest log, and credit
+        // Gold rewards.
         "GameService.Items/Transactions/Handlers/QuestCommandHandler.cs",
         // S56: the Admin menu's quest tools read the quest catalog and change the quest log.
         "GameService.Items/Transactions/Handlers/QuestCommandHandler.Admin.cs",
@@ -187,10 +187,10 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Domain/QuestLogChanges.cs",
         // S58: kills, yields, talks, and deliveries count for the objectives of current steps.
         "GameService.Items/Transactions/Domain/QuestProgression.cs",
-        // S58: a gathering yield counts for gather objectives.
-        "GameService.Items/Transactions/Handlers/GatherResourceCommandHandler.cs",
-        // S62: a quest drop reads the quest catalog and the quest log for what its quest still needs.
-        "GameService.Items/Transactions/Domain/QuestDrops.cs"
+        // S58: a gathering yield counts for gather objectives through the quest gathering entry.
+        "GameService.Items/Transactions/Domain/QuestGatherCredit.cs",
+        // S62: a quest drop reads the quest catalog and the quest log for what its quest asks for.
+        "GameService.Items/Transactions/Domain/QuestDropDemand.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.

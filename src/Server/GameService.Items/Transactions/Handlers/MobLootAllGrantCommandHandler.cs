@@ -11,9 +11,9 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // no stack is split; the grant ledger keeps an entry from being granted twice. A quest drop
 // takes its quest's lineage and only the quantity that the quest still needs, and one that the
 // quest no longer needs stays in the corpse.
-internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IItemCommandHandler<GrantMobLootAllCommand>
+internal sealed class MobLootAllGrantCommandHandler(CorpseQuestDrops questDrops) : IItemCommandHandler<GrantMobLootAllCommand>
 {
-    private readonly QuestDrops questDrops = questDrops;
+    private readonly CorpseQuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -66,7 +66,7 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
                     continue;
                 }
 
-                policies = QuestDrops.LineagePolicies(definition, loot.QuestId);
+                policies = CorpseQuestDrops.LineagePolicies(definition, loot.QuestId);
                 questDropItems.Add(
                     MobLootWrites.ItemInstanceId(loot.GrantId),
                     new PlannedQuestDrop(loot.QuestId, command.SourceActorDefinitionId, definition));
@@ -151,7 +151,7 @@ internal sealed class MobLootAllGrantCommandHandler(QuestDrops questDrops) : IIt
         ResolvedItemDefinition definition,
         CancellationToken cancellationToken)
     {
-        if (!QuestDrops.IsQuestDropItem(definition)
+        if (!CorpseQuestDrops.IsQuestDropItem(definition)
             || loot.Quantity > definition.RuntimeDefinition.MaximumStackSize)
         {
             ItemTransactionContext.Reject(

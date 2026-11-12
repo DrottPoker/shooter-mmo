@@ -4,6 +4,7 @@ using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
@@ -61,9 +62,14 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
     }
 
     // The item transaction kernel and its parts are stateless and shared, so they are
-    // singletons; each IItemCommandSource registers the commands of one area.
+    // singletons; each IItemCommandSource registers the commands of one area. The quest code
+    // implements Items' quest drop demand and catalog check, and gathering credits quests
+    // through the quest code's gathering entry.
     private static void AddItemTransactions(IServiceCollection services)
     {
+        services.AddSingleton<IQuestDropDemand, QuestDropDemand>();
+        services.AddSingleton<IItemCatalogReferences, QuestItemCatalogReferences>();
+        services.AddSingleton<QuestGatherCredit>();
         services.AddSingleton<ItemSimulationAuthority>();
         services.AddSingleton<CharacterItemStateLocks>();
         services.AddSingleton<ItemOperationLedger>();
@@ -82,6 +88,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
     {
         endpoints.MapItemEndpoints();
         endpoints.MapSimulationItemEndpoints();
+        endpoints.MapSimulationQuestEndpoints();
         endpoints.MapCorpseEndpoints();
         endpoints.MapStackStressFixtureEndpoints(options.StackStressFixtures);
     }

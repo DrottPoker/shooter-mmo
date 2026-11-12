@@ -203,7 +203,7 @@ internal sealed partial class QuestCommandHandler :
         var removed = 0;
         foreach (var questId in forgotten)
         {
-            removed += await QuestLineageItems.RemoveResetAsync(context, characterId, questId, cancellationToken);
+            removed += await QuestLineage.RemoveResetAsync(context, characterId, questId, cancellationToken);
             await questLog.ForgetAsync(context.Scope, characterId, questId, cancellationToken);
         }
 
@@ -231,7 +231,7 @@ internal sealed partial class QuestCommandHandler :
         var state = await questLog.ReadAsync(context.Scope, characterId, cancellationToken);
         if (state.Revision != revisionBefore)
         {
-            context.Journal.SetQuestLogChange(QuestLogChanges.Of(characterId, state, [questId]));
+            QuestLogSection.Set(context.Journal, QuestLogChanges.Of(characterId, state, [questId]));
         }
     }
 
@@ -286,7 +286,7 @@ internal sealed partial class QuestCommandHandler :
 
             var definition = await context.State.LoadDefinitionAsync(objective.ItemId, cancellationToken);
             var missing = objective.Count
-                - await QuestCarriedItems.CountAsync(context, character, quest.Id, definition, cancellationToken);
+                - await QuestLineage.CountCarriedAsync(context, character, quest.Id, definition, cancellationToken);
             if (missing <= 0)
             {
                 continue;

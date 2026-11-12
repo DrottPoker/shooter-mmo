@@ -499,7 +499,9 @@ GameService would refuse too.
   of them move items or Gold: accepting grants start items, abandoning removes
   lineage items, a delivery and a turn-in take items, and a turn-in grants
   rewards and credits Gold. Each runs once per operation id, and a retry replays
-  its stored result.
+  its stored result. The quest code reaches the item tables only through item
+  primitives, and a gathering yield credits quests through one quest entry, as
+  [Areas](GAME_SERVICE_MODULES.md#areas) describes.
 - SimulationWorker reports its quest catalog revision, and placement requires it
   to match the mirrored revision, as for the item catalog. Every quest request
   of the worker names that revision too, and GameService refuses one from a
@@ -527,7 +529,9 @@ GameService would refuse too.
 - It rolls quest drops at a Mob's death for the owner of each corpse, by the
   quest log it keeps, and GameService decides how much of them the owner still
   needs: for a live corpse in a read before the worker lays it out, for a
-  durable corpse in its creation.
+  durable corpse in its creation. The quest code answers what the quest's
+  objective asks for, and Items counts what the owner already has, as
+  [Areas](GAME_SERVICE_MODULES.md#areas) describes.
 - It handles the `quests` capability: accepting, talking, delivering, and
   turning in, each validated through the open interaction. Abandoning from the
   quest log is an intent outside any interaction.

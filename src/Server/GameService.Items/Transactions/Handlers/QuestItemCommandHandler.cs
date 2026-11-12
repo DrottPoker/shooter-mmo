@@ -23,7 +23,7 @@ internal sealed class QuestItemCommandHandler
             [new CharacterLockRequest(command.CharacterId, command.ExpectedCharacterRevision)],
             cancellationToken);
         var questGrantId = command.QuestGrantId.Trim();
-        var removed = await QuestLineageItems.RemoveAbandonedAsync(
+        var removed = await QuestLineage.RemoveAbandonedAsync(
             context,
             command.CharacterId,
             questGrantId,

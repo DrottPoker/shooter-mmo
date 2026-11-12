@@ -185,7 +185,7 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(created);
         Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Trophy));
-        Assert.Equal([new ItemTransactionQuestDrop(Trophies, Trophy, 1)], created.QuestDrops);
+        Assert.Equal([new ItemTransactionQuestDrop(Trophies, Trophy, 1)], QuestDropSection.Read(created));
     }
 
     // The worker learns which quest drops a durable corpse kept, so it can tell the owner, also
@@ -217,7 +217,7 @@ public sealed class QuestDropIntegrationTests
             CancellationToken.None);
 
         // The trophies need two trophies, so the corpse keeps two of the three.
-        SimulationQuestDrop[] kept = [new(Trophies, Trophy, 1), new(Trophies, Trophy, 1)];
+        ItemTransactionQuestDrop[] kept = [new(Trophies, Trophy, 1), new(Trophies, Trophy, 1)];
         Assert.True(created.Succeeded, created.Error?.Message);
         Assert.Equal(kept, created.Value!.QuestDrops);
         Assert.True(replayed.Succeeded, replayed.Error?.Message);

@@ -34,7 +34,7 @@ internal sealed class ItemTransactionTelemetry(
         string correlationId)
     {
         var operationKind = registration.OperationKind;
-        operationsMetrics?.RecordTransaction(operationKind, result, duration);
+        operationsMetrics?.RecordTransaction(registration, result, duration);
         if (logger is not null)
         {
             if (!result.Succeeded && IsExpectedContention(result.Error?.Code))
@@ -86,7 +86,7 @@ internal sealed class ItemTransactionTelemetry(
         bool cancelled,
         string correlationId)
     {
-        operationsMetrics?.RecordFailedTransaction(registration.OperationKind, duration, cancelled);
+        operationsMetrics?.RecordFailedTransaction(registration, duration, cancelled);
         logger?.LogError(
             exception,
             "Item transaction {OperationKind} {OperationId} failed unexpectedly for correlation {CorrelationId}.",

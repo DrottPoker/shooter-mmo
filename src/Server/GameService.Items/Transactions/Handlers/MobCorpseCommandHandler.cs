@@ -9,11 +9,11 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // fresh lease on the corpse's Shard. A quest drop for the corpse's owner takes its quest's
 // lineage and only the quantity that the quest still needs; one the owner does not need is left
 // out, and a corpse that keeps no loot is not created.
-internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulationAuthority, QuestDrops questDrops)
+internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulationAuthority, CorpseQuestDrops questDrops)
     : IItemCommandHandler<CreatePersistentMobCorpseCommand>
 {
     private readonly ItemSimulationAuthority simulationAuthority = simulationAuthority;
-    private readonly QuestDrops questDrops = questDrops;
+    private readonly CorpseQuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -64,7 +64,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
 
             var ownerId = command.OwnerCharacterId;
             if (ownerId is null
-                || !QuestDrops.IsQuestDropItem(definition)
+                || !CorpseQuestDrops.IsQuestDropItem(definition)
                 || loot.Quantity > definition.RuntimeDefinition.MaximumStackSize)
             {
                 ItemTransactionContext.Reject(
@@ -135,6 +135,8 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             kept.Count,
             cancellationToken);
 
+        // The result reports the kept quest drops, so the worker can tell the owner.
+        var keptQuestDrops = new List<ItemTransactionQuestDrop>();
         for (var index = 0; index < kept.Count; index++)
         {
             var (loot, definition, quantity) = kept[index];
@@ -151,7 +153,7 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                     ItemPolicySourceKinds.QuestGrant,
                     loot.QuestId,
                     cancellationToken);
-                context.Journal.AddQuestDrop(loot.QuestId, definition.RuntimeDefinition.Id, quantity);
+                keptQuestDrops.Add(new ItemTransactionQuestDrop(loot.QuestId, definition.RuntimeDefinition.Id, quantity));
             }
             else
             {
@@ -191,6 +193,11 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
                 null,
                 afterState);
             context.Journal.IncludeResultItem(itemInstanceId);
+        }
+
+        if (keptQuestDrops.Count > 0)
+        {
+            QuestDropSection.Set(context.Journal, keptQuestDrops);
         }
 
         context.Journal.TouchContainer(generalContainerId);

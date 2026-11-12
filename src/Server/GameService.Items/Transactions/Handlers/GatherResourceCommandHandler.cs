@@ -1,26 +1,20 @@
-using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
-using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
-using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // Grants one gathering yield into carried storage. SimulationWorker owns the resource node,
 // its charges, and the live interaction; GameService checks the equipped tool and places the
-// yield in the same transaction, so a removed tool can never gather. The yield counts for the
-// gather objectives of the node's actor definition in the same transaction, so a retried
-// yield counts once.
-internal sealed class GatherResourceCommandHandler(
-    IQuestDefinitions questDefinitions,
-    ICharacterQuestLog questLog)
+// yield in the same transaction, so a removed tool can never gather. The quest entry counts the
+// yield for the gather objectives of the node's actor definition in the same transaction, so a
+// retried yield counts once.
+internal sealed class GatherResourceCommandHandler(QuestGatherCredit questCredit)
     : IItemCommandHandler<GatherResourceCommand>
 {
     private const int MaximumResourceNodeIdLength = 256;
 
-    private readonly IQuestDefinitions questDefinitions = questDefinitions;
-    private readonly ICharacterQuestLog questLog = questLog;
+    private readonly QuestGatherCredit questCredit = questCredit;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -44,29 +38,10 @@ internal sealed class GatherResourceCommandHandler(
         var character = await context.Locks.LockCharacterStateForIdempotentEventAsync(
             command.CharacterId,
             cancellationToken);
-        var hasTool = await context.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            """
-            select exists (
-                select 1
-                from item_instances tool
-                join item_definition_tool_kinds tool_kind
-                  on tool_kind.definition_id = tool.definition_id
-                join item_tool_kinds kind
-                  on kind.id = tool_kind.tool_kind_id
-                 and kind.is_active
-                where tool.equipped_character_id = @CharacterId
-                  and tool.equipment_slot_id = @ToolSlotId
-                  and tool_kind.tool_kind_id = @ToolKind);
-            """,
-            new
-            {
+        if (!await context.State.HasEquippedToolKindAsync(
                 command.CharacterId,
-                ToolSlotId = ItemEquipmentSlotIds.Tool,
-                ToolKind = command.RequiredToolKind
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        if (!hasTool)
+                command.RequiredToolKind,
+                cancellationToken))
         {
             // Names the missing kind, because another tool in the slot looks like the right one.
             // The worker adds the kind to the code, so the client shows its name.
@@ -115,16 +90,11 @@ internal sealed class GatherResourceCommandHandler(
             return;
         }
 
-        var changed = await QuestProgression.CreditAsync(
+        await questCredit.CreditAsync(
             context,
-            questDefinitions,
-            questLog,
             command.CharacterId,
-            objective => QuestRules.CountsGather(objective, command.ResourceActorId) ? command.YieldQuantity : 0,
+            command.ResourceActorId,
+            command.YieldQuantity,
             cancellationToken);
-        if (changed.Count > 0)
-        {
-            await QuestLogChanges.ReportAsync(context, questLog, command.CharacterId, changed, cancellationToken);
-        }
     }
 }

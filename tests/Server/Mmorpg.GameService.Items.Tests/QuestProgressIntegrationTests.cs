@@ -29,10 +29,10 @@ public sealed class QuestProgressIntegrationTests
         var third = await KillAsync(context, session, characterId, "mob.feral_wolf");
 
         Assert.Equal(1, Progress(first, Wolves, "wolves"));
-        Assert.Empty(other.QuestLog!.Quests);
+        Assert.Empty(QuestLogSection.Read(other)!.Quests);
         Assert.Equal(2, Progress(second, Wolves, "wolves"));
-        Assert.Empty(third.QuestLog!.Quests);
-        Assert.Equal(second.QuestLog!.Revision, third.QuestLog.Revision);
+        Assert.Empty(QuestLogSection.Read(third)!.Quests);
+        Assert.Equal(QuestLogSection.Read(second)!.Revision, QuestLogSection.Read(third)!.Revision);
         // The only step is the last, so the complete quest waits for its turn-in.
         Assert.Equal("hunt", Assert.Single((await ReadQuestLogAsync(context, characterId)).ActiveQuests).StepId);
         Assert.Empty(first.ItemChanges ?? []);
@@ -100,8 +100,8 @@ public sealed class QuestProgressIntegrationTests
         var again = await GatherAsync(context, session, characterId, "resource.iron_vein");
 
         Assert.Equal(1, Progress(vein, Errand, "ore"));
-        Assert.Null(tree.QuestLog);
-        Assert.Null(unnamed.QuestLog);
+        Assert.Null(QuestLogSection.Read(tree));
+        Assert.Null(QuestLogSection.Read(unnamed));
         Assert.Equal(2, Progress(again, Errand, "ore"));
         // Every yield lands in carried storage, whatever it counted for.
         Assert.Equal([(1, 4)], await InventoryStacksAsync(context, world, characterId, Ore));
@@ -132,7 +132,7 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.QuestObjectiveComplete, twice.Error!.Code);
         ItemScenarioWorld.AssertCommitted(delivered);
         Assert.Contains(delivered.ItemChanges!, change => change.ItemInstanceId == ore && change.Removed);
-        var quest = Assert.Single(delivered.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(delivered)!.Quests);
         Assert.Equal("return", quest.StepId);
         Assert.Empty(quest.Objectives);
         Assert.Equal(ItemTransactionErrorCodes.QuestObjectiveInvalid, stale.Error!.Code);
@@ -153,7 +153,7 @@ public sealed class QuestProgressIntegrationTests
         var turnedIn = await ExecuteAsync(context, session, new TurnInQuestCommand(characterId, Errand, null), Mira);
 
         ItemScenarioWorld.AssertCommitted(turnedIn);
-        var quest = Assert.Single(turnedIn.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(turnedIn)!.Quests);
         Assert.Equal(((string?)null, 1), (quest.StepId, quest.CompletionCount));
         Assert.Empty(await LineageItemsAsync(context, characterId, Errand));
         Assert.Null(await DestructionReasonAsync(context, carried.ItemInstanceId));
@@ -232,7 +232,7 @@ public sealed class QuestProgressIntegrationTests
         ItemScenarioWorld.AssertCommitted(turnedIn);
         Assert.Equal([(1, 1)], await InventoryStacksAsync(context, world, characterId, Ore));
         ItemScenarioWorld.AssertCommitted(again);
-        var quest = Assert.Single(again.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(again)!.Quests);
         Assert.Equal(("deliver", 1), (quest.StepId, quest.CompletionCount));
     }
 
@@ -251,12 +251,12 @@ public sealed class QuestProgressIntegrationTests
         var turnedIn = await RouteAsync(context, session, "turn_in_quest", Wolves, Mira, rewardChoiceDefinitionId: "fixture.bow");
 
         Assert.True(kill.Succeeded, kill.Error?.Message);
-        Assert.Equal(1, Assert.Single(kill.Value!.QuestLog!.Quests).Objectives.Single().Progress);
+        Assert.Equal(1, Assert.Single(QuestLogSection.Read(kill.Value!)!.Quests).Objectives.Single().Progress);
         Assert.Equal(400, untagged.StatusCode);
         Assert.Equal(400, noObjective.StatusCode);
         Assert.True(turnedIn.Succeeded, turnedIn.Error?.Message);
-        Assert.Equal(1, Assert.Single(turnedIn.Value!.QuestLog!.Quests).CompletionCount);
-        Assert.NotNull(turnedIn.Value.CharacterState);
+        Assert.Equal(1, Assert.Single(QuestLogSection.Read(turnedIn.Value!)!.Quests).CompletionCount);
+        Assert.NotNull(turnedIn.Value!.CharacterState);
     }
 
     private static async Task<(ItemScenarioWorld World, IntegrationPlayer Player, ConsumedSimulationJoinTicketResponse Session)> JoinAsync(
@@ -312,7 +312,7 @@ public sealed class QuestProgressIntegrationTests
     private static int Progress(ItemTransactionResult result, string questId, string objectiveId)
     {
         ItemScenarioWorld.AssertCommitted(result);
-        return result.QuestLog!.Quests
+        return QuestLogSection.Read(result)!.Quests
             .Single(quest => quest.QuestId == questId)
             .Objectives
             .Single(objective => objective.ObjectiveId == objectiveId)

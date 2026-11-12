@@ -63,6 +63,38 @@ public sealed class ItemChangeJournalTests
         await transaction.RollbackAsync();
     }
 
+    // A section is a top-level key of the stored result, and stored results are read without
+    // regard to case, so no section may take the name of a result property.
+    [PostgresIntegrationFact]
+    public async Task JournalRefusesResultPropertyNamesAndKeepsSectionsInTheirOrder()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(initializeDatabase: false);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        var journal = Journal(connection, transaction, ItemOperationKinds.Grant);
+
+        foreach (var name in new[] { "operationId", "OperationKind", "ITEMCHANGES", "recoveryDeliveryIds", "sections" })
+        {
+            var refused = Assert.Throws<ArgumentException>(() => journal.SetSection(name, 1));
+            Assert.Equal(
+                $"The result section name '{name}' is a property of the item transaction result. (Parameter 'name')",
+                refused.Message);
+        }
+
+        Assert.Throws<ArgumentException>(() => journal.SetSection(" ", 1));
+        Assert.Null(journal.BuildSections());
+
+        journal.SetSection("first", new { Value = 1 });
+        journal.SetSection("second", new[] { "a" });
+        journal.SetSection("first", new { Value = 3, Name = "later" });
+        var sections = journal.BuildSections()!;
+
+        Assert.Equal(["first", "second"], sections.Keys);
+        Assert.Equal("""{"value":3,"name":"later"}""", sections["first"].GetRawText());
+        Assert.Equal("""["a"]""", sections["second"].GetRawText());
+        await transaction.RollbackAsync();
+    }
+
     private static ItemChangeJournal Journal(
         Npgsql.NpgsqlConnection connection,
         Npgsql.NpgsqlTransaction transaction,
