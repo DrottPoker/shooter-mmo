@@ -32,6 +32,22 @@ internal sealed class SnapshotReplicator(
         config.UdpQuotas.AggregateSnapshotByteBurst);
     private uint snapshotSequence;
 
+    // Sends the snapshots at the snapshot rate.
+    public void AddTickPhase(SimulationTickPhases phases)
+    {
+        var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
+        phases.Add(
+            SimulationTickOrder.Snapshots,
+            "snapshots",
+            (in SimulationTick tick) =>
+            {
+                if (tick.ServerTick % intervalTicks == 0)
+                {
+                    Broadcast();
+                }
+            });
+    }
+
     public void Broadcast()
     {
         var broadcastStarted = Stopwatch.GetTimestamp();

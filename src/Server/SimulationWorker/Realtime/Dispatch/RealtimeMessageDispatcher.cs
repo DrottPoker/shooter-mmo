@@ -20,15 +20,14 @@ internal sealed class RealtimeMessageDispatcher
         RealtimePeerSender sender,
         RealtimeNetworkMetrics networkMetrics,
         ILogger logger,
-        IEnumerable<RealtimeMessageRoute> unauthenticatedRoutes,
-        IEnumerable<RealtimeMessageRoute> authenticatedRoutes)
+        RealtimeMessageRoutes routes)
     {
         this.peers = peers;
         this.sender = sender;
         this.networkMetrics = networkMetrics;
         this.logger = logger;
-        AddRoutes(this.unauthenticatedRoutes, unauthenticatedRoutes);
-        AddRoutes(this.authenticatedRoutes, authenticatedRoutes);
+        AddRoutes(unauthenticatedRoutes, routes.Unauthenticated);
+        AddRoutes(authenticatedRoutes, routes.Authenticated);
     }
 
     public void Dispatch(
@@ -118,7 +117,7 @@ internal sealed class RealtimeMessageDispatcher
 
     private static void AddRoutes(
         RealtimeMessageRoute?[] table,
-        IEnumerable<RealtimeMessageRoute> routes)
+        IReadOnlyList<RealtimeMessageRoute> routes)
     {
         foreach (var route in routes)
         {

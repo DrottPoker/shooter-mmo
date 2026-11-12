@@ -1,5 +1,6 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Appearance;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Items;
 
@@ -71,6 +72,23 @@ internal sealed class AppearanceReplicator(
             visible,
             appearance.HeadwearLowered,
             toolInUse);
+    }
+
+    // Sends the looks that changed at the snapshot rate, so they reach the peers with the
+    // snapshots of the same tick.
+    public void AddTickPhase(SimulationTickPhases phases, SimulationWorkerConfig config)
+    {
+        var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
+        phases.Add(
+            SimulationTickOrder.Appearances,
+            "appearances",
+            (in SimulationTick tick) =>
+            {
+                if (tick.ServerTick % intervalTicks == 0)
+                {
+                    Broadcast();
+                }
+            });
     }
 
     // Sends the looks that changed since the last call. A look is built again only when the

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Quests;
@@ -22,7 +23,7 @@ public sealed class SimulationSessionReleaseServiceTests
         var service = new SimulationSessionReleaseService(
             new GameServiceClient(httpClient),
             sessionStore,
-            itemStateStore);
+            CharacterStateTestData.SessionStores(itemStateStore));
         var characterId = Guid.NewGuid();
         var simulationSessionId = Guid.NewGuid();
         var stale = CreateSession(
@@ -83,9 +84,8 @@ public sealed class SimulationSessionReleaseServiceTests
         var service = new SimulationSessionReleaseService(
             new GameServiceClient(httpClient),
             sessionStore,
-            new CharacterItemStateStore(),
-            [],
-            questLogs: questLogs);
+            CharacterSessionStores.Create(new CharacterItemStateStore(), new CharacterLookStore(), questLogs),
+            []);
         var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "session-token", PlayerCarryState.Default);
         sessionStore.Register(session);
         questLogs.Register(

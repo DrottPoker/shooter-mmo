@@ -21,7 +21,9 @@ using Mmorpg.WorldData.Quests;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Hosts the realtime UDP server. The realtime components are composed here from the
-// injected services and run on one loop strand; see RealtimeServer.
+// injected services and run on one loop strand; see RealtimeServer. It stops in
+// StoppingAsync, before the host stops any hosted service, as
+// SimulationWorkerHostedServices explains.
 public sealed class RealtimeSimulationService(
     SimulationWorkerConfig config,
     SimulationJoinService joinService,
@@ -69,7 +71,7 @@ public sealed class RealtimeSimulationService(
     QuestOperationExecutor? questOperations = null,
     QuestCatalogRuntimeDocument? questCatalog = null,
     ICombatRandom? combatRandom = null)
-    : BackgroundService
+    : BackgroundService, IHostedLifecycleService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
         new RealtimeServerDependencies(
@@ -123,9 +125,34 @@ public sealed class RealtimeSimulationService(
             new QuestDependencies(questLogs ?? new CharacterQuestLogStore(), questOperations, questCatalog)),
         logger);
 
+    // The composed server, for the guard tests of what the features registered.
+    internal RealtimeServer Server => server;
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         return server.RunAsync(stoppingToken);
+    }
+
+    public Task StartingAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task StartedAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    // The realtime shutdown runs here, so its combat flush commits while the sessions and the
+    // registration still hold. The host's later StopAsync finds the loop already stopped.
+    public Task StoppingAsync(CancellationToken cancellationToken)
+    {
+        return base.StopAsync(cancellationToken);
+    }
+
+    public Task StoppedAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
     }
 
     public override void Dispose()

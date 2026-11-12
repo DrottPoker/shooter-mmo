@@ -29,7 +29,16 @@ internal sealed class AppearanceIntentHandler(
     public const string HeadwearChange = "headwear";
     public const string DevelopmentLookChange = "development_look";
 
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_appearance_delivery",
+        "Appearance intents require the reliable ordered control channel.");
+
     private readonly HashSet<int> inFlight = [];
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.AppearanceIntent, DeliveryRejection, handler);
+    }
 
     public void HandleIntent(in RealtimeInboundMessage message)
     {

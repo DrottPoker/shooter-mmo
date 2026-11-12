@@ -1735,6 +1735,13 @@ the town, around `(-12, 0, -92)`. Give the character the Equipment Test Pack.
    they run out. Expected result: the character keeps its target and reports
    `No ammunition`. A few seconds later, once the spent arrows are committed,
    the inventory and a fresh login show the same arrow count as the frame.
+9. Shoot two or three arrows at a wolf, note the arrow count in the frame, and
+   stop SimulationWorker with Ctrl+C within 5 seconds of the first shot, before
+   the spent arrows are committed. Expected result: the worker logs
+   `[SIMULATION] Realtime transport stopped.` before `Simulation worker
+   local-simulation-worker-1 runtime <runtime> was marked offline.`. Start the
+   worker again and log in. Expected result: the inventory shows the arrow count
+   that the frame showed before the stop.
 
 ### Weapons And Their Attacks
 

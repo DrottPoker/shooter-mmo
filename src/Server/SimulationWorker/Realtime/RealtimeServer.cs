@@ -4,9 +4,6 @@ using Mmorpg.GameProtocol;
 using Mmorpg.Server.Common.Timing;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
-using Mmorpg.SimulationWorker.Entities;
-using Mmorpg.SimulationWorker.Items;
-using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -28,24 +25,18 @@ internal sealed class RealtimeServer(
     SimulationTickLoop tickLoop,
     RealtimePeerSupervisor supervisor,
     WorldActorRuntimeDriver worldActors,
-    CombatSystem combat,
-    PlayerCombatAuthority combatAuthority,
     RealtimeTransportReadiness transportReadiness,
-    RealtimePeerRegistry peers,
-    EntityPresenceReplicator presence,
-    ConnectionEntityBindingRegistry connectionBindings,
-    SimulationEntityRegistry entityRegistry,
-    CharacterItemStateStore itemStateStore,
-    CorpseViewerRegistry corpseViewers,
-    WorldInteractionLeaseRegistry? worldInteractionLeases,
-    WorldActorStore? worldActorStore,
-    CorpseViewDistributor corpseViews,
-    RealtimeNetworkMetrics networkMetrics,
     RealtimePerformanceMetrics performanceMetrics,
+    RealtimeFeatureRegistries registries,
     IReadOnlyList<IDisposable> ownedResources,
     ILogger logger) : IDisposable
 {
     private bool disposed;
+
+    // What the features registered; the guard tests read it.
+    public RealtimeFeatureRegistries Registries => registries;
+
+    public IReadOnlyList<SimulationTickPhase> TickPhases => tickLoop.Phases;
 
     public async Task RunAsync(CancellationToken stoppingToken)
     {
@@ -163,28 +154,19 @@ internal sealed class RealtimeServer(
     }
 
     // The order is part of the shutdown contract: the transport stops first, so no event
-    // can register state, and in-flight operations finish before the stores are cleared,
-    // so a late join or release cannot register state after the clear. Their completions
-    // are never finalized; only the combat flush reads its own arrow batch results.
+    // can register state, and in-flight operations finish before the registered shutdown
+    // steps flush and clear, in registration order, so a late join or release cannot
+    // register state after the clear. Their completions are never finalized; only the
+    // combat flush reads its own arrow batch results.
     private async Task ShutdownAsync()
     {
         transport.Stop();
         await operationTracker.WaitForAllAsync();
-        await combatAuthority.FlushOnShutdownAsync(completions.TakeFor(combatAuthority));
-        combat.Clear();
-        peers.Clear();
-        presence.Clear();
-        connectionBindings.Clear();
-        entityRegistry.Clear();
-        itemStateStore.Clear();
-        corpseViewers.Clear();
-        worldInteractionLeases?.Clear();
-        worldActorStore?.Clear();
-        corpseViews.ClearSnapshots();
-        supervisor.ClearUnboundSessions();
-        networkMetrics.SetActivePeers(0);
-        networkMetrics.SetActiveEntities(0);
-        networkMetrics.SetPeerPopulation(0, 0, 0);
+        foreach (var step in registries.ShutdownSteps.Steps)
+        {
+            await step.Run();
+        }
+
         logger.LogInformation("[SIMULATION] Realtime transport stopped.");
     }
 

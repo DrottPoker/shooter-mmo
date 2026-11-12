@@ -1,4 +1,5 @@
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Quests;
 
@@ -73,7 +74,7 @@ public sealed record CharacterActiveQuest(string StepId, IReadOnlyDictionary<str
 // that is not newer than the log, such as a replay or one already in the log a reconnect read,
 // changes nothing. A log that may miss a change, because an action's answer was lost, is stale
 // until GameService's log replaces it. Joins and authority operations write from any thread.
-public sealed class CharacterQuestLogStore
+public sealed class CharacterQuestLogStore : ICharacterSessionStore
 {
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, Entry> logsByCharacterId = [];
@@ -195,6 +196,14 @@ public sealed class CharacterQuestLogStore
             {
                 logsByCharacterId.Remove(characterId);
             }
+        }
+    }
+
+    public void Clear()
+    {
+        lock (syncRoot)
+        {
+            logsByCharacterId.Clear();
         }
     }
 

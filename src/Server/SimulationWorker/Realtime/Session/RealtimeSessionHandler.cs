@@ -26,6 +26,7 @@ internal sealed class RealtimeSessionHandler(
     ICollisionWorld collisionWorld,
     PeerAdmissionGuard admissionGuard,
     EntityPresenceReplicator presence,
+    RealtimeLifecycleHooks hooks,
     RealtimeSessionTeardown teardown,
     SessionAuthorityOperations sessionOperations,
     RealtimeOperationTracker operationTracker,
@@ -36,8 +37,23 @@ internal sealed class RealtimeSessionHandler(
     SimulationShardRules? shardRules = null,
     PlayerCombatAuthority? combatAuthority = null) : IRealtimeCompletionHandler
 {
-    // Hears every character that joined, after its accept was sent; set by the composition.
-    public Action<RealtimePeerContext, PlayerSimulationEntity>? PlayerJoined { get; set; }
+    // A peer without a session may send one join request, and a joined peer one leave request.
+    public static void AddRoutes(
+        RealtimeMessageRoutes routes,
+        RealtimeMessageHandler join,
+        RealtimeMessageHandler leave)
+    {
+        routes.AddUnauthenticated(
+            RealtimeMessageType.JoinRequest,
+            RealtimeMessageRoutes.JoinRequired,
+            join,
+            static context => context.JoinStarted);
+        routes.AddAuthenticated(
+            RealtimeMessageType.LeaveRequest,
+            RealtimeMessageRoutes.UnexpectedMessage,
+            leave,
+            static context => context.LeaveStarted);
+    }
 
     public void HandleJoinRequest(in RealtimeInboundMessage message)
     {
@@ -265,7 +281,7 @@ internal sealed class RealtimeSessionHandler(
                 RealtimeStateMapper.ToRealtimeMovementSettings(config),
                 RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State),
                 new RealtimeShardRules(shardRules?.Current.PlayerVersusPlayer ?? false))));
-        PlayerJoined?.Invoke(completed.Context, entity);
+        hooks.RaisePlayerJoined(completed.Context, entity);
         presence.SendEntityBaseline(peer, joiningInterest.Visible);
         presence.SendEntitySpawnToConnections(entity, connectionsEnteringNewEntity);
         networkMetrics.RecordJoinAccepted();

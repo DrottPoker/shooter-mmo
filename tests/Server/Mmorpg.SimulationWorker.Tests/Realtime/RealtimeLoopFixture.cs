@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
@@ -56,19 +57,21 @@ internal sealed class RealtimeLoopFixture : IDisposable
             WorldActors,
             new SimulationInterestManager(Config.InterestManagement),
             Metrics,
-            Clock);
+            Clock,
+            Hooks);
         CarrySync = new CarryStateSynchronizer(CharacterItemStateStore, Bindings, Registry, Sender);
         Teardown = new RealtimeSessionTeardown(
             Registry,
             Sender,
             Presence,
             SessionStore,
-            CharacterItemStateStore,
+            CharacterSessionStores.Create(CharacterItemStateStore, Looks, QuestLogs),
             CorpseViewers,
             Leases,
             Bindings,
             Entities,
-            Metrics);
+            Metrics,
+            Hooks);
         Scheduler = new AuthorityOperationScheduler(Registry);
     }
 
@@ -87,6 +90,12 @@ internal sealed class RealtimeLoopFixture : IDisposable
     public ActiveSimulationSessionStore SessionStore { get; } = new();
 
     public CharacterItemStateStore CharacterItemStateStore { get; } = new();
+
+    public CharacterLookStore Looks { get; } = new();
+
+    public CharacterQuestLogStore QuestLogs { get; } = new();
+
+    public RealtimeLifecycleHooks Hooks { get; } = new();
 
     public SimulationEntityRegistry Entities { get; } = new();
 

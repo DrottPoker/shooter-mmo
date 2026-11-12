@@ -23,12 +23,16 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // regenerates health and mana. A Mob attacks the target its brain chose once the brain stands ready in range,
 // takes damage, dies, leaves loot, and respawns.
 // Every change reaches clients at the end of the tick. Loop-confined.
-internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunitionSource
+internal sealed class CombatSystem : IOwnerAmmunitionSource
 {
     // An attack in its windup keeps its target while the target stays within a quarter more than
     // the weapon's range, so a target that walks on a little, such as a patrolling wolf, does not
     // cancel it; a new attack needs the range itself.
     internal const float WindupRangeLeeway = 0.25f;
+
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_combat_delivery",
+        "Combat intents require the reliable ordered control channel.");
 
     private readonly SimulationWorkerConfig config;
     private readonly CombatRules rules;
@@ -128,6 +132,16 @@ internal sealed class CombatSystem : IPlayerEntityRemovalObserver, IOwnerAmmunit
     public Action<RealtimePeerContext, string, string>? CloseWorldInteraction { get; set; }
 
     public int CombatantCount => combatants.Count;
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.CombatIntent, DeliveryRejection, handler);
+    }
+
+    public void AddTickPhase(SimulationTickPhases phases)
+    {
+        phases.Add(SimulationTickOrder.Combat, "combat", (in SimulationTick _) => ProcessTick());
+    }
 
     // Every damageable Mob of the activated assignment becomes a combatant.
     public void RegisterWorldActors(IReadOnlyList<WorldActorRuntimeState> actors)

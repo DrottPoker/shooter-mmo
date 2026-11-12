@@ -2,10 +2,12 @@ using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// The realtime route tables. A peer without a session may only join; a joined peer may
-// move, interact and leave. Rejection codes and texts are part of the client protocol.
-// Each route takes its channel and delivery from the generated protocol descriptor.
-internal static class RealtimeMessageRoutes
+// The realtime route table that features add their routes to during composition, and that the
+// dispatcher builds its tables from. A peer without a session may only join; a joined peer
+// reaches the authenticated routes. Each route takes its channel and delivery from the
+// generated protocol descriptor. Rejection codes and texts are part of the client protocol,
+// and each feature keeps its own next to the handler that adds the route.
+internal sealed class RealtimeMessageRoutes
 {
     public static readonly RealtimeRejection JoinRequired = new(
         "join_required",
@@ -15,91 +17,40 @@ internal static class RealtimeMessageRoutes
         "unexpected_message",
         "The message is not valid for the current connection state.");
 
-    public static IReadOnlyList<RealtimeMessageRoute> CreateUnauthenticated(
-        RealtimeMessageHandler join)
+    private readonly List<RealtimeMessageRoute> unauthenticated = [];
+    private readonly List<RealtimeMessageRoute> authenticated = [];
+
+    public IReadOnlyList<RealtimeMessageRoute> Unauthenticated => unauthenticated;
+
+    public IReadOnlyList<RealtimeMessageRoute> Authenticated => authenticated;
+
+    // A route for a peer without a session.
+    public void AddUnauthenticated(
+        RealtimeMessageType type,
+        RealtimeRejection deliveryRejection,
+        RealtimeMessageHandler handler,
+        Func<RealtimePeerContext, bool>? rejectWhen = null)
     {
-        return
-        [
-            Route(RealtimeMessageType.JoinRequest, JoinRequired, join) with
-            {
-                RejectWhen = static context => context.JoinStarted
-            }
-        ];
+        unauthenticated.Add(Route(type, deliveryRejection, handler, rejectWhen));
     }
 
-    public static IReadOnlyList<RealtimeMessageRoute> CreateAuthenticated(
-        RealtimeMessageHandler movement,
-        RealtimeMessageHandler itemOperation,
-        RealtimeMessageHandler corpseInteraction,
-        RealtimeMessageHandler worldInteraction,
-        RealtimeMessageHandler leave,
-        RealtimeMessageHandler combat,
-        RealtimeMessageHandler appearance,
-        RealtimeMessageHandler admin,
-        RealtimeMessageHandler quest)
+    // A route for a peer whose session joined.
+    public void AddAuthenticated(
+        RealtimeMessageType type,
+        RealtimeRejection deliveryRejection,
+        RealtimeMessageHandler handler,
+        Func<RealtimePeerContext, bool>? rejectWhen = null)
     {
-        return
-        [
-            Route(
-                RealtimeMessageType.MovementInputBatch,
-                new RealtimeRejection(
-                    "invalid_movement_delivery",
-                    "Movement inputs require the sequenced movement channel."),
-                movement),
-            Route(
-                RealtimeMessageType.ItemOperationIntent,
-                new RealtimeRejection(
-                    "invalid_item_operation_delivery",
-                    "Item operation intents require the reliable ordered control channel."),
-                itemOperation),
-            Route(
-                RealtimeMessageType.CorpseInteractionIntent,
-                new RealtimeRejection(
-                    "invalid_corpse_operation_delivery",
-                    "Corpse interaction intents require the reliable ordered control channel."),
-                corpseInteraction),
-            Route(
-                RealtimeMessageType.WorldInteractionIntent,
-                new RealtimeRejection(
-                    "invalid_world_interaction_delivery",
-                    "World interaction intents require the reliable ordered control channel."),
-                worldInteraction),
-            Route(
-                RealtimeMessageType.CombatIntent,
-                new RealtimeRejection(
-                    "invalid_combat_delivery",
-                    "Combat intents require the reliable ordered control channel."),
-                combat),
-            Route(
-                RealtimeMessageType.AppearanceIntent,
-                new RealtimeRejection(
-                    "invalid_appearance_delivery",
-                    "Appearance intents require the reliable ordered control channel."),
-                appearance),
-            Route(
-                RealtimeMessageType.AdminIntent,
-                new RealtimeRejection(
-                    "invalid_admin_delivery",
-                    "Admin intents require the reliable ordered control channel."),
-                admin),
-            Route(
-                RealtimeMessageType.QuestIntent,
-                new RealtimeRejection(
-                    "invalid_quest_delivery",
-                    "Quest intents require the reliable ordered control channel."),
-                quest),
-            Route(RealtimeMessageType.LeaveRequest, UnexpectedMessage, leave) with
-            {
-                RejectWhen = static context => context.LeaveStarted
-            }
-        ];
+        authenticated.Add(Route(type, deliveryRejection, handler, rejectWhen));
     }
 
     private static RealtimeMessageRoute Route(
         RealtimeMessageType type,
         RealtimeRejection deliveryRejection,
-        RealtimeMessageHandler handler)
+        RealtimeMessageHandler handler,
+        Func<RealtimePeerContext, bool>? rejectWhen)
     {
+        ArgumentNullException.ThrowIfNull(handler);
         if (!RealtimeProtocol.TryGetDescriptor(type, out var descriptor)
             || descriptor.Direction != RealtimeMessageDirection.ClientToServer)
         {
@@ -111,6 +62,9 @@ internal static class RealtimeMessageRoutes
             descriptor.Channel,
             RealtimeDeliveryMethods.ToDeliveryMethod(descriptor.Delivery),
             deliveryRejection,
-            handler);
+            handler)
+        {
+            RejectWhen = rejectWhen
+        };
     }
 }

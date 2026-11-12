@@ -43,6 +43,15 @@ internal sealed class AdminIntentHandler(
         "admin_teleport_no_ground",
         "No walkable ground is at the destination.");
 
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_admin_delivery",
+        "Admin intents require the reliable ordered control channel.");
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.AdminIntent, DeliveryRejection, handler);
+    }
+
     // A joined player learns its admin state, which also tells its client that the tools are on.
     public void OnPlayerJoined(RealtimePeerContext context, PlayerSimulationEntity entity)
     {

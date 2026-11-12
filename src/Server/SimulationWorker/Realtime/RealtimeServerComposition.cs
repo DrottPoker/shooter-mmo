@@ -87,10 +87,13 @@ internal sealed record CombatDependencies(
 
 // The only place realtime components are created. Components are not registered in
 // dependency injection, which keeps loop-confined state out of reach of other services.
+// The features register their tick phases, message routes, lifecycle hooks, and shutdown
+// steps here, in RealtimeFeatureRegistries; tests pin what they registered.
 internal static class RealtimeServerComposition
 {
     public static RealtimeServer Create(RealtimeServerDependencies dependencies, ILogger logger)
     {
+        var registries = new RealtimeFeatureRegistries();
         var config = dependencies.Config;
         var itemStateStore = dependencies.CharacterItemStateStore;
         var sessionStore = dependencies.SessionStore;
@@ -136,7 +139,8 @@ internal static class RealtimeServerComposition
             worldActorStore,
             interestManager,
             networkMetrics,
-            clock);
+            clock,
+            registries.Hooks);
         var carrySync = new CarryStateSynchronizer(
             itemStateStore,
             connectionBindings,
@@ -154,19 +158,20 @@ internal static class RealtimeServerComposition
         var questProgress = questDependencies.Catalog is null
             ? null
             : new QuestProgressFilter(questDependencies.QuestLogs, questDependencies.Catalog);
+        // Teardown removes from the stores that a session release removes from.
+        var characterStores = dependencies.ReleaseService.CharacterStores;
         var teardown = new RealtimeSessionTeardown(
             peers,
             sender,
             presence,
             sessionStore,
-            itemStateStore,
+            characterStores,
             corpseViewers,
             worldInteractionLeases,
             connectionBindings,
             entityRegistry,
             networkMetrics,
-            appearanceDependencies.Looks,
-            questDependencies.QuestLogs);
+            registries.Hooks);
         var appearances = new AppearanceReplicator(
             peers,
             sender,
@@ -342,6 +347,7 @@ internal static class RealtimeServerComposition
             dependencies.CollisionWorld,
             admissionGuard,
             presence,
+            registries.Hooks,
             teardown,
             sessionOperations,
             operationTracker,
@@ -438,13 +444,6 @@ internal static class RealtimeServerComposition
             combat,
             dependencies.CollisionWorld,
             dependencies.CollisionStreamingStore);
-        presence.SpawnObserver = combatReplicator;
-        teardown.RemovalObserver = combat;
-        sessions.PlayerJoined = (context, entity) =>
-        {
-            combat.OnPlayerJoined(context, entity);
-            admin.OnPlayerJoined(context, entity);
-        };
         var snapshots = new SnapshotReplicator(
             config,
             mobs,
@@ -471,24 +470,6 @@ internal static class RealtimeServerComposition
             RespawnMob = mobDeaths.Respawn,
             KeepActive = mobs.IsBusy
         };
-        var tickLoop = new SimulationTickLoop(
-            config,
-            clock,
-            entityRegistry,
-            carrySync,
-            worldActors,
-            worldInteractions,
-            gathering,
-            mobs,
-            combat,
-            snapshots,
-            corpsePresence,
-            dependencies.CollisionStreamingStore,
-            performanceMetrics,
-            logger)
-        {
-            Appearances = appearances
-        };
         var supervisor = new RealtimePeerSupervisor(
             config,
             peers,
@@ -512,22 +493,83 @@ internal static class RealtimeServerComposition
             networkMetrics,
             logger,
             combatAuthority);
+
+        var routes = registries.Routes;
+        RealtimeSessionHandler.AddRoutes(routes, sessions.HandleJoinRequest, sessions.HandleLeaveRequest);
+        MovementInputHandler.AddRoute(routes, new MovementInputHandler(peers, sender, combat.IsMovementBlocked).HandleInput);
+        ItemOperationHandler.AddRoute(routes, itemOperations.HandleIntent);
+        CorpseInteractionHandler.AddRoute(routes, corpseInteractions.HandleIntent);
+        WorldInteractionHandler.AddRoute(routes, worldInteractions.HandleIntent);
+        CombatSystem.AddRoute(routes, combat.HandleIntent);
+        AppearanceIntentHandler.AddRoute(routes, appearanceIntents.HandleIntent);
+        AdminIntentHandler.AddRoute(routes, admin.HandleIntent);
+        QuestIntentHandler.AddRoute(routes, questIntents.HandleIntent);
+
+        // Each phase takes its place from SimulationTickOrder, so the order of these calls
+        // does not matter.
+        var tickPhases = registries.TickPhases;
+        new CollisionStreamingTickPhase(
+            config,
+            mobs,
+            dependencies.CollisionStreamingStore,
+            performanceMetrics).AddTickPhase(tickPhases);
+        new PlayerMovementTickPhase(carrySync, performanceMetrics).AddTickPhase(tickPhases);
+        tickPhases.Add(
+            SimulationTickOrder.PlayerGrid,
+            "player grid",
+            static (in SimulationTick tick) => tick.PlayerGrid.Rebuild(tick.Players.AsReadOnlyList()));
+        worldActors.AddTickPhase(tickPhases);
+        mobs.AddTickPhase(tickPhases);
+        combat.AddTickPhase(tickPhases);
+        worldInteractions.AddTickPhase(tickPhases, config.MovementSimulation.TickRateHz);
+        gathering.AddTickPhase(tickPhases);
+        appearances.AddTickPhase(tickPhases, config);
+        snapshots.AddTickPhase(tickPhases);
+        corpsePresence.AddTickPhase(tickPhases);
+
+        // The hooks of each list run in the order they are added here.
+        var hooks = registries.Hooks;
+        hooks.AddSpawnSent(combatReplicator.OnSpawnSent);
+        hooks.AddPlayerRemoved(combat.OnPlayerEntityRemoved);
+        hooks.AddPlayerJoined(combat.OnPlayerJoined);
+        hooks.AddPlayerJoined(admin.OnPlayerJoined);
+
+        // The shutdown runs these steps in the order they are added here, after the transport
+        // stopped and every in-flight operation finished.
+        var shutdown = registries.ShutdownSteps;
+        shutdown.AddAsync(
+            "combat flush",
+            () => combatAuthority.FlushOnShutdownAsync(completions.TakeFor(combatAuthority)));
+        shutdown.Add("combat", combat.Clear);
+        shutdown.Add("peers", peers.Clear);
+        shutdown.Add("presence", presence.Clear);
+        shutdown.Add("connection bindings", connectionBindings.Clear);
+        shutdown.Add("entities", entityRegistry.Clear);
+        shutdown.Add("character state", () => characterStores.Clear(CharacterSessionRemovals.Shutdown));
+        shutdown.Add("corpse viewers", corpseViewers.Clear);
+        shutdown.Add("interaction leases", () => worldInteractionLeases?.Clear());
+        shutdown.Add("world actors", () => worldActorStore?.Clear());
+        shutdown.Add("corpse views", corpseViews.ClearSnapshots);
+        shutdown.Add("orphan sweep", supervisor.ClearUnboundSessions);
+        shutdown.Add("population gauges", () =>
+        {
+            networkMetrics.SetActivePeers(0);
+            networkMetrics.SetActiveEntities(0);
+            networkMetrics.SetPeerPopulation(0, 0, 0);
+        });
+
+        var tickLoop = new SimulationTickLoop(
+            clock,
+            entityRegistry,
+            tickPhases,
+            performanceMetrics,
+            logger);
         var dispatcher = new RealtimeMessageDispatcher(
             peers,
             sender,
             networkMetrics,
             logger,
-            RealtimeMessageRoutes.CreateUnauthenticated(sessions.HandleJoinRequest),
-            RealtimeMessageRoutes.CreateAuthenticated(
-                new MovementInputHandler(peers, sender, combat.IsMovementBlocked).HandleInput,
-                itemOperations.HandleIntent,
-                corpseInteractions.HandleIntent,
-                worldInteractions.HandleIntent,
-                sessions.HandleLeaveRequest,
-                combat.HandleIntent,
-                appearanceIntents.HandleIntent,
-                admin.HandleIntent,
-                questIntents.HandleIntent));
+            routes);
         var completionProcessor = new RealtimeCompletionProcessor(
             completions,
             peers,
@@ -545,20 +587,9 @@ internal static class RealtimeServerComposition
             tickLoop,
             supervisor,
             worldActors,
-            combat,
-            combatAuthority,
             dependencies.TransportReadiness,
-            peers,
-            presence,
-            connectionBindings,
-            entityRegistry,
-            itemStateStore,
-            corpseViewers,
-            worldInteractionLeases,
-            worldActorStore,
-            corpseViews,
-            networkMetrics,
             performanceMetrics,
+            registries,
             ownedResources,
             logger);
     }

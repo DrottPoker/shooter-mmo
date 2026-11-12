@@ -9,6 +9,7 @@ using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Telemetry;
+using Mmorpg.SimulationWorker;
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
@@ -135,6 +136,10 @@ builder.Services.AddSingleton<NpcItemLifecycleCapabilityExecutor>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler,
     InsuranceWorldActorCapabilityHandler>();
 builder.Services.AddSingleton<CharacterQuestLogStore>();
+builder.Services.AddSingleton(services => CharacterSessionStores.Create(
+    services.GetRequiredService<CharacterItemStateStore>(),
+    services.GetRequiredService<CharacterLookStore>(),
+    services.GetRequiredService<CharacterQuestLogStore>()));
 builder.Services.AddSingleton<QuestOperationExecutor>();
 builder.Services.AddSingleton<IWorldActorCapabilityHandler,
     QuestsWorldActorCapabilityHandler>();
@@ -167,12 +172,7 @@ builder.Services.AddHttpClient<GameServiceClient>(httpClient =>
 builder.Services.AddSingleton<SimulationJoinService>();
 builder.Services.AddSingleton<SimulationSessionReleaseService>();
 builder.Services.AddSingleton<SimulationWorkerHealthService>();
-builder.Services.AddHostedService<RealtimeSimulationService>();
-builder.Services.AddHostedService<SimulationSessionHeartbeatService>();
-builder.Services.AddHostedService<SimulationWorkerHeartbeatService>();
-builder.Services.AddHostedService<SimulationWorkerRegistrationLeaseMonitor>();
-builder.Services.AddHostedService<DurableCorpseRestorationService>();
-builder.Services.AddHostedService<RealtimeMetricsReporterService>();
+builder.Services.AddSimulationWorkerHostedServices();
 
 using var host = builder.Build();
 

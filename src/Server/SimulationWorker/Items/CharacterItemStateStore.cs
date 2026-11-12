@@ -1,4 +1,5 @@
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Items;
 
@@ -6,7 +7,7 @@ namespace Mmorpg.SimulationWorker.Items;
 // its simulation session. Item-state revisions only move forward: an older state is
 // stale, and a different state at the same revision is a conflict. Join, session
 // heartbeats, and committed operations write from any thread; the realtime loop reads.
-public sealed class CharacterItemStateStore
+public sealed class CharacterItemStateStore : ICharacterSessionStore
 {
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, ItemStateEntry> statesByCharacterId = [];
@@ -104,6 +105,11 @@ public sealed class CharacterItemStateStore
                 && existing.SimulationSessionId == simulationSessionId
                 && statesByCharacterId.Remove(characterId);
         }
+    }
+
+    void ICharacterSessionStore.Remove(Guid characterId, Guid simulationSessionId)
+    {
+        Remove(characterId, simulationSessionId);
     }
 
     public void Clear()

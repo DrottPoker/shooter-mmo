@@ -1,18 +1,15 @@
 using System.Net;
-using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
-using Mmorpg.SimulationWorker.Items;
-using Mmorpg.SimulationWorker.Quests;
 
 namespace Mmorpg.SimulationWorker.Sessions;
 
+// Releases simulation sessions through GameService and removes the state the worker kept for
+// them from the registered per-character stores.
 public sealed class SimulationSessionReleaseService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
-    CharacterItemStateStore itemStateStore,
-    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
-    CharacterLookStore? lookStore = null,
-    CharacterQuestLogStore? questLogs = null)
+    CharacterSessionStores characterStores,
+    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null)
 {
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
     [
@@ -22,6 +19,10 @@ public sealed class SimulationSessionReleaseService(
 
     private readonly IReadOnlyList<TimeSpan> retryDelays =
         detachedReleaseRetryDelays ?? DefaultDetachedReleaseRetryDelays;
+
+    // The stores whose state goes with a released session; session teardown on the realtime
+    // loop removes from the same stores.
+    public CharacterSessionStores CharacterStores => characterStores;
 
     // Releases a session that no connected peer owns any more. The local lease is dropped
     // first, so the heartbeat stops renewing it even when GameService stays unavailable
@@ -36,9 +37,7 @@ public sealed class SimulationSessionReleaseService(
                 session.SimulationSessionId,
                 session.SimulationSessionToken))
         {
-            itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
-            lookStore?.Remove(session.CharacterId, session.SimulationSessionId);
-            questLogs?.Remove(session.CharacterId, session.SimulationSessionId);
+            characterStores.Remove(session.CharacterId, session.SimulationSessionId);
         }
 
         var result = await ReleaseAsync(session, cancellationToken);
@@ -72,7 +71,8 @@ public sealed class SimulationSessionReleaseService(
                 session.SimulationSessionToken);
             if (removed)
             {
-                itemStateStore.Remove(
+                characterStores.Remove(
+                    CharacterSessionRemovals.ConfirmedRelease,
                     session.CharacterId,
                     session.SimulationSessionId);
             }
