@@ -2,8 +2,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // What the realtime features register during composition instead of editing the loop, the
 // dispatcher, session handling, and the shutdown: their tick phases, message routes,
-// lifecycle hooks, and shutdown steps. Filled by RealtimeServerComposition and only read by the
-// loop thread afterwards.
+// lifecycle hooks, and shutdown steps. Filled by the feature units that RealtimeServerComposition
+// creates, and only read by the loop thread afterwards.
 internal sealed class RealtimeFeatureRegistries
 {
     public SimulationTickPhases TickPhases { get; } = new();

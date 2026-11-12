@@ -4,7 +4,8 @@ using Mmorpg.SimulationWorker.Sessions;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // The lifecycle hooks that features add during composition. Each list runs on the loop in
-// registration order, so the order in which the composition adds them is the call order.
+// registration order, so the order in which the composition creates the feature units that add
+// them is the call order.
 // Loop-confined once composed.
 internal sealed class RealtimeLifecycleHooks
 {

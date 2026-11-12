@@ -155,8 +155,8 @@ internal sealed class RealtimeServer(
 
     // The order is part of the shutdown contract: the transport stops first, so no event
     // can register state, and in-flight operations finish before the registered shutdown
-    // steps flush and clear, in registration order, so a late join or release cannot
-    // register state after the clear. Their completions are never finalized; only the
+    // steps flush and clear, in the order of RealtimeShutdownOrder, so a late join or release
+    // cannot register state after the clear. Their completions are never finalized; only the
     // combat flush reads its own arrow batch results.
     private async Task ShutdownAsync()
     {

@@ -259,10 +259,12 @@ process policy rather than map content.
 
 #### Realtime Server Structure And Threading Contract
 
-`RealtimeSimulationService` is a thin hosted service. Its public constructor
-passes the injected services to `RealtimeServerComposition`, the only place that
-creates realtime components, and `ExecuteAsync` runs `RealtimeServer.RunAsync`.
-The components are not registered in dependency injection, so other hosted
+`RealtimeSimulationService` is a thin hosted service. Its constructor takes
+the injected dependency records, `RealtimeHostDependencies` and one record per
+feature that needs host services of its own, and passes them to
+`RealtimeServerComposition`, the only place that creates realtime components;
+`ExecuteAsync` runs `RealtimeServer.RunAsync`. The records hold host services
+only. The components are not registered in dependency injection, so other hosted
 services cannot reach loop-confined state. All of them live below
 `src/Server/SimulationWorker/Realtime` in the `Mmorpg.SimulationWorker.Realtime`
 namespace, in folders that mirror the protocol families:
@@ -327,7 +329,8 @@ contract:
   often than every tick decides that itself. At most five ticks catch up before
   the clock resynchronizes.
 - Shutdown stops the transport, waits for in-flight operations, and then runs
-  the registered shutdown steps in registration order: the combat authority
+  the registered shutdown steps in the order that
+  `Realtime/RealtimeShutdownOrder.cs` declares: the combat authority
   commits the arrow shots it can still name exactly and the quest credits that
   wait, and then combat state, peers, interest, bindings, entities, item and
   carry state, corpse viewers, interaction leases, world actors, cached corpse
@@ -353,9 +356,41 @@ GameService.
 #### Registering A Realtime Feature
 
 A realtime feature does not edit the tick loop, the dispatcher, session
-handling, or the shutdown. `RealtimeServerComposition` creates the feature and
-registers what it needs in `RealtimeFeatureRegistries`, and afterwards only the
-loop thread reads the registries:
+handling, or the shutdown. It is one composition unit in the folder of the
+feature, `Realtime/<Feature>/<Feature>Feature.cs`, that creates the feature's
+components and registers what they need in `RealtimeFeatureRegistries`.
+`RealtimeServerComposition.Create` builds the infrastructure, creates the units
+in dependency order, closes the cycles, and builds the server; afterwards only
+the loop thread reads the registries.
+
+A unit takes three kinds of input, all as constructor or method arguments, so
+the compiler checks the construction order:
+
+- `RealtimeCoreServices`, one value with what almost every feature takes: the
+  configuration, the logger, the registries, the host services that more than
+  one feature uses, the loop infrastructure (clock, completion queue, operation
+  tracker, metrics, admission guard, peers, sender, presence, and the authority
+  scheduler), and the session plumbing that every authority operation uses: the
+  carry state synchronizer, the session operations, and the teardown.
+- Its own dependency record, when the feature needs host services of its own,
+  such as `ItemDependencies` or `CombatDependencies`. The record sits in the
+  unit's file with its `Register` method, which `Program.cs` calls once, and,
+  where tests run without the feature, a `CreateDefault` that gives the
+  feature's behavior without host services. A host service that more than one
+  feature takes belongs in `RealtimeHostDependencies` instead.
+- The other units it needs, which expose only what their dependents use.
+
+The units, in the order the composition creates them, are appearance, quest
+progress, player combat, items, corpses, world actors, session, combat, quests,
+admin, movement, and snapshots. Player combat and quest progress are units of
+their own because the other operation features need the combat gate, and the
+combat gate needs quest progress, before the combat simulation and the quest
+intents can exist. A cycle that constructor arguments cannot close stays closed
+by a settable property in one marked block of the composition, each with its
+reason: presence and the appearance replicator, the combat authority and the
+session handler, and the world actor driver and the Mobs of combat. Combat
+closes the cycles between its own components in the `CombatSystem`
+constructor. A unit registers:
 
 - A message route. The handler class adds its route to `RealtimeMessageRoutes`
   in a static `AddRoute`: the message type, the rejection code and text for a
@@ -370,8 +405,8 @@ loop thread reads the registries:
   receives the `SimulationTick` and must not allocate per tick. Two phases with
   one position fail the composition with a message that names both.
 - A lifecycle hook. `RealtimeLifecycleHooks` calls its player-joined,
-  player-removed, and spawn-sent hooks in the order the composition adds them.
-  A join reaches combat and then the admin tools.
+  player-removed, and spawn-sent hooks in the order the units add them. A join
+  reaches combat and then the admin tools.
 - Per-character state. A store that keeps state per character and simulation
   session implements `ICharacterSessionStore` and joins
   `CharacterSessionStores.Create`, which `Program.cs` registers once. Session
@@ -381,9 +416,28 @@ loop thread reads the registries:
   session replaced takes the item state and the look, a release that GameService
   confirmed takes the item state, and the realtime shutdown clears the item
   state.
-- A shutdown step. `RealtimeShutdownSteps` runs the flush and clear steps in
-  registration order, once the transport stopped and in-flight operations
-  finished.
+- A shutdown step. The feature adds a position with its reason to
+  `RealtimeShutdownOrder` and registers its flush or clear step there through
+  `RealtimeShutdownSteps`. The steps run in that order once the transport
+  stopped and in-flight operations finished, and two steps with one position
+  fail the composition. The composition registers the steps of the shared state
+  that no feature owns.
+
+A new feature therefore adds its unit file and its components in its folder,
+and edits one line in `RealtimeServerComposition.Create`. When it has a
+dependency record, it also adds one parameter to `RealtimeSimulationService`
+and passes it on, one member to `RealtimeServerDependencies`, one `Register`
+line to `Program.cs`, and one record argument wherever tests construct the
+service: `RealtimeServerHarness` and the four direct constructions in
+`RealtimeSimulationServiceTests` and `RealtimeEntityLifecycleTests`. A tick
+phase or a shutdown step adds one constant to `SimulationTickOrder` or
+`RealtimeShutdownOrder`. Items, for example, is `Realtime/Items/ItemFeature.cs`
+with `ItemDependencies`, its `Register`, and the unit, beside
+`ItemOperationHandler` and `ItemAuthorityOperations`; the shared files hold one
+`ItemFeature.Add` line, the `items` parameter and argument of
+`RealtimeSimulationService`, the `Items` member of
+`RealtimeServerDependencies`, one `Register` line, and one record argument in
+each of the five test constructions.
 
 `RealtimeFeatureRegistrationTests` pins the composed tick phases, routes, hooks,
 and shutdown steps, `SimulationTickLoopTests` pins that a tick allocates nothing
