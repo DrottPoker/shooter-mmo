@@ -35,6 +35,15 @@ internal sealed class QuestIntentHandler(
     ILogger logger,
     ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_quest_delivery",
+        "Quest intents require the reliable ordered control channel.");
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.QuestIntent, DeliveryRejection, handler);
+    }
+
     public void HandleIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;

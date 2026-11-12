@@ -95,6 +95,11 @@ internal sealed class MobSystem
 
     public int QueuedPlans => planning.Count;
 
+    public void AddTickPhase(SimulationTickPhases phases)
+    {
+        phases.Add(SimulationTickOrder.Mobs, "mobs", (in SimulationTick tick) => ProcessTick(tick.PlayerGrid));
+    }
+
     // A Mob with a brain and a locomotion profile thinks and walks; any other damageable
     // Mob stays a stationary target.
     public void Register(Combatant mob)

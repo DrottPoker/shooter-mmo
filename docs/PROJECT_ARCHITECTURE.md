@@ -271,9 +271,9 @@ namespace, in folders that mirror the protocol families:
 | --- | --- |
 | `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections, `RealtimeDeliveryMethods` maps the delivery of a generated message descriptor to LiteNetLib. |
 | `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
-| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table in `RealtimeMessageRoutes`, which takes each route's channel and delivery from the generated message descriptor. |
+| `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table it builds from `RealtimeMessageRoutes`, the route table that features add to, which takes each route's channel and delivery from the generated message descriptor. |
 | `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
-| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors`, `Combat`, `Mobs`, `Admin` | One loop-side handler per feature plus, where GameService calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks, `EntityPresenceReplicator` owns the interest manager, `SnapshotReplicator` owns snapshot budgets and fairness, `CombatSystem` and `MobSystem` run the combat and Mob phases, and `PlayerCombatAuthority` commits arrow batches and deaths. |
+| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors`, `Combat`, `Mobs`, `Admin` | One loop-side handler per feature plus, where GameService calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks with the phases that features register in the order of `SimulationTickOrder`, `EntityPresenceReplicator` owns the interest manager, `SnapshotReplicator` owns snapshot budgets and fairness, `CombatSystem` and `MobSystem` run the combat and Mob phases, and `PlayerCombatAuthority` commits arrow batches and deaths. |
 
 One dedicated thread, named `SimulationWorker realtime loop`, owns the realtime
 state. Each iteration polls the transport, drains completed operations within a
@@ -313,20 +313,29 @@ contract:
   client operation.
 - Peers are iterated in registry insertion order. Snapshot fairness and
   broadcast order depend on it, so the table stays a plain dictionary.
-- A tick runs, in this order: collision streaming around the players, the World
-  spawn, and moving Mobs; carry state and movement per player in entity id
-  order; the grid of player positions; due world actor timers and world actor
-  activity; Mob brains and movement; the combat phase; interaction
-  revalidation every fifth of a second; the gathering pass; changed looks and
-  snapshots at the snapshot rate; and corpse presence twice per second. At most
-  five ticks catch up before the clock resynchronizes.
-- Shutdown stops the transport, waits for in-flight operations, lets the combat
-  authority commit the arrow shots it can still name exactly, and then clears
-  combat state, peers, interest, bindings, entities, item and carry state,
-  corpse viewers, interaction leases, world actors, cached corpse views, and the
-  orphan sweep state, zeroes the population gauges, and logs
-  `Realtime transport stopped.` last. Other completions produced during
-  shutdown are not finalized.
+- A tick runs the registered tick phases in the order that
+  `Realtime/Movement/SimulationTickOrder.cs` declares, with the reason for each
+  position; that file is the only place that decides the order. A tick runs:
+  collision streaming around the players, the World spawn, and moving Mobs;
+  carry state and movement per player in entity id order; the grid of player
+  positions; due world actor timers and world actor activity; Mob brains and
+  movement; the combat phase; interaction revalidation every fifth of a second
+  while world interactions run; the gathering pass; changed looks and then
+  snapshots at the snapshot rate; and corpse presence twice per second. The loop
+  fills the players of the tick once, in entity id order, and hands every phase
+  the server tick, those players, and the player grid; a phase that runs less
+  often than every tick decides that itself. At most five ticks catch up before
+  the clock resynchronizes.
+- Shutdown stops the transport, waits for in-flight operations, and then runs
+  the registered shutdown steps in registration order: the combat authority
+  commits the arrow shots it can still name exactly and the quest credits that
+  wait, and then combat state, peers, interest, bindings, entities, item and
+  carry state, corpse viewers, interaction leases, world actors, cached corpse
+  views, and the orphan sweep state are cleared and the population gauges
+  zeroed. `Realtime transport stopped.` is logged last. Other completions
+  produced during shutdown are not finalized. The host runs this shutdown before
+  it stops any other hosted service, as
+  [Hosted Services And Stop Order](#hosted-services-and-stop-order) describes.
 - A failing packet or completion disconnects only its own peer with
   `internal_error`. An exception in a tick, peer supervision, or the orphan
   sweep still stops the host.
@@ -340,6 +349,75 @@ contract:
 Tests drive single components in memory with recording peers, and
 `RealtimeServerHarness` drives the whole service over real UDP with a scripted
 GameService.
+
+#### Registering A Realtime Feature
+
+A realtime feature does not edit the tick loop, the dispatcher, session
+handling, or the shutdown. `RealtimeServerComposition` creates the feature and
+registers what it needs in `RealtimeFeatureRegistries`, and afterwards only the
+loop thread reads the registries:
+
+- A message route. The handler class adds its route to `RealtimeMessageRoutes`
+  in a static `AddRoute`: the message type, the rejection code and text for a
+  wrong channel or delivery, the handler, and optionally a rule that rejects the
+  message in some peer states. The code and text are client protocol and stay
+  next to the handler. Every client-to-server message type needs exactly one
+  route, and the dispatcher fails the composition when two routes name one
+  type.
+- A tick phase. The feature adds a position with its reason to
+  `SimulationTickOrder` and registers its phase there through
+  `SimulationTickPhases.Add`, usually from an `AddTickPhase` method. The phase
+  receives the `SimulationTick` and must not allocate per tick. Two phases with
+  one position fail the composition with a message that names both.
+- A lifecycle hook. `RealtimeLifecycleHooks` calls its player-joined,
+  player-removed, and spawn-sent hooks in the order the composition adds them.
+  A join reaches combat and then the admin tools.
+- Per-character state. A store that keeps state per character and simulation
+  session implements `ICharacterSessionStore` and joins
+  `CharacterSessionStores.Create`, which `Program.cs` registers once. Session
+  teardown on the loop and `SimulationSessionReleaseService` remove the state of
+  an ended session from every store. `CharacterSessionRemovals` adds the
+  occasions on which only some stores lose state: an entity that a newer
+  session replaced takes the item state and the look, a release that GameService
+  confirmed takes the item state, and the realtime shutdown clears the item
+  state.
+- A shutdown step. `RealtimeShutdownSteps` runs the flush and clear steps in
+  registration order, once the transport stopped and in-flight operations
+  finished.
+
+`RealtimeFeatureRegistrationTests` pins the composed tick phases, routes, hooks,
+and shutdown steps, `SimulationTickLoopTests` pins that a tick allocates nothing
+beyond its phases, and `CharacterSessionStoresTests` pins the occasions of each
+store.
+
+#### Hosted Services And Stop Order
+
+`SimulationWorkerHostedServices` registers the hosted services in their start
+order: `RealtimeSimulationService`, `SimulationSessionHeartbeatService`,
+`SimulationWorkerHeartbeatService`, `SimulationWorkerRegistrationLeaseMonitor`,
+`DurableCorpseRestorationService`, and `RealtimeMetricsReporterService`. The
+realtime service binds the UDP port before anything else runs, so a port it
+cannot bind fails the start before the worker registers. The worker heartbeat
+registers once the transport listens, and corpse restoration waits for the
+registration lease that the heartbeat renews.
+
+The generic host stops hosted services in reverse order, after it called
+`StoppingAsync` on every `IHostedLifecycleService`. `RealtimeSimulationService`
+runs its whole shutdown in `StoppingAsync`, so a graceful stop runs in this
+order:
+
+1. The realtime shutdown: the transport stops, in-flight operations finish, and
+   the combat flush commits arrow shots and quest credits with the session
+   credentials, while every session and the registration still hold.
+2. The metrics reporter, corpse restoration, and the lease monitor stop.
+3. The worker heartbeat clears the registration lease and marks the runtime
+   offline through `/offline`.
+4. The session heartbeat releases every local session.
+
+The combat work of a session is therefore committed before the session is
+released or the runtime goes offline. `SimulationWorkerStopOrderTests` runs the
+hosted services in a generic host against the scripted GameService and pins this
+order.
 
 ### Server Common And Telemetry
 
@@ -1069,7 +1147,9 @@ the session's operations keep their order across the reconnect.
    player keep running. GameService error codes and messages are normalized to
    short printable text before they enter realtime protocol fields.
 8. Worker shutdown or authoritative failover releases its assignment, pending
-   tickets, and bound sessions.
+   tickets, and bound sessions. A graceful stop first commits the combat work,
+   as [Hosted Services And Stop Order](#hosted-services-and-stop-order)
+   describes.
 
 ### Authoritative Movement
 

@@ -19,7 +19,7 @@ internal sealed class CombatReplicator(
     RealtimePeerSender sender,
     ConnectionEntityBindingRegistry connectionBindings,
     EntityPresenceReplicator presence,
-    CombatantRegistry combatants) : IEntitySpawnObserver
+    CombatantRegistry combatants)
 {
     private readonly List<RealtimeCombatEvent> events = [];
     private readonly List<RealtimeCombatEvent> recipientEvents = [];

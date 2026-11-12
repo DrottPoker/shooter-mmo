@@ -811,7 +811,8 @@ the actor catalog. The combat model is in
 - A disconnect does not cancel combat work. The session stays until the death
   and the last arrow batch committed and is released afterwards, and a leave
   waits for the same work. A worker that stops commits the uncommitted shots it
-  can still name exactly, as a best effort, including the shots behind a batch
+  can still name exactly before it releases its sessions and marks itself
+  offline, as a best effort, including the shots behind a batch
   whose answer arrived while it stopped; a batch without a committed answer is
   left alone, and its arrows stay with the player. A worker crash loses at most
   the uncommitted shots of one batch interval, which stay with the player, and a

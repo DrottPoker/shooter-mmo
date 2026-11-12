@@ -41,7 +41,11 @@ public sealed class RealtimeMessageDispatcherTests
         ["invalid_movement_delivery"] = "Movement inputs require the sequenced movement channel.",
         ["invalid_item_operation_delivery"] = "Item operation intents require the reliable ordered control channel.",
         ["invalid_corpse_operation_delivery"] = "Corpse interaction intents require the reliable ordered control channel.",
-        ["invalid_world_interaction_delivery"] = "World interaction intents require the reliable ordered control channel."
+        ["invalid_world_interaction_delivery"] = "World interaction intents require the reliable ordered control channel.",
+        ["invalid_combat_delivery"] = "Combat intents require the reliable ordered control channel.",
+        ["invalid_appearance_delivery"] = "Appearance intents require the reliable ordered control channel.",
+        ["invalid_admin_delivery"] = "Admin intents require the reliable ordered control channel.",
+        ["invalid_quest_delivery"] = "Quest intents require the reliable ordered control channel."
     };
 
     [Fact]
@@ -69,6 +73,27 @@ public sealed class RealtimeMessageDispatcherTests
         }
 
         Assert.Empty(mismatches);
+    }
+
+    // Each feature keeps the rejection of its route next to its handler; the codes and their
+    // texts are client protocol.
+    [Theory]
+    [InlineData("unauthenticated", RealtimeMessageType.JoinRequest, "join_required")]
+    [InlineData("authenticated", RealtimeMessageType.MovementInputBatch, "invalid_movement_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.ItemOperationIntent, "invalid_item_operation_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.CorpseInteractionIntent, "invalid_corpse_operation_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.WorldInteractionIntent, "invalid_world_interaction_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.CombatIntent, "invalid_combat_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.AppearanceIntent, "invalid_appearance_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.AdminIntent, "invalid_admin_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.QuestIntent, "invalid_quest_delivery")]
+    [InlineData("authenticated", RealtimeMessageType.LeaveRequest, "unexpected_message")]
+    public void EveryRouteRejectsAWrongDeliveryWithItsOwnCodeAndText(
+        string state,
+        RealtimeMessageType type,
+        string code)
+    {
+        Assert.Equal($"reject:{code}", Dispatch(state, (byte)type, 1, DeliveryMethod.Unreliable));
     }
 
     [Fact]
@@ -160,19 +185,22 @@ public sealed class RealtimeMessageDispatcherTests
         Assert.IsType<InvalidOperationException>(entry.Exception);
     }
 
+    // The composition builds the dispatcher, so a second route for one message type fails it.
     [Fact]
     public void DuplicateRoutesAreRejected()
     {
         var fixture = new DispatcherFixture();
-        var routes = RealtimeMessageRoutes.CreateUnauthenticated(Ignore);
+        var routes = new RealtimeMessageRoutes();
+        CombatSystem.AddRoute(routes, Ignore);
+        CombatSystem.AddRoute(routes, Ignore);
 
-        Assert.Throws<InvalidOperationException>(() => new RealtimeMessageDispatcher(
+        var error = Assert.Throws<InvalidOperationException>(() => new RealtimeMessageDispatcher(
             fixture.Registry,
             fixture.Sender,
             fixture.Metrics,
             NullLogger.Instance,
-            [.. routes, .. routes],
-            []));
+            routes));
+        Assert.Equal("Realtime message type CombatIntent has more than one route.", error.Message);
     }
 
     private static void Ignore(in RealtimeInboundMessage message)
@@ -328,22 +356,23 @@ public sealed class RealtimeMessageDispatcherTests
                 Assert.Same(directory.Peers[message.Context.PeerId], message.Peer);
                 handled = name;
             };
+            // The routes each feature adds, with recording handlers.
+            var routes = new RealtimeMessageRoutes();
+            RealtimeSessionHandler.AddRoutes(routes, Record("join"), Record("leave"));
+            MovementInputHandler.AddRoute(routes, Record("movement"));
+            ItemOperationHandler.AddRoute(routes, Record("item"));
+            CorpseInteractionHandler.AddRoute(routes, Record("corpse"));
+            WorldInteractionHandler.AddRoute(routes, Record("world"));
+            CombatSystem.AddRoute(routes, Record("combat"));
+            AppearanceIntentHandler.AddRoute(routes, Record("appearance"));
+            AdminIntentHandler.AddRoute(routes, Record("admin"));
+            QuestIntentHandler.AddRoute(routes, Record("quest"));
             Dispatcher = new RealtimeMessageDispatcher(
                 Registry,
                 Sender,
                 Metrics,
                 logger ?? NullLogger.Instance,
-                RealtimeMessageRoutes.CreateUnauthenticated(Record("join")),
-                RealtimeMessageRoutes.CreateAuthenticated(
-                    Record("movement"),
-                    Record("item"),
-                    Record("corpse"),
-                    Record("world"),
-                    Record("leave"),
-                    Record("combat"),
-                    Record("appearance"),
-                    Record("admin"),
-                    Record("quest")));
+                routes);
         }
 
         public RealtimeNetworkMetrics Metrics { get; } = new();

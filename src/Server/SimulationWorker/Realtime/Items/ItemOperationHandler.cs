@@ -23,7 +23,16 @@ internal sealed class ItemOperationHandler(
     ItemAuthorityOperations authority,
     ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_item_operation_delivery",
+        "Item operation intents require the reliable ordered control channel.");
+
     private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.ItemOperationIntent, DeliveryRejection, handler);
+    }
 
     public void HandleIntent(in RealtimeInboundMessage message)
     {

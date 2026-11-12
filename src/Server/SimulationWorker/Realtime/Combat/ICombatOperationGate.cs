@@ -16,9 +16,3 @@ internal interface ICombatOperationGate
 
     long RebaseExpectedCharacterRevision(RealtimePeerContext context, long expectedCharacterRevision);
 }
-
-// Hears every player entity that teardown removes, with the session it belonged to.
-internal interface IPlayerEntityRemovalObserver
-{
-    void OnPlayerEntityRemoved(RealtimePeerContext context, Sessions.ActiveSimulationSession session, ulong entityId);
-}

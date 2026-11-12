@@ -1,4 +1,5 @@
 using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Appearance;
 
@@ -17,7 +18,7 @@ public sealed record CharacterLookItem(string EquipmentSlotId, string Definition
 // registers the look GameService stores then, so a change answered for the token before the
 // reconnect never overwrites it. Join and appearance changes write from any thread; the loop
 // reads.
-public sealed class CharacterLookStore
+public sealed class CharacterLookStore : ICharacterSessionStore
 {
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, Entry> looksByCharacterId = [];
@@ -83,6 +84,14 @@ public sealed class CharacterLookStore
             {
                 looksByCharacterId.Remove(characterId);
             }
+        }
+    }
+
+    public void Clear()
+    {
+        lock (syncRoot)
+        {
+            looksByCharacterId.Clear();
         }
     }
 

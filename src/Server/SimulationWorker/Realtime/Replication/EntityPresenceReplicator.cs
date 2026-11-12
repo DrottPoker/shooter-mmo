@@ -4,15 +4,9 @@ using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Hears every spawn this replicator sends, so state that must follow a spawn, such as a
-// combatant's health, reaches the same peer right after it.
-internal interface IEntitySpawnObserver
-{
-    void OnSpawnSent(IRealtimePeerConnection peer, ulong entityId);
-}
-
 // Owns the interest manager and replicates entity presence: baselines, spawns,
-// despawns and world actor state. Loop-confined, like the interest manager.
+// despawns and world actor state. Every spawn it sends raises the spawn hooks.
+// Loop-confined, like the interest manager.
 internal sealed class EntityPresenceReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -21,7 +15,8 @@ internal sealed class EntityPresenceReplicator(
     WorldActorStore? worldActorStore,
     SimulationInterestManager interestManager,
     RealtimeNetworkMetrics networkMetrics,
-    RealtimeSimulationClock clock)
+    RealtimeSimulationClock clock,
+    RealtimeLifecycleHooks hooks)
 {
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
@@ -29,8 +24,6 @@ internal sealed class EntityPresenceReplicator(
     private uint refreshCycle;
 
     public int ActiveEntityCount => entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
-
-    public IEntitySpawnObserver? SpawnObserver { get; set; }
 
     // The looks that player spawns carry.
     public AppearanceReplicator? Appearances { get; set; }
@@ -307,7 +300,7 @@ internal sealed class EntityPresenceReplicator(
     {
         sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
         networkMetrics.RecordSpawnPacket();
-        SpawnObserver?.OnSpawnSent(peer, entity.NetworkEntityId);
+        hooks.RaiseSpawnSent(peer, entity.NetworkEntityId);
     }
 
     private void SendWorldActorSpawn(
@@ -319,7 +312,7 @@ internal sealed class EntityPresenceReplicator(
             RealtimeProtocol.EncodeWorldActorSpawn(
                 WorldActorProtocolMapper.ToSpawn(actor)));
         networkMetrics.RecordSpawnPacket();
-        SpawnObserver?.OnSpawnSent(peer, actor.NetworkEntityId);
+        hooks.RaiseSpawnSent(peer, actor.NetworkEntityId);
     }
 
     private void SendWorldActorDespawn(

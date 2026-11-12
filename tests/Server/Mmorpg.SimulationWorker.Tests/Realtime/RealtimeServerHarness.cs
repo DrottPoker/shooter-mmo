@@ -192,6 +192,13 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 options.QuestCatalog ?? QuestCatalog)
             : null;
 
+        // Without quests the worker still keeps an empty quest log store, as in production.
+        var questLogStore = QuestLogs ?? new CharacterQuestLogStore();
+        ReleaseService = new SimulationSessionReleaseService(
+            GameServiceClient,
+            SessionStore,
+            CharacterSessionStores.Create(CharacterItemStateStore, Looks, questLogStore),
+            options.DetachedReleaseRetryDelays);
         Service = new RealtimeSimulationService(
             Config,
             new SimulationJoinService(
@@ -204,11 +211,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture()),
                 QuestLogs,
                 options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null),
-            new SimulationSessionReleaseService(
-                GameServiceClient,
-                SessionStore,
-                CharacterItemStateStore,
-                options.DetachedReleaseRetryDelays),
+            ReleaseService,
             SessionStore,
             CharacterItemStateStore,
             new SimulationItemInteractionService(GameServiceClient),
@@ -243,7 +246,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             lookStore: Looks,
             appearanceCatalog: AppearanceCatalog,
             developmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
-            questLogs: QuestLogs,
+            questLogs: questLogStore,
             questOperations: QuestOperations,
             questCatalog: options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null,
             combatRandom: options.CombatRandom);
@@ -324,6 +327,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
     public CorpseRuntimeMetrics? CorpseRuntimeMetrics { get; }
 
     public CapturingLogger<RealtimeSimulationService> Logger { get; } = new();
+
+    public SimulationSessionReleaseService ReleaseService { get; }
 
     public RealtimeSimulationService Service { get; }
 
@@ -550,11 +555,13 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
     }
 }
 
-// Answers the GameService routes the realtime service uses. Each route can be replaced
-// per test, and the default answers succeed for registered characters.
+// Answers the GameService routes the realtime service uses, and the worker registry routes of
+// the other hosted services. Each realtime route can be replaced per test, and the default
+// answers succeed for registered characters.
 internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
 {
     private readonly object sync = new();
+    private readonly List<string> calls = [];
     private readonly Dictionary<string, RealtimeTestCharacter> charactersByTicket =
         new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, RealtimeTestCharacter> charactersBySession = [];
@@ -776,6 +783,21 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         OnMobLootGrant
     { get; set; }
 
+    // The path of every request in arrival order.
+    public IReadOnlyList<string> Calls
+    {
+        get
+        {
+            lock (sync)
+            {
+                return calls.ToArray();
+            }
+        }
+    }
+
+    // The rule set that a worker heartbeat assigns to the Shard.
+    public string WorkerRuleSet { get; set; } = "test";
+
     public int ConsumeCount => Volatile.Read(ref consumeCount);
 
     public int ReleaseCount => Volatile.Read(ref releaseCount);
@@ -936,8 +958,20 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
-        var segments = request.RequestUri!.AbsolutePath
+        lock (sync)
+        {
+            calls.Add(request.RequestUri!.AbsolutePath);
+        }
+
+        var segments = request.RequestUri.AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 4
+            && segments[0] == "api"
+            && segments[1] == "simulation-workers")
+        {
+            return await AnswerWorkerAsync(request, segments[2], segments[3], cancellationToken);
+        }
+
         if (request.RequestUri.AbsolutePath == "/api/simulation-join-tickets/consume")
         {
             Interlocked.Increment(ref consumeCount);
@@ -1077,6 +1111,49 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         }
 
         return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
+    // Registers the worker for 30 seconds, marks it offline, and restores no durable corpse.
+    private async Task<HttpResponseMessage> AnswerWorkerAsync(
+        HttpRequestMessage request,
+        string workerId,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        switch (action)
+        {
+            case "heartbeat":
+                var heartbeat = await request.Content!
+                    .ReadFromJsonAsync<SimulationWorkerHeartbeatRequest>(cancellationToken);
+                return Json(new SimulationWorkerHeartbeatResponse(
+                    workerId,
+                    heartbeat!.RuntimeId,
+                    heartbeat.FleetId,
+                    heartbeat.NodeId,
+                    heartbeat.ShardId,
+                    heartbeat.WorldId,
+                    WorkerRuleSet,
+                    heartbeat.Host,
+                    heartbeat.UdpPort,
+                    heartbeat.MaxConnections,
+                    heartbeat.ActiveConnections,
+                    heartbeat.ProtocolVersion,
+                    heartbeat.SimulationRevision,
+                    heartbeat.CollisionRevision,
+                    heartbeat.ItemCatalogRevision,
+                    heartbeat.QuestCatalogRevision,
+                    now,
+                    now.AddSeconds(30)));
+            case "offline":
+                var offline = await request.Content!
+                    .ReadFromJsonAsync<SimulationWorkerOfflineRequest>(cancellationToken);
+                return Json(new SimulationWorkerOfflineResponse(workerId, offline!.RuntimeId, now));
+            case "corpses":
+                return Json(new CorpseRestoreResponse(now, []));
+            default:
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
     }
 }
 

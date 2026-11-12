@@ -85,7 +85,7 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                itemStateStore),
+                CharacterStateTestData.SessionStores(itemStateStore)),
             sessionStore,
             itemStateStore,
             new SimulationItemInteractionService(authClient),
@@ -242,7 +242,7 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                itemStateStore),
+                CharacterStateTestData.SessionStores(itemStateStore)),
             sessionStore,
             itemStateStore,
             new SimulationItemInteractionService(authClient),
@@ -505,7 +505,7 @@ public sealed class RealtimeSimulationServiceTests
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                itemStateStore,
+                CharacterStateTestData.SessionStores(itemStateStore),
                 [TimeSpan.Zero]),
             sessionStore,
             itemStateStore,

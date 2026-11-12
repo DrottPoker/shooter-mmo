@@ -48,7 +48,7 @@ public sealed class RealtimeEntityLifecycleTests
             new SimulationSessionReleaseService(
                 authClient,
                 sessionStore,
-                itemStateStore),
+                CharacterStateTestData.SessionStores(itemStateStore)),
             sessionStore,
             itemStateStore,
             new SimulationItemInteractionService(authClient),

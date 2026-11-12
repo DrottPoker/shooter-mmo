@@ -50,6 +50,11 @@ internal sealed class GatheringHandler(
 
     public int ActiveCount => activities.Count;
 
+    public void AddTickPhase(SimulationTickPhases phases)
+    {
+        phases.Add(SimulationTickOrder.Gathering, "gathering", (in SimulationTick _) => Process());
+    }
+
     // Starts gathering after the interaction result of a StartGathering action is final.
     public void Begin(
         IRealtimePeerConnection peer,

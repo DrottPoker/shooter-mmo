@@ -1,39 +1,25 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using Mmorpg.GameSimulation;
-using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.WorldActors;
-using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Runs due fixed simulation ticks in a stable phase order: collision streaming, carry
-// state and movement per player in entity id order, world actor activity, Mob brains and
-// movement, combat, interaction revalidation, snapshots and corpse presence. At most five
+// Runs due fixed simulation ticks. Each tick advances the clock, fills the players of the tick
+// once in entity id order, and runs the registered phases in SimulationTickOrder. At most five
 // ticks catch up per call before the clock resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop(
-    SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
     SimulationEntityRegistry entityRegistry,
-    CarryStateSynchronizer carrySync,
-    WorldActorRuntimeDriver worldActors,
-    WorldInteractionHandler worldInteractions,
-    GatheringHandler gathering,
-    MobSystem mobs,
-    CombatSystem combat,
-    SnapshotReplicator snapshots,
-    CorpsePresenceReplicator corpsePresence,
-    WorldCollisionStreamingStore? collisionStreamingStore,
+    SimulationTickPhases phases,
     RealtimePerformanceMetrics performanceMetrics,
     ILogger logger)
 {
+    private readonly SimulationTickPhase[] orderedPhases = phases.InTickOrder();
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
-    private readonly List<SimulationVector3> collisionAnchorBuffer = [];
     private readonly PlayerSpatialGrid playerGrid = new();
 
-    // Sends the looks that changed with the snapshots.
-    public AppearanceReplicator? Appearances { get; init; }
+    public IReadOnlyList<SimulationTickPhase> Phases => orderedPhases;
 
     public void ProcessDueTicks(
         TimeSpan elapsed,
@@ -49,51 +35,14 @@ internal sealed class SimulationTickLoop(
             performanceMetrics.RecordSimulationTickLag(elapsed - nextSimulationTick);
             clock.Advance();
 
-            var phaseStarted = Stopwatch.GetTimestamp();
-            RefreshCollisionStreaming();
-            performanceMetrics.RecordCollisionStreaming(
-                Stopwatch.GetElapsedTime(phaseStarted));
-
-            phaseStarted = Stopwatch.GetTimestamp();
             entityRegistry.CopyPlayersTo(playerBuffer);
-            foreach (var entity in playerBuffer)
+            var tick = new SimulationTick(
+                clock.ServerTick,
+                new SimulationTickPlayers(playerBuffer),
+                playerGrid);
+            foreach (var phase in orderedPhases)
             {
-                carrySync.ApplyLatest(entity);
-                entity.Movement.SimulateTick();
-            }
-            performanceMetrics.RecordMovementSimulation(
-                Stopwatch.GetElapsedTime(phaseStarted));
-
-            playerGrid.Rebuild(playerBuffer);
-            worldActors.EvaluateTick(playerGrid, clock.ServerTick);
-            mobs.ProcessTick(playerGrid);
-
-            combat.ProcessTick();
-
-            var interactionValidationIntervalTicks = Math.Max(
-                1,
-                config.MovementSimulation.TickRateHz / 5);
-            if (worldInteractions.IsActive
-                && clock.ServerTick % interactionValidationIntervalTicks == 0)
-            {
-                worldInteractions.RevalidateLeases();
-            }
-
-            gathering.Process();
-
-            var snapshotIntervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-            if (clock.ServerTick % snapshotIntervalTicks == 0)
-            {
-                Appearances?.Broadcast();
-                snapshots.Broadcast();
-            }
-
-            var corpsePresenceIntervalTicks = Math.Max(
-                1,
-                config.MovementSimulation.TickRateHz / 2);
-            if (clock.ServerTick % corpsePresenceIntervalTicks == 0)
-            {
-                corpsePresence.Broadcast();
+                phase.Run(in tick);
             }
 
             performanceMetrics.RecordSimulationTick(
@@ -111,30 +60,5 @@ internal sealed class SimulationTickLoop(
             performanceMetrics.RecordTickResynchronization();
             nextSimulationTick = elapsed + simulationInterval;
         }
-    }
-
-    private void RefreshCollisionStreaming()
-    {
-        if (collisionStreamingStore is null)
-        {
-            return;
-        }
-
-        entityRegistry.CopyPlayersTo(playerBuffer);
-        collisionAnchorBuffer.Clear();
-        foreach (var entity in playerBuffer)
-        {
-            collisionAnchorBuffer.Add(new SimulationVector3(
-                entity.Movement.State.PositionX,
-                entity.Movement.State.PositionY,
-                entity.Movement.State.PositionZ));
-        }
-
-        collisionAnchorBuffer.Add(new SimulationVector3(
-            config.MovementSpawn.X,
-            config.MovementSpawn.Y,
-            config.MovementSpawn.Z));
-        mobs.CopyCollisionAnchorsTo(collisionAnchorBuffer);
-        collisionStreamingStore.Refresh(collisionAnchorBuffer);
     }
 }

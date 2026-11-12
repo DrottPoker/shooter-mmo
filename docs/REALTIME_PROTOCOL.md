@@ -815,7 +815,9 @@ only on a worker with its own version.
   server-to-client type in the Unity client and in `SimulationBotSession`, which
   every development and stress bot runs. The golden tests fail for a type
   without a vector, and `SimulationBotSessionTests` fails for a type the bots do
-  not handle.
+  not handle. Give every new client-to-server type a route in SimulationWorker,
+  as [Registering A Realtime Feature](PROJECT_ARCHITECTURE.md#registering-a-realtime-feature)
+  describes; `RealtimeFeatureRegistrationTests` fails for a type without one.
 - The connection key stays `Mmorpg.Realtime.v8`, so a version mismatch is
   reported as a clear protocol error instead of a refused connection.
 

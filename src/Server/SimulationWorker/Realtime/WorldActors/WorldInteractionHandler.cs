@@ -22,7 +22,32 @@ internal sealed class WorldInteractionHandler(
     WorldInteractionLeaseRegistry? leases = null,
     ICombatOperationGate? combatGate = null) : IRealtimeCompletionHandler
 {
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_world_interaction_delivery",
+        "World interaction intents require the reliable ordered control channel.");
+
     public bool IsActive => worldInteractionAuthority is not null;
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.WorldInteractionIntent, DeliveryRejection, handler);
+    }
+
+    // Revalidates the open interactions five times a second while world interactions run.
+    public void AddTickPhase(SimulationTickPhases phases, int tickRateHz)
+    {
+        var intervalTicks = Math.Max(1, tickRateHz / 5);
+        phases.Add(
+            SimulationTickOrder.InteractionRevalidation,
+            "interaction revalidation",
+            (in SimulationTick tick) =>
+            {
+                if (IsActive && tick.ServerTick % intervalTicks == 0)
+                {
+                    RevalidateLeases();
+                }
+            });
+    }
 
     public void HandleIntent(in RealtimeInboundMessage message)
     {

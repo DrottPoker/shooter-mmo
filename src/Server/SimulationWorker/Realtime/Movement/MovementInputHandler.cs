@@ -8,6 +8,15 @@ internal sealed class MovementInputHandler(
     RealtimePeerSender sender,
     Func<Entities.PlayerSimulationEntity, bool>? isMovementBlocked = null)
 {
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_movement_delivery",
+        "Movement inputs require the sequenced movement channel.");
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.MovementInputBatch, DeliveryRejection, handler);
+    }
+
     public void HandleInput(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;

@@ -1,6 +1,9 @@
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
+using Mmorpg.SimulationWorker.Quests;
+using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -16,6 +19,12 @@ internal static class CharacterStateTestData
             new SimulationAppearanceChoice("underwear", "legs", "Briefs")
         ],
         false);
+
+    // The worker's per-character stores around the item state, with empty looks and quest logs.
+    public static CharacterSessionStores SessionStores(CharacterItemStateStore itemStates)
+    {
+        return CharacterSessionStores.Create(itemStates, new CharacterLookStore(), new CharacterQuestLogStore());
+    }
 
     public static SimulationCharacterState Create(
         Guid characterId,

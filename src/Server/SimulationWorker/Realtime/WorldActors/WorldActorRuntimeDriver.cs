@@ -30,6 +30,14 @@ internal sealed class WorldActorRuntimeDriver(
     // Keeps a Mob active while it is busy, such as fighting or walking home.
     public Func<WorldActorRuntimeState, bool>? KeepActive { get; set; }
 
+    public void AddTickPhase(SimulationTickPhases phases)
+    {
+        phases.Add(
+            SimulationTickOrder.WorldActors,
+            "world actors",
+            (in SimulationTick tick) => EvaluateTick(tick.PlayerGrid, tick.ServerTick));
+    }
+
     public void Activate()
     {
         timers.Clear();

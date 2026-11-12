@@ -29,6 +29,15 @@ internal sealed class CorpseInteractionHandler(
     CorpseOperationFinalizer finalizer,
     ICombatOperationGate? combatGate = null)
 {
+    private static readonly RealtimeRejection DeliveryRejection = new(
+        "invalid_corpse_operation_delivery",
+        "Corpse interaction intents require the reliable ordered control channel.");
+
+    public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
+    {
+        routes.AddAuthenticated(RealtimeMessageType.CorpseInteractionIntent, DeliveryRejection, handler);
+    }
+
     public void HandleIntent(in RealtimeInboundMessage message)
     {
         var peer = message.Peer;
