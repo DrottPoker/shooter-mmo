@@ -28,11 +28,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 catalog.ToDomain(),
                 spawns.ToDomain());
 
-            Assert.That(compiled.Revision, Is.EqualTo(workspace.CurrentRuntime.revision));
-            Assert.That(compiled.Actors, Has.Length.EqualTo(8));
-            Assert.That(compiled.SpawnInstances, Is.Not.Empty);
+            Assert.That(compiled.Catalog.Revision, Is.EqualTo(workspace.CurrentRuntime.Catalog.revision));
+            Assert.That(compiled.Spawns.Revision, Is.EqualTo(workspace.CurrentRuntime.Spawns.revision));
+            Assert.That(compiled.Catalog.Actors, Has.Length.EqualTo(8));
+            Assert.That(compiled.Spawns.SpawnInstances, Is.Not.Empty);
             Assert.That(
-                Array.Find(compiled.Actors, actor => actor.Id == "npc.city_services")
+                Array.Find(compiled.Catalog.Actors, actor => actor.Id == "npc.city_services")
                     .Capabilities,
                 Has.Length.EqualTo(7));
         }
@@ -85,14 +86,15 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(preview.Files.Where(file => file.Changed), Is.Empty);
             Assert.That(
                 preview.Files.Select(file => file.DisplayPath),
-                Does.Contain("Generated/Worlds/development-world-1/world-actors.json")
-                    .And.Contain("Generated/Worlds/development-world-2/world-actors.json")
+                Does.Contain("Generated/Actors/core.actor-catalog.json")
+                    .And.Contain("Generated/Worlds/development-world-1/world-actor-spawns.json")
+                    .And.Contain("Generated/Worlds/development-world-2/world-actor-spawns.json")
                     .And.Contain("Generated/Text/en/actors.text-table.json"));
             Assert.That(verify.Success, Is.True, verify.Output);
         }
 
         [Test]
-        public void CatalogChangesRecompileEveryWorldAndRemovedActorsDeleteTheirFiles()
+        public void CatalogChangesRewriteOnlyTheCatalogAndRemovedActorsDeleteTheirFiles()
         {
             var repositoryPaths = WorldActorEditorPaths.CreateDefault();
             var temporaryDirectory = Path.Combine(
@@ -121,7 +123,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(addition.Changes, Does.Contain("Added actor: mob.editor_test_wolf"));
                 Assert.That(
                     addition.Changes,
-                    Does.Contain("Recompiled world actors: development-world-2"));
+                    Has.None.StartsWith("Recompiled world actors"));
+                // A catalog change rewrites the one catalog file and no World's spawns.
+                var changedGenerated = addition.Files
+                    .Where(file => file.Changed && file.DisplayPath.StartsWith("Generated/", StringComparison.Ordinal))
+                    .Select(file => file.DisplayPath)
+                    .ToArray();
+                Assert.That(changedGenerated, Does.Contain("Generated/Actors/core.actor-catalog.json"));
+                Assert.That(changedGenerated, Has.None.StartsWith("Generated/Worlds/"));
                 service.SaveAndCompile(workspace, addition);
 
                 var addedPath = ContentLayout.DefinitionPath(
@@ -145,13 +154,16 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(File.Exists(addedPath), Is.False);
                 var verifyAfterRemoval = service.VerifyCanonical();
                 Assert.That(verifyAfterRemoval.Success, Is.True, verifyAfterRemoval.Output);
+                Assert.That(
+                    ReadNormalized(ContentLayout.GeneratedActorCatalogPath(paths.GeneratedRoot)),
+                    Is.EqualTo(ReadNormalized(ContentLayout.GeneratedActorCatalogPath(repositoryPaths.GeneratedRoot))));
                 foreach (var worldId in WorldIds(repositoryPaths.ContentRoot))
                 {
                     Assert.That(
-                        ReadNormalized(ContentLayout.GeneratedWorldActorsPath(
+                        ReadNormalized(ContentLayout.GeneratedWorldActorSpawnsPath(
                             paths.GeneratedRoot,
                             worldId)),
-                        Is.EqualTo(ReadNormalized(ContentLayout.GeneratedWorldActorsPath(
+                        Is.EqualTo(ReadNormalized(ContentLayout.GeneratedWorldActorSpawnsPath(
                             repositoryPaths.GeneratedRoot,
                             worldId))),
                         worldId);

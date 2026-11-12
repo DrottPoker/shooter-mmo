@@ -32,7 +32,7 @@ public sealed class RealtimeWorldActorInteractionTests
         Assert.Equal(harness.WorldActors!.Count, client.WorldActorSpawns.Count);
         Assert.Contains(
             harness.Logger.Entries,
-            entry => entry.Template == "[SIMULATION] Activated {ActorCount} world actors from revision {WorldActorRevision} for worker runtime {RuntimeId}.");
+            entry => entry.Template == "[SIMULATION] Activated {ActorCount} world actors from actor catalog revision {ActorCatalogRevision} and spawn revision {ActorSpawnRevision} for worker runtime {RuntimeId}.");
         Assert.Equal(
             harness.WorldActors.Count + 1,
             harness.NetworkMetrics!.Capture().ActiveEntities);

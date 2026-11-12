@@ -251,22 +251,24 @@ namespace Mmorpg.Client.Editor
         }
 
         // The World's resource nodes block movement where they stand, as WorldCollisionCompiler
-        // adds them from the compiled World actors. The bake compiles the actors from their
-        // authoring and requires the compiled file's revision, so both read the same actors.
+        // adds them from the compiled actor catalog and World spawns. The bake compiles the actors
+        // from their authoring and requires both compiled files' revisions, so both read the same
+        // actors.
         public static CollisionBoxAuthoringEntry[] ResourceNodeBoxes(string worldId)
         {
             var workspace = new WorldActorEditorService(WorldActorEditorPaths.CreateDefault(worldId)).Load();
             var runtime = WorldActorCompiler.Compile(
                 workspace.Catalog.ToDomain(),
                 workspace.Spawns.ToDomain());
-            if (!string.Equals(runtime.Revision, workspace.CurrentRuntime.revision, StringComparison.Ordinal))
+            if (!string.Equals(runtime.Catalog.Revision, workspace.CurrentRuntime.Catalog.revision, StringComparison.Ordinal)
+                || !string.Equals(runtime.Spawns.Revision, workspace.CurrentRuntime.Spawns.revision, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
                     "The World actors of '" + worldId + "' changed since they were compiled. "
                     + "Save them in Actor Studio or Spawn Authoring, or run WorldActorCompiler, before baking.");
             }
 
-            return WorldActorCollision.Boxes(runtime)
+            return WorldActorCollision.Boxes(runtime.Catalog, runtime.Spawns)
                 .Select(box => CollisionBoxAuthoringEntry.MovementObstacle(
                     box.SourcePath,
                     box.CenterX,

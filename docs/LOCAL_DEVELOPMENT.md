@@ -146,7 +146,8 @@ Expected result:
   fleet local-fleet, node local-node-1, shard local-shard-1, and world
   development-world-2 on UDP port 27015` with its runtime id, simulation
   revision, collision revision, and loaded collision chunks. Then it logs the
-  world actor revision, the realtime transport with its protocol version, 30
+  actor catalog revision and the World's spawn revision, the realtime transport
+  with its protocol version, 30
   ticks and 15 snapshots per second, and `Activated <n> world actors`.
 - In the Development environment it warns that the development Bank and
   Recovery Storage access and the development admin tools are enabled, as
@@ -190,7 +191,8 @@ describes.
 
 - Both services read the content they need from their build output, where the
   build copies it from `content` and `src/Shared/WorldData/Generated`: the World
-  manifests, the World actors and collision chunks, the compiled item catalog,
+  manifests, the actor catalog, the World spawns and collision chunks, the
+  compiled item catalog,
   the combat rules, the character appearance content, and the development item
   packages. [Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults)
   describes the options that point a deployment at other copies.
@@ -1005,8 +1007,9 @@ runs. Prepare all target World content before changing a shard:
   data below `src/Shared/WorldData/Generated/WorldCollision/<WorldId>`.
 - Provide `content/worlds/<WorldId>/actor-spawns.json` with at least one spawn
   and its compiled
-  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actors.json`. The
-  SimulationWorker loads runtime actor data for every World, and both World
+  `src/Shared/WorldData/Generated/Worlds/<WorldId>/world-actor-spawns.json`. The
+  SimulationWorker loads the World's compiled spawns with the shared actor
+  catalog, and both World
   compilers reject a World folder that lacks `world.json`,
   `actor-spawns.json`, or `collision.json`. Shared actor definitions stay below
   `content/actors`.
@@ -1024,8 +1027,8 @@ Perform the rebind in this order:
    World-local coordinates in PostgreSQL by hand.
 3. Change only `SimulationWorker:WorldId` in
    `src/Server/SimulationWorker/Config/appsettings.json`, and verify that the
-   selected World folder contains its manifest, collision, and actor runtime
-   data.
+   selected World folder contains its manifest, collision, and compiled actor
+   spawns.
 4. Start SimulationWorker. Its first authenticated heartbeat proposes the
    configured World. GameService locks the shard, verifies that the World
    exists in the database, checks the offline rebind blockers, and persists the

@@ -334,7 +334,8 @@ Worlds can be redesigned without rewriting them:
   with a patrol, under the `development-world-1` identity that the realtime test
   harness joins. `WorldActorTestData.LoadSpawns` and `Compile` read it, and
   `RepositoryPaths.WorldActorFixtureSpawnsPath` names it. It uses the real actor
-  catalog.
+  catalog: `Compile` returns a `WorldActorRuntime`, the compiled catalog with
+  the fixture's compiled spawns, and `CompileCatalog` the catalog alone.
 - `CollisionTestWorldFactory` builds a flat 30 by 30 meter collision world for
   the .NET tests, and the Unity `FixtureCollisionWorld` builds the same ground
   with a wall, cover, and a ramp for the Unity movement tests.
@@ -346,10 +347,11 @@ Worlds can be redesigned without rewriting them:
   Quest Studio tests save and verify there and never touch the repository.
 
 Content tests name a World instead. `WorldActorTestData.LoadWorldSpawns`,
-`CompileWorld`, `RuntimeJsonFor`, and `CheckedInWorldIds` read the checked-in
-spawns and generated runtime of every World, and `DevelopmentWorldLayoutTests`
-and the Unity `AuthoredGameplayAssetTests` check the baked development Worlds
-themselves.
+`CompileWorld`, `SpawnRuntimeJsonFor`, and `CheckedInWorldIds` read the
+checked-in spawns and generated spawns of every World, and `CatalogRuntimeJson`
+the generated actor catalog; the committed compiled files are the goldens of
+`WorldActorCompilerTests`. `DevelopmentWorldLayoutTests` and the Unity
+`AuthoredGameplayAssetTests` check the baked development Worlds themselves.
 
 ## Golden Files
 

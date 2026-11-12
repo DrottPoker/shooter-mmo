@@ -540,12 +540,15 @@ Collision authoring is described in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
 SimulationWorker loads its World content before binding UDP:
 
-- The actor runtime of its World, `world-actors.json` in its output World
-  directory. It rejects malformed runtime content, revision drift, wrong World
-  identity, unsupported values, invalid references, or unsafe collection bounds,
-  and content that the realtime protocol limits cannot carry.
+- The compiled actor catalog from `SimulationWorker:ActorCatalogPath` and the
+  compiled spawns of its World, `world-actor-spawns.json` in its output World
+  directory. It rejects malformed content, revision drift in either file, wrong
+  World identity, spawns compiled against another catalog id or placing an
+  actor the catalog lacks, unsupported values, invalid references, or unsafe
+  collection bounds, and content that the realtime protocol limits cannot
+  carry. It logs both revisions.
 - The compiled item catalog from `SimulationWorker:ItemCatalogPath`, verified
-  strictly. Every actor item reference must resolve against it, and the worker
+  strictly. Every item reference of the actor catalog must resolve against it, and the worker
   reports its revision in each heartbeat.
 - The compiled quest catalog from `SimulationWorker:QuestCatalogPath`, verified
   strictly like GameService's copy, whose revision the worker also reports in
@@ -1737,7 +1740,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Movement:Gravity`, `MaximumFallSpeed`, `GroundedVerticalVelocity` | `-24`, `55`, `-2` | Falling |
 | `Movement:CharacterRadius`, `CharacterHeight`, `StepHeight`, `MaximumSlopeDegrees`, `GroundSnapDistance` | `0.35`, `2`, `0.35`, `45`, `0.4` | Character capsule and ground handling |
 | `Movement:MaximumSubstepDistance`, `MaximumPenetrationIterations` | `0.1`, `6` | Motor substep length and collision resolution |
-| `ItemCatalogPath`, `QuestCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Items/core.item-catalog.json`, `WorldData/Quests/core.quest-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the actor runtime and collision come from the World directory |
+| `ActorCatalogPath`, `ItemCatalogPath`, `QuestCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Actors/core.actor-catalog.json`, `WorldData/Items/core.item-catalog.json`, `WorldData/Quests/core.quest-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the World's actor spawns and collision come from the World directory |
 | `ConnectionStrings:Redis`, `HealthChecks:TimeoutMilliseconds` | `127.0.0.1:6379`, `1000` | Redis for the health check and its timeout |
 | `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess` | `true` in `appsettings.Development.json` | Development only: Bank and Recovery access from anywhere |
 | `DevelopmentAdmin:Enabled` | `true` in `appsettings.Development.json` | Development only: the admin tools |

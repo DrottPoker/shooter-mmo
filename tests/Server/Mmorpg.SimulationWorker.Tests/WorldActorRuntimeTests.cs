@@ -22,15 +22,15 @@ public sealed class WorldActorRuntimeTests
         var second = new WorldActorStore(runtime, secondRegistry);
 
         var firstActors = first.ActivateAssignment(
-            runtime.WorldId,
+            runtime.Spawns.WorldId,
             "local-shard-1",
             "runtime-one");
         var secondActors = second.ActivateAssignment(
-            runtime.WorldId,
+            runtime.Spawns.WorldId,
             "local-shard-1",
             "runtime-two");
 
-        Assert.Equal(runtime.SpawnInstances.Length, firstActors.Count);
+        Assert.Equal(runtime.Spawns.SpawnInstances.Length, firstActors.Count);
         Assert.Equal(
             firstActors.Select(actor => actor.Spawn.Id),
             secondActors.Select(actor => actor.Spawn.Id));
@@ -649,7 +649,7 @@ public sealed class WorldActorRuntimeTests
     {
         const int population = 4_000;
         var runtime = WorldActorTestData.Compile();
-        runtime.SpawnInstances = Enumerable.Range(0, population)
+        runtime.Spawns.SpawnInstances = Enumerable.Range(0, population)
             .Select(index => new WorldActorSpawnInstanceDefinition
             {
                 Id = $"phase15.load.{index:D5}",

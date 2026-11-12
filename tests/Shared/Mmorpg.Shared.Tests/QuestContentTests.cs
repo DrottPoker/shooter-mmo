@@ -72,8 +72,8 @@ public sealed class QuestContentTests
     public void EveryCheckedInQuestCanBePlayedInDevelopmentWorldTwo()
     {
         var world = WorldActorTestData.CompileWorld(TestWorldId);
-        var placed = world.SpawnInstances.Select(spawn => spawn.ActorId).ToHashSet(StringComparer.Ordinal);
-        var placedMobTags = world.Actors
+        var placed = world.Spawns.SpawnInstances.Select(spawn => spawn.ActorId).ToHashSet(StringComparer.Ordinal);
+        var placedMobTags = world.Catalog.Actors
             .Where(actor => actor.Kind == WorldActorKindIds.Mob && placed.Contains(actor.Id))
             .SelectMany(actor => actor.Tags)
             .ToHashSet(StringComparer.Ordinal);

@@ -20,8 +20,9 @@ var jsonOptions = new JsonSerializerOptions
 
 try
 {
+    var actorCatalog = LoadActorCatalog(options!.GeneratedRoot);
     var worldIds = ContentLayout.ListWorldIds(
-        ContentLayout.WorldsDirectory(options!.ContentRoot));
+        ContentLayout.WorldsDirectory(options.ContentRoot));
     if (worldIds.Length == 0)
     {
         throw new InvalidDataException(
@@ -30,7 +31,7 @@ try
 
     foreach (var worldId in worldIds)
     {
-        var result = CompileWorld(options.ContentRoot, options.GeneratedRoot, worldId, jsonOptions);
+        var result = CompileWorld(options.ContentRoot, options.GeneratedRoot, actorCatalog, worldId, jsonOptions);
         var outputDirectory = ContentLayout.GeneratedCollisionDirectory(
             options.GeneratedRoot,
             worldId);
@@ -63,11 +64,22 @@ catch (Exception exception)
     return 1;
 }
 
+// The resource nodes come from the compiled actor catalog and World spawns, so the actor
+// compiler runs first.
+static WorldActorCatalogRuntimeDocument LoadActorCatalog(string generatedRoot)
+{
+    var catalog = StrictContentJson.DeserializeFile<WorldActorCatalogRuntimeDocument>(
+        ContentLayout.GeneratedActorCatalogPath(generatedRoot),
+        "Compiled world actor catalog");
+    WorldActorCompiler.ValidateRuntime(catalog);
+    return catalog;
+}
+
 // The scene's collision and the World's resource nodes, which block movement where they stand.
-// The nodes come from the compiled World actors, so the actor compiler runs first.
 static CollisionWorldBakeResult CompileWorld(
     string contentRoot,
     string generatedRoot,
+    WorldActorCatalogRuntimeDocument actorCatalog,
     string worldId,
     JsonSerializerOptions jsonOptions)
 {
@@ -76,16 +88,18 @@ static CollisionWorldBakeResult CompileWorld(
         File.ReadAllText(authoringPath),
         jsonOptions) ?? throw new InvalidDataException(
             $"Collision authoring JSON is empty at '{authoringPath}'.");
-    var actors = StrictContentJson.DeserializeFile<WorldActorRuntimeDocument>(
-        ContentLayout.GeneratedWorldActorsPath(generatedRoot, worldId),
-        $"Compiled world actors for World '{worldId}'");
-    if (!string.Equals(actors.WorldId, worldId, StringComparison.Ordinal))
+    var spawns = StrictContentJson.DeserializeFile<WorldActorSpawnRuntimeDocument>(
+        ContentLayout.GeneratedWorldActorSpawnsPath(generatedRoot, worldId),
+        $"Compiled world actor spawns for World '{worldId}'");
+    if (!string.Equals(spawns.WorldId, worldId, StringComparison.Ordinal))
     {
-        throw new InvalidDataException($"Compiled world actors for World '{worldId}' declare another World.");
+        throw new InvalidDataException($"Compiled world actor spawns for World '{worldId}' declare another World.");
     }
 
+    WorldActorCompiler.ValidateRuntime(new WorldActorRuntime(actorCatalog, spawns));
+
     authoring.Boxes = (authoring.Boxes ?? [])
-        .Concat(WorldActorCollision.Boxes(actors).Select(box => CollisionBoxAuthoringEntry.MovementObstacle(
+        .Concat(WorldActorCollision.Boxes(actorCatalog, spawns).Select(box => CollisionBoxAuthoringEntry.MovementObstacle(
             box.SourcePath,
             box.CenterX,
             box.CenterY,

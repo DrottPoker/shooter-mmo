@@ -218,7 +218,8 @@ public sealed class TextTableTests
             faction => Assert.Equal(faction.DisplayName, texts[TextKeys.FactionName(faction.Id)]));
     }
 
-    // The compiled actors hold rules only, so a new text changes the text table and no World.
+    // The compiled actors hold rules only, so a new text changes the text table and neither the
+    // compiled catalog nor any World.
     [Fact]
     public void AnActorTextChangeChangesNoCompiledWorld()
     {
@@ -236,10 +237,15 @@ public sealed class TextTableTests
 
         var changed = WorldActorCompiler.Compile(actors, spawns);
 
-        Assert.Equal(original.Revision, changed.Revision);
-        Assert.Equal(WorldActorJson.SerializeRuntime(original), WorldActorJson.SerializeRuntime(changed));
+        Assert.Equal(original.Catalog.Revision, changed.Catalog.Revision);
+        Assert.Equal(
+            WorldActorJson.SerializeCatalogRuntime(original.Catalog),
+            WorldActorJson.SerializeCatalogRuntime(changed.Catalog));
+        Assert.Equal(
+            WorldActorJson.SerializeSpawnRuntime(original.Spawns),
+            WorldActorJson.SerializeSpawnRuntime(changed.Spawns));
         Assert.NotEqual(originalTexts.Revision, ContentText.FromWorldActors(actors).Revision);
-        var json = WorldActorJson.SerializeRuntime(changed);
+        var json = WorldActorJson.SerializeCatalogRuntime(changed.Catalog);
         Assert.DoesNotContain("isplayName", json, StringComparison.Ordinal);
         Assert.DoesNotContain("xamineText", json, StringComparison.Ordinal);
         Assert.DoesNotContain("enuOption", json, StringComparison.Ordinal);

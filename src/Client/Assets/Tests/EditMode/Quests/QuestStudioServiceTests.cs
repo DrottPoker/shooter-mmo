@@ -39,6 +39,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var compiled = QuestCatalogCompiler.Compile(
                 workspace.Catalog.ToDomain(),
                 workspace.References.Items,
+                workspace.References.ActorCatalog,
                 workspace.References.Worlds);
 
             Assert.That(compiled.Revision, Is.EqualTo(CommittedRevision(QuestEditorPaths.CreateDefault())));

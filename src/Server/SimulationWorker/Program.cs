@@ -66,7 +66,7 @@ builder.AddServerTelemetry(
 var worldActorRuntime = WorldActorLoader.Load(config);
 WorldActorProtocolCompatibility.Validate(worldActorRuntime);
 var itemCatalog = ItemCatalogFileLoader.Load(config.ItemCatalogPath);
-WorldActorItemReferences.Validate(worldActorRuntime, itemCatalog);
+WorldActorItemReferences.Validate(worldActorRuntime.Catalog, itemCatalog);
 var questCatalog = QuestCatalogFileLoader.Load(config.QuestCatalogPath);
 QuestItemReferences.Validate(questCatalog.Quests, itemCatalog);
 var combatRules = CombatRulesLoader.Load(config.CombatRulesPath);
@@ -223,10 +223,11 @@ logger.LogInformation(
     collisionStreamingStore.AvailableChunkCount);
 
 logger.LogInformation(
-    "Loaded world actor revision {WorldActorRevision} with {ActorDefinitionCount} definitions and {ActorInstanceCount} assignment instances.",
-    worldActorRuntime.Revision,
-    worldActorRuntime.Actors.Length,
-    worldActorRuntime.SpawnInstances.Length);
+    "Loaded world actor catalog revision {ActorCatalogRevision} with {ActorDefinitionCount} definitions and spawn revision {ActorSpawnRevision} with {ActorInstanceCount} assignment instances.",
+    worldActorRuntime.Catalog.Revision,
+    worldActorRuntime.Catalog.Actors.Length,
+    worldActorRuntime.Spawns.Revision,
+    worldActorRuntime.Spawns.SpawnInstances.Length);
 
 if (telemetryOptions.IsEnabled)
 {

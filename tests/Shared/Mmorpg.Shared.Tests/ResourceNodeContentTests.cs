@@ -12,8 +12,8 @@ public sealed class ResourceNodeContentTests
     public void IronVeinIsAResourceNodeWithOneGatheringCapability()
     {
         var runtime = WorldActorTestData.Compile();
-        var vein = runtime.Actors.Single(value => value.Id == "resource.iron_vein");
-        var profile = runtime.ResourceProfiles.Single(value => value.Id == "resource.iron_vein");
+        var vein = runtime.Catalog.Actors.Single(value => value.Id == "resource.iron_vein");
+        var profile = runtime.Catalog.ResourceProfiles.Single(value => value.Id == "resource.iron_vein");
 
         Assert.Equal(WorldActorKindIds.ResourceNode, vein.Kind);
         Assert.Equal(WorldActorDamagePolicyIds.Invulnerable, vein.DamagePolicy);
@@ -32,8 +32,8 @@ public sealed class ResourceNodeContentTests
     public void OakTreeIsChoppedWithAWoodcuttingAxeForOakLogs()
     {
         var runtime = WorldActorTestData.Compile();
-        var tree = runtime.Actors.Single(value => value.Id == "resource.oak_tree");
-        var profile = runtime.ResourceProfiles.Single(value => value.Id == "resource.oak_tree");
+        var tree = runtime.Catalog.Actors.Single(value => value.Id == "resource.oak_tree");
+        var profile = runtime.Catalog.ResourceProfiles.Single(value => value.Id == "resource.oak_tree");
         var items = ItemCatalogTestData.Compile();
 
         Assert.Equal(WorldActorKindIds.ResourceNode, tree.Kind);
@@ -64,11 +64,8 @@ public sealed class ResourceNodeContentTests
     {
         var items = ItemCatalogTestData.Compile();
 
-        WorldActorItemReferences.Validate(WorldActorTestData.Compile(), items);
-        foreach (var worldId in WorldActorTestData.CheckedInWorldIds())
-        {
-            WorldActorItemReferences.Validate(WorldActorTestData.CompileWorld(worldId), items);
-        }
+        // Only the shared catalog refers to items, so one check covers every World.
+        WorldActorItemReferences.Validate(WorldActorTestData.CompileCatalog(), items);
     }
 
     // A placed node blocks movement with its collision bounds, offset from its position and
@@ -78,10 +75,10 @@ public sealed class ResourceNodeContentTests
     {
         var runtime = WorldActorTestData.CompileWorld("development-world-2");
 
-        var boxes = WorldActorCollision.Boxes(runtime);
+        var boxes = WorldActorCollision.Boxes(runtime.Catalog, runtime.Spawns);
 
         Assert.Equal(
-            runtime.SpawnInstances
+            runtime.Spawns.SpawnInstances
                 .Where(instance => instance.ActorId.StartsWith("resource.", StringComparison.Ordinal))
                 .Select(instance => WorldActorCollision.SourcePathPrefix + instance.Id)
                 .Order(StringComparer.Ordinal),
@@ -224,7 +221,7 @@ public sealed class ResourceNodeContentTests
             .ToArray();
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorItemReferences.Validate(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime.Catalog, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("unknown vendor profile", StringComparison.Ordinal));
         Assert.Contains(exception.Errors, value => value.Contains("unknown tool kind", StringComparison.Ordinal));
@@ -241,7 +238,7 @@ public sealed class ResourceNodeContentTests
         ore.MaximumStackSize = 0;
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorItemReferences.Validate(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime.Catalog, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("default policies", StringComparison.Ordinal));
         Assert.Contains(exception.Errors, value => value.Contains("more than one stack", StringComparison.Ordinal));
@@ -258,7 +255,7 @@ public sealed class ResourceNodeContentTests
         }
 
         var exception = Assert.Throws<WorldActorValidationException>(
-            () => WorldActorItemReferences.Validate(runtime, items));
+            () => WorldActorItemReferences.Validate(runtime.Catalog, items));
 
         Assert.Contains(exception.Errors, value => value.Contains("which no item definition provides", StringComparison.Ordinal));
     }

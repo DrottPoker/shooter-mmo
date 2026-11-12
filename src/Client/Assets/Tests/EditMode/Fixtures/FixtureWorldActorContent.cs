@@ -90,9 +90,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 files.Add(new KeyValuePair<string, string>(
-                    ContentLayout.GeneratedWorldActorsPath(source.GeneratedRoot, worldId),
-                    ContentLayout.GeneratedWorldActorsPath(target.GeneratedRoot, worldId)));
+                    ContentLayout.GeneratedWorldActorSpawnsPath(source.GeneratedRoot, worldId),
+                    ContentLayout.GeneratedWorldActorSpawnsPath(target.GeneratedRoot, worldId)));
             }
+
+            files.Add(new KeyValuePair<string, string>(
+                ContentLayout.GeneratedActorCatalogPath(source.GeneratedRoot),
+                ContentLayout.GeneratedActorCatalogPath(target.GeneratedRoot)));
 
             // Mob loot is checked against the compiled item catalog.
             files.Add(new KeyValuePair<string, string>(

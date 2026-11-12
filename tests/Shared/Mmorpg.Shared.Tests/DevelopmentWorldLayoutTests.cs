@@ -38,9 +38,9 @@ public sealed class DevelopmentWorldLayoutTests
         // The scene alone, because a resource node's own box stands where it is placed.
         var world = LoadSceneCollision(worldId);
         var runtime = WorldActorTestData.CompileWorld(worldId);
-        var points = runtime.SpawnInstances
+        var points = runtime.Spawns.SpawnInstances
             .Select(instance => (Name: instance.Id, Position: new SimulationVector3(instance.X, instance.Y, instance.Z)))
-            .Concat(runtime.PatrolPaths.SelectMany(path => path.Points.Select((point, index) =>
+            .Concat(runtime.Spawns.PatrolPaths.SelectMany(path => path.Points.Select((point, index) =>
                 (Name: path.Id + "#" + index, Position: new SimulationVector3(point.X, point.Y, point.Z)))))
             .Append((Name: "spawn", Position: new SimulationVector3(manifest.spawn.x, manifest.spawn.y, manifest.spawn.z)));
 
@@ -80,7 +80,8 @@ public sealed class DevelopmentWorldLayoutTests
     public void EveryResourceNodeBlocksMovementButNotSight(string worldId)
     {
         var world = LoadCheckedInWorld(worldId);
-        var boxes = WorldActorCollision.Boxes(WorldActorTestData.CompileWorld(worldId));
+        var runtime = WorldActorTestData.CompileWorld(worldId);
+        var boxes = WorldActorCollision.Boxes(runtime.Catalog, runtime.Spawns);
 
         Assert.NotEmpty(boxes);
         foreach (var box in boxes)
@@ -539,9 +540,9 @@ public sealed class DevelopmentWorldLayoutTests
     public void InterestRoadOutpostLiesBeyondTheInterestExitRadiusFromTheTown()
     {
         var runtime = WorldActorTestData.CompileWorld(TestWorld);
-        var outpost = runtime.SpawnInstances.Single(instance => instance.SpawnDefinitionId == "development_world_2.outpost_guard");
+        var outpost = runtime.Spawns.SpawnInstances.Single(instance => instance.SpawnDefinitionId == "development_world_2.outpost_guard");
         var spawn = LoadManifest(TestWorld).spawn;
-        var town = runtime.SpawnInstances
+        var town = runtime.Spawns.SpawnInstances
             .Where(instance => MathF.Abs(instance.X) <= 36f && MathF.Abs(instance.Z) <= 36f)
             .Select(instance => (instance.X, instance.Z))
             .Append((spawn.x, spawn.z))

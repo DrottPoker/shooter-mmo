@@ -134,12 +134,12 @@ internal static class WorldActorProtocolMapper
 
 internal static class WorldActorProtocolCompatibility
 {
-    public static void Validate(WorldActorRuntimeDocument document)
+    public static void Validate(WorldActorRuntime runtime)
     {
-        ArgumentNullException.ThrowIfNull(document);
-        var store = new WorldActorStore(document, new SimulationEntityRegistry());
+        ArgumentNullException.ThrowIfNull(runtime);
+        var store = new WorldActorStore(runtime, new SimulationEntityRegistry());
         Validate(store.ActivateAssignment(
-            document.WorldId,
+            runtime.Spawns.WorldId,
             "protocol-validation-shard",
             "protocol-validation-runtime"));
     }

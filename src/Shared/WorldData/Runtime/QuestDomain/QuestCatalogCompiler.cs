@@ -9,9 +9,9 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.WorldData.Quests
 {
-    // Compiles the authored quests against the compiled item catalog and the compiled actors of
-    // every World. It collects every problem before it fails, so one run shows them all, and equal
-    // input compiles to byte-for-byte equal output. The errors name their field by index, such as
+    // Compiles the authored quests against the compiled item catalog, the compiled actor catalog,
+    // and the compiled spawns of every World. It collects every problem before it fails, so one
+    // run shows them all, and equal input compiles to byte-for-byte equal output. The errors name their field by index, such as
     // quests[2].steps[0].objectives[1].count, so the content tools can point at it.
     public static class QuestCatalogCompiler
     {
@@ -27,7 +27,8 @@ namespace Mmorpg.WorldData.Quests
         public static QuestCatalogRuntimeDocument Compile(
             QuestCatalogAuthoringDocument authoring,
             ItemCatalogRuntimeDocument items,
-            IReadOnlyList<WorldActorRuntimeDocument> worlds)
+            WorldActorCatalogRuntimeDocument actors,
+            IReadOnlyList<WorldActorSpawnRuntimeDocument> worlds)
         {
             if (authoring == null)
             {
@@ -39,13 +40,18 @@ namespace Mmorpg.WorldData.Quests
                 throw new ArgumentNullException(nameof(items));
             }
 
+            if (actors == null)
+            {
+                throw new ArgumentNullException(nameof(actors));
+            }
+
             if (worlds == null)
             {
                 throw new ArgumentNullException(nameof(worlds));
             }
 
             var errors = new List<string>();
-            var references = new QuestReferences(items, worlds);
+            var references = new QuestReferences(items, actors, worlds);
             ValidateCatalog(authoring, errors);
             var quests = authoring.Quests ?? Array.Empty<QuestAuthoringEntry>();
             var retired = new HashSet<string>(authoring.RetiredQuestIds ?? Array.Empty<string>(), StringComparer.Ordinal);
@@ -1311,8 +1317,8 @@ namespace Mmorpg.WorldData.Quests
             return index.ToString(CultureInfo.InvariantCulture);
         }
 
-        // What quests may refer to: compiled items, the actors every World shares, and which of
-        // them some World places.
+        // What quests may refer to: compiled items, the shared actor catalog, and which of its
+        // actors some World places.
         private sealed class QuestReferences
         {
             private readonly Dictionary<string, ItemDefinition> items;
@@ -1320,21 +1326,21 @@ namespace Mmorpg.WorldData.Quests
                 new Dictionary<string, WorldActorDefinition>(StringComparer.Ordinal);
             private readonly HashSet<string> placedActorIds = new HashSet<string>(StringComparer.Ordinal);
 
-            public QuestReferences(ItemCatalogRuntimeDocument items, IReadOnlyList<WorldActorRuntimeDocument> worlds)
+            public QuestReferences(
+                ItemCatalogRuntimeDocument items,
+                WorldActorCatalogRuntimeDocument actorCatalog,
+                IReadOnlyList<WorldActorSpawnRuntimeDocument> worlds)
             {
                 this.items = (items.Definitions ?? Array.Empty<ItemDefinition>())
                     .ToDictionary(item => item.Id, StringComparer.Ordinal);
                 MaximumCharacterLevel = items.Progression?.MaximumCharacterLevel ?? 1;
+                foreach (var actor in actorCatalog.Actors ?? Array.Empty<WorldActorDefinition>())
+                {
+                    actors[actor.Id] = actor;
+                }
+
                 foreach (var world in worlds)
                 {
-                    foreach (var actor in world.Actors ?? Array.Empty<WorldActorDefinition>())
-                    {
-                        if (!actors.ContainsKey(actor.Id))
-                        {
-                            actors.Add(actor.Id, actor);
-                        }
-                    }
-
                     foreach (var spawn in world.SpawnInstances ?? Array.Empty<WorldActorSpawnInstanceDefinition>())
                     {
                         placedActorIds.Add(spawn.ActorId);

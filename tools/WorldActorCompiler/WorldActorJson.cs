@@ -26,14 +26,27 @@ public static class WorldActorJson
             "World actor spawns");
     }
 
-    public static WorldActorRuntimeDocument DeserializeRuntime(string json)
+    public static WorldActorCatalogRuntimeDocument DeserializeCatalogRuntime(string json)
     {
-        return StrictContentJson.Deserialize<WorldActorRuntimeDocument>(
+        return StrictContentJson.Deserialize<WorldActorCatalogRuntimeDocument>(
             json,
-            "World actor runtime");
+            "World actor catalog runtime");
     }
 
-    public static string SerializeRuntime(WorldActorRuntimeDocument document)
+    public static WorldActorSpawnRuntimeDocument DeserializeSpawnRuntime(string json)
+    {
+        return StrictContentJson.Deserialize<WorldActorSpawnRuntimeDocument>(
+            json,
+            "World actor spawn runtime");
+    }
+
+    public static string SerializeCatalogRuntime(WorldActorCatalogRuntimeDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        return StrictContentJson.Serialize(document);
+    }
+
+    public static string SerializeSpawnRuntime(WorldActorSpawnRuntimeDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
         return StrictContentJson.Serialize(document);

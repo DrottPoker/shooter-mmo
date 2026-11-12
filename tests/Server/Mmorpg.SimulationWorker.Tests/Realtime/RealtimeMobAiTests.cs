@@ -171,7 +171,7 @@ public sealed class RealtimeMobAiTests
     }
 
     private static RealtimeServerHarness Create(
-        WorldActorRuntimeDocument document,
+        WorldActorRuntime document,
         ItemCatalogRuntimeDocument? catalog = null,
         CombatRules? rules = null)
     {
@@ -187,7 +187,7 @@ public sealed class RealtimeMobAiTests
     }
 
     // Wolves at the given positions without patrols; the brain and the bite can be tuned.
-    private static WorldActorRuntimeDocument WolvesAt(
+    private static WorldActorRuntime WolvesAt(
         float[] positionsX,
         int damage = 4,
         float leashRange = 30f,
@@ -195,7 +195,7 @@ public sealed class RealtimeMobAiTests
         float[]? positionsZ = null)
     {
         var document = WolfNextToTheSpawn(respawnSeconds: 30f, x: positionsX[0]);
-        var template = document.SpawnInstances.Single(spawn => spawn.ActorId == "mob.feral_wolf");
+        var template = document.Spawns.SpawnInstances.Single(spawn => spawn.ActorId == "mob.feral_wolf");
         template.Z = positionsZ?[0] ?? -1f;
         var wolves = positionsX
             .Select((x, index) => index == 0
@@ -213,15 +213,15 @@ public sealed class RealtimeMobAiTests
                     StructuralFingerprint = template.StructuralFingerprint + "." + index
                 })
             .ToArray();
-        document.SpawnInstances = document.SpawnInstances
+        document.Spawns.SpawnInstances = document.Spawns.SpawnInstances
             .Where(spawn => spawn.ActorId != "mob.feral_wolf")
             .Concat(wolves)
             .ToArray();
-        var definition = document.Actors.Single(actor => actor.Id == "mob.feral_wolf");
-        var combat = document.CombatProfiles.Single(profile => profile.Id == definition.CombatProfileId);
+        var definition = document.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf");
+        var combat = document.Catalog.CombatProfiles.Single(profile => profile.Id == definition.CombatProfileId);
         combat.MinimumDamage = damage;
         combat.MaximumDamage = damage;
-        var brain = document.BrainProfiles.Single(profile => profile.Id == definition.BrainProfileId);
+        var brain = document.Catalog.BrainProfiles.Single(profile => profile.Id == definition.BrainProfileId);
         brain.LeashRange = leashRange;
         brain.Aggression = aggression;
         return document;

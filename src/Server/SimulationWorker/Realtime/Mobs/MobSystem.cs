@@ -66,7 +66,7 @@ internal sealed class MobSystem
         CombatantRegistry combatants,
         CombatLineOfSight lineOfSight,
         EntityPresenceReplicator presence,
-        WorldActorRuntimeDocument? content,
+        WorldActorRuntime? content,
         CombatMetrics? metrics)
     {
         this.config = config;
@@ -76,13 +76,13 @@ internal sealed class MobSystem
         this.lineOfSight = lineOfSight;
         this.presence = presence;
         this.metrics = metrics;
-        brains = (content?.BrainProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
-        locomotionProfiles = (content?.LocomotionProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
-        patrolPaths = (content?.PatrolPaths ?? []).ToDictionary(
+        brains = (content?.Catalog.BrainProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
+        locomotionProfiles = (content?.Catalog.LocomotionProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
+        patrolPaths = (content?.Spawns.PatrolPaths ?? []).ToDictionary(
             path => path.Id,
             path => path.Points ?? [],
             StringComparer.Ordinal);
-        activityProfiles = (content?.ActivityProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
+        activityProfiles = (content?.Catalog.ActivityProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         // A route covers the leash and the detection range around it.
         searchDistance = brains.Count == 0
             ? 32f

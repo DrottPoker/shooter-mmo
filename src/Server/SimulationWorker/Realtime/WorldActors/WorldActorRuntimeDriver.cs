@@ -50,9 +50,10 @@ internal sealed class WorldActorRuntimeDriver(
             presence.RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
             networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
             logger.LogInformation(
-                "[SIMULATION] Activated {ActorCount} world actors from revision {WorldActorRevision} for worker runtime {RuntimeId}.",
+                "[SIMULATION] Activated {ActorCount} world actors from actor catalog revision {ActorCatalogRevision} and spawn revision {ActorSpawnRevision} for worker runtime {RuntimeId}.",
                 actors.Count,
-                worldActorStore.ContentRevision,
+                worldActorStore.CatalogRevision,
+                worldActorStore.SpawnRevision,
                 workerIdentity.RuntimeId);
         }
     }

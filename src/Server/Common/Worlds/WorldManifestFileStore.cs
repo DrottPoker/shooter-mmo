@@ -7,7 +7,9 @@ using Mmorpg.WorldData.Worlds;
 namespace Mmorpg.Server.Common.Worlds;
 
 // Reads the deployed World data folder. Each World directory holds world.json, the
-// compiled world-actors.json, and the compiled collision chunks below Collision/.
+// compiled world-actor-spawns.json, and the compiled collision chunks below Collision/. The
+// actor catalog that every World shares lies outside this folder, since every directory here
+// is a World.
 public static class WorldManifestFileStore
 {
     public const string CollisionDirectoryName = "Collision";
@@ -75,11 +77,11 @@ public static class WorldManifestFileStore
         return ResolveWorldDirectoryFromRoot(ResolveRootPath(configuredRootPath), worldId);
     }
 
-    public static string ResolveActorRuntimePath(string configuredRootPath, string worldId)
+    public static string ResolveActorSpawnsPath(string configuredRootPath, string worldId)
     {
         return Path.Combine(
             ResolveWorldDirectory(configuredRootPath, worldId),
-            ContentLayout.WorldActorsFileName);
+            ContentLayout.WorldActorSpawnsFileName);
     }
 
     public static string ResolveCollisionRuntimePath(string configuredRootPath, string worldId)

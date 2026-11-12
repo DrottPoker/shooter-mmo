@@ -21,7 +21,7 @@ public sealed class MobCorpseLifecycleServiceTests
     public async Task LiveMobCreationUsesDefinitionLifetimeAndDeterministicGrantIds()
     {
         var runtime = WorldActorTestData.Compile();
-        var runtimeIds = Enumerable.Range(1, runtime.SpawnInstances.Length)
+        var runtimeIds = Enumerable.Range(1, runtime.Spawns.SpawnInstances.Length)
             .Select(_ => Guid.NewGuid())
             .ToArray();
         var runtimeIndex = 0;
@@ -87,7 +87,7 @@ public sealed class MobCorpseLifecycleServiceTests
     public async Task ADurableMobCorpseNamesItsOwnerToGameService()
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.Actors.Single(actor => actor.Id == "mob.feral_wolf").CorpsePersistenceMode = "durable";
+        runtime.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf").CorpsePersistenceMode = "durable";
         var actorStore = new WorldActorStore(runtime, new SimulationEntityRegistry(), Guid.NewGuid);
         var identity = new SimulationWorkerIdentity("tagging-runtime", DateTime.UtcNow);
         var actors = actorStore.ActivateAssignment(
@@ -388,7 +388,7 @@ public sealed class MobCorpseLifecycleServiceTests
         CreateService(HttpMessageHandler handler, string persistenceMode)
     {
         var runtime = WorldActorTestData.Compile();
-        runtime.Actors.Single(actor => actor.Id == "mob.feral_wolf").CorpsePersistenceMode = persistenceMode;
+        runtime.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf").CorpsePersistenceMode = persistenceMode;
         var actorStore = new WorldActorStore(runtime, new SimulationEntityRegistry(), Guid.NewGuid);
         var identity = new SimulationWorkerIdentity("quest-drop-runtime", DateTime.UtcNow);
         var wolf = actorStore

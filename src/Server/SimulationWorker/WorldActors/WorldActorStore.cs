@@ -186,7 +186,7 @@ public sealed class WorldActorRuntimeState
 public sealed class WorldActorStore
 {
     private readonly object syncRoot = new();
-    private readonly WorldActorRuntimeDocument document;
+    private readonly WorldActorRuntime runtime;
     private readonly SimulationEntityRegistry entityRegistry;
     private readonly Func<Guid> runtimeIdFactory;
     private readonly Dictionary<ulong, WorldActorRuntimeState> actorsByEntityId = [];
@@ -196,26 +196,28 @@ public sealed class WorldActorStore
     private long populationRevision;
 
     public WorldActorStore(
-        WorldActorRuntimeDocument document,
+        WorldActorRuntime runtime,
         SimulationEntityRegistry entityRegistry)
-        : this(document, entityRegistry, Guid.NewGuid)
+        : this(runtime, entityRegistry, Guid.NewGuid)
     {
     }
 
     internal WorldActorStore(
-        WorldActorRuntimeDocument document,
+        WorldActorRuntime runtime,
         SimulationEntityRegistry entityRegistry,
         Func<Guid> runtimeIdFactory)
     {
-        this.document = document ?? throw new ArgumentNullException(nameof(document));
+        this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this.entityRegistry = entityRegistry ?? throw new ArgumentNullException(nameof(entityRegistry));
         this.runtimeIdFactory = runtimeIdFactory ?? throw new ArgumentNullException(nameof(runtimeIdFactory));
-        activityProfiles = document.ActivityProfiles.ToDictionary(
+        activityProfiles = runtime.Catalog.ActivityProfiles.ToDictionary(
             profile => profile.Id,
             StringComparer.Ordinal);
     }
 
-    public string ContentRevision => document.Revision;
+    public string CatalogRevision => runtime.Catalog.Revision;
+
+    public string SpawnRevision => runtime.Spawns.Revision;
 
     public int Count
     {
@@ -246,7 +248,7 @@ public sealed class WorldActorStore
         string shardId,
         string workerRuntimeId)
     {
-        if (!string.Equals(document.WorldId, worldId, StringComparison.Ordinal)
+        if (!string.Equals(runtime.Spawns.WorldId, worldId, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(shardId)
             || string.IsNullOrWhiteSpace(workerRuntimeId))
         {
@@ -254,13 +256,13 @@ public sealed class WorldActorStore
                 "World actor assignment does not match the compiled runtime data.");
         }
 
-        var definitions = document.Actors.ToDictionary(
+        var definitions = runtime.Catalog.Actors.ToDictionary(
             definition => definition.Id,
             StringComparer.Ordinal);
-        var resourceProfiles = (document.ResourceProfiles
+        var resourceProfiles = (runtime.Catalog.ResourceProfiles
                 ?? Array.Empty<WorldActorResourceProfileDefinition>())
             .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
-        var brainProfiles = (document.BrainProfiles
+        var brainProfiles = (runtime.Catalog.BrainProfiles
                 ?? Array.Empty<WorldActorBrainProfileDefinition>())
             .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         lock (syncRoot)
@@ -268,7 +270,7 @@ public sealed class WorldActorStore
             actorsByEntityId.Clear();
             actorsByRuntimeId.Clear();
             despawnedActorsByEntityId.Clear();
-            foreach (var spawn in document.SpawnInstances.OrderBy(
+            foreach (var spawn in runtime.Spawns.SpawnInstances.OrderBy(
                          value => value.Id,
                          StringComparer.Ordinal))
             {

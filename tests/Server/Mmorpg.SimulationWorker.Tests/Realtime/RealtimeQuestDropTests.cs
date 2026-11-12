@@ -83,7 +83,7 @@ public sealed class RealtimeQuestDropTests
     public async Task AQuestDropAloneLeavesACorpseOnlyWhileTheQuestNeedsIt(bool needed)
     {
         var document = WolfNextToTheSpawn(respawnSeconds: 30f, x: 1f);
-        document.Actors.Single(actor => actor.Id == "mob.feral_wolf").LootProfileId = string.Empty;
+        document.Catalog.Actors.Single(actor => actor.Id == "mob.feral_wolf").LootProfileId = string.Empty;
         await using var harness = Create(document);
         var archer = AddArcher(harness, needed ? "Needful Hunter" : "Sated Hunter");
         if (!needed)
@@ -148,7 +148,7 @@ public sealed class RealtimeQuestDropTests
     }
 
     // The lowest roll lands every chance, so the wolf drops its own loot and the trophy.
-    private static RealtimeServerHarness Create(WorldActorRuntimeDocument document, bool questActive = true)
+    private static RealtimeServerHarness Create(WorldActorRuntime document, bool questActive = true)
     {
         var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {

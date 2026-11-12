@@ -434,8 +434,8 @@ actors, and the compiled quest catalog carry no text, as
    files with `git restore content/items src/Shared/WorldData/Generated/Text`.
 3. Open `MMORPG > Tools > Content > Actor Studio`, change the examine text of
    the Feral Wolf, and save. Expected result: `git status --short` lists
-   `content/actors/` and `Generated/Text/en/actors.text-table.json`, and no
-   `world-actors.json`. Start Play Mode without restarting the worker and
+   `content/actors/` and `Generated/Text/en/actors.text-table.json`, and neither
+   `Generated/Actors/core.actor-catalog.json` nor any `world-actor-spawns.json`. Start Play Mode without restarting the worker and
    examine a wolf: the new text shows. Restore the files with
    `git restore content/actors src/Shared/WorldData/Generated/Text`.
 4. Open `MMORPG > Tools > Content > Quest Studio`, change the offer text of

@@ -5,6 +5,8 @@ namespace Mmorpg.Tools.ContentPipeline;
 // Writes generated files, or in verify mode proves that the committed files match.
 public static class GeneratedOutput
 {
+    private const string MetaSuffix = ".meta";
+
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
 
     public static void WriteOrVerifyText(
@@ -63,6 +65,37 @@ public static class GeneratedOutput
         }
     }
 
+    // The entries of a generated directory other than the expected ones and their Unity .meta
+    // files, for RemoveOrRejectStale. Hidden files are ignored, and a stale entry's .meta file is
+    // left out because it goes with its entry.
+    public static string[] UnexpectedEntries(string directory, IReadOnlyCollection<string> expectedNames)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        var unexpected = Directory.EnumerateFileSystemEntries(directory)
+            .Select(path => Path.GetFileName(path))
+            .Where(name => !name.StartsWith('.')
+                && !expectedNames.Contains(name, StringComparer.Ordinal)
+                && !expectedNames.Contains(MetaOwner(name), StringComparer.Ordinal))
+            .ToArray();
+        return unexpected
+            .Where(name => !unexpected.Contains(MetaOwner(name), StringComparer.Ordinal))
+            .Select(name => Path.Combine(directory, name))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    // The entry a Unity .meta file belongs to, or an empty name for any other file.
+    private static string MetaOwner(string name)
+    {
+        return name.EndsWith(MetaSuffix, StringComparison.Ordinal)
+            ? name[..^MetaSuffix.Length]
+            : string.Empty;
+    }
+
     private static void DeleteWithMeta(string path)
     {
         if (Directory.Exists(path))
@@ -74,7 +107,7 @@ public static class GeneratedOutput
             File.Delete(path);
         }
 
-        var metaPath = path + ".meta";
+        var metaPath = path + MetaSuffix;
         if (File.Exists(metaPath))
         {
             File.Delete(metaPath);

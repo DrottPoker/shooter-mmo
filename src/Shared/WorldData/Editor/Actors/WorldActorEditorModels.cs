@@ -593,11 +593,33 @@ namespace Mmorpg.WorldData.Editor.Actors
         }
     }
 
-    [Serializable]
+    // The compiled baseline of a workspace, for the change preview: the shared actor catalog
+    // and the edited World's spawns.
     public sealed class WorldActorEditorRuntime
+    {
+        public WorldActorEditorRuntime(
+            WorldActorEditorCatalogRuntime catalog,
+            WorldActorEditorSpawnRuntime spawns)
+        {
+            Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+            Spawns = spawns ?? throw new ArgumentNullException(nameof(spawns));
+        }
+
+        public WorldActorEditorCatalogRuntime Catalog { get; }
+        public WorldActorEditorSpawnRuntime Spawns { get; }
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorCatalogRuntime
     {
         public string revision;
         public WorldActorEditorRuntimeEntry[] actors;
+    }
+
+    [Serializable]
+    public sealed class WorldActorEditorSpawnRuntime
+    {
+        public string revision;
         public WorldActorEditorRuntimeEntry[] spawnSources;
         public WorldActorEditorRuntimeEntry[] spawnInstances;
     }
@@ -646,9 +668,14 @@ namespace Mmorpg.WorldData.Editor.Actors
             return Deserialize<WorldActorEditorSpawns>(json, "actor spawns");
         }
 
-        public static WorldActorEditorRuntime DeserializeRuntime(string json)
+        public static WorldActorEditorCatalogRuntime DeserializeCatalogRuntime(string json)
         {
-            return Deserialize<WorldActorEditorRuntime>(json, "actor runtime");
+            return Deserialize<WorldActorEditorCatalogRuntime>(json, "actor catalog runtime");
+        }
+
+        public static WorldActorEditorSpawnRuntime DeserializeSpawnRuntime(string json)
+        {
+            return Deserialize<WorldActorEditorSpawnRuntime>(json, "actor spawn runtime");
         }
 
         public static string SerializeCatalogHeader(WorldActorEditorCatalogHeader header)

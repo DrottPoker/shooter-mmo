@@ -115,11 +115,12 @@ actor's position and a size, aligned to the World axes whatever the spawn's yaw.
   rubble, so one box serves both states.
 - NPCs and Mobs set every value to zero. They do not block movement.
 - `tools/WorldCollisionCompiler` adds one box per placed resource node from the
-  compiled World actors to the World's collision chunks, on the movement layer
-  only, so characters and Mobs walk around a node while sight, interaction line
-  of sight, and arrows pass it. The Unity bake adds the same boxes, so compile
-  the actors before the collision, as the commands below do. Saving in Actor
-  Studio or Spawn Authoring recompiles the collision by itself.
+  compiled actor catalog and World spawns to the World's collision chunks, on
+  the movement layer only, so characters and Mobs walk around a node while
+  sight, interaction line of sight, and arrows pass it. The Unity bake adds the
+  same boxes, so compile the actors before the collision, as the commands below
+  do. Saving in Actor Studio or Spawn Authoring recompiles the collision by
+  itself.
 
 ## Resource Nodes And Item References
 
@@ -292,9 +293,10 @@ at `src/Shared/WorldData/Generated/`:
 | Generated file | Source | Compiler |
 | --- | --- | --- |
 | `Items/core.item-catalog.json` | `items/` | `tools/ItemCatalogCompiler` |
-| `Worlds/<world-id>/world-actors.json` | `actors/` and the World's `actor-spawns.json`, with loot, vendor capabilities, and resource profiles checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
-| `WorldCollision/<world-id>/` | the World's `collision.json` and the boxes of its placed resource nodes from `world-actors.json` | `tools/WorldCollisionCompiler` |
-| `Quests/core.quest-catalog.json` | `quests/`, checked against `Items/core.item-catalog.json` and every World's `world-actors.json` | `tools/QuestCatalogCompiler` |
+| `Actors/core.actor-catalog.json` | `actors/`, with loot, vendor capabilities, and resource profiles checked against `Items/core.item-catalog.json` | `tools/WorldActorCompiler` |
+| `Worlds/<world-id>/world-actor-spawns.json` | the World's `actor-spawns.json`, checked against `Actors/core.actor-catalog.json` | `tools/WorldActorCompiler` |
+| `WorldCollision/<world-id>/` | the World's `collision.json` and the boxes of its placed resource nodes from the actor catalog and `world-actor-spawns.json` | `tools/WorldCollisionCompiler` |
+| `Quests/core.quest-catalog.json` | `quests/`, checked against `Items/core.item-catalog.json`, the actor catalog, and every World's `world-actor-spawns.json` | `tools/QuestCatalogCompiler` |
 | `Text/en/items.text-table.json` | the names in `items/` | `tools/ItemCatalogCompiler` |
 | `Text/en/actors.text-table.json` | the names, examine texts, and capability texts in `actors/` | `tools/WorldActorCompiler` |
 | `Text/en/quests.text-table.json` | the texts in `quests/` | `tools/QuestCatalogCompiler` |
@@ -309,13 +311,24 @@ Addressables folder entry.
 
 The builds copy what each process reads into its output `WorldData` folder:
 GameService gets the item catalog, `appearance.json`, and every `world.json`,
-and SimulationWorker additionally gets `combat-rules.json` and every World's
-`world-actors.json` and collision chunks. GameService also copies
+and SimulationWorker additionally gets `combat-rules.json`, the actor catalog in
+`WorldData/Actors/`, and every World's `world-actor-spawns.json` and collision
+chunks next to its `world.json`. The actor catalog lies outside
+`WorldData/Worlds/`, where every directory is a World. GameService also copies
 `development/item-packages.json`, and ActiveSimulationBots copies the collision
 chunks to plan its walks.
 
-Every World's `world-actors.json` embeds the shared actor catalog, so an actor
-change recompiles every World. The Unity Actor Studio does this on save.
+The actor compiler writes the shared actor catalog once and one spawn file per
+World. A changed actor or profile rewrites only the catalog; a changed spawn
+rewrites only its World's spawn file. Each file has its own revision. The spawn
+file names the catalog it places actors of by `catalogId` but does not carry the
+catalog's revision: if it did, every actor change would rewrite every World file
+again. A spawn file that is stale against its catalog is caught twice instead:
+`--verify` recompiles both and compares them, and SimulationWorker checks at
+startup that the catalog ids agree and that every spawned actor exists in the
+catalog. Loot, vendor, and resource references to the item catalog belong to
+the catalog alone, so they are checked once, not per World. The Unity Actor
+Studio writes the catalog and every World's spawn file on save.
 
 ## Text Tables
 
@@ -356,12 +369,12 @@ currency changes the text table and nothing else: not the compiled catalog, not
 its revision, and nothing that a server reads. A compiled item catalog that
 holds a name is refused.
 
-The compiled actors of a World carry no text either. The names and examine
-texts of actors, the names and menu options of their capabilities, and the
-names of factions are required in `actors/` and go only into the actor text
-table. The name of a presentation archetype is a label for the content tools
-and is not compiled. A new text changes no `world-actors.json`, no revision,
-and no structural fingerprint.
+The compiled actor catalog and World spawns carry no text either. The names
+and examine texts of actors, the names and menu options of their capabilities,
+and the names of factions are required in `actors/` and go only into the actor
+text table. The name of a presentation archetype is a label for the content
+tools and is not compiled. A new text changes neither compiled actor file, no
+revision, and no structural fingerprint.
 
 The compiled quest catalog carries no text as well. A quest's title, offer,
 progress, and completion text, every objective's text, and the line of a
@@ -465,8 +478,9 @@ directory of the repository. Run the item catalog compiler before the actor
 compiler, because actor content refers to item content: the actor compiler reads
 `Items/core.item-catalog.json` from the generated root and checks Mob loot,
 vendor capabilities, and resource profiles against it. Run the collision and
-quest compilers after the actor compiler, because they read the compiled World
-actors; the quest compiler also reads the compiled item catalog. From the
+quest compilers after the actor compiler, because they read the compiled actor
+catalog and World spawns; the quest compiler also reads the compiled item
+catalog. From the
 repository root:
 
 ```powershell
@@ -484,13 +498,16 @@ Add `-- --verify` to check that the committed generated data matches the
 content without writing anything; this is what CI runs. Verify mode fails when
 authoring, runtime JSON, references, bounds, transforms, fingerprints, ordering,
 or a revision diverge, when a World directory lacks one of its three files, or
-when generated data exists for content that no longer exists. A failure returns
+when generated data exists for content that no longer exists, such as a
+`Generated/Worlds/` directory that is no World or any other file next to the
+actor catalog or a World's spawn file. A failure returns
 exit code 1 and reports what is stale or invalid. Compile mode deletes orphaned
 generated data together with its Unity `.meta` file.
 
 Expected result: the item compiler prints the catalog revision with its number
-of definitions, the actor compiler prints every World
-with its revision and its numbers of definitions and runtime instances, the
+of definitions, the actor compiler prints the actor catalog revision with its
+number of definitions and every World's spawn revision with its number of
+runtime instances, the
 collision compiler prints every World with its revision and chunk count, and the
 quest compiler prints the quest catalog revision with its number of quests. The
 item, actor, and quest compilers each also print their text table with its
@@ -563,7 +580,8 @@ describes the last two.
 Each compiled document has one `Stamp` function that writes all its hashes
 from its content, first the structural fingerprints of its elements and then
 the revision: `ItemCatalogCompiler.Stamp`, `QuestCatalogCompiler.Stamp`,
-`WorldActorCompiler.Stamp`, `TextTable.Stamp`, and
+`WorldActorCompiler.StampCatalog` and `WorldActorCompiler.StampSpawns` for the
+two actor documents, `TextTable.Stamp`, and
 `ItemPresentationCatalogCompiler.Stamp`. Every serialized field of a compiled
 document changes the revision through `Stamp`, or is listed as unhashed with its
 reason in the hash coverage tests: `ContentHashCoverageTests` in
@@ -633,8 +651,11 @@ Actor Studio, Spawn Authoring, and Quest Studio share these behaviors:
   `Save + Compile` lists the runtime changes for confirmation with
   `Write files`, writes the authoring files and the compiled files in one
   transaction, and deletes the definition file of a removed entry. The actor
-  tools write the actor catalog, one file per actor, the spawn file, and the
-  runtime JSON of every World, and then recompile the World collision; when
+  tools write the actor catalog, one file per actor, the spawn file, the
+  compiled actor catalog, and the compiled spawns of every World, and then
+  recompile the World collision; the preview lists `Recompiled world actors:
+  <world-id>` only for another World whose compiled spawns changed, which an
+  actor change alone never does; when
   that last step fails, the status says so, and the collision stays stale until
   `tools/WorldCollisionCompiler` runs. `Verify Canonical` runs the compiler's
   verify mode. A save without changes leaves every file byte for byte the same.
@@ -735,7 +756,7 @@ point on clear, flat ground; the
 5. Click `Preview Changes`, then `Save + Compile`, then `Verify Canonical`.
 
 Expected result: the preview shows the exact neutral JSON of the spawn file,
-the save writes it with the runtime JSON of every World and recompiles the
+the save writes it with the compiled spawns of the World and recompiles the
 collision, and verification reports the same revisions. `Ground Snap` reports
 when no collider lies below an entry.
 

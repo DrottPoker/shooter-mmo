@@ -43,15 +43,22 @@ namespace Mmorpg.WorldData.Actors
     {
         public const string SourcePathPrefix = "Actors/";
 
-        public static WorldActorCollisionBox[] Boxes(WorldActorRuntimeDocument world)
+        public static WorldActorCollisionBox[] Boxes(
+            WorldActorCatalogRuntimeDocument catalog,
+            WorldActorSpawnRuntimeDocument spawns)
         {
-            if (world == null)
+            if (catalog == null)
             {
-                throw new ArgumentNullException(nameof(world));
+                throw new ArgumentNullException(nameof(catalog));
             }
 
-            var actors = world.Actors.ToDictionary(actor => actor.Id, StringComparer.Ordinal);
-            return world.SpawnInstances
+            if (spawns == null)
+            {
+                throw new ArgumentNullException(nameof(spawns));
+            }
+
+            var actors = catalog.Actors.ToDictionary(actor => actor.Id, StringComparer.Ordinal);
+            return spawns.SpawnInstances
                 .Where(instance => actors.TryGetValue(instance.ActorId, out var actor)
                     && string.Equals(actor.Kind, WorldActorKindIds.ResourceNode, StringComparison.Ordinal))
                 .OrderBy(instance => instance.Id, StringComparer.Ordinal)

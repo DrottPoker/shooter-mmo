@@ -39,8 +39,8 @@ compilers also write the [text table](../content/README.md#text-tables) of their
 | --- | --- |
 | `Compile-Content.ps1` | Compiles all content and the test fixture catalogs in one command; `-Verify` only checks. See [Compile And Verify](../content/README.md#compile-and-verify) |
 | `ItemCatalogCompiler/` | Compiles the item catalog. See [Item Catalog Authoring](../content/items/README.md) |
-| `WorldActorCompiler/` | Compiles the actor definitions and the actor spawns of every World |
-| `QuestCatalogCompiler/` | Compiles the quest catalog against the compiled items and the compiled actors of every World |
+| `WorldActorCompiler/` | Compiles the actor definitions into the shared actor catalog and the actor spawns of every World against it |
+| `QuestCatalogCompiler/` | Compiles the quest catalog against the compiled items, the compiled actor catalog, and the compiled spawns of every World |
 | `WorldCollisionCompiler/` | Compiles the collision chunks of every World, including the resource nodes that block movement, the water surfaces, and the deep water edges |
 | `ContentPipeline/` | The library the compilers share, also used by the Unity content tools |
 | `ProtocolGenerator/` | Generates the realtime protocol code from its schema. See [Realtime Protocol](../docs/REALTIME_PROTOCOL.md) |

@@ -31,7 +31,8 @@ namespace Mmorpg.WorldData.Content
         public const string ActorSpawnsFileName = "actor-spawns.json";
         public const string CollisionSourceFileName = "collision.json";
         public const string ItemCatalogFileName = "core.item-catalog.json";
-        public const string WorldActorsFileName = "world-actors.json";
+        public const string ActorCatalogFileName = "core.actor-catalog.json";
+        public const string WorldActorSpawnsFileName = "world-actor-spawns.json";
         public const string CollisionManifestFileName = "manifest.json";
 
         // Unity loads collision as Addressables whose addresses mirror this directory:
@@ -176,17 +177,29 @@ namespace Mmorpg.WorldData.Content
             return Path.Combine(generatedRoot, "Worlds");
         }
 
+        // The compiled actor catalog that every World shares, outside Worlds/ because every
+        // directory there is a World.
+        public static string GeneratedActorsDirectory(string generatedRoot)
+        {
+            return Path.Combine(generatedRoot, "Actors");
+        }
+
+        public static string GeneratedActorCatalogPath(string generatedRoot)
+        {
+            return Path.Combine(GeneratedActorsDirectory(generatedRoot), ActorCatalogFileName);
+        }
+
         public static string GeneratedQuestCatalogPath(string generatedRoot)
         {
             return Path.Combine(generatedRoot, "Quests", Quests.QuestCatalogFormat.CatalogFileName);
         }
 
-        public static string GeneratedWorldActorsPath(string generatedRoot, string worldId)
+        public static string GeneratedWorldActorSpawnsPath(string generatedRoot, string worldId)
         {
             return Path.Combine(
                 GeneratedWorldsDirectory(generatedRoot),
                 RequireWorldId(worldId),
-                WorldActorsFileName);
+                WorldActorSpawnsFileName);
         }
 
         // The text tables of one locale: "Text/<locale>/<table>.text-table.json".

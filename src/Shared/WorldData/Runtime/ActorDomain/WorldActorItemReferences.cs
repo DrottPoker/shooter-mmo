@@ -8,18 +8,19 @@ namespace Mmorpg.WorldData.Actors
     // Actor content refers to the separately compiled item catalog: Mob loot names item
     // definitions, a vendor capability names a vendor profile, and a resource profile names a
     // tool kind and the definition it yields. The actor compiler checks the shapes; this checks
-    // every reference against one catalog. SimulationWorker runs it at startup against the item
-    // catalog it loads, and GameService validates the same ids again when it commits a loot
-    // grant, a trade, or a gathered yield.
+    // every reference of the actor catalog against one item catalog. Only the actor catalog
+    // refers to items, so it runs once per catalog, not per World: the actor compiler runs it
+    // against the compiled item catalog, and SimulationWorker at startup against the item
+    // catalog it loads.
     public static class WorldActorItemReferences
     {
         public static void Validate(
-            WorldActorRuntimeDocument runtime,
+            WorldActorCatalogRuntimeDocument catalog,
             ItemCatalogRuntimeDocument itemCatalog)
         {
-            if (runtime == null)
+            if (catalog == null)
             {
-                throw new ArgumentNullException(nameof(runtime));
+                throw new ArgumentNullException(nameof(catalog));
             }
 
             if (itemCatalog == null)
@@ -31,9 +32,9 @@ namespace Mmorpg.WorldData.Actors
                 .Where(definition => definition?.Id != null)
                 .ToDictionary(definition => definition.Id, StringComparer.Ordinal);
             var errors = new List<string>();
-            ValidateLoot(runtime, definitions, errors);
-            ValidateVendors(runtime, itemCatalog, errors);
-            ValidateResourceProfiles(runtime, itemCatalog, definitions, errors);
+            ValidateLoot(catalog, definitions, errors);
+            ValidateVendors(catalog, itemCatalog, errors);
+            ValidateResourceProfiles(catalog, itemCatalog, definitions, errors);
             if (errors.Count > 0)
             {
                 throw new WorldActorValidationException(errors);
@@ -41,11 +42,11 @@ namespace Mmorpg.WorldData.Actors
         }
 
         private static void ValidateLoot(
-            WorldActorRuntimeDocument runtime,
+            WorldActorCatalogRuntimeDocument catalog,
             IReadOnlyDictionary<string, ItemDefinition> definitions,
             ICollection<string> errors)
         {
-            foreach (var profile in runtime.LootProfiles ?? Array.Empty<WorldActorLootProfileDefinition>())
+            foreach (var profile in catalog.LootProfiles ?? Array.Empty<WorldActorLootProfileDefinition>())
             {
                 foreach (var entry in profile.Entries ?? Array.Empty<WorldActorLootEntryDefinition>())
                 {
@@ -71,14 +72,14 @@ namespace Mmorpg.WorldData.Actors
         }
 
         private static void ValidateVendors(
-            WorldActorRuntimeDocument runtime,
+            WorldActorCatalogRuntimeDocument catalog,
             ItemCatalogRuntimeDocument itemCatalog,
             ICollection<string> errors)
         {
             var vendorIds = new HashSet<string>(
                 (itemCatalog.Vendors ?? Array.Empty<VendorProfileDefinition>()).Select(vendor => vendor.Id),
                 StringComparer.Ordinal);
-            foreach (var actor in runtime.Actors ?? Array.Empty<WorldActorDefinition>())
+            foreach (var actor in catalog.Actors ?? Array.Empty<WorldActorDefinition>())
             {
                 foreach (var capability in actor.Capabilities ?? Array.Empty<WorldActorCapabilityDefinition>())
                 {
@@ -94,7 +95,7 @@ namespace Mmorpg.WorldData.Actors
         }
 
         private static void ValidateResourceProfiles(
-            WorldActorRuntimeDocument runtime,
+            WorldActorCatalogRuntimeDocument catalog,
             ItemCatalogRuntimeDocument itemCatalog,
             IReadOnlyDictionary<string, ItemDefinition> definitions,
             ICollection<string> errors)
@@ -102,7 +103,7 @@ namespace Mmorpg.WorldData.Actors
             var toolKindIds = new HashSet<string>(
                 (itemCatalog.ToolKinds ?? Array.Empty<ItemCatalogIdentityEntry>()).Select(kind => kind.Id),
                 StringComparer.Ordinal);
-            foreach (var profile in runtime.ResourceProfiles ?? Array.Empty<WorldActorResourceProfileDefinition>())
+            foreach (var profile in catalog.ResourceProfiles ?? Array.Empty<WorldActorResourceProfileDefinition>())
             {
                 var path = "resource profile " + profile.Id;
                 if (!toolKindIds.Contains(profile.RequiredToolKind ?? string.Empty))
