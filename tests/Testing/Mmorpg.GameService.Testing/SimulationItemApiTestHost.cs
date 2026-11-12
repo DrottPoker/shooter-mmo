@@ -25,17 +25,27 @@ internal sealed class SimulationItemApiTestHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    // Development by default; the environment decides how a route answers a malformed body. Logs,
+    // when given, receive every entry from Debug up.
     public static async Task<SimulationItemApiTestHost> StartAsync(
         PostgresIntegrationTestContext context,
         string workerId,
-        string workerSecret)
+        string workerSecret,
+        string? environmentName = null,
+        ILoggerProvider? logs = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
-            EnvironmentName = Environments.Development
+            EnvironmentName = environmentName ?? Environments.Development
         });
         builder.Configuration.AddConfiguration(context.Configuration);
         builder.Logging.ClearProviders();
+        if (logs is not null)
+        {
+            builder.Logging.AddProvider(logs);
+            builder.Logging.SetMinimumLevel(LogLevel.Debug);
+        }
+
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         var configuration = context.GameServiceConfiguration with
         {

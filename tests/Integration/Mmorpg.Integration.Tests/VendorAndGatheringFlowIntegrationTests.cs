@@ -2,6 +2,7 @@ using System.Text.Json;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Economy;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Database;
@@ -47,7 +48,7 @@ public sealed class VendorAndGatheringFlowIntegrationTests
         var client = new GameServiceClient(httpClient);
         var revision = session.CarryState.ItemStateRevision;
 
-        revision = await CommitAsync(client, session, Request(session, ItemOperationKinds.VendorPurchase, revision) with
+        revision = await CommitAsync(client, session, Request(session, EconomyOperationKinds.VendorPurchase, revision) with
         {
             DefinitionId = "fixture.pickaxe",
             Quantity = 1,
@@ -89,14 +90,14 @@ public sealed class VendorAndGatheringFlowIntegrationTests
 
         var ore = await FindAsync(context, player, "fixture.ore");
         Assert.Equal(3, ore.Quantity);
-        revision = await CommitAsync(client, session, Request(session, ItemOperationKinds.VendorSale, revision) with
+        revision = await CommitAsync(client, session, Request(session, EconomyOperationKinds.VendorSale, revision) with
         {
             ItemInstanceId = ore.ItemInstanceId,
             ExpectedItemRevision = ore.Revision,
             Quantity = 3,
             ExpectedPrice = 12
         });
-        revision = await CommitAsync(client, session, Request(session, ItemOperationKinds.VendorPurchase, revision) with
+        revision = await CommitAsync(client, session, Request(session, EconomyOperationKinds.VendorPurchase, revision) with
         {
             DefinitionId = "fixture.potion",
             Quantity = 1,

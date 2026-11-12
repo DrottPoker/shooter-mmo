@@ -1,9 +1,8 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
-using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Handlers;
+namespace Mmorpg.GameService.Economy.Transactions.Handlers;
 
 // NPC vendor purchases and sales. The vendor profile and item values come from the mirrored
 // catalog, the price from the shared VendorPricing rule, and the currency moves through the
@@ -27,7 +26,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         if (!VendorPricing.Offers(vendor, command.DefinitionId))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorOfferUnavailable,
+                EconomyTransactionErrorCodes.VendorOfferUnavailable,
                 "The vendor does not offer this item.");
         }
 
@@ -49,14 +48,14 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
             || price <= 0)
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorOfferUnavailable,
+                EconomyTransactionErrorCodes.VendorOfferUnavailable,
                 "The vendor cannot price this purchase.");
         }
 
         if (price != command.ExpectedPrice)
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorPriceChanged,
+                EconomyTransactionErrorCodes.VendorPriceChanged,
                 "The vendor price changed before the purchase committed.");
         }
 
@@ -115,7 +114,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         if (!IsCarried(item))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorWillNotBuy,
+                EconomyTransactionErrorCodes.VendorWillNotBuy,
                 "Only items in the inventory or the equipped Bag can be sold.");
         }
 
@@ -145,7 +144,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
                 StringComparison.Ordinal))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorWillNotBuy,
+                EconomyTransactionErrorCodes.VendorWillNotBuy,
                 "The vendor does not buy this item.");
         }
 
@@ -163,7 +162,7 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
                 out var price))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorWillNotBuy,
+                EconomyTransactionErrorCodes.VendorWillNotBuy,
                 "The vendor cannot price this sale.");
         }
 
@@ -171,14 +170,14 @@ internal sealed class VendorCommandHandler(ICharacterWallet characterWallet)
         if (price == 0)
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorWillNotBuy,
+                EconomyTransactionErrorCodes.VendorWillNotBuy,
                 "The vendor pays nothing for this quantity. Sell more at once.");
         }
 
         if (price != command.ExpectedPrice)
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.VendorPriceChanged,
+                EconomyTransactionErrorCodes.VendorPriceChanged,
                 "The vendor price changed before the sale committed.");
         }
 

@@ -1,6 +1,5 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 
@@ -8,8 +7,7 @@ namespace Mmorpg.GameService.Quests.Tests;
 
 // Pins the quest part of the item command catalog, as ItemCommandCatalogTests does for Items'
 // part: one registration per quest operation kind, the quest kinds that carry each flag, and one
-// source per handler. Quests is the highest module with item commands, so it also pins the whole
-// catalog: exactly the operation kinds of Items and Quests, from sources of those two modules.
+// source per handler. EconomyCommandCatalogTests pins the whole catalog.
 public sealed class QuestCommandCatalogTests
 {
     [Fact]
@@ -23,26 +21,6 @@ public sealed class QuestCommandCatalogTests
 
         Assert.Equal(15, Constants(typeof(QuestOperationKinds)).Length);
         Assert.Equal(Constants(typeof(QuestOperationKinds)), kinds);
-    }
-
-    [Fact]
-    public async Task TheCatalogHoldsExactlyTheItemAndQuestOperationKinds()
-    {
-        await using var composition = new OfflineItemComposition();
-        var sourceModules = composition.Services.GetServices<IItemCommandSource>()
-            .Select(source => source.GetType().Assembly)
-            .Distinct()
-            .ToArray();
-        var kinds = composition.Catalog.Registrations
-            .Select(registration => registration.OperationKind)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Equal(new[] { GameServiceAssemblies.Items, GameServiceAssemblies.Quests }, sourceModules);
-        Assert.Equal(48, kinds.Length);
-        Assert.Equal(
-            Constants(typeof(ItemOperationKinds)).Concat(Constants(typeof(QuestOperationKinds))).Order(StringComparer.Ordinal),
-            kinds);
     }
 
     [Fact]

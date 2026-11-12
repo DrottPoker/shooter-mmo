@@ -37,7 +37,7 @@ public sealed class ItemTransactionLocks
         return characterStates.LockForEventAsync(session, authority, characterId, cancellationToken);
     }
 
-    internal Task LockMutationScopeAsync(
+    public Task LockMutationScopeAsync(
         IEnumerable<Guid> itemIds,
         IEnumerable<Guid> containerIds,
         CancellationToken cancellationToken)

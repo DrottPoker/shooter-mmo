@@ -24,8 +24,9 @@ and the check before every push in
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including PostgreSQL and Redis tests |
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
-| `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel and area boundary tests under `ItemTransactions` |
+| `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel and corpse area boundary tests under `ItemTransactions`; the worker item route and its operation handler SPI |
 | `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares; the quest commands with their worker routes, quest drops, goldens, routing, catalog, and HTTP statuses |
+| `Mmorpg.GameService.Economy.Tests` | `Server/Mmorpg.GameService.Economy.Tests` | Economy: the vendor and gathering commands with their goldens, routing, catalog, HTTP statuses, and quest credit, and every answer of the worker item route to a vendor or gathering request, pinned through its JSON |
 | `Mmorpg.GameService.Content.Tests` | `Server/Mmorpg.GameService.Content.Tests` | Content: the content file loader and its startup refusals, the manifest and file routes with their cache headers and rate limit on an in-process host, and the PostgreSQL test of the startup revision check |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
@@ -42,8 +43,8 @@ namespace.
 
 - A test of one production project goes into that project's test project, even
   when it needs PostgreSQL or Redis. Items tests may arrange state through the
-  Accounts, Characters, and Placement services of the test kit, and Quests
-  tests also through Items.
+  Accounts, Characters, and Placement services of the test kit, Quests tests
+  also through Items, and Economy tests also through Quests.
 - A test that needs several GameService modules to cooperate, or GameService and
   SimulationWorker together, goes into `Mmorpg.Integration.Tests`.
 - Shared runtime code that also compiles into Unity is tested in
@@ -361,7 +362,9 @@ folder below the test project from the `Mmorpg.TestProjectDirectory` assembly
 metadata, so golden files move with their project and no compile-time path is
 needed. The item transaction traces live in
 `Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`, and those of
-the quest commands in `Server/Mmorpg.GameService.Quests.Tests/Golden/ItemTransactions`;
+the quest commands in `Server/Mmorpg.GameService.Quests.Tests/Golden/ItemTransactions`,
+and those of the vendor and gathering commands in
+`Server/Mmorpg.GameService.Economy.Tests/Golden/ItemTransactions`;
 the kit's `TracedItemTransactions` takes the test assembly whose folder it
 compares with. Run the tests
 with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an intended change,
@@ -432,15 +435,16 @@ Test access to `internal` types follows the production dependency direction.
   the test projects of the modules that build on it, the kit
   (`Mmorpg.GameService.Testing`), `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`. Platform grants Accounts, Characters, Placement,
-  Items, Quests, and Content tests; Accounts grants Characters, Placement,
-  Items, Quests, and Content tests; Characters grants Placement, Items, Quests,
-  and Content tests; Placement grants Items, Quests, and Content tests; Items
-  grants Quests and Content tests; Quests grants Content tests.
+  Items, Quests, Economy, and Content tests; Accounts grants Characters,
+  Placement, Items, Quests, Economy, and Content tests; Characters grants
+  Placement, Items, Quests, Economy, and Content tests; Placement grants Items,
+  Quests, Economy, and Content tests; Items grants Quests, Economy, and Content
+  tests; Quests grants Economy and Content tests; Economy grants Content tests.
 - The GameService host grants the kit, `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`.
 - SimulationWorker grants `Mmorpg.SimulationWorker.Tests`, and
   `Mmorpg.Server.Telemetry` grants `Mmorpg.Server.Telemetry.Tests`.
-- The kit keeps its types `internal` and grants all eight GameService test
+- The kit keeps its types `internal` and grants all nine GameService test
   projects and `Mmorpg.Integration.Tests`.
 - No grant goes to a lower module or to a production assembly.
 

@@ -21,6 +21,7 @@
          and the cross-module integration tests. Never a production assembly. -->
     <InternalsVisibleTo Include="Mmorpg.GameService.Items.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Quests.Tests" />
+    <InternalsVisibleTo Include="Mmorpg.GameService.Economy.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Content.Tests" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Testing" />
     <InternalsVisibleTo Include="Mmorpg.GameService.Tests" />

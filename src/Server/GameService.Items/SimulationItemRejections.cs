@@ -18,8 +18,7 @@ public static class SimulationItemRejections
             ItemTransactionErrorCodes.AuthorityRequired or
             ItemTransactionErrorCodes.WrongSimulationWorker or
             ItemTransactionErrorCodes.BankAccessRequired or
-            ItemTransactionErrorCodes.RecoveryAccessRequired or
-            ItemTransactionErrorCodes.VendorAccessRequired =>
+            ItemTransactionErrorCodes.RecoveryAccessRequired =>
                 ServiceResult<T>.Forbidden(error.Code, error.Message),
             ItemTransactionErrorCodes.ItemNotFound or
             ItemTransactionErrorCodes.ItemNotOwned or
@@ -34,7 +33,6 @@ public static class SimulationItemRejections
             ItemTransactionErrorCodes.ItemQuantityChanged or
             ItemTransactionErrorCodes.BagStateChanged or
             ItemTransactionErrorCodes.WorkerRuntimeChanged or
-            ItemTransactionErrorCodes.VendorPriceChanged or
             ItemTransactionErrorCodes.InventoryFull or
             ItemTransactionErrorCodes.QuestItemNotNeeded =>
                 ServiceResult<T>.Conflict(error.Code, error.Message),

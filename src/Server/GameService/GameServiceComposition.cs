@@ -6,6 +6,7 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Content;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Database.Migrations;
+using Mmorpg.GameService.Economy;
 using Mmorpg.GameService.Health;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
@@ -18,7 +19,7 @@ using Mmorpg.GameService.Quests;
 
 namespace Mmorpg.GameService;
 
-// Composes the platform services, the six modules, and the host-owned database and
+// Composes the platform services, the seven modules, and the host-owned database and
 // health services in one place, so Program.cs and the tests build the same graph.
 internal static class GameServiceComposition
 {
@@ -33,8 +34,7 @@ internal static class GameServiceComposition
         typeof(IItemCatalogRevisionProvider),
         typeof(IQuestCatalogRevisionProvider),
         typeof(IQuestDropDemand),
-        typeof(IItemCatalogReferences),
-        typeof(IQuestGatherCredit)
+        typeof(IItemCatalogReferences)
     ];
 
     // Modules in dependency order. Services register and routes map in this order.
@@ -49,6 +49,7 @@ internal static class GameServiceComposition
             new PlacementModule(configuration.Placement),
             new ItemsModule(configuration.Items),
             new QuestsModule(configuration.Quests),
+            new EconomyModule(),
             new ContentModule(configuration.Content)
         ];
     }

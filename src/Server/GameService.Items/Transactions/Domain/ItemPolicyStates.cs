@@ -2,13 +2,13 @@ using System.Security.Cryptography;
 using System.Text;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Domain;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Item policy rows as rule inputs, and the policy fingerprint that decides whether
 // two stacks share the same policy state.
-internal static class ItemPolicyStates
+public static class ItemPolicyStates
 {
-    public const string EmptyStackStateFingerprint = "item-stack-state-v1";
+    internal const string EmptyStackStateFingerprint = "item-stack-state-v1";
 
     public static IEnumerable<ItemPolicyState> ToPolicyStates(
         IEnumerable<LockedItemPolicy> policies)
@@ -20,7 +20,7 @@ internal static class ItemPolicyStates
             policy.SourceId));
     }
 
-    public static string CalculatePolicyFingerprint(IEnumerable<LockedItemPolicy> policies)
+    internal static string CalculatePolicyFingerprint(IEnumerable<LockedItemPolicy> policies)
     {
         var canonical = string.Join(
             '\n',

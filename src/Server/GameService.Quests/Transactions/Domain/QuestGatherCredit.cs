@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Quests.Transactions.Domain;
 
-// The quest side of a gathering yield, which the gathering command calls through Items'
+// The quest side of a gathering yield, which Economy's gathering command calls through
 // IQuestGatherCredit: the yield counts for the gather objectives of the gathered node's actor
 // definition in the yield's transaction, so a retried yield counts once, and the result names
 // the quests it changed.

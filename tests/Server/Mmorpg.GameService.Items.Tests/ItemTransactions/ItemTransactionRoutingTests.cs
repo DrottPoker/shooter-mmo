@@ -7,8 +7,8 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Pins the persisted operation kind of every item command that Items registers; the quest
-// commands are pinned in Mmorpg.GameService.Quests.Tests. An account actor with a derived
+// Pins the persisted operation kind of every item command that Items registers; the quest and
+// economy commands are pinned in their modules' tests. An account actor with a derived
 // (version 5) operation id is rejected before any database access, so the complete routing
 // table runs without PostgreSQL.
 public sealed class ItemTransactionRoutingTests
@@ -58,9 +58,9 @@ public sealed class ItemTransactionRoutingTests
 
         await using var composition = new OfflineItemComposition();
         var registrations = composition.RegistrationsOf(GameServiceAssemblies.Items);
-        Assert.Equal(33, registrations.Count);
-        Assert.Equal(33, registrations.Select(registration => registration.CommandType).Distinct().Count());
-        Assert.Equal(33, Routes.Count);
+        Assert.Equal(30, registrations.Count);
+        Assert.Equal(30, registrations.Select(registration => registration.CommandType).Distinct().Count());
+        Assert.Equal(30, Routes.Count);
         Assert.Equal(
             registrations.Select(registration => registration.OperationKind).Order(StringComparer.Ordinal),
             Routes.Keys.Order(StringComparer.Ordinal));
@@ -232,21 +232,6 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new LootAllCorpseItemsCommand(Id, Id, 1),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.VendorPurchase] = (service, actor) => Run(
-                service,
-                actor,
-                new PurchaseFromVendorCommand(Id, 1, "vendor.fixture_store", "fixture.arrow", 1, 1),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.VendorSale] = (service, actor) => Run(
-                service,
-                actor,
-                new SellToVendorCommand(Id, 1, "vendor.fixture_store", Id, 1, 1, 0),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.GatherResource] = (service, actor) => Run(
-                service,
-                actor,
-                new GatherResourceCommand(Id, "resource.fixture", "node:0000", "pickaxe", "fixture.ore", 1),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None))
         };
 }

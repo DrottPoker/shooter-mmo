@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using Mmorpg.GameService.Items.Contracts;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Economy;
 
 // The vendor and gathering commands with their operation kinds, and the vendor capability that
 // the worker claims for a trade.
@@ -43,7 +43,9 @@ internal sealed record GatherResourceCommand(
     int YieldQuantity,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ResourceActorId = null);
 
-internal static partial class ItemOperationKinds
+// The persisted operation kinds of the vendor and gathering commands, which are also their
+// operation kinds on the worker item route.
+internal static class EconomyOperationKinds
 {
     public const string VendorPurchase = "vendor_purchase";
     public const string VendorSale = "vendor_sale";
@@ -62,13 +64,22 @@ internal static class VendorAccess
         return vendorProfileId is null ? access : access.WithCapability(CapabilityKind, vendorProfileId);
     }
 
+    // The simulation actor with the claim.
+    public static ItemTransactionActor Claim(ItemTransactionActor actor, string? vendorProfileId)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        var simulation = actor.Simulation
+            ?? throw new ArgumentException("Only a simulation actor claims a vendor.", nameof(actor));
+        return actor with { Simulation = simulation with { LiveAccess = Claim(simulation.LiveAccess, vendorProfileId) } };
+    }
+
     public static void Ensure(ItemActorAuthority authority, string vendorId)
     {
         ArgumentNullException.ThrowIfNull(authority);
         authority.EnsureCapability(
             CapabilityKind,
             vendorId,
-            ItemTransactionErrorCodes.VendorAccessRequired,
+            EconomyTransactionErrorCodes.VendorAccessRequired,
             "This operation requires a validated interaction with the vendor.");
     }
 }

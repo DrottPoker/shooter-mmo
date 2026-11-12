@@ -9,19 +9,30 @@ internal static class SimulationItemEndpoints
     public static IEndpointRouteBuilder MapSimulationItemEndpoints(
         this IEndpointRouteBuilder app)
     {
+        // Built now, so a handler that conflicts with another or with the route stops the start.
+        app.ServiceProvider.GetRequiredService<SimulationItemOperationHandlers>();
+
         app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/item-operations", async (
             Guid simulationSessionId,
             SimulationItemOperationRequest request,
             ClaimsPrincipal principal,
             SimulationItemMutationService mutationService,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await mutationService.ExecuteAsync(
-                principal.GetSimulationWorkerId(),
-                simulationSessionId,
-                request,
-                cancellationToken);
-            return result.ToHttpResult();
+            try
+            {
+                var result = await mutationService.ExecuteAsync(
+                    principal.GetSimulationWorkerId(),
+                    simulationSessionId,
+                    request,
+                    cancellationToken);
+                return result.ToHttpResult();
+            }
+            catch (SimulationItemOperationFieldsException refusal)
+            {
+                return SimulationItemOperationBinding.Refuse(httpContext, refusal);
+            }
         })
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());

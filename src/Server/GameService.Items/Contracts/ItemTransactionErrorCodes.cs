@@ -1,6 +1,7 @@
 namespace Mmorpg.GameService.Items.Contracts;
 
-// The error codes of item transactions. Their values are client and worker protocol.
+// The error codes of item transactions. Their values are client and worker protocol. The
+// modules above Items add the codes of their own commands.
 public static class ItemTransactionErrorCodes
 {
     public const string AuthorityRequired = "item_authority_required";
@@ -22,14 +23,8 @@ public static class ItemTransactionErrorCodes
     public const string QuestItemNotNeeded = "quest_item_not_needed";
     public const string CurrencyInsufficient = "currency_insufficient";
     public const string CurrencyLimitExceeded = "currency_limit_exceeded";
-    public const string VendorAccessRequired = "vendor_access_required";
     public const string VendorUnavailable = "vendor_unavailable";
-    public const string VendorOfferUnavailable = "vendor_offer_unavailable";
-    public const string VendorPriceChanged = "vendor_price_changed";
-    public const string VendorWillNotBuy = "vendor_will_not_buy";
     public const string InventoryFull = "inventory_full";
-    public const string GatheringToolRequired = "gathering_tool_required";
-    public const string GatheringYieldInvalid = "gathering_yield_invalid";
     public const string ItemDestroyForbidden = "item_destroy_forbidden";
     public const string BagNotEmpty = "bag_not_empty";
     public const string BagStateChanged = "bag_state_changed";

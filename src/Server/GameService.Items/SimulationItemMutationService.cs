@@ -1,19 +1,61 @@
+using System.Collections.Frozen;
+using Microsoft.Extensions.Options;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
+using HttpJsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Mmorpg.GameService.Items;
 
-// The worker item route. The vendor and gathering operations are in the
-// SimulationItemMutationService.Economy.cs part.
-internal sealed partial class SimulationItemMutationService(
+// The worker item route. It runs Items' own operation kinds and hands every other kind to the
+// ISimulationItemOperationHandler of that kind, which a module above Items registers.
+internal sealed class SimulationItemMutationService(
     ItemTransactionService transactionService,
     SimulationCharacterStates characterStates,
-    NpcItemLifecycleOptions npcOptions)
+    NpcItemLifecycleOptions npcOptions,
+    SimulationItemOperationHandlers handlers,
+    IOptions<HttpJsonOptions> jsonOptions)
 {
     public const int MaximumRecoveryClaimItems = 24;
+
+    private const string NotSupportedMessage = "The requested in-world item operation is not supported.";
+
+    // The kinds that the route runs itself. Each returns null for a request that its kind cannot
+    // run.
+    private static readonly FrozenDictionary<string, OwnOperation> OwnOperations =
+        new Dictionary<string, OwnOperation>(StringComparer.Ordinal)
+        {
+            [ItemOperationKinds.Relocate] = static (route, actor, request, token) =>
+                route.ExecuteRelocateAsync(actor, request, token),
+            [ItemOperationKinds.Equip] = static (route, actor, request, token) =>
+                route.ExecuteEquipAsync(actor, request, token),
+            [ItemOperationKinds.Unequip] = static (route, actor, request, token) =>
+                route.ExecuteUnequipAsync(actor, request, token),
+            [ItemOperationKinds.SplitStack] = static (route, actor, request, token) =>
+                route.ExecuteSplitAsync(actor, request, token),
+            [ItemOperationKinds.MergeStacks] = static (route, actor, request, token) =>
+                route.ExecuteMergeAsync(actor, request, token),
+            [ItemOperationKinds.SwapContainerItems] = static (route, actor, request, token) =>
+                route.ExecuteSwapAsync(actor, request, token),
+            [ItemOperationKinds.Destroy] = static (route, actor, request, token) =>
+                route.ExecuteDestroyAsync(actor, request, token),
+            [ItemOperationKinds.ClaimRecoveryDelivery] = static (route, actor, request, token) =>
+                route.ExecuteRecoveryClaimAsync(actor, request, token),
+            [ItemOperationKinds.ApplyItemPolicy] = static (route, actor, request, token) =>
+                route.ExecuteInsuranceApplyAsync(actor, request, token),
+            [ItemOperationKinds.RemoveInsurancePolicy] = static (route, actor, request, token) =>
+                route.ExecuteInsuranceRemovalAsync(actor, request, token)
+        }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    private delegate Task<ItemTransactionResult>? OwnOperation(
+        SimulationItemMutationService route,
+        ItemTransactionActor actor,
+        SimulationItemOperationRequest request,
+        CancellationToken cancellationToken);
+
+    public static IReadOnlyCollection<string> OwnKinds => OwnOperations.Keys;
 
     public async Task<ServiceResult<SimulationItemOperationResponse>> ConsumeAmmunitionAsync(
         string authenticatedWorkerId,
@@ -98,66 +140,52 @@ internal sealed partial class SimulationItemMutationService(
             request.WorkerRuntimeId!.Trim(),
             request.ShardId!.Trim(),
             TokenGenerator.HashToken(request.SessionToken!.Trim()),
-            ClaimEconomyCapabilities(
-                new ItemTransactionLiveAccess(
-                    request.Access!.Bank,
-                    request.Access.RecoveryStorage,
-                    request.Access.InsuranceNpc),
-                request.Access));
+            new ItemTransactionLiveAccess(
+                request.Access!.Bank,
+                request.Access.RecoveryStorage,
+                request.Access.InsuranceNpc));
 
         var operationKind = request.OperationKind!.Trim();
-        var operation = operationKind switch
+        if (!OwnOperations.TryGetValue(operationKind, out var own))
         {
-            ItemOperationKinds.Relocate => ExecuteRelocateAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.Equip => ExecuteEquipAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.Unequip => ExecuteUnequipAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.SplitStack => ExecuteSplitAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.MergeStacks => ExecuteMergeAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.SwapContainerItems => ExecuteSwapAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.Destroy => ExecuteDestroyAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.ClaimRecoveryDelivery => ExecuteRecoveryClaimAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.ApplyItemPolicy => ExecuteInsuranceApplyAsync(
-                actor,
-                request,
-                cancellationToken),
-            ItemOperationKinds.RemoveInsurancePolicy => ExecuteInsuranceRemovalAsync(
-                actor,
-                request,
-                cancellationToken),
-            _ => ExecuteEconomyOperation(
-                operationKind,
-                actor,
-                request,
-                cancellationToken)
-        };
+            var handler = handlers.Find(operationKind);
+            return handler is null
+                ? Unsupported()
+                : await handler.ExecuteAsync(
+                    new SimulationItemOperation(
+                        this,
+                        simulationSessionId,
+                        authenticatedWorkerId,
+                        operationKind,
+                        request,
+                        actor,
+                        jsonOptions.Value.SerializerOptions),
+                    cancellationToken);
+        }
 
+        var operation = own(this, actor, request, cancellationToken);
         return operation is null
-            ? Invalid("The requested in-world item operation is not supported.")
+            ? Unsupported()
             : await MapResultAsync(await operation, request.CharacterId, cancellationToken);
+    }
+
+    // Runs a handler's command and answers it as the route answers its own kinds.
+    internal async Task<ServiceResult<SimulationItemOperationResponse>> RunAsync<TCommand>(
+        ItemTransactionRequest<TCommand> request,
+        Guid characterId,
+        Func<ItemTransactionResult, ServiceResult<SimulationItemOperationResponse>> mapRejection,
+        CancellationToken cancellationToken)
+        where TCommand : notnull
+    {
+        var result = await transactionService.ExecuteAsync(request, cancellationToken);
+        return result.Succeeded
+            ? await CommittedAsync(result, characterId, cancellationToken)
+            : mapRejection(result);
+    }
+
+    internal static ServiceResult<SimulationItemOperationResponse> Unsupported()
+    {
+        return Invalid(NotSupportedMessage);
     }
 
     private Task<ItemTransactionResult>? ExecuteRelocateAsync(
@@ -411,7 +439,7 @@ internal sealed partial class SimulationItemMutationService(
         return null;
     }
 
-    private static bool HasItem(SimulationItemOperationRequest request)
+    internal static bool HasItem(SimulationItemOperationRequest request)
     {
         return request.ItemInstanceId is not null
             && request.ItemInstanceId != Guid.Empty
@@ -428,7 +456,7 @@ internal sealed partial class SimulationItemMutationService(
 
     // The worker validated the interaction and the capability kind, which its access flags
     // carry. The capability id is content, so only its presence is checked here.
-    private static bool HasNpcContext(SimulationItemOperationRequest request)
+    internal static bool HasNpcContext(SimulationItemOperationRequest request)
     {
         return request.InteractionSessionId is not null
             && request.InteractionSessionId != Guid.Empty
@@ -440,7 +468,6 @@ internal sealed partial class SimulationItemMutationService(
         return "npc:" + request.InteractionSessionId!.Value.ToString("N")
             + ":" + request.OperationId.ToString("N");
     }
-
 
     private static ServiceResult<SimulationItemOperationResponse> Invalid(string message)
     {
@@ -455,11 +482,19 @@ internal sealed partial class SimulationItemMutationService(
         CancellationToken cancellationToken)
     {
         return result.Succeeded
-            ? ServiceResult<SimulationItemOperationResponse>.Ok(
-                SimulationItemOperationResponse.From(
-                    result,
-                    await characterStates.ReadAsync(characterId, cancellationToken)))
+            ? await CommittedAsync(result, characterId, cancellationToken)
             : MapRejection(result);
+    }
+
+    private async Task<ServiceResult<SimulationItemOperationResponse>> CommittedAsync(
+        ItemTransactionResult result,
+        Guid characterId,
+        CancellationToken cancellationToken)
+    {
+        return ServiceResult<SimulationItemOperationResponse>.Ok(
+            SimulationItemOperationResponse.From(
+                result,
+                await characterStates.ReadAsync(characterId, cancellationToken)));
     }
 
     private static ServiceResult<SimulationItemOperationResponse> MapRejection(

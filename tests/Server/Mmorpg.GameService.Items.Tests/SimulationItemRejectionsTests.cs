@@ -5,8 +5,9 @@ using Mmorpg.GameService.Platform.Http;
 namespace Mmorpg.GameService.Items.Tests;
 
 // Pins the HTTP status and body of every rejected worker item operation by its error code. The
-// codes are client and worker protocol, so the table names them by value. The quest codes and
-// the quest route's mapping are pinned in Mmorpg.GameService.Quests.Tests.
+// codes are client and worker protocol, so the table names them by value. The quest and economy
+// codes and their mappings are pinned in Mmorpg.GameService.Quests.Tests and
+// Mmorpg.GameService.Economy.Tests.
 public sealed class SimulationItemRejectionsTests
 {
     private const string Message = "The pinned rejection message.";
@@ -18,7 +19,6 @@ public sealed class SimulationItemRejectionsTests
         ["wrong_simulation_worker"] = 403,
         ["bank_access_required"] = 403,
         ["recovery_access_required"] = 403,
-        ["vendor_access_required"] = 403,
         ["item_not_found"] = 404,
         ["item_not_owned"] = 404,
         ["recovery_delivery_not_found"] = 404,
@@ -31,7 +31,6 @@ public sealed class SimulationItemRejectionsTests
         ["item_quantity_changed"] = 409,
         ["bag_state_changed"] = 409,
         ["worker_runtime_changed"] = 409,
-        ["vendor_price_changed"] = 409,
         ["inventory_full"] = 409,
         ["quest_item_not_needed"] = 409,
         ["item_operation_id_invalid"] = 422,
@@ -45,10 +44,6 @@ public sealed class SimulationItemRejectionsTests
         ["currency_insufficient"] = 422,
         ["currency_limit_exceeded"] = 422,
         ["vendor_unavailable"] = 422,
-        ["vendor_offer_unavailable"] = 422,
-        ["vendor_will_not_buy"] = 422,
-        ["gathering_tool_required"] = 422,
-        ["gathering_yield_invalid"] = 422,
         ["item_destroy_forbidden"] = 422,
         ["bag_not_empty"] = 422,
         ["carry_weight_limit_exceeded"] = 422,

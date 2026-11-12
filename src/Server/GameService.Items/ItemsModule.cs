@@ -43,6 +43,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         AddItemTransactions(services);
         services.AddScoped<AccountItemMutationService>();
         services.AddSingleton<SimulationCharacterStates>();
+        services.AddSingleton<SimulationItemOperationHandlers>();
         services.AddScoped<SimulationItemMutationService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
@@ -61,9 +62,8 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 
     // The item transaction kernel and its parts are stateless and shared, so they are
     // singletons; each IItemCommandSource registers the commands of one area, also the
-    // sources of the modules above Items. Those modules also implement IQuestDropDemand,
-    // IItemCatalogReferences, and IQuestGatherCredit, which Items' corpse rules, seeder, and
-    // gathering command call.
+    // sources of the modules above Items. Quests also implements IQuestDropDemand and
+    // IItemCatalogReferences, which Items' corpse rules and seeder call.
     private static void AddItemTransactions(IServiceCollection services)
     {
         services.AddSingleton<ItemSimulationAuthority>();
@@ -74,7 +74,6 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<IItemCommandSource, CoreItemCommandSource>();
         services.AddSingleton<IItemCommandSource, RecoveryAndPolicyCommandSource>();
         services.AddSingleton<IItemCommandSource, CorpseCommandSource>();
-        services.AddSingleton<IItemCommandSource, EconomyCommandSource>();
         services.AddSingleton<ItemCommandCatalog>();
         services.AddScoped<ItemTransactionService>();
         services.AddScoped<IItemTransactions>(provider => provider.GetRequiredService<ItemTransactionService>());

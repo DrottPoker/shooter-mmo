@@ -6,32 +6,17 @@ using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Guards the areas inside GameService.Items that let the economy code (vendors and gathering)
-// live in a module above Items, as docs/GAME_SERVICE_MODULES.md describes under Items
-// Transaction Kernel:
-// R-a: no kernel, core, or corpse code names an economy type, and the kernel names no quest,
-//      vendor, or gathering feature;
-// R-b: the economy area runs no SQL of its own and reaches item tables through the item
-//      primitives;
-// R-c: the economy area uses nothing of the corpse area.
-// The quest code lives in GameService.Quests, above Items, where the module boundaries keep it
-// apart. The area lists below stand in for module boundaries until the economy code moves into
-// a module of its own (hardening plan step 3.1d), which replaces them.
+// Guards the corpse area inside GameService.Items, as docs/GAME_SERVICE_MODULES.md describes
+// under Areas: the corpse area learns what a quest asks for only through IQuestDropDemand, which
+// no other Items code uses, and the kernel names no quest, vendor, or gathering feature. The quest
+// and economy code live in the modules above Items, whose boundaries keep them apart.
 public sealed partial class ItemAreaBoundaryTests
 {
     private const string ItemsPath = "GameService.Items/";
 
-    // Composition registers the commands, routes, and services of every area.
-    private const string CompositionFile = ItemsPath + "ItemsModule.cs";
-
-    private static readonly string[] EconomyAreaFiles =
-    [
-        "SimulationItemMutationService.Economy.cs",
-        "Transactions/EconomyTransactionContracts.cs",
-        "Transactions/Handlers/EconomyCommandSource.cs",
-        "Transactions/Handlers/GatherResourceCommandHandler.cs",
-        "Transactions/Handlers/VendorCommandHandler.cs"
-    ];
+    // The SPI through which the corpse area asks the quest code, and its declaration.
+    private const string QuestDropDemand = "IQuestDropDemand";
+    private const string QuestDropDemandFile = ItemsPath + "Contracts/IQuestDropDemand.cs";
 
     // Corpses, death, and Mob loot stay in Items: a corpse is an item container.
     private static readonly string[] CorpseAreaFiles =
@@ -75,9 +60,9 @@ public sealed partial class ItemAreaBoundaryTests
         .ToArray();
 
     [Fact]
-    public void TheAreaListsNameExistingFilesOnce()
+    public void TheAreaListNamesExistingFilesOnce()
     {
-        var listed = EconomyAreaFiles.Concat(CorpseAreaFiles).ToArray();
+        var listed = CorpseAreaFiles;
         var existing = ItemsFiles.Select(file => file.RelativePath).ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(listed.Length, listed.Distinct(StringComparer.Ordinal).Count());
@@ -89,31 +74,33 @@ public sealed partial class ItemAreaBoundaryTests
             CorpseAreaFiles.Where(path => path.StartsWith("Transactions/Handlers/PlayerDeath/", StringComparison.Ordinal)));
     }
 
-    // R-a for the economy area. The vendor profiles are part of the mirrored item catalog, so
-    // ItemStateReader.LoadVendorAsync and the catalog mirror in ItemCatalogSeeder stay Items code
-    // and are not economy types.
+    // The corpse area asks the quest code only through IQuestDropDemand, and no other Items code
+    // asks it what a quest needs. The other SPI that the quest code implements, the item catalog
+    // check of the seeder, stays out of the corpse area.
     [Fact]
-    public void OnlyTheEconomyAreaNamesEconomyTypes()
+    public void OnlyTheCorpseAreaAsksQuestsAndOnlyThroughIQuestDropDemand()
     {
-        var economyNames = AreaNames(EconomyAreaFiles);
-        var violations = ItemsFiles
-            .Where(file => !InArea(file, EconomyAreaFiles) && file.RelativePath != CompositionFile)
-            .SelectMany(file => NamesUsedIn(CodeOf(file.Text), economyNames)
-                .Select(name => $"{file.RelativePath} -> {name}"))
+        var askers = ItemsFiles
+            .Where(file => file.RelativePath != QuestDropDemandFile
+                && Regex.IsMatch(CodeOf(file.Text), $@"\b{QuestDropDemand}\b"))
+            .Select(file => file.RelativePath)
+            .ToArray();
+        var otherSpis = ItemsFiles
+            .Where(file => InArea(file, CorpseAreaFiles)
+                && Regex.IsMatch(CodeOf(file.Text), @"\bIItemCatalogReferences\b"))
+            .Select(file => file.RelativePath)
             .ToArray();
 
-        Assert.Contains("PurchaseFromVendorCommand", economyNames.Types);
-        Assert.Contains("GatherResourceCommand", economyNames.Types);
-        Assert.Contains("VendorPurchase", economyNames.KindConstants);
-        Assert.DoesNotContain("SimulationItemMutationService", economyNames.Types);
+        Assert.Contains(ItemsPath + "Transactions/Domain/CorpseQuestDrops.cs", askers);
         Assert.True(
-            violations.Length == 0,
-            "Only the economy area, and the composition that registers it, may name vendor and gathering types or operation kinds:"
-            + Environment.NewLine + string.Join(Environment.NewLine, violations));
+            askers.All(path => InArea(path, CorpseAreaFiles)),
+            "Only the corpse area asks the quest code what a quest needs:"
+            + Environment.NewLine + string.Join(Environment.NewLine, askers.Where(path => !InArea(path, CorpseAreaFiles))));
+        Assert.Empty(otherSpis);
     }
 
-    // R-a for the kernel: its code names no quest, vendor, or gathering feature, except the
-    // vendor profile load of the mirrored item catalog.
+    // The kernel's code names no quest, vendor, or gathering feature, except the vendor profile
+    // load of the mirrored item catalog.
     [Fact]
     public void TheKernelNamesNoQuestOrEconomyFeature()
     {
@@ -141,41 +128,6 @@ public sealed partial class ItemAreaBoundaryTests
         Assert.True(
             violations.Count == 0,
             "The item transaction kernel names no quest, vendor, or gathering feature:"
-            + Environment.NewLine + string.Join(Environment.NewLine, violations));
-    }
-
-    // R-b.
-    [Fact]
-    public void TheEconomyAreaRunsNoSqlOfItsOwn()
-    {
-        var violations = ItemsFiles
-            .Where(file => InArea(file, EconomyAreaFiles))
-            .SelectMany(file => SqlAccessPattern().Matches(CodeOf(file.Text))
-                .Select(match => $"{file.RelativePath} -> {match.Value}"))
-            .ToArray();
-
-        Assert.True(
-            violations.Length == 0,
-            "The economy area reaches item tables only through the item primitives and uses neither Dapper nor the transaction's connection:"
-            + Environment.NewLine + string.Join(Environment.NewLine, violations));
-    }
-
-    // R-c.
-    [Fact]
-    public void TheEconomyAreaUsesNothingOfTheCorpseArea()
-    {
-        var corpseNames = AreaNames(CorpseAreaFiles);
-        var violations = ItemsFiles
-            .Where(file => InArea(file, EconomyAreaFiles))
-            .SelectMany(file => NamesUsedIn(CodeOf(file.Text), corpseNames)
-                .Select(name => $"{file.RelativePath} -> {name}"))
-            .ToArray();
-
-        Assert.Contains("CorpseQuestDrops", corpseNames.Types);
-        Assert.Contains("ItemTransactionQuestDrop", corpseNames.Types);
-        Assert.True(
-            violations.Length == 0,
-            "The economy area uses no corpse type:"
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
@@ -208,36 +160,12 @@ public sealed partial class ItemAreaBoundaryTests
 
     private static bool InArea(SourceFile file, IEnumerable<string> area)
     {
-        return area.Any(path => string.Equals(file.RelativePath, ItemsPath + path, StringComparison.Ordinal));
+        return InArea(file.RelativePath, area);
     }
 
-    // The types that only the area declares, and the operation kinds that its part of
-    // ItemOperationKinds declares. A partial type that other files declare too is shared.
-    private static AreaNameSet AreaNames(IEnumerable<string> area)
+    private static bool InArea(string relativePath, IEnumerable<string> area)
     {
-        var areaFiles = ItemsFiles.Where(file => InArea(file, area)).ToArray();
-        var otherTypes = ItemsFiles.Where(file => !InArea(file, area))
-            .SelectMany(file => DeclarationPattern().Matches(CodeOf(file.Text)).Select(match => match.Groups["name"].Value))
-            .ToHashSet(StringComparer.Ordinal);
-        var types = areaFiles
-            .SelectMany(file => DeclarationPattern().Matches(CodeOf(file.Text)).Select(match => match.Groups["name"].Value))
-            .Where(name => !otherTypes.Contains(name))
-            .ToHashSet(StringComparer.Ordinal);
-        var kinds = areaFiles
-            .SelectMany(file => OperationKindsPartPattern().Matches(CodeOf(file.Text)))
-            .SelectMany(match => ConstantPattern().Matches(match.Groups["body"].Value).Select(constant => constant.Groups["name"].Value))
-            .ToHashSet(StringComparer.Ordinal);
-        return new AreaNameSet(types, kinds);
-    }
-
-    private static IEnumerable<string> NamesUsedIn(string code, AreaNameSet names)
-    {
-        return names.Types
-            .Where(name => Regex.IsMatch(code, $@"\b{name}\b"))
-            .Concat(names.KindConstants
-                .Where(name => Regex.IsMatch(code, $@"\bItemOperationKinds\.{name}\b"))
-                .Select(name => "ItemOperationKinds." + name))
-            .Order(StringComparer.Ordinal);
+        return area.Any(path => string.Equals(relativePath, ItemsPath + path, StringComparison.Ordinal));
     }
 
     // The source without line comments, which may name other areas.
@@ -251,27 +179,13 @@ public sealed partial class ItemAreaBoundaryTests
         return StringLiteralPattern().Replace(code, "\"\"");
     }
 
-    private sealed record AreaNameSet(IReadOnlySet<string> Types, IReadOnlySet<string> KindConstants);
-
     [GeneratedRegex(@"(?m)^\s*//.*$")]
     private static partial Regex LineCommentPattern();
 
     [GeneratedRegex(@"\$*""""""[\s\S]*?""""""|\$*@?""(?:\\.|[^""\\\n])*""")]
     private static partial Regex StringLiteralPattern();
 
-    [GeneratedRegex(@"\b(?:class|record|interface|struct|enum)\s+(?<name>[A-Z]\w*)")]
-    private static partial Regex DeclarationPattern();
-
-    [GeneratedRegex(@"partial class ItemOperationKinds\s*\{(?<body>[^}]*)\}")]
-    private static partial Regex OperationKindsPartPattern();
-
-    [GeneratedRegex(@"const string (?<name>\w+)\s*=")]
-    private static partial Regex ConstantPattern();
-
     // A word part Quest, Vendor, or Gather, or an identifier that starts with one in lower case.
     [GeneratedRegex(@"\b\w*(?:Quest|Vendor|Gather)\w*|\b(?:quest|vendor|gather)\w*")]
     private static partial Regex FeatureIdentifierPattern();
-
-    [GeneratedRegex(@"\busing Dapper;|\bDapper\.|\bSqlMapper\b|\bCommandDefinition\b|\bNpgsqlCommand\b|\.Connection\b")]
-    private static partial Regex SqlAccessPattern();
 }

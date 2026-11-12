@@ -50,6 +50,10 @@ public sealed class ModulePublicSurfaceTests
                 "Mmorpg.GameService.Quests.QuestsModule",
                 "Mmorpg.GameService.Quests.QuestsModuleOptions"
             ],
+            ["Mmorpg.GameService.Economy"] =
+            [
+                "Mmorpg.GameService.Economy.EconomyModule"
+            ],
             ["Mmorpg.GameService.Content"] =
             [
                 "Mmorpg.GameService.Content.ContentModule",
@@ -57,7 +61,7 @@ public sealed class ModulePublicSurfaceTests
             ]
         };
 
-    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Items", "Quests", "Content"];
+    public static TheoryData<string> Modules => ["Accounts", "Characters", "Placement", "Items", "Quests", "Economy", "Content"];
 
     [Theory]
     [MemberData(nameof(Modules))]

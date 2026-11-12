@@ -34,6 +34,7 @@ public sealed class QuestsModule(QuestsModuleOptions options) : IGameServiceModu
         services.AddSingleton<IQuestDefinitions>(questDefinitions);
         services.AddSingleton<IDatabaseSeeder, QuestCatalogSeeder>();
         services.AddSingleton<ICharacterQuestLog, CharacterQuestLog>();
+        services.AddSingleton<IQuestGatherCredit, QuestGatherCredit>();
         services.AddSingleton<IQuestCatalogRevisionProvider, QuestCatalogRevisionProvider>();
         services.AddScoped<QuestLogQueryService>();
         services.AddScoped<SimulationQuestLogService>();
@@ -41,13 +42,12 @@ public sealed class QuestsModule(QuestsModuleOptions options) : IGameServiceModu
     }
 
     // The quest commands register with Items' item command catalog, and the quest code
-    // implements Items' quest drop demand, item catalog check, and gathering credit.
+    // implements Items' quest drop demand and item catalog check.
     private static void AddQuestCommands(IServiceCollection services)
     {
         services.AddSingleton<IItemCommandSource, QuestCommandSource>();
         services.AddSingleton<IQuestDropDemand, QuestDropDemand>();
         services.AddSingleton<IItemCatalogReferences, QuestItemCatalogReferences>();
-        services.AddSingleton<IQuestGatherCredit, QuestGatherCredit>();
         services.AddScoped<SimulationQuestMutationService>();
         services.AddScoped<SimulationQuestDropService>();
     }

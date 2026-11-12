@@ -8,6 +8,7 @@
     <ProjectReference Include="..\GameService.Placement\Mmorpg.GameService.Placement.csproj" />
     <ProjectReference Include="..\GameService.Quests\Mmorpg.GameService.Quests.csproj" />
     <ProjectReference Include="..\GameService.Items\Mmorpg.GameService.Items.csproj" />
+    <ProjectReference Include="..\GameService.Economy\Mmorpg.GameService.Economy.csproj" />
     <ProjectReference Include="..\GameService.Content\Mmorpg.GameService.Content.csproj" />
     <ProjectReference Include="..\Telemetry\Mmorpg.Server.Telemetry.csproj" />
   </ItemGroup>

@@ -19,21 +19,6 @@ internal sealed class LockedContainer
     public string Lifecycle { get; set; } = string.Empty;
 }
 
-internal sealed class LockedItemPolicy
-{
-    public Guid PolicyId { get; set; }
-
-    public string PolicyKind { get; set; } = string.Empty;
-
-    public string Status { get; set; } = string.Empty;
-
-    public string SourceKind { get; set; } = string.Empty;
-
-    public string SourceId { get; set; } = string.Empty;
-
-    public long Revision { get; set; }
-}
-
 // An empty carried slot that accepts a new item, for kernel placement.
 internal sealed record CarriedSlot(
     Guid ContainerId,

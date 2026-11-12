@@ -60,7 +60,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
 
         Assert.Equal(24, HandlerTypes.Count);
         Assert.Equal(
-            new[] { "Mmorpg.GameService.Items", "Mmorpg.GameService.Quests" },
+            new[] { "Mmorpg.GameService.Economy", "Mmorpg.GameService.Items", "Mmorpg.GameService.Quests" },
             HandlerTypes.Select(type => type.Assembly.GetName().Name!).Distinct().Order(StringComparer.Ordinal));
         Assert.True(
             mutableFields.Length == 0,
@@ -194,7 +194,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     [
         // Composition only: the command sources pass the contracts to the handlers they build.
         "GameService.Items/Transactions/Handlers/RecoveryAndPolicyCommandSource.cs",
-        "GameService.Items/Transactions/Handlers/EconomyCommandSource.cs",
         // S32: the operation claim references the actor account and character.
         "GameService.Items/Transactions/Kernel/ItemOperationLedger.cs",
         // S22 to S25 and S29: live session and worker lease authority.
@@ -203,8 +202,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         "GameService.Items/Transactions/Context/CharacterItemStateLocks.cs",
         // S30: insurance charges the character wallet.
         "GameService.Items/Transactions/Handlers/ItemPolicyCommandHandler.cs",
-        // S45 and S46: vendor purchases debit and sales credit the character wallet.
-        "GameService.Items/Transactions/Handlers/VendorCommandHandler.cs",
         // S33: the dead character's name and Shard.
         "GameService.Items/Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs",
         // S41: equipment reads the character level for its level requirement.
