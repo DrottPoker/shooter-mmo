@@ -1,24 +1,19 @@
 using Dapper;
-using Mmorpg.GameService.Platform.Database;
-using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.WorldData.Items;
-using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
-// Quest drops: protected quest items that a Mob drops for one character, with the grant lineage
-// of the quest that asks for them. A drop counts while the quest is active and its current step
-// holds the collect objective for the item with the Mob as a drop source, and only up to the
-// quantity that the character still needs, counting the items with the lineage that it owns
-// anywhere.
-internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQuestLog questLog)
+// The corpse loot rules of quest drops: protected quest items that a Mob drops for one character,
+// with the grant lineage of the quest that asks for them. A drop counts only up to the quantity
+// that the character still lacks: what the quest asks for, which IQuestDropDemand reads, less
+// the items with the lineage that the character owns anywhere.
+internal sealed class CorpseQuestDrops(IQuestDropDemand demand)
 {
-    private readonly IQuestDefinitions questDefinitions = questDefinitions;
-    private readonly ICharacterQuestLog questLog = questLog;
+    private readonly IQuestDropDemand demand = demand;
 
     // The part of a dropped quantity that the character still needs, or 0 when its quest does
     // not ask for the drop.
-    public Task<int> NeededAsync(
+    public async Task<int> NeededAsync(
         ItemTransactionContext context,
         Guid characterId,
         string questId,
@@ -27,60 +22,32 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
         int quantity,
         CancellationToken cancellationToken)
     {
-        return IsQuestDropItem(definition)
-            ? NeededAsync(
+        if (!IsQuestDropItem(definition))
+        {
+            return 0;
+        }
+
+        var definitionId = definition.RuntimeDefinition.Id;
+        return await LineageItems.LackingAsync(
+            context.Scope,
+            characterId,
+            Lineage(questId),
+            definitionId,
+            await demand.WantedAsync(
                 context.Scope,
                 characterId,
                 questId,
                 sourceActorDefinitionId,
-                definition.RuntimeDefinition.Id,
-                quantity,
-                cancellationToken)
-            : Task.FromResult(0);
-    }
-
-    // The same, read in the caller's transaction, for an item definition that the quest catalog
-    // already names as a quest drop.
-    public async Task<int> NeededAsync(
-        PostgresTransactionScope scope,
-        Guid characterId,
-        string questId,
-        string sourceActorDefinitionId,
-        string definitionId,
-        int quantity,
-        CancellationToken cancellationToken)
-    {
-        if (questDefinitions.Find(questId) is not { } quest)
-        {
-            return 0;
-        }
-
-        var log = await questLog.ReadAsync(scope, characterId, cancellationToken);
-        var active = log.ActiveQuests.FirstOrDefault(value =>
-            string.Equals(value.QuestId, quest.Id, StringComparison.Ordinal));
-        var objective = active is null
-            ? null
-            : QuestProgression.TryCurrentStep(quest, active)?.Objectives.FirstOrDefault(value =>
-                string.Equals(value.ItemId, definitionId, StringComparison.Ordinal)
-                && QuestRules.FindDropSource(value, sourceActorDefinitionId) is not null);
-        if (objective is null)
-        {
-            return 0;
-        }
-
-        var owned = await QuestLineageItems.CountOwnedAsync(
-            scope,
-            characterId,
-            quest.Id,
-            definitionId,
+                definitionId,
+                cancellationToken),
+            quantity,
             cancellationToken);
-        return Math.Clamp(objective.Count - owned, 0, quantity);
     }
 
     // The drops of one transaction share what their quests still need.
     public QuestDropPlan Plan()
     {
-        return new QuestDropPlan(this);
+        return new QuestDropPlan(demand);
     }
 
     // Plans a Loot all in which quest drops share what their quests still need. Only the drops
@@ -123,6 +90,12 @@ internal sealed class QuestDrops(IQuestDefinitions questDefinitions, ICharacterQ
 
             items.RemoveAll(item => excess.Contains(item.ItemInstanceId));
         }
+    }
+
+    // The lineage that a quest drop of the quest carries.
+    public static ItemLineage Lineage(string questId)
+    {
+        return new ItemLineage(ItemPolicySourceKinds.QuestGrant, questId);
     }
 
     // Only a protected quest item carries a quest's lineage. It is never equippable, because
@@ -188,13 +161,13 @@ internal sealed record PlannedQuestDrop(string QuestId, string SourceActorDefini
 
 // What the quest drops of one transaction still need: drops of one quest item share it, so two
 // letters in one corpse never take more than the quest asks for.
-internal sealed class QuestDropPlan(QuestDrops questDrops)
+internal sealed class QuestDropPlan(IQuestDropDemand demand)
 {
-    private readonly QuestDrops questDrops = questDrops;
-    private readonly Dictionary<(string QuestId, string DefinitionId), int> planned = [];
+    private readonly IQuestDropDemand demand = demand;
+    private readonly LineageNeedPlan plan = new();
 
     // The part of a drop that its quest still needs after the drops planned before it.
-    public async Task<int> TakeAsync(
+    public Task<int> TakeAsync(
         ItemTransactionContext context,
         Guid characterId,
         string questId,
@@ -203,46 +176,31 @@ internal sealed class QuestDropPlan(QuestDrops questDrops)
         int quantity,
         CancellationToken cancellationToken)
     {
-        return QuestDrops.IsQuestDropItem(definition)
-            ? await TakeAsync(
+        if (!CorpseQuestDrops.IsQuestDropItem(definition))
+        {
+            return Task.FromResult(0);
+        }
+
+        var definitionId = definition.RuntimeDefinition.Id;
+        return plan.TakeAsync(
+            context.Scope,
+            characterId,
+            CorpseQuestDrops.Lineage(questId),
+            definitionId,
+            quantity,
+            token => demand.WantedAsync(
                 context.Scope,
                 characterId,
                 questId,
                 sourceActorDefinitionId,
-                definition.RuntimeDefinition.Id,
-                quantity,
-                cancellationToken)
-            : 0;
-    }
-
-    public async Task<int> TakeAsync(
-        PostgresTransactionScope scope,
-        Guid characterId,
-        string questId,
-        string sourceActorDefinitionId,
-        string definitionId,
-        int quantity,
-        CancellationToken cancellationToken)
-    {
-        var key = (questId, definitionId);
-        var before = planned.GetValueOrDefault(key);
-        var needed = Math.Max(
-            0,
-            await questDrops.NeededAsync(
-                scope,
-                characterId,
-                questId,
-                sourceActorDefinitionId,
                 definitionId,
-                quantity + before,
-                cancellationToken) - before);
-        planned[key] = before + needed;
-        return needed;
+                token),
+            cancellationToken);
     }
 
     // Whether the quest still needs all of a drop after the drops planned before it; only then
     // does the plan count it.
-    public async Task<bool> TakeAllAsync(
+    public Task<bool> TakeAllAsync(
         ItemTransactionContext context,
         Guid characterId,
         string questId,
@@ -251,22 +209,22 @@ internal sealed class QuestDropPlan(QuestDrops questDrops)
         int quantity,
         CancellationToken cancellationToken)
     {
-        var key = (questId, definition.RuntimeDefinition.Id);
-        var before = planned.GetValueOrDefault(key);
-        var needed = await questDrops.NeededAsync(
-            context,
+        var definitionId = definition.RuntimeDefinition.Id;
+        return plan.TakeAllAsync(
+            context.Scope,
             characterId,
-            questId,
-            sourceActorDefinitionId,
-            definition,
-            quantity + before,
-            cancellationToken) - before;
-        if (needed < quantity)
-        {
-            return false;
-        }
-
-        planned[key] = before + quantity;
-        return true;
+            CorpseQuestDrops.Lineage(questId),
+            definitionId,
+            quantity,
+            token => CorpseQuestDrops.IsQuestDropItem(definition)
+                ? demand.WantedAsync(
+                    context.Scope,
+                    characterId,
+                    questId,
+                    sourceActorDefinitionId,
+                    definitionId,
+                    token)
+                : Task.FromResult(0),
+            cancellationToken);
     }
 }

@@ -1,24 +1,32 @@
+using System.Collections.Frozen;
+using System.Reflection;
 using System.Text.Json;
 
 namespace Mmorpg.GameService.Items.Transactions;
 
 // The in-memory change journal of one item transaction: audit changes, touched
-// characters and containers, result items, Recovery deliveries, and the death-only carry
-// overflow permission. The kernel's finalizer turns it into revisions, audit rows, and the
-// result.
+// characters and containers, result items, Recovery deliveries, the named result sections,
+// and the death-only carry overflow permission. The kernel's finalizer turns it into
+// revisions, audit rows, and the result.
 internal sealed class ItemChangeJournal(
     ItemTransactionSession session,
     ItemStateReader reader)
 {
+    // A section is a top-level key of the stored result, so it may not take the name of a
+    // result property. Stored results are read without regard to case.
+    private static readonly FrozenSet<string> ReservedSectionNames = typeof(ItemTransactionResult)
+        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .Select(property => ItemOperationJson.Options.PropertyNamingPolicy!.ConvertName(property.Name))
+        .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     private readonly HashSet<Guid> touchedCharacterIds = [];
     private readonly HashSet<Guid> touchedContainerIds = [];
     private readonly HashSet<Guid> resultItemIds = [];
     private readonly HashSet<Guid> changedItemIds = [];
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
-    private readonly List<ItemTransactionQuestDrop> questDrops = [];
+    private readonly Dictionary<string, PendingSection> sections = new(StringComparer.Ordinal);
     private bool allowInvoluntaryHardCapOverflow;
-    private ItemTransactionQuestLogChange? questLogChange;
 
     private string OperationKind => session.OperationKind;
 
@@ -37,10 +45,6 @@ internal sealed class ItemChangeJournal(
     internal IReadOnlyList<Guid> RecoveryDeliveryIds => recoveryDeliveryIds;
 
     internal bool AllowsInvoluntaryHardCapOverflow => allowInvoluntaryHardCapOverflow;
-
-    internal ItemTransactionQuestLogChange? QuestLogChange => questLogChange;
-
-    internal IReadOnlyList<ItemTransactionQuestDrop> QuestDrops => questDrops;
 
     public async Task<string?> CaptureItemStateJsonAsync(
         Guid itemInstanceId,
@@ -130,18 +134,36 @@ internal sealed class ItemChangeJournal(
         recoveryDeliveryIds.Add(recoveryDeliveryId);
     }
 
-    // The quests that the transaction changed, as the quest log holds them after it.
-    public void SetQuestLogChange(ItemTransactionQuestLogChange change)
+    // A named section of the result for a command above the kernel, which also reads it; a
+    // later value of the same name replaces an earlier one. The value is serialized with
+    // ItemOperationJson.Options when the result is built. The kernel never reads a section.
+    public void SetSection<TValue>(string name, TValue value)
+        where TValue : notnull
     {
-        ArgumentNullException.ThrowIfNull(change);
-        questLogChange = change;
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(value);
+        if (ReservedSectionNames.Contains(name))
+        {
+            throw new ArgumentException(
+                $"The result section name '{name}' is a property of the item transaction result.",
+                nameof(name));
+        }
+
+        sections[name] = new PendingSection(value, typeof(TValue));
     }
 
-    // A quest drop that a durable Mob corpse keeps for its owner, which the result reports so
-    // the worker can tell the owner.
-    public void AddQuestDrop(string questId, string definitionId, int quantity)
+    // The sections in the order they were first set, or null without any.
+    internal Dictionary<string, JsonElement>? BuildSections()
     {
-        questDrops.Add(new ItemTransactionQuestDrop(questId, definitionId, quantity));
+        return sections.Count == 0
+            ? null
+            : sections.ToDictionary(
+                pair => pair.Key,
+                pair => JsonSerializer.SerializeToElement(
+                    pair.Value.Value,
+                    pair.Value.ValueType,
+                    ItemOperationJson.Options),
+                StringComparer.Ordinal);
     }
 
     public void AllowInvoluntaryDeathHardCapOverflow()
@@ -175,6 +197,8 @@ internal sealed class ItemChangeJournal(
         string SourceKind,
         string SourceId,
         long Revision);
+
+    private sealed record PendingSection(object Value, Type ValueType);
 }
 
 internal sealed record ItemAuditChange(

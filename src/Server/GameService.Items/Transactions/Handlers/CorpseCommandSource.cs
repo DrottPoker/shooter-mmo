@@ -1,20 +1,17 @@
 using Mmorpg.GameService.Items.Transactions.Domain;
-using Mmorpg.GameService.Quests.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // The corpse and death commands: player death and corpse expiry, the player corpse loot,
 // deposit, move, Bag swap, and Loot all, and durable Mob corpses with the live Mob loot grants.
+// Their quest drop rules learn what a quest asks for through IQuestDropDemand only.
 internal sealed class CorpseCommandSource : IItemCommandSource
 {
     public CorpseCommandSource(
         ItemSimulationAuthority simulationAuthority,
-        IQuestDefinitions questDefinitions,
-        ICharacterQuestLog questLog)
+        IQuestDropDemand questDropDemand)
     {
-        // Quest drops belong to the quest commands. This source builds them until the quest
-        // commands move to GameService.Quests and these handlers to the Corpses module.
-        var questDrops = new QuestDrops(questDefinitions, questLog);
+        var questDrops = new CorpseQuestDrops(questDropDemand);
         var corpseLoot = new CorpseLootCommandHandler(questDrops);
         var corpseDeposit = new CorpseDepositCommandHandler();
         var corpseInternalMove = new CorpseInternalMoveCommandHandler();
@@ -26,7 +23,8 @@ internal sealed class CorpseCommandSource : IItemCommandSource
                 new PlayerDeathCommandHandler())
             {
                 RetriedSystemOperation = true,
-                OperationallySignificant = true
+                OperationallySignificant = true,
+                PolicyAction = true
             },
             new ItemCommandRegistration<ExpireCorpseCommand>(
                 ItemOperationKinds.ExpireCorpse,

@@ -62,8 +62,9 @@ public sealed class ItemOperationsHardeningTests
     }
 
     [Fact]
-    public void MetricsUseOnlyBoundedDimensionsAndTrackOperationalOutcomes()
+    public async Task MetricsUseOnlyBoundedDimensionsAndTrackOperationalOutcomes()
     {
+        await using var composition = new OfflineItemComposition();
         using var metrics = new ItemOperationsMetrics();
         using var listener = new MeterListener();
         var observedTagKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -91,17 +92,17 @@ public sealed class ItemOperationsHardeningTests
         listener.Start();
 
         metrics.RecordTransaction(
-            ItemOperationKinds.Grant,
+            composition.Registration(ItemOperationKinds.Grant),
             Success(ItemOperationKinds.Grant),
             TimeSpan.FromMilliseconds(4));
         metrics.RecordTransaction(
-            ItemOperationKinds.Relocate,
+            composition.Registration(ItemOperationKinds.Relocate),
             Rejected(
                 ItemOperationKinds.Relocate,
                 ItemTransactionErrorCodes.ItemStateConflict),
             TimeSpan.FromMilliseconds(6));
         metrics.RecordTransaction(
-            ItemOperationKinds.ClaimRecoveryDelivery,
+            composition.Registration(ItemOperationKinds.ClaimRecoveryDelivery),
             Rejected(
                 ItemOperationKinds.ClaimRecoveryDelivery,
                 ItemTransactionErrorCodes.ItemTransactionTimeout),

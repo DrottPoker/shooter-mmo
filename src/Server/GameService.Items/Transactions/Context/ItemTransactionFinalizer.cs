@@ -8,7 +8,8 @@ namespace Mmorpg.GameService.Items.Transactions;
 
 // Kernel-owned finalization of a successful handler: container revisions, carry
 // weight and the hard cap, character revisions, result item revisions, and audit rows,
-// in this order. It fails a transaction whose handler recorded no audit change.
+// in this order, and the result with the journal's sections. It fails a transaction whose
+// handler recorded no audit change.
 internal sealed class ItemTransactionFinalizer(
     ItemTransactionSession session,
     ItemChangeJournal journal)
@@ -187,9 +188,10 @@ internal sealed class ItemTransactionFinalizer(
             containerResults,
             resultItems,
             journal.RecoveryDeliveryIds.Order().ToArray(),
-            itemChanges,
-            journal.QuestLogChange,
-            journal.QuestDrops.Count > 0 ? journal.QuestDrops.ToArray() : null);
+            itemChanges)
+        {
+            Sections = journal.BuildSections()
+        };
     }
 
     // The final state of every changed item, so the simulation client can patch its

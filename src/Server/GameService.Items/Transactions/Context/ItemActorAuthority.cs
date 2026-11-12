@@ -5,8 +5,8 @@ using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
 namespace Mmorpg.GameService.Items.Transactions;
 
-// What the actor of one item transaction may do: system, account, NPC service, and
-// live container access.
+// What the actor of one item transaction may do: system, account, NPC service, live
+// container access, and the capability claims of a live operation.
 internal sealed class ItemActorAuthority(ItemTransactionActor actor)
 {
     private ItemTransactionActor Actor { get; } = actor;
@@ -51,34 +51,25 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    // A quest action at an NPC needs a live interaction with that NPC's quest capability.
-    public void EnsureQuestNpcAccess(string npcActorId)
+    // The id that the worker validated for a capability kind of this live operation, or null
+    // without a live session or a claim of that kind.
+    public string? CapabilityClaim(string kind)
     {
-        if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
-            || !string.Equals(
-                Actor.Simulation!.LiveAccess.QuestNpcActorId,
-                npcActorId,
-                StringComparison.Ordinal))
-        {
-            Reject(
-                ItemTransactionErrorCodes.QuestNpcAccessRequired,
-                "This quest action requires a validated interaction with the quest's NPC.");
-        }
+        ArgumentNullException.ThrowIfNull(kind);
+        return Actor.Authority == ItemTransactionAuthority.SimulationWorker
+            && Actor.Simulation!.LiveAccess.Capabilities.TryGetValue(kind, out var id)
+            ? id
+            : null;
     }
 
-    // Purchases and sales need a live interaction with an NPC whose vendor capability names
-    // exactly this vendor profile.
-    public void EnsureVendorAccess(string vendorId)
+    // Requires a live operation whose claim of the capability kind is exactly the id. The
+    // command that owns the capability supplies its error code and message.
+    public void EnsureCapability(string kind, string id, string errorCode, string message)
     {
         if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
-            || !string.Equals(
-                Actor.Simulation!.LiveAccess.VendorProfileId,
-                vendorId,
-                StringComparison.Ordinal))
+            || !string.Equals(CapabilityClaim(kind), id, StringComparison.Ordinal))
         {
-            Reject(
-                ItemTransactionErrorCodes.VendorAccessRequired,
-                "This operation requires a validated interaction with the vendor.");
+            Reject(errorCode, message);
         }
     }
 

@@ -101,6 +101,36 @@ internal sealed class ItemStateReader(
             cancellationToken: cancellationToken));
     }
 
+    // Whether the character has an item of an active tool kind equipped in the tool slot.
+    public Task<bool> HasEquippedToolKindAsync(
+        Guid characterId,
+        string toolKind,
+        CancellationToken cancellationToken)
+    {
+        return Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            """
+            select exists (
+                select 1
+                from item_instances tool
+                join item_definition_tool_kinds tool_kind
+                  on tool_kind.definition_id = tool.definition_id
+                join item_tool_kinds kind
+                  on kind.id = tool_kind.tool_kind_id
+                 and kind.is_active
+                where tool.equipped_character_id = @CharacterId
+                  and tool.equipment_slot_id = @ToolSlotId
+                  and tool_kind.tool_kind_id = @ToolKind);
+            """,
+            new
+            {
+                CharacterId = characterId,
+                ToolSlotId = ItemEquipmentSlotIds.Tool,
+                ToolKind = toolKind
+            },
+            Transaction,
+            cancellationToken: cancellationToken));
+    }
+
     public async Task<LockedContainer> LoadOwnedContainerAsync(
         Guid containerId,
         Guid characterId,
@@ -256,6 +286,8 @@ internal sealed class ItemStateReader(
     }
 
     // Loads an active vendor profile of the current catalog with its offers in display order.
+    // The vendor profiles are part of the mirrored item catalog, so this is the one vendor load
+    // that the kernel context keeps.
     public async Task<VendorProfileDefinition> LoadVendorAsync(
         string vendorId,
         CancellationToken cancellationToken)

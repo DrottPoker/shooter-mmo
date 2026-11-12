@@ -9,10 +9,10 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // never swaps, because the worker holds the corpse in memory and cannot take an item back. A
 // quest drop goes into a container slot with its quest's lineage, at most the quantity that the
 // quest still needs.
-internal sealed class MobLootGrantCommandHandler(QuestDrops questDrops)
+internal sealed class MobLootGrantCommandHandler(CorpseQuestDrops questDrops)
     : IItemCommandHandler<GrantMobLootCommand>
 {
-    private readonly QuestDrops questDrops = questDrops;
+    private readonly CorpseQuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -151,7 +151,7 @@ internal sealed class MobLootGrantCommandHandler(QuestDrops questDrops)
         CancellationToken cancellationToken)
     {
         if (toEquipment
-            || !QuestDrops.IsQuestDropItem(definition)
+            || !CorpseQuestDrops.IsQuestDropItem(definition)
             || command.Quantity > definition.RuntimeDefinition.MaximumStackSize)
         {
             ItemTransactionContext.Reject(
@@ -244,7 +244,7 @@ internal sealed class MobLootGrantCommandHandler(QuestDrops questDrops)
             quantity,
             ItemPolicyStates.CalculatePolicyFingerprint(command.QuestId is null
                 ? []
-                : QuestDrops.LineagePolicies(definition, command.QuestId)),
+                : CorpseQuestDrops.LineagePolicies(definition, command.QuestId)),
             ItemPolicyStates.EmptyStackStateFingerprint);
         var targetState = new ItemStackState(
             target.DefinitionId,

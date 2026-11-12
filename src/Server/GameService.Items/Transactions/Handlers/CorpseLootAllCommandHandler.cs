@@ -8,9 +8,9 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // plans the steps from the locked corpse and carry state, and each step commits under the
 // same placement rules as the single loot it stands for. A quest drop in the looter's own Mob
 // corpse moves only while the looter's quest needs all of it, and otherwise stays.
-internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItemCommandHandler<LootAllCorpseItemsCommand>
+internal sealed class CorpseLootAllCommandHandler(CorpseQuestDrops questDrops) : IItemCommandHandler<LootAllCorpseItemsCommand>
 {
-    private readonly QuestDrops questDrops = questDrops;
+    private readonly CorpseQuestDrops questDrops = questDrops;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,
@@ -361,8 +361,8 @@ internal sealed class CorpseLootAllCommandHandler(QuestDrops questDrops) : IItem
         int quantity,
         CancellationToken cancellationToken)
     {
-        if (QuestDrops.LineageQuestId(policies) is not { } questId
-            || await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken)
+        if (CorpseQuestDrops.LineageQuestId(policies) is not { } questId
+            || await CorpseQuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken)
                 is not { } sourceActorDefinitionId)
         {
             return null;

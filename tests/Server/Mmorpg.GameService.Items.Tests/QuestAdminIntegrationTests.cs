@@ -55,7 +55,7 @@ public sealed class QuestAdminIntegrationTests
         var turnedIn = await ExecuteAsync(context, session, new TurnInQuestCommand(characterId, Errand, null), Mira);
 
         Assert.True(report.Succeeded, report.Error?.Message);
-        var reported = Assert.Single(report.Value!.QuestLog!.Quests);
+        var reported = Assert.Single(QuestLogSection.Read(report.Value!)!.Quests);
         Assert.Equal("work", reported.StepId);
         Assert.Contains(new ItemTransactionQuestObjectiveProgress("report", 1), reported.Objectives);
         Assert.Contains(new ItemTransactionQuestObjectiveProgress("ore", 0), reported.Objectives);
@@ -63,9 +63,9 @@ public sealed class QuestAdminIntegrationTests
         Assert.True(work.Succeeded, work.Error?.Message);
         Assert.Equal((Errand, "return"), OnlyQuest(work));
         Assert.True(ready.Succeeded, ready.Error?.Message);
-        Assert.Null(ready.Value!.QuestLog);
+        Assert.Null(QuestLogSection.Read(ready.Value!));
         ItemScenarioWorld.AssertCommitted(turnedIn);
-        Assert.Equal(1, Assert.Single(turnedIn.QuestLog!.Quests).CompletionCount);
+        Assert.Equal(1, Assert.Single(QuestLogSection.Read(turnedIn)!.Quests).CompletionCount);
     }
 
     // The trophies collect two quest letters, the ore run three ordinary ores, and the wolves
@@ -120,11 +120,11 @@ public sealed class QuestAdminIntegrationTests
         var again = await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira);
 
         Assert.True(nothing.Succeeded, nothing.Error?.Message);
-        Assert.Null(nothing.Value!.QuestLog);
+        Assert.Null(QuestLogSection.Read(nothing.Value!));
         Assert.True(chain.Succeeded, chain.Error?.Message);
         Assert.Equal(
             [(Errand, (string?)null, 0), (Wolves, null, 0)],
-            chain.Value!.QuestLog!.Quests.Select(quest => (quest.QuestId, quest.StepId, quest.CompletionCount)));
+            QuestLogSection.Read(chain.Value!)!.Quests.Select(quest => (quest.QuestId, quest.StepId, quest.CompletionCount)));
         Assert.Empty(await LineageItemsAsync(context, characterId, Errand));
         Assert.Equal(["quest_reset"], await DestructionReasonsAsync(context, letterId));
         Assert.Equal(OreRun, Assert.Single(afterChain.ActiveQuests).QuestId);
@@ -173,7 +173,7 @@ public sealed class QuestAdminIntegrationTests
 
     private static (string QuestId, string? StepId) OnlyQuest(ServiceResult<SimulationItemOperationResponse> result)
     {
-        var quest = Assert.Single(result.Value!.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(result.Value!)!.Quests);
         return (quest.QuestId, quest.StepId);
     }
 

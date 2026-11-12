@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Mmorpg.GameService.Items;
@@ -66,18 +68,27 @@ internal sealed record SimulationItemTransactionAuthority(
     [property: JsonIgnore] string SessionTokenHash,
     [property: JsonIgnore] ItemTransactionLiveAccess LiveAccess);
 
-// VendorProfileId names the vendor profile of the NPC whose vendor capability the worker
-// validated for this operation, or is null without vendor access.
-// QuestNpcActorId is the actor definition id of the NPC whose quest capability the worker
-// validated for this operation.
+// What the worker validated for one live operation: the city services as flags, and the
+// capability claims of the commands above the kernel, each a capability kind with the id the
+// worker validated for it, such as the vendor profile of an NPC's vendor capability. The worker
+// sets them from what it validated, never from a client value.
 internal sealed record ItemTransactionLiveAccess(
     bool Bank,
     bool RecoveryStorage,
-    bool InsuranceNpc,
-    string? VendorProfileId = null,
-    string? QuestNpcActorId = null)
+    bool InsuranceNpc)
 {
     public static ItemTransactionLiveAccess None { get; } = new(false, false, false);
+
+    public ImmutableDictionary<string, string> Capabilities { get; init; } =
+        ImmutableDictionary.Create<string, string>(StringComparer.Ordinal);
+
+    // The same access with a claim of the kind, which replaces an earlier claim of that kind.
+    public ItemTransactionLiveAccess WithCapability(string kind, string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentNullException.ThrowIfNull(id);
+        return this with { Capabilities = Capabilities.SetItem(kind, id) };
+    }
 }
 
 internal sealed record ItemTransactionRequest<TCommand>(
@@ -220,91 +231,6 @@ internal sealed record RemoveInsurancePolicyCommand(
     long? ExpectedCharacterRevision,
     Guid ItemInstanceId,
     long ExpectedItemRevision);
-
-internal sealed record AbandonQuestItemsCommand(
-    Guid CharacterId,
-    long? ExpectedCharacterRevision,
-    string QuestGrantId);
-
-// Accepts an available quest at its giver and grants its start items with the quest's
-// lineage into carried storage.
-internal sealed record AcceptQuestCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Ends an active quest without completing it and removes every item with its lineage,
-// wherever the character owns it.
-internal sealed record AbandonQuestCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Grants an active quest's start items again, as far as the character no longer owns them
-// and the quest still needs them.
-internal sealed record RegrantQuestItemsCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Completes a talk-to objective of the current step at its NPC.
-internal sealed record TalkToQuestNpcCommand(
-    Guid CharacterId,
-    string QuestId,
-    string ObjectiveId);
-
-// Hands over the items of a deliver objective of the current step at its NPC.
-internal sealed record DeliverQuestItemsCommand(
-    Guid CharacterId,
-    string QuestId,
-    string ObjectiveId);
-
-// Counts one credited kill of a Mob for every matching kill objective of the character's
-// current quest steps.
-internal sealed record CreditQuestKillCommand(
-    Guid CharacterId,
-    string MobActorId,
-    IReadOnlyList<string> MobTags);
-
-// Completes a ready quest at its turn-in NPC: takes the collected items, removes what is left
-// with the quest's lineage, and grants the rewards with the chosen one.
-internal sealed record TurnInQuestCommand(
-    Guid CharacterId,
-    string QuestId,
-    string? RewardChoiceDefinitionId);
-
-// The development quest tools of the Admin menu, which the quest route runs only in the
-// Development environment. Accepting goes around the giver, the level, and the required quests.
-internal sealed record AdminAcceptQuestCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Completes one objective of the active quest's current step: a counted objective reaches its
-// count, and a collect objective gets the items it still lacks into carried storage.
-internal sealed record AdminCompleteQuestObjectiveCommand(
-    Guid CharacterId,
-    string QuestId,
-    string ObjectiveId);
-
-// Completes every objective of the active quest's current step, which moves it to the next.
-internal sealed record AdminCompleteQuestStepCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Completes the active quest's steps up to the last, which then waits for the turn-in.
-internal sealed record AdminMakeQuestReadyCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Forgets a quest as if the character never took it, with every item of its lineage.
-internal sealed record AdminResetQuestCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Forgets a quest and every quest that requires it, directly or through another.
-internal sealed record AdminResetQuestChainCommand(
-    Guid CharacterId,
-    string QuestId);
-
-// Forgets every quest of the character.
-internal sealed record AdminResetQuestsCommand(Guid CharacterId);
 
 internal sealed record ProcessPlayerDeathCommand(
     Guid DeathEventId,
@@ -497,43 +423,6 @@ internal sealed record SwapCorpseBagCommand(
     Guid PlayerBagContentsContainerId,
     long ExpectedPlayerBagContentsRevision);
 
-// Buys a quantity of one vendor offer into carried storage. ExpectedPrice is the total the
-// client showed, so the player is never charged a price they did not see.
-internal sealed record PurchaseFromVendorCommand(
-    Guid CharacterId,
-    long ExpectedCharacterRevision,
-    string VendorId,
-    string DefinitionId,
-    int Quantity,
-    long ExpectedPrice);
-
-// Sells a quantity of one carried item to a vendor. ExpectedPrice is the total the client
-// showed.
-internal sealed record SellToVendorCommand(
-    Guid CharacterId,
-    long ExpectedCharacterRevision,
-    string VendorId,
-    Guid ItemInstanceId,
-    long ExpectedItemRevision,
-    int Quantity,
-    long ExpectedPrice);
-
-// Grants one gathering yield into carried storage. ResourceNodeId is the node's spawn instance
-// id. SimulationWorker resolves the yield and the required tool kind from the resource
-// profile and validates the live interaction;
-// GameService checks the equipped tool in the same transaction. No expected character
-// revision applies, because gathering must not fail when the player moves an item meanwhile.
-// ResourceActorId is the actor definition of the gathered node, whose yields count for gather
-// objectives; a command without it counts for none.
-internal sealed record GatherResourceCommand(
-    Guid CharacterId,
-    string ResourceProfileId,
-    string ResourceNodeId,
-    string RequiredToolKind,
-    string YieldDefinitionId,
-    int YieldQuantity,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ResourceActorId = null);
-
 internal sealed record ItemTransactionResult(
     Guid OperationId,
     string OperationKind,
@@ -543,30 +432,25 @@ internal sealed record ItemTransactionResult(
     IReadOnlyList<ItemTransactionContainerRevision> ContainerRevisions,
     IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
     IReadOnlyList<Guid> RecoveryDeliveryIds,
-    IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null,
-    ItemTransactionQuestLogChange? QuestLog = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<ItemTransactionQuestDrop>? QuestDrops = null);
+    IReadOnlyList<ItemTransactionItemChange>? ItemChanges = null)
+{
+    // The named sections that commands above the kernel add through ItemChangeJournal.SetSection,
+    // each a top-level key of the stored JSON. The kernel only stores and replays them; the
+    // code that writes a section reads it.
+    [JsonExtensionData]
+    public IDictionary<string, JsonElement>? Sections { get; init; }
 
-// A quest drop that a durable Mob corpse keeps for its owner. Results stored before quest
-// drops, and the results of every other operation, have none, so their payloads stay as they
-// were.
-internal sealed record ItemTransactionQuestDrop(string QuestId, string DefinitionId, int Quantity);
-
-// The quests a transaction changed, with the quest log revision after it. A quest without a
-// step is no longer active; its completion count says whether it was completed.
-internal sealed record ItemTransactionQuestLogChange(
-    Guid CharacterId,
-    long Revision,
-    IReadOnlyList<ItemTransactionQuestChange> Quests);
-
-internal sealed record ItemTransactionQuestChange(
-    string QuestId,
-    string? StepId,
-    IReadOnlyList<ItemTransactionQuestObjectiveProgress> Objectives,
-    int CompletionCount);
-
-internal sealed record ItemTransactionQuestObjectiveProgress(string ObjectiveId, int Progress);
+    // A section, or null when the result has none of that name. A stored null counts as none.
+    public JsonElement? Section(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return Sections is not null
+            && Sections.TryGetValue(name, out var section)
+            && section.ValueKind != JsonValueKind.Null
+            ? section
+            : null;
+    }
+}
 
 internal sealed record ItemTransactionError(
     string Code,
@@ -605,7 +489,9 @@ internal sealed record ItemTransactionContainerRevision(
     Guid ContainerId,
     long Revision);
 
-internal static class ItemOperationKinds
+// The persisted operation kinds. The quest and economy kinds are declared with their commands in
+// QuestTransactionContracts.cs and EconomyTransactionContracts.cs.
+internal static partial class ItemOperationKinds
 {
     public const string Grant = "grant";
     public const string Relocate = "relocate";
@@ -622,21 +508,6 @@ internal static class ItemOperationKinds
     public const string ClaimRecoveryDelivery = "claim_recovery_delivery";
     public const string ApplyItemPolicy = "apply_item_policy";
     public const string RemoveInsurancePolicy = "remove_insurance_policy";
-    public const string AbandonQuestItems = "abandon_quest_items";
-    public const string AcceptQuest = "accept_quest";
-    public const string AbandonQuest = "abandon_quest";
-    public const string RegrantQuestItems = "regrant_quest_items";
-    public const string TalkToQuestNpc = "talk_to_quest_npc";
-    public const string DeliverQuestItems = "deliver_quest_items";
-    public const string CreditQuestKill = "credit_quest_kill";
-    public const string TurnInQuest = "turn_in_quest";
-    public const string AdminAcceptQuest = "admin_accept_quest";
-    public const string AdminCompleteQuestObjective = "admin_complete_quest_objective";
-    public const string AdminCompleteQuestStep = "admin_complete_quest_step";
-    public const string AdminMakeQuestReady = "admin_make_quest_ready";
-    public const string AdminResetQuest = "admin_reset_quest";
-    public const string AdminResetQuestChain = "admin_reset_quest_chain";
-    public const string AdminResetQuests = "admin_reset_quests";
     public const string ProcessPlayerDeath = "process_player_death";
     public const string CreatePersistentMobCorpse = "create_persistent_mob_corpse";
     public const string GrantMobLoot = "grant_mob_loot";
@@ -652,9 +523,6 @@ internal static class ItemOperationKinds
     public const string MoveCorpsePartialStack = "move_corpse_partial_stack";
     public const string SwapCorpseBag = "swap_corpse_bag";
     public const string LootAllCorpseItems = "loot_all_corpse_items";
-    public const string VendorPurchase = "vendor_purchase";
-    public const string VendorSale = "vendor_sale";
-    public const string GatherResource = "gather_resource";
 }
 
 internal static class ItemOperationIds

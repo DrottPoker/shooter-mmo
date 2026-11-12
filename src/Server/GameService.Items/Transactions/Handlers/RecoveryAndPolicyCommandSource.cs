@@ -43,14 +43,16 @@ internal sealed class RecoveryAndPolicyCommandSource : IItemCommandSource
                 static command => command.CharacterId,
                 itemPolicy)
             {
-                OperationallySignificant = true
+                OperationallySignificant = true,
+                PolicyAction = true
             },
             new ItemCommandRegistration<RemoveInsurancePolicyCommand>(
                 ItemOperationKinds.RemoveInsurancePolicy,
                 static command => command.CharacterId,
                 itemPolicy)
             {
-                OperationallySignificant = true
+                OperationallySignificant = true,
+                PolicyAction = true
             }
         ];
     }

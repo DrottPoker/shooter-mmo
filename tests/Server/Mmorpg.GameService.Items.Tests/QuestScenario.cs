@@ -38,7 +38,7 @@ internal static class QuestScenario
             operationId ?? Guid.NewGuid(),
             ItemScenarioWorld.SimulationActor(
                 session,
-                new ItemTransactionLiveAccess(false, false, false, QuestNpcActorId: questNpcActorId)),
+                QuestNpcAccess.Claim(ItemTransactionLiveAccess.None, questNpcActorId)),
             command);
         var none = CancellationToken.None;
         return request switch

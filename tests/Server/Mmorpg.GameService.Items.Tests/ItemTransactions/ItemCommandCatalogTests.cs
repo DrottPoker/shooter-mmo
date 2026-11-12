@@ -66,6 +66,22 @@ public sealed class ItemCommandCatalogTests
     }
 
     [Fact]
+    public async Task PolicyActionKindsArePinned()
+    {
+        await using var composition = new OfflineItemComposition();
+
+        Assert.Equal(
+            new[]
+            {
+                ItemOperationKinds.ApplyItemPolicy,
+                ItemOperationKinds.RemoveInsurancePolicy,
+                ItemOperationKinds.AbandonQuestItems,
+                ItemOperationKinds.ProcessPlayerDeath
+            }.Order(StringComparer.Ordinal),
+            KindsWhere(composition, registration => registration.PolicyAction));
+    }
+
+    [Fact]
     public async Task EveryHandlerIsRegisteredByExactlyOneSource()
     {
         await using var composition = new OfflineItemComposition();

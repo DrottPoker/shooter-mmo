@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using Mmorpg.GameService.Items.Transactions;
 
 namespace Mmorpg.GameService.Items;
 
@@ -78,7 +80,30 @@ internal sealed record PersistentMobCorpseResponse(
     Guid OperationId,
     DurableCorpseResponse Corpse)
 {
-    public IReadOnlyList<SimulationQuestDrop> QuestDrops { get; init; } = [];
+    public IReadOnlyList<ItemTransactionQuestDrop> QuestDrops { get; init; } = [];
+}
+
+// A quest drop that a durable Mob corpse keeps for its owner.
+internal sealed record ItemTransactionQuestDrop(string QuestId, string DefinitionId, int Quantity);
+
+// The quest drops that a durable Mob corpse kept, in the result section that the durable corpse
+// response reports. The results of every other operation have none.
+internal static class QuestDropSection
+{
+    public const string Name = "questDrops";
+
+    public static void Set(ItemChangeJournal journal, IReadOnlyList<ItemTransactionQuestDrop> drops)
+    {
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(drops);
+        journal.SetSection(Name, drops);
+    }
+
+    public static IReadOnlyList<ItemTransactionQuestDrop>? Read(ItemTransactionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Section(Name)?.Deserialize<ItemTransactionQuestDrop[]>(ItemOperationJson.Options);
+    }
 }
 
 internal sealed record SimulationMobLootGrantRequest(

@@ -119,7 +119,7 @@ public sealed class VendorAndGatheringIntegrationTests
                 operationId,
                 ItemScenarioWorld.SimulationActor(
                     session,
-                    new ItemTransactionLiveAccess(false, false, false, "vendor.other")),
+                    VendorAccess.Claim(ItemTransactionLiveAccess.None, "vendor.other")),
                 new PurchaseFromVendorCommand(
                     characterId,
                     await RevisionAsync(world, characterId),

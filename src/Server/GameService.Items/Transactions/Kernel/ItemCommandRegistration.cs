@@ -24,6 +24,9 @@ internal abstract class ItemCommandRegistration
 
     // A commit is logged at Information instead of Debug.
     public bool OperationallySignificant { get; init; }
+
+    // Every outcome counts in the policy actions metric, labeled with the operation kind.
+    public bool PolicyAction { get; init; }
 }
 
 internal sealed class ItemCommandRegistration<TCommand> : ItemCommandRegistration

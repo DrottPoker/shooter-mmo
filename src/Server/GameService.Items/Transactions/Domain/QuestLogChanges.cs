@@ -14,7 +14,7 @@ internal static class QuestLogChanges
         CancellationToken cancellationToken)
     {
         var state = await questLog.ReadAsync(context.Scope, characterId, cancellationToken);
-        context.Journal.SetQuestLogChange(Of(characterId, state, questIds));
+        QuestLogSection.Set(context.Journal, Of(characterId, state, questIds));
     }
 
     public static ItemTransactionQuestLogChange Of(

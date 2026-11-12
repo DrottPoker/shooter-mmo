@@ -6,12 +6,12 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // Loots a whole or partial corpse stack into carried character storage, merging
 // or swapping with a target stack, or straight into an equipment slot: a whole stack, or
 // part of one that tops up the equipped stack or fills the empty slot.
-internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
+internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
     : IItemCommandHandler<LootCorpseItemCommand>,
     IItemCommandHandler<LootCorpsePartialStackCommand>,
     IItemCommandHandler<LootCorpseItemToEquipmentCommand>
 {
-    private readonly QuestDrops questDrops = questDrops;
+    private readonly CorpseQuestDrops questDrops = questDrops;
 
     // An equipped stack of the same stackable definition takes the loot as a top-up, or the loot
     // is rejected. Otherwise the loot equips under the normal equip rules, and an equipped item in
@@ -654,10 +654,10 @@ internal sealed class CorpseLootCommandHandler(QuestDrops questDrops)
         int movedQuantity,
         CancellationToken cancellationToken)
     {
-        var questId = QuestDrops.LineageQuestId(policies);
+        var questId = CorpseQuestDrops.LineageQuestId(policies);
         var sourceActorDefinitionId = questId is null
             ? null
-            : await QuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken);
+            : await CorpseQuestDrops.OwnMobCorpseSourceAsync(context, corpse.CorpseId, characterId, cancellationToken);
         if (questId is null || sourceActorDefinitionId is null)
         {
             ItemTransactionContext.Reject(

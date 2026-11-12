@@ -22,7 +22,7 @@ public sealed class QuestCommandIntegrationTests
         var result = await ExecuteAsync(context, session, new AcceptQuestCommand(player.Character.Id, Wolves), Mira);
 
         ItemScenarioWorld.AssertCommitted(result);
-        var change = result.QuestLog!;
+        var change = QuestLogSection.Read(result)!;
         Assert.Equal((player.Character.Id, 1L), (change.CharacterId, change.Revision));
         var quest = Assert.Single(change.Quests);
         Assert.Equal((Wolves, "hunt", 0), (quest.QuestId, quest.StepId, quest.CompletionCount));
@@ -49,7 +49,7 @@ public sealed class QuestCommandIntegrationTests
         var letter = Assert.Single(await LineageItemsAsync(context, characterId, Errand));
         Assert.Equal((Letter, 1, state.PermanentInventoryContainerId), (letter.DefinitionId, letter.Quantity, letter.ContainerId));
         Assert.Contains(result.ItemChanges!, change => change.ItemInstanceId == letter.ItemInstanceId && !change.Removed);
-        var quest = Assert.Single(result.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(result)!.Quests);
         Assert.Equal(("work", 0), (quest.StepId, quest.CompletionCount));
         Assert.Equal(["hand_over", "ore", "report"], quest.Objectives.Select(objective => objective.ObjectiveId));
     }
@@ -83,7 +83,7 @@ public sealed class QuestCommandIntegrationTests
 
         Assert.Equal(ItemTransactionErrorCodes.QuestAlreadyCompleted, again.Error!.Code);
         ItemScenarioWorld.AssertCommitted(repeated);
-        Assert.Equal(1, Assert.Single(repeated.QuestLog!.Quests).CompletionCount);
+        Assert.Equal(1, Assert.Single(QuestLogSection.Read(repeated)!.Quests).CompletionCount);
     }
 
     [PostgresIntegrationFact]
@@ -123,7 +123,7 @@ public sealed class QuestCommandIntegrationTests
         var twice = await ExecuteAsync(context, session, new AbandonQuestCommand(characterId, Errand), null);
 
         ItemScenarioWorld.AssertCommitted(abandoned);
-        var quest = Assert.Single(abandoned.QuestLog!.Quests);
+        var quest = Assert.Single(QuestLogSection.Read(abandoned)!.Quests);
         Assert.Equal((Errand, (string?)null, 0), (quest.QuestId, quest.StepId, quest.CompletionCount));
         Assert.Contains(abandoned.ItemChanges!, change => change.ItemInstanceId == letter.ItemInstanceId && change.Removed);
         Assert.Empty(await LineageItemsAsync(context, characterId, Errand));
@@ -177,9 +177,9 @@ public sealed class QuestCommandIntegrationTests
 
         ItemScenarioWorld.AssertCommitted(first);
         ItemScenarioWorld.AssertCommitted(retry);
-        Assert.Equal(first.QuestLog!.Revision, retry.QuestLog!.Revision);
+        Assert.Equal(QuestLogSection.Read(first)!.Revision, QuestLogSection.Read(retry)!.Revision);
         Assert.Single(await LineageItemsAsync(context, characterId, Errand));
-        Assert.Equal(first.QuestLog.Revision, (await ReadQuestLogAsync(context, characterId)).Revision);
+        Assert.Equal(QuestLogSection.Read(first)!.Revision, (await ReadQuestLogAsync(context, characterId)).Revision);
     }
 
     [PostgresIntegrationFact]
@@ -198,14 +198,14 @@ public sealed class QuestCommandIntegrationTests
         var abandoned = await RouteAsync(context, session, "abandon_quest", Wolves, null);
 
         Assert.True(accepted.Succeeded, accepted.Error?.Message);
-        Assert.Equal(1, accepted.Value!.QuestLog!.Revision);
-        Assert.Equal(player.Character.Id, accepted.Value.CharacterState!.CharacterId);
+        Assert.Equal(1, QuestLogSection.Read(accepted.Value!)!.Revision);
+        Assert.Equal(player.Character.Id, accepted.Value!.CharacterState!.CharacterId);
         Assert.Equal((409, ItemTransactionErrorCodes.QuestAlreadyActive), (twice.StatusCode, twice.Error!.Code));
         Assert.Equal((403, ItemTransactionErrorCodes.QuestNpcAccessRequired), (wrongNpc.StatusCode, wrongNpc.Error!.Code));
         Assert.Equal((404, ItemTransactionErrorCodes.QuestNotFound), (unknown.StatusCode, unknown.Error!.Code));
         Assert.Equal(400, unsupported.StatusCode);
         Assert.True(abandoned.Succeeded, abandoned.Error?.Message);
-        Assert.Null(Assert.Single(abandoned.Value!.QuestLog!.Quests).StepId);
+        Assert.Null(Assert.Single(QuestLogSection.Read(abandoned.Value!)!.Quests).StepId);
     }
 
     // A worker that runs another quest catalog would build on other rules, so its quest

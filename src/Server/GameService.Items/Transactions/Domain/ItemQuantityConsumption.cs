@@ -4,7 +4,7 @@ using Mmorpg.WorldData.Items;
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
 // Removes a quantity from a locked item: the whole item when nothing remains, otherwise a
-// smaller stack with a new revision. Every consumption path shares this one write.
+// smaller stack with a new revision. Every consumption and sale path shares these writes.
 internal static class ItemQuantityConsumption
 {
     public static async Task ApplyAsync(
@@ -40,29 +40,73 @@ internal static class ItemQuantityConsumption
         }
         else
         {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                update item_instances
-                set quantity = quantity - @Quantity,
-                    revision = revision + 1,
-                    updated_at = now()
-                where id = @ItemInstanceId;
-                """,
-                new { Quantity = quantity, item.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                item.ItemInstanceId,
-                cancellationToken);
-            context.Journal.AddItemAudit(
-                partlyConsumedAuditKind,
-                item.ItemInstanceId,
-                beforeState,
-                afterState);
-            context.Journal.IncludeResultItem(item.ItemInstanceId);
+            await ReduceAsync(context, item, quantity, beforeState, partlyConsumedAuditKind, cancellationToken);
         }
 
         context.Journal.TouchContainer(item.ContainerId);
+    }
+
+    // Removes a quantity of a locked item that the caller already checked against the item, for
+    // a reason that a whole item records in item_destructions, such as a vendor sale. A part
+    // leaves a smaller stack with a new revision.
+    public static async Task RemoveForReasonAsync(
+        ItemTransactionContext context,
+        LockedItem item,
+        int quantity,
+        string destructionReason,
+        string removedAuditKind,
+        string partlyRemovedAuditKind,
+        CancellationToken cancellationToken)
+    {
+        ItemDestructions.EnsureReason(destructionReason);
+        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        if (quantity == item.Quantity)
+        {
+            await ItemDestructions.DestroyAsync(context, item, destructionReason, cancellationToken);
+            context.Journal.AddItemAudit(
+                removedAuditKind,
+                item.ItemInstanceId,
+                beforeState,
+                null);
+        }
+        else
+        {
+            await ReduceAsync(context, item, quantity, beforeState, partlyRemovedAuditKind, cancellationToken);
+        }
+
+        context.Journal.TouchContainer(item.ContainerId);
+    }
+
+    private static async Task ReduceAsync(
+        ItemTransactionContext context,
+        LockedItem item,
+        int quantity,
+        string? beforeState,
+        string auditKind,
+        CancellationToken cancellationToken)
+    {
+        await context.Connection.ExecuteAsync(new CommandDefinition(
+            """
+            update item_instances
+            set quantity = quantity - @Quantity,
+                revision = revision + 1,
+                updated_at = now()
+            where id = @ItemInstanceId;
+            """,
+            new { Quantity = quantity, item.ItemInstanceId },
+            context.Transaction,
+            cancellationToken: cancellationToken));
+        var afterState = await context.Journal.CaptureItemStateJsonAsync(
+            item.ItemInstanceId,
+            cancellationToken);
+        context.Journal.AddItemAudit(
+            auditKind,
+            item.ItemInstanceId,
+            beforeState,
+            afterState);
+        context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 
     // Shots the SimulationWorker counted against the character's equipped ammunition. The

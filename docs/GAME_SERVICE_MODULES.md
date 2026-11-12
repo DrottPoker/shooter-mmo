@@ -94,7 +94,9 @@ order. Startup runs in this order:
    refuses to start when a quest left the catalog without being retired, a
    retired id returns, or a quest that characters have active was retired or
    changed its steps or objectives. Items' seeder
-   mirrors the item catalog and then back-fills character item state.
+   has the quest code check the item references of the quest catalog through
+   `IItemCatalogReferences`, then mirrors the item catalog and back-fills
+   character item state.
 6. Run a `--dev-items-*` command through `ItemsCommandLine` and exit, if one is
    given. Hosted services never start in that mode.
 7. Map the health routes, then each module's routes, and run. Hosted services
@@ -180,7 +182,7 @@ caller keeps its own check order, error codes, and messages.
 | `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items, also used by Content | Read the mirrored item catalog revision that a placed worker must run and that Content must serve |
 | `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests, also used by Content | Read the mirrored quest catalog revision that a placed worker must run and that Content must serve |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
-| `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items mirrors the item catalog and back-fills character item state |
+| `IDatabaseSeeder` | Platform | implemented by Characters and Items | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, and Items has the quest catalog's item references checked, then mirrors the item catalog and back-fills character item state |
 
 Every contract and every SPI except `IDatabaseSeeder` has exactly one
 implementation, registered as a stateless singleton, from the module that owns
@@ -228,10 +230,10 @@ Every durable item mutation runs through one item transaction kernel in
 
 | Folder | Namespace | Contents |
 | --- | --- | --- |
-| `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, whose one generic `ExecuteAsync` runs every command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
+| `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, whose one generic `ExecuteAsync` runs every command; the command, actor, and result contracts in `ItemTransactionContracts.cs`, with the quest commands in `QuestTransactionContracts.cs` and the vendor and gathering commands in `EconomyTransactionContracts.cs`; the error codes and `ItemTransactionRejection` |
 | `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, `ItemCommandRegistration<TCommand>`, `IItemCommandSource`, `ItemCommandCatalog`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
 | `Context/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionContext` with its session and facets, the kernel-owned finalizer, the simulation authority, and the lock types |
-| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, the Loot all state, transform and Mob loot rules and writes, new item instances, quantity consumption, and carried acquisition |
+| `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, the corpse rules of quest drops, the Loot all state, transform and Mob loot rules and writes, new item instances, quantity consumption, item destructions, carried acquisition, and the item primitives of [Areas](#areas); the quest code's lineage, progression, quest log change, quest drop demand, and gathering entry |
 | `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family and one command source per area; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
 `Context/CarryStateCalculator` is the one carried-weight rule, shared with the
@@ -259,8 +261,8 @@ own handlers from the services they need and never a handler of another area:
 | `CoreItemCommandSource` | Grant, relocate, swap container items, equip, unequip, split, merge, consume quantity, consume equipped ammunition, destroy, and swap Bag aggregates |
 | `RecoveryAndPolicyCommandSource` | Add, claim, and expire Recovery deliveries, apply an item policy, and remove insurance |
 | `QuestCommandSource` | The quest commands and the Admin menu's quest tools of `QuestCommandHandler`, and `AbandonQuestItemsCommand` |
-| `CorpseCommandSource` | Player death, corpse expiry, the player corpse loot, deposit, move, Bag swap, and Loot all, durable Mob corpses, and the live Mob loot grants. It also builds the `QuestDrops` that five of its handlers take. |
-| `EconomyCommandSource` | Vendor purchases and sales, and gathering yields |
+| `CorpseCommandSource` | Player death, corpse expiry, the player corpse loot, deposit, move, Bag swap, and Loot all, durable Mob corpses, and the live Mob loot grants. It also builds the `CorpseQuestDrops` rules that five of its handlers take, on `IQuestDropDemand`. |
+| `EconomyCommandSource` | Vendor purchases and sales, and gathering yields, which credit quests through `QuestGatherCredit` |
 
 `ItemCommandCatalog` collects the registrations of every source and refuses to
 build, naming both registrations, when two share a command type or an
@@ -271,10 +273,12 @@ ledger and telemetry, `ItemSimulationAuthority`, `CharacterItemStateLocks`,
 the sources, and the catalog are stateless singletons in dependency injection,
 and `ItemTransactionService` is scoped.
 
-A new command kind needs a command record in `ItemTransactionContracts.cs`, an
-operation kind constant in `ItemOperationKinds`, a handler in `Handlers/`, and
-one registration in its area's source. `ItemOperationsMetrics` labels its
-metrics with the kind only after the kind joins `KnownOperationKinds`, and
+A new command kind needs a command record in its area's contracts file, an
+operation kind constant in that file's part of `ItemOperationKinds`, a handler
+in `Handlers/`, and one registration in its area's source.
+`ItemOperationsMetrics` labels a transaction with its registration's operation
+kind, and counts it as a policy action when the registration's `PolicyAction`
+flag is set, so a new kind needs no change to the metrics.
 `ItemTransactionRoutingTests` needs a route for it. `ItemCommandCatalogTests`
 fails when a kind constant has no registration or a registration names no
 constant, and pins the kinds that carry each flag.
@@ -298,11 +302,11 @@ propagates with its original error.
 
 | Facet | Type | Responsibility |
 | --- | --- | --- |
-| `Authority` | `ItemActorAuthority` | System, account, NPC service, and live container access |
+| `Authority` | `ItemActorAuthority` | System, account, NPC service, and live container access, and the capability claims of a live operation |
 | `Locks` | `ItemTransactionLocks` | Character state locks (`CharacterItemStateLocks`) and the mutation scope (`ItemMutationScopeLocks`) |
-| `State` | `ItemStateReader` | Item, container, definition, and policy loads with their ownership and revision checks |
-| `Placement` | `ItemSlotPlacement` | Container slot and equipment slot rules |
-| `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, and Recovery deliveries |
+| `State` | `ItemStateReader` | Item, container, definition, policy, equipped tool kind, and vendor profile loads with their ownership and revision checks |
+| `Placement` | `ItemSlotPlacement` | Container slot and equipment slot rules, and the character level |
+| `Journal` | `ItemChangeJournal` | Audit changes, touched characters and containers, result items, Recovery deliveries, and the named result sections |
 
 The context resolves current definitions and slot data from the mirrored
 catalog but delegates stack, equipment, Bag, policy capability, and
@@ -330,6 +334,22 @@ snapshot for every move. A stored result without item changes, as older stored
 results are, carries no change and no balance, and the worker then sends no
 change. Handlers never commit, roll back, or open a connection, and they reject
 only through `ItemTransactionContext.Reject`.
+
+The finalizer also copies the journal's named result sections into
+`ItemTransactionResult.Sections`. A command above the kernel sets a section
+with `ItemChangeJournal.SetSection(name, value)`, and the value is serialized
+with the persisted JSON options when the result is built. Each section is a
+top-level key of the stored result JSON, so the journal refuses the name of a
+result property, compared without regard to case as stored results are read.
+The kernel stores and replays sections without reading them; the code that
+writes a section reads it with `ItemTransactionResult.Section(name)`, which
+treats a stored `null` as no section. Two sections exist: `questLog`, the
+quests that a quest command or a counted gathering yield changed, which
+`QuestLogSection` writes and reads, and `questDrops`, the quest drops that a
+durable Mob corpse kept, which `QuestDropSection` writes and reads. Results
+stored before the sections hold the same keys with the same shapes, and every
+other stored result holds `"questLog": null`, so all of them replay their quest
+parts. A result written now has no key for a section it does not hold.
 
 `ItemTransactionKernelBoundaryTests` pins the boundary: only `Kernel/` begins,
 commits, or rolls back a transaction, uses the savepoint or `set_config`, or
@@ -386,24 +406,90 @@ roll back completely instead of being stored. Those of `process_player_death`,
 `create_persistent_mob_corpse`, `expire_corpse`, `apply_item_policy`,
 `remove_insurance_policy`, and `abandon_quest_items` mark them as operationally
 significant, so their commits are logged at `Information` instead of `Debug`.
+Those of `apply_item_policy`, `remove_insurance_policy`, `abandon_quest_items`,
+and `process_player_death` mark them as policy actions: each of their
+transactions, committed or rejected, counts in the policy actions metric.
 The `claim_recovery_delivery` registration sorts the claimed items by id and
 revision for the idempotency payload. `ItemOperationAdmission` checks the
 operation id rule and the payload limit before any database access.
 [Item Transactions](SERVICE_FEATURES.md#item-transactions) describes both rules
 as clients see them.
 
+### Areas
+
+The quest code and the economy code (vendors and gathering) live in Items but
+are kept apart from the kernel, so that each can live in a module above Items.
+Corpses, death, and Mob loot stay in Items as their own area, because a corpse
+is an item container and their code writes item tables directly.
+
+| Area | Code |
+| --- | --- |
+| Quest | `QuestCommandHandler` with its Admin part, `QuestItemCommandHandler`, `QuestCommandSource`, `QuestTransactionContracts.cs`, and in `Domain/` `QuestLineage`, `QuestProgression`, `QuestLogChanges`, `QuestDropDemand`, and `QuestGatherCredit`; outside the kernel `SimulationQuestMutationService`, `SimulationQuestDropService`, their contracts and routes in `SimulationQuestEndpoints`, and `QuestItemCatalogReferences` |
+| Economy | `VendorCommandHandler`, `GatherResourceCommandHandler`, `EconomyCommandSource`, `EconomyTransactionContracts.cs`, and the vendor and gathering part of the worker item route, `SimulationItemMutationService.Economy.cs` |
+| Corpse | The corpse handlers, `PlayerDeath/`, `MobCorpseCommandHandler`, the Mob loot grant handlers, `CorpseCommandSource`, the corpse, durable corpse, Loot all, and Mob loot code in `Domain/` with `CorpseQuestDrops`, `CorpseService`, and the corpse contracts and routes |
+
+Three rules hold between them, and `ItemAreaBoundaryTests` enforces each from
+the sources:
+
+- No kernel, core, or corpse code names a quest type, a quest operation kind,
+  or `Mmorpg.GameService.Quests`, and none names a vendor or gathering type or
+  operation kind. `ItemsModule` registers every area. The economy area names
+  one quest type, the gathering entry `QuestGatherCredit`. The kernel's one
+  vendor name is `ItemStateReader.LoadVendorAsync`, because the vendor profiles
+  are part of the mirrored item catalog.
+- The quest and economy areas run no SQL of their own: they use neither Dapper
+  nor the transaction's connection and reach item tables through the item
+  primitives below. The quest drop read opens its own read-only transaction,
+  as the Quests module's reads do; that statement touches no table.
+- The quest and economy areas use nothing of the corpse area, and the corpse
+  area reaches the quest area only through `IQuestDropDemand`.
+
+The item primitives that the areas use name no area:
+
+| Primitive | What it does |
+| --- | --- |
+| `ItemLineage` and `LineageItems` | An item's lineage is the source kind and id of its active `protected_on_death` policy, such as `quest_grant` and a quest. `LineageItems` counts the items of a definition with a lineage that a character owns anywhere, computes the part of an offer that a character still lacks toward a wanted total, and removes every lineage item of the quest item category with a destruction reason |
+| `LineageNeedPlan` | Shares what a character still lacks between the offers of one transaction, so two drops of one item never take more than is wanted |
+| `CarriedStacks` | Counts and takes the carried stacks of a definition that count for a lineage: stacks without an active policy, or with the lineage for an item of the quest item category |
+| `ItemQuantityConsumption.RemoveForReasonAsync` and `ItemDestructions` | Remove a quantity of an item; a whole item leaves an `item_destructions` row with the reason |
+| `ItemStateReader.HasEquippedToolKindAsync` | Whether the character has an item of an active tool kind in the `tool` slot |
+| `ItemSlotPlacement.LoadCharacterLevelAsync` | The character's level |
+| `ItemActorAuthority.EnsureCapability` | Requires a live operation whose capability claim of a kind names exactly an id, with the caller's error code and message |
+
+Live access carries the city services as flags and every other capability as
+a claim: `ItemTransactionLiveAccess.Capabilities` maps a capability kind to
+the id that the worker validated. The worker routes set their own claims:
+`VendorAccess` claims the `vendor` kind with the vendor profile, and
+`QuestNpcAccess` claims the `quest_npc` kind with the NPC's actor definition.
+Each also checks its claim through `EnsureCapability` with its own error code.
+
+Items owns two interfaces that the quest code implements, each with exactly
+one implementation that `ModuleCompositionTests` requires; the host's SPI check
+cannot name them while they are internal, and a missing one fails when the
+service graph resolves the corpse commands or Items' seeder. `IQuestDropDemand`
+returns the quantity that the collect objective of a quest's current step asks
+for in total, when the drop's source is one of its drop sources, or 0, and
+`IItemCatalogReferences` lets the quest catalog check its item references
+before Items' seeder mirrors the item catalog. `CorpseQuestDrops` builds the
+corpse rules of quest drops on `IQuestDropDemand` and the lineage primitives:
+what a quest drop item is, its lineage policies, which corpse a drop may leave,
+the need of one drop, the shared plan, and the Loot all plan. Gathering credits
+quests through `QuestGatherCredit`, the quest code's one entry for a gathering
+yield.
+
 ### Quest Commands
 
 Quest commands change the quest log through `ICharacterQuestLog` in the item
 transaction and take their quest definitions from `IQuestDefinitions`:
 
-- An action at a quest NPC requires the quest access of the live session:
-  `ItemTransactionLiveAccess.QuestNpcActorId` must name the NPC that the quest
-  needs: the giver for `AcceptQuestCommand` and `RegrantQuestItemsCommand`, the
-  objective's NPC for `TalkToQuestNpcCommand` and `DeliverQuestItemsCommand`, and
-  the turn-in NPC for `TurnInQuestCommand`. The worker sets it from the quest
-  capability it validated, never from a client value. `AbandonQuestCommand` and
-  `CreditQuestKillCommand` need only the live session.
+- An action at a quest NPC requires the quest access of the live session: its
+  `quest_npc` capability claim must name the NPC that the quest needs, which
+  `QuestNpcAccess` checks: the giver for `AcceptQuestCommand` and
+  `RegrantQuestItemsCommand`, the objective's NPC for `TalkToQuestNpcCommand`
+  and `DeliverQuestItemsCommand`, and the turn-in NPC for `TurnInQuestCommand`.
+  The worker sets it from the quest capability it validated, never from a
+  client value. `AbandonQuestCommand` and `CreditQuestKillCommand` need only the
+  live session.
 - Quest commands lock the character with
   `LockCharacterStateForIdempotentEventAsync`, without an expected character
   revision, because they only fill free carried slots or take items with the
@@ -416,7 +502,8 @@ transaction and take their quest definitions from `IQuestDefinitions`:
   `inventory_full`.
 - `AbandonQuestCommand` removes every item with the quest's lineage wherever the
   character owns it, with the `quest_abandoned` destruction reason, through
-  `QuestLineageItems`, which `AbandonQuestItemsCommand` shares.
+  `QuestLineage` on the lineage primitive, which `AbandonQuestItemsCommand`
+  shares.
 - `RegrantQuestItemsCommand` grants the start items that the quest still needs
   and the character no longer owns: the start quantity less what completed
   deliveries took, less what the character owns with the lineage.
@@ -428,13 +515,14 @@ transaction and take their quest definitions from `IQuestDefinitions`:
   `QuestRules.CountsKill` decides, and `GatherResourceCommand` counts the yield
   for every gather objective of the node's actor definition,
   `QuestRules.CountsGather`, in the gathering transaction when the worker names
-  the node's `ResourceActorId`. A credit that no current step asks for changes
-  nothing.
+  the node's `ResourceActorId`, through the quest gathering entry
+  `QuestGatherCredit`. A credit that no current step asks for changes nothing.
 - `TalkToQuestNpcCommand` completes a talk-to objective of the current step, and
   `DeliverQuestItemsCommand` takes the objective's count from carried storage
-  and completes a deliver objective. `QuestCarriedItems` counts and takes
-  carried stacks of the permanent inventory and the equipped Bag: ordinary items
-  without an active policy, and quest items with the quest's lineage.
+  and completes a deliver objective. `QuestLineage` counts and takes carried
+  stacks of the permanent inventory and the equipped Bag through the
+  `CarriedStacks` primitive: ordinary items without an active policy, and quest
+  items with the quest's lineage.
 - `TurnInQuestCommand` requires the last step to be current with its counted
   objectives complete and its collect objectives covered by carried items, and
   one of the reward choices when the quest offers them. It takes the collected
@@ -452,40 +540,43 @@ transaction and take their quest definitions from `IQuestDefinitions`:
   acquisition, ordinary items in stack-sized parts with
   `CarriedAcquisition.AcquireStacksAsync`, and reset through
   `ICharacterQuestLog.ForgetAsync` and
-  `QuestLineageItems` with the `quest_reset` destruction reason.
+  `QuestLineage` with the `quest_reset` destruction reason.
   `SimulationQuestMutationService` routes them only while
   `ItemsModuleOptions.DevelopmentQuestTools` is on, which only the Development
   environment sets.
-- The result names the changed quests in `ItemTransactionResult.QuestLog`: the
-  quest log revision afterwards and each quest's step, the progress of its
-  counted objectives, and its completion count. A stored result replays it.
+- The result names the changed quests in its `questLog` section, which
+  `QuestLogSection` writes and reads: the quest log revision afterwards and each
+  quest's step, the progress of its counted objectives, and its completion
+  count. A stored result replays it, and the worker item response passes it
+  through as its `questLog`.
 
 ### Vendor, Gathering, And Ammunition Commands
 
-Both vendor commands require the vendor access of the live session:
-`ItemTransactionLiveAccess.VendorProfileId` must equal the command's vendor. The
-worker sets it from the vendor capability it validated, never from a client
-value, and GameService loads that profile with its offers and sale categories
-from the active mirrored catalog. `VendorPricing` from `Mmorpg.WorldData`
-computes the total, rounded up for a purchase and down for a sale, so GameService
-and Unity charge and show the same price.
+Both vendor commands require the vendor access of the live session: its
+`vendor` capability claim must equal the command's vendor, which `VendorAccess`
+checks. The worker sets it from the vendor capability it validated, never from
+a client value, and GameService loads that profile with its offers and sale
+categories from the active mirrored catalog. `VendorPricing` from
+`Mmorpg.WorldData` computes the total, rounded up for a purchase and down for a
+sale, so GameService and Unity charge and show the same price.
 
 - `PurchaseFromVendorCommand` checks the expected character revision, the
   vendor offer, a quantity within one stack, and the expected total price,
   debits the wallet with a `vendor_purchase` ledger row, and places the items
   through carried acquisition.
 - `SellToVendorCommand` checks the expected character and item revisions, takes
-  all or part of one carried, unequipped stack, deletes a whole stack with an
-  `item_destructions` row with reason `vendor_sale` or reduces a partial one,
-  and credits the wallet with a `vendor_sale` ledger row when the price is
+  all or part of one carried, unequipped stack through
+  `ItemQuantityConsumption.RemoveForReasonAsync`, which deletes a whole stack
+  with an `item_destructions` row with reason `vendor_sale` or reduces a partial
+  one, and credits the wallet with a `vendor_sale` ledger row when the price is
   positive.
-- `GatherResourceCommand` requires the SimulationWorker actor, checks that an
-  item with the required active tool kind is equipped in the `tool` slot,
-  refuses a Bag or quest item as yield, and places the yield through carried
-  acquisition. It takes no expected character revision, because gathering must
-  not fail when the player moves an item meanwhile; the live session fence and
-  the worker's operation id, which it reuses when it retries an uncertain
-  outcome, replace it.
+- `GatherResourceCommand` requires the SimulationWorker actor, checks with
+  `ItemStateReader.HasEquippedToolKindAsync` that an item with the required
+  active tool kind is equipped in the `tool` slot, refuses a Bag or quest item
+  as yield, and places the yield through carried acquisition. It takes no
+  expected character revision, because gathering must not fail when the player
+  moves an item meanwhile; the live session fence and the worker's operation
+  id, which it reuses when it retries an uncertain outcome, replace it.
 - `ConsumeEquippedAmmunitionCommand` checks the expected item revision, and for
   a batch the expected character revision, that the item is ammunition in the
   character's `ammunition` slot, and that it holds at least the quantity, and
@@ -702,13 +793,13 @@ the statement ids.
 | S53 | The worker appearance route lowers or raises the headwear, or stores a development look | Chr L, W | `ICharacterAppearances.SetHeadwearLoweredAsync` and `SetDevelopmentLookAsync` in `SimulationAppearanceService` |
 | S54 | Durable corpse responses read the looks of their source characters, deleted ones too | Chr R | `ICharacterAppearances.ReadManyAsync` in `CorpseService` |
 | S55 | The quest log read checks character ownership | Chr R | `CharactersSql.ActiveCharacters` in `QuestLogQueryService` |
-| S56 | Quest commands, also the Admin menu's quest tools, read the quest catalog and the character level, and read, change, and forget quests in the quest log | Qst R, W; Chr R | `IQuestDefinitions`, `ICharacterQuestLog`, and `CharactersSql.LevelOf` in `QuestCommandHandler` and its `QuestCommandHandler.Admin.cs` part |
+| S56 | Quest commands, also the Admin menu's quest tools, read the quest catalog and the character level, and read, change, and forget quests in the quest log | Qst R, W; Chr R | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestCommandHandler` and its `QuestCommandHandler.Admin.cs` part; the level through `ItemSlotPlacement.LoadCharacterLevelAsync`, the `CharactersSql.LevelOf` statement of S41 |
 | S57 | A quest command's result reports the quests it changed | Qst R | `ICharacterQuestLog.ReadAsync` in `QuestLogChanges` |
-| S58 | Kills, yields, talks, and deliveries count for the objectives of current steps | Qst R, W | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestProgression` and `GatherResourceCommandHandler` |
+| S58 | Kills, yields, talks, and deliveries count for the objectives of current steps | Qst R, W | `IQuestDefinitions` and `ICharacterQuestLog` in `QuestProgression` and the gathering entry `QuestGatherCredit` |
 | S59 | A quest turn-in credits its Gold reward | Chr L, W | `ICharacterWallet.CreditAsync` with a `quest_reward` ledger row in `QuestCommandHandler` |
 | S60 | Join and reconnect compare the worker's quest catalog revision with the mirrored one | Qst R | `IQuestCatalogRevisionProvider.GetCurrentRevisionAsync` in `ShardService` |
 | S61 | The worker quest log read checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` in `SimulationQuestLogService` |
-| S62 | A quest drop reads the quest catalog and the quest log for what its quest still needs | Qst R | `IQuestDefinitions` and `ICharacterQuestLog.ReadAsync` in `QuestDrops` |
+| S62 | A quest drop reads the quest catalog and the quest log for what its quest asks for | Qst R | `IQuestDefinitions` and `ICharacterQuestLog.ReadAsync` in `QuestDropDemand`, the quest code's `IQuestDropDemand` |
 | S63 | The worker quest drop read checks session, worker, and assignment, and reads what the quests still need | Plc R, Acc R, Qst R | `ISimulationSessionAuthority.GetReadAuthorityAsync`, then S62's reads, in `SimulationQuestDropService` |
 | S64 | Content's startup check compares the served catalogs with the mirrored revisions | Itm R, Qst R | `IItemCatalogRevisionProvider` and `IQuestCatalogRevisionProvider` in one read transaction in `ContentRevisionCheck` |
 
@@ -734,7 +825,8 @@ migrations.
 
 The guard tests live in `tests/Server/Mmorpg.GameService.Tests/Architecture`,
 except `GameServiceTelemetryTests` in the root of that project and
-`ItemTransactionKernelBoundaryTests`, which lives with the kernel tests in
+`ItemTransactionKernelBoundaryTests` and `ItemAreaBoundaryTests`, which live
+with the kernel tests in
 `tests/Server/Mmorpg.GameService.Items.Tests/ItemTransactions`.
 
 | Test | What it protects |
@@ -746,9 +838,10 @@ except `GameServiceTelemetryTests` in the root of that project and
 | `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata. ASP.NET Core matches routes by template precedence and HTTP method, never by registration order, so the snapshot is the routing contract |
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
 | `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
-| `ModuleCompositionTests` | Exactly one implementation of every single-implementation SPI and contract, from its owner module, and startup failure for a missing or duplicate SPI |
+| `ModuleCompositionTests` | Exactly one implementation of every single-implementation SPI and contract, from its owner module, including Items' `IQuestDropDemand` and `IItemCatalogReferences`, and startup failure for a missing or duplicate SPI |
 | `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, and the dashboards and alert rules reference only published `game_service_*` metrics |
 | `ItemTransactionKernelBoundaryTests` | The item transaction kernel boundary described in [Items Transaction Kernel](#items-transaction-kernel) |
+| `ItemAreaBoundaryTests` | The quest, economy, and corpse area rules of [Areas](#areas), from area file lists that stand in for module boundaries |
 
 The item transaction kernel also has golden tests:
 `ItemTransactionTraceGoldenTests` compares, byte for byte, the statements and

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Mmorpg.GameService.Placement.Contracts;
 
 namespace Mmorpg.GameService.Items;
@@ -67,7 +68,7 @@ internal sealed record SimulationCharacterStateResponse(
 
 // A committed item transaction together with the acting character's state afterwards. A
 // quest action, or a gathering yield that counted for quest objectives, names the changed
-// quests.
+// quests in QuestLog: the result section of that name, passed through as written, or null.
 internal sealed record SimulationItemOperationResponse(
     Guid OperationId,
     string OperationKind,
@@ -79,8 +80,11 @@ internal sealed record SimulationItemOperationResponse(
     IReadOnlyList<Guid> RecoveryDeliveryIds,
     SimulationCharacterStateResponse? CharacterState,
     IReadOnlyList<ItemTransactionItemChange>? ItemChanges,
-    ItemTransactionQuestLogChange? QuestLog = null)
+    JsonElement? QuestLog = null)
 {
+    // The result section that the response passes through as QuestLog.
+    public const string QuestLogSectionName = "questLog";
+
     public static SimulationItemOperationResponse From(
         ItemTransactionResult result,
         SimulationCharacterStateResponse? characterState)
@@ -97,6 +101,6 @@ internal sealed record SimulationItemOperationResponse(
             result.RecoveryDeliveryIds,
             characterState,
             result.ItemChanges,
-            result.QuestLog);
+            result.Section(QuestLogSectionName));
     }
 }

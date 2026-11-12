@@ -38,8 +38,10 @@ public sealed class ItemTransactionRoutingTests
         Assert.Equal(ItemTransactionErrorCodes.ItemOperationIdInvalid, result.Error!.Code);
     }
 
+    // The metrics label a transaction with its registration's operation kind, so the
+    // registrations are also every metric kind.
     [Fact]
-    public async Task RoutingTableCoversEveryRegistrationAndKnownMetricKind()
+    public async Task RoutingTableCoversEveryRegistration()
     {
         var execute = Assert.Single(
             typeof(ItemTransactionService).GetMethods(
@@ -59,13 +61,6 @@ public sealed class ItemTransactionRoutingTests
         Assert.Equal(48, Routes.Count);
         Assert.Equal(
             registrations.Select(registration => registration.OperationKind).Order(StringComparer.Ordinal),
-            Routes.Keys.Order(StringComparer.Ordinal));
-
-        var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
-            .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!
-            .GetValue(null)!;
-        Assert.Equal(
-            knownKinds.Order(StringComparer.Ordinal),
             Routes.Keys.Order(StringComparer.Ordinal));
     }
 

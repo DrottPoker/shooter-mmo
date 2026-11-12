@@ -4,29 +4,35 @@ using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
-// Items with a quest's lineage: protected quest items whose active protected_on_death policy
-// names the quest as its quest_grant source. The quest grants them, and ending the quest
-// removes them wherever the character owns them, also from Bank and Recovery Storage.
-internal static class QuestLineageItems
+// The source that gave an item its lineage: the source kind and id of its active
+// protected_on_death policy, such as a quest grant and its quest.
+internal sealed record ItemLineage(string SourceKind, string SourceId);
+
+// Items with a lineage: protected items whose active protected_on_death policy names the
+// lineage's source. The source grants them, and ending it removes them wherever the character
+// owns them, also from Bank and Recovery Storage.
+internal static class LineageItems
 {
     // The quantity of one definition with the lineage that the character owns anywhere.
     public static Task<int> CountOwnedAsync(
         ItemTransactionContext context,
         Guid characterId,
-        string lineageId,
+        ItemLineage lineage,
         string definitionId,
         CancellationToken cancellationToken)
     {
-        return CountOwnedAsync(context.Scope, characterId, lineageId, definitionId, cancellationToken);
+        return CountOwnedAsync(context.Scope, characterId, lineage, definitionId, cancellationToken);
     }
 
     public static Task<int> CountOwnedAsync(
         PostgresTransactionScope scope,
         Guid characterId,
-        string lineageId,
+        ItemLineage lineage,
         string definitionId,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(lineage);
         return scope.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
             $"""
             select coalesce(sum(item.quantity), 0)::integer
@@ -44,9 +50,9 @@ internal static class QuestLineageItems
             new
             {
                 CharacterId = characterId,
-                LineageId = lineageId,
+                LineageId = lineage.SourceId,
                 DefinitionId = definitionId,
-                SourceKind = ItemPolicySourceKinds.QuestGrant,
+                lineage.SourceKind,
                 PolicyKind = ItemPolicyIds.ProtectedOnDeath,
                 ActiveStatus = ItemPolicyRules.ActiveStatus
             },
@@ -54,61 +60,55 @@ internal static class QuestLineageItems
             cancellationToken: cancellationToken));
     }
 
-    // Removes every item with the lineage of an abandoned quest and returns how many items it
-    // removed.
-    public static Task<int> RemoveAbandonedAsync(
-        ItemTransactionContext context,
+    // The part of an offered quantity of a definition that the character still lacks: the
+    // wanted total of the lineage less what the character owns with it, at most the quantity.
+    // When nothing is wanted, nothing is read.
+    public static async Task<int> LackingAsync(
+        PostgresTransactionScope scope,
         Guid characterId,
-        string lineageId,
+        ItemLineage lineage,
+        string definitionId,
+        int wanted,
+        int quantity,
         CancellationToken cancellationToken)
     {
-        return RemoveAllAsync(context, characterId, lineageId, DestroyAbandonedSql, cancellationToken);
+        if (wanted <= 0)
+        {
+            return 0;
+        }
+
+        var owned = await CountOwnedAsync(scope, characterId, lineage, definitionId, cancellationToken);
+        return Math.Clamp(wanted - owned, 0, quantity);
     }
 
-    // Removes what is left with the lineage of a turned-in quest, such as spare quest drops.
-    public static Task<int> RemoveCompletedAsync(
+    // Removes every item of the quest item category with the lineage, recording the
+    // destruction reason, and returns how many items it removed.
+    public static async Task<int> RemoveAllAsync(
         ItemTransactionContext context,
         Guid characterId,
-        string lineageId,
+        ItemLineage lineage,
+        string destructionReason,
         CancellationToken cancellationToken)
     {
-        return RemoveAllAsync(context, characterId, lineageId, DestroyCompletedSql, cancellationToken);
-    }
-
-    // Removes every item with the lineage of a quest that a development reset forgets.
-    public static Task<int> RemoveResetAsync(
-        ItemTransactionContext context,
-        Guid characterId,
-        string lineageId,
-        CancellationToken cancellationToken)
-    {
-        return RemoveAllAsync(context, characterId, lineageId, DestroyResetSql, cancellationToken);
-    }
-
-    private static async Task<int> RemoveAllAsync(
-        ItemTransactionContext context,
-        Guid characterId,
-        string lineageId,
-        string destroySql,
-        CancellationToken cancellationToken)
-    {
+        ArgumentNullException.ThrowIfNull(lineage);
+        ItemDestructions.EnsureReason(destructionReason);
         var parameters = new
         {
             CharacterId = characterId,
-            QuestGrantId = lineageId,
-            SourceKind = ItemPolicySourceKinds.QuestGrant,
+            QuestGrantId = lineage.SourceId,
+            lineage.SourceKind,
             QuestItemCategoryId = ItemCategoryIds.QuestItem,
             PolicyKind = ItemPolicyIds.ProtectedOnDeath,
             ActiveStatus = ItemPolicyRules.ActiveStatus
         };
         var itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
-            QuestGrantItemIdsSql,
+            LineageItemIdsSql,
             parameters,
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
         await context.Locks.LockMutationScopeAsync(itemIds, [], cancellationToken);
         itemIds = (await context.Connection.QueryAsync<Guid>(new CommandDefinition(
-            QuestGrantItemIdsSql,
+            LineageItemIdsSql,
             parameters,
             context.Transaction,
             cancellationToken: cancellationToken))).ToArray();
@@ -121,17 +121,7 @@ internal static class QuestLineageItems
             var beforeState = await context.Journal.CaptureItemStateJsonAsync(
                 item.ItemInstanceId,
                 cancellationToken);
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                destroySql,
-                new
-                {
-                    item.ItemInstanceId,
-                    item.DefinitionId,
-                    context.OperationId,
-                    item.Quantity
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+            await ItemDestructions.DestroyAsync(context, item, destructionReason, cancellationToken);
             if (string.Equals(item.SourceContainerType, "recovery_storage", StringComparison.Ordinal))
             {
                 // Recovery items own their slot row, and a delivery that loses its last
@@ -166,65 +156,7 @@ internal static class QuestLineageItems
         return itemIds.Length;
     }
 
-    // The destruction reason is part of the statement text, so every reason has its own.
-    private const string DestroyAbandonedSql =
-        """
-        insert into item_destructions (
-            item_instance_id,
-            definition_id,
-            source_operation_id,
-            quantity,
-            reason)
-        values (
-            @ItemInstanceId,
-            @DefinitionId,
-            @OperationId,
-            @Quantity,
-            'quest_abandoned');
-
-        delete from item_instances
-        where id = @ItemInstanceId;
-        """;
-
-    private const string DestroyCompletedSql =
-        """
-        insert into item_destructions (
-            item_instance_id,
-            definition_id,
-            source_operation_id,
-            quantity,
-            reason)
-        values (
-            @ItemInstanceId,
-            @DefinitionId,
-            @OperationId,
-            @Quantity,
-            'quest_completed');
-
-        delete from item_instances
-        where id = @ItemInstanceId;
-        """;
-
-    private const string DestroyResetSql =
-        """
-        insert into item_destructions (
-            item_instance_id,
-            definition_id,
-            source_operation_id,
-            quantity,
-            reason)
-        values (
-            @ItemInstanceId,
-            @DefinitionId,
-            @OperationId,
-            @Quantity,
-            'quest_reset');
-
-        delete from item_instances
-        where id = @ItemInstanceId;
-        """;
-
-    private const string QuestGrantItemIdsSql =
+    private const string LineageItemIdsSql =
         $"""
         select item.id
         from item_instances item
