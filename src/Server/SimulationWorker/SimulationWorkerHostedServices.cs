@@ -17,7 +17,8 @@ public static class SimulationWorkerHostedServices
     // and the session heartbeat then releases every session. The realtime service therefore
     // stops earlier, in IHostedLifecycleService.StoppingAsync, which the host calls before it
     // stops any hosted service: its shutdown commits the uncommitted arrow shots and quest
-    // credits while the sessions and the registration still hold.
+    // credits and saves the place and vitals of every remaining player while the sessions and
+    // the registration still hold.
     public static IServiceCollection AddSimulationWorkerHostedServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

@@ -36,7 +36,58 @@ public sealed record ConsumedSimulationJoinTicketResponse(
 
     // How the character looks; null for a development bot, which the worker dresses itself.
     public SimulationAppearance? Appearance { get; init; }
+
+    // The character's saved place and vitals, or null when it has none, as a development bot.
+    public SimulationSavedCharacterState? SavedState { get; init; }
 }
+
+// A character's saved place and vitals: the World and its collision revision when the state was
+// saved, the position and facing as the simulation's floats, and health and mana.
+public sealed record SimulationSavedCharacterState(
+    string WorldId,
+    string CollisionRevision,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana);
+
+// A character's place and vitals as the worker sends them, numbered within its simulation session.
+public sealed record SimulationCharacterStateRequest(
+    long Sequence,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana);
+
+// The release of a session, with the final state of its character when the worker has one.
+public sealed record SimulationSessionReleaseRequest(
+    string WorkerRuntimeId,
+    string SessionToken,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SimulationCharacterStateRequest? FinalState = null);
+
+// One character state of a checkpoint.
+public sealed record SimulationCharacterCheckpointEntry(
+    Guid SimulationSessionId,
+    long Sequence,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana);
+
+// The changed character states of this worker runtime's sessions.
+public sealed record SimulationCharacterCheckpointRequest(
+    string RuntimeId,
+    IReadOnlyList<SimulationCharacterCheckpointEntry> States);
+
+// How many states a checkpoint saved, and how many it skipped because their session was no
+// longer the character's active session here or a newer state of that session was stored.
+public sealed record SimulationCharacterCheckpointResponse(int Accepted, int Skipped);
 
 // A character's body model, the choices of its look, and whether it lowered its headwear.
 public sealed record SimulationAppearance(
@@ -94,6 +145,9 @@ public sealed record SimulationSessionLeaseResponse(
 
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
+
+    // Whether a release stored the final state it carried.
+    public bool FinalStateSaved { get; init; }
 }
 
 // VendorProfileId is the vendor profile of the validated vendor capability, or null.

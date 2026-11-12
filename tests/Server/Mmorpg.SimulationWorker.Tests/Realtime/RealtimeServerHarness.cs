@@ -69,6 +69,9 @@ internal sealed class RealtimeServerHarnessOptions
 
     // Replaces the fixture quest catalog when quests run.
     public QuestCatalogRuntimeDocument? QuestCatalog { get; init; }
+
+    // Replaces the default checkpoint interval of 30 seconds.
+    public TimeSpan? CharacterCheckpointInterval { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -95,6 +98,9 @@ internal sealed record RealtimeTestCharacter(string Ticket, string Name)
 
     // Ignored for a development bot, which the worker dresses itself.
     public SimulationAppearance Appearance { get; init; } = CharacterStateTestData.Appearance;
+
+    // The place and vitals that GameService saved for the character, or none.
+    public SimulationSavedCharacterState? SavedState { get; init; }
 }
 
 // Owns one realtime service with every collaborator exposed, a scripted GameService and
@@ -256,6 +262,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 questLogStore,
                 QuestOperations,
                 options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null),
+            new PersistenceDependencies(GameServiceClient),
             Logger);
     }
 
@@ -544,7 +551,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         {
             UdpQuotas = options.UdpQuotas ?? UdpQuotaConfig.Default,
             InterestManagement = options.InterestManagement
-                ?? InterestManagementConfig.Default
+                ?? InterestManagementConfig.Default,
+            CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30)
         };
     }
 
@@ -597,7 +605,41 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         OnQuestOperation = (_, _, _) => Task.FromResult(
             Problem(HttpStatusCode.NotFound, "quest_not_found", "The quest catalog holds no such quest."));
         OnQuestDrops = (_, request, _) => Task.FromResult(Json(new SimulationQuestDropResponse(request.Drops)));
+        OnCheckpoint = (request, _) => Task.FromResult(Json(new SimulationCharacterCheckpointResponse(request.States.Count, 0)));
     }
+
+    // Answers a checkpoint; by default GameService saves every state.
+    public Func<SimulationCharacterCheckpointRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnCheckpoint
+    { get; set; }
+
+    // Every checkpoint request in arrival order.
+    public List<SimulationCharacterCheckpointRequest> Checkpoints
+    {
+        get
+        {
+            lock (sync)
+            {
+                return [.. checkpoints];
+            }
+        }
+    }
+
+    private readonly List<SimulationCharacterCheckpointRequest> checkpoints = [];
+
+    // Every release request in arrival order.
+    public List<(Guid SimulationSessionId, SimulationSessionReleaseRequest Request)> Releases
+    {
+        get
+        {
+            lock (sync)
+            {
+                return [.. releases];
+            }
+        }
+    }
+
+    private readonly List<(Guid SimulationSessionId, SimulationSessionReleaseRequest Request)> releases = [];
 
     // Answers the quest drops of a live corpse; by default the owner still needs all of them.
     public Func<Guid, SimulationQuestDropRequest, CancellationToken, Task<HttpResponseMessage>>
@@ -770,7 +812,7 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         OnConsume
     { get; set; }
 
-    public Func<Guid, SimulationSessionCredentialRequest, CancellationToken, Task<HttpResponseMessage>>
+    public Func<Guid, SimulationSessionReleaseRequest, CancellationToken, Task<HttpResponseMessage>>
         OnRelease
     { get; set; }
 
@@ -859,7 +901,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             SessionLeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
             IsSyntheticBot = character.IsSyntheticBot,
             Equipment = character.Equipment,
-            Appearance = character.IsSyntheticBot ? null : character.Appearance
+            Appearance = character.IsSyntheticBot ? null : character.Appearance,
+            SavedState = character.SavedState
         });
     }
 
@@ -996,7 +1039,12 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             {
                 Interlocked.Increment(ref releaseCount);
                 var release = await request.Content!
-                    .ReadFromJsonAsync<SimulationSessionCredentialRequest>(cancellationToken);
+                    .ReadFromJsonAsync<SimulationSessionReleaseRequest>(cancellationToken);
+                lock (sync)
+                {
+                    releases.Add((simulationSessionId, release!));
+                }
+
                 return await OnRelease(simulationSessionId, release!, cancellationToken);
             }
 
@@ -1120,7 +1168,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
-    // Registers the worker for 30 seconds, marks it offline, and restores no durable corpse.
+    // Registers the worker for 30 seconds, marks it offline, restores no durable corpse, and
+    // answers checkpoints.
     private async Task<HttpResponseMessage> AnswerWorkerAsync(
         HttpRequestMessage request,
         string workerId,
@@ -1158,6 +1207,15 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 return Json(new SimulationWorkerOfflineResponse(workerId, offline!.RuntimeId, now));
             case "corpses":
                 return Json(new CorpseRestoreResponse(now, []));
+            case "checkpoint":
+                var checkpoint = await request.Content!
+                    .ReadFromJsonAsync<SimulationCharacterCheckpointRequest>(cancellationToken);
+                lock (sync)
+                {
+                    checkpoints.Add(checkpoint!);
+                }
+
+                return await OnCheckpoint(checkpoint!, cancellationToken);
             default:
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
         }

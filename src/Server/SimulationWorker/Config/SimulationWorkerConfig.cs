@@ -39,6 +39,9 @@ public sealed record SimulationWorkerConfig(
 
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
+    // How often the realtime loop saves the place and vitals of the players whose state changed.
+    public TimeSpan CharacterCheckpointInterval { get; init; } = TimeSpan.FromSeconds(30);
+
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
 
     public AdmissionConfig Admission { get; init; } = AdmissionConfig.Default;
@@ -266,6 +269,13 @@ public sealed record SimulationWorkerConfig(
             section["NetworkMetricsLogSeconds"],
             "SimulationWorker:NetworkMetricsLogSeconds",
             errors);
+        var characterCheckpointSeconds = string.IsNullOrWhiteSpace(
+                section["CharacterCheckpointSeconds"])
+            ? 30
+            : PositiveInt(
+                section["CharacterCheckpointSeconds"],
+                "SimulationWorker:CharacterCheckpointSeconds",
+                errors);
         var udpQuotaSection = section.GetSection("UdpQuotas");
         var inboundPacketsPerSecond = PositiveInt(
             udpQuotaSection["InboundPacketsPerSecond"],
@@ -416,6 +426,11 @@ public sealed record SimulationWorkerConfig(
         if (networkMetricsLogSeconds > 3_600)
         {
             errors.Add("SimulationWorker:NetworkMetricsLogSeconds must not exceed 3600.");
+        }
+
+        if (characterCheckpointSeconds > 3_600)
+        {
+            errors.Add("SimulationWorker:CharacterCheckpointSeconds must not exceed 3600.");
         }
 
         if (inboundPacketBurst < inboundPacketsPerSecond
@@ -583,6 +598,7 @@ public sealed record SimulationWorkerConfig(
             SimulationSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
+            CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,
                 inboundPacketBurst,

@@ -43,4 +43,8 @@ internal static class SimulationTickOrder
 
     // Sends corpse presence twice a second.
     public const int CorpsePresence = 1100;
+
+    // Collects the players whose place or vitals changed at the checkpoint interval, last, so it
+    // sees this tick's movement, damage, deaths, and respawns.
+    public const int CharacterCheckpoint = 1200;
 }

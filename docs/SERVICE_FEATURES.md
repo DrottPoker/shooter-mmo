@@ -45,9 +45,10 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
-| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket |
+| `POST /api/simulation-workers/{workerId}/checkpoint` | Worker service policy | Save the place and vitals of the worker runtime's characters whose state changed, in one batch |
+| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket and return the character's saved place and vitals |
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
-| `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
+| `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease, with the character's final place and vitals when the worker has them |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
 | `POST /api/simulation-sessions/{id}/quest-log` | Worker service policy | Read the exact-session character's quest log when it joins the worker's Shard |
@@ -287,8 +288,9 @@ validates account session status, checks exact placement binding, and creates or
 rotates the simulation-session token in one transaction. The response includes
 the fenced item-state revision, carried weight, capacity, and equipment: every
 occupied equipment slot with its item id, definition id, quantity, and item
-revision at that item-state revision. It also carries the character's look.
-Heartbeat updates the lease and then reads the current committed carry tuple and
+revision at that item-state revision. It also carries the character's look and
+its saved place and vitals, as [Character Place And Vitals](#character-place-and-vitals)
+describes. Heartbeat updates the lease and then reads the current committed carry tuple and
 equipment, so a worker can advance active movement and combat state
 monotonically. Reconnect reads the tuple again under the admission lock.
 
@@ -319,6 +321,65 @@ conflict invalidates the local lease instead of accepting contradictory weight,
 capacity, or equipment. The worker updates the item state only from committed
 GameService results and heartbeats, and sends a newer carry tuple reliably
 before it affects movement.
+
+### Character Place And Vitals
+
+GameService stores one state per character: the World, that World's collision
+revision, the position and yaw as the simulation's floats, health, and mana,
+with the simulation session that wrote it and a sequence within that session.
+Three places of the session API carry it:
+
+- The join ticket consume returns it as `savedState`, or `null` when the
+  character has none. A development bot never has one.
+- The release may carry the final state as `finalState` with its `sequence`,
+  `positionX`, `positionY`, `positionZ`, `yawDegrees`, `health`, and `mana`.
+  GameService saves it in the transaction of the release, and the response's
+  `finalStateSaved` says whether it did.
+- `POST /api/simulation-workers/{workerId}/checkpoint` takes the worker's
+  `runtimeId` and `states`, each with its `simulationSessionId` and the same
+  fields as a final state, and answers how many states it saved as `accepted`
+  and how many it skipped as `skipped`. One statement saves the whole batch.
+
+GameService takes the World from the session's Shard and the collision revision
+from the worker runtime's registration, never from the request. A state is
+saved only for the character's session on the worker and runtime that sent it,
+while that session is unreleased, and for a checkpoint also unexpired; a release
+saves its final state only when it is the release that ended the session. The
+state must also be newer than the stored one: a stored state of the same session
+with an equal or higher sequence stays, and a state of another session replaces
+it. So a late or repeated state never overwrites a newer one, and a session that
+ended never writes again. An entry that is not saved is skipped and counted; it
+does not fail the batch, and a final state that is not saved does not fail the
+release.
+
+A request is refused with `400` when it is malformed: `invalid_character_state`
+names a state with a sequence below 1, a position that is not finite or more
+than 1,000,000 meters from the origin, a yaw that is not finite or outside -360
+to 360 degrees, health outside 1 to 1,000,000, or mana outside 0 to 1,000,000,
+and `invalid_character_checkpoint` names a checkpoint without states, with more
+than 500, with an entry without a session, or with a session twice. An invalid
+worker or runtime id is `invalid_simulation_worker_identity`.
+
+SimulationWorker restores the state when it creates a joining character's
+entity. The position and yaw count only when the saved World is the Shard's
+World and the saved collision revision is the one the worker runs; otherwise the
+character starts at the World spawn. Health and mana count in any World, within
+1 to the maximum health and 0 to the maximum mana of the combat rules. A
+reconnect to an entity that still exists keeps that entity as it is.
+
+The worker saves the state of every player that a person plays; synthetic bots
+have none. Every `SimulationWorker:CharacterCheckpointSeconds` it collects the
+players whose position, yaw, health, or mana differs from what GameService
+last confirmed and sends them in one checkpoint call, in requests of at most 500
+states. At most one call is in flight; a failed call is logged, and its players
+go again with the next checkpoint. When a leave starts, when the entity of a
+session the worker still holds is removed, such as after a disconnect, and at
+shutdown, the worker captures the final state, and the release of that session
+carries it, also when the release runs later or again. At shutdown the worker
+first saves every remaining player in one last checkpoint while the sessions
+still hold, because going offline releases them. A dead player is saved as its
+respawn leaves it: at the World spawn with full health and mana. A worker crash
+or a GameService outage loses at most the time since the last saved state.
 
 ## Realtime UDP Transport
 
@@ -768,7 +829,10 @@ the actor catalog. The combat model is in
 - A combatant is in combat until the combat timeout after its last attack or
   hit. A living character out of combat regenerates health and mana every
   second up to its maximum. Mana is owner state: only `OwnerCombatState`
-  carries it. A joining character and a respawn start with full health and mana.
+  carries it. A respawn starts with full health and mana. A joining character
+  starts with the health and mana it was saved with, or with full health and
+  mana when it has no saved state, as
+  [Character Place And Vitals](#character-place-and-vitals) describes.
 - Every damageable Mob with a combat profile is a combatant, and a Mob with a
   brain and a locomotion profile also thinks and walks, as
   [Mob Brains](#mob-brains) describes. At 0 health a Mob can no longer be
@@ -1569,7 +1633,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
-| Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_appearance_change`, `development_look_disabled` |
+| Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_character_state`, `invalid_character_checkpoint`, `invalid_appearance_change`, `development_look_disabled` |
 | Content files | `content_not_found` |
 | Item reads and requests | `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
@@ -1726,6 +1790,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
+| `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
 | `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |
 | `UdpQuotas:InboundBytesPerSecond`, `InboundByteBurst` | 128 KiB, 256 KiB | Inbound bytes per peer |
 | `UdpQuotas:SnapshotBytesPerSecond`, `SnapshotByteBurst` | 256 KiB, 512 KiB | Unreliable snapshot bytes per peer |

@@ -14,7 +14,8 @@ internal sealed record RealtimeServerDependencies(
     WorldActorDependencies WorldActors,
     CombatDependencies Combat,
     AppearanceDependencies Appearance,
-    QuestDependencies Quests);
+    QuestDependencies Quests,
+    PersistenceDependencies Persistence);
 
 // The only place realtime components are created. Components are not registered in
 // dependency injection, which keeps loop-confined state out of reach of other services. Each
@@ -55,6 +56,7 @@ internal static class RealtimeServerComposition
         var combat = new CombatFeature(core, dependencies.Combat, playerCombat, quests, corpses, worldActors);
         QuestFeature.Add(core, quests, playerCombat);
         AdminFeature.Add(core, combat);
+        PersistenceFeature.Add(core, dependencies.Persistence, host.ReleaseService.FinalStates, combat);
         MovementFeature.Add(core, combat);
         SnapshotFeature.Add(core, combat);
 

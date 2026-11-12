@@ -61,6 +61,7 @@ public sealed class RouteTableSnapshotTests
         "POST /api/simulation-sessions/{simulationSessionId:guid}/quest-log auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/quest-operations auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/release auth=SimulationWorker rate=- sensitive=no",
+        "POST /api/simulation-workers/{workerId}/checkpoint auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/heartbeat auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/mob-corpses/durable auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-workers/{workerId}/offline auth=SimulationWorker rate=- sensitive=no"

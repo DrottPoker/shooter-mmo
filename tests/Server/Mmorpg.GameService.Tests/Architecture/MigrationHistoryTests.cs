@@ -54,7 +54,10 @@ public sealed class MigrationHistoryTests
         "202611042200_quest_log 3cbc04bd2a97fc8d53f4732a4764a198691de145f94bf3bacf3dba9e24d3cbb7",
         "202611050900_quest_reward_currency f8e5efb4a110fa4d3a12b1653116bf179a7f2ef8a0d047b7bdc566ec9ab8eca1",
         "202611051200_worker_quest_catalog_revision d6d02b43741186c8b57089c9ae0ac8e1f099f0ff221afa1e388b3e25d859fca2",
-        "202611051300_remove_placeholder_quest_items 579417250d718f1df2223a87fcecfd28a92447d2e53a2280d4a93a4323d12b62"
+        "202611051300_remove_placeholder_quest_items 579417250d718f1df2223a87fcecfd28a92447d2e53a2280d4a93a4323d12b62",
+        "202611101200_corpse_source_character_name 8b67f89ae92aa25e07cd2f96e91a950edc69194a2dbe1f28bc5caa8b3d3ff79f",
+        "202611101300_item_catalog_names_removal 3a65e429cb43ed6847328f57a5cef8c3fa3503309a38ecf75a56f0b8ab7755bb",
+        "202611121200_character_simulation_states 14e62140337a4f4f0a80de1af045e1282d526f5e767d6ca35c9a1d9d095197ef"
     ];
 
     [Fact]

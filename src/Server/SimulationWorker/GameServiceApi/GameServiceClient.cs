@@ -8,6 +8,7 @@ using Mmorpg.Server.Common.Health;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Telemetry;
+using Mmorpg.WorldData.Combat;
 using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
@@ -32,6 +33,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
 
     // A character has one item per equipment slot, and the catalog has far fewer slots.
     private const int MaximumEquippedItems = 64;
+
 
     public async Task<DependencyHealth> CheckReadinessAsync(CancellationToken cancellationToken)
     {
@@ -299,11 +301,44 @@ public sealed class GameServiceClient(HttpClient httpClient)
         string sessionToken,
         CancellationToken cancellationToken)
     {
-        return PostAsync<SimulationSessionCredentialRequest, SimulationSessionLeaseResponse>(
+        return ReleaseSimulationSessionAsync(
+            simulationSessionId,
+            workerRuntimeId,
+            sessionToken,
+            null,
+            cancellationToken);
+    }
+
+    // The release carries the character's final state when the worker has one.
+    public Task<GameServiceResult<SimulationSessionLeaseResponse>> ReleaseSimulationSessionAsync(
+        Guid simulationSessionId,
+        string workerRuntimeId,
+        string sessionToken,
+        SimulationCharacterStateRequest? finalState,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationSessionReleaseRequest, SimulationSessionLeaseResponse>(
             "GameService.ReleaseSimulationSession",
             $"/api/simulation-sessions/{simulationSessionId}/release",
-            new SimulationSessionCredentialRequest(workerRuntimeId, sessionToken),
-            IsValidSimulationSessionLease,
+            new SimulationSessionReleaseRequest(workerRuntimeId, sessionToken, finalState),
+            response => IsValidSimulationSessionLease(response)
+                && (finalState is not null || !response.FinalStateSaved),
+            cancellationToken);
+    }
+
+    // Saves the changed character states of this worker runtime's sessions in one batch.
+    public Task<GameServiceResult<SimulationCharacterCheckpointResponse>> CheckpointCharacterStatesAsync(
+        string workerId,
+        SimulationCharacterCheckpointRequest request,
+        CancellationToken cancellationToken)
+    {
+        return PostAsync<SimulationCharacterCheckpointRequest, SimulationCharacterCheckpointResponse>(
+            "GameService.CheckpointCharacterStates",
+            $"/api/simulation-workers/{Uri.EscapeDataString(workerId)}/checkpoint",
+            request,
+            response => response.Accepted >= 0
+                && response.Skipped >= 0
+                && response.Accepted + response.Skipped == request.States.Count,
             cancellationToken);
     }
 
@@ -590,7 +625,31 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 response.CarryCapacity)
             && IsValidEquipment(response.Equipment)
             // A person's character always has a look; a development bot is dressed by the worker.
-            && (response.IsSyntheticBot ? response.Appearance is null : IsValidAppearance(response.Appearance));
+            && (response.IsSyntheticBot ? response.Appearance is null : IsValidAppearance(response.Appearance))
+            // A development bot has no stored place or vitals.
+            && (response.SavedState is null || (!response.IsSyntheticBot && IsValidSavedState(response.SavedState)));
+    }
+
+    // Within the combat content bounds, which GameService stores it within; a living character
+    // has health.
+    private static bool IsValidSavedState(SimulationSavedCharacterState state)
+    {
+        return Identifiers.IsServiceIdentifier(state.WorldId)
+            && !string.IsNullOrWhiteSpace(state.CollisionRevision)
+            && state.CollisionRevision.Length <= Identifiers.MaximumLength
+            && !state.CollisionRevision.Any(char.IsWhiteSpace)
+            && IsFiniteCoordinate(state.PositionX)
+            && IsFiniteCoordinate(state.PositionY)
+            && IsFiniteCoordinate(state.PositionZ)
+            && float.IsFinite(state.YawDegrees)
+            && Math.Abs(state.YawDegrees) <= 360f
+            && state.Health is >= 1 and <= CombatContentRules.MaximumHealth
+            && state.Mana is >= 0 and <= CombatContentRules.MaximumMana;
+    }
+
+    private static bool IsFiniteCoordinate(float value)
+    {
+        return float.IsFinite(value) && Math.Abs(value) <= 1_000_000f;
     }
 
     public static bool IsValidAppearance(SimulationAppearance? appearance)

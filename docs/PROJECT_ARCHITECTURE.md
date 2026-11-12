@@ -172,8 +172,8 @@ not a network authority relationship.
 `GameService` is the only ASP.NET Core application. It owns:
 
 - Accounts, password hashes, and revocable account sessions.
-- Characters, ownership, character looks, levels, and currency with its
-  ledger.
+- Characters, ownership, character looks, levels, currency with its ledger,
+  and every character's saved place and vitals.
 - World, Fleet, Node, Shard, SimulationWorker, and SimulationAssignment records.
 - Worker heartbeats, online status, capacity, runtime fencing, and failover.
 - Capacity-aware shard placement and short-lived join tickets.
@@ -240,6 +240,8 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
   capability dispatch, Mob brains, resource node charges, and gathering timing.
 - Server-authoritative combat: health, mana, targets, attack timing,
   projectiles, deaths, respawns, Mob loot rolls, and the ammunition ledger.
+- Restoring each joining player's saved place and vitals and saving them in
+  checkpoints and with every session release.
 - Live corpse discovery, proximity, and viewer state, and worker-owned Mob
   corpses.
 - Broadcasting each player's look and visible equipment.
@@ -275,7 +277,7 @@ namespace, in folders that mirror the protocol families:
 | `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
 | `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table it builds from `RealtimeMessageRoutes`, the route table that features add to, which takes each route's channel and delivery from the generated message descriptor. |
 | `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
-| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors`, `Combat`, `Mobs`, `Admin` | One loop-side handler per feature plus, where GameService calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks with the phases that features register in the order of `SimulationTickOrder`, `EntityPresenceReplicator` owns the interest manager, `SnapshotReplicator` owns snapshot budgets and fairness, `CombatSystem` and `MobSystem` run the combat and Mob phases, and `PlayerCombatAuthority` commits arrow batches and deaths. |
+| `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors`, `Combat`, `Mobs`, `Admin`, `Persistence` | One loop-side handler per feature plus, where GameService calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks with the phases that features register in the order of `SimulationTickOrder`, `EntityPresenceReplicator` owns the interest manager, `SnapshotReplicator` owns snapshot budgets and fairness, `CombatSystem` and `MobSystem` run the combat and Mob phases, and `PlayerCombatAuthority` commits arrow batches and deaths. |
 
 One dedicated thread, named `SimulationWorker realtime loop`, owns the realtime
 state. Each iteration polls the transport, drains completed operations within a
@@ -323,20 +325,23 @@ contract:
   positions; due world actor timers and world actor activity; Mob brains and
   movement; the combat phase; interaction revalidation every fifth of a second
   while world interactions run; the gathering pass; changed looks and then
-  snapshots at the snapshot rate; and corpse presence twice per second. The loop
-  fills the players of the tick once, in entity id order, and hands every phase
-  the server tick, those players, and the player grid; a phase that runs less
-  often than every tick decides that itself. At most five ticks catch up before
+  snapshots at the snapshot rate; corpse presence twice per second; and the
+  character checkpoint at its interval. The loop fills the players of the tick
+  once, in entity id order, and hands every phase the server tick, those
+  players, and the player grid; a phase that runs less often than every tick
+  decides that itself. At most five ticks catch up before
   the clock resynchronizes.
 - Shutdown stops the transport, waits for in-flight operations, and then runs
   the registered shutdown steps in the order that
   `Realtime/RealtimeShutdownOrder.cs` declares: the combat authority
   commits the arrow shots it can still name exactly and the quest credits that
-  wait, and then combat state, peers, interest, bindings, entities, item and
-  carry state, corpse viewers, interaction leases, world actors, cached corpse
-  views, and the orphan sweep state are cleared and the population gauges
-  zeroed. `Realtime transport stopped.` is logged last. Other completions
-  produced during shutdown are not finalized. The host runs this shutdown before
+  wait, the place and vitals of every remaining player go into one last
+  checkpoint and stay for the session releases, and then combat state, peers,
+  interest, bindings, entities, item and carry state, corpse viewers,
+  interaction leases, world actors, cached corpse views, and the orphan sweep
+  state are cleared and the population gauges zeroed. `Realtime transport
+  stopped.` is logged last. Other completions produced during shutdown are not
+  finalized. The host runs this shutdown before
   it stops any other hosted service, as
   [Hosted Services And Stop Order](#hosted-services-and-stop-order) describes.
 - A failing packet or completion disconnects only its own peer with
@@ -382,10 +387,10 @@ the compiler checks the construction order:
 
 The units, in the order the composition creates them, are appearance, quest
 progress, player combat, items, corpses, world actors, session, combat, quests,
-admin, movement, and snapshots. Player combat and quest progress are units of
-their own because the other operation features need the combat gate, and the
-combat gate needs quest progress, before the combat simulation and the quest
-intents can exist. A cycle that constructor arguments cannot close stays closed
+admin, persistence, movement, and snapshots. Player combat and quest progress
+are units of their own because the other operation features need the combat
+gate, and the combat gate needs quest progress, before the combat simulation and
+the quest intents can exist. A cycle that constructor arguments cannot close stays closed
 by a settable property in one marked block of the composition, each with its
 reason: presence and the appearance replicator, the combat authority and the
 session handler, and the world actor driver and the Mobs of combat. Combat
@@ -404,9 +409,19 @@ constructor. A unit registers:
   `SimulationTickPhases.Add`, usually from an `AddTickPhase` method. The phase
   receives the `SimulationTick` and must not allocate per tick. Two phases with
   one position fail the composition with a message that names both.
-- A lifecycle hook. `RealtimeLifecycleHooks` calls its player-joined,
-  player-removed, and spawn-sent hooks in the order the units add them. A join
-  reaches combat and then the admin tools.
+- A lifecycle hook. `RealtimeLifecycleHooks` has player-placement,
+  player-joined, leave-starting, player-removed, and spawn-sent hooks. The hooks
+  of a player's way in, placement, joined, and spawn-sent, run in the order the
+  units add them. The hooks of its way out, leave-starting and removed, run in
+  reverse: teardown mirrors setup, so the last feature to join a player is the
+  first to see it go, while the features it builds on still hold the player. A
+  placement is asked where the entity of a joining session starts before the
+  join knows whether it creates the entity or a reconnect keeps it; the first
+  placement that returns a state wins, and without one the player starts at the
+  World spawn. A leave-starting hook runs right before the release of a leave
+  starts, while the entity still exists. A join reaches combat, then the admin
+  tools, and then persistence, and a removal reaches persistence and then
+  combat.
 - Per-character state. A store that keeps state per character and simulation
   session implements `ICharacterSessionStore` and joins
   `CharacterSessionStores.Create`, which `Program.cs` registers once. Session
@@ -439,9 +454,19 @@ with `ItemDependencies`, its `Register`, and the unit, beside
 `RealtimeServerDependencies`, one `Register` line, and one record argument in
 each of the five test constructions.
 
+Persistence, `Realtime/Persistence/PersistenceFeature.cs` with
+`PersistenceDependencies`, is the first feature written against this structure.
+It registers a placement, the joined, leave-starting, and removed hooks, the
+character checkpoint phase, and the character state flush shutdown step. It
+takes combat's unit and reads the vitals from combat's combatants when it needs
+them, also in its removed hook, which runs before combat's. It also takes the
+release service's `CharacterFinalStateStore`, which carries a captured final
+state to whichever path releases the session.
+
 `RealtimeFeatureRegistrationTests` pins the composed tick phases, routes, hooks,
-and shutdown steps, `SimulationTickLoopTests` pins that a tick allocates nothing
-beyond its phases, and `CharacterSessionStoresTests` pins the occasions of each
+the order the hooks run in, and shutdown steps, `SimulationTickLoopTests` pins
+that a tick allocates nothing beyond its phases and that the character
+checkpoint phase allocates nothing on a tick when it is not due, and `CharacterSessionStoresTests` pins the occasions of each
 store.
 
 #### Hosted Services And Stop Order
@@ -460,18 +485,22 @@ The generic host stops hosted services in reverse order, after it called
 runs its whole shutdown in `StoppingAsync`, so a graceful stop runs in this
 order:
 
-1. The realtime shutdown: the transport stops, in-flight operations finish, and
-   the combat flush commits arrow shots and quest credits with the session
-   credentials, while every session and the registration still hold.
+1. The realtime shutdown: the transport stops, in-flight operations finish, the
+   combat flush commits arrow shots and quest credits with the session
+   credentials, and the character state flush saves the place and vitals of
+   every remaining player in one last checkpoint, while every session and the
+   registration still hold.
 2. The metrics reporter, corpse restoration, and the lease monitor stop.
 3. The worker heartbeat clears the registration lease and marks the runtime
    offline through `/offline`.
 4. The session heartbeat releases every local session.
 
-The combat work of a session is therefore committed before the session is
-released or the runtime goes offline. `SimulationWorkerStopOrderTests` runs the
-hosted services in a generic host against the scripted GameService and pins this
-order.
+The combat work and the last state of a session are therefore committed before
+the session is released or the runtime goes offline. Going offline releases
+every session of the runtime, so a release that follows saves no final state;
+it carries one only when the last checkpoint failed, for the case that going
+offline failed too. `SimulationWorkerStopOrderTests` runs the hosted services
+in a generic host against the scripted GameService and pins this order.
 
 ### Server Common And Telemetry
 
@@ -951,6 +980,7 @@ transaction protocol stay authoritative for corpse contents.
 | `characters` | Global characters owned by accounts, with their name, level, and currency balance |
 | `character_currency_ledger` | Append-only record of every currency change with source kind, source id, item operation, signed delta, and balance after |
 | `character_appearances` | One row per character with its body model, its look choices, and whether its headwear is lowered |
+| `character_simulation_states` | One row per character with its last saved World, that World's collision revision, position, yaw, health, and mana, and the simulation session and sequence that wrote it |
 | `world_definitions` | Shared World content identities, mirrored from the World manifests |
 | `fleets` | Regional or operational compute groups |
 | `simulation_nodes` | Machines or hosts assigned to fleets |
@@ -1156,9 +1186,12 @@ The rules of each step are in
 2. SimulationWorker consumes it through GameService with its worker and runtime
    identity.
 3. Ticket consumption and session claim occur in one PostgreSQL transaction,
-   which also returns the fenced carry tuple, the equipment, and the character's
-   look.
+   which also returns the fenced carry tuple, the equipment, the character's
+   look, and its saved place and vitals.
 4. SimulationWorker creates or reconnects the entity and binds it to the peer.
+   A new entity starts at the saved place when the save names the Shard's World
+   and the collision revision the worker runs, and otherwise at the World
+   spawn; it keeps the saved health and mana in any World.
 5. A new entity is added incrementally to the spatial interest index. Existing
    visibility sets are updated only for nearby observers instead of globally
    refreshing every peer.
@@ -1180,12 +1213,14 @@ the session's operations keep their order across the reconnect.
 ### Leave, Disconnect, Expiry, And Failover
 
 1. Unity requests leave with the exact simulation-session id.
-2. SimulationWorker releases the exact session token generation through
-   GameService.
+2. SimulationWorker captures the character's final place and vitals and
+   releases the exact session token generation through GameService, which
+   saves that state in the transaction of the release.
 3. The worker removes the peer binding and entity and sends reliable despawn.
-4. Unexpected disconnect uses the same cleanup path. The worker first drops the
-   local session, so its heartbeat stops renewing the lease, and then calls
-   release with two bounded retries.
+4. Unexpected disconnect uses the same cleanup path. The worker captures the
+   final state when it removes the entity, drops the local session, so its
+   heartbeat stops renewing the lease, and then calls release with two bounded
+   retries, each with that state.
 5. If release is unavailable, the database lease expires on its own because
    nothing renews it. A join that is rejected during finalization releases its
    session the same way. As a safety net, the worker releases any local session
@@ -1201,8 +1236,17 @@ the session's operations keep their order across the reconnect.
    player keep running. GameService error codes and messages are normalized to
    short printable text before they enter realtime protocol fields.
 8. Worker shutdown or authoritative failover releases its assignment, pending
-   tickets, and bound sessions. A graceful stop first commits the combat work,
-   as [Hosted Services And Stop Order](#hosted-services-and-stop-order)
+   tickets, and bound sessions. A graceful stop first commits the combat work
+   and saves every remaining player's state, as
+   [Hosted Services And Stop Order](#hosted-services-and-stop-order)
+   describes.
+9. Between leaves, the worker saves the players whose place or vitals changed
+   in one checkpoint call every `SimulationWorker:CharacterCheckpointSeconds`,
+   so a worker crash loses at most that interval of movement, damage, and mana.
+   GameService accepts a state only from the character's active session on that
+   worker runtime and only when it is newer than the stored state of the same
+   session, as
+   [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
    describes.
 
 ### Authoritative Movement

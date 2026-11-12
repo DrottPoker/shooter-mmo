@@ -6,7 +6,8 @@ using Mmorpg.Server.Common.Characters;
 
 namespace Mmorpg.GameService.Characters;
 
-// Characters: characters, ownership, character currency, character level, and character looks.
+// Characters: characters, ownership, character currency, character level, character looks, and
+// every character's saved place and vitals.
 public sealed class CharactersModule(CharactersModuleOptions options) : IGameServiceModule
 {
     public string Name => "Characters";
@@ -29,6 +30,7 @@ public sealed class CharactersModule(CharactersModuleOptions options) : IGameSer
         services.AddSingleton<ICharacterLocks, CharacterLocks>();
         services.AddSingleton<ICharacterWallet, CharacterWallet>();
         services.AddSingleton<ICharacterProgression, CharacterProgression>();
+        services.AddSingleton<ICharacterSimulationStates, CharacterSimulationStates>();
         services.AddScoped<CharacterService>();
     }
 

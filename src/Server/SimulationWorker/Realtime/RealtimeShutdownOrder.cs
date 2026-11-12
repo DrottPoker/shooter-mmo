@@ -9,6 +9,11 @@ internal static class RealtimeShutdownOrder
     // entities they name still exist.
     public const int CombatFlush = 100;
 
+    // Saves the place and vitals of every remaining player in one last checkpoint and keeps them
+    // for the releases that follow, after the combat flush and while combat state, the entities,
+    // and the sessions still hold.
+    public const int CharacterStateFlush = 150;
+
     // Clears combat state once its flush has read it.
     public const int Combat = 200;
 

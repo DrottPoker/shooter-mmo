@@ -52,7 +52,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 
 | Area | Implemented | Next or deferred |
 | --- | --- | --- |
-| Accounts and characters | Registration, login, one active session per account, characters with looks | Character deletion is an open question |
+| Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout | Character deletion is an open question |
 | Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
@@ -103,7 +103,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
 | Content delivery to the client | Provisional | The client fetches the item and quest catalogs and the text tables of one locale by revision once at start, caches them, and falls back to its bundled set as a whole; no swap while it runs, one locale, and the item presentation catalog and binary assets still ship in the build |
 | Player-facing text | Provisional | Item, quest, and actor text and the text for every code that a server sends or the client gives a failure it finds itself come from the text tables; no compiled content and no server holds a text of the content, only the codes of normal play have a text of their own, and of the client's own texts the quest windows, the item rule reasons, the inventory, storage, corpse, and vendor windows, the login and character screens, the combat HUD status texts, and the world menu with its messages take theirs from a table; the literals of the `Temporary` panels and the F2 and F3 menus stay English by decision, and a technical failure that the client finds shows the text of its code while its English diagnostic goes to the log |
-| Player presence: join, leave, and disconnect | Provisional | Nothing about a live character but its items is stored |
+| Player presence: join, leave, and disconnect | Provisional | Of a live character only its items, place, facing, health, and mana are stored; the logout risk timer is deferred |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |
 | Worker and GameService resilience: lease durations, heartbeats, and backpressure | Provisional | |

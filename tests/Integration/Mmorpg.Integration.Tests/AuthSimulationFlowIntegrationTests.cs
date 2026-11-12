@@ -109,12 +109,12 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstRelease = await context.SimulationSessionService.ReleaseAsync(
             consumed.Value.SimulationSessionId,
             LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
+            Release(consumed.Value.SimulationSessionToken),
             CancellationToken.None);
         var secondRelease = await context.SimulationSessionService.ReleaseAsync(
             consumed.Value.SimulationSessionId,
             LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
+            Release(consumed.Value.SimulationSessionToken),
             CancellationToken.None);
 
         Assert.True(firstRelease.Succeeded, firstRelease.Error?.Message);
@@ -688,7 +688,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var staleTokenRelease = await context.SimulationSessionService.ReleaseAsync(
             firstSession.SimulationSessionId,
             LocalWorkerId,
-            Credential(firstSession.SimulationSessionToken),
+            Release(firstSession.SimulationSessionToken),
             CancellationToken.None);
         Assert.False(staleTokenRelease.Succeeded);
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
@@ -696,7 +696,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var release = await context.SimulationSessionService.ReleaseAsync(
             reconnect.Value.SimulationSessionId,
             LocalWorkerId,
-            Credential(reconnect.Value.SimulationSessionToken),
+            Release(reconnect.Value.SimulationSessionToken),
             CancellationToken.None);
         Assert.True(release.Succeeded, release.Error?.Message);
 
@@ -1288,6 +1288,11 @@ public sealed class AuthSimulationFlowIntegrationTests
     private static SimulationSessionCredentialRequest Credential(string token)
     {
         return new SimulationSessionCredentialRequest(LocalRuntimeId, token);
+    }
+
+    private static SimulationSessionReleaseRequest Release(string token)
+    {
+        return new SimulationSessionReleaseRequest(LocalRuntimeId, token);
     }
 
     private static Task<int> CountFoundationTablesAsync(PostgresIntegrationTestContext context)

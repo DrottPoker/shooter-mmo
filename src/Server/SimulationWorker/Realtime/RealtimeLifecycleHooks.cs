@@ -1,23 +1,42 @@
+using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// The lifecycle hooks that features add during composition. Each list runs on the loop in
-// registration order, so the order in which the composition creates the feature units that add
-// them is the call order.
+// The lifecycle hooks that features add during composition. The hooks of a player's way in, the
+// placements, the joined hooks, and the spawn-sent hooks, run in registration order, so the order
+// in which the composition creates the feature units that add them is the call order. The hooks
+// of its way out, the leave-starting and the removed hooks, run in reverse registration order:
+// teardown mirrors setup, so the last feature to join a player is the first to see it go, while
+// the features it builds on still hold the player. The lists keep registration order.
 // Loop-confined once composed.
 internal sealed class RealtimeLifecycleHooks
 {
+    private readonly List<Func<ActiveSimulationSession, PlayerMovementState?>> playerPlacements = [];
     private readonly List<Action<RealtimePeerContext, PlayerSimulationEntity>> playerJoined = [];
+    private readonly List<Action<RealtimePeerContext, ActiveSimulationSession>> leaveStarting = [];
     private readonly List<Action<RealtimePeerContext, ActiveSimulationSession, ulong>> playerRemoved = [];
     private readonly List<Action<IRealtimePeerConnection, ulong>> spawnSent = [];
 
+    public IReadOnlyList<Func<ActiveSimulationSession, PlayerMovementState?>> PlayerPlacements => playerPlacements;
+
     public IReadOnlyList<Action<RealtimePeerContext, PlayerSimulationEntity>> PlayerJoined => playerJoined;
+
+    public IReadOnlyList<Action<RealtimePeerContext, ActiveSimulationSession>> LeaveStarting => leaveStarting;
 
     public IReadOnlyList<Action<RealtimePeerContext, ActiveSimulationSession, ulong>> PlayerRemoved => playerRemoved;
 
     public IReadOnlyList<Action<IRealtimePeerConnection, ulong>> SpawnSent => spawnSent;
+
+    // Asked where the entity of a joining session starts, before the join decides whether it
+    // creates the entity or a reconnect keeps it. The first placement that returns a state wins;
+    // without one the player starts at the World spawn.
+    public void AddPlayerPlacement(Func<ActiveSimulationSession, PlayerMovementState?> placement)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        playerPlacements.Add(placement);
+    }
 
     // Hears every character that joined, after its accept was sent and before its baseline.
     public void AddPlayerJoined(Action<RealtimePeerContext, PlayerSimulationEntity> hook)
@@ -26,7 +45,17 @@ internal sealed class RealtimeLifecycleHooks
         playerJoined.Add(hook);
     }
 
-    // Hears every player entity that teardown removes, with the session it belonged to.
+    // Hears every leave right before its release starts, while the player's entity still exists.
+    // Runs in reverse registration order.
+    public void AddLeaveStarting(Action<RealtimePeerContext, ActiveSimulationSession> hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        leaveStarting.Add(hook);
+    }
+
+    // Hears every player entity that teardown removes, with the session it belonged to. Runs in
+    // reverse registration order, so a feature reads the state of the features it builds on
+    // before they let the player go.
     public void AddPlayerRemoved(Action<RealtimePeerContext, ActiveSimulationSession, ulong> hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
@@ -41,6 +70,19 @@ internal sealed class RealtimeLifecycleHooks
         spawnSent.Add(hook);
     }
 
+    public PlayerMovementState? PlaceNewPlayer(ActiveSimulationSession session)
+    {
+        foreach (var placement in playerPlacements)
+        {
+            if (placement(session) is { } state)
+            {
+                return state;
+            }
+        }
+
+        return null;
+    }
+
     public void RaisePlayerJoined(RealtimePeerContext context, PlayerSimulationEntity entity)
     {
         foreach (var hook in playerJoined)
@@ -49,11 +91,19 @@ internal sealed class RealtimeLifecycleHooks
         }
     }
 
+    public void RaiseLeaveStarting(RealtimePeerContext context, ActiveSimulationSession session)
+    {
+        for (var index = leaveStarting.Count - 1; index >= 0; index--)
+        {
+            leaveStarting[index](context, session);
+        }
+    }
+
     public void RaisePlayerRemoved(RealtimePeerContext context, ActiveSimulationSession session, ulong entityId)
     {
-        foreach (var hook in playerRemoved)
+        for (var index = playerRemoved.Count - 1; index >= 0; index--)
         {
-            hook(context, session, entityId);
+            playerRemoved[index](context, session, entityId);
         }
     }
 

@@ -45,7 +45,10 @@ public sealed class GameServiceSchema
         "202611042200_quest_log",
         "202611050900_quest_reward_currency",
         "202611051200_worker_quest_catalog_revision",
-        "202611051300_remove_placeholder_quest_items"
+        "202611051300_remove_placeholder_quest_items",
+        "202611101200_corpse_source_character_name",
+        "202611101300_item_catalog_names_removal",
+        "202611121200_character_simulation_states"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

@@ -67,6 +67,7 @@ public sealed class RealtimeEntityLifecycleTests
             CombatDependencies.CreateDefault(),
             AppearanceDependencies.CreateDefault(),
             QuestDependencies.CreateDefault(),
+            PersistenceDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         using var firstClient = new RealtimeTestClient(firstTicket.Ticket);
         using var secondClient = new RealtimeTestClient(secondTicket.Ticket);

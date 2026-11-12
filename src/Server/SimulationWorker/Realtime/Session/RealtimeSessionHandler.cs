@@ -123,6 +123,7 @@ internal sealed class RealtimeSessionHandler(
 
     public void StartLeave(RealtimePeerContext context, ActiveSimulationSession session)
     {
+        hooks.RaiseLeaveStarting(context, session);
         operationTracker.Track(sessionOperations.RunLeaveAsync(this, context, session));
     }
 
@@ -221,7 +222,9 @@ internal sealed class RealtimeSessionHandler(
 
         session = session with { CarryState = currentCarryState! };
 
-        var initialMovementState = PlayerMovementSimulation.CreateInitialState(
+        // A registered placement, such as a saved place, decides where a new entity starts.
+        var initialMovementState = hooks.PlaceNewPlayer(session)
+            ?? PlayerMovementSimulation.CreateInitialState(
                 config.MovementSimulation,
                 collisionWorld,
                 config.MovementSpawn.X,
