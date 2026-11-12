@@ -6,8 +6,8 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Pins the persisted operation kind of every item command. An account actor with a
-// derived (version 5) operation id is rejected before any database access, so the
+// Pins the persisted operation kind of every registered item command. An account actor with
+// a derived (version 5) operation id is rejected before any database access, so the
 // complete routing table runs without PostgreSQL.
 public sealed class ItemTransactionRoutingTests
 {
@@ -39,29 +39,27 @@ public sealed class ItemTransactionRoutingTests
     }
 
     [Fact]
-    public void RoutingTableCoversEveryPublicOverloadAndKnownMetricKind()
+    public async Task RoutingTableCoversEveryRegistrationAndKnownMetricKind()
     {
-        var overloads = typeof(ItemTransactionService)
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Where(method => string.Equals(method.Name, "ExecuteAsync", StringComparison.Ordinal))
-            .ToArray();
-        var requestTypes = overloads
-            .Select(method =>
-            {
-                var parameters = method.GetParameters();
-                Assert.Equal(2, parameters.Length);
-                Assert.Equal(typeof(CancellationToken), parameters[1].ParameterType);
-                Assert.Equal(typeof(Task<ItemTransactionResult>), method.ReturnType);
-                var requestType = parameters[0].ParameterType;
-                Assert.True(requestType.IsGenericType);
-                Assert.Equal(typeof(ItemTransactionRequest<>), requestType.GetGenericTypeDefinition());
-                return requestType.GetGenericArguments()[0];
-            })
-            .ToArray();
+        var execute = Assert.Single(
+            typeof(ItemTransactionService).GetMethods(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly),
+            method => string.Equals(method.Name, "ExecuteAsync", StringComparison.Ordinal));
+        var parameters = execute.GetParameters();
+        Assert.True(execute.IsGenericMethodDefinition);
+        Assert.Equal(2, parameters.Length);
+        Assert.Equal(typeof(CancellationToken), parameters[1].ParameterType);
+        Assert.Equal(typeof(Task<ItemTransactionResult>), execute.ReturnType);
+        Assert.Equal(typeof(ItemTransactionRequest<>), parameters[0].ParameterType.GetGenericTypeDefinition());
 
-        Assert.Equal(48, overloads.Length);
-        Assert.Equal(48, requestTypes.Distinct().Count());
+        await using var composition = new OfflineItemComposition();
+        var registrations = composition.Catalog.Registrations;
+        Assert.Equal(48, registrations.Count);
+        Assert.Equal(48, registrations.Select(registration => registration.CommandType).Distinct().Count());
         Assert.Equal(48, Routes.Count);
+        Assert.Equal(
+            registrations.Select(registration => registration.OperationKind).Order(StringComparer.Ordinal),
+            Routes.Keys.Order(StringComparer.Ordinal));
 
         var knownKinds = (IReadOnlySet<string>)typeof(ItemOperationsMetrics)
             .GetField("KnownOperationKinds", BindingFlags.NonPublic | BindingFlags.Static)!

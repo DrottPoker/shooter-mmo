@@ -60,12 +60,12 @@ public sealed class ItemTransactionTelemetryTests
         var accessor = new HttpContextAccessor { HttpContext = null };
         await using var dataSource = NpgsqlDataSource.Create(UnreachableDatabase);
         await using var services = GameServiceTestComposition.BuildServiceProvider(dataSource);
-        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+        var service = ItemTransactionServiceFactory.Create(
             services,
-            metrics,
-            ItemOperationsOptions.CreateDefaults(),
-            logger,
-            accessor);
+            options: ItemOperationsOptions.CreateDefaults(),
+            metrics: metrics,
+            logger: logger,
+            httpContextAccessor: accessor);
 
         var result = await service.ExecuteAsync(InvalidIdRequest(), CancellationToken.None);
 
@@ -122,11 +122,11 @@ public sealed class ItemTransactionTelemetryTests
         using var metrics = new ItemOperationsMetrics();
         await using var dataSource = NpgsqlDataSource.Create(UnreachableDatabase);
         await using var services = GameServiceTestComposition.BuildServiceProvider(dataSource);
-        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+        var service = ItemTransactionServiceFactory.Create(
             services,
-            metrics,
-            ItemOperationsOptions.CreateDefaults(),
-            logger);
+            options: ItemOperationsOptions.CreateDefaults(),
+            metrics: metrics,
+            logger: logger);
         var operationId = Guid.NewGuid();
 
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => service.ExecuteAsync(
@@ -159,11 +159,11 @@ public sealed class ItemTransactionTelemetryTests
         var state = await world.LoadStateAsync(characterId);
         var logger = new StructuredLogger<ItemTransactionService>();
         using var metrics = new ItemOperationsMetrics();
-        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+        var service = ItemTransactionServiceFactory.Create(
             context.Services,
-            metrics,
-            ItemOperationsOptions.CreateDefaults(),
-            logger);
+            options: ItemOperationsOptions.CreateDefaults(),
+            metrics: metrics,
+            logger: logger);
         var lockScopes = new List<string>();
         var transactionTags = new List<string>();
         using var listener = new MeterListener();
@@ -262,11 +262,11 @@ public sealed class ItemTransactionTelemetryTests
         await using var dataSource = NpgsqlDataSource.Create(UnreachableDatabase);
         await using var services = GameServiceTestComposition.BuildServiceProvider(dataSource);
         var accessor = new HttpContextAccessor { HttpContext = httpContext };
-        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+        var service = ItemTransactionServiceFactory.Create(
             services,
-            ItemOperationsOptions.CreateDefaults(),
-            logger,
-            accessor);
+            options: ItemOperationsOptions.CreateDefaults(),
+            logger: logger,
+            httpContextAccessor: accessor);
 
         await service.ExecuteAsync(InvalidIdRequest(), CancellationToken.None);
         return Assert.Single(logger.Entries).Properties["CorrelationId"];

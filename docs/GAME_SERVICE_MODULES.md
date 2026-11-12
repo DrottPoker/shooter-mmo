@@ -228,11 +228,11 @@ Every durable item mutation runs through one item transaction kernel in
 
 | Folder | Namespace | Contents |
 | --- | --- | --- |
-| `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, the facade with one `ExecuteAsync` overload per command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
-| `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
+| `Transactions/` | `Mmorpg.GameService.Items` | `ItemTransactionService`, whose one generic `ExecuteAsync` runs every command; the command, actor, and result contracts; the error codes and `ItemTransactionRejection` |
+| `Kernel/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionKernel`, `IItemCommandHandler<TCommand>`, `ItemCommandRegistration<TCommand>`, `IItemCommandSource`, `ItemCommandCatalog`, admission, the canonical request, the operation ledger, outcomes, telemetry, and the persisted JSON options |
 | `Context/` | `Mmorpg.GameService.Items.Transactions` | `ItemTransactionContext` with its session and facets, the kernel-owned finalizer, the simulation authority, and the lock types |
 | `Domain/` | `Mmorpg.GameService.Items.Transactions.Domain` | Rules and writes shared by several handlers: policy states, Bag aggregate guards, Recovery deliveries, durable corpse records, corpse custody and transfers, the Loot all state, transform and Mob loot rules and writes, new item instances, quantity consumption, and carried acquisition |
-| `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
+| `Handlers/` | `Mmorpg.GameService.Items.Transactions.Handlers` | One stateless handler class per command family and one command source per area; `PlayerDeath/` holds the death handler with its corpse layout writer, custody transfers, and partition models |
 
 `Context/CarryStateCalculator` is the one carried-weight rule, shared with the
 startup recompute in `CharacterItemStateBootstrapper`. It finds the character's
@@ -244,10 +244,40 @@ item. Outside the kernel, `Development/` holds the process-local Development
 item tool and its packages, and `StackStress/` holds the stack stress fixtures,
 which register only when `StackStressFixtures:Enabled` is true.
 
-Each overload routes its command with the persisted operation kind and the
-actor character id to the kernel and one handler. The facade composes the
-kernel and the handlers in its constructor; only `ItemTransactionService` is
-registered in dependency injection.
+A command reaches the kernel through its registration.
+`ItemCommandRegistration<TCommand>` holds everything the kernel needs to know
+about one command kind: the persisted operation kind, the actor character that
+the live authority check and the operation claim use (none for corpse expiry,
+durable Mob corpse creation, and Recovery expiry), the handler, the retried
+system operation and operationally significant flags, and an optional canonical
+form of the command for the idempotency payload. Each area has one
+`IItemCommandSource` in `Handlers/`, next to its handlers. A source builds its
+own handlers from the services they need and never a handler of another area:
+
+| Source | Commands |
+| --- | --- |
+| `CoreItemCommandSource` | Grant, relocate, swap container items, equip, unequip, split, merge, consume quantity, consume equipped ammunition, destroy, and swap Bag aggregates |
+| `RecoveryAndPolicyCommandSource` | Add, claim, and expire Recovery deliveries, apply an item policy, and remove insurance |
+| `QuestCommandSource` | The quest commands and the Admin menu's quest tools of `QuestCommandHandler`, and `AbandonQuestItemsCommand` |
+| `CorpseCommandSource` | Player death, corpse expiry, the player corpse loot, deposit, move, Bag swap, and Loot all, durable Mob corpses, and the live Mob loot grants. It also builds the `QuestDrops` that five of its handlers take. |
+| `EconomyCommandSource` | Vendor purchases and sales, and gathering yields |
+
+`ItemCommandCatalog` collects the registrations of every source and refuses to
+build, naming both registrations, when two share a command type or an
+operation kind. `ItemTransactionService.ExecuteAsync<TCommand>` looks up the
+registration of the command's type and runs the kernel with it; a command type
+without a registration throws `InvalidOperationException`. The kernel, its
+ledger and telemetry, `ItemSimulationAuthority`, `CharacterItemStateLocks`,
+the sources, and the catalog are stateless singletons in dependency injection,
+and `ItemTransactionService` is scoped.
+
+A new command kind needs a command record in `ItemTransactionContracts.cs`, an
+operation kind constant in `ItemOperationKinds`, a handler in `Handlers/`, and
+one registration in its area's source. `ItemOperationsMetrics` labels its
+metrics with the kind only after the kind joins `KnownOperationKinds`, and
+`ItemTransactionRoutingTests` needs a route for it. `ItemCommandCatalogTests`
+fails when a kind constant has no registration or a registration names no
+constant, and pins the kinds that carry each flag.
 
 `ItemTransactionKernel` owns the whole transaction. In this order it rejects an
 invalid operation id or an oversized canonical payload without database access,
@@ -307,8 +337,9 @@ touches `item_operations`; handlers hold only readonly injected state; no
 transaction code runs database commands in parallel; handlers take locks in the
 order below; only `ItemTransactionRejection` throws a rejection; the kernel never
 uses HTTP API error codes; and only the types named in
-[Cross-Module Statements](#cross-module-statements) use another module's
-contracts or SQL fragments.
+[Cross-Module Statements](#cross-module-statements), and the command sources
+that pass contracts to the handlers they build, use another module's contracts
+or SQL fragments.
 
 ### Operation Kinds
 
@@ -348,11 +379,18 @@ system services.
 | `vendor_purchase`, `vendor_sale` | `PurchaseFromVendorCommand`, `SellToVendorCommand` | `VendorCommandHandler` | Worker route, for the vendor capability |
 | `gather_resource` | `GatherResourceCommand` | `GatherResourceCommandHandler` | Worker route, for a resource node |
 
-`ItemOperationKinds.IsRetriedSystemOperation` names the retried system
-operations, whose rejections roll back completely instead of being stored, and
-`ItemOperationAdmission` checks the operation id rule and the payload limit
-before any database access. [Item Transactions](SERVICE_FEATURES.md#item-transactions)
-describes both rules as clients see them.
+The registrations of `process_player_death`, `create_persistent_mob_corpse`,
+`grant_mob_loot`, `expire_corpse`, and `expire_recovery_delivery` mark them as
+retried system operations, whose ids need not be random and whose rejections
+roll back completely instead of being stored. Those of `process_player_death`,
+`create_persistent_mob_corpse`, `expire_corpse`, `apply_item_policy`,
+`remove_insurance_policy`, and `abandon_quest_items` mark them as operationally
+significant, so their commits are logged at `Information` instead of `Debug`.
+The `claim_recovery_delivery` registration sorts the claimed items by id and
+revision for the idempotency payload. `ItemOperationAdmission` checks the
+operation id rule and the payload limit before any database access.
+[Item Transactions](SERVICE_FEATURES.md#item-transactions) describes both rules
+as clients see them.
 
 ### Quest Commands
 

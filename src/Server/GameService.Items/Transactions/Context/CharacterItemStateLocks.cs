@@ -12,7 +12,7 @@ namespace Mmorpg.GameService.Items.Transactions;
 internal sealed class CharacterItemStateLocks(
     ICharacterLocks characterLocks,
     ISimulationPresence simulationPresence,
-    ItemOperationsMetrics? operationsMetrics)
+    ItemOperationsMetrics? operationsMetrics = null)
 {
     private readonly ICharacterLocks characterLocks = characterLocks;
 
