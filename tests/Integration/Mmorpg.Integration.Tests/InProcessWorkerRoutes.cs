@@ -9,9 +9,9 @@ using Mmorpg.GameService.Quests;
 using Mmorpg.GameService.Testing;
 using ServerItemOperationRequest = Mmorpg.GameService.Items.SimulationItemOperationRequest;
 using ServerMobLootGrantRequest = Mmorpg.GameService.Items.SimulationMobLootGrantRequest;
-using ServerQuestDropRequest = Mmorpg.GameService.Items.SimulationQuestDropRequest;
+using ServerQuestDropRequest = Mmorpg.GameService.Quests.SimulationQuestDropRequest;
 using ServerQuestLogRequest = Mmorpg.GameService.Quests.SimulationQuestLogRequest;
-using ServerQuestOperationRequest = Mmorpg.GameService.Items.SimulationQuestOperationRequest;
+using ServerQuestOperationRequest = Mmorpg.GameService.Quests.SimulationQuestOperationRequest;
 
 namespace Mmorpg.Integration.Tests;
 

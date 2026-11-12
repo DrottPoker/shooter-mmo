@@ -1104,10 +1104,10 @@ set `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` to their values in `.env`,
 and run:
 
 ```powershell
-dotnet test tests/Server/Mmorpg.GameService.Items.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
+dotnet test tests/Server/Mmorpg.GameService.Quests.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 25 tests pass. Each one joins a character to the Shard and
+Expected result: 26 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the

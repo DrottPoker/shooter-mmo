@@ -1,15 +1,15 @@
 using Mmorpg.GameService.Characters.Contracts;
-using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // The economy commands: vendor purchases and sales, and gathering yields, which reach the quest
-// code only through its gathering entry.
+// code only through IQuestGatherCredit.
 internal sealed class EconomyCommandSource : IItemCommandSource
 {
     public EconomyCommandSource(
         ICharacterWallet characterWallet,
-        QuestGatherCredit questGatherCredit)
+        IQuestGatherCredit questGatherCredit)
     {
         var vendor = new VendorCommandHandler(characterWallet);
         Registrations =

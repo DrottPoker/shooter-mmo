@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Items.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Transactions;

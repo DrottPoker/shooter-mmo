@@ -1,14 +1,16 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Pins the item command catalog of the module composition: one registration per operation
-// kind, the kinds that carry each flag, one source per handler, and the failures for a
-// duplicate or missing registration.
+// Pins Items' part of the item command catalog of the module composition: one registration per
+// operation kind, the kinds that carry each flag, one source per handler, and the failures for a
+// duplicate or missing registration. Mmorpg.GameService.Quests.Tests pins the quest part and the
+// whole catalog.
 public sealed class ItemCommandCatalogTests
 {
     [Fact]
@@ -21,12 +23,12 @@ public sealed class ItemCommandCatalogTests
             .Select(field => (string)field.GetRawConstantValue()!)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var kinds = composition.Catalog.Registrations
+        var kinds = composition.RegistrationsOf(GameServiceAssemblies.Items)
             .Select(registration => registration.OperationKind)
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(48, constants.Length);
+        Assert.Equal(33, constants.Length);
         Assert.Equal(constants, kinds);
     }
 
@@ -59,8 +61,7 @@ public sealed class ItemCommandCatalogTests
                 ItemOperationKinds.CreatePersistentMobCorpse,
                 ItemOperationKinds.ExpireCorpse,
                 ItemOperationKinds.ApplyItemPolicy,
-                ItemOperationKinds.RemoveInsurancePolicy,
-                ItemOperationKinds.AbandonQuestItems
+                ItemOperationKinds.RemoveInsurancePolicy
             }.Order(StringComparer.Ordinal),
             KindsWhere(composition, registration => registration.OperationallySignificant));
     }
@@ -75,7 +76,6 @@ public sealed class ItemCommandCatalogTests
             {
                 ItemOperationKinds.ApplyItemPolicy,
                 ItemOperationKinds.RemoveInsurancePolicy,
-                ItemOperationKinds.AbandonQuestItems,
                 ItemOperationKinds.ProcessPlayerDeath
             }.Order(StringComparer.Ordinal),
             KindsWhere(composition, registration => registration.PolicyAction));
@@ -85,15 +85,17 @@ public sealed class ItemCommandCatalogTests
     public async Task EveryHandlerIsRegisteredByExactlyOneSource()
     {
         await using var composition = new OfflineItemComposition();
-        var sources = composition.Services.GetServices<IItemCommandSource>().ToArray();
+        var sources = composition.Services.GetServices<IItemCommandSource>()
+            .Where(source => source.GetType().Assembly == GameServiceAssemblies.Items)
+            .ToArray();
         var handlerSources = sources
             .SelectMany(source => source.Registrations
                 .Select(registration => (Handler: HandlerType(registration), Source: source.GetType())))
             .Distinct()
             .GroupBy(pair => pair.Handler)
             .ToArray();
-        var handlerTypes = GameServiceAssemblies.All
-            .SelectMany(assembly => assembly.GetTypes())
+        var handlerTypes = GameServiceAssemblies.Items
+            .GetTypes()
             .Where(type => !type.IsAbstract
                 && type.GetInterfaces().Any(contract => contract.IsGenericType
                     && contract.GetGenericTypeDefinition() == typeof(IItemCommandHandler<>)))
@@ -101,9 +103,9 @@ public sealed class ItemCommandCatalogTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(5, sources.Length);
+        Assert.Equal(4, sources.Length);
         Assert.All(handlerSources, group => Assert.Single(group));
-        Assert.Equal(24, handlerTypes.Length);
+        Assert.Equal(22, handlerTypes.Length);
         Assert.Equal(
             handlerTypes,
             handlerSources.Select(group => group.Key.FullName!).Order(StringComparer.Ordinal));
@@ -163,7 +165,7 @@ public sealed class ItemCommandCatalogTests
         OfflineItemComposition composition,
         Func<ItemCommandRegistration, bool> predicate)
     {
-        return composition.Catalog.Registrations
+        return composition.RegistrationsOf(GameServiceAssemblies.Items)
             .Where(predicate)
             .Select(registration => registration.OperationKind)
             .Order(StringComparer.Ordinal)
@@ -173,7 +175,9 @@ public sealed class ItemCommandCatalogTests
     private static Type HandlerType(ItemCommandRegistration registration)
     {
         return registration.GetType()
-            .GetProperty(nameof(ItemCommandRegistration<GrantItemCommand>.Handler))!
+            .GetProperty(
+                nameof(ItemCommandRegistration<GrantItemCommand>.Handler),
+                BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(registration)!
             .GetType();
     }

@@ -1,5 +1,3 @@
-using System.Text.Json;
-using Mmorpg.GameService.Placement.Contracts;
 
 namespace Mmorpg.GameService.Items;
 
@@ -56,51 +54,3 @@ internal sealed record SimulationAmmunitionConsumptionRequest(
     Guid ItemInstanceId,
     long ExpectedItemRevision,
     int Quantity);
-
-// The acting character's carry state and equipment, read after the operation committed.
-// The worker applies it when its item-state revision is newer than what it knows.
-internal sealed record SimulationCharacterStateResponse(
-    Guid CharacterId,
-    long ItemStateRevision,
-    long CarriedWeight,
-    long CarryCapacity,
-    IReadOnlyList<SimulationEquippedItem> Equipment);
-
-// A committed item transaction together with the acting character's state afterwards. A
-// quest action, or a gathering yield that counted for quest objectives, names the changed
-// quests in QuestLog: the result section of that name, passed through as written, or null.
-internal sealed record SimulationItemOperationResponse(
-    Guid OperationId,
-    string OperationKind,
-    bool Succeeded,
-    ItemTransactionError? Error,
-    IReadOnlyList<ItemTransactionCharacterRevision> CharacterRevisions,
-    IReadOnlyList<ItemTransactionContainerRevision> ContainerRevisions,
-    IReadOnlyList<ItemTransactionItemRevision> ItemRevisions,
-    IReadOnlyList<Guid> RecoveryDeliveryIds,
-    SimulationCharacterStateResponse? CharacterState,
-    IReadOnlyList<ItemTransactionItemChange>? ItemChanges,
-    JsonElement? QuestLog = null)
-{
-    // The result section that the response passes through as QuestLog.
-    public const string QuestLogSectionName = "questLog";
-
-    public static SimulationItemOperationResponse From(
-        ItemTransactionResult result,
-        SimulationCharacterStateResponse? characterState)
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        return new SimulationItemOperationResponse(
-            result.OperationId,
-            result.OperationKind,
-            result.Succeeded,
-            result.Error,
-            result.CharacterRevisions,
-            result.ContainerRevisions,
-            result.ItemRevisions,
-            result.RecoveryDeliveryIds,
-            characterState,
-            result.ItemChanges,
-            result.Section(QuestLogSectionName));
-    }
-}

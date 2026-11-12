@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
@@ -29,7 +30,7 @@ public sealed class ItemOperationClaimRaceTests
         var stored = await context.ItemTransactionService.ExecuteAsync(request, CancellationToken.None);
         Assert.Equal(ItemTransactionErrorCodes.ItemNotFound, stored.Error!.Code);
 
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var deleted = 0;
         traced.Recorder.OnStatement = statement =>
         {

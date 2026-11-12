@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Items;

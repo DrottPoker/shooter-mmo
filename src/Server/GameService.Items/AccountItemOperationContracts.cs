@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Items.Contracts;
+
 namespace Mmorpg.GameService.Items;
 
 internal static class ItemApiErrorCodes

@@ -4,6 +4,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;

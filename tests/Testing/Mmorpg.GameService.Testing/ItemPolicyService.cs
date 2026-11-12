@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Testing;

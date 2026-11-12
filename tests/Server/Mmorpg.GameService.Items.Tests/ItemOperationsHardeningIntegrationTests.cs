@@ -1,7 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 

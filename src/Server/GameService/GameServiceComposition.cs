@@ -8,6 +8,7 @@ using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Database.Migrations;
 using Mmorpg.GameService.Health;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform;
@@ -21,7 +22,7 @@ namespace Mmorpg.GameService;
 // health services in one place, so Program.cs and the tests build the same graph.
 internal static class GameServiceComposition
 {
-    // Module SPIs that run inside a caller's transaction. Each needs exactly one
+    // Module SPIs that run inside a caller's transaction or startup. Each needs exactly one
     // implementation, because a missing one would silently skip required work.
     private static readonly Type[] SingleImplementationSpis =
     [
@@ -30,7 +31,10 @@ internal static class GameServiceComposition
         typeof(ISimulationCharacterStateProvider),
         typeof(IShardWorldLocalStateProbe),
         typeof(IItemCatalogRevisionProvider),
-        typeof(IQuestCatalogRevisionProvider)
+        typeof(IQuestCatalogRevisionProvider),
+        typeof(IQuestDropDemand),
+        typeof(IItemCatalogReferences),
+        typeof(IQuestGatherCredit)
     ];
 
     // Modules in dependency order. Services register and routes map in this order.
@@ -43,8 +47,8 @@ internal static class GameServiceComposition
             new AccountsModule(configuration.Accounts),
             new CharactersModule(configuration.Characters),
             new PlacementModule(configuration.Placement),
-            new QuestsModule(configuration.Quests),
             new ItemsModule(configuration.Items),
+            new QuestsModule(configuration.Quests),
             new ContentModule(configuration.Content)
         ];
     }

@@ -105,8 +105,7 @@ internal static class GameServiceTestComposition
                 Worlds = WorldManifestCatalog.FromManifests(
                     WorldManifestFileStore.LoadAll(RepositoryPaths.Worlds))
             },
-            // Tests run against the test-owned quest and item catalogs, not the game content.
-            new QuestsModuleOptions(new QuestCatalogSource(RepositoryPaths.QuestCatalogFixtureRuntimePath)),
+            // Tests run against the test-owned item and quest catalogs, not the game content.
             new ItemsModuleOptions(
                 new ItemCatalogSource(RepositoryPaths.ItemCatalogFixtureRuntimePath),
                 ItemOperationsOptions.CreateDefaults(),
@@ -114,7 +113,10 @@ internal static class GameServiceTestComposition
                 new StackStressFixtureOptions(false, string.Empty))
             {
                 DevelopmentItemPackages = new DevelopmentItemPackageSource(
-                    ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent)),
+                    ContentLayout.DevelopmentItemPackagesPath(RepositoryPaths.ItemCatalogFixtureContent))
+            },
+            new QuestsModuleOptions(new QuestCatalogSource(RepositoryPaths.QuestCatalogFixtureRuntimePath))
+            {
                 DevelopmentQuestTools = true
             },
             CreateContentOptions());

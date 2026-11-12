@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Items.Contracts;
+
 namespace Mmorpg.GameService.Items;
 
 internal sealed record CharacterInventorySnapshotResponse(
@@ -39,11 +41,6 @@ internal sealed record ItemInstanceSnapshotResponse(
     int Quantity,
     long Revision,
     IReadOnlyList<ItemPolicySummaryResponse> Policies);
-
-internal sealed record ItemPolicySummaryResponse(
-    string PolicyKind,
-    string Status,
-    string ProtectionSource);
 
 internal sealed record EquippedBagSnapshotResponse(
     ItemInstanceSnapshotResponse Item,

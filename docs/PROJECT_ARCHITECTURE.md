@@ -180,7 +180,8 @@ not a network authority relationship.
 - Global simulation-session leases.
 - Transactional item catalog mirroring, the constrained durable item schema,
   and complete empty character item-state bootstrap.
-- Quest catalog mirroring and every character's quest log.
+- Quest catalog mirroring, every character's quest log, and the quest commands,
+  which change items through the item transaction kernel.
 - Serving the compiled item catalog, quest catalog, and text tables by
   revision, exactly the files the other modules run with.
 - Every durable item mutation, durable corpses, the death partition, Recovery
@@ -196,7 +197,7 @@ GameService is one process and one deployable, but its code is a modular
 monolith whose project references enforce one dependency order:
 
 ```text
-Platform <- Accounts <- Characters <- Placement <- Quests <- Items <- Content <- host
+Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Content <- host
 ```
 
 Each module exposes only its module class, its options, and its `Contracts`

@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 

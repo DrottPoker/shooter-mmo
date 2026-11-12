@@ -1,9 +1,10 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
-using static Mmorpg.GameService.Items.Tests.ItemTransactions.ItemScenarioWorld;
+using static Mmorpg.GameService.Testing.ItemScenarioWorld;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
@@ -27,7 +28,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_inventory");
         var characterId = player.Character.Id;
         var accountId = player.Registration.AccountId;
@@ -186,7 +187,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var archer = await world.RegisterAsync("golden_archer");
         var characterId = archer.Character.Id;
         var state = await world.LoadStateAsync(characterId);
@@ -241,25 +242,20 @@ public sealed class ItemTransactionTraceGoldenTests
     }
 
     [PostgresIntegrationFact]
-    public async Task PolicyAndQuestCommandsMatchTheirGoldenTraces()
+    public async Task PolicyCommandsMatchTheirGoldenTraces()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_policy");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
         var inventoryId = state.PermanentInventoryContainerId;
         var protectedRingId = await world.GrantAsync(characterId, Ring, 1, inventoryId, 0);
         var insuredRingId = await world.GrantAsync(characterId, Ring, 1, inventoryId, 1);
-        await world.GrantAsync(
-            characterId,
-            QuestItem,
-            1,
-            inventoryId,
-            2,
-            ItemPolicySourceKinds.QuestGrant,
-            QuestGrantId);
+        // Weighs as much as the quest item that QuestTransactionTraceGoldenTests grants here, so
+        // both scenarios reach the same revisions and carried weight.
+        var spareRingId = await world.GrantAsync(characterId, Ring, 1, inventoryId, 2);
 
         state = await world.LoadStateAsync(characterId);
         var protectedRing = await world.LoadItemAsync(protectedRingId);
@@ -289,23 +285,16 @@ public sealed class ItemTransactionTraceGoldenTests
                 new RemoveInsurancePolicyCommand(characterId, state.Revision, insuredRingId, insuredRing.Revision)),
             CancellationToken.None)));
 
+        // Takes the place of the quest item's removal in QuestTransactionTraceGoldenTests: one more
+        // character and container revision, and one weight less.
         state = await world.LoadStateAsync(characterId);
-        var abandonId = Guid.NewGuid();
-        AssertCommitted(await traced.AssertGoldenAsync("abandon_quest_items.success", abandonId, service => service.ExecuteAsync(
-            new ItemTransactionRequest<AbandonQuestItemsCommand>(
-                abandonId,
+        var spareRing = await world.LoadItemAsync(spareRingId);
+        AssertCommitted(await context.ItemTransactionService.ExecuteAsync(
+            new ItemTransactionRequest<DestroyItemCommand>(
+                Guid.NewGuid(),
                 ItemTransactionActor.ForSystem(),
-                new AbandonQuestItemsCommand(characterId, state.Revision, QuestGrantId)),
-            CancellationToken.None)));
-
-        state = await world.LoadStateAsync(characterId);
-        var abandonAgainId = Guid.NewGuid();
-        AssertCommitted(await traced.AssertGoldenAsync("abandon_quest_items.already_absent", abandonAgainId, service => service.ExecuteAsync(
-            new ItemTransactionRequest<AbandonQuestItemsCommand>(
-                abandonAgainId,
-                ItemTransactionActor.ForSystem(),
-                new AbandonQuestItemsCommand(characterId, state.Revision, QuestGrantId)),
-            CancellationToken.None)));
+                new DestroyItemCommand(characterId, state.Revision, spareRingId, spareRing.Revision, "golden_spare")),
+            CancellationToken.None));
 
         // NPC insurance charges character currency through the Characters wallet.
         await world.ExecuteSqlAsync(
@@ -337,7 +326,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var first = await world.RegisterAsync("golden_bag_first");
         var second = await world.RegisterAsync("golden_bag_second");
         var firstState = await world.LoadStateAsync(first.Character.Id);
@@ -444,7 +433,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var victim = await world.RegisterAsync("golden_victim");
         var looter = await world.RegisterAsync("golden_looter");
         var victimId = victim.Character.Id;
@@ -618,7 +607,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_corpse_bag");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
@@ -655,7 +644,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_equip_swap");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
@@ -680,7 +669,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var source = await world.RegisterAsync("golden_equipment_corpse");
         var looter = await world.RegisterAsync("golden_equipment_looter");
         var sourceInventoryId = (await world.LoadStateAsync(source.Character.Id)).PermanentInventoryContainerId;
@@ -714,7 +703,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_mob_looter");
         var characterId = player.Character.Id;
 
@@ -786,7 +775,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var source = await world.RegisterAsync("golden_loot_all_corpse");
         var looter = await world.RegisterAsync("golden_loot_all_looter");
         var sourceInventoryId = (await world.LoadStateAsync(source.Character.Id)).PermanentInventoryContainerId;
@@ -816,7 +805,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_kernel");
         var characterId = player.Character.Id;
         var accountId = player.Registration.AccountId;
@@ -942,7 +931,7 @@ public sealed class ItemTransactionTraceGoldenTests
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        await using var traced = TracedItemTransactions.Create(context);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly);
         var player = await world.RegisterAsync("golden_economy");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);
@@ -1005,7 +994,7 @@ public sealed class ItemTransactionTraceGoldenTests
             LockTimeout = TimeSpan.FromMilliseconds(100),
             MaximumCommandPayloadBytes = 1024
         };
-        await using var traced = TracedItemTransactions.Create(context, options);
+        await using var traced = TracedItemTransactions.Create(context, typeof(ItemTransactionTraceGoldenTests).Assembly, options);
         var player = await world.RegisterAsync("golden_limits");
         var characterId = player.Character.Id;
         var state = await world.LoadStateAsync(characterId);

@@ -2,8 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
-using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.GameService.Testing;
@@ -22,10 +21,11 @@ public sealed class ModuleCompositionTests
         (typeof(ISimulationCharacterStateProvider), "Mmorpg.GameService.Items"),
         (typeof(IShardWorldLocalStateProbe), "Mmorpg.GameService.Items"),
         (typeof(IQuestCatalogRevisionProvider), "Mmorpg.GameService.Quests"),
-        // Items' quest drop demand and item catalog check, which the quest code implements and
-        // which still live in Items with it.
-        (typeof(IQuestDropDemand), "Mmorpg.GameService.Items"),
-        (typeof(IItemCatalogReferences), "Mmorpg.GameService.Items")
+        // Items' quest drop demand, item catalog check, and gathering credit, which Quests
+        // implements.
+        (typeof(IQuestDropDemand), "Mmorpg.GameService.Quests"),
+        (typeof(IItemCatalogReferences), "Mmorpg.GameService.Quests"),
+        (typeof(IQuestGatherCredit), "Mmorpg.GameService.Quests")
     ];
 
     private static readonly (Type Contract, string ImplementingModule)[] Contracts =

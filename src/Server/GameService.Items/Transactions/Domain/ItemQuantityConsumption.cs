@@ -1,13 +1,14 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Domain;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Removes a quantity from a locked item: the whole item when nothing remains, otherwise a
 // smaller stack with a new revision. Every consumption and sale path shares these writes.
-internal static class ItemQuantityConsumption
+public static class ItemQuantityConsumption
 {
-    public static async Task ApplyAsync(
+    internal static async Task ApplyAsync(
         ItemTransactionContext context,
         LockedItem item,
         int quantity,
@@ -111,7 +112,7 @@ internal static class ItemQuantityConsumption
 
     // Shots the SimulationWorker counted against the character's equipped ammunition. The
     // item must still be equipped ammunition of that character.
-    public static async Task ConsumeEquippedAmmunitionAsync(
+    internal static async Task ConsumeEquippedAmmunitionAsync(
         ItemTransactionContext context,
         Guid characterId,
         LockedItem item,

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Transactions;

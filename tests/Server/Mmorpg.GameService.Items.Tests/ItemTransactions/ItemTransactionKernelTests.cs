@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Testing;

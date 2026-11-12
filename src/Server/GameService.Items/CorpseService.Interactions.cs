@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;

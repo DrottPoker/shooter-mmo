@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 

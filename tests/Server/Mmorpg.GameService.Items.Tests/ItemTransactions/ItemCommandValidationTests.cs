@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.WorldData.Actors;

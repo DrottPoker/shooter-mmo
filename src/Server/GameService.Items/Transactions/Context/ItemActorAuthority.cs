@@ -3,17 +3,22 @@ using System.Text;
 using Mmorpg.Server.Common.Identity;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // What the actor of one item transaction may do: system, account, NPC service, live
 // container access, and the capability claims of a live operation.
-internal sealed class ItemActorAuthority(ItemTransactionActor actor)
+public sealed class ItemActorAuthority
 {
-    private ItemTransactionActor Actor { get; } = actor;
+    internal ItemActorAuthority(ItemTransactionActor actor)
+    {
+        Actor = actor;
+    }
+
+    private ItemTransactionActor Actor { get; }
 
     // Checks that the actor's authority fields are complete and consistent before any
     // live authority or claim. Kernel only.
-    public static void EnsureValid(ItemTransactionActor actor)
+    internal static void EnsureValid(ItemTransactionActor actor)
     {
         new ItemActorAuthority(actor).EnsureActorIsValid();
     }
@@ -28,7 +33,7 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    public void EnsureAccountAuthority(Guid accountId)
+    internal void EnsureAccountAuthority(Guid accountId)
     {
         if ((Actor.Authority is ItemTransactionAuthority.Account
                 or ItemTransactionAuthority.SimulationWorker)
@@ -40,7 +45,7 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
         }
     }
 
-    public void EnsureInsuranceNpcAccess()
+    internal void EnsureInsuranceNpcAccess()
     {
         if (Actor.Authority != ItemTransactionAuthority.SimulationWorker
             || !Actor.Simulation!.LiveAccess.InsuranceNpc)
@@ -53,7 +58,7 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
 
     // The id that the worker validated for a capability kind of this live operation, or null
     // without a live session or a claim of that kind.
-    public string? CapabilityClaim(string kind)
+    internal string? CapabilityClaim(string kind)
     {
         ArgumentNullException.ThrowIfNull(kind);
         return Actor.Authority == ItemTransactionAuthority.SimulationWorker
@@ -87,7 +92,7 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
     // Bank and Recovery Storage are city services. Only a live character whose worker
     // granted access through an NPC interaction may change them, so offline account
     // routes can never reach them.
-    public void EnsureLiveContainerAccess(string? containerType)
+    internal void EnsureLiveContainerAccess(string? containerType)
     {
         if (Actor.Authority == ItemTransactionAuthority.System
             || string.IsNullOrWhiteSpace(containerType))
@@ -118,7 +123,7 @@ internal sealed class ItemActorAuthority(ItemTransactionActor actor)
     }
 
 
-    public static bool HashesMatch(string expected, string supplied)
+    internal static bool HashesMatch(string expected, string supplied)
     {
         var expectedBytes = Encoding.UTF8.GetBytes(expected);
         var suppliedBytes = Encoding.UTF8.GetBytes(supplied);

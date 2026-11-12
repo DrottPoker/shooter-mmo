@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 

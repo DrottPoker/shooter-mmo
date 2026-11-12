@@ -1,6 +1,7 @@
 using System.Data;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;

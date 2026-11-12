@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
@@ -230,7 +231,8 @@ public sealed class NpcItemLifecycleIntegrationTests
     }
 
     // Quests grant and remove their items through the quest route, so the item route no longer
-    // offers the quest item lifecycle that came before it.
+    // offers the quest item lifecycle that came before it, whose kind is the Quests module's
+    // abandon_quest_items.
     [PostgresIntegrationFact]
     public async Task TheItemRouteOffersNoQuestItemLifecycle()
     {
@@ -242,7 +244,7 @@ public sealed class NpcItemLifecycleIntegrationTests
         var snapshot = await GetSnapshotAsync(context, player);
         var session = await JoinAsync(context, player);
 
-        foreach (var operationKind in new[] { ItemOperationKinds.Grant, ItemOperationKinds.AbandonQuestItems })
+        foreach (var operationKind in new[] { ItemOperationKinds.Grant, "abandon_quest_items" })
         {
             var rejected = await ExecuteAsync(
                 context,

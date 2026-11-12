@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Transactions;

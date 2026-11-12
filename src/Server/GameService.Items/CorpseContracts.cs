@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
 
 namespace Mmorpg.GameService.Items;

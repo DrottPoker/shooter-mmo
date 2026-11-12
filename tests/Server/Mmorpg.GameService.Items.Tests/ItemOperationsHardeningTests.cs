@@ -1,7 +1,7 @@
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Npgsql;
 

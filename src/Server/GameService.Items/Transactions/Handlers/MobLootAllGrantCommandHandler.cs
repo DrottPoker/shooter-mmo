@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Actors;

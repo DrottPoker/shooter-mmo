@@ -1,17 +1,19 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Domain;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // The source that gave an item its lineage: the source kind and id of its active
 // protected_on_death policy, such as a quest grant and its quest.
-internal sealed record ItemLineage(string SourceKind, string SourceId);
+public sealed record ItemLineage(string SourceKind, string SourceId);
 
 // Items with a lineage: protected items whose active protected_on_death policy names the
 // lineage's source. The source grants them, and ending it removes them wherever the character
 // owns them, also from Bank and Recovery Storage.
-internal static class LineageItems
+public static class LineageItems
 {
     // The quantity of one definition with the lineage that the character owns anywhere.
     public static Task<int> CountOwnedAsync(
@@ -24,7 +26,7 @@ internal static class LineageItems
         return CountOwnedAsync(context.Scope, characterId, lineage, definitionId, cancellationToken);
     }
 
-    public static Task<int> CountOwnedAsync(
+    internal static Task<int> CountOwnedAsync(
         PostgresTransactionScope scope,
         Guid characterId,
         ItemLineage lineage,
@@ -63,7 +65,7 @@ internal static class LineageItems
     // The part of an offered quantity of a definition that the character still lacks: the
     // wanted total of the lineage less what the character owns with it, at most the quantity.
     // When nothing is wanted, nothing is read.
-    public static async Task<int> LackingAsync(
+    internal static async Task<int> LackingAsync(
         PostgresTransactionScope scope,
         Guid characterId,
         ItemLineage lineage,

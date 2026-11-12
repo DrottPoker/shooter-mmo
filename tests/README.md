@@ -16,7 +16,7 @@ and the check before every push in
 | --- | --- | --- |
 | `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-test databases copied from templates, golden files, trait names, and the metric names that the files in `observability` reference |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, quest catalog, and collision world loaders that use the content tools |
-| `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition, the API test hosts, services that issue policy and quest item commands as the system actor, and the GameService source map and assembly list |
+| `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition and its offline variant, the API test hosts, services that issue policy and quest item commands as the system actor, the item scenario world, the traced item transaction service with its SQL trace recorder, and the GameService source map and assembly list |
 | `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog, world actor, and quest catalog compilers; links the Unity EditMode movement scenario, realtime protocol golden cases, and content hash coverage helper |
 | `Mmorpg.Server.Common.Tests` | `Server/Mmorpg.Server.Common.Tests` | `Mmorpg.Server.Common` |
 | `Mmorpg.Server.Telemetry.Tests` | `Server/Mmorpg.Server.Telemetry.Tests` | `Mmorpg.Server.Telemetry`: export options, metric views, resource, sampling, and provider registration |
@@ -24,8 +24,8 @@ and the check before every push in
 | `Mmorpg.GameService.Accounts.Tests` | `Server/Mmorpg.GameService.Accounts.Tests` | Accounts, including PostgreSQL and Redis tests |
 | `Mmorpg.GameService.Characters.Tests` | `Server/Mmorpg.GameService.Characters.Tests` | Characters, including PostgreSQL tests of character looks |
 | `Mmorpg.GameService.Placement.Tests` | `Server/Mmorpg.GameService.Placement.Tests` | Placement |
-| `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares |
 | `Mmorpg.GameService.Items.Tests` | `Server/Mmorpg.GameService.Items.Tests` | Items unit and PostgreSQL tests; the item transaction kernel tests, their goldens, and the kernel and area boundary tests under `ItemTransactions` |
+| `Mmorpg.GameService.Quests.Tests` | `Server/Mmorpg.GameService.Quests.Tests` | Quests: PostgreSQL tests of the quest log, the quest catalog mirror, the owner's and the worker's quest log reads, and the revision that placement compares; the quest commands with their worker routes, quest drops, goldens, routing, catalog, and HTTP statuses |
 | `Mmorpg.GameService.Content.Tests` | `Server/Mmorpg.GameService.Content.Tests` | Content: the content file loader and its startup refusals, the manifest and file routes with their cache headers and rate limit on an in-process host, and the PostgreSQL test of the startup revision check |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host configuration and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
@@ -42,7 +42,8 @@ namespace.
 
 - A test of one production project goes into that project's test project, even
   when it needs PostgreSQL or Redis. Items tests may arrange state through the
-  Accounts, Characters, and Placement services of the test kit.
+  Accounts, Characters, and Placement services of the test kit, and Quests
+  tests also through Items.
 - A test that needs several GameService modules to cooperate, or GameService and
   SimulationWorker together, goes into `Mmorpg.Integration.Tests`.
 - Shared runtime code that also compiles into Unity is tested in
@@ -359,7 +360,10 @@ the generated actor catalog; the committed compiled files are the goldens of
 folder below the test project from the `Mmorpg.TestProjectDirectory` assembly
 metadata, so golden files move with their project and no compile-time path is
 needed. The item transaction traces live in
-`Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`. Run the tests
+`Server/Mmorpg.GameService.Items.Tests/Golden/ItemTransactions`, and those of
+the quest commands in `Server/Mmorpg.GameService.Quests.Tests/Golden/ItemTransactions`;
+the kit's `TracedItemTransactions` takes the test assembly whose folder it
+compares with. Run the tests
 with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an intended change,
 and review every golden diff before committing it.
 
@@ -428,10 +432,10 @@ Test access to `internal` types follows the production dependency direction.
   the test projects of the modules that build on it, the kit
   (`Mmorpg.GameService.Testing`), `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`. Platform grants Accounts, Characters, Placement,
-  Quests, Items, and Content tests; Accounts grants Characters, Placement,
-  Quests, Items, and Content tests; Characters grants Placement, Quests, Items,
-  and Content tests; Placement grants Quests, Items, and Content tests; Quests
-  grants Items and Content tests; Items grants Content tests.
+  Items, Quests, and Content tests; Accounts grants Characters, Placement,
+  Items, Quests, and Content tests; Characters grants Placement, Items, Quests,
+  and Content tests; Placement grants Items, Quests, and Content tests; Items
+  grants Quests and Content tests; Quests grants Content tests.
 - The GameService host grants the kit, `Mmorpg.GameService.Tests`, and
   `Mmorpg.Integration.Tests`.
 - SimulationWorker grants `Mmorpg.SimulationWorker.Tests`, and
