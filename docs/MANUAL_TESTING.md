@@ -1107,7 +1107,7 @@ and run:
 dotnet test tests/Server/Mmorpg.GameService.Quests.Tests --configuration Release --filter "FullyQualifiedName~QuestCommandIntegrationTests|FullyQualifiedName~QuestProgressIntegrationTests|FullyQualifiedName~QuestDropIntegrationTests"
 ```
 
-Expected result: 26 tests pass. Each one joins a character to the Shard and
+Expected result: 25 tests pass. Each one joins a character to the Shard and
 checks one outcome:
 
 - Accepting `quest.fixture.wolves` at Mira starts it at step `hunt` with the
@@ -1118,7 +1118,8 @@ checks one outcome:
 - Two credited Feral Wolf kills bring `wolves` to 2, and a third changes
   nothing; a kill credit takes the up to 32 tags an actor may carry, and a
   quest that the catalog does not hold never holds back the credit of the
-  others. Two gathering yields of an Iron Vein bring the errand's `ore` to 2.
+  others. The gathering yields that count for the errand are checked in
+  [Vendor And Gathering Commands On The Worker Item Route](#vendor-and-gathering-commands-on-the-worker-item-route).
 - The worker route refuses a request that names another quest catalog with
   `simulation_worker_quest_catalog_mismatch` and changes nothing, and a kill
   credit with more than 32 tags with `400`.
@@ -1603,6 +1604,27 @@ for 40 percent of the value, rounded down on the total, without buyback.
    Expected result: the character has a `starting_balance` row of `100`, a
    `vendor_purchase` row of `-50`, and one `vendor_sale` row per sale, and each
    `balance_after` is the previous balance plus `delta`.
+
+### Vendor And Gathering Commands On The Worker Item Route
+
+The Economy module runs the vendor and gathering operations of the worker item
+route. Its tests check them against a real PostgreSQL database through the
+route's JSON, its services, and the item transaction kernel. Start the test
+containers and set the variables as in
+[Quest Commands On The Worker Quest Route](#quest-commands-on-the-worker-quest-route),
+and run:
+
+```powershell
+dotnet test tests/Server/Mmorpg.GameService.Economy.Tests --configuration Release
+```
+
+Expected result: every test passes and none is skipped. Among them, purchases,
+sales, and gathering yields commit with their ledger rows and carried placement;
+every invalid part of a vendor or gathering request gets its pinned status,
+code, and message from the route, a field of the wrong type in Development and
+in Production alike; the vendor and gathering traces match their goldens; and
+two gathering yields of an Iron Vein bring the errand's `ore` to 2, with the
+quest log change in the worker response.
 
 ## Gathering
 

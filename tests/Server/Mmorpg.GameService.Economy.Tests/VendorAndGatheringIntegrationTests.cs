@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Database;
@@ -8,7 +9,7 @@ using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Tests;
+namespace Mmorpg.GameService.Economy.Tests;
 
 // Vendor purchases and sales and gathering through the worker boundary, with the currency
 // ledger and carried placement rules they rely on.
@@ -37,9 +38,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var purchase = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with
-            { DefinitionId = Arrow, Quantity = 5, ExpectedPrice = 5 });
+            Purchase(session, await RevisionAsync(world, characterId), Arrow, 5, 5));
 
         Assert.True(purchase.Succeeded, purchase.Error?.Message);
         Assert.Equal(8, (await world.LoadItemAsync(arrowsId)).Quantity);
@@ -68,9 +67,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var noFunds = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with
-            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+            Purchase(session, revision, Potion, 1, 25));
         AssertRejected(noFunds, ItemTransactionErrorCodes.CurrencyInsufficient);
 
         await CreditAsync(context, characterId, 100);
@@ -78,25 +75,19 @@ public sealed class VendorAndGatheringIntegrationTests
         var stalePrice = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with
-            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 20 });
-        AssertRejected(stalePrice, ItemTransactionErrorCodes.VendorPriceChanged);
+            Purchase(session, revision, Potion, 1, 20));
+        AssertRejected(stalePrice, EconomyTransactionErrorCodes.VendorPriceChanged);
 
         var notOffered = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, revision)
-                with
-            { DefinitionId = Ore, Quantity = 1, ExpectedPrice = 10 });
-        AssertRejected(notOffered, ItemTransactionErrorCodes.VendorOfferUnavailable);
+            Purchase(session, revision, Ore, 1, 10));
+        AssertRejected(notOffered, EconomyTransactionErrorCodes.VendorOfferUnavailable);
 
         var unknownVendor = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, revision, "vendor.missing")
-                with
-            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+            Purchase(session, revision, Potion, 1, 25, "vendor.missing"));
         AssertRejected(unknownVendor, ItemTransactionErrorCodes.VendorUnavailable);
 
         Assert.Equal(100, await CurrencyAsync(context, characterId));
@@ -130,7 +121,7 @@ public sealed class VendorAndGatheringIntegrationTests
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Equal(ItemTransactionErrorCodes.VendorAccessRequired, result.Error!.Code);
+        Assert.Equal(EconomyTransactionErrorCodes.VendorAccessRequired, result.Error!.Code);
         Assert.Equal(100, await CurrencyAsync(context, characterId));
     }
 
@@ -150,9 +141,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var potion = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with
-            { DefinitionId = Potion, Quantity = 1, ExpectedPrice = 25 });
+            Purchase(session, await RevisionAsync(world, characterId), Potion, 1, 25));
         Assert.True(potion.Succeeded, potion.Error?.Message);
         var bagContents = (await world.LoadItemAsync(packId)).BagContentsContainerId!.Value;
         Assert.NotEqual(Guid.Empty, await world.FindItemAsync(bagContents, 4));
@@ -170,9 +159,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var full = await ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorPurchase, await RevisionAsync(world, characterId))
-                with
-            { DefinitionId = Pickaxe, Quantity = 1, ExpectedPrice = 50 });
+            Purchase(session, await RevisionAsync(world, characterId), Pickaxe, 1, 50));
 
         AssertRejected(full, ItemTransactionErrorCodes.InventoryFull);
         Assert.Equal(975, await CurrencyAsync(context, characterId));
@@ -212,7 +199,7 @@ public sealed class VendorAndGatheringIntegrationTests
             ItemTransactionErrorCodes.ItemPolicyRestricted);
         AssertRejected(
             await SellAsync(context, world, session, characterId, equippedRingId, 1, 16),
-            ItemTransactionErrorCodes.VendorWillNotBuy);
+            EconomyTransactionErrorCodes.VendorWillNotBuy);
         AssertRejected(
             await SellAsync(context, world, session, characterId, bankedOreId, 1, 4),
             ItemTransactionErrorCodes.BankAccessRequired);
@@ -220,7 +207,7 @@ public sealed class VendorAndGatheringIntegrationTests
         // taking them for free.
         AssertRejected(
             await SellAsync(context, world, session, characterId, arrowsId, 2, 0),
-            ItemTransactionErrorCodes.VendorWillNotBuy);
+            EconomyTransactionErrorCodes.VendorWillNotBuy);
         Assert.Equal(2, (await world.LoadItemAsync(arrowsId)).Quantity);
         Assert.Equal(20, await CurrencyAsync(context, characterId));
         await AssertLedgerMatchesBalanceAsync(context, characterId);
@@ -242,13 +229,12 @@ public sealed class VendorAndGatheringIntegrationTests
         var sales = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.VendorSale, revision)
+            Request(session, EconomyOperationKinds.VendorSale, revision, new EconomyOperationFields(ExpectedPrice: 40))
                 with
             {
                 ItemInstanceId = oreId,
                 ExpectedItemRevision = item.Revision,
-                Quantity = 10,
-                ExpectedPrice = 40
+                Quantity = 10
             })));
 
         Assert.Single(sales, sale => sale.Succeeded);
@@ -268,7 +254,7 @@ public sealed class VendorAndGatheringIntegrationTests
         var session = await world.JoinAsync(player);
 
         var withoutTool = await GatherAsync(context, session, 1);
-        AssertRejected(withoutTool, ItemTransactionErrorCodes.GatheringToolRequired);
+        AssertRejected(withoutTool, EconomyTransactionErrorCodes.GatheringToolRequired);
         // The explanation names the kind for the log. The worker sends the kind with the code,
         // and the client shows its name.
         Assert.Contains("'pickaxe'", withoutTool.Error!.Message, StringComparison.Ordinal);
@@ -302,10 +288,10 @@ public sealed class VendorAndGatheringIntegrationTests
 
         AssertRejected(
             await GatherAsync(context, session, 1, "fixture.letter"),
-            ItemTransactionErrorCodes.GatheringYieldInvalid);
+            EconomyTransactionErrorCodes.GatheringYieldInvalid);
         AssertRejected(
             await GatherAsync(context, session, 1, Pack),
-            ItemTransactionErrorCodes.GatheringYieldInvalid);
+            EconomyTransactionErrorCodes.GatheringYieldInvalid);
     }
 
     [PostgresIntegrationFact]
@@ -377,13 +363,16 @@ public sealed class VendorAndGatheringIntegrationTests
             return await ExecuteAsync(
                 context,
                 session,
-                Request(session, ItemOperationKinds.VendorSale, await RevisionAsync(world, characterId))
+                Request(
+                    session,
+                    EconomyOperationKinds.VendorSale,
+                    await RevisionAsync(world, characterId),
+                    new EconomyOperationFields(ExpectedPrice: expectedPrice))
                     with
                 {
                     ItemInstanceId = itemInstanceId,
                     ExpectedItemRevision = item.Revision,
-                    Quantity = quantity,
-                    ExpectedPrice = expectedPrice
+                    Quantity = quantity
                 });
         }
     }
@@ -397,22 +386,48 @@ public sealed class VendorAndGatheringIntegrationTests
         return ExecuteAsync(
             context,
             session,
-            Request(session, ItemOperationKinds.GatherResource, 0, vendorProfileId: null)
+            Request(
+                session,
+                EconomyOperationKinds.GatherResource,
+                0,
+                new EconomyOperationFields(
+                    DefinitionId: yieldDefinitionId,
+                    ResourceProfileId: "resource.fixture",
+                    ResourceNodeId: "fixture.node:0000",
+                    RequiredToolKind: "pickaxe"),
+                vendorProfileId: null)
                 with
             {
                 CapabilityId = "resource.mine",
-                DefinitionId = yieldDefinitionId,
-                Quantity = quantity,
-                ResourceProfileId = "resource.fixture",
-                ResourceNodeId = "fixture.node:0000",
-                RequiredToolKind = "pickaxe"
+                Quantity = quantity
             });
+    }
+
+    private static SimulationItemOperationRequest Purchase(
+        ConsumedSimulationJoinTicketResponse session,
+        long expectedCharacterRevision,
+        string definitionId,
+        int quantity,
+        long expectedPrice,
+        string vendorProfileId = Vendor)
+    {
+        return Request(
+            session,
+            EconomyOperationKinds.VendorPurchase,
+            expectedCharacterRevision,
+            new EconomyOperationFields(DefinitionId: definitionId, ExpectedPrice: expectedPrice),
+            vendorProfileId)
+            with
+        {
+            Quantity = quantity
+        };
     }
 
     private static SimulationItemOperationRequest Request(
         ConsumedSimulationJoinTicketResponse session,
         string operationKind,
         long expectedCharacterRevision,
+        EconomyOperationFields fields,
         string? vendorProfileId = Vendor)
     {
         return new SimulationItemOperationRequest(
@@ -423,11 +438,12 @@ public sealed class VendorAndGatheringIntegrationTests
             session.WorkerRuntimeId,
             session.ShardId,
             session.SimulationSessionToken,
-            new SimulationItemAccessRequest(false, false, false, vendorProfileId),
+            new SimulationItemAccessRequest(false, false, false),
             operationKind,
             expectedCharacterRevision,
             InteractionSessionId: Guid.NewGuid(),
-            CapabilityId: "services.vendor");
+            CapabilityId: "services.vendor")
+            .WithEconomyFields(fields, vendorProfileId);
     }
 
     private static async Task<ItemTransactionResult> ExecuteAsync(

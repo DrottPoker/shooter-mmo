@@ -49,7 +49,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
-| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel |
+| `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
 | `POST /api/simulation-sessions/{id}/quest-log` | Worker service policy | Read the exact-session character's quest log when it joins the worker's Shard |
 | `POST /api/simulation-sessions/{id}/quest-operations` | Worker service policy | Run one quest action of the session's character through the durable kernel: accept, abandon, grant start items again, talk, deliver, turn in, count a credited kill, or, in Development only, a quest tool of the Admin menu |
 | `POST /api/simulation-sessions/{id}/quest-drops` | Worker service policy | Read how much of the quest drops that a dying Mob rolled for the session's character the character's quests still need, before the worker lays out a live corpse |
@@ -1536,6 +1536,10 @@ results and closures, and Unity adds `item_catalog_update_required`.
 - A malformed request body returns `400` with `invalid_request`, a transient
   PostgreSQL connection failure returns `503` with `database_unavailable`, and
   any other unhandled failure returns `500` with `internal_server_error`. A
+  body that does not read as the route's request type, such as a field of the
+  wrong type, gets `invalid_request` only in Development; elsewhere the route's
+  JSON binding answers the bare `400`, which the status code pages complete
+  with `http_error`. A
   request that the client aborted is logged at debug level and answered with
   `499`, not reported as a server error.
 - Item rejections map to statuses by class on the account, worker item, and

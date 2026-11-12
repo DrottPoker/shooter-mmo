@@ -1,14 +1,15 @@
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Quests.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Handlers;
+namespace Mmorpg.GameService.Economy.Transactions.Handlers;
 
 // Grants one gathering yield into carried storage. SimulationWorker owns the resource node,
 // its charges, and the live interaction; GameService checks the equipped tool and places the
-// yield in the same transaction, so a removed tool can never gather. The quest entry counts the
-// yield for the gather objectives of the node's actor definition in the same transaction, so a
-// retried yield counts once.
+// yield in the same transaction, so a removed tool can never gather. Quests counts the yield for
+// the gather objectives of the node's actor definition in the same transaction, so a retried
+// yield counts once.
 internal sealed class GatherResourceCommandHandler(IQuestGatherCredit questCredit)
     : IItemCommandHandler<GatherResourceCommand>
 {
@@ -31,7 +32,7 @@ internal sealed class GatherResourceCommandHandler(IQuestGatherCredit questCredi
             || (command.ResourceActorId is not null && !Identifiers.IsContentIdentifier(command.ResourceActorId)))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.GatheringYieldInvalid,
+                EconomyTransactionErrorCodes.GatheringYieldInvalid,
                 "The gathering yield is incomplete or invalid.");
         }
 
@@ -46,7 +47,7 @@ internal sealed class GatherResourceCommandHandler(IQuestGatherCredit questCredi
             // Names the missing kind, because another tool in the slot looks like the right one.
             // The worker adds the kind to the code, so the client shows its name.
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.GatheringToolRequired,
+                EconomyTransactionErrorCodes.GatheringToolRequired,
                 "A tool of the kind '" + command.RequiredToolKind + "' is required in the Tool slot.");
         }
 
@@ -60,7 +61,7 @@ internal sealed class GatherResourceCommandHandler(IQuestGatherCredit questCredi
                 StringComparison.Ordinal))
         {
             ItemTransactionContext.Reject(
-                ItemTransactionErrorCodes.GatheringYieldInvalid,
+                EconomyTransactionErrorCodes.GatheringYieldInvalid,
                 "A gathering yield cannot be a Bag or a quest item.");
         }
 

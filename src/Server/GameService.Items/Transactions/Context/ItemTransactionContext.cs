@@ -41,7 +41,9 @@ public sealed class ItemTransactionContext
 
     internal string OperationKind => Session.OperationKind;
 
-    internal ItemTransactionActor Actor => Session.Actor;
+    // The actor whose authority the kernel checked, such as the Shard and worker runtime of a
+    // live operation, which a command's audit names.
+    public ItemTransactionActor Actor => Session.Actor;
 
     public ItemActorAuthority Authority { get; }
 

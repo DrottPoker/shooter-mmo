@@ -53,7 +53,6 @@ internal static class QuestScenario
             ItemTransactionRequest<DeliverQuestItemsCommand> deliver => service.ExecuteAsync(deliver, none),
             ItemTransactionRequest<CreditQuestKillCommand> kill => service.ExecuteAsync(kill, none),
             ItemTransactionRequest<TurnInQuestCommand> turnIn => service.ExecuteAsync(turnIn, none),
-            ItemTransactionRequest<GatherResourceCommand> gather => service.ExecuteAsync(gather, none),
             _ => throw new ArgumentException("Not a quest scenario command.", nameof(command))
         };
     }

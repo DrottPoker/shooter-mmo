@@ -32,25 +32,25 @@ public sealed class LockedCharacterState
 
 public sealed class LockedItem
 {
-    internal Guid ItemInstanceId { get; set; }
+    public Guid ItemInstanceId { get; internal set; }
 
-    internal string DefinitionId { get; set; } = string.Empty;
+    public string DefinitionId { get; internal set; } = string.Empty;
 
-    internal int Quantity { get; set; }
+    public int Quantity { get; internal set; }
 
     internal long Revision { get; set; }
 
-    internal Guid? ContainerId { get; set; }
+    public Guid? ContainerId { get; internal set; }
 
     internal int? ContainerSlotIndex { get; set; }
 
     internal Guid? EquippedCharacterId { get; set; }
 
-    internal string? EquipmentSlotId { get; set; }
+    public string? EquipmentSlotId { get; internal set; }
 
-    internal string? SourceContainerType { get; set; }
+    public string? SourceContainerType { get; internal set; }
 
-    internal string? SourceContainerLifecycle { get; set; }
+    public string? SourceContainerLifecycle { get; internal set; }
 
     internal Guid? SourceBagItemInstanceId { get; set; }
 
@@ -65,6 +65,22 @@ public sealed class LockedItem
     internal string? BagContentsLifecycle { get; set; }
 
     internal long? BagContentsRevision { get; set; }
+}
+
+// An item policy row; ItemPolicyStates turns policies into rule inputs.
+public sealed class LockedItemPolicy
+{
+    internal Guid PolicyId { get; set; }
+
+    internal string PolicyKind { get; set; } = string.Empty;
+
+    internal string Status { get; set; } = string.Empty;
+
+    internal string SourceKind { get; set; } = string.Empty;
+
+    internal string SourceId { get; set; } = string.Empty;
+
+    internal long Revision { get; set; }
 }
 
 public sealed record ResolvedItemDefinition(

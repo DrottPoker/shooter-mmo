@@ -1,6 +1,5 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
-using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Testing;
@@ -12,8 +11,9 @@ using static Mmorpg.GameService.Quests.Tests.QuestScenario;
 namespace Mmorpg.GameService.Quests.Tests;
 
 // Objective progress and the turn-in through the item transaction kernel: credited kills,
-// gathering yields, talking, delivering, collecting, and the rewards, with the fixture quests
-// of QuestScenario.
+// talking, delivering, collecting, and the rewards, with the fixture quests of QuestScenario.
+// GatheringQuestCreditIntegrationTests in Mmorpg.GameService.Economy.Tests covers gathering
+// yields.
 public sealed class QuestProgressIntegrationTests
 {
     [PostgresIntegrationFact]
@@ -83,29 +83,6 @@ public sealed class QuestProgressIntegrationTests
 
         Assert.Equal(1, Progress(fullyTagged, Wolves, "wolves"));
         Assert.Equal(ItemTransactionErrorCodes.SimulationOperationInvalid, overTagged.Error!.Code);
-    }
-
-    [PostgresIntegrationFact]
-    public async Task GatheringYieldsCountForTheGatherObjectivesOfTheirNode()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var (world, player, session) = await JoinErrandAsync(context, "quest_miner");
-        var characterId = player.Character.Id;
-        var state = await world.LoadStateAsync(characterId);
-        var pickaxe = await world.GrantAsync(characterId, "fixture.pickaxe", 1, state.PermanentInventoryContainerId, 5);
-        await world.EquipAsync(characterId, pickaxe, "tool");
-
-        var vein = await GatherAsync(context, session, characterId, "resource.iron_vein");
-        var tree = await GatherAsync(context, session, characterId, "resource.oak_tree");
-        var unnamed = await GatherAsync(context, session, characterId, null);
-        var again = await GatherAsync(context, session, characterId, "resource.iron_vein");
-
-        Assert.Equal(1, Progress(vein, Errand, "ore"));
-        Assert.Null(QuestLogSection.Read(tree));
-        Assert.Null(QuestLogSection.Read(unnamed));
-        Assert.Equal(2, Progress(again, Errand, "ore"));
-        // Every yield lands in carried storage, whatever it counted for.
-        Assert.Equal([(1, 4)], await InventoryStacksAsync(context, world, characterId, Ore));
     }
 
     [PostgresIntegrationFact]
@@ -293,21 +270,6 @@ public sealed class QuestProgressIntegrationTests
         string mobActorId)
     {
         return ExecuteAsync(context, session, new CreditQuestKillCommand(characterId, mobActorId, ["wolf"]), null);
-    }
-
-    private static async Task<ItemTransactionResult> GatherAsync(
-        PostgresIntegrationTestContext context,
-        ConsumedSimulationJoinTicketResponse session,
-        Guid characterId,
-        string? resourceActorId)
-    {
-        var result = await ExecuteAsync(
-            context,
-            session,
-            new GatherResourceCommand(characterId, "resource.fixture", "fixture.node:0000", "pickaxe", Ore, 1, resourceActorId),
-            null);
-        ItemScenarioWorld.AssertCommitted(result);
-        return result;
     }
 
     private static int Progress(ItemTransactionResult result, string questId, string objectiveId)

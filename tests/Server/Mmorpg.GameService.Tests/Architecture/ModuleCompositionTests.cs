@@ -21,11 +21,9 @@ public sealed class ModuleCompositionTests
         (typeof(ISimulationCharacterStateProvider), "Mmorpg.GameService.Items"),
         (typeof(IShardWorldLocalStateProbe), "Mmorpg.GameService.Items"),
         (typeof(IQuestCatalogRevisionProvider), "Mmorpg.GameService.Quests"),
-        // Items' quest drop demand, item catalog check, and gathering credit, which Quests
-        // implements.
+        // Items' quest drop demand and item catalog check, which Quests implements.
         (typeof(IQuestDropDemand), "Mmorpg.GameService.Quests"),
-        (typeof(IItemCatalogReferences), "Mmorpg.GameService.Quests"),
-        (typeof(IQuestGatherCredit), "Mmorpg.GameService.Quests")
+        (typeof(IItemCatalogReferences), "Mmorpg.GameService.Quests")
     ];
 
     private static readonly (Type Contract, string ImplementingModule)[] Contracts =
@@ -36,7 +34,8 @@ public sealed class ModuleCompositionTests
         (typeof(ISimulationSessionAuthority), "Mmorpg.GameService.Placement"),
         (typeof(ISimulationWorkerAuthority), "Mmorpg.GameService.Placement"),
         (typeof(ISimulationPresence), "Mmorpg.GameService.Placement"),
-        (typeof(ICharacterQuestLog), "Mmorpg.GameService.Quests")
+        (typeof(ICharacterQuestLog), "Mmorpg.GameService.Quests"),
+        (typeof(IQuestGatherCredit), "Mmorpg.GameService.Quests")
     ];
 
     [Fact]

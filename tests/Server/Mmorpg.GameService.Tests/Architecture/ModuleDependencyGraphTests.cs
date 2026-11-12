@@ -3,7 +3,8 @@ using Mmorpg.GameService.Testing;
 namespace Mmorpg.GameService.Tests.Architecture;
 
 // The project references enforce Platform <- Accounts <- Characters <- Placement <- Items
-// <- Quests <- Content <- host. This pins the compiled graph, so a new edge is a deliberate decision.
+// <- Quests <- Economy <- Content <- host. This pins the compiled graph, so a new edge is a
+// deliberate decision.
 public sealed class ModuleDependencyGraphTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> ExpectedReferences =
@@ -32,6 +33,16 @@ public sealed class ModuleDependencyGraphTests
                 "Mmorpg.GameService.Placement",
                 "Mmorpg.GameService.Platform"
             ],
+            // Economy runs its commands in Items' item transaction kernel and on Items' worker item
+            // route, moves currency through Characters' wallet, and credits gathering through
+            // Quests.
+            ["Mmorpg.GameService.Economy"] =
+            [
+                "Mmorpg.GameService.Characters",
+                "Mmorpg.GameService.Items",
+                "Mmorpg.GameService.Platform",
+                "Mmorpg.GameService.Quests"
+            ],
             // Content compares its catalogs through Placement's revision contracts.
             ["Mmorpg.GameService.Content"] =
                 ["Mmorpg.GameService.Placement", "Mmorpg.GameService.Platform"],
@@ -40,6 +51,7 @@ public sealed class ModuleDependencyGraphTests
                 "Mmorpg.GameService.Accounts",
                 "Mmorpg.GameService.Characters",
                 "Mmorpg.GameService.Content",
+                "Mmorpg.GameService.Economy",
                 "Mmorpg.GameService.Items",
                 "Mmorpg.GameService.Placement",
                 "Mmorpg.GameService.Platform",

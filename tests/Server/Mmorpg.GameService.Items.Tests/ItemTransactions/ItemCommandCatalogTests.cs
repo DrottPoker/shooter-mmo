@@ -9,8 +9,8 @@ namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
 // Pins Items' part of the item command catalog of the module composition: one registration per
 // operation kind, the kinds that carry each flag, one source per handler, and the failures for a
-// duplicate or missing registration. Mmorpg.GameService.Quests.Tests pins the quest part and the
-// whole catalog.
+// duplicate or missing registration. Mmorpg.GameService.Quests.Tests pins the quest part, and
+// Mmorpg.GameService.Economy.Tests the economy part and the whole catalog.
 public sealed class ItemCommandCatalogTests
 {
     [Fact]
@@ -28,7 +28,7 @@ public sealed class ItemCommandCatalogTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(33, constants.Length);
+        Assert.Equal(30, constants.Length);
         Assert.Equal(constants, kinds);
     }
 
@@ -103,9 +103,9 @@ public sealed class ItemCommandCatalogTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(4, sources.Length);
+        Assert.Equal(3, sources.Length);
         Assert.All(handlerSources, group => Assert.Single(group));
-        Assert.Equal(22, handlerTypes.Length);
+        Assert.Equal(20, handlerTypes.Length);
         Assert.Equal(
             handlerTypes,
             handlerSources.Select(group => group.Key.FullName!).Order(StringComparer.Ordinal));

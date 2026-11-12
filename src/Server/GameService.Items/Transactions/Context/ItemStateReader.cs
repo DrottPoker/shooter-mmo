@@ -25,7 +25,7 @@ public sealed class ItemStateReader
 
     private ItemActorAuthority Authority => authority;
 
-    internal async Task<LockedItem> LoadOwnedItemAsync(
+    public async Task<LockedItem> LoadOwnedItemAsync(
         Guid itemInstanceId,
         Guid characterId,
         long expectedRevision,
@@ -296,7 +296,7 @@ public sealed class ItemStateReader
     // Loads an active vendor profile of the current catalog with its offers in display order.
     // The vendor profiles are part of the mirrored item catalog, so this is the one vendor load
     // that the kernel context keeps.
-    internal async Task<VendorProfileDefinition> LoadVendorAsync(
+    public async Task<VendorProfileDefinition> LoadVendorAsync(
         string vendorId,
         CancellationToken cancellationToken)
     {
@@ -348,7 +348,7 @@ public sealed class ItemStateReader
         };
     }
 
-    internal Task<bool> BagHasContentsAsync(
+    public Task<bool> BagHasContentsAsync(
         LockedItem item,
         CancellationToken cancellationToken)
     {
@@ -390,7 +390,7 @@ public sealed class ItemStateReader
             cancellationToken: cancellationToken))).ToArray();
     }
 
-    internal Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesAsync(
+    public Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {
