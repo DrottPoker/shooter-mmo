@@ -1,46 +1,28 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Guards the areas inside GameService.Items that let the quest code and the economy code
-// (vendors and gathering) live in modules above Items, as docs/GAME_SERVICE_MODULES.md describes
-// under Items Transaction Kernel:
-// R-a: no kernel, core, or corpse code names a quest or an economy type, or references
-//      Mmorpg.GameService.Quests;
-// R-b: the quest and economy areas run no SQL of their own and reach item tables through the
-//      item primitives;
-// R-c: the quest and economy areas use nothing of the corpse area, and the corpse area reaches
-//      the quest area only through IQuestDropDemand.
-// The area lists below stand in for module boundaries until the quest and economy code move
-// into modules of their own (hardening plan step 3.1c), which replaces them.
+// Guards the areas inside GameService.Items that let the economy code (vendors and gathering)
+// live in a module above Items, as docs/GAME_SERVICE_MODULES.md describes under Items
+// Transaction Kernel:
+// R-a: no kernel, core, or corpse code names an economy type, and the kernel names no quest,
+//      vendor, or gathering feature;
+// R-b: the economy area runs no SQL of its own and reaches item tables through the item
+//      primitives;
+// R-c: the economy area uses nothing of the corpse area.
+// The quest code lives in GameService.Quests, above Items, where the module boundaries keep it
+// apart. The area lists below stand in for module boundaries until the economy code moves into
+// a module of its own (hardening plan step 3.1d), which replaces them.
 public sealed partial class ItemAreaBoundaryTests
 {
     private const string ItemsPath = "GameService.Items/";
 
     // Composition registers the commands, routes, and services of every area.
     private const string CompositionFile = ItemsPath + "ItemsModule.cs";
-
-    private static readonly string[] QuestAreaFiles =
-    [
-        "QuestItemCatalogReferences.cs",
-        "SimulationQuestDropService.cs",
-        "SimulationQuestEndpoints.cs",
-        "SimulationQuestMutationService.cs",
-        "SimulationQuestOperationContracts.cs",
-        "Transactions/QuestTransactionContracts.cs",
-        "Transactions/Domain/QuestDropDemand.cs",
-        "Transactions/Domain/QuestGatherCredit.cs",
-        "Transactions/Domain/QuestLineage.cs",
-        "Transactions/Domain/QuestLogChanges.cs",
-        "Transactions/Domain/QuestProgression.cs",
-        "Transactions/Handlers/QuestCommandHandler.Admin.cs",
-        "Transactions/Handlers/QuestCommandHandler.cs",
-        "Transactions/Handlers/QuestCommandSource.cs",
-        "Transactions/Handlers/QuestItemCommandHandler.cs"
-    ];
 
     private static readonly string[] EconomyAreaFiles =
     [
@@ -86,24 +68,6 @@ public sealed partial class ItemAreaBoundaryTests
         "Transactions/Handlers/PlayerDeath/PlayerDeathCommandHandler.cs"
     ];
 
-    // The quest code's gathering entry is the one quest type that the economy area names.
-    private const string QuestGatheringEntry = "QuestGatherCredit";
-
-    // The one interface through which the corpse area learns what a quest asks for.
-    private const string QuestDropInterface = "IQuestDropDemand";
-
-    // The quest drop service opens its own read-only transaction, as the Quests module's reads
-    // do; that statement touches no table.
-    private const string QuestDropServiceFile = "SimulationQuestDropService.cs";
-    private const string QuestDropServiceReadOnlyTransaction =
-        """
-                    await connection.ExecuteAsync(new CommandDefinition(
-                        "set transaction read only;",
-                        transaction: transaction,
-                        cancellationToken: cancellationToken));
-
-        """;
-
     private static IReadOnlyList<SourceFile> ItemsFiles { get; } = GameServiceSourceMap
         .LoadSourceFiles()
         .Where(file => file.RelativePath.StartsWith(ItemsPath, StringComparison.Ordinal))
@@ -113,7 +77,7 @@ public sealed partial class ItemAreaBoundaryTests
     [Fact]
     public void TheAreaListsNameExistingFilesOnce()
     {
-        var listed = QuestAreaFiles.Concat(EconomyAreaFiles).Concat(CorpseAreaFiles).ToArray();
+        var listed = EconomyAreaFiles.Concat(CorpseAreaFiles).ToArray();
         var existing = ItemsFiles.Select(file => file.RelativePath).ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(listed.Length, listed.Distinct(StringComparer.Ordinal).Count());
@@ -123,35 +87,6 @@ public sealed partial class ItemAreaBoundaryTests
                 .Where(file => file.RelativePath.StartsWith(ItemsPath + "Transactions/Handlers/PlayerDeath/", StringComparison.Ordinal))
                 .Select(file => file.RelativePath.Substring(ItemsPath.Length)),
             CorpseAreaFiles.Where(path => path.StartsWith("Transactions/Handlers/PlayerDeath/", StringComparison.Ordinal)));
-    }
-
-    // R-a for the quest area.
-    [Fact]
-    public void OnlyTheQuestAreaNamesQuestTypesOrTheQuestsModule()
-    {
-        var questNames = AreaNames(QuestAreaFiles);
-        var violations = new List<string>();
-        foreach (var file in ItemsFiles.Where(file => !InArea(file, QuestAreaFiles) && file.RelativePath != CompositionFile))
-        {
-            var code = CodeOf(file.Text);
-            if (code.Contains("Mmorpg.GameService.Quests", StringComparison.Ordinal))
-            {
-                violations.Add($"{file.RelativePath} -> Mmorpg.GameService.Quests");
-            }
-
-            var allowed = InArea(file, EconomyAreaFiles) ? [QuestGatheringEntry] : Array.Empty<string>();
-            violations.AddRange(NamesUsedIn(code, questNames)
-                .Where(name => !allowed.Contains(name, StringComparer.Ordinal))
-                .Select(name => $"{file.RelativePath} -> {name}"));
-        }
-
-        Assert.Contains("AcceptQuestCommand", questNames.Types);
-        Assert.Contains("QuestDropDemand", questNames.Types);
-        Assert.Contains("AcceptQuest", questNames.KindConstants);
-        Assert.True(
-            violations.Count == 0,
-            "Only the quest area, and the composition that registers it, may name quest types, quest operation kinds, or the Quests module; the economy area may name only the quest gathering entry:"
-            + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
     // R-a for the economy area. The vendor profiles are part of the mirrored item catalog, so
@@ -211,36 +146,27 @@ public sealed partial class ItemAreaBoundaryTests
 
     // R-b.
     [Fact]
-    public void TheQuestAndEconomyAreasRunNoSqlOfTheirOwn()
+    public void TheEconomyAreaRunsNoSqlOfItsOwn()
     {
-        var violations = new List<string>();
-        foreach (var file in ItemsFiles.Where(file => InArea(file, QuestAreaFiles) || InArea(file, EconomyAreaFiles)))
-        {
-            var code = CodeOf(file.Text);
-            if (file.RelativePath == ItemsPath + QuestDropServiceFile)
-            {
-                Assert.Equal(1, Occurrences(file.Text, QuestDropServiceReadOnlyTransaction));
-                code = CodeOf(file.Text.Replace(QuestDropServiceReadOnlyTransaction, string.Empty, StringComparison.Ordinal))
-                    .Replace("using Dapper;", string.Empty, StringComparison.Ordinal);
-            }
-
-            violations.AddRange(SqlAccessPattern().Matches(code)
-                .Select(match => $"{file.RelativePath} -> {match.Value}"));
-        }
+        var violations = ItemsFiles
+            .Where(file => InArea(file, EconomyAreaFiles))
+            .SelectMany(file => SqlAccessPattern().Matches(CodeOf(file.Text))
+                .Select(match => $"{file.RelativePath} -> {match.Value}"))
+            .ToArray();
 
         Assert.True(
-            violations.Count == 0,
-            "The quest and economy areas reach item tables only through the item primitives and use neither Dapper nor the transaction's connection:"
+            violations.Length == 0,
+            "The economy area reaches item tables only through the item primitives and uses neither Dapper nor the transaction's connection:"
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
     // R-c.
     [Fact]
-    public void TheQuestAndEconomyAreasUseNothingOfTheCorpseArea()
+    public void TheEconomyAreaUsesNothingOfTheCorpseArea()
     {
         var corpseNames = AreaNames(CorpseAreaFiles);
         var violations = ItemsFiles
-            .Where(file => InArea(file, QuestAreaFiles) || InArea(file, EconomyAreaFiles))
+            .Where(file => InArea(file, EconomyAreaFiles))
             .SelectMany(file => NamesUsedIn(CodeOf(file.Text), corpseNames)
                 .Select(name => $"{file.RelativePath} -> {name}"))
             .ToArray();
@@ -249,43 +175,8 @@ public sealed partial class ItemAreaBoundaryTests
         Assert.Contains("ItemTransactionQuestDrop", corpseNames.Types);
         Assert.True(
             violations.Length == 0,
-            "The quest and economy areas use no corpse type:"
+            "The economy area uses no corpse type:"
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
-    }
-
-    // R-c.
-    [Fact]
-    public void TheCorpseAreaReachesTheQuestAreaOnlyThroughTheQuestDropDemand()
-    {
-        var questNames = AreaNames(QuestAreaFiles);
-        var corpseFiles = ItemsFiles.Where(file => InArea(file, CorpseAreaFiles)).ToArray();
-        var violations = corpseFiles
-            .SelectMany(file =>
-            {
-                var code = CodeOf(file.Text);
-                var names = NamesUsedIn(code, questNames).ToList();
-                if (code.Contains("Mmorpg.GameService.Quests", StringComparison.Ordinal))
-                {
-                    names.Add("Mmorpg.GameService.Quests");
-                }
-
-                return names.Select(name => $"{file.RelativePath} -> {name}");
-            })
-            .ToArray();
-        var demandUsers = corpseFiles
-            .Where(file => Regex.IsMatch(CodeOf(file.Text), $@"\b{QuestDropInterface}\b"))
-            .Select(file => file.RelativePath.Substring(ItemsPath.Length))
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.True(
-            violations.Length == 0,
-            "The corpse area learns what a quest asks for through IQuestDropDemand only:"
-            + Environment.NewLine + string.Join(Environment.NewLine, violations));
-        Assert.Equal(
-            ["Transactions/Domain/CorpseQuestDrops.cs", "Transactions/Handlers/CorpseCommandSource.cs"],
-            demandUsers);
-        Assert.DoesNotContain(QuestDropInterface, questNames.Types);
     }
 
     // The kernel types whose members the kernel test checks by reflection, besides the source.
@@ -358,19 +249,6 @@ public sealed partial class ItemAreaBoundaryTests
     private static string WithoutStrings(string code)
     {
         return StringLiteralPattern().Replace(code, "\"\"");
-    }
-
-    private static int Occurrences(string text, string value)
-    {
-        var count = 0;
-        for (var index = text.IndexOf(value, StringComparison.Ordinal);
-             index >= 0;
-             index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal))
-        {
-            count++;
-        }
-
-        return count;
     }
 
     private sealed record AreaNameSet(IReadOnlySet<string> Types, IReadOnlySet<string> KindConstants);

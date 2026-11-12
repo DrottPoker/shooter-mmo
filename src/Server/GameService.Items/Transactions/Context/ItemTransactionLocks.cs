@@ -1,13 +1,28 @@
-namespace Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions;
+
+namespace Mmorpg.GameService.Items.Contracts;
 
 // The lock facet of an item transaction. Handlers lock the advisory key first, then
 // character states, then the corpse row, then the mutation scope.
-internal sealed class ItemTransactionLocks(
-    ItemTransactionSession session,
-    ItemActorAuthority authority,
-    CharacterItemStateLocks characterStates,
-    ItemMutationScopeLocks mutationScope)
+public sealed class ItemTransactionLocks
 {
+    private readonly ItemTransactionSession session;
+    private readonly ItemActorAuthority authority;
+    private readonly CharacterItemStateLocks characterStates;
+    private readonly ItemMutationScopeLocks mutationScope;
+
+    internal ItemTransactionLocks(
+        ItemTransactionSession session,
+        ItemActorAuthority authority,
+        CharacterItemStateLocks characterStates,
+        ItemMutationScopeLocks mutationScope)
+    {
+        this.session = session;
+        this.authority = authority;
+        this.characterStates = characterStates;
+        this.mutationScope = mutationScope;
+    }
+
     public Task<IReadOnlyDictionary<Guid, LockedCharacterState>> LockCharacterStatesAsync(
         IEnumerable<CharacterLockRequest> requests,
         CancellationToken cancellationToken)
@@ -22,7 +37,7 @@ internal sealed class ItemTransactionLocks(
         return characterStates.LockForEventAsync(session, authority, characterId, cancellationToken);
     }
 
-    public Task LockMutationScopeAsync(
+    internal Task LockMutationScopeAsync(
         IEnumerable<Guid> itemIds,
         IEnumerable<Guid> containerIds,
         CancellationToken cancellationToken)

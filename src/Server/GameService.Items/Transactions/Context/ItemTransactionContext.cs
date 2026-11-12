@@ -1,15 +1,17 @@
 using System.Diagnostics.CodeAnalysis;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // The handler-facing API of one item transaction: its session identity and five facets.
 // The kernel creates it after the transaction-local timeouts are set; it never commits
-// or rolls back. Handlers use Connection and Transaction for their own statements.
-internal sealed class ItemTransactionContext
+// or rolls back. Handlers in Items use Connection and Transaction for their own statements;
+// commands above Items change items only through the facets and the item primitives.
+public sealed class ItemTransactionContext
 {
-    public ItemTransactionContext(
+    internal ItemTransactionContext(
         ItemTransactionSession session,
         CharacterItemStateLocks characterStateLocks,
         ItemOperationsMetrics? operationsMetrics = null)
@@ -26,20 +28,20 @@ internal sealed class ItemTransactionContext
         Placement = new ItemSlotPlacement(session);
     }
 
-    public ItemTransactionSession Session { get; }
+    internal ItemTransactionSession Session { get; }
 
-    public NpgsqlConnection Connection => Session.Connection;
+    internal NpgsqlConnection Connection => Session.Connection;
 
-    public NpgsqlTransaction Transaction => Session.Transaction;
+    internal NpgsqlTransaction Transaction => Session.Transaction;
 
     // The transaction handed to other modules' contracts.
     public PostgresTransactionScope Scope => Session.Scope;
 
     public Guid OperationId => Session.OperationId;
 
-    public string OperationKind => Session.OperationKind;
+    internal string OperationKind => Session.OperationKind;
 
-    public ItemTransactionActor Actor => Session.Actor;
+    internal ItemTransactionActor Actor => Session.Actor;
 
     public ItemActorAuthority Authority { get; }
 

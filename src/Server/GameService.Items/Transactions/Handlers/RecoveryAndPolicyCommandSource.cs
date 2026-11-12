@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 

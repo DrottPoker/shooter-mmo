@@ -1,4 +1,4 @@
-using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Items;
 
@@ -9,12 +9,12 @@ namespace Mmorpg.GameService.Items.Transactions.Handlers;
 // yield in the same transaction, so a removed tool can never gather. The quest entry counts the
 // yield for the gather objectives of the node's actor definition in the same transaction, so a
 // retried yield counts once.
-internal sealed class GatherResourceCommandHandler(QuestGatherCredit questCredit)
+internal sealed class GatherResourceCommandHandler(IQuestGatherCredit questCredit)
     : IItemCommandHandler<GatherResourceCommand>
 {
     private const int MaximumResourceNodeIdLength = 256;
 
-    private readonly QuestGatherCredit questCredit = questCredit;
+    private readonly IQuestGatherCredit questCredit = questCredit;
 
     public async Task ExecuteAsync(
         ItemTransactionContext context,

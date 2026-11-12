@@ -1,13 +1,13 @@
 using Dapper;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Domain;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // The carried stacks of one definition that count for a lineage: stacks in the permanent
 // inventory and the equipped Bag, never the Bank, Recovery Storage, or equipment. An ordinary
 // item counts when it carries no active policy, and an item of the quest item category when it
 // carries the lineage.
-internal static class CarriedStacks
+public static class CarriedStacks
 {
     public static async Task<int> CountAsync(
         ItemTransactionContext context,

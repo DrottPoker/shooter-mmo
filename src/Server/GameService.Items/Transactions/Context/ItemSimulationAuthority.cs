@@ -1,4 +1,5 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.Server.Common.Identity;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;

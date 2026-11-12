@@ -20,8 +20,8 @@ internal sealed record GameServiceConfiguration(
     AccountsModuleOptions Accounts,
     CharactersModuleOptions Characters,
     PlacementModuleOptions Placement,
-    QuestsModuleOptions Quests,
     ItemsModuleOptions Items,
+    QuestsModuleOptions Quests,
     ContentModuleOptions Content)
 {
     // Process-level export settings; disabled unless Telemetry:OtlpEndpoint is set.
@@ -68,14 +68,16 @@ internal sealed record GameServiceConfiguration(
                 DevelopmentSimulationBots = developmentSimulationBots,
                 DevelopmentLooks = environment.IsDevelopment()
             },
-            new QuestsModuleOptions(questCatalog),
             new ItemsModuleOptions(
                 itemCatalog,
                 itemOperations,
                 npcItemLifecycle,
                 stackStressFixtures)
             {
-                DevelopmentItemPackages = DevelopmentItemPackageSource.FromConfiguration(configuration),
+                DevelopmentItemPackages = DevelopmentItemPackageSource.FromConfiguration(configuration)
+            },
+            new QuestsModuleOptions(questCatalog)
+            {
                 DevelopmentQuestTools = environment.IsDevelopment()
             },
             content)

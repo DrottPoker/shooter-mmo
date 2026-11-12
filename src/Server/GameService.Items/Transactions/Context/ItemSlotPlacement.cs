@@ -1,22 +1,30 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Slot and equipment placement rules: which container slot or equipment slot accepts
 // an item, including Bag nesting, Recovery Storage, and the level requirement of equipment.
-internal sealed class ItemSlotPlacement(ItemTransactionSession session)
+public sealed class ItemSlotPlacement
 {
+    private readonly ItemTransactionSession session;
+
+    internal ItemSlotPlacement(ItemTransactionSession session)
+    {
+        this.session = session;
+    }
+
     private NpgsqlConnection Connection => session.Connection;
 
     private NpgsqlTransaction Transaction => session.Transaction;
 
     // Selects the slot that the item occupies afterwards. The quantity is the stack size in that
     // slot after the operation, which a corpse equipment slot limits.
-    public async Task<int> SelectDestinationSlotAsync(
+    internal async Task<int> SelectDestinationSlotAsync(
         LockedContainer container,
         ResolvedItemDefinition definition,
         int quantity,
@@ -162,7 +170,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 
     // Lists the empty slots of an ordinary carried container that accept a new item of the
     // definition, in slot order, for kernel placement that chooses its own destination.
-    public async Task<IReadOnlyList<CarriedSlot>> ListAcceptingSlotsAsync(
+    internal async Task<IReadOnlyList<CarriedSlot>> ListAcceptingSlotsAsync(
         LockedContainer container,
         ResolvedItemDefinition definition,
         CancellationToken cancellationToken)
@@ -252,7 +260,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
     // Checks that the item can enter the empty equipment slot with its whole quantity and that
     // no equipped item blocks the slot or is blocked by the item. A swap names the equipped
     // item it replaces: that occupant may hold the slot, and the slots it blocks no longer count.
-    public async Task EnsureEquipmentDestinationAsync(
+    internal async Task EnsureEquipmentDestinationAsync(
         Guid characterId,
         string equipmentSlotId,
         ResolvedItemDefinition definition,
@@ -325,7 +333,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 
     // Every path that puts an item into a character's equipment slot checks the level
     // requirement, including Bag aggregate swaps. Level 1 is every character's minimum.
-    public async Task EnsureCharacterLevelAsync(
+    internal async Task EnsureCharacterLevelAsync(
         Guid characterId,
         ResolvedItemDefinition definition,
         CancellationToken cancellationToken)
@@ -358,7 +366,7 @@ internal sealed class ItemSlotPlacement(ItemTransactionSession session)
 
     // Checks that an equipped stack can grow to the quantity, such as when arrows top up the
     // equipped ammunition stack.
-    public async Task EnsureEquippedStackQuantityAsync(
+    internal async Task EnsureEquippedStackQuantityAsync(
         Guid characterId,
         string equipmentSlotId,
         ResolvedItemDefinition definition,

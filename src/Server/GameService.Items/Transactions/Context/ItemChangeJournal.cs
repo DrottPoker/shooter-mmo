@@ -1,16 +1,15 @@
 using System.Collections.Frozen;
 using System.Reflection;
 using System.Text.Json;
+using Mmorpg.GameService.Items.Transactions;
 
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // The in-memory change journal of one item transaction: audit changes, touched
 // characters and containers, result items, Recovery deliveries, the named result sections,
 // and the death-only carry overflow permission. The kernel's finalizer turns it into
 // revisions, audit rows, and the result.
-internal sealed class ItemChangeJournal(
-    ItemTransactionSession session,
-    ItemStateReader reader)
+public sealed class ItemChangeJournal
 {
     // A section is a top-level key of the stored result, so it may not take the name of a
     // result property. Stored results are read without regard to case.
@@ -26,7 +25,15 @@ internal sealed class ItemChangeJournal(
     private readonly List<ItemAuditChange> auditChanges = [];
     private readonly List<Guid> recoveryDeliveryIds = [];
     private readonly Dictionary<string, PendingSection> sections = new(StringComparer.Ordinal);
+    private readonly ItemTransactionSession session;
+    private readonly ItemStateReader reader;
     private bool allowInvoluntaryHardCapOverflow;
+
+    internal ItemChangeJournal(ItemTransactionSession session, ItemStateReader reader)
+    {
+        this.session = session;
+        this.reader = reader;
+    }
 
     private string OperationKind => session.OperationKind;
 
@@ -46,7 +53,7 @@ internal sealed class ItemChangeJournal(
 
     internal bool AllowsInvoluntaryHardCapOverflow => allowInvoluntaryHardCapOverflow;
 
-    public async Task<string?> CaptureItemStateJsonAsync(
+    internal async Task<string?> CaptureItemStateJsonAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {
@@ -75,7 +82,7 @@ internal sealed class ItemChangeJournal(
         return JsonSerializer.Serialize(state, ItemOperationJson.Options);
     }
 
-    public void AddItemAudit(
+    internal void AddItemAudit(
         string changeKind,
         Guid itemInstanceId,
         string? beforeState,
@@ -116,7 +123,7 @@ internal sealed class ItemChangeJournal(
         touchedCharacterIds.Add(characterId);
     }
 
-    public void TouchContainer(Guid? containerId)
+    internal void TouchContainer(Guid? containerId)
     {
         if (containerId is not null)
         {
@@ -124,12 +131,12 @@ internal sealed class ItemChangeJournal(
         }
     }
 
-    public void IncludeResultItem(Guid itemInstanceId)
+    internal void IncludeResultItem(Guid itemInstanceId)
     {
         resultItemIds.Add(itemInstanceId);
     }
 
-    public void AddRecoveryDelivery(Guid recoveryDeliveryId)
+    internal void AddRecoveryDelivery(Guid recoveryDeliveryId)
     {
         recoveryDeliveryIds.Add(recoveryDeliveryId);
     }
@@ -166,7 +173,7 @@ internal sealed class ItemChangeJournal(
                 StringComparer.Ordinal);
     }
 
-    public void AllowInvoluntaryDeathHardCapOverflow()
+    internal void AllowInvoluntaryDeathHardCapOverflow()
     {
         if (!string.Equals(
                 OperationKind,
@@ -200,9 +207,3 @@ internal sealed class ItemChangeJournal(
 
     private sealed record PendingSection(object Value, Type ValueType);
 }
-
-internal sealed record ItemAuditChange(
-    string ChangeKind,
-    Guid? ItemInstanceId,
-    string? BeforeState,
-    string? AfterState);

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
@@ -7,19 +8,29 @@ namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 // Guards the item transaction kernel boundary described in docs/GAME_SERVICE_MODULES.md:
 // only the kernel ends transactions or touches the operation ledger, handlers are
 // stateless and sequential, take locks in the documented order, reject only through
-// ItemTransactionRejection, and only the listed types cross module boundaries.
+// ItemTransactionRejection, and only the listed types cross module boundaries. The handler
+// rules hold for the item command handlers of every module, whose transaction code lives in the
+// module's Transactions folder.
 public sealed partial class ItemTransactionKernelBoundaryTests
 {
     private const string TransactionsPath = "GameService.Items/Transactions/";
     private const string KernelPath = "GameService.Items/Transactions/Kernel/";
-    private const string HandlersPath = "GameService.Items/Transactions/Handlers/";
-    private const string HandlersNamespace = "Mmorpg.GameService.Items.Transactions.Handlers";
+    private const string HandlersFolder = "/Transactions/Handlers/";
 
-    // Files outside the kernel that run inside an item transaction.
+    // Files of every module outside the kernel that run inside an item transaction.
     private static IReadOnlyList<SourceFile> TransactionFiles { get; } = GameServiceSourceMap
         .LoadSourceFiles()
-        .Where(file => file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal)
+        .Where(file => ModuleTransactionsPattern().IsMatch(file.RelativePath)
             && !file.RelativePath.StartsWith(KernelPath, StringComparison.Ordinal))
+        .ToArray();
+
+    // Every item command handler of every module.
+    private static IReadOnlyList<Type> HandlerTypes { get; } = GameServiceAssemblies.All
+        .SelectMany(assembly => assembly.GetTypes())
+        .Where(type => !type.IsNested
+            && !type.IsAbstract
+            && type.GetInterfaces().Any(contract => contract.IsGenericType
+                && contract.GetGenericTypeDefinition() == typeof(IItemCommandHandler<>)))
         .ToArray();
 
     [Fact]
@@ -40,21 +51,17 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     [Fact]
     public void HandlersHoldOnlyReadonlyInjectedState()
     {
-        var handlerTypes = GameServiceAssemblies.Items
-            .GetTypes()
-            .Where(type => string.Equals(type.Namespace, HandlersNamespace, StringComparison.Ordinal)
-                && !type.IsNested
-                && type.GetInterfaces().Any(contract => contract.IsGenericType
-                    && string.Equals(contract.GetGenericTypeDefinition().Name, "IItemCommandHandler`1", StringComparison.Ordinal)))
-            .ToArray();
-        var mutableFields = handlerTypes
+        var mutableFields = HandlerTypes
             .SelectMany(type => type
                 .GetFields(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 .Where(field => !field.IsInitOnly && !field.IsLiteral)
                 .Select(field => $"{type.Name}.{field.Name}"))
             .ToArray();
 
-        Assert.Equal(24, handlerTypes.Length);
+        Assert.Equal(24, HandlerTypes.Count);
+        Assert.Equal(
+            new[] { "Mmorpg.GameService.Items", "Mmorpg.GameService.Quests" },
+            HandlerTypes.Select(type => type.Assembly.GetName().Name!).Distinct().Order(StringComparer.Ordinal));
         Assert.True(
             mutableFields.Length == 0,
             "Item command handlers are shared across concurrent transactions and may hold only readonly injected fields:"
@@ -83,7 +90,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         var violations = new List<string>();
         var orderedPairs = 0;
         foreach (var file in TransactionFiles.Where(file =>
-                     file.RelativePath.StartsWith(HandlersPath, StringComparison.Ordinal)))
+                     file.RelativePath.Contains(HandlersFolder, StringComparison.Ordinal)))
         {
             foreach (var method in MethodPattern().Split(file.Text).Skip(1))
             {
@@ -109,6 +116,33 @@ public sealed partial class ItemTransactionKernelBoundaryTests
             + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
+    // The source rules above see a handler only in a Transactions/Handlers folder of its module.
+    [Fact]
+    public void EveryHandlerLivesInAHandlersFolder()
+    {
+        var files = GameServiceSourceMap.LoadSourceFiles();
+        var misplaced = HandlerTypes
+            .SelectMany(type =>
+            {
+                var declaring = files
+                    .Where(file => Regex.IsMatch(file.Text, $@"\bclass {type.Name}\b"))
+                    .Select(file => file.RelativePath)
+                    .ToArray();
+                return declaring.Length == 0
+                    ? [$"{type.FullName} -> no source file"]
+                    : declaring
+                        .Where(path => !ModuleTransactionsPattern().IsMatch(path)
+                            || !path.Contains(HandlersFolder, StringComparison.Ordinal))
+                        .Select(path => $"{type.FullName} -> {path}");
+            })
+            .ToArray();
+
+        Assert.True(
+            misplaced.Length == 0,
+            "Item command handlers live in their module's Transactions/Handlers folder:"
+            + Environment.NewLine + string.Join(Environment.NewLine, misplaced));
+    }
+
     [Fact]
     public void HandlersRejectOnlyThroughReject()
     {
@@ -128,7 +162,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     public void TransactionCodeRejectsOnlyWithTransactionErrorCodes()
     {
         var violations = GameServiceSourceMap.LoadSourceFiles()
-            .Where(file => file.RelativePath.StartsWith(TransactionsPath, StringComparison.Ordinal)
+            .Where(file => ModuleTransactionsPattern().IsMatch(file.RelativePath)
                 && file.Text.Contains("ItemApiErrorCodes", StringComparison.Ordinal))
             .Select(file => file.RelativePath)
             .ToArray();
@@ -154,13 +188,12 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         Assert.Equal(CrossModuleOwners.Order(StringComparer.Ordinal), users);
     }
 
-    // The only item transaction types that use another module's contracts or SQL
+    // The only Items transaction types that use another module's contracts or SQL
     // fragments, with the cross-module statements of docs/GAME_SERVICE_MODULES.md.
     private static readonly string[] CrossModuleOwners =
     [
         // Composition only: the command sources pass the contracts to the handlers they build.
         "GameService.Items/Transactions/Handlers/RecoveryAndPolicyCommandSource.cs",
-        "GameService.Items/Transactions/Handlers/QuestCommandSource.cs",
         "GameService.Items/Transactions/Handlers/EconomyCommandSource.cs",
         // S32: the operation claim references the actor account and character.
         "GameService.Items/Transactions/Kernel/ItemOperationLedger.cs",
@@ -177,20 +210,7 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         // S41: equipment reads the character level for its level requirement.
         "GameService.Items/Transactions/Context/ItemSlotPlacement.cs",
         // S51: the result reports each touched character's balance.
-        "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs",
-        // S56 and S59: quest commands read the quest catalog, change the quest log, and credit
-        // Gold rewards.
-        "GameService.Items/Transactions/Handlers/QuestCommandHandler.cs",
-        // S56: the Admin menu's quest tools read the quest catalog and change the quest log.
-        "GameService.Items/Transactions/Handlers/QuestCommandHandler.Admin.cs",
-        // S57: the result of a quest command reports the quests it changed.
-        "GameService.Items/Transactions/Domain/QuestLogChanges.cs",
-        // S58: kills, yields, talks, and deliveries count for the objectives of current steps.
-        "GameService.Items/Transactions/Domain/QuestProgression.cs",
-        // S58: a gathering yield counts for gather objectives through the quest gathering entry.
-        "GameService.Items/Transactions/Domain/QuestGatherCredit.cs",
-        // S62: a quest drop reads the quest catalog and the quest log for what its quest asks for.
-        "GameService.Items/Transactions/Domain/QuestDropDemand.cs"
+        "GameService.Items/Transactions/Context/ItemTransactionFinalizer.cs"
     ];
 
     // The file that defines the single rejection throw, ItemTransactionRejection.
@@ -208,6 +228,9 @@ public sealed partial class ItemTransactionKernelBoundaryTests
         };
     }
 
+    [GeneratedRegex(@"^GameService\.[A-Za-z]+/Transactions/")]
+    private static partial Regex ModuleTransactionsPattern();
+
     [GeneratedRegex(@"\b(?:BeginTransactionAsync|CommitAsync|RollbackAsync|set_config|savepoint|item_operations)\b", RegexOptions.IgnoreCase)]
     private static partial Regex KernelOnlyPattern();
 
@@ -217,6 +240,6 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     [GeneratedRegex(@"\b(?:LockDeathEventKeyAsync|pg_advisory_xact_lock|LockCharacterStatesAsync|LockCharacterStateForIdempotentEventAsync|LockOpenCorpseAsync|LockMutationScopeAsync)\b")]
     private static partial Regex LockCallPattern();
 
-    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ICharacterProgression|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|IQuestDefinitions|ICharacterQuestLog|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement|Quests)\.Contracts")]
+    [GeneratedRegex(@"\b(?:ICharacterLocks|ICharacterWallet|ICharacterProgression|ISimulationSessionAuthority|ISimulationWorkerAuthority|ISimulationPresence|AccountsSql|CharactersSql|PlacementSql)\b|Mmorpg\.GameService\.(?:Accounts|Characters|Placement)\.Contracts")]
     private static partial Regex CrossModulePattern();
 }

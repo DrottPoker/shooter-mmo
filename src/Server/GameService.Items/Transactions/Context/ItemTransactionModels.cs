@@ -1,31 +1,4 @@
-using Mmorpg.WorldData.Items;
-
 namespace Mmorpg.GameService.Items.Transactions;
-
-internal sealed record CharacterLockRequest(
-    Guid CharacterId,
-    long? ExpectedRevision);
-
-internal sealed class LockedCharacterState
-{
-    public Guid CharacterId { get; set; }
-
-    public Guid AccountId { get; set; }
-
-    public long Revision { get; set; }
-
-    public long CarriedWeight { get; set; }
-
-    public long BaseCarryCapacity { get; set; }
-
-    public long CarryCapacity { get; set; }
-
-    public Guid PermanentInventoryContainerId { get; set; }
-
-    public Guid BankContainerId { get; set; }
-
-    public Guid RecoveryStorageContainerId { get; set; }
-}
 
 internal sealed class LockedContainer
 {
@@ -46,43 +19,6 @@ internal sealed class LockedContainer
     public string Lifecycle { get; set; } = string.Empty;
 }
 
-internal sealed class LockedItem
-{
-    public Guid ItemInstanceId { get; set; }
-
-    public string DefinitionId { get; set; } = string.Empty;
-
-    public int Quantity { get; set; }
-
-    public long Revision { get; set; }
-
-    public Guid? ContainerId { get; set; }
-
-    public int? ContainerSlotIndex { get; set; }
-
-    public Guid? EquippedCharacterId { get; set; }
-
-    public string? EquipmentSlotId { get; set; }
-
-    public string? SourceContainerType { get; set; }
-
-    public string? SourceContainerLifecycle { get; set; }
-
-    public Guid? SourceBagItemInstanceId { get; set; }
-
-    public Guid? OwningCharacterId { get; set; }
-
-    public bool IsBag { get; set; }
-
-    public long? BagCarryCapacityBonus { get; set; }
-
-    public Guid? BagContentsContainerId { get; set; }
-
-    public string? BagContentsLifecycle { get; set; }
-
-    public long? BagContentsRevision { get; set; }
-}
-
 internal sealed class LockedItemPolicy
 {
     public Guid PolicyId { get; set; }
@@ -98,12 +34,15 @@ internal sealed class LockedItemPolicy
     public long Revision { get; set; }
 }
 
-internal sealed record ResolvedItemDefinition(
-    ItemDefinition RuntimeDefinition,
-    bool IsBag);
-
 // An empty carried slot that accepts a new item, for kernel placement.
 internal sealed record CarriedSlot(
     Guid ContainerId,
     int SlotIndex,
     string SlotKind);
+
+// One audit change of the journal, which the finalizer writes as an item_operation_changes row.
+internal sealed record ItemAuditChange(
+    string ChangeKind,
+    Guid? ItemInstanceId,
+    string? BeforeState,
+    string? AfterState);

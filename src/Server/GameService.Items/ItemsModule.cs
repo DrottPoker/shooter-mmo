@@ -1,10 +1,10 @@
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Items.Transactions;
-using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
@@ -44,8 +44,6 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddScoped<AccountItemMutationService>();
         services.AddSingleton<SimulationCharacterStates>();
         services.AddScoped<SimulationItemMutationService>();
-        services.AddScoped<SimulationQuestMutationService>();
-        services.AddScoped<SimulationQuestDropService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
         services.AddSingleton(options.DevelopmentItemPackages);
@@ -62,14 +60,12 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
     }
 
     // The item transaction kernel and its parts are stateless and shared, so they are
-    // singletons; each IItemCommandSource registers the commands of one area. The quest code
-    // implements Items' quest drop demand and catalog check, and gathering credits quests
-    // through the quest code's gathering entry.
+    // singletons; each IItemCommandSource registers the commands of one area, also the
+    // sources of the modules above Items. Those modules also implement IQuestDropDemand,
+    // IItemCatalogReferences, and IQuestGatherCredit, which Items' corpse rules, seeder, and
+    // gathering command call.
     private static void AddItemTransactions(IServiceCollection services)
     {
-        services.AddSingleton<IQuestDropDemand, QuestDropDemand>();
-        services.AddSingleton<IItemCatalogReferences, QuestItemCatalogReferences>();
-        services.AddSingleton<QuestGatherCredit>();
         services.AddSingleton<ItemSimulationAuthority>();
         services.AddSingleton<CharacterItemStateLocks>();
         services.AddSingleton<ItemOperationLedger>();
@@ -77,18 +73,17 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<ItemTransactionKernel>();
         services.AddSingleton<IItemCommandSource, CoreItemCommandSource>();
         services.AddSingleton<IItemCommandSource, RecoveryAndPolicyCommandSource>();
-        services.AddSingleton<IItemCommandSource, QuestCommandSource>();
         services.AddSingleton<IItemCommandSource, CorpseCommandSource>();
         services.AddSingleton<IItemCommandSource, EconomyCommandSource>();
         services.AddSingleton<ItemCommandCatalog>();
         services.AddScoped<ItemTransactionService>();
+        services.AddScoped<IItemTransactions>(provider => provider.GetRequiredService<ItemTransactionService>());
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         endpoints.MapItemEndpoints();
         endpoints.MapSimulationItemEndpoints();
-        endpoints.MapSimulationQuestEndpoints();
         endpoints.MapCorpseEndpoints();
         endpoints.MapStackStressFixtureEndpoints(options.StackStressFixtures);
     }

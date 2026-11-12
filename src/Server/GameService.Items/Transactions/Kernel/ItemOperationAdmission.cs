@@ -1,4 +1,5 @@
 using System.Text;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions;
 

@@ -2,6 +2,7 @@ using System.Data;
 using System.Numerics;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.WorldData.Items;
 using Npgsql;

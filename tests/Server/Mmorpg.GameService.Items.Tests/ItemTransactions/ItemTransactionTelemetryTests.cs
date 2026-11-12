@@ -4,11 +4,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
 using Npgsql;
-using static Mmorpg.GameService.Items.Tests.ItemTransactions.ItemScenarioWorld;
+using static Mmorpg.GameService.Testing.ItemScenarioWorld;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 

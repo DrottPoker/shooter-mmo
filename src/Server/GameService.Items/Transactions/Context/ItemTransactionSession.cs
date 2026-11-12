@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 

@@ -1,23 +1,31 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Reads items, containers, definitions, and policies inside one item transaction,
 // with the ownership, revision, and live container access checks of each load.
-internal sealed class ItemStateReader(
-    ItemTransactionSession session,
-    ItemActorAuthority authority)
+public sealed class ItemStateReader
 {
+    private readonly ItemTransactionSession session;
+    private readonly ItemActorAuthority authority;
+
+    internal ItemStateReader(ItemTransactionSession session, ItemActorAuthority authority)
+    {
+        this.session = session;
+        this.authority = authority;
+    }
+
     private NpgsqlConnection Connection => session.Connection;
 
     private NpgsqlTransaction Transaction => session.Transaction;
 
     private ItemActorAuthority Authority => authority;
 
-    public async Task<LockedItem> LoadOwnedItemAsync(
+    internal async Task<LockedItem> LoadOwnedItemAsync(
         Guid itemInstanceId,
         Guid characterId,
         long expectedRevision,
@@ -46,7 +54,7 @@ internal sealed class ItemStateReader(
         return item;
     }
 
-    public Task<LockedItem?> LoadItemAsync(
+    internal Task<LockedItem?> LoadItemAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {
@@ -84,7 +92,7 @@ internal sealed class ItemStateReader(
     }
 
     // The item that the character has equipped in the slot, or null when the slot is empty.
-    public Task<Guid?> LoadEquippedItemIdAsync(
+    internal Task<Guid?> LoadEquippedItemIdAsync(
         Guid characterId,
         string equipmentSlotId,
         CancellationToken cancellationToken)
@@ -131,7 +139,7 @@ internal sealed class ItemStateReader(
             cancellationToken: cancellationToken));
     }
 
-    public async Task<LockedContainer> LoadOwnedContainerAsync(
+    internal async Task<LockedContainer> LoadOwnedContainerAsync(
         Guid containerId,
         Guid characterId,
         CancellationToken cancellationToken)
@@ -147,7 +155,7 @@ internal sealed class ItemStateReader(
 
     // Loads a container that the kernel itself places items into, such as Recovery Storage
     // for displaced items. It is not a player-chosen location, so no service access applies.
-    public async Task<LockedContainer> LoadKernelPlacementContainerAsync(
+    internal async Task<LockedContainer> LoadKernelPlacementContainerAsync(
         Guid containerId,
         Guid characterId,
         CancellationToken cancellationToken)
@@ -162,7 +170,7 @@ internal sealed class ItemStateReader(
         return container;
     }
 
-    public async Task<LockedContainer> LoadContainerAsync(
+    internal async Task<LockedContainer> LoadContainerAsync(
         Guid containerId,
         CancellationToken cancellationToken)
     {
@@ -288,7 +296,7 @@ internal sealed class ItemStateReader(
     // Loads an active vendor profile of the current catalog with its offers in display order.
     // The vendor profiles are part of the mirrored item catalog, so this is the one vendor load
     // that the kernel context keeps.
-    public async Task<VendorProfileDefinition> LoadVendorAsync(
+    internal async Task<VendorProfileDefinition> LoadVendorAsync(
         string vendorId,
         CancellationToken cancellationToken)
     {
@@ -340,7 +348,7 @@ internal sealed class ItemStateReader(
         };
     }
 
-    public Task<bool> BagHasContentsAsync(
+    internal Task<bool> BagHasContentsAsync(
         LockedItem item,
         CancellationToken cancellationToken)
     {
@@ -361,7 +369,7 @@ internal sealed class ItemStateReader(
             cancellationToken: cancellationToken));
     }
 
-    public async Task<IReadOnlyList<Guid>> LoadBagAggregateItemIdsAsync(
+    internal async Task<IReadOnlyList<Guid>> LoadBagAggregateItemIdsAsync(
         Guid bagItemInstanceId,
         CancellationToken cancellationToken)
     {
@@ -382,7 +390,7 @@ internal sealed class ItemStateReader(
             cancellationToken: cancellationToken))).ToArray();
     }
 
-    public Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesAsync(
+    internal Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {

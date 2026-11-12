@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 

@@ -1,5 +1,5 @@
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 

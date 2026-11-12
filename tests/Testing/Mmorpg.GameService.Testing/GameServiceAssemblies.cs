@@ -20,14 +20,14 @@ internal static class GameServiceAssemblies
 
     public static Assembly Placement { get; } = typeof(PlacementModule).Assembly;
 
-    public static Assembly Quests { get; } = typeof(QuestsModule).Assembly;
-
     public static Assembly Items { get; } = typeof(ItemsModule).Assembly;
+
+    public static Assembly Quests { get; } = typeof(QuestsModule).Assembly;
 
     public static Assembly Content { get; } = typeof(ContentModule).Assembly;
 
     public static Assembly Host { get; } = typeof(Mmorpg.GameService.Database.GameServiceSchema).Assembly;
 
     public static IReadOnlyList<Assembly> All { get; } =
-        [Platform, Accounts, Characters, Placement, Quests, Items, Content, Host];
+        [Platform, Accounts, Characters, Placement, Items, Quests, Content, Host];
 }

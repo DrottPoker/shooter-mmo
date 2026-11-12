@@ -1,11 +1,11 @@
 using Mmorpg.GameService.Placement.Contracts;
 using Npgsql;
 
-namespace Mmorpg.GameService.Items;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Reads the acting character's state after a committed simulation operation, so every
 // worker-facing response tells the worker what the character carries and has equipped.
-internal sealed class SimulationCharacterStates(
+public sealed class SimulationCharacterStates(
     NpgsqlDataSource dataSource,
     ISimulationCharacterStateProvider stateProvider)
 {

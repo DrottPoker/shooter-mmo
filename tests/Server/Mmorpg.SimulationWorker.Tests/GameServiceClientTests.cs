@@ -353,6 +353,52 @@ public sealed class GameServiceClientTests
         Assert.True(body.RootElement.GetProperty("access").GetProperty("bank").GetBoolean());
     }
 
+    // GameService passes every section of the item transaction result through as a top-level key
+    // and leaves out a section the result does not hold, so the worker ignores a section it does
+    // not read and reads a missing questLog as no quest log change.
+    [Fact]
+    public async Task AnItemResponseWithAnotherSectionAndNoQuestLogIsAccepted()
+    {
+        var characterId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var containerId = Guid.NewGuid();
+        var requestBody = new SimulationItemOperationRequest(
+            operationId,
+            Guid.NewGuid(),
+            characterId,
+            "local-simulation-worker-1",
+            "runtime-1",
+            "local-shard-1",
+            "simulation-session-token",
+            new SimulationItemAccessRequest(false, false, false),
+            "relocate",
+            12,
+            itemId,
+            3,
+            DestinationContainerId: containerId,
+            DestinationSlotIndex: 2);
+        var client = CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            operationId,
+            operationKind = "relocate",
+            succeeded = true,
+            error = (object?)null,
+            characterRevisions = new[] { new { characterId, revision = 13, carriedWeight = 25, carryCapacity = 200 } },
+            containerRevisions = new[] { new { containerId, revision = 4 } },
+            itemRevisions = new[] { new { itemInstanceId = itemId, revision = 4 } },
+            recoveryDeliveryIds = Array.Empty<Guid>(),
+            characterState = CharacterStateTestData.Create(characterId, 13, 25),
+            itemChanges = Array.Empty<object>(),
+            questDrops = new[] { new { questId = "quest.wolves", definitionId = "item.trophy", quantity = 1 } }
+        })));
+
+        var result = await client.MutateSimulationItemsAsync(Guid.NewGuid(), requestBody, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.Null(result.Value!.QuestLog);
+    }
+
     [Fact]
     public async Task PlayerDeathSendsRuntimeBoundEventAndValidatesDurablePartition()
     {

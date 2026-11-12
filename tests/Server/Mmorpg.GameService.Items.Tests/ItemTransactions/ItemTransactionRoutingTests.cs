@@ -1,14 +1,16 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
-// Pins the persisted operation kind of every registered item command. An account actor with
-// a derived (version 5) operation id is rejected before any database access, so the
-// complete routing table runs without PostgreSQL.
+// Pins the persisted operation kind of every item command that Items registers; the quest
+// commands are pinned in Mmorpg.GameService.Quests.Tests. An account actor with a derived
+// (version 5) operation id is rejected before any database access, so the complete routing
+// table runs without PostgreSQL.
 public sealed class ItemTransactionRoutingTests
 {
     private static readonly Guid DerivedOperationId = Guid.Parse("8f14e45f-ceea-567a-9a6f-b3f0a2c4d1e8");
@@ -55,10 +57,10 @@ public sealed class ItemTransactionRoutingTests
         Assert.Equal(typeof(ItemTransactionRequest<>), parameters[0].ParameterType.GetGenericTypeDefinition());
 
         await using var composition = new OfflineItemComposition();
-        var registrations = composition.Catalog.Registrations;
-        Assert.Equal(48, registrations.Count);
-        Assert.Equal(48, registrations.Select(registration => registration.CommandType).Distinct().Count());
-        Assert.Equal(48, Routes.Count);
+        var registrations = composition.RegistrationsOf(GameServiceAssemblies.Items);
+        Assert.Equal(33, registrations.Count);
+        Assert.Equal(33, registrations.Select(registration => registration.CommandType).Distinct().Count());
+        Assert.Equal(33, Routes.Count);
         Assert.Equal(
             registrations.Select(registration => registration.OperationKind).Order(StringComparer.Ordinal),
             Routes.Keys.Order(StringComparer.Ordinal));
@@ -154,81 +156,6 @@ public sealed class ItemTransactionRoutingTests
                 service,
                 actor,
                 new RemoveInsurancePolicyCommand(Id, 1, Id, 1),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AbandonQuestItems] = (service, actor) => Run(
-                service,
-                actor,
-                new AbandonQuestItemsCommand(Id, 1, "routing"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AcceptQuest] = (service, actor) => Run(
-                service,
-                actor,
-                new AcceptQuestCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AbandonQuest] = (service, actor) => Run(
-                service,
-                actor,
-                new AbandonQuestCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.RegrantQuestItems] = (service, actor) => Run(
-                service,
-                actor,
-                new RegrantQuestItemsCommand(Id, "quest.fixture.errand"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.TalkToQuestNpc] = (service, actor) => Run(
-                service,
-                actor,
-                new TalkToQuestNpcCommand(Id, "quest.fixture.errand", "report"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.DeliverQuestItems] = (service, actor) => Run(
-                service,
-                actor,
-                new DeliverQuestItemsCommand(Id, "quest.fixture.errand", "hand_over"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.CreditQuestKill] = (service, actor) => Run(
-                service,
-                actor,
-                new CreditQuestKillCommand(Id, "mob.feral_wolf", []),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.TurnInQuest] = (service, actor) => Run(
-                service,
-                actor,
-                new TurnInQuestCommand(Id, "quest.fixture.wolves", "fixture.sword"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminAcceptQuest] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminAcceptQuestCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminCompleteQuestObjective] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminCompleteQuestObjectiveCommand(Id, "quest.fixture.wolves", "wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminCompleteQuestStep] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminCompleteQuestStepCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminMakeQuestReady] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminMakeQuestReadyCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminResetQuest] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminResetQuestCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminResetQuestChain] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminResetQuestChainCommand(Id, "quest.fixture.wolves"),
-                (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
-            [ItemOperationKinds.AdminResetQuests] = (service, actor) => Run(
-                service,
-                actor,
-                new AdminResetQuestsCommand(Id),
                 (target, request) => target.ExecuteAsync(request, CancellationToken.None)),
             [ItemOperationKinds.ProcessPlayerDeath] = (service, actor) => Run(
                 service,

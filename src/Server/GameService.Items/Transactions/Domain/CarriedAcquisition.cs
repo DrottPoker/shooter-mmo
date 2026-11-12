@@ -1,14 +1,16 @@
 using Dapper;
+using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.WorldData.Items;
 
-namespace Mmorpg.GameService.Items.Transactions.Domain;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Places a new quantity of one definition into carried storage when no client chose a
 // slot, as for a vendor purchase or a gathered yield. It tops up existing stacks in the
 // permanent inventory and then in the equipped Bag, and fills empty slots in this order:
 // matching specialized Bag slots, the permanent inventory, then general Bag slots. The
 // placement is all or nothing, and the finalizer enforces the carry-weight cap.
-internal static class CarriedAcquisition
+public static class CarriedAcquisition
 {
     // Places new protected items that carry a lineage, such as a quest's start items, into
     // empty carried slots in the same order. They never merge into an existing stack, so
@@ -64,7 +66,7 @@ internal static class CarriedAcquisition
     }
 
     // Full stacks first, then the rest.
-    public static IReadOnlyList<int> StackSizedParts(int quantity, int maximumStackSize)
+    internal static IReadOnlyList<int> StackSizedParts(int quantity, int maximumStackSize)
     {
         if (quantity <= 0 || maximumStackSize <= 0)
         {

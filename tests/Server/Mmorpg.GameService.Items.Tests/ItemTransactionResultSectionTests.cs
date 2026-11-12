@@ -1,85 +1,21 @@
 using System.Text.Json;
-using Dapper;
-using Mmorpg.GameService.Items.Tests.ItemTransactions;
-using Mmorpg.GameService.Items.Transactions;
-using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
-using static Mmorpg.GameService.Items.Tests.QuestScenario;
 
 namespace Mmorpg.GameService.Items.Tests;
 
-// The quest parts of an item transaction result are named sections that the kernel stores and
-// replays without reading them: the quest log change under questLog and a durable Mob corpse's
-// kept quest drops under questDrops. Results stored before the sections had the same keys with the
-// same shapes, and every other result held "questLog": null, so they replay the same quest parts.
+// The named sections of an item transaction result are top-level keys of the stored JSON that the
+// kernel stores and replays without reading them, such as a durable Mob corpse's kept quest drops
+// under questDrops. Results stored before the sections had the same keys with the same shapes. The
+// worker response passes every section through. The quest log section is pinned in
+// Mmorpg.GameService.Quests.Tests.
 public sealed class ItemTransactionResultSectionTests
 {
     private const string Trophies = "quest.fixture.trophies";
+    private const string Trophy = "fixture.trophy";
+    private const string Ore = "fixture.ore";
     private const string Wolf = "mob.feral_wolf";
-
-    [PostgresIntegrationFact]
-    public async Task AQuestLogStoredInTheEarlierShapeReplaysAsTheSameChange()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var (world, characterId, session) = await JoinWithWolvesDoneAsync(context, "section_old_quest_log");
-        var operationId = Guid.NewGuid();
-        ItemScenarioWorld.AssertCommitted(await AcceptErrandAsync(context, session, characterId, operationId));
-        await StoreAsync(
-            world,
-            operationId,
-            $$"""
-            {"error": null, "questLog": {"quests": [{"stepId": "work", "questId": "quest.fixture.errand", "objectives": [{"progress": 0, "objectiveId": "hand_over"}, {"progress": 2, "objectiveId": "ore"}, {"progress": 1, "objectiveId": "report"}], "completionCount": 0}], "revision": 7, "characterId": "{{characterId}}"}, "succeeded": true, "itemChanges": [], "operationId": "{{operationId}}", "itemRevisions": [], "operationKind": "accept_quest", "containerRevisions": [], "characterRevisions": [], "recoveryDeliveryIds": []}
-            """);
-
-        var replayed = await AcceptErrandAsync(context, session, characterId, operationId);
-
-        var expected = new ItemTransactionQuestLogChange(
-            characterId,
-            7,
-            [
-                new ItemTransactionQuestChange(
-                    Errand,
-                    "work",
-                    [
-                        new ItemTransactionQuestObjectiveProgress("hand_over", 0),
-                        new ItemTransactionQuestObjectiveProgress("ore", 2),
-                        new ItemTransactionQuestObjectiveProgress("report", 1)
-                    ],
-                    0)
-            ]);
-        ItemScenarioWorld.AssertCommitted(replayed);
-        Assert.Equal(Json(expected), Json(QuestLogSection.Read(replayed)));
-        Assert.Equal(Json(expected), Json(QuestLogSection.Read(SimulationItemOperationResponse.From(replayed, null))));
-        Assert.Null(QuestDropSection.Read(replayed));
-    }
-
-    [PostgresIntegrationFact]
-    public async Task ANullQuestLogStoredInTheEarlierShapeReplaysAsNoQuestLog()
-    {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var (world, characterId, session) = await JoinWithWolvesDoneAsync(context, "section_old_null");
-        var operationId = Guid.NewGuid();
-        ItemScenarioWorld.AssertCommitted(await AcceptErrandAsync(context, session, characterId, operationId));
-        await StoreAsync(
-            world,
-            operationId,
-            $$"""
-            {"error": null, "questLog": null, "succeeded": true, "itemChanges": null, "operationId": "{{operationId}}", "itemRevisions": [], "operationKind": "accept_quest", "containerRevisions": [], "characterRevisions": [], "recoveryDeliveryIds": []}
-            """);
-
-        var replayed = await AcceptErrandAsync(context, session, characterId, operationId);
-        var response = SimulationItemOperationResponse.From(replayed, null);
-
-        ItemScenarioWorld.AssertCommitted(replayed);
-        Assert.Null(replayed.Section(QuestLogSection.Name));
-        Assert.Null(QuestLogSection.Read(replayed));
-        Assert.Null(response.QuestLog);
-        Assert.EndsWith(
-            "\"itemChanges\":null,\"questLog\":null}",
-            JsonSerializer.Serialize(response, JsonSerializerOptions.Web),
-            StringComparison.Ordinal);
-    }
 
     [PostgresIntegrationFact]
     public async Task QuestDropsStoredInTheEarlierShapeReplayToTheWorker()
@@ -96,12 +32,20 @@ public sealed class ItemTransactionResultSectionTests
             CancellationToken.None);
         Assert.True(created.Succeeded, created.Error?.Message);
         Assert.Empty(created.Value!.QuestDrops);
-        await StoreAsync(
-            world,
-            request.OperationId,
-            $$"""
-            {"error": null, "questLog": null, "succeeded": true, "questDrops": [{"quantity": 1, "questId": "{{Trophies}}", "definitionId": "{{Trophy}}"}, {"quantity": 2, "questId": "{{Trophies}}", "definitionId": "{{Trophy}}"}], "itemChanges": null, "operationId": "{{request.OperationId}}", "itemRevisions": [], "operationKind": "create_persistent_mob_corpse", "containerRevisions": [], "characterRevisions": [], "recoveryDeliveryIds": []}
-            """);
+        await world.ExecuteSqlAsync(
+            """
+            update item_operations
+            set result_payload = cast(@Payload as jsonb)
+            where operation_id = @OperationId
+              and status = 'committed';
+            """,
+            new
+            {
+                request.OperationId,
+                Payload = $$"""
+                    {"error": null, "questLog": null, "succeeded": true, "questDrops": [{"quantity": 1, "questId": "{{Trophies}}", "definitionId": "{{Trophy}}"}, {"quantity": 2, "questId": "{{Trophies}}", "definitionId": "{{Trophy}}"}], "itemChanges": null, "operationId": "{{request.OperationId}}", "itemRevisions": [], "operationKind": "create_persistent_mob_corpse", "containerRevisions": [], "characterRevisions": [], "recoveryDeliveryIds": []}
+                    """
+            });
 
         var replayed = await context.CorpseService.CreatePersistentMobCorpseAsync(
             ItemScenarioWorld.WorkerId,
@@ -114,84 +58,37 @@ public sealed class ItemTransactionResultSectionTests
             replayed.Value!.QuestDrops);
     }
 
-    // A result written now keeps a section as a top-level key of the stored JSON with the shape
-    // of its value, and a result without a quest part stores no quest key.
-    [PostgresIntegrationFact]
-    public async Task AResultWrittenNowStoresItsSectionAsATopLevelKeyAndReplaysIt()
+    // Every section that holds a value passes through in the result's order, after the response's
+    // own properties; a null section and a section named like a response property do not.
+    [Fact]
+    public void TheWorkerResponsePassesEverySectionThrough()
     {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
-        var (world, characterId, session) = await JoinWithWolvesDoneAsync(context, "section_round_trip");
-        var operationId = Guid.NewGuid();
+        var result = new ItemTransactionResult(
+            Guid.Parse("11111111-1111-4111-8111-111111111111"),
+            ItemOperationKinds.Grant,
+            true,
+            null,
+            [],
+            [],
+            [],
+            [])
+        {
+            Sections = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            {
+                ["questLog"] = JsonSerializer.SerializeToElement(new { revision = 3 }),
+                ["empty"] = JsonSerializer.SerializeToElement<object?>(null),
+                ["CharacterState"] = JsonSerializer.SerializeToElement(1),
+                ["questDrops"] = JsonSerializer.SerializeToElement(new[] { 1, 2 })
+            }
+        };
 
-        var first = await AcceptErrandAsync(context, session, characterId, operationId);
-        var replayed = await AcceptErrandAsync(context, session, characterId, operationId);
-        using var stored = JsonDocument.Parse(await LoadPayloadAsync(world, operationId));
-        var state = await world.LoadStateAsync(characterId);
-        var grantId = Guid.NewGuid();
-        ItemScenarioWorld.AssertCommitted(await context.ItemTransactionService.ExecuteAsync(
-            new ItemTransactionRequest<GrantItemCommand>(
-                grantId,
-                ItemTransactionActor.ForSystem(),
-                new GrantItemCommand(characterId, null, Ore, 1, state.PermanentInventoryContainerId, 5)),
-            CancellationToken.None));
-        using var plain = JsonDocument.Parse(await LoadPayloadAsync(world, grantId));
+        var response = SimulationItemOperationResponse.From(result, null);
 
-        ItemScenarioWorld.AssertCommitted(first);
-        var change = QuestLogSection.Read(first);
-        Assert.NotNull(change);
-        Assert.Equal(Errand, Assert.Single(change.Quests).QuestId);
-        Assert.Equal(
-            Json(change),
-            Json(stored.RootElement.GetProperty(QuestLogSection.Name)
-                .Deserialize<ItemTransactionQuestLogChange>(ItemOperationJson.Options)));
-        Assert.False(stored.RootElement.TryGetProperty(QuestDropSection.Name, out _));
-        Assert.Equal(Json(change), Json(QuestLogSection.Read(replayed)));
-        Assert.False(plain.RootElement.TryGetProperty(QuestLogSection.Name, out _));
-        Assert.False(plain.RootElement.TryGetProperty(QuestDropSection.Name, out _));
-    }
-
-    private static async Task<(ItemScenarioWorld World, Guid CharacterId, ConsumedSimulationJoinTicketResponse Session)> JoinWithWolvesDoneAsync(
-        PostgresIntegrationTestContext context,
-        string name)
-    {
-        var world = new ItemScenarioWorld(context);
-        var player = await world.RegisterAsync(name);
-        await CompleteAsync(context, player.Character.Id, Wolves, "hunt");
-        return (world, player.Character.Id, await world.JoinAsync(player));
-    }
-
-    private static Task<ItemTransactionResult> AcceptErrandAsync(
-        PostgresIntegrationTestContext context,
-        ConsumedSimulationJoinTicketResponse session,
-        Guid characterId,
-        Guid operationId)
-    {
-        return ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Errand), Mira, operationId);
-    }
-
-    private static Task StoreAsync(ItemScenarioWorld world, Guid operationId, string payload)
-    {
-        return world.ExecuteSqlAsync(
-            """
-            update item_operations
-            set result_payload = cast(@Payload as jsonb)
-            where operation_id = @OperationId
-              and status = 'committed';
-            """,
-            new { OperationId = operationId, Payload = payload });
-    }
-
-    private static async Task<string> LoadPayloadAsync(ItemScenarioWorld world, Guid operationId)
-    {
-        await using var connection = await world.Context.DataSource.OpenConnectionAsync();
-        return await connection.QuerySingleAsync<string>(
-            "select result_payload::text from item_operations where operation_id = @OperationId;",
-            new { OperationId = operationId });
-    }
-
-    private static string Json<T>(T value)
-    {
-        return JsonSerializer.Serialize(value, ItemOperationJson.Options);
+        Assert.Equal(new[] { "questLog", "questDrops" }, response.Sections!.Keys);
+        Assert.EndsWith(
+            "\"characterState\":null,\"itemChanges\":null,\"questLog\":{\"revision\":3},\"questDrops\":[1,2]}",
+            JsonSerializer.Serialize(response, JsonSerializerOptions.Web),
+            StringComparison.Ordinal);
     }
 
     private static CreatePersistentMobCorpseRequest CorpseRequest(

@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Testing;

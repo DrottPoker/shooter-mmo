@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 

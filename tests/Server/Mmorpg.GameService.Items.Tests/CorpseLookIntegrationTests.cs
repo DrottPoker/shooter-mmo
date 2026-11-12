@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Characters.Contracts;
-using Mmorpg.GameService.Items.Tests.ItemTransactions;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;

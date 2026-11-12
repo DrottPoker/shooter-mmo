@@ -2,16 +2,18 @@ using System.Security.Cryptography;
 using System.Text;
 using Dapper;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
-using static Mmorpg.GameService.Items.Tests.ItemTransactions.ItemScenarioWorld;
+using static Mmorpg.GameService.Testing.ItemScenarioWorld;
 
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
 // Pins the persisted idempotency format: the canonical request payload whose SHA-256 is
 // stored as item_operations.request_hash, and the death event fingerprint stored as
 // death_events.request_hash. The expected JSON is written by hand, so a change in
-// property names, order, sorting, or number and date formatting fails here.
+// property names, order, sorting, or number and date formatting fails here. The quest kinds
+// are pinned in Mmorpg.GameService.Quests.Tests.
 public sealed class ItemOperationCanonicalRequestTests
 {
     private const string SystemActor =
@@ -149,13 +151,6 @@ public sealed class ItemOperationCanonicalRequestTests
                 CancellationToken.None),
             ItemOperationKinds.RemoveInsurancePolicy,
             $$"""{"characterId":"{{A}}","expectedCharacterRevision":1,"itemInstanceId":"{{B}}","expectedItemRevision":2}""");
-        await AssertStoredAsync(
-            context,
-            await service.ExecuteAsync(
-                Request(new AbandonQuestItemsCommand(A, 1, "quest-9")),
-                CancellationToken.None),
-            ItemOperationKinds.AbandonQuestItems,
-            $$"""{"characterId":"{{A}}","expectedCharacterRevision":1,"questGrantId":"quest-9"}""");
         await AssertStoredAsync(
             context,
             await service.ExecuteAsync(

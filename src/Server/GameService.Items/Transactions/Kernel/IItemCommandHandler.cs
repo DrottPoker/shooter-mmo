@@ -1,9 +1,9 @@
-namespace Mmorpg.GameService.Items.Transactions;
+namespace Mmorpg.GameService.Items.Contracts;
 
 // Executes one item command inside a transaction that the kernel owns. A handler reads
 // and writes through the context and rejects through ItemTransactionContext.Reject; it
 // never commits, rolls back, or opens a connection. Handlers are stateless and shared.
-internal interface IItemCommandHandler<in TCommand>
+public interface IItemCommandHandler<in TCommand>
     where TCommand : notnull
 {
     Task ExecuteAsync(

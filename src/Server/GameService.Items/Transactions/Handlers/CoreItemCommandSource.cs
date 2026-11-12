@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Items.Contracts;
+
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
 // The core item commands: grants, moves and container swaps, equipment, stacks, quantity and

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Contracts;
 
 namespace Mmorpg.GameService.Items;
 

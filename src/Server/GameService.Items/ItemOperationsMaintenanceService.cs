@@ -1,6 +1,7 @@
 using System.Data;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Npgsql;
 

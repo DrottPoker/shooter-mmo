@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
