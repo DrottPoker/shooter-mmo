@@ -4,6 +4,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.SharedTests;
 using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
+using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
 
@@ -242,6 +243,75 @@ public sealed class SharedSimulationHardeningTests
         Assert.NotEqual(manifest.Revision, CollisionWorldCompiler.ComputeManifestRevision(manifest));
     }
 
+    // The collision compiler and the Unity collision bake write the same text, so the
+    // committed file does not depend on which of them ran last.
+    [Theory]
+    [InlineData("development-world-1")]
+    [InlineData("development-world-2")]
+    public void CommittedCollisionManifestsAreInTheirOneTextForm(string worldId)
+    {
+        var committed = StrictContentJson.NormalizeLineEndings(File.ReadAllText(CommittedManifestPath(worldId)));
+
+        Assert.Equal(committed, CollisionWorldManifestJson.Serialize(LoadCommittedManifest(worldId)));
+    }
+
+    [Fact]
+    public void TheCollisionManifestTextIsStable()
+    {
+        var manifest = new CollisionWorldManifest
+        {
+            FormatVersion = 3,
+            WorldId = "world",
+            Revision = "abc",
+            ChunkSize = 32f,
+            Chunks =
+            [
+                new CollisionChunkManifestEntry
+                {
+                    X = -1,
+                    Z = 2,
+                    ResourceName = "chunk_n1_p2",
+                    Sha256 = "def",
+                    MinimumX = -32f,
+                    MinimumZ = 64f,
+                    MaximumX = 0f,
+                    MaximumZ = 96.5f
+                }
+            ]
+        };
+
+        var expected = """
+            {
+                "FormatVersion": 3,
+                "WorldId": "world",
+                "Revision": "abc",
+                "ChunkSize": 32.0,
+                "Chunks": [
+                    {
+                        "X": -1,
+                        "Z": 2,
+                        "ResourceName": "chunk_n1_p2",
+                        "Sha256": "def",
+                        "MinimumX": -32.0,
+                        "MinimumZ": 64.0,
+                        "MaximumX": 0.0,
+                        "MaximumZ": 96.5
+                    }
+                ]
+            }
+
+            """;
+        Assert.Equal(
+            StrictContentJson.NormalizeLineEndings(expected),
+            CollisionWorldManifestJson.Serialize(manifest));
+
+        manifest.Chunks = [];
+        Assert.Contains(
+            "    \"Chunks\": []\n",
+            CollisionWorldManifestJson.Serialize(manifest),
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ItemCatalogLimitsFitTheRealtimeProtocolLimits()
     {
@@ -292,13 +362,17 @@ public sealed class SharedSimulationHardeningTests
         return MathF.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ));
     }
 
-    private static CollisionWorldManifest LoadCommittedManifest(string worldId)
+    private static string CommittedManifestPath(string worldId)
     {
-        var path = Path.Combine(
+        return Path.Combine(
             ContentLayout.GeneratedCollisionDirectory(RepositoryPaths.Generated, worldId),
             ContentLayout.CollisionManifestFileName);
+    }
+
+    private static CollisionWorldManifest LoadCommittedManifest(string worldId)
+    {
         return JsonSerializer.Deserialize<CollisionWorldManifest>(
-                File.ReadAllText(path),
+                File.ReadAllText(CommittedManifestPath(worldId)),
                 ManifestJsonOptions)
             ?? throw new InvalidDataException("The committed collision manifest is empty.");
     }

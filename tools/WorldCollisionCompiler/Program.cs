@@ -36,11 +36,11 @@ try
             worldId);
         if (options.VerifyOnly)
         {
-            VerifyOutputs(outputDirectory, result, jsonOptions);
+            VerifyOutputs(outputDirectory, result);
         }
         else
         {
-            await WriteOutputs(outputDirectory, result, jsonOptions);
+            await WriteOutputs(outputDirectory, result);
         }
 
         Console.WriteLine(
@@ -106,8 +106,7 @@ static CollisionWorldBakeResult CompileWorld(
 
 static async Task WriteOutputs(
     string outputDirectory,
-    CollisionWorldBakeResult result,
-    JsonSerializerOptions jsonOptions)
+    CollisionWorldBakeResult result)
 {
     Directory.CreateDirectory(outputDirectory);
     foreach (var staleChunk in Directory.EnumerateFiles(outputDirectory, "chunk_*" + CollisionDataFormat.ChunkFileExtension))
@@ -124,7 +123,7 @@ static async Task WriteOutputs(
 
     await File.WriteAllTextAsync(
         Path.Combine(outputDirectory, ContentLayout.CollisionManifestFileName),
-        JsonSerializer.Serialize(result.Manifest, jsonOptions) + Environment.NewLine);
+        CollisionWorldManifestJson.Serialize(result.Manifest));
 }
 
 static string[] FindStaleOutputDirectories(string generatedRoot, string[] worldIds)
@@ -143,8 +142,7 @@ static string[] FindStaleOutputDirectories(string generatedRoot, string[] worldI
 
 static void VerifyOutputs(
     string outputDirectory,
-    CollisionWorldBakeResult expected,
-    JsonSerializerOptions jsonOptions)
+    CollisionWorldBakeResult expected)
 {
     var manifestPath = Path.Combine(outputDirectory, ContentLayout.CollisionManifestFileName);
     if (!File.Exists(manifestPath))
@@ -152,30 +150,14 @@ static void VerifyOutputs(
         throw new InvalidDataException("Compiled collision manifest is stale.");
     }
 
-    var actualManifest = JsonSerializer.Deserialize<CollisionWorldManifest>(
-        File.ReadAllText(manifestPath),
-        jsonOptions) ?? throw new InvalidDataException("Compiled collision manifest is empty.");
-    if (actualManifest.FormatVersion != expected.Manifest.FormatVersion
-        || !string.Equals(actualManifest.WorldId, expected.Manifest.WorldId, StringComparison.Ordinal)
-        || !string.Equals(actualManifest.Revision, expected.Manifest.Revision, StringComparison.Ordinal)
-        || actualManifest.ChunkSize != expected.Manifest.ChunkSize
-        || actualManifest.Chunks is null
-        || actualManifest.Chunks.Length != expected.Manifest.Chunks.Length)
+    // The manifest has one text form, so the whole file is compared, as for every other
+    // compiled file.
+    if (!string.Equals(
+            StrictContentJson.NormalizeLineEndings(File.ReadAllText(manifestPath)),
+            CollisionWorldManifestJson.Serialize(expected.Manifest),
+            StringComparison.Ordinal))
     {
         throw new InvalidDataException("Compiled collision manifest is stale.");
-    }
-
-    for (var index = 0; index < expected.Manifest.Chunks.Length; index++)
-    {
-        var actual = actualManifest.Chunks[index];
-        var wanted = expected.Manifest.Chunks[index];
-        if (actual.X != wanted.X
-            || actual.Z != wanted.Z
-            || !string.Equals(actual.ResourceName, wanted.ResourceName, StringComparison.Ordinal)
-            || !string.Equals(actual.Sha256, wanted.Sha256, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Compiled collision manifest is stale.");
-        }
     }
 
     var expectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
