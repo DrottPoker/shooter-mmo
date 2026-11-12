@@ -181,6 +181,7 @@ WorldActorDependencies.Register(builder.Services);
 CombatDependencies.Register(builder.Services);
 AppearanceDependencies.Register(builder.Services);
 QuestDependencies.Register(builder.Services);
+PersistenceDependencies.Register(builder.Services);
 builder.Services.AddSimulationWorkerHostedServices();
 
 using var host = builder.Build();

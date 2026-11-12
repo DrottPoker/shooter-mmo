@@ -68,7 +68,7 @@ public sealed class SimulationWorkerStopOrderTests
 
     // The worker's hosted services with the harness's collaborators; the realtime service is
     // the harness's own, composed like production, in the place the worker registers it.
-    private static IHost BuildHost(
+    internal static IHost BuildHost(
         RealtimeServerHarness harness,
         SimulationWorkerRegistrationLease lease,
         ItemCatalogRuntimeDocument itemCatalog,

@@ -59,8 +59,9 @@ Unity: not used
 The in-memory authority implements only the service contracts that
 SimulationWorker needs: readiness, worker heartbeat and offline registration,
 one-time ticket consumption, simulation-session heartbeat and release, and
-empty durable-corpse restoration. Identities, tickets, and sessions exist only
-for the lifetime of the generator process.
+empty durable-corpse restoration. Its bots are synthetic, so the worker sends
+it no character checkpoint and no final state with a release. Identities,
+tickets, and sessions exist only for the lifetime of the generator process.
 
 ### Full-stack Mode
 

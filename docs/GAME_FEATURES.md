@@ -102,6 +102,11 @@ character, progression, and statistics are not implemented.
   then returns to CharacterSelect.
 - An unexpected disconnect returns the player to CharacterSelect, and an expired
   account session returns it to LoginMenu.
+- A character enters where it left the World, facing the same way, with the
+  health and mana it had, after a leave, a logout, a disconnect, or a worker
+  restart. In another World, or after that World's collision changed, it enters
+  at the World spawn but keeps its health and mana. A new character enters at
+  the World spawn with full health and mana.
 
 ## Worlds
 
@@ -886,8 +891,9 @@ Combat is target based and server authoritative:
   number that rises and fades over 1.1 seconds, above the nameplate on a Mob, and
   arrows and bolts fly to their target.
 - A character is in combat until 5 seconds after its last attack or hit. Out of
-  combat it regains 1 health and 1 mana every second. A respawn and a login start
-  with full health and mana. A character has 100 health.
+  combat it regains 1 health and 1 mana every second. A respawn starts with full
+  health and mana, and a login with the health and mana the character had when
+  it left. A character has 100 health.
 - Dying is described in [Death](#death).
 - Feral Wolves are aggressive: a Feral Wolf notices a living character within
   8 m that it can see, runs to it at 4.5 m/s, and bites for 4 to 9 every 1.8

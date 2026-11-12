@@ -20,6 +20,7 @@ internal sealed class ShardService(
     IItemCatalogRevisionProvider itemCatalogRevisionProvider,
     IQuestCatalogRevisionProvider questCatalogRevisionProvider,
     ICharacterAppearances characterAppearances,
+    ICharacterSimulationStates characterSimulationStates,
     DevelopmentSimulationBotAuthority? developmentBotAuthority = null)
 {
     public async Task<ServiceResult<IReadOnlyCollection<ShardResponse>>> ListShardsAsync(
@@ -378,6 +379,10 @@ internal sealed class ShardService(
             new PostgresTransactionScope(connection, transaction),
             joinTicket.CharacterId,
             cancellationToken);
+        var savedState = await characterSimulationStates.ReadAsync(
+            new PostgresTransactionScope(connection, transaction),
+            joinTicket.CharacterId,
+            cancellationToken);
 
         await ReleaseExpiredSimulationSessionsForAccountAsync(
             connection,
@@ -484,7 +489,8 @@ internal sealed class ShardService(
             {
                 SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
                 Equipment = carryState.Equipment,
-                Appearance = appearance is null ? null : SimulationAppearance.From(appearance)
+                Appearance = appearance is null ? null : SimulationAppearance.From(appearance),
+                SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState)
             });
     }
 

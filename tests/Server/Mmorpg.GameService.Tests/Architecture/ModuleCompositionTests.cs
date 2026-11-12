@@ -31,6 +31,7 @@ public sealed class ModuleCompositionTests
         (typeof(IAccountLocks), "Mmorpg.GameService.Accounts"),
         (typeof(ICharacterLocks), "Mmorpg.GameService.Characters"),
         (typeof(ICharacterWallet), "Mmorpg.GameService.Characters"),
+        (typeof(ICharacterSimulationStates), "Mmorpg.GameService.Characters"),
         (typeof(ISimulationSessionAuthority), "Mmorpg.GameService.Placement"),
         (typeof(ISimulationWorkerAuthority), "Mmorpg.GameService.Placement"),
         (typeof(ISimulationPresence), "Mmorpg.GameService.Placement"),

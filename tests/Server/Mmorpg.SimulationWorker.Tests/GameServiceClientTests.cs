@@ -99,6 +99,150 @@ public sealed class GameServiceClientTests
                 request.Path));
     }
 
+    // The saved place and vitals reach the worker within the bounds GameService stores them in;
+    // a development bot has none.
+    [Theory]
+    [InlineData("valid", true)]
+    [InlineData("none", true)]
+    [InlineData("dead", false)]
+    [InlineData("negative_mana", false)]
+    [InlineData("far_away", false)]
+    [InlineData("spun", false)]
+    [InlineData("bad_world", false)]
+    [InlineData("bad_collision", false)]
+    [InlineData("bot", false)]
+    public async Task TheConsumeResponseCarriesOnlyAValidSavedState(string variant, bool accepted)
+    {
+        var savedState = new
+        {
+            worldId = variant == "bad_world" ? "bad world" : "development-world-2",
+            collisionRevision = variant == "bad_collision" ? "bad revision" : "collision-abc",
+            positionX = variant == "far_away" ? 2_000_000f : 0.1f,
+            positionY = 1.0000001f,
+            positionZ = -3.5f,
+            yawDegrees = variant == "spun" ? 400f : 359.5f,
+            health = variant == "dead" ? 0 : 41,
+            mana = variant == "negative_mana" ? -1 : 0
+        };
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "development-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
+            itemStateRevision = 12,
+            carriedWeight = 0,
+            carryCapacity = 200,
+            isReconnect = false,
+            isSyntheticBot = variant == "bot",
+            appearance = variant == "bot" ? null : Look(),
+            savedState = variant == "none" ? null : savedState
+        }));
+
+        var result = await ConsumeAsync(CreateClient(handler));
+
+        Assert.Equal(accepted, result.Succeeded);
+        if (!accepted)
+        {
+            Assert.Equal("invalid_auth_response", result.Error!.Code);
+        }
+        else if (variant == "valid")
+        {
+            var saved = result.Value!.SavedState!;
+            Assert.Equal(
+                ("development-world-2", "collision-abc", 0.1f, 1.0000001f, -3.5f, 359.5f, 41, 0),
+                (saved.WorldId, saved.CollisionRevision, saved.PositionX, saved.PositionY, saved.PositionZ, saved.YawDegrees, saved.Health, saved.Mana));
+        }
+        else
+        {
+            Assert.Null(result.Value!.SavedState);
+        }
+    }
+
+    [Fact]
+    public async Task AReleaseCarriesItsFinalStateOnlyWhenItHasOne()
+    {
+        var simulationSessionId = Guid.NewGuid();
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            simulationSessionId,
+            characterId = Guid.NewGuid(),
+            shardId = "local-shard-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            expiresAt = DateTime.UtcNow,
+            itemStateRevision = 12,
+            carriedWeight = 0,
+            carryCapacity = 200,
+            released = true,
+            finalStateSaved = true
+        }));
+        var client = CreateClient(handler);
+
+        var withState = await client.ReleaseSimulationSessionAsync(
+            simulationSessionId,
+            "runtime-1",
+            "simulation-session-token",
+            new SimulationCharacterStateRequest(7, 0.1f, 1.0000001f, -3.5f, 359.5f, 41, 0),
+            CancellationToken.None);
+        var withoutState = await client.ReleaseSimulationSessionAsync(
+            simulationSessionId,
+            "runtime-1",
+            "simulation-session-token",
+            CancellationToken.None);
+
+        Assert.True(withState.Succeeded, withState.Error?.Message);
+        Assert.True(withState.Value!.FinalStateSaved);
+        // GameService cannot have saved a state that the release did not carry.
+        Assert.Equal("invalid_auth_response", withoutState.Error!.Code);
+        using var sent = JsonDocument.Parse(handler.Requests[0].Body);
+        var finalState = sent.RootElement.GetProperty("finalState");
+        Assert.Equal(7, finalState.GetProperty("sequence").GetInt64());
+        Assert.Equal(1.0000001f, finalState.GetProperty("positionY").GetSingle());
+        Assert.Equal(41, finalState.GetProperty("health").GetInt32());
+        using var bare = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.False(bare.RootElement.TryGetProperty("finalState", out _));
+    }
+
+    [Theory]
+    [InlineData(2, 1, true)]
+    [InlineData(3, 0, true)]
+    [InlineData(1, 1, false)]
+    [InlineData(-1, 4, false)]
+    public async Task ACheckpointUsesTheWorkerRouteAndAnswersForEveryState(int accepted, int skipped, bool valid)
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new { accepted, skipped }));
+        var request = new SimulationCharacterCheckpointRequest(
+            "runtime-1",
+            [
+                new SimulationCharacterCheckpointEntry(Guid.NewGuid(), 1, 1f, 0f, 2f, 90f, 50, 40),
+                new SimulationCharacterCheckpointEntry(Guid.NewGuid(), 2, 3f, 0f, 4f, 180f, 60, 30),
+                new SimulationCharacterCheckpointEntry(Guid.NewGuid(), 3, 5f, 0f, 6f, 270f, 70, 20)
+            ]);
+
+        var result = await CreateClient(handler).CheckpointCharacterStatesAsync(
+            "local-simulation-worker-1",
+            request,
+            CancellationToken.None);
+
+        Assert.Equal(valid, result.Succeeded);
+        var sent = Assert.Single(handler.Requests);
+        Assert.Equal("/api/simulation-workers/local-simulation-worker-1/checkpoint", sent.Path);
+        using var body = JsonDocument.Parse(sent.Body);
+        Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
+        Assert.Equal(3, body.RootElement.GetProperty("states").GetArrayLength());
+        Assert.Equal(
+            request.States[1].SimulationSessionId,
+            body.RootElement.GetProperty("states")[1].GetProperty("simulationSessionId").GetGuid());
+    }
+
     // A quest action that moves no item, such as talking to an NPC, names no character revision.
     [Fact]
     public async Task QuestOperationsUseTheQuestRouteAndMayCommitWithoutAnItemChange()

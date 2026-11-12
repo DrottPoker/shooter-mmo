@@ -129,6 +129,113 @@ public sealed class SimulationSessionReleaseServiceTests
         Assert.False(sessionStore.IsSupersededByReconnect(otherSession));
     }
 
+    // The loop captured the character's final state; the release carries it exactly, and the
+    // service forgets it once GameService answered.
+    [Fact]
+    public async Task AReleaseCarriesTheCapturedFinalStateAndForgetsItOnceAnswered()
+    {
+        var handler = new RecordingReleaseHandler(HttpStatusCode.OK);
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://game-service.test") };
+        var sessionStore = new ActiveSimulationSessionStore();
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            sessionStore,
+            CharacterStateTestData.SessionStores(new CharacterItemStateStore()));
+        var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "session-token", PlayerCarryState.Default);
+        sessionStore.Register(session);
+        var state = new CharacterStateSnapshot(0.1f, BitConverter.Int32BitsToSingle(0x3F800001), -7.25f, 359.5f, 42, 0);
+        service.FinalStates.Capture(session.CharacterId, session.SimulationSessionId, new CharacterFinalState(9, state));
+
+        var result = await service.ReleaseAsync(session, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var sent = Assert.Single(handler.Releases).FinalState;
+        Assert.NotNull(sent);
+        Assert.Equal(
+            (9L, 0.1f, BitConverter.Int32BitsToSingle(0x3F800001), -7.25f, 359.5f, 42, 0),
+            (sent.Sequence, sent.PositionX, sent.PositionY, sent.PositionZ, sent.YawDegrees, sent.Health, sent.Mana));
+        Assert.Equal(0, service.FinalStates.Count);
+    }
+
+    // A detached release sends the final state with every attempt and forgets it after the last.
+    [Fact]
+    public async Task ADetachedReleaseSendsTheFinalStateWithEveryAttempt()
+    {
+        var handler = new RecordingReleaseHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://game-service.test") };
+        var sessionStore = new ActiveSimulationSessionStore();
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            sessionStore,
+            CharacterStateTestData.SessionStores(new CharacterItemStateStore()),
+            [TimeSpan.Zero]);
+        var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "session-token", PlayerCarryState.Default);
+        sessionStore.Register(session);
+        service.FinalStates.Capture(
+            session.CharacterId,
+            session.SimulationSessionId,
+            new CharacterFinalState(3, new CharacterStateSnapshot(1f, 2f, 3f, 4f, 5, 6)));
+
+        var result = await service.ReleaseDetachedAsync(session, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal([3L, 3L], handler.Releases.Select(release => release.FinalState!.Sequence));
+        Assert.Equal(0, service.FinalStates.Count);
+    }
+
+    // A release that fails for good forgets the state it sent, but never a newer one that the
+    // loop captured meanwhile, and a release without a state sends none.
+    [Fact]
+    public async Task AReleaseThatGivesUpForgetsOnlyTheStateItSent()
+    {
+        var handler = new RecordingReleaseHandler(HttpStatusCode.ServiceUnavailable);
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://game-service.test") };
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            new ActiveSimulationSessionStore(),
+            CharacterStateTestData.SessionStores(new CharacterItemStateStore()),
+            []);
+        var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "session-token", PlayerCarryState.Default);
+        var other = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "other-token", PlayerCarryState.Default);
+        var store = service.FinalStates;
+        store.Capture(session.CharacterId, session.SimulationSessionId, new CharacterFinalState(1, default));
+
+        var failed = await service.ReleaseAsync(session, CancellationToken.None);
+        Assert.False(failed.Succeeded);
+        Assert.True(store.TryGet(session.CharacterId, session.SimulationSessionId, out _));
+
+        handler.BeforeAnswer = () => store.Capture(
+            session.CharacterId,
+            session.SimulationSessionId,
+            new CharacterFinalState(2, default));
+        var gaveUp = await service.ReleaseDetachedAsync(session, CancellationToken.None);
+        Assert.False(gaveUp.Succeeded);
+        Assert.True(store.TryGet(session.CharacterId, session.SimulationSessionId, out var kept));
+        Assert.Equal(2, kept.Sequence);
+
+        handler.BeforeAnswer = null;
+        await service.ReleaseDetachedAsync(other, CancellationToken.None);
+        Assert.Null(handler.Releases[^1].FinalState);
+    }
+
+    [Fact]
+    public void TheFinalStateStoreKeepsTheNewerStateOfASession()
+    {
+        var store = new CharacterFinalStateStore();
+        var characterId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        store.Capture(characterId, sessionId, new CharacterFinalState(5, new CharacterStateSnapshot(5f, 0f, 0f, 0f, 5, 5)));
+        store.Capture(characterId, sessionId, new CharacterFinalState(4, new CharacterStateSnapshot(4f, 0f, 0f, 0f, 4, 4)));
+        store.Remove(characterId, sessionId, 4);
+
+        Assert.True(store.TryGet(characterId, sessionId, out var kept));
+        Assert.Equal(5f, kept.State.PositionX);
+        Assert.False(store.TryGet(characterId, Guid.NewGuid(), out _));
+        store.Remove(characterId, sessionId, 5);
+        Assert.Equal(0, store.Count);
+    }
+
     private static ActiveSimulationSession CreateSession(
         Guid characterId,
         Guid simulationSessionId,
@@ -149,6 +256,52 @@ public sealed class SimulationSessionReleaseServiceTests
             DateTime.UtcNow.AddMinutes(1),
             carryState,
             true);
+    }
+
+    // Answers each release with the next status, the last one for every later release, and
+    // records the request bodies.
+    private sealed class RecordingReleaseHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
+    {
+        private int answered;
+
+        public List<SimulationSessionReleaseRequest> Releases { get; } = [];
+
+        public Action? BeforeAnswer { get; set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Releases.Add((await request.Content!.ReadFromJsonAsync<SimulationSessionReleaseRequest>(cancellationToken))!);
+            BeforeAnswer?.Invoke();
+            var status = statuses[Math.Min(answered++, statuses.Length - 1)];
+            if (status != HttpStatusCode.OK)
+            {
+                return new HttpResponseMessage(status)
+                {
+                    Content = JsonContent.Create(new { code = "database_unavailable", detail = "PostgreSQL is unavailable." })
+                };
+            }
+
+            var simulationSessionId = Guid.Parse(request.RequestUri!.Segments[3].TrimEnd('/'));
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new SimulationSessionLeaseResponse(
+                    simulationSessionId,
+                    Guid.NewGuid(),
+                    "local-shard-1",
+                    "local-simulation-worker-1",
+                    "runtime-1",
+                    DateTime.UtcNow,
+                    0,
+                    0,
+                    200,
+                    true)
+                {
+                    FinalStateSaved = true
+                })
+            };
+        }
     }
 
     private sealed class ConflictReleaseHandler : HttpMessageHandler

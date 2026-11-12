@@ -27,7 +27,8 @@ public sealed class RealtimeFeatureRegistrationTests
                 "gathering",
                 "appearances",
                 "snapshots",
-                "corpse presence"
+                "corpse presence",
+                "character checkpoint"
             ],
             phases.Select(phase => phase.Name));
         Assert.Equal(
@@ -42,7 +43,8 @@ public sealed class RealtimeFeatureRegistrationTests
                 SimulationTickOrder.Gathering,
                 SimulationTickOrder.Appearances,
                 SimulationTickOrder.Snapshots,
-                SimulationTickOrder.CorpsePresence
+                SimulationTickOrder.CorpsePresence,
+                SimulationTickOrder.CharacterCheckpoint
             ],
             phases.Select(phase => phase.Order));
     }
@@ -101,10 +103,18 @@ public sealed class RealtimeFeatureRegistrationTests
         var hooks = harness.Service.Server.Registries.Hooks;
 
         Assert.Equal(
-            [typeof(CombatSystem), typeof(AdminIntentHandler)],
-            hooks.PlayerJoined.Select(hook => hook.Method.DeclaringType));
+            [typeof(CharacterStatePersistence)],
+            hooks.PlayerPlacements.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
-            [typeof(CombatSystem)],
+            [typeof(CombatSystem), typeof(AdminIntentHandler), typeof(CharacterStatePersistence)],
+            hooks.PlayerJoined.Select(hook => hook.Method.DeclaringType));
+        // The lists keep registration order; the hooks of a player's way out run in reverse, so
+        // persistence sees a player go while combat still holds it.
+        Assert.Equal(
+            [typeof(CharacterStatePersistence)],
+            hooks.LeaveStarting.Select(hook => hook.Method.DeclaringType));
+        Assert.Equal(
+            [typeof(CombatSystem), typeof(CharacterStatePersistence)],
             hooks.PlayerRemoved.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
             [typeof(CombatReplicator)],
@@ -128,6 +138,33 @@ public sealed class RealtimeFeatureRegistrationTests
             calls);
     }
 
+    // Teardown mirrors setup: the last feature to join a player is the first to see it leave and
+    // go, while the features it builds on still hold the player.
+    [Fact]
+    public void LeaveStartingAndPlayerRemovedHooksRunInReverseRegistrationOrder()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var player = fixture.ConnectPlayer(3);
+        var hooks = new RealtimeLifecycleHooks();
+        var calls = new List<string>();
+        hooks.AddLeaveStarting((context, session) => calls.Add($"first leaves {context.PeerId}"));
+        hooks.AddLeaveStarting((context, session) => calls.Add($"second leaves {context.PeerId}"));
+        hooks.AddPlayerRemoved((context, session, entityId) => calls.Add($"first removes {entityId}"));
+        hooks.AddPlayerRemoved((context, session, entityId) => calls.Add($"second removes {entityId}"));
+
+        hooks.RaiseLeaveStarting(player.Context, player.Session);
+        hooks.RaisePlayerRemoved(player.Context, player.Session, player.Entity.NetworkEntityId);
+
+        Assert.Equal(
+            [
+                "second leaves 3",
+                "first leaves 3",
+                $"second removes {player.Entity.NetworkEntityId}",
+                $"first removes {player.Entity.NetworkEntityId}"
+            ],
+            calls);
+    }
+
     [Fact]
     public async Task TheComposedShutdownStepsRunInThePinnedOrder()
     {
@@ -136,6 +173,7 @@ public sealed class RealtimeFeatureRegistrationTests
         Assert.Equal(
             [
                 "combat flush",
+                "character state flush",
                 "combat",
                 "peers",
                 "presence",

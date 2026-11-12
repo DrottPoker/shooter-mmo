@@ -92,6 +92,32 @@ internal static class SimulationEndpoints
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
 
+        // The changed character states of a worker runtime's sessions, in one batch.
+        workerGroup.MapPost("/{workerId}/checkpoint", async (
+            string workerId,
+            SimulationCharacterCheckpointRequest request,
+            ClaimsPrincipal principal,
+            SimulationSessionService simulationSessionService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(
+                    workerId,
+                    principal.GetSimulationWorkerId(),
+                    StringComparison.Ordinal))
+            {
+                return ServiceResult<SimulationCharacterCheckpointResponse>.Forbidden(
+                    "service_worker_mismatch",
+                    "The authenticated simulation worker cannot save the character states of another worker identity.")
+                    .ToHttpResult();
+            }
+
+            var result = await simulationSessionService.CheckpointAsync(
+                workerId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
+
         app.MapPost("/api/simulation-join-tickets/consume", async (
             ConsumeSimulationJoinTicketRequest consumeRequest,
             ClaimsPrincipal principal,
@@ -163,9 +189,10 @@ internal static class SimulationEndpoints
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
 
+        // A development bot has no stored state, so its release ignores a final state.
         app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/release", async (
             Guid simulationSessionId,
-            SimulationSessionCredentialRequest request,
+            SimulationSessionReleaseRequest request,
             ClaimsPrincipal principal,
             SimulationSessionService simulationSessionService,
             DevelopmentSimulationBotAuthority developmentBotAuthority,
@@ -175,7 +202,7 @@ internal static class SimulationEndpoints
             var result = developmentBotAuthority.TryReleaseSession(
                 simulationSessionId,
                 workerId,
-                request,
+                request.Credentials,
                 out var developmentBotResult)
                 ? developmentBotResult
                 : await simulationSessionService.ReleaseAsync(

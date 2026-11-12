@@ -111,7 +111,84 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
 
     // How the character looks; null for a development bot, which the worker dresses itself.
     public SimulationAppearance? Appearance { get; init; }
+
+    // The character's saved place and vitals, or null when it has none, as for a development bot.
+    public SimulationSavedCharacterState? SavedState { get; init; }
 }
+
+// A character's saved place and vitals: the World and its collision revision when the state was
+// saved, the position and facing as the simulation's floats, and health and mana.
+internal sealed record SimulationSavedCharacterState(
+    string WorldId,
+    string CollisionRevision,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana)
+{
+    public static SimulationSavedCharacterState From(CharacterSimulationState state) => new(
+        state.WorldId,
+        state.CollisionRevision,
+        state.PositionX,
+        state.PositionY,
+        state.PositionZ,
+        state.YawDegrees,
+        state.Health,
+        state.Mana);
+}
+
+// A character's place and vitals as the worker sends them, numbered within its simulation
+// session.
+internal sealed record SimulationCharacterStateRequest(
+    long Sequence,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana);
+
+// The release of a session, with the final state of its character when the worker has one.
+internal sealed record SimulationSessionReleaseRequest(
+    string? WorkerRuntimeId,
+    string? SessionToken,
+    SimulationCharacterStateRequest? FinalState = null)
+{
+    public SimulationSessionCredentialRequest Credentials => new(WorkerRuntimeId, SessionToken);
+}
+
+// One character state of a checkpoint: the simulation session that has it, the sequence within
+// that session, and the state.
+internal sealed record SimulationCharacterCheckpointEntry(
+    Guid SimulationSessionId,
+    long Sequence,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    float YawDegrees,
+    int Health,
+    int Mana)
+{
+    public SimulationCharacterStateRequest State => new(
+        Sequence,
+        PositionX,
+        PositionY,
+        PositionZ,
+        YawDegrees,
+        Health,
+        Mana);
+}
+
+// The character states of one worker runtime's sessions that changed since its last checkpoint.
+internal sealed record SimulationCharacterCheckpointRequest(
+    string? RuntimeId,
+    SimulationCharacterCheckpointEntry[]? States);
+
+// How many states a checkpoint saved, and how many it skipped because their session was not the
+// character's active session on the worker runtime or a newer state of that session was stored.
+internal sealed record SimulationCharacterCheckpointResponse(int Accepted, int Skipped);
 
 // A character's look as the worker sends it to every client: its body model, the choices of its
 // look, and whether it lowered its headwear.
@@ -157,4 +234,7 @@ internal sealed record SimulationSessionLeaseResponse(
 
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
+
+    // Whether a release stored the final state it carried.
+    public bool FinalStateSaved { get; init; }
 }

@@ -945,6 +945,21 @@ release of the session waits until its spent arrows and a pending death have
 committed. The server already tracks when each character was last in combat,
 which the risk timer will use.
 
+### What A Character Keeps
+
+Implemented. A character keeps where it stands, the way it faces, its health,
+and its mana across a leave, a logout, a disconnect, and a worker restart, and
+enters the World again in that place with those vitals. The place counts only
+in the World it was saved in and only while that World's collision is
+unchanged, so a saved place is never inside geometry that moved; otherwise the
+character enters at the World spawn, still with its health and mana. Logging
+out does not heal: a wounded character comes back wounded and regenerates as
+usual. Dying and respawning are unchanged, as
+[Health, Death, And Respawn](#health-death-and-respawn) describes: a character
+that logs out while dead comes back as its respawn would leave it, at the World
+spawn with full health and mana. The worker saves every 30 seconds and at every
+leave, so a crash of the worker loses at most the last 30 seconds.
+
 ### Decided
 
 Logout behavior depends on the character's current gameplay rule area:

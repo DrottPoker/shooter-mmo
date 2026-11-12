@@ -15,11 +15,12 @@ internal sealed class RealtimeSimulationService(
     CombatDependencies combat,
     AppearanceDependencies appearance,
     QuestDependencies quests,
+    PersistenceDependencies persistence,
     ILogger<RealtimeSimulationService> logger)
     : BackgroundService, IHostedLifecycleService
 {
     private readonly RealtimeServer server = RealtimeServerComposition.Create(
-        new RealtimeServerDependencies(host, items, corpses, worldActors, combat, appearance, quests),
+        new RealtimeServerDependencies(host, items, corpses, worldActors, combat, appearance, quests, persistence),
         logger);
 
     // The composed server, for the guard tests of what the features registered.
@@ -40,8 +41,9 @@ internal sealed class RealtimeSimulationService(
         return Task.CompletedTask;
     }
 
-    // The realtime shutdown runs here, so its combat flush commits while the sessions and the
-    // registration still hold. The host's later StopAsync finds the loop already stopped.
+    // The realtime shutdown runs here, so its combat flush and its last checkpoint commit while
+    // the sessions and the registration still hold. The host's later StopAsync finds the loop
+    // already stopped.
     public Task StoppingAsync(CancellationToken cancellationToken)
     {
         return base.StopAsync(cancellationToken);

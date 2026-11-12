@@ -360,6 +360,46 @@ SimulationWorker logs the released simulation session. `Log Out` revokes the
 GameService session before the client clears its local state and returns to
 LoginMenu, whose `Log In` tab shows the account's login name.
 
+### Place And Vitals Across A Logout
+
+Needs the stack and a character that entered `Local Shard 1`, as
+[Register, Create, And Join](#register-create-and-join) describes. For step 6
+start the second worker with the `StressArena` launch profile too.
+
+1. Walk well away from the spawn and turn to face a landmark.
+2. Lose some health, for example by letting a Feral Wolf bite you, and spend
+   some mana with a staff if you carry one. Walk out of combat and note the
+   health and mana in the combat HUD.
+3. Press F2, click `Leave Shard`, and click `Enter World` again.
+4. Read the stored row through [Look Into The Database](#look-into-the-database)
+   with the query `select world_id, position_x, position_z, yaw_degrees,
+   health, mana, session_sequence, saved_at from character_simulation_states;`.
+5. While the character stands somewhere else away from the spawn, stop the
+   worker with `Ctrl+C`, start it again, and click `Enter World` again.
+6. Leave and enter `Local Stress Arena` with the same character, then leave
+   and enter `Local Shard 1` again.
+7. Die, for example to the wolves, press F2 and click `Leave Shard` while
+   `You died` counts down, and enter again.
+
+Expected result:
+
+- After step 3 the character appears where it left, facing the landmark, with
+  the health and mana it had when it left; out of combat it then regenerates as
+  usual. The worker logs no warning about character states.
+- Step 4 shows one row with `development-world-2`, the place, the yaw, the
+  health, and the mana of the leave, and a `session_sequence` above 0.
+- In step 5 the worker logs `Saved the place and vitals of 1 of 1 players at
+  shutdown.` while it stops, and the character enters at the place where the
+  worker stopped.
+- In step 6 the stress arena, another World, places the character at its spawn
+  with the health and mana it had. Back on `Local Shard 1` the saved place is
+  in the stress arena's World, so the character enters at the spawn of
+  Development World 2, with the health and mana it had in the stress arena.
+- After step 7 the character enters at the World spawn with full health and
+  mana, as a respawn would leave it.
+- A character that never entered a World enters at the spawn with full health
+  and mana.
+
 ### Remembered Choices And Shortcuts
 
 Needs an account with two characters and the stack with both workers.

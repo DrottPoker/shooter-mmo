@@ -27,7 +27,7 @@ Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Economy <-
 | --- | --- | --- | --- |
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, and `IGameServiceModule`. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, and character looks |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, character looks, and every character's saved place and vitals |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, Items, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, every character's quest log with its owner and worker reads, and the quest commands with their worker routes, which run in Items' item transaction kernel |
@@ -153,7 +153,7 @@ inside the modules.
 | --- | --- |
 | Platform | `schema_migrations`; advisory lock `7104202607071600` |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, and `character_appearances` |
+| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, and `character_simulation_states` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Quests | `quest_catalogs`, `quest_definitions`, `character_quest_logs`, `character_active_quests`, `character_quest_progress`, and `character_completed_quests`; the quest catalog advisory lock `7104202611042200` |
 | Economy | none; the vendor profiles and tool kinds that it reads are Items' catalog tables |
@@ -206,6 +206,7 @@ caller keeps its own check order, error codes, and messages.
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
 | `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
 | `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
+| `ICharacterSimulationStates` | Characters | Placement | Read a character's saved place and vitals, lock characters `FOR KEY SHARE` in ascending id order before a save, and save many states in one statement, as [Character Simulation States](#character-simulation-states) describes |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
 | `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
@@ -267,6 +268,38 @@ Development item tool's character list.
 then credits `item_system_settings.starting_currency_balance` with a
 `starting_balance` ledger row in the character creation transaction. A zero
 starting balance writes nothing. Existing characters keep their balance.
+
+### Character Simulation States
+
+`character_simulation_states` holds one row per character with its last saved
+place and vitals: the World id and that World's collision revision when the
+state was saved, the position and yaw as `real`, so the simulation's floats come
+back bit for bit, health and mana, the simulation session that wrote the row,
+the sequence of the state within that session, and the time it was saved. The
+row's foreign key to `characters` cascades. The World id and the collision
+revision name rows of no other module, so they have no foreign key. Checks keep
+the position within 1,000,000 meters of the origin, the yaw within -360 to 360
+degrees, health within 1 to 1,000,000, mana within 0 to 1,000,000, and the
+sequence above 0, which also refuses a NaN or infinite real.
+
+`ICharacterSimulationStates.ReadAsync` returns a character's row or null.
+`SaveManyAsync` upserts a batch in one statement from parallel arrays: a state
+replaces the stored row unless the stored row comes from the same simulation
+session with an equal or higher sequence, and the method returns the characters
+it saved. A batch names each character once. Characters checks no session; the
+caller decides which session may write. `LockForSaveAsync` takes the
+`FOR KEY SHARE` lock that the foreign key of a first save takes on the
+character anyway, in ascending id order, so Placement takes it before it locks
+the sessions, as the [lock order](#lock-order) requires.
+
+Placement is the only caller, in `SimulationSessionService`: the join ticket
+consume in `ShardService` reads the row (S67), a release with a final state
+saves it in the release's transaction only when that release ended the session
+(S68), and a checkpoint saves a batch for the sessions that are their
+characters' active, unreleased, and unexpired sessions on the worker and
+runtime that sent it (S69).
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+describes the routes.
 
 ## Items Transaction Kernel
 
@@ -780,6 +813,14 @@ that starts every write locks the quest log row of that character, so a quest
 change can wait only on another transaction of the same character, which holds
 the character lock first.
 
+A session release that carries a final state and a checkpoint read the
+sessions' characters without a lock, lock those characters `FOR KEY SHARE` in
+ascending id order through `ICharacterSimulationStates.LockForSaveAsync`, and
+only then lock the sessions, the release `FOR NO KEY UPDATE` and the checkpoint
+`FOR SHARE`. A first save of a character's state takes that key share lock
+through its foreign key anyway, so taking it first keeps the order of a ticket
+consume, which locks the character `FOR UPDATE` before it changes the session.
+
 Ticket consume locks `character_item_states` before
 `character_simulation_sessions`. That is safe because it first locks the
 character `FOR UPDATE`, which conflicts with the `FOR NO KEY UPDATE` lock that
@@ -848,6 +889,9 @@ topology names.
 | 33 | `202611050900_quest_reward_currency` | Characters |
 | 34 | `202611051200_worker_quest_catalog_revision` | Placement |
 | 35 | `202611051300_remove_placeholder_quest_items` | Items |
+| 36 | `202611101200_corpse_source_character_name` | Items |
+| 37 | `202611101300_item_catalog_names_removal` | Items |
+| 38 | `202611121200_character_simulation_states` | Characters |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -969,6 +1013,9 @@ the statement ids.
 | S64 | Content's startup check compares the served catalogs with the mirrored revisions | Itm R, Qst R | `IItemCatalogRevisionProvider` and `IQuestCatalogRevisionProvider` in one read transaction in `ContentRevisionCheck` |
 | S65 | Items' seeder has the quest catalog's item references checked before it mirrors the item catalog | Qst R | `IItemCatalogReferences` in `ItemsDatabaseSeeder`, implemented by Quests' `QuestItemCatalogReferences` on the loaded quest catalog |
 | S66 | Vendor trades and gathering yields run in the item transaction kernel: they change items, read vendor profiles and tool kinds of the mirrored catalog, and report the acting character's state | Itm R, W | `EconomyCommandSource` registers them through `IItemCommandSource`; Items' worker item route hands their kinds to Economy's `ISimulationItemOperationHandler` implementations, which run them through `SimulationItemOperation.RunAsync`; `VendorCommandHandler` and `GatherResourceCommandHandler` use `ItemTransactionContext` and the item primitives |
+| S67 | Ticket consume reads the character's saved place and vitals | Chr R | `ICharacterSimulationStates.ReadAsync` in `ShardService` |
+| S68 | A session release with a final state locks the character and saves the state in the release's transaction | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
+| S69 | A checkpoint locks the characters of the worker runtime's active sessions and saves their states in one statement | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 
 Notes on specific statements:
 

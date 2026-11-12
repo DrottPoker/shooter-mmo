@@ -261,6 +261,32 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains("CorpseDiscoveryRadius must be at least the interaction radius", exception.Message);
     }
 
+    [Theory]
+    [InlineData(null, 30, null)]
+    [InlineData("5", 5, null)]
+    [InlineData("0", 0, "SimulationWorker:CharacterCheckpointSeconds must be a positive integer.")]
+    [InlineData("3601", 0, "SimulationWorker:CharacterCheckpointSeconds must not exceed 3600.")]
+    public void TheCharacterCheckpointIntervalDefaultsToThirtySecondsAndIsBounded(
+        string? value,
+        int expectedSeconds,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:CharacterCheckpointSeconds"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            var config = SimulationWorkerConfig.FromConfiguration(configuration);
+            Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), config.CharacterCheckpointInterval);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     private static Dictionary<string, string?> WorkerSettings()
     {
         return new Dictionary<string, string?>

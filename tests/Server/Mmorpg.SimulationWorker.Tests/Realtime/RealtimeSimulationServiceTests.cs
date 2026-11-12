@@ -102,6 +102,7 @@ public sealed class RealtimeSimulationServiceTests
             CombatDependencies.CreateDefault(),
             AppearanceDependencies.CreateDefault(),
             QuestDependencies.CreateDefault(),
+            PersistenceDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         var operationId = Guid.NewGuid();
         var intent = RealtimeItemOperationIntent.CreateDestroy(
@@ -265,6 +266,7 @@ public sealed class RealtimeSimulationServiceTests
             CombatDependencies.CreateDefault(),
             AppearanceDependencies.CreateDefault(),
             QuestDependencies.CreateDefault(),
+            PersistenceDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -533,6 +535,7 @@ public sealed class RealtimeSimulationServiceTests
             CombatDependencies.CreateDefault(),
             AppearanceDependencies.CreateDefault(),
             QuestDependencies.CreateDefault(),
+            PersistenceDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await server.StartAsync(timeout.Token);

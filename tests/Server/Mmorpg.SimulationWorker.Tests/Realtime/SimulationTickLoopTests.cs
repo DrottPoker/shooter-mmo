@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Realtime;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -87,6 +88,72 @@ public sealed class SimulationTickLoopTests
 
         Assert.Contains(0L, allocated);
         Assert.True(visited > 0);
+    }
+
+    // The composed character checkpoint runs every tick but does nothing until its interval is
+    // due, so a tick with tracked players allocates nothing. The due tick then sends them all.
+    [Fact]
+    public async Task TheCharacterCheckpointAllocatesNothingOnATickWhenItIsNotDue()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            CombatRules = RealtimeCombatTests.TestRules(),
+            CharacterCheckpointInterval = TimeSpan.FromSeconds(200)
+        });
+        var config = harness.Config;
+        var initialState = PlayerMovementSimulation.CreateInitialState(
+            config.MovementSimulation,
+            harness.CollisionWorld,
+            config.MovementSpawn.X,
+            config.MovementSpawn.Y,
+            config.MovementSpawn.Z,
+            config.MovementSpawn.YawDegrees);
+        // The harness is not started, so this thread is the loop: the joined hooks make every
+        // player a combatant and track it for persistence.
+        for (var peerId = 1; peerId <= 50; peerId++)
+        {
+            var session = RealtimeTestSessions.Create($"Checkpoint Player {peerId}");
+            var entity = harness.EntityRegistry.RegisterPlayer(
+                    session,
+                    () => new AuthoritativePlayerMovement(
+                        initialState,
+                        config.MovementSimulation,
+                        session.CarryState,
+                        harness.CollisionWorld))
+                .Entity;
+            harness.Service.Server.Registries.Hooks.RaisePlayerJoined(
+                new RealtimePeerContext(peerId, DateTime.UtcNow, config.UdpQuotas) { Session = session },
+                entity);
+        }
+
+        var checkpoint = harness.Service.Server.TickPhases.Single(phase => phase.Name == "character checkpoint");
+        var phases = new SimulationTickPhases();
+        phases.Add(checkpoint.Order, checkpoint.Name, checkpoint.Run);
+        using var metrics = new RealtimePerformanceMetrics();
+        var loop = new SimulationTickLoop(
+            new RealtimeSimulationClock(),
+            harness.EntityRegistry,
+            phases,
+            metrics,
+            NullLogger.Instance);
+        var nextTick = TimeSpan.Zero;
+        RunTicks(loop, ref nextTick, 100);
+
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            RunTicks(loop, ref nextTick, 1_000);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Contains(0L, allocated);
+        Assert.Empty(harness.GameService.Checkpoints);
+
+        // The interval is 6,000 ticks, counted from the first tick.
+        RunTicks(loop, ref nextTick, 6_000 - 100 - (allocated.Count * 1_000) + 1);
+        await harness.PollUntilAsync(() => harness.GameService.Checkpoints.Count == 1, "the due checkpoint");
+        Assert.Equal(50, Assert.Single(harness.GameService.Checkpoints).States.Count);
     }
 
     // One due tick per call, so the loop never resynchronizes.

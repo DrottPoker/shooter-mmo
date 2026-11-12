@@ -20,6 +20,9 @@ public sealed record ActiveSimulationSession(
 {
     public bool IsSyntheticBot { get; init; }
 
+    // The character's saved place and vitals when this session started, or null when it has none.
+    public SimulationSavedCharacterState? SavedState { get; init; }
+
     // requestedAt is the worker-clock time when the consume request was sent, so the
     // local deadline never outlives the database lease.
     public static ActiveSimulationSession FromJoinTicket(
@@ -44,7 +47,8 @@ public sealed record ActiveSimulationSession(
                 ticket.CarryCapacity),
             ticket.IsReconnect)
         {
-            IsSyntheticBot = ticket.IsSyntheticBot
+            IsSyntheticBot = ticket.IsSyntheticBot,
+            SavedState = ticket.SavedState
         };
     }
 }

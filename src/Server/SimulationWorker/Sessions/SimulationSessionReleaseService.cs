@@ -3,8 +3,9 @@ using Mmorpg.SimulationWorker.GameServiceApi;
 
 namespace Mmorpg.SimulationWorker.Sessions;
 
-// Releases simulation sessions through GameService and removes the state the worker kept for
-// them from the registered per-character stores.
+// Releases simulation sessions through GameService, each with the final state of its character
+// when the realtime loop captured one, and removes the state the worker kept for them from the
+// registered per-character stores.
 public sealed class SimulationSessionReleaseService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
@@ -24,6 +25,10 @@ public sealed class SimulationSessionReleaseService(
     // loop removes from the same stores.
     public CharacterSessionStores CharacterStores => characterStores;
 
+    // The final states that releases send, which the realtime loop captures. A release keeps one
+    // until GameService answered it for good, so a retry sends it again.
+    public CharacterFinalStateStore FinalStates { get; } = new();
+
     // Releases a session that no connected peer owns any more. The local lease is dropped
     // first, so the heartbeat stops renewing it even when GameService stays unavailable
     // and the database lease then expires on its own. The state the join kept for the session
@@ -40,24 +45,62 @@ public sealed class SimulationSessionReleaseService(
             characterStores.Remove(session.CharacterId, session.SimulationSessionId);
         }
 
-        var result = await ReleaseAsync(session, cancellationToken);
-        for (var attempt = 0; !result.Succeeded && attempt < retryDelays.Count; attempt++)
+        long? sentSequence = null;
+        try
         {
-            await Task.Delay(retryDelays[attempt], cancellationToken);
-            result = await ReleaseAsync(session, cancellationToken);
-        }
+            SimulationSessionReleaseResult result;
+            (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
+            for (var attempt = 0; !result.Succeeded && attempt < retryDelays.Count; attempt++)
+            {
+                await Task.Delay(retryDelays[attempt], cancellationToken);
+                (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
+            }
 
-        return result;
+            return result;
+        }
+        finally
+        {
+            // No later attempt sends it; a newer state that the loop captured since stays.
+            if (sentSequence is { } sequence)
+            {
+                FinalStates.Remove(session.CharacterId, session.SimulationSessionId, sequence);
+            }
+        }
     }
 
     public async Task<SimulationSessionReleaseResult> ReleaseAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)
     {
+        var (result, _) = await ReleaseCoreAsync(session, cancellationToken);
+        return result;
+    }
+
+    // Sends the final state that the store holds for the session now, and forgets it once
+    // GameService answered for good. Returns the sequence of the state it sent.
+    private async Task<(SimulationSessionReleaseResult Result, long? SentSequence)> ReleaseCoreAsync(
+        ActiveSimulationSession session,
+        CancellationToken cancellationToken)
+    {
+        SimulationCharacterStateRequest? finalState = null;
+        if (FinalStates.TryGet(session.CharacterId, session.SimulationSessionId, out var captured))
+        {
+            var state = captured.State;
+            finalState = new SimulationCharacterStateRequest(
+                captured.Sequence,
+                state.PositionX,
+                state.PositionY,
+                state.PositionZ,
+                state.YawDegrees,
+                state.Health,
+                state.Mana);
+        }
+
         var result = await gameServiceClient.ReleaseSimulationSessionAsync(
             session.SimulationSessionId,
             session.WorkerRuntimeId,
             session.SimulationSessionToken,
+            finalState,
             cancellationToken);
 
         if (result.Succeeded
@@ -65,6 +108,11 @@ public sealed class SimulationSessionReleaseService(
                 or (int)HttpStatusCode.NotFound
                 or (int)HttpStatusCode.Conflict)
         {
+            if (finalState is not null)
+            {
+                FinalStates.Remove(session.CharacterId, session.SimulationSessionId, finalState.Sequence);
+            }
+
             var removed = sessionStore.Remove(
                 session.CharacterId,
                 session.SimulationSessionId,
@@ -77,12 +125,12 @@ public sealed class SimulationSessionReleaseService(
                     session.SimulationSessionId);
             }
 
-            return SimulationSessionReleaseResult.Success();
+            return (SimulationSessionReleaseResult.Success(), finalState?.Sequence);
         }
 
-        return SimulationSessionReleaseResult.Failure(
-            result.Error!.Code,
-            result.Error.Message);
+        return (
+            SimulationSessionReleaseResult.Failure(result.Error!.Code, result.Error.Message),
+            finalState?.Sequence);
     }
 }
 

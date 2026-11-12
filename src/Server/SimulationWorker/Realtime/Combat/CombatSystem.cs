@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Combat;
@@ -154,8 +155,9 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         metrics?.SetActiveCombatants(combatants.Count);
     }
 
-    // A joining character becomes a combatant with full health; a reconnect keeps its state.
-    // A synthetic bot has no durable character to die, so it is never a combatant.
+    // A joining character becomes a combatant with full health, which persistence then sets to
+    // the saved vitals of a new entity; a reconnect keeps its state. A synthetic bot has no
+    // durable character to die, so it is never a combatant.
     public void OnPlayerJoined(RealtimePeerContext context, PlayerSimulationEntity entity)
     {
         if (entity.Session.IsSyntheticBot)
@@ -191,6 +193,48 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         }
 
         authority.OnSessionEnded(session);
+    }
+
+    // The combatant of a player entity, for a feature that keeps its vitals, while combat holds
+    // the player: from its joined hook until its removed hook.
+    public bool TryGetPlayerCombatant(ulong entityId, [NotNullWhen(true)] out Combatant? combatant)
+    {
+        if (combatants.TryGet(entityId, out var found) && found.Kind == CombatantKind.Player)
+        {
+            combatant = found;
+            return true;
+        }
+
+        combatant = null;
+        return false;
+    }
+
+    // Gives a living player the health and mana that it had, as a join restores them, within 1 to
+    // its maximum health and 0 to its maximum mana; false when it is dead.
+    public bool TryRestoreVitals(Combatant combatant, int health, int mana)
+    {
+        ArgumentNullException.ThrowIfNull(combatant);
+        if (combatant.Kind != CombatantKind.Player || !combatant.IsAlive)
+        {
+            return false;
+        }
+
+        var restoredHealth = Math.Clamp(health, 1, combatant.MaximumHealth);
+        if (combatant.Health != restoredHealth)
+        {
+            combatant.Health = restoredHealth;
+            combatant.MarkStateChanged();
+        }
+
+        var restoredMana = Math.Clamp(mana, 0, combatant.MaximumMana);
+        if (combatant.Mana != restoredMana)
+        {
+            // Mana is owner-only state, so it never reaches other viewers.
+            combatant.Mana = restoredMana;
+            combatant.MarkOwnerStateChanged();
+        }
+
+        return true;
     }
 
     public bool IsMovementBlocked(PlayerSimulationEntity entity)

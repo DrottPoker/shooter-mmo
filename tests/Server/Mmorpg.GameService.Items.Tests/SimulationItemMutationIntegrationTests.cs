@@ -228,7 +228,7 @@ public sealed class SimulationItemMutationIntegrationTests
         var released = await context.SimulationSessionService.ReleaseAsync(
             session.SimulationSessionId,
             WorkerId,
-            new SimulationSessionCredentialRequest(
+            new SimulationSessionReleaseRequest(
                 session.WorkerRuntimeId,
                 session.SimulationSessionToken),
             CancellationToken.None);
