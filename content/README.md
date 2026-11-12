@@ -443,7 +443,23 @@ text of its code from the messages, as [Messages](#messages) describes.
 
 ## Compile And Verify
 
-The actor and collision compilers work on every World at once. Every compiler
+One command compiles everything in the order the compilers need, including the
+item and quest fixture catalogs of the tests, and ends with the list of compiled
+files that changed:
+
+```powershell
+& .\tools\Compile-Content.ps1
+```
+
+`-Verify` writes nothing and fails when a compiled file is stale. Use the
+command after every content change, after a format change, and to settle a
+merge conflict in a compiled file, as
+[A Merge Conflict In A Compiled File](#a-merge-conflict-in-a-compiled-file)
+describes. It does not write the two kinds of files that the Unity Editor owns,
+the item presentation catalog and each World's `collision.json`.
+
+The compilers also run one at a time, which is what the Unity content tools and
+CI do. The actor and collision compilers work on every World at once. Every compiler
 finds the repository root from the current directory, so it runs from any
 directory of the repository. Run the item catalog compiler before the actor
 compiler, because actor content refers to item content: the actor compiler reads
@@ -484,6 +500,27 @@ messages table.
 `--content-root <directory>` and `--generated-root <directory>` point a compiler
 at other directories. The Unity content tools use them to validate candidate
 content in a temporary directory before anything is written.
+
+Every compiled file has one text form, whichever tool writes it. The collision
+manifest is written by `CollisionWorldManifestJson` in both the collision
+compiler and the Unity collision bake, and verify mode compares its text.
+
+### A Merge Conflict In A Compiled File
+
+Every compiled file carries a `revision` line that any change of its content
+changes, so two branches that change the same kind of content conflict in the
+compiled file even when their authored files merge cleanly. Never resolve such
+a conflict by hand:
+
+1. Resolve the conflicts in the authored files below `content/` as usual.
+2. Take either side of every compiled file, for example with
+   `git checkout --theirs -- src/Shared/WorldData/Generated tests/Fixtures`.
+3. Run `& .\tools\Compile-Content.ps1`, which writes every compiled file from
+   the merged content, and add the result.
+
+When both branches raised the same format version or took the same migration
+id, give the later change the next free number before compiling. GitHub shows compiled files collapsed in a pull request, because
+`.gitattributes` marks them as generated.
 
 ### What A Change Needs
 

@@ -79,17 +79,18 @@ jobs:
           --
           --verify
 
-      - name: Verify world collision data
+      - name: Verify world actors
         run: >-
-          dotnet run --project tools/WorldCollisionCompiler
+          dotnet run --project tools/WorldActorCompiler
           --configuration Release
           --no-build
           --
           --verify
 
-      - name: Verify world actors
+      # After the actors, because the collision holds the boxes of the placed resource nodes.
+      - name: Verify world collision data
         run: >-
-          dotnet run --project tools/WorldActorCompiler
+          dotnet run --project tools/WorldCollisionCompiler
           --configuration Release
           --no-build
           --

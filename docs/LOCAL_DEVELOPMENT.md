@@ -321,8 +321,8 @@ dotnet restore Mmorpg.slnx --locked-mode
 dotnet format Mmorpg.slnx --verify-no-changes --no-restore
 dotnet build Mmorpg.slnx --configuration Release --no-restore
 dotnet run --project tools/ItemCatalogCompiler --configuration Release --no-build -- --verify
-dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/WorldActorCompiler --configuration Release --no-build -- --verify
+dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/QuestCatalogCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/TextTableCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify

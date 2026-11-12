@@ -605,7 +605,7 @@ namespace Mmorpg.Client.Editor
 
             writes.Add(new KeyValuePair<string, byte[]>(
                 Path.Combine(outputDirectory, "manifest.json"),
-                Encoding.UTF8.GetBytes(JsonUtility.ToJson(result.Manifest, true) + "\n")));
+                Encoding.UTF8.GetBytes(CollisionWorldManifestJson.Serialize(result.Manifest))));
             writes.Add(new KeyValuePair<string, byte[]>(
                 authoringPath,
                 Encoding.UTF8.GetBytes(authoringJson)));

@@ -30,13 +30,14 @@ These run in CI and, when the changes call for them, in `Test-Changes.ps1`.
 ## Content And Protocol Compilers
 
 The content compilers turn the authored files in `content/` into the deterministic data in
-`src/Shared/WorldData/Generated`, in this order, and `--verify` checks that the committed data
-is current. The item, actor, and quest compilers also write the
-[text table](../content/README.md#text-tables) of their domain. See
+`src/Shared/WorldData/Generated`, and `--verify` checks that the committed data is current.
+`Compile-Content.ps1` runs all of them in the order they need. The item, actor, and quest
+compilers also write the [text table](../content/README.md#text-tables) of their domain. See
 [Game Content](../content/README.md).
 
 | Tool | Does |
 | --- | --- |
+| `Compile-Content.ps1` | Compiles all content and the test fixture catalogs in one command; `-Verify` only checks. See [Compile And Verify](../content/README.md#compile-and-verify) |
 | `ItemCatalogCompiler/` | Compiles the item catalog. See [Item Catalog Authoring](../content/items/README.md) |
 | `WorldActorCompiler/` | Compiles the actor definitions and the actor spawns of every World |
 | `QuestCatalogCompiler/` | Compiles the quest catalog against the compiled items and the compiled actors of every World |

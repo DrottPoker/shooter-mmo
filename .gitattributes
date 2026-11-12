@@ -20,5 +20,11 @@
 *.so binary
 *.dylib binary
 
+# Compiled content and generated code are written by tools/Compile-Content.ps1 and the
+# protocol generator, so GitHub collapses them in a pull request.
+src/Shared/WorldData/Generated/** linguist-generated=true
+tests/Fixtures/*/generated/** linguist-generated=true
+src/Shared/GameProtocol/Runtime/Generated/** linguist-generated=true
+
 # Blender sources live in Git LFS; CI reads their SHA-256 from the pointer files.
 *.blend filter=lfs diff=lfs merge=lfs -text
