@@ -3,6 +3,8 @@ using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Items.StackStress;
+using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
@@ -37,7 +39,7 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<IShardWorldLocalStateProbe, OpenCorpseShardStateProbe>();
         services.AddSingleton<IItemCatalogRevisionProvider, ItemCatalogRevisionProvider>();
         services.AddScoped<ItemQueryService>();
-        services.AddScoped<ItemTransactionService>();
+        AddItemTransactions(services);
         services.AddScoped<AccountItemMutationService>();
         services.AddSingleton<SimulationCharacterStates>();
         services.AddScoped<SimulationItemMutationService>();
@@ -56,6 +58,24 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddHostedService<CorpseExpiryHostedService>();
         services.AddHostedService<ItemOperationsMetricsReporterService>();
         services.AddHostedService<ItemOperationsMaintenanceHostedService>();
+    }
+
+    // The item transaction kernel and its parts are stateless and shared, so they are
+    // singletons; each IItemCommandSource registers the commands of one area.
+    private static void AddItemTransactions(IServiceCollection services)
+    {
+        services.AddSingleton<ItemSimulationAuthority>();
+        services.AddSingleton<CharacterItemStateLocks>();
+        services.AddSingleton<ItemOperationLedger>();
+        services.AddSingleton<ItemTransactionTelemetry>();
+        services.AddSingleton<ItemTransactionKernel>();
+        services.AddSingleton<IItemCommandSource, CoreItemCommandSource>();
+        services.AddSingleton<IItemCommandSource, RecoveryAndPolicyCommandSource>();
+        services.AddSingleton<IItemCommandSource, QuestCommandSource>();
+        services.AddSingleton<IItemCommandSource, CorpseCommandSource>();
+        services.AddSingleton<IItemCommandSource, EconomyCommandSource>();
+        services.AddSingleton<ItemCommandCatalog>();
+        services.AddScoped<ItemTransactionService>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

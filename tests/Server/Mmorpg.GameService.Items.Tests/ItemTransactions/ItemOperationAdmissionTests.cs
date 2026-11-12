@@ -6,7 +6,7 @@ using Mmorpg.GameService.Items.Transactions;
 namespace Mmorpg.GameService.Items.Tests.ItemTransactions;
 
 // White-box tests of the admission checks and the canonical request format that the
-// transaction kernel computes before it opens a connection.
+// transaction kernel computes before it opens a connection, with the module's registrations.
 public sealed class ItemOperationAdmissionTests
 {
     private static readonly Guid First = Guid.Parse("b0000000-0000-4000-8000-000000000001");
@@ -14,9 +14,11 @@ public sealed class ItemOperationAdmissionTests
     private static readonly Guid Third = Guid.Parse("b0000000-0000-4000-8000-000000000003");
 
     [Fact]
-    public void CanonicalRequestIsTheStoredJsonWithSortedClaimItems()
+    public async Task CanonicalRequestIsTheStoredJsonWithSortedClaimItems()
     {
+        await using var composition = new OfflineItemComposition();
         var canonical = ItemOperationRequestCanonicalizer.Canonicalize(
+            composition.Catalog.Get<ClaimRecoveryDeliveryCommand>(),
             ItemTransactionActor.ForSystem(),
             new ClaimRecoveryDeliveryCommand(
                 First,
@@ -35,9 +37,11 @@ public sealed class ItemOperationAdmissionTests
     }
 
     [Fact]
-    public void CanonicalSimulationActorOmitsCredentialsAndLiveAccess()
+    public async Task CanonicalSimulationActorOmitsCredentialsAndLiveAccess()
     {
+        await using var composition = new OfflineItemComposition();
         var canonical = ItemOperationRequestCanonicalizer.Canonicalize(
+            composition.Catalog.Get<DestroyItemCommand>(),
             ItemTransactionActor.ForSimulationWorker(
                 First,
                 Second,
@@ -62,16 +66,18 @@ public sealed class ItemOperationAdmissionTests
     [InlineData((int)ItemTransactionAuthority.SimulationWorker, ItemOperationKinds.ProcessPlayerDeath, false)]
     [InlineData((int)ItemTransactionAuthority.System, ItemOperationKinds.Relocate, false)]
     [InlineData((int)ItemTransactionAuthority.System, ItemOperationKinds.ExpireCorpse, false)]
-    public void RandomClientOperationIdsAreRequiredForPlayerChosenIdsOnly(
+    public async Task RandomClientOperationIdsAreRequiredForPlayerChosenIdsOnly(
         int authority,
         string operationKind,
         bool expected)
     {
+        await using var composition = new OfflineItemComposition();
+
         Assert.Equal(
             expected,
             ItemOperationAdmission.RequiresRandomClientOperationId(
                 new ItemTransactionActor((ItemTransactionAuthority)authority, null),
-                operationKind));
+                composition.Registration(operationKind)));
     }
 
     [Fact]

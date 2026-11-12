@@ -31,9 +31,7 @@ public sealed class ItemTransactionCommitFailureTests
 
         var result = await kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler(async (transactionContext, _) =>
+            Registration(ItemOperationKinds.Grant, new TestHandler(async (transactionContext, _) =>
             {
                 // The deferred unique slot constraint fails only at COMMIT.
                 await transactionContext.Connection.ExecuteAsync(new CommandDefinition(
@@ -50,7 +48,7 @@ public sealed class ItemTransactionCommitFailureTests
                     "commit_conflict_test",
                     new { Slot = 1 },
                     new { Slot = 0 });
-            }),
+            })),
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -83,9 +81,10 @@ public sealed class ItemTransactionCommitFailureTests
         // authority rejects; the committed replay lookup then cannot connect.
         await Assert.ThrowsAnyAsync<NpgsqlException>(() => kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            request.Command.CharacterId,
-            new TestHandler((_, _) => Task.CompletedTask),
+            Registration(
+                ItemOperationKinds.Grant,
+                new TestHandler((_, _) => Task.CompletedTask),
+                static command => command.CharacterId),
             CancellationToken.None));
     }
 }

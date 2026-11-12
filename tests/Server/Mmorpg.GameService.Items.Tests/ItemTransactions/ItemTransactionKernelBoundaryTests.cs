@@ -158,8 +158,11 @@ public sealed partial class ItemTransactionKernelBoundaryTests
     // fragments, with the cross-module statements of docs/GAME_SERVICE_MODULES.md.
     private static readonly string[] CrossModuleOwners =
     [
-        // Composition only: passes the contracts to the types below.
-        "GameService.Items/Transactions/ItemTransactionService.cs",
+        // Composition only: the command sources pass the contracts to the handlers they build.
+        "GameService.Items/Transactions/Handlers/RecoveryAndPolicyCommandSource.cs",
+        "GameService.Items/Transactions/Handlers/QuestCommandSource.cs",
+        "GameService.Items/Transactions/Handlers/CorpseCommandSource.cs",
+        "GameService.Items/Transactions/Handlers/EconomyCommandSource.cs",
         // S32: the operation claim references the actor account and character.
         "GameService.Items/Transactions/Kernel/ItemOperationLedger.cs",
         // S22 to S25 and S29: live session and worker lease authority.

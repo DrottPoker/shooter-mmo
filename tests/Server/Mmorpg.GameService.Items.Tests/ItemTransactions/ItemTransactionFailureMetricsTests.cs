@@ -1,5 +1,4 @@
 using System.Diagnostics.Metrics;
-using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Testing;
 using Npgsql;
@@ -18,10 +17,10 @@ public sealed class ItemTransactionFailureMetricsTests
         await using var dataSource = NpgsqlDataSource.Create(
             "Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused;Timeout=1");
         await using var services = GameServiceTestComposition.BuildServiceProvider(dataSource);
-        var service = ActivatorUtilities.CreateInstance<ItemTransactionService>(
+        var service = ItemTransactionServiceFactory.Create(
             services,
-            metrics,
-            ItemOperationsOptions.CreateDefaults());
+            options: ItemOperationsOptions.CreateDefaults(),
+            metrics: metrics);
         var counted = new List<string>();
         var timed = new List<string>();
         using var listener = new MeterListener();

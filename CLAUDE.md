@@ -65,8 +65,9 @@ sessions that `AGENTS.md` forbids.
   is needed.
 - The session picks the effort level of each subagent: the lowest level that
   does the part well, lower for mechanical work after an exact brief, higher
-  when the subagent has to reason on its own. Victor picks the effort level of
-  the session itself.
+  when the subagent has to reason on its own. `xhigh` is welcome for a part
+  that needs real reasoning; do not use `max`: a part that would need it is one
+  the session does itself. Victor picks the effort level of the session itself.
 - The brief names the files, the pattern to follow, what done looks like, the
   focused tests to run, and the repository rules that apply. A subagent never
   commits, pushes, or opens a pull request.

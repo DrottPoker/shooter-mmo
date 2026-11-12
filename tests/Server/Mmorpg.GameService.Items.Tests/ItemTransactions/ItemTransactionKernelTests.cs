@@ -25,14 +25,12 @@ public sealed class ItemTransactionKernelTests
 
         var exception = await Assert.ThrowsAsync<PostgresException>(() => kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler(async (transactionContext, _) =>
+            Registration(ItemOperationKinds.Grant, new TestHandler(async (transactionContext, _) =>
             {
                 await transactionContext.Connection.ExecuteAsync(new CommandDefinition(
                     "select * from missing_kernel_test_table;",
                     transaction: transactionContext.Transaction));
-            }),
+            })),
             CancellationToken.None));
 
         Assert.Equal("42P01", exception.SqlState);
@@ -51,9 +49,7 @@ public sealed class ItemTransactionKernelTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler((_, _) => Task.CompletedTask),
+            Registration(ItemOperationKinds.Grant, new TestHandler((_, _) => Task.CompletedTask)),
             CancellationToken.None));
 
         Assert.Equal("Item operation 'grant' produced no audit changes.", exception.Message);
@@ -69,9 +65,9 @@ public sealed class ItemTransactionKernelTests
         var deadlock = Request();
         var deadlockResult = await kernel.ExecuteAsync(
             deadlock,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler((_, _) => throw ItemTransactionOutcomesTests.CreateException("40P01", null)),
+            Registration(
+                ItemOperationKinds.Grant,
+                new TestHandler((_, _) => throw ItemTransactionOutcomesTests.CreateException("40P01", null))),
             CancellationToken.None);
         Assert.Equal(ItemTransactionErrorCodes.ItemTransactionTimeout, deadlockResult.Error!.Code);
         Assert.Null(await LoadStatusAsync(context, deadlock.OperationId));
@@ -79,11 +75,11 @@ public sealed class ItemTransactionKernelTests
         var quantity = Request();
         var quantityResult = await kernel.ExecuteAsync(
             quantity,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler((_, _) => throw ItemTransactionOutcomesTests.CreateException(
-                "23514",
-                "ck_item_instances_quantity")),
+            Registration(
+                ItemOperationKinds.Grant,
+                new TestHandler((_, _) => throw ItemTransactionOutcomesTests.CreateException(
+                    "23514",
+                    "ck_item_instances_quantity"))),
             CancellationToken.None);
         Assert.Equal(ItemTransactionErrorCodes.ItemQuantityChanged, quantityResult.Error!.Code);
         Assert.Equal("rejected", await LoadStatusAsync(context, quantity.OperationId));
@@ -103,9 +99,7 @@ public sealed class ItemTransactionKernelTests
         var retried = Request();
         var retriedResult = await kernel.ExecuteAsync(
             retried,
-            ItemOperationKinds.ExpireCorpse,
-            null,
-            rejectingHandler,
+            Registration(ItemOperationKinds.ExpireCorpse, rejectingHandler, retriedSystemOperation: true),
             CancellationToken.None);
         Assert.Equal(ItemTransactionErrorCodes.ItemNotFound, retriedResult.Error!.Code);
         Assert.Equal(ItemOperationKinds.ExpireCorpse, retriedResult.OperationKind);
@@ -114,9 +108,7 @@ public sealed class ItemTransactionKernelTests
         var stored = Request();
         var storedResult = await kernel.ExecuteAsync(
             stored,
-            ItemOperationKinds.Grant,
-            null,
-            rejectingHandler,
+            Registration(ItemOperationKinds.Grant, rejectingHandler),
             CancellationToken.None);
         Assert.Equal(ItemTransactionErrorCodes.ItemNotFound, storedResult.Error!.Code);
         Assert.Equal("rejected", await LoadStatusAsync(context, stored.OperationId));
@@ -133,8 +125,6 @@ public sealed class ItemTransactionKernelTests
         var source = dataSource ?? context.DataSource;
         return new ItemTransactionKernel(
             source,
-            options ?? ItemOperationsOptions.CreateDefaults(),
-            null,
             new ItemTransactionTelemetry(null, logger, null),
             new ItemOperationLedger(ledgerDataSource ?? source),
             new ItemSimulationAuthority(
@@ -144,7 +134,26 @@ public sealed class ItemTransactionKernelTests
             new CharacterItemStateLocks(
                 services.GetRequiredService<ICharacterLocks>(),
                 services.GetRequiredService<ISimulationPresence>(),
-                null));
+                null),
+            options ?? ItemOperationsOptions.CreateDefaults(),
+            null);
+    }
+
+    // Registers a test handler under an operation kind. The kernel takes the retried system
+    // operation flag from the registration, so a test that needs it sets it.
+    internal static ItemCommandRegistration<GrantItemCommand> Registration(
+        string operationKind,
+        TestHandler handler,
+        Func<GrantItemCommand, Guid?>? actorCharacter = null,
+        bool retriedSystemOperation = false)
+    {
+        return new ItemCommandRegistration<GrantItemCommand>(
+            operationKind,
+            actorCharacter ?? (static _ => null),
+            handler)
+        {
+            RetriedSystemOperation = retriedSystemOperation
+        };
     }
 
     internal static ItemTransactionRequest<GrantItemCommand> Request()

@@ -655,17 +655,6 @@ internal static class ItemOperationKinds
     public const string VendorPurchase = "vendor_purchase";
     public const string VendorSale = "vendor_sale";
     public const string GatherResource = "gather_resource";
-
-    // System operations use derived or server-held ids and are retried until they
-    // commit, so a rejection is returned without being stored for replay.
-    public static bool IsRetriedSystemOperation(string operationKind)
-    {
-        return operationKind is ProcessPlayerDeath
-            or CreatePersistentMobCorpse
-            or GrantMobLoot
-            or ExpireCorpse
-            or ExpireRecoveryDelivery;
-    }
 }
 
 internal static class ItemOperationIds

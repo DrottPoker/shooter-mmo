@@ -23,9 +23,7 @@ public sealed class ItemTransactionConstraintMappingTests
 
         var result = await kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler(async (transactionContext, _) =>
+            Registration(ItemOperationKinds.Grant, new TestHandler(async (transactionContext, _) =>
             {
                 // No slot 999 exists; the deferred slot foreign key fails only at COMMIT.
                 await transactionContext.Connection.ExecuteAsync(new CommandDefinition(
@@ -36,7 +34,7 @@ public sealed class ItemTransactionConstraintMappingTests
                     "deferred_foreign_key_test",
                     new { Slot = 0 },
                     new { Slot = 999 });
-            }),
+            })),
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -59,9 +57,7 @@ public sealed class ItemTransactionConstraintMappingTests
 
         var result = await kernel.ExecuteAsync(
             request,
-            ItemOperationKinds.Grant,
-            null,
-            new TestHandler(async (transactionContext, _) =>
+            Registration(ItemOperationKinds.Grant, new TestHandler(async (transactionContext, _) =>
             {
                 await transactionContext.Connection.ExecuteAsync(new CommandDefinition(
                     """
@@ -70,7 +66,7 @@ public sealed class ItemTransactionConstraintMappingTests
                     """,
                     new { ItemId = itemId, ContainerId = state.PermanentInventoryContainerId },
                     transactionContext.Transaction));
-            }),
+            })),
             CancellationToken.None);
 
         Assert.False(result.Succeeded);

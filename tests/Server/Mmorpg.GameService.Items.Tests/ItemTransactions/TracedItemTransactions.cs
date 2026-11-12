@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dapper;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Testing;
@@ -35,12 +34,7 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         dataSource = new NpgsqlDataSourceBuilder(context.ConnectionString)
             .UseLoggerFactory(loggerFactory)
             .Build();
-        Service = options is null
-            ? ActivatorUtilities.CreateInstance<ItemTransactionService>(context.Services, dataSource)
-            : ActivatorUtilities.CreateInstance<ItemTransactionService>(
-                context.Services,
-                dataSource,
-                options);
+        Service = ItemTransactionServiceFactory.Create(context.Services, dataSource, options);
     }
 
     public SqlTraceRecorder Recorder { get; }

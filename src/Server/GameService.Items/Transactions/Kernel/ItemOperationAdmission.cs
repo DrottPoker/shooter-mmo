@@ -8,11 +8,11 @@ internal static class ItemOperationAdmission
 {
     public static bool RequiresRandomClientOperationId(
         ItemTransactionActor actor,
-        string operationKind)
+        ItemCommandRegistration registration)
     {
         return actor.Authority == ItemTransactionAuthority.Account
             || (actor.Authority == ItemTransactionAuthority.SimulationWorker
-                && !ItemOperationKinds.IsRetriedSystemOperation(operationKind));
+                && !registration.RetriedSystemOperation);
     }
 
     public static bool ExceedsPayloadLimit(

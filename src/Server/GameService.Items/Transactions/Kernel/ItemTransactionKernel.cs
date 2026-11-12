@@ -8,39 +8,41 @@ namespace Mmorpg.GameService.Items.Transactions;
 // Owns the lifetime of one item transaction: admission, BEGIN, the transaction-local
 // timeouts, live authority, the idempotent claim, the mutation savepoint, the handler,
 // finalization, completion, and commit or rollback. Handlers never end a transaction.
+// The command's registration supplies its operation kind, actor character, handler, and
+// flags, so the kernel never names a command.
 internal sealed class ItemTransactionKernel(
     NpgsqlDataSource dataSource,
-    ItemOperationsOptions operationsOptions,
-    ItemOperationsMetrics? operationsMetrics,
     ItemTransactionTelemetry telemetry,
     ItemOperationLedger ledger,
     ItemSimulationAuthority simulationAuthority,
-    CharacterItemStateLocks characterStateLocks)
+    CharacterItemStateLocks characterStateLocks,
+    ItemOperationsOptions? operationsOptions = null,
+    ItemOperationsMetrics? operationsMetrics = null)
 {
     private const string MutationSavepoint = "item_mutation";
 
+    private readonly ItemOperationsOptions operationsOptions =
+        operationsOptions ?? ItemOperationsOptions.CreateDefaults();
+
     public async Task<ItemTransactionResult> ExecuteAsync<TCommand>(
         ItemTransactionRequest<TCommand> request,
-        string operationKind,
-        Guid? actorCharacterId,
-        IItemCommandHandler<TCommand> handler,
+        ItemCommandRegistration<TCommand> registration,
         CancellationToken cancellationToken)
         where TCommand : notnull
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(registration);
         var started = Stopwatch.GetTimestamp();
         var correlationId = telemetry.ResolveCorrelationId(request.OperationId);
         try
         {
             var result = await ExecuteCoreAsync(
                 request,
-                operationKind,
-                actorCharacterId,
-                handler,
+                registration,
                 cancellationToken);
             var duration = Stopwatch.GetElapsedTime(started);
             telemetry.RecordCompleted(
-                operationKind,
+                registration,
                 request.OperationId,
                 result,
                 duration,
@@ -51,7 +53,7 @@ internal sealed class ItemTransactionKernel(
         {
             telemetry.RecordFailed(
                 exception,
-                operationKind,
+                registration,
                 request.OperationId,
                 Stopwatch.GetElapsedTime(started),
                 exception is OperationCanceledException && cancellationToken.IsCancellationRequested,
@@ -62,9 +64,7 @@ internal sealed class ItemTransactionKernel(
 
     private async Task<ItemTransactionResult> ExecuteCoreAsync<TCommand>(
         ItemTransactionRequest<TCommand> request,
-        string operationKind,
-        Guid? actorCharacterId,
-        IItemCommandHandler<TCommand> handler,
+        ItemCommandRegistration<TCommand> registration,
         CancellationToken cancellationToken)
         where TCommand : notnull
     {
@@ -75,7 +75,9 @@ internal sealed class ItemTransactionKernel(
             throw new ArgumentException("An item operation id is required.", nameof(request));
         }
 
-        if (ItemOperationAdmission.RequiresRandomClientOperationId(request.Actor, operationKind)
+        var operationKind = registration.OperationKind;
+        var actorCharacterId = registration.ActorCharacter(request.Command);
+        if (ItemOperationAdmission.RequiresRandomClientOperationId(request.Actor, registration)
             && !ItemOperationIds.IsRandomClientOperationId(request.OperationId))
         {
             return ItemTransactionOutcomes.CreateRejected(
@@ -86,6 +88,7 @@ internal sealed class ItemTransactionKernel(
         }
 
         var canonicalRequest = ItemOperationRequestCanonicalizer.Canonicalize(
+            registration,
             request.Actor,
             request.Command);
         var requestPayload = canonicalRequest.Payload;
@@ -191,7 +194,7 @@ internal sealed class ItemTransactionKernel(
 
             try
             {
-                await handler.ExecuteAsync(context, request.Command, cancellationToken);
+                await registration.Handler.ExecuteAsync(context, request.Command, cancellationToken);
                 var result = await new ItemTransactionFinalizer(session, context.Journal)
                     .FinalizeAsync(cancellationToken);
                 await ledger.CompleteAsync(
@@ -209,7 +212,7 @@ internal sealed class ItemTransactionKernel(
                     connection,
                     lifetime,
                     request.OperationId,
-                    operationKind,
+                    registration,
                     exception.Code,
                     exception.Message,
                     cancellationToken);
@@ -237,7 +240,7 @@ internal sealed class ItemTransactionKernel(
                     connection,
                     lifetime,
                     request.OperationId,
-                    operationKind,
+                    registration,
                     mapped.Code,
                     mapped.Message,
                     cancellationToken);
@@ -269,7 +272,7 @@ internal sealed class ItemTransactionKernel(
         NpgsqlConnection connection,
         TransactionLifetime lifetime,
         Guid operationId,
-        string operationKind,
+        ItemCommandRegistration registration,
         string errorCode,
         string errorMessage,
         CancellationToken cancellationToken)
@@ -277,12 +280,12 @@ internal sealed class ItemTransactionKernel(
         // A transient database rejection is not an outcome of the request, and a retried
         // system operation must stay claimable, so both release the operation claim.
         if (errorCode == ItemTransactionErrorCodes.ItemTransactionTimeout
-            || ItemOperationKinds.IsRetriedSystemOperation(operationKind))
+            || registration.RetriedSystemOperation)
         {
             await lifetime.RollbackAsync(cancellationToken);
             return ItemTransactionOutcomes.CreateRejected(
                 operationId,
-                operationKind,
+                registration.OperationKind,
                 errorCode,
                 errorMessage);
         }
@@ -291,7 +294,7 @@ internal sealed class ItemTransactionKernel(
             connection,
             lifetime,
             operationId,
-            operationKind,
+            registration.OperationKind,
             errorCode,
             errorMessage,
             cancellationToken);

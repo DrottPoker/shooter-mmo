@@ -7,9 +7,9 @@ namespace Mmorpg.GameService.Items.Transactions;
 // Metrics and logs for one item transaction. The logger keeps the ItemTransactionService
 // category, and metrics are recorded before the log entry.
 internal sealed class ItemTransactionTelemetry(
-    ItemOperationsMetrics? operationsMetrics,
-    ILogger<ItemTransactionService>? logger,
-    IHttpContextAccessor? httpContextAccessor)
+    ItemOperationsMetrics? operationsMetrics = null,
+    ILogger<ItemTransactionService>? logger = null,
+    IHttpContextAccessor? httpContextAccessor = null)
 {
     public string ResolveCorrelationId(Guid operationId)
     {
@@ -27,12 +27,13 @@ internal sealed class ItemTransactionTelemetry(
     }
 
     public void RecordCompleted(
-        string operationKind,
+        ItemCommandRegistration registration,
         Guid operationId,
         ItemTransactionResult result,
         TimeSpan duration,
         string correlationId)
     {
+        var operationKind = registration.OperationKind;
         operationsMetrics?.RecordTransaction(operationKind, result, duration);
         if (logger is not null)
         {
@@ -56,7 +57,7 @@ internal sealed class ItemTransactionTelemetry(
                     duration.TotalMilliseconds,
                     correlationId);
             }
-            else if (IsOperationallySignificant(operationKind))
+            else if (registration.OperationallySignificant)
             {
                 logger.LogInformation(
                     "Item transaction {OperationKind} {OperationId} committed after {DurationMilliseconds:F3} ms for correlation {CorrelationId}.",
@@ -79,29 +80,19 @@ internal sealed class ItemTransactionTelemetry(
 
     public void RecordFailed(
         Exception exception,
-        string operationKind,
+        ItemCommandRegistration registration,
         Guid operationId,
         TimeSpan duration,
         bool cancelled,
         string correlationId)
     {
-        operationsMetrics?.RecordFailedTransaction(operationKind, duration, cancelled);
+        operationsMetrics?.RecordFailedTransaction(registration.OperationKind, duration, cancelled);
         logger?.LogError(
             exception,
             "Item transaction {OperationKind} {OperationId} failed unexpectedly for correlation {CorrelationId}.",
-            operationKind,
+            registration.OperationKind,
             operationId,
             correlationId);
-    }
-
-    private static bool IsOperationallySignificant(string operationKind)
-    {
-        return operationKind is ItemOperationKinds.ProcessPlayerDeath
-            or ItemOperationKinds.CreatePersistentMobCorpse
-            or ItemOperationKinds.ExpireCorpse
-            or ItemOperationKinds.ApplyItemPolicy
-            or ItemOperationKinds.RemoveInsurancePolicy
-            or ItemOperationKinds.AbandonQuestItems;
     }
 
     private static bool IsExpectedContention(string? errorCode)

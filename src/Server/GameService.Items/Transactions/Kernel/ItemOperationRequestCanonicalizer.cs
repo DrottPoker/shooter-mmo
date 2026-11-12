@@ -6,10 +6,11 @@ namespace Mmorpg.GameService.Items.Transactions;
 
 // Builds the canonical request payload of an item operation and its SHA-256 hash. Both
 // are persisted for idempotent replay, so the property names, order, and sort rules are
-// part of the stored format.
+// part of the stored format. The command's registration owns its sort rules.
 internal static class ItemOperationRequestCanonicalizer
 {
     public static CanonicalItemOperationRequest Canonicalize<TCommand>(
+        ItemCommandRegistration<TCommand> registration,
         ItemTransactionActor actor,
         TCommand command)
         where TCommand : notnull
@@ -17,27 +18,11 @@ internal static class ItemOperationRequestCanonicalizer
         var requestPayload = JsonSerializer.Serialize(
             new CanonicalOperationRequest(
                 CanonicalizeActor(actor),
-                CanonicalizeCommand(command)),
+                registration.Canonicalize(command)),
             ItemOperationJson.Options);
         var requestHash = Convert.ToHexStringLower(
             SHA256.HashData(Encoding.UTF8.GetBytes(requestPayload)));
         return new CanonicalItemOperationRequest(requestPayload, requestHash);
-    }
-
-    private static object CanonicalizeCommand<TCommand>(TCommand command)
-        where TCommand : notnull
-    {
-        return command switch
-        {
-            ClaimRecoveryDeliveryCommand claim => claim with
-            {
-                Items = claim.Items
-                    .OrderBy(item => item.ItemInstanceId)
-                    .ThenBy(item => item.Revision)
-                    .ToArray()
-            },
-            _ => command
-        };
     }
 
     private static CanonicalOperationActor CanonicalizeActor(ItemTransactionActor actor)
