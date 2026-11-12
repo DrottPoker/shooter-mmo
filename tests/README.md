@@ -17,7 +17,7 @@ and the check before every push in
 | `Mmorpg.Testing` | `Testing/Mmorpg.Testing` | Library: repository paths, the PostgreSQL and Redis fact attributes, per-test databases copied from templates, golden files, trait names, and the metric names that the files in `observability` reference |
 | `Mmorpg.Testing.Content` | `Testing/Mmorpg.Testing.Content` | Library: item catalog, world actor, quest catalog, and collision world loaders that use the content tools |
 | `Mmorpg.GameService.Testing` | `Testing/Mmorpg.GameService.Testing` | Library, the GameService test kit: the PostgreSQL test context, the test composition, the API test hosts, services that issue policy and quest item commands as the system actor, and the GameService source map and assembly list |
-| `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog, world actor, and quest catalog compilers; links the Unity EditMode movement scenario and realtime protocol golden cases |
+| `Mmorpg.Shared.Tests` | `Shared/Mmorpg.Shared.Tests` | GameProtocol, GameSimulation, WorldData, and the item catalog, world actor, and quest catalog compilers; links the Unity EditMode movement scenario, realtime protocol golden cases, and content hash coverage helper |
 | `Mmorpg.Server.Common.Tests` | `Server/Mmorpg.Server.Common.Tests` | `Mmorpg.Server.Common` |
 | `Mmorpg.Server.Telemetry.Tests` | `Server/Mmorpg.Server.Telemetry.Tests` | `Mmorpg.Server.Telemetry`: export options, metric views, resource, sampling, and provider registration |
 | `Mmorpg.GameService.Platform.Tests` | `Server/Mmorpg.GameService.Platform.Tests` | GameService Platform |
@@ -408,6 +408,15 @@ sample only together with both sides of the manifest format.
 The shared movement scenario and when its pinned fingerprint and revision
 change are described under Movement determinism in
 [Test Architecture](../docs/UNITY_CLIENT_ARCHITECTURE.md#test-architecture).
+
+### Content Hash Coverage
+
+`ContentHashCoverageTests` and the Unity `ItemPresentationHashCoverageTests`
+check that the hashes of every compiled document cover all its serialized
+fields, and pin the structural field sets of items and quests. Their rule is in
+[Changing A Content Format](../content/README.md#changing-a-content-format).
+Both use `HashCoverage` in `src/Client/Assets/Tests/EditMode/Shared`, which
+`Mmorpg.Shared.Tests` links like the movement scenario.
 
 ## Internal Access
 

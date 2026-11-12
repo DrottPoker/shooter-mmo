@@ -103,8 +103,20 @@ namespace Mmorpg.WorldData.Items.Presentation
                     .OrderBy(entry => entry.definitionId, StringComparer.Ordinal)
                     .ToArray()
             };
-            catalog.presentationRevision = ComputeRevision(catalog);
+            Stamp(catalog);
             return catalog;
+        }
+
+        // Writes the revision from the content. The hash coverage test requires every serialized
+        // field to change it.
+        public static void Stamp(ItemPresentationCatalogDocument catalog)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            catalog.presentationRevision = ComputeRevision(catalog);
         }
 
         private static ItemPresentationEntry[] BuildEntries(
@@ -254,7 +266,7 @@ namespace Mmorpg.WorldData.Items.Presentation
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
             {
-                writer.Write(ItemPresentationCatalogFormat.Version);
+                writer.Write(catalog.formatVersion);
                 writer.Write(catalog.entries.Length);
                 foreach (var entry in catalog.entries)
                 {

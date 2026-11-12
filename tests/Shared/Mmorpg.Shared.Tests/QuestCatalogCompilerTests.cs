@@ -45,6 +45,19 @@ public sealed class QuestCatalogCompilerTests
         Assert.NotEqual(baseline.StructuralFingerprint, Assert.Single(Compile(restructured).Quests).StructuralFingerprint);
     }
 
+    // GameService stores every quest's structural fingerprint (QuestCatalogSeeder) and refuses to
+    // start when the fingerprint of a quest in use changes. A changed fingerprint recipe needs a
+    // migration that restamps the stored values, as SecureContainerRemovalMigration does for items.
+    [Fact]
+    public void TheStructuralFingerprintRecipeIsPinned()
+    {
+        var catalog = QuestCatalogTestData.CompileFixture();
+
+        Assert.Equal(
+            "d670e102c9c9a59db57a9c09bd6daec8e78f7c5e379fa29f8b369d3102471615",
+            catalog.Quests.Single(quest => quest.Id == "quest.fixture.errand").StructuralFingerprint);
+    }
+
     [Fact]
     public void EveryObjectiveKindCompiles()
     {

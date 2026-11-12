@@ -351,7 +351,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(value.Id, value.DefaultDisposition),
+                    FactionFingerprint(value),
                     "runtime faction " + value.Id,
                     errors);
             }
@@ -370,7 +370,7 @@ namespace Mmorpg.WorldData.Actors
                     errors);
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(value.Id, value.ActorKind),
+                    PresentationFingerprint(value),
                     "runtime presentation " + value.Id,
                     errors);
             }
@@ -401,12 +401,7 @@ namespace Mmorpg.WorldData.Actors
 
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(
-                        value.Id,
-                        Float(value.ActivationRange),
-                        Float(value.DormancyRange),
-                        Float(value.ActiveTickRateHz),
-                        Float(value.DormantTickRateHz)),
+                    ActivityProfileFingerprint(value),
                     "runtime activity profile " + value.Id,
                     errors);
             }
@@ -428,10 +423,7 @@ namespace Mmorpg.WorldData.Actors
 
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    Fingerprint(
-                        value.Id,
-                        Float(value.DelaySeconds),
-                        value.PopulationLimit.ToString(CultureInfo.InvariantCulture)),
+                    RespawnProfileFingerprint(value),
                     "runtime respawn profile " + value.Id,
                     errors);
             }
@@ -776,7 +768,6 @@ namespace Mmorpg.WorldData.Actors
                     "runtime actor " + value.Id + " capabilities",
                     errors);
 
-                var capabilityFingerprints = new List<string>();
                 var capabilityIds = new HashSet<string>(StringComparer.Ordinal);
                 for (var capabilityIndex = 0;
                      capabilityIndex < value.Capabilities.Length;
@@ -799,18 +790,16 @@ namespace Mmorpg.WorldData.Actors
                         SupportedCapabilityKinds,
                         "runtime capability kind",
                         errors);
-                    var expected = CapabilityFingerprint(capability);
                     CheckRuntimeFingerprint(
                         capability.StructuralFingerprint,
-                        expected,
+                        CapabilityFingerprint(capability),
                         "runtime capability " + capability.Id,
                         errors);
-                    capabilityFingerprints.Add(expected);
                 }
 
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    ActorFingerprint(value, capabilityFingerprints),
+                    ActorFingerprint(value),
                     "runtime actor " + value.Id,
                     errors);
             }
@@ -834,7 +823,6 @@ namespace Mmorpg.WorldData.Actors
                         + " points exceed the supported bound.");
                 }
 
-                var compiledPoints = new List<string>();
                 for (var pointIndex = 0; pointIndex < value.Points.Length; pointIndex++)
                 {
                     var point = value.Points[pointIndex];
@@ -856,21 +844,11 @@ namespace Mmorpg.WorldData.Actors
                         errors.Add("runtime patrol " + value.Id
                             + " has an invalid wait duration.");
                     }
-
-                    compiledPoints.Add(string.Join(
-                        ":",
-                        Float(point.X),
-                        Float(point.Y),
-                        Float(point.Z),
-                        Float(point.WaitSeconds)));
                 }
 
-                var expected = Fingerprint(
-                    value.Id,
-                    string.Join(",", compiledPoints));
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    expected,
+                    PatrolPathFingerprint(value),
                     "runtime patrol " + value.Id,
                     errors);
             }
@@ -980,27 +958,9 @@ namespace Mmorpg.WorldData.Actors
                         + " origin does not match its bounds.");
                 }
 
-                var expected = Fingerprint(
-                    value.Id,
-                    value.Kind,
-                    value.ActorId,
-                    value.InstanceCount.ToString(CultureInfo.InvariantCulture),
-                    value.PatrolPathId,
-                    Float(value.OriginX),
-                    Float(value.OriginY),
-                    Float(value.OriginZ),
-                    Float(value.MinimumX),
-                    Float(value.MinimumZ),
-                    Float(value.MaximumX),
-                    Float(value.MaximumZ),
-                    Float(value.YawDegrees),
-                    value.Rows.ToString(CultureInfo.InvariantCulture),
-                    value.Columns.ToString(CultureInfo.InvariantCulture),
-                    Float(value.Spacing),
-                    value.Seed.ToString(CultureInfo.InvariantCulture));
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    expected,
+                    SpawnSourceFingerprint(value),
                     "runtime spawn source " + value.Id,
                     errors);
             }
@@ -1054,18 +1014,9 @@ namespace Mmorpg.WorldData.Actors
                         + " does not match its source.");
                 }
 
-                var expected = Fingerprint(
-                    value.Id,
-                    value.SpawnDefinitionId,
-                    value.ActorId,
-                    Float(value.X),
-                    Float(value.Y),
-                    Float(value.Z),
-                    Float(value.YawDegrees),
-                    value.PatrolPathId);
                 CheckRuntimeFingerprint(
                     value.StructuralFingerprint,
-                    expected,
+                    SpawnInstanceFingerprint(value),
                     "runtime spawn instance " + value.Id,
                     errors);
             }

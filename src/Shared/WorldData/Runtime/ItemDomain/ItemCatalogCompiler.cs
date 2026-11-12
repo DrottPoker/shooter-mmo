@@ -141,8 +141,26 @@ namespace Mmorpg.WorldData.Items
                     Definitions = SortStrings(authoring.Retired.Definitions)
                 }
             };
-            catalog.Revision = ComputeCatalogRevision(catalog);
+            Stamp(catalog);
             return catalog;
+        }
+
+        // Writes every hash of a compiled catalog from its content: each definition's structural
+        // fingerprint, then the revision. The hash coverage tests require every serialized field
+        // to change the revision or to be listed there with its reason.
+        public static void Stamp(ItemCatalogRuntimeDocument catalog)
+        {
+            if (catalog == null)
+            {
+                throw new ArgumentNullException(nameof(catalog));
+            }
+
+            foreach (var definition in catalog.Definitions)
+            {
+                definition.StructuralFingerprint = ComputeDefinitionStructuralFingerprint(definition);
+            }
+
+            catalog.Revision = ComputeCatalogRevision(catalog);
         }
 
         private static void Validate(ItemCatalogAuthoringDocument authoring, bool compiled)
@@ -1476,7 +1494,6 @@ namespace Mmorpg.WorldData.Items
                     },
                 StructuralFingerprint = string.Empty
             };
-            definition.StructuralFingerprint = ComputeDefinitionStructuralFingerprint(definition);
             return definition;
         }
 

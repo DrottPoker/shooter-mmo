@@ -201,7 +201,7 @@ namespace Mmorpg.WorldData.Actors
             runtime.SpawnInstances = spawnInstances
                 .OrderBy(value => value.Id, StringComparer.Ordinal)
                 .ToArray();
-            runtime.Revision = ComputeRuntimeRevision(runtime);
+            Stamp(runtime);
             ValidateRuntime(runtime);
             return runtime;
         }
@@ -1451,38 +1451,123 @@ namespace Mmorpg.WorldData.Actors
             }
         }
 
+        // Writes every hash of a compiled document from its content: each element's structural
+        // fingerprint, then the revision, which covers the fingerprints. The hash coverage tests
+        // require every serialized field to change the revision.
+        public static void Stamp(WorldActorRuntimeDocument runtime)
+        {
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
+            foreach (var value in runtime.Factions)
+            {
+                value.StructuralFingerprint = FactionFingerprint(value);
+            }
+
+            foreach (var value in runtime.PresentationArchetypes)
+            {
+                value.StructuralFingerprint = PresentationFingerprint(value);
+            }
+
+            foreach (var value in runtime.ActivityProfiles)
+            {
+                value.StructuralFingerprint = ActivityProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.RespawnProfiles)
+            {
+                value.StructuralFingerprint = RespawnProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.ResourceProfiles)
+            {
+                value.StructuralFingerprint = ResourceProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.CombatProfiles)
+            {
+                value.StructuralFingerprint = CombatProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.BrainProfiles)
+            {
+                value.StructuralFingerprint = BrainProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.LocomotionProfiles)
+            {
+                value.StructuralFingerprint = LocomotionProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.LootProfiles)
+            {
+                value.StructuralFingerprint = LootProfileFingerprint(value);
+            }
+
+            foreach (var value in runtime.Actors)
+            {
+                foreach (var capability in value.Capabilities)
+                {
+                    capability.StructuralFingerprint = CapabilityFingerprint(capability);
+                }
+
+                value.StructuralFingerprint = ActorFingerprint(value);
+            }
+
+            foreach (var value in runtime.SpawnSources)
+            {
+                value.StructuralFingerprint = SpawnSourceFingerprint(value);
+            }
+
+            foreach (var value in runtime.SpawnInstances)
+            {
+                value.StructuralFingerprint = SpawnInstanceFingerprint(value);
+            }
+
+            foreach (var value in runtime.PatrolPaths)
+            {
+                value.StructuralFingerprint = PatrolPathFingerprint(value);
+            }
+
+            runtime.Revision = ComputeRuntimeRevision(runtime);
+        }
+
         private static WorldActorFactionDefinition CompileFaction(
             WorldActorFactionAuthoringEntry value)
         {
-            var compiled = new WorldActorFactionDefinition
+            return new WorldActorFactionDefinition
             {
                 Id = value.Id,
                 DefaultDisposition = value.DefaultDisposition
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                compiled.DefaultDisposition);
-            return compiled;
+        }
+
+        private static string FactionFingerprint(WorldActorFactionDefinition value)
+        {
+            return Fingerprint(value.Id, value.DefaultDisposition);
         }
 
         private static WorldActorPresentationDefinition CompilePresentation(
             WorldActorPresentationAuthoringEntry value)
         {
-            var compiled = new WorldActorPresentationDefinition
+            return new WorldActorPresentationDefinition
             {
                 Id = value.Id,
                 ActorKind = value.ActorKind
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                compiled.ActorKind);
-            return compiled;
+        }
+
+        private static string PresentationFingerprint(WorldActorPresentationDefinition value)
+        {
+            return Fingerprint(value.Id, value.ActorKind);
         }
 
         private static WorldActorActivityProfileDefinition CompileActivityProfile(
             WorldActorActivityProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorActivityProfileDefinition
+            return new WorldActorActivityProfileDefinition
             {
                 Id = value.Id,
                 ActivationRange = value.ActivationRange,
@@ -1490,35 +1575,41 @@ namespace Mmorpg.WorldData.Actors
                 ActiveTickRateHz = value.ActiveTickRateHz,
                 DormantTickRateHz = value.DormantTickRateHz
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                Float(compiled.ActivationRange),
-                Float(compiled.DormancyRange),
-                Float(compiled.ActiveTickRateHz),
-                Float(compiled.DormantTickRateHz));
-            return compiled;
+        }
+
+        private static string ActivityProfileFingerprint(WorldActorActivityProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                Float(value.ActivationRange),
+                Float(value.DormancyRange),
+                Float(value.ActiveTickRateHz),
+                Float(value.DormantTickRateHz));
         }
 
         private static WorldActorRespawnProfileDefinition CompileRespawnProfile(
             WorldActorRespawnProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorRespawnProfileDefinition
+            return new WorldActorRespawnProfileDefinition
             {
                 Id = value.Id,
                 DelaySeconds = value.DelaySeconds,
                 PopulationLimit = value.PopulationLimit
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                Float(compiled.DelaySeconds),
-                compiled.PopulationLimit.ToString(CultureInfo.InvariantCulture));
-            return compiled;
+        }
+
+        private static string RespawnProfileFingerprint(WorldActorRespawnProfileDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                Float(value.DelaySeconds),
+                value.PopulationLimit.ToString(CultureInfo.InvariantCulture));
         }
 
         private static WorldActorResourceProfileDefinition CompileResourceProfile(
             WorldActorResourceProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorResourceProfileDefinition
+            return new WorldActorResourceProfileDefinition
             {
                 Id = value.Id,
                 RequiredToolKind = value.RequiredToolKind,
@@ -1528,8 +1619,6 @@ namespace Mmorpg.WorldData.Actors
                 Charges = value.Charges,
                 RespawnSeconds = value.RespawnSeconds
             };
-            compiled.StructuralFingerprint = ResourceProfileFingerprint(compiled);
-            return compiled;
         }
 
         private static string ResourceProfileFingerprint(WorldActorResourceProfileDefinition value)
@@ -1552,7 +1641,7 @@ namespace Mmorpg.WorldData.Actors
         private static WorldActorCombatProfileDefinition CompileCombatProfile(
             WorldActorCombatProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorCombatProfileDefinition
+            return new WorldActorCombatProfileDefinition
             {
                 Id = value.Id,
                 MaximumHealth = value.MaximumHealth,
@@ -1563,14 +1652,12 @@ namespace Mmorpg.WorldData.Actors
                 AttackIntervalSeconds = value.AttackIntervalSeconds,
                 AttackRange = value.AttackRange
             };
-            compiled.StructuralFingerprint = CombatProfileFingerprint(compiled);
-            return compiled;
         }
 
         private static WorldActorBrainProfileDefinition CompileBrainProfile(
             WorldActorBrainProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorBrainProfileDefinition
+            return new WorldActorBrainProfileDefinition
             {
                 Id = value.Id,
                 Aggression = value.Aggression,
@@ -1578,14 +1665,12 @@ namespace Mmorpg.WorldData.Actors
                 LeashRange = value.LeashRange,
                 GiveUpSeconds = value.GiveUpSeconds
             };
-            compiled.StructuralFingerprint = BrainProfileFingerprint(compiled);
-            return compiled;
         }
 
         private static WorldActorLocomotionProfileDefinition CompileLocomotionProfile(
             WorldActorLocomotionProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorLocomotionProfileDefinition
+            return new WorldActorLocomotionProfileDefinition
             {
                 Id = value.Id,
                 WalkSpeed = value.WalkSpeed,
@@ -1593,8 +1678,6 @@ namespace Mmorpg.WorldData.Actors
                 CollisionRadius = value.CollisionRadius,
                 CollisionHeight = value.CollisionHeight
             };
-            compiled.StructuralFingerprint = LocomotionProfileFingerprint(compiled);
-            return compiled;
         }
 
         // Loot entries keep their authored order: it decides the order of the rolls and
@@ -1602,7 +1685,7 @@ namespace Mmorpg.WorldData.Actors
         private static WorldActorLootProfileDefinition CompileLootProfile(
             WorldActorLootProfileAuthoringEntry value)
         {
-            var compiled = new WorldActorLootProfileDefinition
+            return new WorldActorLootProfileDefinition
             {
                 Id = value.Id,
                 Entries = value.Entries
@@ -1615,8 +1698,6 @@ namespace Mmorpg.WorldData.Actors
                     })
                     .ToArray()
             };
-            compiled.StructuralFingerprint = LootProfileFingerprint(compiled);
-            return compiled;
         }
 
         private static string CombatProfileFingerprint(WorldActorCombatProfileDefinition value)
@@ -1669,21 +1750,16 @@ namespace Mmorpg.WorldData.Actors
         private static WorldActorDefinition CompileActor(WorldActorAuthoringEntry value)
         {
             var capabilities = value.Capabilities
-                .Select(capability =>
+                .Select(capability => new WorldActorCapabilityDefinition
                 {
-                    var compiledCapability = new WorldActorCapabilityDefinition
-                    {
-                        Id = capability.Id,
-                        Kind = capability.Kind,
-                        ProfileId = capability.ProfileId ?? string.Empty
-                    };
-                    compiledCapability.StructuralFingerprint = CapabilityFingerprint(compiledCapability);
-                    return compiledCapability;
+                    Id = capability.Id,
+                    Kind = capability.Kind,
+                    ProfileId = capability.ProfileId ?? string.Empty
                 })
                 .ToArray();
             var bounds = CompileBounds(value.InteractionBounds);
             var collisionBounds = CompileBounds(value.CollisionBounds);
-            var compiled = new WorldActorDefinition
+            return new WorldActorDefinition
             {
                 Id = value.Id,
                 Kind = value.Kind,
@@ -1706,10 +1782,6 @@ namespace Mmorpg.WorldData.Actors
                 LootProfileId = value.LootProfileId ?? string.Empty,
                 KillCredit = value.KillCredit ?? string.Empty
             };
-            compiled.StructuralFingerprint = ActorFingerprint(
-                compiled,
-                capabilities.Select(capability => capability.StructuralFingerprint));
-            return compiled;
         }
 
         private static WorldActorBoundsDefinition CompileBounds(WorldActorBoundsAuthoringEntry value)
@@ -1725,12 +1797,14 @@ namespace Mmorpg.WorldData.Actors
             };
         }
 
-        private static string ActorFingerprint(
-            WorldActorDefinition value,
-            IEnumerable<string> capabilityFingerprints)
+        // Covers the fingerprint of every capability, so a capability change changes the actor's.
+        private static string ActorFingerprint(WorldActorDefinition value)
         {
             var bounds = value.InteractionBounds;
             var collision = value.CollisionBounds;
+            var capabilityFingerprints = value.Capabilities
+                .Where(capability => capability != null)
+                .Select(CapabilityFingerprint);
             return Fingerprint(
                 value.Id,
                 value.Kind,
@@ -1767,27 +1841,32 @@ namespace Mmorpg.WorldData.Actors
         private static WorldActorPatrolPathDefinition CompilePatrolPath(
             WorldActorPatrolPathAuthoringEntry value)
         {
-            var points = value.Points.Select(point => new WorldActorPatrolPointDefinition
-            {
-                X = point.X,
-                Y = point.Y,
-                Z = point.Z,
-                WaitSeconds = point.WaitSeconds
-            }).ToArray();
-            var compiled = new WorldActorPatrolPathDefinition
+            return new WorldActorPatrolPathDefinition
             {
                 Id = value.Id,
-                Points = points
+                Points = value.Points.Select(point => new WorldActorPatrolPointDefinition
+                {
+                    X = point.X,
+                    Y = point.Y,
+                    Z = point.Z,
+                    WaitSeconds = point.WaitSeconds
+                }).ToArray()
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                string.Join(",", points.Select(point => string.Join(
-                    ":",
-                    Float(point.X),
-                    Float(point.Y),
-                    Float(point.Z),
-                    Float(point.WaitSeconds)))));
-            return compiled;
+        }
+
+        // A null point is reported by runtime validation, so the fingerprint skips it.
+        private static string PatrolPathFingerprint(WorldActorPatrolPathDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                string.Join(",", value.Points
+                    .Where(point => point != null)
+                    .Select(point => string.Join(
+                        ":",
+                        Float(point.X),
+                        Float(point.Y),
+                        Float(point.Z),
+                        Float(point.WaitSeconds)))));
         }
 
         private static void CompilePoint(
@@ -1929,7 +2008,7 @@ namespace Mmorpg.WorldData.Actors
             float spacing,
             int seed)
         {
-            var compiled = new WorldActorSpawnSourceDefinition
+            return new WorldActorSpawnSourceDefinition
             {
                 Id = id,
                 Kind = kind,
@@ -1949,25 +2028,28 @@ namespace Mmorpg.WorldData.Actors
                 Spacing = spacing,
                 Seed = seed
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                compiled.Kind,
-                compiled.ActorId,
-                compiled.InstanceCount.ToString(CultureInfo.InvariantCulture),
-                compiled.PatrolPathId,
-                Float(compiled.OriginX),
-                Float(compiled.OriginY),
-                Float(compiled.OriginZ),
-                Float(compiled.MinimumX),
-                Float(compiled.MinimumZ),
-                Float(compiled.MaximumX),
-                Float(compiled.MaximumZ),
-                Float(compiled.YawDegrees),
-                compiled.Rows.ToString(CultureInfo.InvariantCulture),
-                compiled.Columns.ToString(CultureInfo.InvariantCulture),
-                Float(compiled.Spacing),
-                compiled.Seed.ToString(CultureInfo.InvariantCulture));
-            return compiled;
+        }
+
+        private static string SpawnSourceFingerprint(WorldActorSpawnSourceDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                value.Kind,
+                value.ActorId,
+                value.InstanceCount.ToString(CultureInfo.InvariantCulture),
+                value.PatrolPathId,
+                Float(value.OriginX),
+                Float(value.OriginY),
+                Float(value.OriginZ),
+                Float(value.MinimumX),
+                Float(value.MinimumZ),
+                Float(value.MaximumX),
+                Float(value.MaximumZ),
+                Float(value.YawDegrees),
+                value.Rows.ToString(CultureInfo.InvariantCulture),
+                value.Columns.ToString(CultureInfo.InvariantCulture),
+                Float(value.Spacing),
+                value.Seed.ToString(CultureInfo.InvariantCulture));
         }
 
         private static WorldActorSpawnInstanceDefinition CreateSpawnInstance(
@@ -1980,7 +2062,7 @@ namespace Mmorpg.WorldData.Actors
             float yaw,
             string patrolPathId)
         {
-            var compiled = new WorldActorSpawnInstanceDefinition
+            return new WorldActorSpawnInstanceDefinition
             {
                 Id = id,
                 SpawnDefinitionId = spawnId,
@@ -1991,16 +2073,19 @@ namespace Mmorpg.WorldData.Actors
                 YawDegrees = yaw,
                 PatrolPathId = patrolPathId ?? string.Empty
             };
-            compiled.StructuralFingerprint = Fingerprint(
-                compiled.Id,
-                compiled.SpawnDefinitionId,
-                compiled.ActorId,
-                Float(compiled.X),
-                Float(compiled.Y),
-                Float(compiled.Z),
-                Float(compiled.YawDegrees),
-                compiled.PatrolPathId);
-            return compiled;
+        }
+
+        private static string SpawnInstanceFingerprint(WorldActorSpawnInstanceDefinition value)
+        {
+            return Fingerprint(
+                value.Id,
+                value.SpawnDefinitionId,
+                value.ActorId,
+                Float(value.X),
+                Float(value.Y),
+                Float(value.Z),
+                Float(value.YawDegrees),
+                value.PatrolPathId);
         }
 
         private static string ComputeRuntimeRevision(WorldActorRuntimeDocument runtime)
