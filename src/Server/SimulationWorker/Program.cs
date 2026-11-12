@@ -172,6 +172,15 @@ builder.Services.AddHttpClient<GameServiceClient>(httpClient =>
 builder.Services.AddSingleton<SimulationJoinService>();
 builder.Services.AddSingleton<SimulationSessionReleaseService>();
 builder.Services.AddSingleton<SimulationWorkerHealthService>();
+// The dependency records that the realtime service takes, one per realtime feature that needs
+// host services.
+RealtimeHostDependencies.Register(builder.Services);
+ItemDependencies.Register(builder.Services);
+CorpseDependencies.Register(builder.Services);
+WorldActorDependencies.Register(builder.Services);
+CombatDependencies.Register(builder.Services);
+AppearanceDependencies.Register(builder.Services);
+QuestDependencies.Register(builder.Services);
 builder.Services.AddSimulationWorkerHostedServices();
 
 using var host = builder.Build();

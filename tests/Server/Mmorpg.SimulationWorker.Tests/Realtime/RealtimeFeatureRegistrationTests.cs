@@ -60,6 +60,21 @@ public sealed class RealtimeFeatureRegistrationTests
     }
 
     [Fact]
+    public void ShutdownStepsRunByTheirOrderAndTwoWithOneOrderFailNamingBoth()
+    {
+        var steps = new RealtimeShutdownSteps();
+        steps.Add(RealtimeShutdownOrder.Peers, "peers", () => { });
+        steps.Add(RealtimeShutdownOrder.CombatFlush, "combat flush", () => { });
+        steps.Add(RealtimeShutdownOrder.Combat, "combat", () => { });
+
+        var error = Assert.Throws<InvalidOperationException>(
+            () => steps.Add(RealtimeShutdownOrder.Combat, "duels", () => { }));
+
+        Assert.Equal(["combat flush", "combat", "peers"], steps.Steps.Select(step => step.Name));
+        Assert.Equal("The shutdown steps 'combat' and 'duels' both take order 200.", error.Message);
+    }
+
+    [Fact]
     public async Task EveryClientMessageTypeHasExactlyOneRoute()
     {
         await using var harness = RealtimeServerHarness.Create();

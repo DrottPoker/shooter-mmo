@@ -38,30 +38,35 @@ public sealed class RealtimeEntityLifecycleTests
         var identity = new SimulationWorkerIdentity("test-runtime", DateTime.UtcNow.AddMinutes(-1));
         var staticCollisionWorld = CollisionTestWorldFactory.Create();
         var server = new RealtimeSimulationService(
-            config,
-            new SimulationJoinService(
-                authClient,
+            new RealtimeHostDependencies(
+                config,
+                new SimulationJoinService(
+                    authClient,
+                    sessionStore,
+                    itemStateStore,
+                    config,
+                    identity),
+                new SimulationSessionReleaseService(
+                    authClient,
+                    sessionStore,
+                    CharacterStateTestData.SessionStores(itemStateStore)),
                 sessionStore,
                 itemStateStore,
-                config,
-                identity),
-            new SimulationSessionReleaseService(
-                authClient,
-                sessionStore,
-                CharacterStateTestData.SessionStores(itemStateStore)),
-            sessionStore,
-            itemStateStore,
-            new SimulationItemInteractionService(authClient),
-            new SimulationCorpseInteractionService(authClient),
-            new DurableCorpseStore(TimeProvider.System),
-            new CorpseViewerRegistry(),
-            new SimulationEntityRegistry(),
-            new ConnectionEntityBindingRegistry(),
-            new RealtimeTransportReadiness(),
-            staticCollisionWorld,
-            new CompositeCollisionWorld(
+                new SimulationEntityRegistry(),
+                new ConnectionEntityBindingRegistry(),
+                new RealtimeTransportReadiness(),
+                new DurableCorpseStore(TimeProvider.System),
+                new CorpseViewerRegistry(),
                 staticCollisionWorld,
-                new DynamicCollisionWorld(staticCollisionWorld.ChunkSize)),
+                new CompositeCollisionWorld(
+                    staticCollisionWorld,
+                    new DynamicCollisionWorld(staticCollisionWorld.ChunkSize))),
+            new ItemDependencies(new SimulationItemInteractionService(authClient)),
+            new CorpseDependencies(new SimulationCorpseInteractionService(authClient)),
+            new WorldActorDependencies(),
+            CombatDependencies.CreateDefault(),
+            AppearanceDependencies.CreateDefault(),
+            QuestDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         using var firstClient = new RealtimeTestClient(firstTicket.Ticket);
         using var secondClient = new RealtimeTestClient(secondTicket.Ticket);

@@ -75,28 +75,33 @@ public sealed class RealtimeSimulationServiceTests
             staticCollisionWorld,
             new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
         var server = new RealtimeSimulationService(
-            config,
-            new SimulationJoinService(
-                authClient,
+            new RealtimeHostDependencies(
+                config,
+                new SimulationJoinService(
+                    authClient,
+                    sessionStore,
+                    itemStateStore,
+                    config,
+                    identity),
+                new SimulationSessionReleaseService(
+                    authClient,
+                    sessionStore,
+                    CharacterStateTestData.SessionStores(itemStateStore)),
                 sessionStore,
                 itemStateStore,
-                config,
-                identity),
-            new SimulationSessionReleaseService(
-                authClient,
-                sessionStore,
-                CharacterStateTestData.SessionStores(itemStateStore)),
-            sessionStore,
-            itemStateStore,
-            new SimulationItemInteractionService(authClient),
-            new SimulationCorpseInteractionService(authClient),
-            new DurableCorpseStore(TimeProvider.System),
-            new CorpseViewerRegistry(),
-            new SimulationEntityRegistry(),
-            new ConnectionEntityBindingRegistry(),
-            new RealtimeTransportReadiness(),
-            staticCollisionWorld,
-            collisionWorld,
+                new SimulationEntityRegistry(),
+                new ConnectionEntityBindingRegistry(),
+                new RealtimeTransportReadiness(),
+                new DurableCorpseStore(TimeProvider.System),
+                new CorpseViewerRegistry(),
+                staticCollisionWorld,
+                collisionWorld),
+            new ItemDependencies(new SimulationItemInteractionService(authClient)),
+            new CorpseDependencies(new SimulationCorpseInteractionService(authClient)),
+            new WorldActorDependencies(),
+            CombatDependencies.CreateDefault(),
+            AppearanceDependencies.CreateDefault(),
+            QuestDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         var operationId = Guid.NewGuid();
         var intent = RealtimeItemOperationIntent.CreateDestroy(
@@ -232,30 +237,35 @@ public sealed class RealtimeSimulationServiceTests
             new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
         using var networkMetrics = new RealtimeNetworkMetrics();
         var server = new RealtimeSimulationService(
-            config,
-            new SimulationJoinService(
-                authClient,
+            new RealtimeHostDependencies(
+                config,
+                new SimulationJoinService(
+                    authClient,
+                    sessionStore,
+                    itemStateStore,
+                    config,
+                    identity),
+                new SimulationSessionReleaseService(
+                    authClient,
+                    sessionStore,
+                    CharacterStateTestData.SessionStores(itemStateStore)),
                 sessionStore,
                 itemStateStore,
-                config,
-                identity),
-            new SimulationSessionReleaseService(
-                authClient,
-                sessionStore,
-                CharacterStateTestData.SessionStores(itemStateStore)),
-            sessionStore,
-            itemStateStore,
-            new SimulationItemInteractionService(authClient),
-            new SimulationCorpseInteractionService(authClient),
-            new DurableCorpseStore(TimeProvider.System),
-            new CorpseViewerRegistry(),
-            new SimulationEntityRegistry(),
-            new ConnectionEntityBindingRegistry(),
-            new RealtimeTransportReadiness(),
-            staticCollisionWorld,
-            collisionWorld,
-            NullLogger<RealtimeSimulationService>.Instance,
-            providedNetworkMetrics: networkMetrics);
+                new SimulationEntityRegistry(),
+                new ConnectionEntityBindingRegistry(),
+                new RealtimeTransportReadiness(),
+                new DurableCorpseStore(TimeProvider.System),
+                new CorpseViewerRegistry(),
+                staticCollisionWorld,
+                collisionWorld,
+                NetworkMetrics: networkMetrics),
+            new ItemDependencies(new SimulationItemInteractionService(authClient)),
+            new CorpseDependencies(new SimulationCorpseInteractionService(authClient)),
+            new WorldActorDependencies(),
+            CombatDependencies.CreateDefault(),
+            AppearanceDependencies.CreateDefault(),
+            QuestDependencies.CreateDefault(),
+            NullLogger<RealtimeSimulationService>.Instance);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await server.StartAsync(timeout.Token);
@@ -495,29 +505,34 @@ public sealed class RealtimeSimulationServiceTests
             staticCollisionWorld,
             new DynamicCollisionWorld(staticCollisionWorld.ChunkSize));
         var server = new RealtimeSimulationService(
-            config,
-            new SimulationJoinService(
-                authClient,
+            new RealtimeHostDependencies(
+                config,
+                new SimulationJoinService(
+                    authClient,
+                    sessionStore,
+                    itemStateStore,
+                    config,
+                    identity),
+                new SimulationSessionReleaseService(
+                    authClient,
+                    sessionStore,
+                    CharacterStateTestData.SessionStores(itemStateStore),
+                    [TimeSpan.Zero]),
                 sessionStore,
                 itemStateStore,
-                config,
-                identity),
-            new SimulationSessionReleaseService(
-                authClient,
-                sessionStore,
-                CharacterStateTestData.SessionStores(itemStateStore),
-                [TimeSpan.Zero]),
-            sessionStore,
-            itemStateStore,
-            new SimulationItemInteractionService(authClient),
-            new SimulationCorpseInteractionService(authClient),
-            new DurableCorpseStore(TimeProvider.System),
-            new CorpseViewerRegistry(),
-            new SimulationEntityRegistry(),
-            new ConnectionEntityBindingRegistry(),
-            new RealtimeTransportReadiness(),
-            staticCollisionWorld,
-            collisionWorld,
+                new SimulationEntityRegistry(),
+                new ConnectionEntityBindingRegistry(),
+                new RealtimeTransportReadiness(),
+                new DurableCorpseStore(TimeProvider.System),
+                new CorpseViewerRegistry(),
+                staticCollisionWorld,
+                collisionWorld),
+            new ItemDependencies(new SimulationItemInteractionService(authClient)),
+            new CorpseDependencies(new SimulationCorpseInteractionService(authClient)),
+            new WorldActorDependencies(),
+            CombatDependencies.CreateDefault(),
+            AppearanceDependencies.CreateDefault(),
+            QuestDependencies.CreateDefault(),
             NullLogger<RealtimeSimulationService>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await server.StartAsync(timeout.Token);
