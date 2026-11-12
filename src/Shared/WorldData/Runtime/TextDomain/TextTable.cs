@@ -41,8 +41,20 @@ namespace Mmorpg.WorldData.Text
                 throw new TextTableValidationException(errors);
             }
 
-            document.Revision = ComputeRevision(document);
+            Stamp(document);
             return document;
+        }
+
+        // Writes the revision from the content. The hash coverage tests require every serialized
+        // field to change it.
+        public static void Stamp(TextTableDocument document)
+        {
+            if (document == null)
+            {
+                throw new ArgumentNullException(nameof(document));
+            }
+
+            document.Revision = ComputeRevision(document);
         }
 
         // A loaded table must be exactly what a compiler wrote: its structure is checked and

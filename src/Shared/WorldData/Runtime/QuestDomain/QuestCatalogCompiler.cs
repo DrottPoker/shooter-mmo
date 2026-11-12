@@ -73,8 +73,26 @@ namespace Mmorpg.WorldData.Quests
                     .OrderBy(quest => quest.Id, StringComparer.Ordinal)
                     .ToArray()
             };
-            runtime.Revision = ComputeRevision(runtime);
+            Stamp(runtime);
             return runtime;
+        }
+
+        // Writes every hash of a compiled catalog from its content: each quest's structural
+        // fingerprint, then the revision. The hash coverage tests require every serialized field
+        // to change the revision or to be listed there with its reason.
+        public static void Stamp(QuestCatalogRuntimeDocument runtime)
+        {
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
+            foreach (var quest in runtime.Quests)
+            {
+                quest.StructuralFingerprint = StructuralFingerprintOf(quest);
+            }
+
+            runtime.Revision = ComputeRevision(runtime);
         }
 
         // A loaded catalog must be exactly what the compiler wrote: its format and structure are
@@ -1069,7 +1087,7 @@ namespace Mmorpg.WorldData.Quests
 
         private static QuestDefinition CompileQuest(QuestAuthoringEntry quest)
         {
-            var compiled = new QuestDefinition
+            return new QuestDefinition
             {
                 Id = quest.Id,
                 GiverActorId = quest.GiverActorId,
@@ -1088,8 +1106,6 @@ namespace Mmorpg.WorldData.Quests
                 RewardItems = CompileItems(quest.RewardItems),
                 RewardChoiceItems = CompileItems(quest.RewardChoiceItems)
             };
-            compiled.StructuralFingerprint = StructuralFingerprintOf(compiled);
-            return compiled;
         }
 
         private static QuestObjectiveDefinition CompileObjective(QuestObjectiveAuthoringEntry objective)

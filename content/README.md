@@ -501,6 +501,41 @@ content in a temporary directory before anything is written.
   [Client And Server Agreement](../docs/PROJECT_ARCHITECTURE.md#client-and-server-agreement)
   describes.
 
+## Changing A Content Format
+
+Compiled content is never converted. A format change raises the format version,
+the compilers write every compiled file again, and every reader accepts exactly
+its own version, as [Rules](#rules) says. Old data meets new code in only three
+places, and each has its rule:
+
+- The GameService database mirrors the structural fingerprint of every item
+  definition and quest and refuses to start when the fingerprint of one in use
+  changed, as [Item Catalog](../docs/SERVICE_FEATURES.md#item-catalog) and
+  [Quests](../docs/SERVICE_FEATURES.md#quests) describe. A change to a
+  fingerprint recipe or to a structural field therefore ships with a migration
+  that restamps the stored values from the old fingerprints to the new ones, as
+  `SecureContainerRemovalMigration` and `CloakEquipmentRemovalMigration` do.
+- The client's content cache holds files by revision, so a client fetches the
+  new revision.
+- An older client that meets a newer served format gets
+  `client_update_required`.
+
+[Content Resolution At Start](../docs/UNITY_CLIENT_ARCHITECTURE.md#content-resolution-at-start)
+describes the last two.
+
+Each compiled document has one `Stamp` function that writes all its hashes
+from its content, first the structural fingerprints of its elements and then
+the revision: `ItemCatalogCompiler.Stamp`, `QuestCatalogCompiler.Stamp`,
+`WorldActorCompiler.Stamp`, `TextTable.Stamp`, and
+`ItemPresentationCatalogCompiler.Stamp`. Every serialized field of a compiled
+document changes the revision through `Stamp`, or is listed as unhashed with its
+reason in the hash coverage tests: `ContentHashCoverageTests` in
+`Mmorpg.Shared.Tests` and `ItemPresentationHashCoverageTests` in the Unity
+EditMode tests. They change each field of a fully populated sample, remove and
+swap array elements, and fail with the field to hash when the revision stays the
+same. The same tests pin the structural field sets of items and quests, and a
+change to one is a decision that needs the migration above.
+
 ## Unity Content Tools
 
 `MMORPG > Tools > Item Catalog`, `MMORPG > Tools > Content > Actor Studio`,

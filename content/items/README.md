@@ -201,7 +201,8 @@ is their display order.
   tool kinds, vendor profiles, the economy settings, mana costs, or family
   windups, therefore keeps every persisted definition compatible and needs no
   item migration or development database reset. Change that version only when
-  the meaning of a structural field changes.
+  the meaning of a structural field changes, together with the migration that
+  [Changing A Content Format](../README.md#changing-a-content-format) describes.
 - The client presentation file has its own `presentationRevision`, which covers
   its format version and its entries only, never the rules. A rules change
   leaves the presentation file and its revision as they are, and a presentation
