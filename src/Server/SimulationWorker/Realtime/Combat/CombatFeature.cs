@@ -62,6 +62,7 @@ internal sealed class PlayerCombatFeature
             core.CorpseStore,
             core.AuthorityScheduler,
             core.Teardown,
+            core.Bodies,
             core.SessionOperations,
             core.OperationTracker,
             new PlayerCombatAuthorityOperations(
@@ -153,6 +154,7 @@ internal sealed class CombatFeature
             core.CorpseViewers,
             corpses.Views,
             core.CollisionWorld,
+            core.Bodies,
             dependencies.Metrics)
         {
             CloseWorldInteraction = worldActors.Interactions.CloseForPeer
@@ -165,6 +167,7 @@ internal sealed class CombatFeature
         hooks.AddSpawnSent(replicator.OnSpawnSent);
         hooks.AddPlayerRemoved(Combat.OnPlayerEntityRemoved);
         hooks.AddPlayerJoined(Combat.OnPlayerJoined);
+        hooks.AddConnectionEnded(Combat.OnConnectionEnded);
         core.Registries.ShutdownSteps.Add(RealtimeShutdownOrder.Combat, "combat", Combat.Clear);
     }
 

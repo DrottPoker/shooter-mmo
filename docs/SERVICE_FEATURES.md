@@ -306,12 +306,12 @@ Simulation session properties:
 - Idempotent exact-generation release.
 - Reconnect token rotation.
 - Safe stale-token rejection after reconnect.
-- Graceful leave remains owned by its in-flight release operation after the
-  local lease is removed, preventing concurrent leaves from being misreported as
-  revoked sessions.
+- A session stays active while its character's body stays in the world after
+  the connection ended, as [Lingering Bodies](#lingering-bodies) describes: the
+  worker keeps renewing its lease and releases it only when the body goes.
 
 The worker also enforces cached lease expiry locally so a GameService outage
-cannot leave a connected player active forever. The local deadline is the
+cannot leave a connected player or a body active forever. The local deadline is the
 request send time plus the lease duration that GameService returns, so it does
 not depend on the database clock.
 
@@ -365,21 +365,71 @@ entity. The position and yaw count only when the saved World is the Shard's
 World and the saved collision revision is the one the worker runs; otherwise the
 character starts at the World spawn. Health and mana count in any World, within
 1 to the maximum health and 0 to the maximum mana of the combat rules. A
-reconnect to an entity that still exists keeps that entity as it is.
+reconnect to an entity that still exists, such as a lingering body, keeps that
+entity as it is.
 
 The worker saves the state of every player that a person plays; synthetic bots
 have none. Every `SimulationWorker:CharacterCheckpointSeconds` it collects the
 players whose position, yaw, health, or mana differs from what GameService
 last confirmed and sends them in one checkpoint call, in requests of at most 500
 states. At most one call is in flight; a failed call is logged, and its players
-go again with the next checkpoint. When a leave starts, when the entity of a
-session the worker still holds is removed, such as after a disconnect, and at
-shutdown, the worker captures the final state, and the release of that session
-carries it, also when the release runs later or again. At shutdown the worker
+go again with the next checkpoint; a lingering body counts like a connected
+player. When the entity of a session the worker still holds is removed, such as
+a body whose time is up or whose death committed, and at shutdown, the worker
+captures the final state, and the release of that session carries it, also when
+the release runs later or again. At shutdown the worker
 first saves every remaining player in one last checkpoint while the sessions
 still hold, because going offline releases them. A dead player is saved as its
 respawn leaves it: at the World spawn with full health and mana. A worker crash
 or a GameService outage loses at most the time since the last saved state.
+
+### Lingering Bodies
+
+When a joined player's connection ends while its simulation session is still
+valid, the character's entity stays in the world as a lingering body for
+`SimulationWorker:LingeringBodySeconds`, 20 by default:
+
+- A leave is answered at once with `LeaveAccepted`, whose `BodySeconds` says how
+  long the body stays, and the peer is disconnected after the answer. A lost or
+  timed-out connection and a connection that the worker ends with a
+  `ServerDisconnect`, such as `udp_rate_limited`, `invalid_packet`, or
+  `internal_error`, leave a body the same way. A leave of a session that ended
+  already answers `BodySeconds` 0.
+- The body's movement stops and its target, an attack in its windup, its
+  gathering, its corpse view, its world interaction, and its waiting operations
+  end. It stays in the interest index and in the remote snapshots of others,
+  keeps its look and its combat state, can be targeted and hit, and
+  regenerates as usual.
+- An item, corpse, world interaction, gathering, or quest operation that was
+  already running at GameService when the connection ended still commits, and
+  what it committed reaches the body: its item and carry state, its equipment
+  and so its look, its quest log, and the corpse it looted. The body's spent
+  arrows and death then build on that revision. Only the operation's result
+  needs the peer that sent it; a player who came back in the meantime gets the
+  item and quest log changes and the carry state. An answer that ends the
+  session invalidates the body's session, so the body goes without a release.
+- The time is counted in simulation ticks from the end of the connection. Every
+  hit that the body takes moves its end to the full time after the hit when
+  that is later, without an upper limit. A body whose time is up or whose death
+  committed waits for the operation that still runs for it before it goes.
+- When the time is up, the worker despawns the body with reason `left_shard`,
+  saves its final state with the release of the session, and releases it as a
+  disconnect did before. A body whose death committed goes with reason `died`
+  and is saved as its respawn would leave it; it never respawns. The release
+  waits for the spent arrows, the death, and the quest credits that the body
+  still commits.
+- A body whose session ended goes at once without a release, with the
+  invalidation code as despawn reason, such as `session_revoked`,
+  `account_session_replaced`, or `session_expired`. A worker that stops saves
+  its bodies in the last checkpoint and takes them out with every other player.
+- A join ticket of the same character is a reconnect of the body's session: the
+  join resumes the body's entity where it stands, with its vitals, and ends its
+  time. A ticket for another character of the account is refused with
+  `account_character_already_active`, and the client tells the player that the
+  previous character is still in the world for a short while.
+- The orphan sweep never releases a body's session.
+- Development bots leave bodies too; while its body stands, a bot's ticket
+  request is refused with `development_bot_already_active`.
 
 ## Realtime UDP Transport
 
@@ -463,11 +513,13 @@ authentication, and domain failures to structured results:
 - `ConnectionEntityBindingRegistry` enforces one peer per entity and one entity
   per peer.
 - Same-character reconnect preserves the entity and movement state while
-  replacing the peer binding.
+  replacing the peer binding, also for a lingering body without a binding.
 - Entity spawn and despawn use reliable ordered control messages, and Unity
   receives a reliable baseline before relying on snapshots.
 - Each joined peer receives a dedicated fixed-rate owner snapshot for input
   acknowledgement and reconciliation.
+- Remote snapshots carry every player entity that a peer sees, a lingering
+  body too; only a bound entity has an owner snapshot.
 - Remote visible entities use MTU-safe shared packet batches. Under dense
   overload, a rotating fair subset reduces remote update cadence before the
   worker-wide byte bucket begins dropping complete frames.
@@ -1655,7 +1707,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Area | Codes |
 | --- | --- |
 | Packets and dispatch | `invalid_packet`, `udp_rate_limited`, `join_required`, `unexpected_message`, `internal_error`, and per family an `invalid_*_delivery` code for a message on the wrong channel or delivery and an `invalid_*` code for a malformed intent, such as `invalid_join_request`, `invalid_movement_input`, `invalid_item_operation`, and `invalid_world_interaction` |
-| Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `leave_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing` |
+| Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing` |
 | GameService calls | `auth_service_timeout`, `auth_service_unavailable`, `auth_service_rejected`, `auth_service_authentication_failed`, `invalid_auth_response` |
 | Movement | `movement_unavailable`, `unknown_movement_path` |
 | Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
@@ -1791,6 +1843,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
+| `LingeringBodySeconds` | `20` | How long a character's body stays in the world after its connection ended and after every hit it takes, 1 to 3,600 seconds, as [Lingering Bodies](#lingering-bodies) describes |
 | `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |
 | `UdpQuotas:InboundBytesPerSecond`, `InboundByteBurst` | 128 KiB, 256 KiB | Inbound bytes per peer |
 | `UdpQuotas:SnapshotBytesPerSecond`, `SnapshotByteBurst` | 256 KiB, 512 KiB | Unreliable snapshot bytes per peer |
@@ -1866,6 +1919,8 @@ content fail before UDP admission.
 - Alert notifications to a chat or paging service, and a shared or staging
   deployment of the monitoring stack.
 - Rigid-body collision and replicated dynamic collision transforms.
+- Body times per gameplay rule area and an instant logout in a safe city; a
+  body stays `LingeringBodySeconds` everywhere.
 
 The planned and open item rules are in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md#planned),

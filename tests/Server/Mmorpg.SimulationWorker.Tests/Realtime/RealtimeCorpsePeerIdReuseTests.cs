@@ -89,6 +89,7 @@ public sealed class RealtimeCorpsePeerIdReuseTests
             var itemStateStore = new CharacterItemStateStore();
             var corpseStore = new DurableCorpseStore(TimeProvider.System);
             var hooks = new RealtimeLifecycleHooks();
+            var clock = new RealtimeSimulationClock();
             Registry = new RealtimePeerRegistry(directory, bindings, entities, Metrics);
             var sender = new RealtimePeerSender(Metrics, NullLogger.Instance);
             var presence = new EntityPresenceReplicator(
@@ -99,7 +100,7 @@ public sealed class RealtimeCorpsePeerIdReuseTests
                 null,
                 new SimulationInterestManager(InterestManagementConfig.Default),
                 Metrics,
-                new RealtimeSimulationClock(),
+                clock,
                 hooks);
             var carrySync = new CarryStateSynchronizer(itemStateStore, bindings, Registry, sender);
             var teardown = new RealtimeSessionTeardown(
@@ -113,15 +114,16 @@ public sealed class RealtimeCorpsePeerIdReuseTests
                 bindings,
                 entities,
                 Metrics,
-                hooks);
+                hooks,
+                new LingeringBodies(20, 30, clock));
             Finalizer = new CorpseOperationFinalizer(
                 Registry,
                 sender,
                 sessionStore,
                 itemStateStore,
-                entities,
                 carrySync,
                 teardown,
+                new OperationCompletionTargets(Registry, bindings, entities, sessionStore),
                 new AuthorityOperationScheduler(Registry),
                 CorpseViewers,
                 Leases,

@@ -16,6 +16,9 @@ public sealed class ActiveSimulationBotCoordinator(
     // The build copies the compiled World collision below the tool's output.
     private const string WorldDataPath = "WorldData/Worlds";
 
+    // Time for the session release that follows a body's end to reach GameService.
+    private static readonly TimeSpan BodyReleaseMargin = TimeSpan.FromSeconds(2);
+
     private readonly List<ActiveBotSlot> slots = Enumerable
         .Range(1, options.MaximumActiveBots)
         .Select(index => new ActiveBotSlot(index, Guid.NewGuid()))
@@ -222,9 +225,7 @@ public sealed class ActiveSimulationBotCoordinator(
                     slot,
                     AddDuration(
                         nowTimestamp,
-                        RandomDuration(
-                            options.MinimumOfflineDuration,
-                            options.MaximumOfflineDuration)));
+                        OfflineDuration(snapshot.BodySeconds)));
             }
             else
             {
@@ -465,6 +466,16 @@ public sealed class ActiveSimulationBotCoordinator(
 
         WriteStatus();
         Console.WriteLine("ActiveSimulationBots stopped.");
+    }
+
+    // A bot that left stays offline at least while the worker keeps its body in the world, and
+    // with it its session, which GameService releases right after; until then a new ticket would
+    // be refused as development_bot_already_active.
+    private TimeSpan OfflineDuration(int bodySeconds)
+    {
+        var offline = RandomDuration(options.MinimumOfflineDuration, options.MaximumOfflineDuration);
+        var body = bodySeconds > 0 ? TimeSpan.FromSeconds(bodySeconds) + BodyReleaseMargin : TimeSpan.Zero;
+        return offline > body ? offline : body;
     }
 
     private TimeSpan RandomDuration(TimeSpan minimum, TimeSpan maximum)

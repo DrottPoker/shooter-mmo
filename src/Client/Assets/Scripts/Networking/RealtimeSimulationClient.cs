@@ -1974,7 +1974,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
-            if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var error))
+            if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out _, out var error))
             {
                 FailProtocol("invalid_leave_response", error);
                 return;

@@ -17,12 +17,6 @@ internal sealed record JoinCompleted(
     long EnqueuedTimestamp)
     : RealtimeOperationResult(PeerContext);
 
-internal sealed record LeaveCompleted(
-    RealtimePeerContext PeerContext,
-    ActiveSimulationSession Session,
-    SimulationSessionReleaseResult Result)
-    : RealtimeOperationResult(PeerContext);
-
 internal sealed record ItemOperationCompleted(
     RealtimePeerContext PeerContext,
     ActiveSimulationSession Session,

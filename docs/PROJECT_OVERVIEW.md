@@ -28,6 +28,9 @@ and adds gameplay in small vertical slices on top of it.
 9. Use NPC services such as the Bank, Recovery Storage, and insurance.
 10. Accept quests at quest NPCs, follow them in the quest log and the tracker, and turn them in
     for a reward.
+11. Leave or lose the connection: the character's body stays in the world for 20 seconds, longer
+    while it is attacked, and entering the same character again in time takes it over where it
+    stands.
 
 The UI shows all of this. The development Worlds are test maps: Development World 2 has
 a zone for every feature, and Development World 1 is a small stress arena for many bots. See
@@ -52,7 +55,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 
 | Area | Implemented | Next or deferred |
 | --- | --- | --- |
-| Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout | Character deletion is an open question |
+| Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout, and a body that stays 20 seconds after a leave or a lost connection, longer while attacked, which its player resumes by coming back in time | Body times per gameplay rule area; character deletion is an open question |
 | Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
@@ -103,7 +106,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Protocol versioning and snapshot encoding | Provisional | Exact-match versions and full-state snapshots |
 | Content delivery to the client | Provisional | The client fetches the item and quest catalogs and the text tables of one locale by revision once at start, caches them, and falls back to its bundled set as a whole; no swap while it runs, one locale, and the item presentation catalog and binary assets still ship in the build |
 | Player-facing text | Provisional | Item, quest, and actor text and the text for every code that a server sends or the client gives a failure it finds itself come from the text tables; no compiled content and no server holds a text of the content, only the codes of normal play have a text of their own, and of the client's own texts the quest windows, the item rule reasons, the inventory, storage, corpse, and vendor windows, the login and character screens, the combat HUD status texts, and the world menu with its messages take theirs from a table; the literals of the `Temporary` panels and the F2 and F3 menus stay English by decision, and a technical failure that the client finds shows the text of its code while its English diagnostic goes to the log |
-| Player presence: join, leave, and disconnect | Provisional | Of a live character only its items, place, facing, health, and mana are stored; the logout risk timer is deferred |
+| Player presence: join, leave, and disconnect | Provisional | Of a live character only its items, place, facing, health, and mana are stored; a body stays 20 seconds everywhere until gameplay rule areas give each area its own time |
 | The collision data format and its streaming | Provisional | |
 | Database migrations, retention, and maintenance | Provisional | |
 | Worker and GameService resilience: lease durations, heartbeats, and backpressure | Provisional | |

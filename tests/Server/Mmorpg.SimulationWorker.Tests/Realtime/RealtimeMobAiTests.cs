@@ -187,7 +187,7 @@ public sealed class RealtimeMobAiTests
     }
 
     // Wolves at the given positions without patrols; the brain and the bite can be tuned.
-    private static WorldActorRuntime WolvesAt(
+    internal static WorldActorRuntime WolvesAt(
         float[] positionsX,
         int damage = 4,
         float leashRange = 30f,

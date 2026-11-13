@@ -92,12 +92,14 @@ internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IRead
 
 // The durable combat work of one simulation session: uncommitted shots, the batch in
 // flight, a death that has not committed, and the quest kill credits. It outlives the
-// peer, so a disconnect or leave first commits it and only then releases the session.
-// Loop-confined.
+// peer: when the connection ends, the character's lingering body commits it without a peer,
+// and when the entity goes, the session is released only once it committed. Loop-confined.
 internal sealed class PlayerCombatSession(ActiveSimulationSession session, RealtimePeerContext context)
 {
     public ActiveSimulationSession Session { get; set; } = session;
 
+    // The peer whose lane the work runs in; after the connection ended, the peer that had it,
+    // whose lane flag still tells whether an operation of it runs.
     public RealtimePeerContext Context { get; set; } = context;
 
     public int PendingShots { get; set; }
@@ -110,13 +112,15 @@ internal sealed class PlayerCombatSession(ActiveSimulationSession session, Realt
 
     public PlayerDeathAttempt? Death { get; set; }
 
-    // The peer is gone or leaving; the work left commits before the session ends.
+    // The connection ended: no peer hears of the work, which the combat phase commits one
+    // operation at a time instead of the peer's lane.
     public bool Detached { get; set; }
 
-    // The committed item state when the peer left, which teardown removes from the store.
-    public CharacterItemState? DetachedItemState { get; set; }
+    // The entity went while work was left: the session is released once the work committed.
+    public bool AwaitingRelease { get; set; }
 
-    public bool LeaveRequested { get; set; }
+    // The committed item state when the entity went, which teardown removes from the store.
+    public CharacterItemState? DetachedItemState { get; set; }
 
     // A client operation that may change an equipment slot is in flight, so attacks wait.
     public bool EquipmentChangePending { get; set; }

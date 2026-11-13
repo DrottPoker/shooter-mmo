@@ -1,7 +1,6 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Corpses;
-using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
@@ -17,9 +16,9 @@ internal sealed class CorpseOperationFinalizer(
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
-    SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     AuthorityOperationScheduler authorityScheduler,
     CorpseViewerRegistry corpseViewers,
     WorldInteractionLeaseRegistry? worldInteractionLeases,
@@ -38,44 +37,42 @@ internal sealed class CorpseOperationFinalizer(
         }
     }
 
+    // The operation committed at GameService whether or not its peer is still there, so the
+    // character's item state and the corpse's state take what it committed while the worker holds
+    // the session. What belongs to the peer that sent it, its result, its corpse view, and the
+    // view's interaction lease, needs that peer; the item change goes to the peer that plays the
+    // character now.
     private void FinalizeOperation(CorpseOperationCompleted completed)
     {
+        combatGate?.ClientOperationFinished(completed.Session);
         authorityScheduler.Release(completed.Context);
-        combatGate?.ClientOperationFinished(completed.Context);
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
+        var resolved = targets.TryResolve(completed.Context, completed.Session, out var target);
+        var requester = resolved ? target.Requester : null;
+        if (requester is null
+            && completed.RemoveOpenReservationOnFailure
+            && peers.OwnsPeerId(completed.Context))
         {
             // LiteNetLib reuses peer ids, so only a context that still owns its id may
             // release this open reservation. Every path that disconnects or detaches a
             // context has already released the reservations it held.
-            if (completed.RemoveOpenReservationOnFailure && peers.OwnsPeerId(completed.Context))
-            {
-                corpseViewers.Close(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
-                worldInteractionLeases?.ReleaseCorpse(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
-            }
+            corpseViewers.Close(
+                completed.Context.PeerId,
+                completed.Result.Intent.CorpseId);
+            worldInteractionLeases?.ReleaseCorpse(
+                completed.Context.PeerId,
+                completed.Result.Intent.CorpseId);
+        }
 
+        if (!resolved)
+        {
             return;
         }
 
-        if (!itemStateStore.TryGet(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                out _))
+        var session = target.Session;
+        if (!itemStateStore.TryGet(session.CharacterId, session.SimulationSessionId, out _))
         {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
+            teardown.EndForAuthorityFailure(
+                target,
                 "carry_state_missing",
                 "Authoritative carry state disappeared during the corpse operation.");
             return;
@@ -83,11 +80,13 @@ internal sealed class CorpseOperationFinalizer(
 
         if (completed.Result.ShouldDisconnect)
         {
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
+            if (requester is not null)
+            {
+                SendCorpseOperationResult(requester, session, completed.Result);
+            }
+
+            teardown.EndForAuthorityFailure(
+                target,
                 completed.Result.Error!.Code,
                 completed.Result.Error.Message);
             return;
@@ -95,15 +94,19 @@ internal sealed class CorpseOperationFinalizer(
 
         if (!completed.Result.Succeeded)
         {
-            if (completed.RemoveOpenReservationOnFailure)
+            if (requester is not null)
             {
-                corpseViewers.RemovePeer(completed.Context.PeerId);
-                worldInteractionLeases?.ReleaseCorpse(
-                    completed.Context.PeerId,
-                    completed.Result.Intent.CorpseId);
+                if (completed.RemoveOpenReservationOnFailure)
+                {
+                    corpseViewers.RemovePeer(completed.Context.PeerId);
+                    worldInteractionLeases?.ReleaseCorpse(
+                        completed.Context.PeerId,
+                        completed.Result.Intent.CorpseId);
+                }
+
+                SendCorpseOperationResult(requester, session, completed.Result);
             }
 
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
             if (completed.Result.ShouldCloseView)
             {
                 if (CorpseViewDistributor.ShouldCloseCorpseForAll(completed.Result.Error!.Code))
@@ -114,11 +117,11 @@ internal sealed class CorpseOperationFinalizer(
                         completed.Result.Error.Message,
                         removeFromStore: true);
                 }
-                else
+                else if (requester is not null)
                 {
                     corpseViews.CloseCorpseForPeer(
                         completed.Context,
-                        peer,
+                        requester,
                         completed.Result.Intent.CorpseId,
                         completed.Result.Error.Code,
                         completed.Result.Error.Message);
@@ -132,19 +135,23 @@ internal sealed class CorpseOperationFinalizer(
         if (completed.Result.Intent.OperationKind
             == RealtimeCorpseInteractionKind.Close)
         {
-            corpseViewers.Close(
-                completed.Context.PeerId,
-                completed.Result.Intent.CorpseId);
-            worldInteractionLeases?.ReleaseCorpse(
-                completed.Context.PeerId,
-                completed.Result.Intent.CorpseId);
-            SendCorpseOperationResult(peer, completed.Session, completed.Result);
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
-                    completed.Result.Intent.CorpseId,
-                    RealtimeCorpseViewClosureCodes.ViewClosed,
-                    "The corpse view was closed.")));
+            if (requester is not null)
+            {
+                corpseViewers.Close(
+                    completed.Context.PeerId,
+                    completed.Result.Intent.CorpseId);
+                worldInteractionLeases?.ReleaseCorpse(
+                    completed.Context.PeerId,
+                    completed.Result.Intent.CorpseId);
+                SendCorpseOperationResult(requester, session, completed.Result);
+                sender.SendControl(
+                    requester,
+                    RealtimeProtocol.EncodeCorpseViewClosed(new RealtimeCorpseViewClosed(
+                        completed.Result.Intent.CorpseId,
+                        RealtimeCorpseViewClosureCodes.ViewClosed,
+                        "The corpse view was closed.")));
+            }
+
             authorityScheduler.StartNext(completed.Context);
             return;
         }
@@ -152,16 +159,18 @@ internal sealed class CorpseOperationFinalizer(
         if (completed.Result.Mutation is not null
             && completed.Result.RequiresInventoryRefresh
             && !TryApplyCorpseCarryState(
-                peer,
-                completed.Context,
-                completed.Session,
+                target,
                 completed.Result.Intent.OperationId,
                 completed.Result.Mutation))
         {
             return;
         }
 
-        SendCorpseOperationResult(peer, completed.Session, completed.Result);
+        if (requester is not null)
+        {
+            SendCorpseOperationResult(requester, session, completed.Result);
+        }
+
         var resultSnapshot = completed.Result.Snapshot;
         if (resultSnapshot is null)
         {
@@ -189,26 +198,26 @@ internal sealed class CorpseOperationFinalizer(
             corpseViews.CacheSnapshot(resultSnapshot);
         }
 
-        if (distribution.RequesterChunks.Count > 0)
+        if (requester is not null && distribution.RequesterChunks.Count > 0)
         {
-            corpseViews.SendCorpseState(peer, CorpseViewDistributor.EncodeCorpseStatePackets(distribution.RequesterChunks));
+            corpseViews.SendCorpseState(requester, CorpseViewDistributor.EncodeCorpseStatePackets(distribution.RequesterChunks));
         }
 
+        // Without its requester the corpse goes to every viewer, since the requester's peer views
+        // nothing any more and its id may already belong to another viewer.
         if (distribution.ViewerChunks.Count > 0)
         {
             corpseViews.BroadcastCorpseState(
                 resultSnapshot.CorpseId,
                 CorpseViewDistributor.EncodeCorpseStatePackets(distribution.ViewerChunks),
-                distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
+                requester is null || distribution.RequesterReceivesViewerChunks ? null : completed.Context.PeerId);
         }
 
         authorityScheduler.StartNext(completed.Context);
     }
 
     private bool TryApplyCorpseCarryState(
-        IRealtimePeerConnection peer,
-        RealtimePeerContext context,
-        ActiveSimulationSession session,
+        in OperationCompletionTarget target,
         Guid operationId,
         CorpseMutationResponse mutation)
     {
@@ -219,22 +228,19 @@ internal sealed class CorpseOperationFinalizer(
                 mutation.Transaction with { CharacterState = characterState },
                 out var committedState))
         {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                context,
-                session,
+            teardown.EndForAuthorityFailure(
+                target,
                 "item_state_diverged",
                 "The corpse transaction returned no committed character state.");
             return false;
         }
 
+        var session = target.Session;
         var carryResult = carryApplier.Apply(session, committedState, out _);
         if (CommittedCarryApplier.IsDiverged(carryResult))
         {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                context,
-                session,
+            teardown.EndForAuthorityFailure(
+                target,
                 "item_state_diverged",
                 "Committed corpse transfer and carry revisions diverged from the active simulation state.");
             return false;
@@ -245,18 +251,12 @@ internal sealed class CorpseOperationFinalizer(
         var change = carryResult == ItemStateApplyResult.Applied
             ? OwnerItemStateChangeMapper.TryCreate(operationId, session.CharacterId, mutation.Transaction)
             : null;
-        if (change is not null)
+        if (change is not null && target.Owner is { } owner)
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
+            sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
         }
 
-        if (entityRegistry.TryGetPlayerByCharacterId(
-                session.CharacterId,
-                out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
+        carrySync.ApplyLatest(target.Entity);
         return true;
     }
 

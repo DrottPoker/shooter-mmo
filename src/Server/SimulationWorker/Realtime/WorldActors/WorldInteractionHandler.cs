@@ -12,9 +12,9 @@ internal sealed class WorldInteractionHandler(
     WorldInteractionAuthorityService? worldInteractionAuthority,
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
-    SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     WorldInteractionAuthorityOperations authority,
@@ -201,66 +201,64 @@ internal sealed class WorldInteractionHandler(
         }
     }
 
+    // The capability committed at GameService and applied the character's item state and quest log
+    // before this, whether or not the peer that sent the action is still there. Here the carry
+    // state reaches the character and the item and quest log changes the peer that plays it now,
+    // while the result, and the gathering that a StartGathering action begins, need the peer that
+    // sent the action. A session that cannot go on ends, a lingering body's too.
     private void FinalizeOperation(
         WorldInteractionOperationCompleted completed)
     {
         authorityScheduler.Release(completed.Context);
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
 
+        var requester = target.Requester;
         if (completed.Result.ShouldDisconnect)
         {
-            SendWorldInteractionResult(peer, completed.Result);
+            if (requester is not null)
+            {
+                SendWorldInteractionResult(requester, completed.Result);
+            }
+
             var error = completed.Result.Result!.Error!;
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
-                error.Code,
-                error.Message);
+            teardown.EndForAuthorityFailure(target, error.Code, error.Message);
             return;
         }
 
         // The item change goes before the carry state, so the client patches its inventory
         // when it sees the new revision. The quest log change follows it, before the result.
-        if (completed.Result.ItemStateChange is not null)
+        if (target.Owner is { } owner)
         {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
+            if (completed.Result.ItemStateChange is not null)
+            {
+                sender.SendControl(
+                    owner,
+                    RealtimeProtocol.EncodeOwnerItemStateChanged(completed.Result.ItemStateChange));
+            }
+
+            if (completed.Result.QuestLogChange is not null)
+            {
+                sender.SendControl(
+                    owner,
+                    RealtimeProtocol.EncodeQuestLogChanged(completed.Result.QuestLogChange));
+            }
         }
 
-        if (completed.Result.QuestLogChange is not null)
+        carrySync.ApplyLatest(target.Entity);
+        if (requester is not null)
         {
-            sender.SendControl(
-                peer,
-                RealtimeProtocol.EncodeQuestLogChanged(completed.Result.QuestLogChange));
-        }
-
-        if (entityRegistry.TryGetPlayerByCharacterId(
-                completed.Session.CharacterId,
-                out var entity))
-        {
-            carrySync.ApplyLatest(entity!);
-        }
-
-        SendWorldInteractionResult(peer, completed.Result);
-        if (completed.Result.GatheringStart is not null)
-        {
-            gathering.Begin(
-                peer,
-                completed.Context,
-                completed.Session,
-                completed.Result.GatheringStart);
+            SendWorldInteractionResult(requester, completed.Result);
+            if (completed.Result.GatheringStart is not null)
+            {
+                gathering.Begin(
+                    requester,
+                    completed.Context,
+                    completed.Session,
+                    completed.Result.GatheringStart);
+            }
         }
 
         authorityScheduler.StartNext(completed.Context);

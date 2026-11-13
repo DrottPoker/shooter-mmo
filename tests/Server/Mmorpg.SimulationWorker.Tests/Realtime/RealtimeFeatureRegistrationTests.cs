@@ -23,6 +23,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "world actors",
                 "mobs",
                 "combat",
+                "lingering bodies",
                 "interaction revalidation",
                 "gathering",
                 "appearances",
@@ -39,6 +40,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 SimulationTickOrder.WorldActors,
                 SimulationTickOrder.Mobs,
                 SimulationTickOrder.Combat,
+                SimulationTickOrder.LingeringBodies,
                 SimulationTickOrder.InteractionRevalidation,
                 SimulationTickOrder.Gathering,
                 SimulationTickOrder.Appearances,
@@ -111,8 +113,8 @@ public sealed class RealtimeFeatureRegistrationTests
         // The lists keep registration order; the hooks of a player's way out run in reverse, so
         // persistence sees a player go while combat still holds it.
         Assert.Equal(
-            [typeof(CharacterStatePersistence)],
-            hooks.LeaveStarting.Select(hook => hook.Method.DeclaringType));
+            [typeof(CombatSystem)],
+            hooks.ConnectionEnded.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
             [typeof(CombatSystem), typeof(CharacterStatePersistence)],
             hooks.PlayerRemoved.Select(hook => hook.Method.DeclaringType));
@@ -138,21 +140,21 @@ public sealed class RealtimeFeatureRegistrationTests
             calls);
     }
 
-    // Teardown mirrors setup: the last feature to join a player is the first to see it leave and
-    // go, while the features it builds on still hold the player.
+    // Teardown mirrors setup: the last feature to join a player is the first to see its connection
+    // end and its entity go, while the features it builds on still hold the player.
     [Fact]
-    public void LeaveStartingAndPlayerRemovedHooksRunInReverseRegistrationOrder()
+    public void ConnectionEndedAndPlayerRemovedHooksRunInReverseRegistrationOrder()
     {
         using var fixture = new RealtimeLoopFixture();
         var player = fixture.ConnectPlayer(3);
         var hooks = new RealtimeLifecycleHooks();
         var calls = new List<string>();
-        hooks.AddLeaveStarting((context, session) => calls.Add($"first leaves {context.PeerId}"));
-        hooks.AddLeaveStarting((context, session) => calls.Add($"second leaves {context.PeerId}"));
+        hooks.AddConnectionEnded((context, session, entity) => calls.Add($"first leaves {context.PeerId}"));
+        hooks.AddConnectionEnded((context, session, entity) => calls.Add($"second leaves {context.PeerId}"));
         hooks.AddPlayerRemoved((context, session, entityId) => calls.Add($"first removes {entityId}"));
         hooks.AddPlayerRemoved((context, session, entityId) => calls.Add($"second removes {entityId}"));
 
-        hooks.RaiseLeaveStarting(player.Context, player.Session);
+        hooks.RaiseConnectionEnded(player.Context, player.Session, player.Entity);
         hooks.RaisePlayerRemoved(player.Context, player.Session, player.Entity.NetworkEntityId);
 
         Assert.Equal(
@@ -179,6 +181,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "presence",
                 "connection bindings",
                 "entities",
+                "lingering bodies",
                 "character state",
                 "corpse viewers",
                 "interaction leases",

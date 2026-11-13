@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 39,
+    "version": 40,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -1405,8 +1405,16 @@
       "direction": "serverToClient",
       "channel": "ControlChannel",
       "delivery": "reliableOrdered",
-      "description": "Confirms a leave.",
-      "api": "empty"
+      "description": "Confirms a leave. The client returns to character select at once, while the character's body may stay in the world.",
+      "api": "unwrap",
+      "fields": [
+        {
+          "name": "BodySeconds",
+          "type": "u16",
+          "maximum": 3600,
+          "description": "How many seconds the character's body stays in the world after the leave, longer while it is attacked; 0 when it left the world at once."
+        }
+      ]
     },
     {
       "name": "LeaveRejected",

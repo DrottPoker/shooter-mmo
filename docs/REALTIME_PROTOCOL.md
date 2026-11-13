@@ -169,12 +169,13 @@ rely on them.
 
 A message uses `"api": "unwrap"` when it has a single field and its encode and
 decode methods should take that value directly, as `CarryStateChanged` takes
-`RealtimeCarryState`. `parameter` names the encode and decode parameter.
-An unwrapped struct field may add `"encodeParameters": "expanded"`, so the
-encode method takes the struct's fields instead, as
-`EncodeJoinRejected(code, message)` builds the `RealtimeError` itself. A
-message with `"api": "empty"` has no fields: `EncodeLeaveAccepted()` takes
-nothing, and `TryDecodeLeaveAccepted` only reports whether the packet is valid.
+`RealtimeCarryState` and `LeaveAccepted` takes its `BodySeconds`. `parameter`
+names the encode and decode parameter. An unwrapped struct field may add
+`"encodeParameters": "expanded"`, so the encode method takes the struct's fields
+instead, as `EncodeJoinRejected(code, message)` builds the `RealtimeError`
+itself. A message with `"api": "empty"` has no fields: its encode method takes
+nothing, and its decode method only reports whether the packet is valid. No
+message uses it today.
 
 Text must not be empty or whitespace unless its field sets `blank`:
 
@@ -314,6 +315,11 @@ carry application-level tick and chunk metadata.
   session expiry times, whether the join was a reconnect, the carry state, the
   movement settings, the initial player state, and `ShardRules`, so the client
   knows whether a click on another character attacks.
+- `LeaveRequest` names the simulation session to leave. `LeaveAccepted`
+  carries `BodySeconds`, 0 to 3,600: how many seconds the character's body
+  stays in the world after the leave, longer while it is attacked, or 0 when it
+  left the world at once. The client returns to character select either way, as
+  [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes.
 - `JoinRejected`, `LeaveRejected`, and `ServerDisconnect` carry an `Error`: a
   code of up to `MaximumErrorCodeLength` (64) characters and a message of up to
   `MaximumErrorMessageLength` (512). Decoders accept blank text, and the

@@ -43,31 +43,6 @@ internal sealed class SessionAuthorityOperations(
         }
     }
 
-    public async Task RunLeaveAsync(
-        IRealtimeCompletionHandler completionHandler,
-        RealtimePeerContext context,
-        ActiveSimulationSession session)
-    {
-        try
-        {
-            var result = await releaseService.ReleaseAsync(session, CancellationToken.None);
-            completions.Post(completionHandler, new LeaveCompleted(context, session, result));
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "[SIMULATION] Unhandled error while releasing UDP peer {PeerId}.",
-                context.PeerId);
-            completions.Post(completionHandler, new LeaveCompleted(
-                context,
-                session,
-                SimulationSessionReleaseResult.Failure(
-                    "leave_failed",
-                    "SimulationWorker could not complete the leave request.")));
-        }
-    }
-
     // Runs the synchronous prefix on the calling loop thread, which removes the local
     // session before the first await, so the heartbeat stops renewing it at once.
     public void ReleaseDetachedInBackground(ActiveSimulationSession session)

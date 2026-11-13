@@ -19,23 +19,6 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 public sealed class RealtimeSimulationServiceTests
 {
-    [Theory]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    [InlineData(true, true, false)]
-    [InlineData(true, false, false)]
-    public void LeaveInProgressOwnsCleanupAfterLocalLeaseRemoval(
-        bool leaveStarted,
-        bool isCurrentSession,
-        bool expected)
-    {
-        Assert.Equal(
-            expected,
-            RealtimePeerSupervisor.ShouldEnforceSessionInvalidation(
-                leaveStarted,
-                isCurrentSession));
-    }
-
     [Fact]
     public async Task UdpClientCanJoinMoveAndLeaveAnAuthenticatedSimulationSession()
     {
@@ -170,6 +153,7 @@ public sealed class RealtimeSimulationServiceTests
                 {
                     Assert.True(RealtimeProtocol.TryDecodeLeaveAccepted(
                         packet,
+                        out _,
                         out var error), error);
                     leaveAccepted.TrySetResult();
                 }
@@ -395,7 +379,8 @@ public sealed class RealtimeSimulationServiceTests
 
                 if (messageType == RealtimeMessageType.LeaveAccepted)
                 {
-                    Assert.True(RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var error), error);
+                    Assert.True(RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var bodySeconds, out var error), error);
+                    Assert.Equal(1, bodySeconds);
                     leaveAccepted.TrySetResult();
                     return;
                 }
@@ -433,6 +418,14 @@ public sealed class RealtimeSimulationServiceTests
                 ? serverDisconnect.Task
                 : leaveAccepted.Task;
             while (!completion.IsCompleted)
+            {
+                client.PollEvents();
+                await Task.Delay(10, timeout.Token);
+            }
+
+            // The body of a player that left stays a second; its session is released after it.
+            while (!invalidateAsReplaced
+                && (authHandler.ReleaseCount < 1 || sessionStore.ListActiveSessions().Count > 0))
             {
                 client.PollEvents();
                 await Task.Delay(10, timeout.Token);
@@ -627,7 +620,11 @@ public sealed class RealtimeSimulationServiceTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(10),
             "127.0.0.1:6379",
-            TimeSpan.FromSeconds(1));
+            TimeSpan.FromSeconds(1))
+        {
+            // The body of a player that left or lost its connection stays a second.
+            LingeringBodySeconds = 1
+        };
     }
 
     private static int FindAvailableUdpPort()

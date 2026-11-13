@@ -61,17 +61,18 @@ internal sealed class SnapshotReplicator(
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
             {
+                // Other players see where the character is now, a lingering body without a peer
+                // too; an owner gets the state after the last processed input, which its
+                // reconciliation replays from.
+                snapshotPacketCache.Add(new RealtimeEntitySnapshot(
+                    entity.NetworkEntityId,
+                    entity.Movement.LastProcessedInputSequence,
+                    RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
                 if (!connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out _))
                 {
                     continue;
                 }
 
-                // Other players see where the character is now; its owner gets the state after
-                // the last processed input, which its reconciliation replays from.
-                snapshotPacketCache.Add(new RealtimeEntitySnapshot(
-                    entity.NetworkEntityId,
-                    entity.Movement.LastProcessedInputSequence,
-                    RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
                 var confirmed = entity.Movement.ConfirmedState;
                 ownerStates.Add(
                     entity.NetworkEntityId,

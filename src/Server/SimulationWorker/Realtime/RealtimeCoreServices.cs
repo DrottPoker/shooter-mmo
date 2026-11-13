@@ -76,11 +76,17 @@ internal sealed record RealtimeCoreServices
 
     public required AuthorityOperationScheduler AuthorityScheduler { get; init; }
 
-    // Session plumbing: the committed carry state, the off-loop join and release, and the
-    // teardown that every failed authority operation and ended session runs.
+    // Session plumbing: the committed carry state, the off-loop join and release, the teardown
+    // that every failed authority operation and ended session runs, and the lingering bodies
+    // that connections which ended leave in the world.
     public required CarryStateSynchronizer CarrySync { get; init; }
 
     public required SessionAuthorityOperations SessionOperations { get; init; }
 
     public required RealtimeSessionTeardown Teardown { get; init; }
+
+    public required LingeringBodies Bodies { get; init; }
+
+    // Where the answer to a player's operation goes, with or without the peer that sent it.
+    public required OperationCompletionTargets CompletionTargets { get; init; }
 }

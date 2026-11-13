@@ -14,9 +14,9 @@ internal sealed class ItemOperationHandler(
     RealtimePeerSender sender,
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
-    SimulationEntityRegistry entityRegistry,
     CarryStateSynchronizer carrySync,
     RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     AuthorityOperationScheduler authorityScheduler,
     RealtimeOperationTracker operationTracker,
     ItemInteractionAccessService accessService,
@@ -152,31 +152,25 @@ internal sealed class ItemOperationHandler(
         }
     }
 
+    // The operation committed at GameService whether or not its peer is still there, so what it
+    // committed reaches the character while the worker holds its session: the item state, which
+    // a lingering body's spent arrows and death build on, the carry state, and the look. The
+    // result goes only to the peer that sent the operation, the item change to the peer that
+    // plays the character now.
     private void FinalizeOperation(ItemOperationCompleted completed)
     {
+        combatGate?.ClientOperationFinished(completed.Session);
         authorityScheduler.Release(completed.Context);
-        combatGate?.ClientOperationFinished(completed.Context);
-        if (!peers.TryGetCurrentPeer(completed.Context, out var peer)
-            || completed.Context.Session is null
-            || completed.Context.Session.SimulationSessionId
-                != completed.Session.SimulationSessionId
-            || !string.Equals(
-                completed.Context.Session.SimulationSessionToken,
-                completed.Session.SimulationSessionToken,
-                StringComparison.Ordinal))
+        if (!targets.TryResolve(completed.Context, completed.Session, out var target))
         {
             return;
         }
 
-        if (!itemStateStore.TryGet(
-                completed.Session.CharacterId,
-                completed.Session.SimulationSessionId,
-                out _))
+        var session = target.Session;
+        if (!itemStateStore.TryGet(session.CharacterId, session.SimulationSessionId, out _))
         {
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
+            teardown.EndForAuthorityFailure(
+                target,
                 "carry_state_missing",
                 "Authoritative carry state disappeared during the item operation.");
             return;
@@ -184,15 +178,17 @@ internal sealed class ItemOperationHandler(
 
         if (completed.Result.ShouldDisconnect)
         {
-            SendItemOperationResult(
-                peer,
-                completed.Session,
-                completed.Result,
-                requiresInventoryRefresh: true);
-            teardown.TerminateForAuthorityFailure(
-                peer,
-                completed.Context,
-                completed.Session,
+            if (target.Requester is { } failedRequester)
+            {
+                SendItemOperationResult(
+                    failedRequester,
+                    session,
+                    completed.Result,
+                    requiresInventoryRefresh: true);
+            }
+
+            teardown.EndForAuthorityFailure(
+                target,
                 completed.Result.Error!.Code,
                 completed.Result.Error.Message);
             return;
@@ -207,22 +203,18 @@ internal sealed class ItemOperationHandler(
                     completed.Result.Transaction!,
                     out var committedState))
             {
-                teardown.TerminateForAuthorityFailure(
-                    peer,
-                    completed.Context,
-                    completed.Session,
+                teardown.EndForAuthorityFailure(
+                    target,
                     "item_state_diverged",
                     "The item transaction returned no committed character state.");
                 return;
             }
 
-            var carryResult = carryApplier.Apply(completed.Session, committedState, out _);
+            var carryResult = carryApplier.Apply(session, committedState, out _);
             if (CommittedCarryApplier.IsDiverged(carryResult))
             {
-                teardown.TerminateForAuthorityFailure(
-                    peer,
-                    completed.Context,
-                    completed.Session,
+                teardown.EndForAuthorityFailure(
+                    target,
                     "item_state_diverged",
                     "Committed item and carry revisions diverged from the active simulation state.");
                 return;
@@ -234,27 +226,26 @@ internal sealed class ItemOperationHandler(
             var change = carryResult == ItemStateApplyResult.Applied
                 ? OwnerItemStateChangeMapper.TryCreate(
                     completed.Result.Intent.OperationId,
-                    completed.Session.CharacterId,
+                    session.CharacterId,
                     completed.Result.Transaction!)
                 : null;
-            if (change is not null)
+            if (change is not null && target.Owner is { } owner)
             {
-                sender.SendControl(peer, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
+                sender.SendControl(owner, RealtimeProtocol.EncodeOwnerItemStateChanged(change));
             }
 
-            if (entityRegistry.TryGetPlayerByCharacterId(
-                    completed.Session.CharacterId,
-                    out var entity))
-            {
-                carrySync.ApplyLatest(entity!);
-            }
+            carrySync.ApplyLatest(target.Entity);
         }
 
-        SendItemOperationResult(
-            peer,
-            completed.Session,
-            completed.Result,
-            requiresRefresh);
+        if (target.Requester is { } requester)
+        {
+            SendItemOperationResult(
+                requester,
+                session,
+                completed.Result,
+                requiresRefresh);
+        }
+
         authorityScheduler.StartNext(completed.Context);
     }
 

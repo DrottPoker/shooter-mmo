@@ -7,7 +7,8 @@ using Mmorpg.SimulationWorker.Sessions;
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // Characterizes join, reconnect, leave, timeout, orphan and shutdown behavior of the
-// realtime service over real UDP before its internals are split.
+// realtime service over real UDP. The lingering body that a leave or a lost connection leaves
+// behind is pinned in RealtimeLingeringBodyTests.
 public sealed class RealtimeSessionLifecycleTests
 {
     [Fact]
@@ -79,119 +80,6 @@ public sealed class RealtimeSessionLifecycleTests
         var session = Assert.Single(harness.SessionStore.ListActiveSessions());
         Assert.Equal("reconnected-session-token", session.SimulationSessionToken);
         Assert.Equal(0, harness.GameService.ReleaseCount);
-    }
-
-    [Fact]
-    public async Task NewSessionForTheSameCharacterReplacesTheEntityForObservers()
-    {
-        await using var harness = RealtimeServerHarness.Create();
-        var character = harness.AddCharacter("Replaced Hero");
-        var observerCharacter = harness.AddCharacter("Observer");
-        var gate = new TestGate();
-        harness.GameService.OnRelease = async (sessionId, _, _) =>
-        {
-            if (sessionId == character.SimulationSessionId)
-            {
-                await gate.WaitAsync();
-            }
-
-            return harness.GameService.DefaultRelease(sessionId);
-        };
-        await harness.StartAsync();
-        try
-        {
-            var original = await harness.JoinAsync(character, "original");
-            var observer = await harness.JoinAsync(observerCharacter, "observer");
-            var originalEntityId = original.JoinAccepted!.ControlledEntityId;
-            await harness.PollUntilAsync(
-                () => observer.Spawns.Any(spawn => spawn.EntityId == originalEntityId),
-                "the observer to see the original entity");
-
-            // A pending leave keeps the entity while the local lease disappears.
-            original.SendLeave(character.SimulationSessionId.ToString("D"));
-            await harness.PollUntilAsync(() => gate.HasEntered, "the leave to start");
-            Assert.True(harness.SessionStore.Remove(
-                character.CharacterId,
-                character.SimulationSessionId,
-                character.SimulationSessionToken));
-            var replacement = character with
-            {
-                Ticket = "ticket-replacement",
-                SimulationSessionId = Guid.NewGuid(),
-                SimulationSessionToken = "replacement-session-token"
-            };
-            harness.GameService.AddCharacter(replacement);
-
-            var successor = await harness.JoinAsync(replacement, "successor");
-            var successorEntityId = successor.JoinAccepted!.ControlledEntityId;
-            await harness.PollUntilAsync(
-                () => original.ServerDisconnect is not null
-                    && observer.Despawns.Any(despawn => despawn.EntityId == originalEntityId)
-                    && observer.Spawns.Any(spawn => spawn.EntityId == successorEntityId),
-                "the replacement to reach every client");
-
-            Assert.NotEqual(originalEntityId, successorEntityId);
-            Assert.Equal("session_reconnected", original.ServerDisconnect!.Code);
-            var despawn = Assert.Single(
-                observer.Despawns,
-                value => value.EntityId == originalEntityId);
-            Assert.Equal("entity_replaced", despawn.Reason);
-            Assert.DoesNotContain(original.Despawns, value => value.EntityId == originalEntityId);
-            var observerPackets = observer.Packets;
-            var despawnIndex = observerPackets.First(packet =>
-                packet.Type == RealtimeMessageType.EntityDespawn).Index;
-            var successorSpawnIndex = observer.DecodeWithPackets<RealtimeEntitySpawn>(
-                    RealtimeMessageType.EntitySpawn,
-                    RealtimeProtocol.TryDecodeEntitySpawn)
-                .Single(value => value.Value.EntityId == successorEntityId)
-                .Packet.Index;
-            Assert.True(despawnIndex < successorSpawnIndex);
-        }
-        finally
-        {
-            gate.Release();
-        }
-    }
-
-    [Fact]
-    public async Task FailedLeaveIsRejectedAndCanBeRetried()
-    {
-        await using var harness = RealtimeServerHarness.Create();
-        var character = harness.AddCharacter("Retry Hero");
-        var attempts = 0;
-        harness.GameService.OnRelease = (sessionId, _, _) => Task.FromResult(
-            Interlocked.Increment(ref attempts) == 1
-                ? ScriptedGameServiceHandler.Problem(
-                    HttpStatusCode.ServiceUnavailable,
-                    "database_unavailable",
-                    "The database is unavailable.")
-                : harness.GameService.DefaultRelease(sessionId));
-        await harness.StartAsync();
-        var client = await harness.JoinAsync(character);
-
-        client.SendLeave(character.SimulationSessionId.ToString("D"));
-        await harness.PollUntilAsync(
-            () => client.LeaveRejections.Count == 1,
-            "the failed leave");
-
-        var rejection = Assert.Single(client.LeaveRejections);
-        Assert.Equal("database_unavailable", rejection.Code);
-        Assert.Equal("The database is unavailable.", rejection.Message);
-        Assert.Single(harness.SessionStore.ListActiveSessions());
-        Assert.Contains(
-            harness.Logger.Entries,
-            entry => entry.Level == LogLevel.Warning
-                && entry.Template == "[SIMULATION] Leave failed for character {CharacterId} in simulation session {SimulationSessionId} with code {Code}: {Message}");
-
-        client.SendLeave(character.SimulationSessionId.ToString("D"));
-        await harness.PollUntilAsync(
-            () => client.Has(RealtimeMessageType.LeaveAccepted) && client.IsDisconnected,
-            "the retried leave");
-
-        Assert.Equal(RealtimeMessageType.LeaveAccepted, client.ReliablePackets[^1].Type);
-        Assert.Empty(harness.SessionStore.ListActiveSessions());
-        Assert.Equal(0, harness.EntityRegistry.PlayerCount);
-        Assert.Null(client.ServerDisconnect);
     }
 
     [Fact]

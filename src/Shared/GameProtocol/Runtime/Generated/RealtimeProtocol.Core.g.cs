@@ -31,7 +31,7 @@ namespace Mmorpg.GameProtocol
         LeaveRequest = 4,
 
         /// <summary>
-        /// Confirms a leave.
+        /// Confirms a leave. The client returns to character select at once, while the character's body may stay in the world.
         /// </summary>
         LeaveAccepted = 5,
 
@@ -407,7 +407,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 39;
+        public const ushort Version = 40;
 
         /// <summary>
         /// The LiteNetLib connection key.

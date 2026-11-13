@@ -21,8 +21,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // batch starts 5 s after the first uncommitted shot, before any other client operation, and
 // before the session ends; a death carries the shots that are still uncommitted. A credited kill
 // that the character's quest log asks for commits in kill order. All of them retry with backoff
-// after an uncertain answer and outlive a disconnect, which releases the session only after they
-// committed. Loop-confined; GameService calls run in PlayerCombatAuthorityOperations.
+// after an uncertain answer and outlive the connection: the character's lingering body commits
+// them, and what it gathers until it goes, one operation per tick without a peer, and a session
+// whose entity went is released only after they committed. A body's committed death ends the
+// body. Loop-confined; GameService calls run in PlayerCombatAuthorityOperations.
 internal sealed class PlayerCombatAuthority(
     SimulationWorkerConfig config,
     CombatRules rules,
@@ -36,6 +38,7 @@ internal sealed class PlayerCombatAuthority(
     DurableCorpseStore corpseStore,
     AuthorityOperationScheduler scheduler,
     RealtimeSessionTeardown teardown,
+    LingeringBodies bodies,
     SessionAuthorityOperations sessionOperations,
     RealtimeOperationTracker operationTracker,
     PlayerCombatAuthorityOperations operations,
@@ -53,14 +56,13 @@ internal sealed class PlayerCombatAuthority(
     private readonly Dictionary<Guid, PlayerCombatSession> sessions = [];
     private readonly List<PlayerCombatSession> sessionBuffer = [];
 
-    // Starts a leave that waited for durable combat work, with the handler that finalizes it.
-    public Action<RealtimePeerContext, ActiveSimulationSession>? StartLeave { get; set; }
-
     // Tells the combat system that a death committed or a batch changed the arrow count.
     public Action<PlayerCombatSession>? OwnerStateChanged { get; set; }
 
     public int SessionCount => sessions.Count;
 
+    // A join attaches the session to its peer; a reconnect, also of a lingering body, moves the
+    // work that holds or waits in the previous peer's lane to the new one.
     public PlayerCombatSession Attach(RealtimePeerContext context, ActiveSimulationSession session)
     {
         if (sessions.TryGetValue(session.SimulationSessionId, out var existing))
@@ -69,7 +71,8 @@ internal sealed class PlayerCombatAuthority(
             existing.Context = context;
             existing.Session = session;
             existing.Detached = false;
-            existing.LeaveRequested = false;
+            existing.AwaitingRelease = false;
+            existing.DetachedItemState = null;
             if (!ReferenceEquals(previousContext, context))
             {
                 MoveLane(existing, previousContext);
@@ -109,9 +112,10 @@ internal sealed class PlayerCombatAuthority(
         }
     }
 
-    public void ClientOperationFinished(RealtimePeerContext context)
+    // By the session, since a reconnect may have moved it to another peer while the operation ran.
+    public void ClientOperationFinished(ActiveSimulationSession session)
     {
-        if (TryGetAttached(context, out var combatSession))
+        if (sessions.TryGetValue(session.SimulationSessionId, out var combatSession))
         {
             combatSession.EquipmentChangePending = false;
         }
@@ -171,9 +175,9 @@ internal sealed class PlayerCombatAuthority(
     // its place in the player's lane at the kill, so no operation that the player sends after the
     // kill, such as abandoning and accepting the quest again, overtakes it. Whether the kill
     // counts is decided once the credit's turn comes, by the quest log that every operation
-    // before it left, so a kill during an accept still counts for the accepted quest. A player
-    // who already started to leave left before the kill, so it counts for nobody, as the lane
-    // ends with the leave.
+    // before it left, so a kill during an accept still counts for the accepted quest. A lingering
+    // body is still in the world, so a kill credits it too; its credits wait in its list, which
+    // the combat phase commits in order.
     public void CreditQuestKills(WorldActorRuntimeState mob, IReadOnlyList<MobKillCredit> credits)
     {
         ArgumentNullException.ThrowIfNull(mob);
@@ -190,21 +194,23 @@ internal sealed class PlayerCombatAuthority(
             if (!entityRegistry.TryGetPlayerByCharacterId(credit.CharacterId, out var player)
                 || player is null
                 || !sessions.TryGetValue(player.Session.SimulationSessionId, out var combatSession)
-                || combatSession.Detached
-                || combatSession.Context.LeaveStarted)
+                || combatSession.AwaitingRelease)
             {
                 continue;
             }
 
             var questCredit = new QuestKillCredit(Guid.NewGuid(), mob.Definition.Id, mob.Definition.Tags.ToArray());
             combatSession.QuestCredits.Add(questCredit);
-            scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, questCredit));
+            if (!combatSession.Detached)
+            {
+                scheduler.Enqueue(combatSession.Context, new QueuedQuestKillCredit(this, combatSession, questCredit));
+            }
         }
     }
 
     // A character died: every waiting client operation is rejected, and the death runs
-    // next in its lane with the shots that are still uncommitted. The kill credits and a
-    // requested leave wait behind it in their order.
+    // next in its lane with the shots that are still uncommitted. The kill credits wait behind
+    // it in their order. A lingering body has no lane; the combat phase commits its death first.
     public void BeginDeath(
         PlayerCombatSession combatSession,
         SimulationDeathKillerRequest? killer,
@@ -222,6 +228,11 @@ internal sealed class PlayerCombatAuthority(
             position.PositionY,
             position.PositionZ,
             position.YawDegrees);
+        if (combatSession.Detached)
+        {
+            return;
+        }
+
         var context = combatSession.Context;
         var kept = new List<IRealtimeAuthorityOperation>();
         while (context.AuthorityOperationQueue.TryDequeue(out var waiting))
@@ -232,7 +243,7 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            if (waiting is QueuedQuestKillCredit or QueuedLeave)
+            if (waiting is QueuedQuestKillCredit)
             {
                 kept.Add(waiting);
                 continue;
@@ -253,7 +264,8 @@ internal sealed class PlayerCombatAuthority(
         combatSession.Death = null;
     }
 
-    // Runs every tick: due batches and retries, and detached sessions that still commit.
+    // Runs every tick: due batches and retries, and detached sessions that still commit. It
+    // allocates nothing on a tick that starts no operation.
     public void ProcessTick()
     {
         if (sessions.Count == 0)
@@ -262,7 +274,11 @@ internal sealed class PlayerCombatAuthority(
         }
 
         sessionBuffer.Clear();
-        sessionBuffer.AddRange(sessions.Values);
+        foreach (var value in sessions.Values)
+        {
+            sessionBuffer.Add(value);
+        }
+
         var serverTick = clock.ServerTick;
         var batchIntervalTicks = CombatTicks.FromSeconds(
             rules.AmmunitionBatchIntervalSeconds,
@@ -304,15 +320,59 @@ internal sealed class PlayerCombatAuthority(
             }
         }
 
-        metrics?.SetPendingShots(sessions.Values.Sum(value => value.PendingShots));
+        if (metrics is not null)
+        {
+            var pendingShots = 0;
+            foreach (var value in sessions.Values)
+            {
+                pendingShots += value.PendingShots;
+            }
+
+            metrics.SetPendingShots(pendingShots);
+        }
     }
 
-    // The peer disconnected. Work that has not committed keeps the session; it is
-    // released once the work is done.
-    public bool TryDeferRelease(RealtimePeerContext context, ActiveSimulationSession session)
+    // The connection ended while the session goes on, so the character's lingering body commits
+    // the work without a peer: the spent arrows at once, then whatever it gathers until it goes.
+    // The peer's lane was cleared, so the combat phase drives the work that waited in it. A body
+    // does not attack, and the client operation that may still run no longer tells it when it
+    // ends, so attacks no longer wait for it. A body whose death committed already ends at once.
+    public void Detach(ActiveSimulationSession session)
     {
-        if (!sessions.TryGetValue(session.SimulationSessionId, out var combatSession)
-            || !ReferenceEquals(combatSession.Context, context))
+        if (!sessions.TryGetValue(session.SimulationSessionId, out var combatSession))
+        {
+            return;
+        }
+
+        combatSession.Detached = true;
+        combatSession.BatchQueued = false;
+        combatSession.EquipmentChangePending = false;
+        if (combatSession.Death is { InFlight: false, RetryAtTick: null } death)
+        {
+            death.Queued = false;
+        }
+
+        if (combatSession.Death is { Committed: true })
+        {
+            bodies.RequestEnd(session);
+        }
+    }
+
+    // A reconnect renewed the session of a lingering body without binding a peer, so the work
+    // goes on with the new generation's credentials.
+    public void RenewSession(ActiveSimulationSession session)
+    {
+        if (sessions.TryGetValue(session.SimulationSessionId, out var combatSession))
+        {
+            combatSession.Session = session;
+        }
+    }
+
+    // The entity of the session goes. Work that has not committed keeps the session, with the
+    // item state that the store gives up now; it is released once the work is done.
+    public bool TryDeferRelease(ActiveSimulationSession session)
+    {
+        if (!sessions.TryGetValue(session.SimulationSessionId, out var combatSession))
         {
             return false;
         }
@@ -324,6 +384,7 @@ internal sealed class PlayerCombatAuthority(
         }
 
         combatSession.Detached = true;
+        combatSession.AwaitingRelease = true;
         combatSession.BatchQueued = false;
         itemStateStore.TryGetItemState(session.CharacterId, session.SimulationSessionId, out var itemState);
         combatSession.DetachedItemState = itemState;
@@ -335,28 +396,12 @@ internal sealed class PlayerCombatAuthority(
         return true;
     }
 
-    // A leave waits for every durable combat operation, which runs before it in the lane.
-    public bool TryDeferLeave(RealtimePeerContext context, ActiveSimulationSession session)
-    {
-        if (!TryGetAttached(context, out var combatSession) || !combatSession.HasDurableWork)
-        {
-            return false;
-        }
-
-        combatSession.LeaveRequested = true;
-        if (combatSession.Death is null)
-        {
-            EnqueueBatch(combatSession);
-        }
-
-        scheduler.Enqueue(context, new QueuedLeave(this, combatSession));
-        return true;
-    }
-
+    // The entity went. A session that waits for its release keeps its work; any other session's
+    // work ends with it, because the session itself ended.
     public void OnSessionEnded(ActiveSimulationSession session)
     {
         if (sessions.TryGetValue(session.SimulationSessionId, out var combatSession)
-            && !combatSession.Detached)
+            && !combatSession.AwaitingRelease)
         {
             sessions.Remove(session.SimulationSessionId);
         }
@@ -532,10 +577,10 @@ internal sealed class PlayerCombatAuthority(
         SendQuestCredit(combatSession, credit);
     }
 
-    // A detached session left its quest log with its peer, so GameService decides its credits.
+    // A session whose entity went left its quest log with it, so GameService decides its credits.
     private bool Counts(PlayerCombatSession combatSession, QuestKillCredit credit)
     {
-        return combatSession.Detached
+        return combatSession.AwaitingRelease
             || questProgress!.CountsKill(combatSession.Session, credit.MobActorId, credit.MobTags);
     }
 
@@ -663,7 +708,7 @@ internal sealed class PlayerCombatAuthority(
         SendBatch(combatSession, batch);
     }
 
-    // A detached session's state left the store with its entity, so it keeps its own copy.
+    // A session whose entity went left the store with it, so it keeps its own copy.
     private CharacterItemState? ResolveItemState(PlayerCombatSession combatSession)
     {
         return itemStateStore.TryGetItemState(
@@ -876,7 +921,7 @@ internal sealed class PlayerCombatAuthority(
             if (result.Value.CharacterState is { } state)
             {
                 var committedState = CharacterItemState.From(state);
-                if (combatSession.Detached)
+                if (combatSession.AwaitingRelease)
                 {
                     combatSession.DetachedItemState = committedState;
                 }
@@ -892,6 +937,13 @@ internal sealed class PlayerCombatAuthority(
 
             ApplyLatestCarry(combatSession);
             OwnerStateChanged?.Invoke(combatSession);
+
+            // A lingering body never respawns: its committed death ends it.
+            if (combatSession.Detached)
+            {
+                bodies.RequestEnd(combatSession.Session);
+            }
+
             ReleaseLane(combatSession);
             return;
         }
@@ -924,8 +976,9 @@ internal sealed class PlayerCombatAuthority(
         death.RetryAtTick = clock.ServerTick + Backoff(death.Attempts);
     }
 
-    // A detached session commits what is left one operation at a time and is then
-    // released, or leaves if the player asked to.
+    // A detached session commits what is left one operation at a time: the death first, then the
+    // spent arrows, then the kill credits in kill order. A session whose entity went is then
+    // released; a lingering body waits for what it gathers next, or for its end.
     private void DriveDetached(PlayerCombatSession combatSession)
     {
         var context = combatSession.Context;
@@ -960,13 +1013,24 @@ internal sealed class PlayerCombatAuthority(
             DropPendingShots(combatSession, "ammunition_missing");
         }
 
-        if (combatSession.QuestCredits.Count > 0)
+        // A credit that the quest log does not ask for costs no GameService call, as in the lane.
+        while (combatSession.QuestCredits.Count > 0)
         {
             var credit = combatSession.QuestCredits[0];
             combatSession.QuestCredits.RemoveAt(0);
+            if (!Counts(combatSession, credit))
+            {
+                continue;
+            }
+
             context.AuthorityOperationInFlight = true;
             combatSession.InFlightQuestCredit = credit;
             SendQuestCredit(combatSession, credit);
+            return;
+        }
+
+        if (!combatSession.AwaitingRelease)
+        {
             return;
         }
 
@@ -974,25 +1038,8 @@ internal sealed class PlayerCombatAuthority(
         sessionOperations.ReleaseDetachedInBackground(combatSession.Session);
     }
 
-    private void FinishLeave(RealtimePeerContext context, PlayerCombatSession combatSession)
-    {
-        scheduler.Release(context);
-        if (combatSession.HasDurableWork
-            && (combatSession.Death is not null || combatSession.HasQuestCredits))
-        {
-            // A death that waits for a retry, or a kill credited while the leave waited, keeps
-            // the leave behind it.
-            scheduler.Enqueue(context, new QueuedLeave(this, combatSession));
-            return;
-        }
-
-        sessions.Remove(combatSession.Session.SimulationSessionId);
-        if (context.Session is not null && peers.TryGetCurrentPeer(context, out _))
-        {
-            StartLeave?.Invoke(context, context.Session);
-        }
-    }
-
+    // A committed state goes to the store while the entity is in the world, also a lingering
+    // body's, so its next operations, such as its death, build on it.
     private bool ApplyCommittedState(
         PlayerCombatSession combatSession,
         SimulationItemTransactionResponse transaction,
@@ -1000,7 +1047,7 @@ internal sealed class PlayerCombatAuthority(
         out CharacterItemState? current)
     {
         current = null;
-        if (combatSession.Detached && CommittedCarryApplier.TryGetCommittedState(transaction, out var detachedState))
+        if (combatSession.AwaitingRelease && CommittedCarryApplier.TryGetCommittedState(transaction, out var detachedState))
         {
             combatSession.DetachedItemState = detachedState;
             current = detachedState;
@@ -1010,7 +1057,7 @@ internal sealed class PlayerCombatAuthority(
         if (!CommittedCarryApplier.TryGetCommittedState(transaction, out var committed)
             || CommittedCarryApplier.IsDiverged(applier.Apply(combatSession.Session, committed, out var applied)))
         {
-            if (!combatSession.Detached)
+            if (!combatSession.AwaitingRelease)
             {
                 EndSession(combatSession, "item_state_diverged", divergedMessage);
             }
@@ -1045,7 +1092,7 @@ internal sealed class PlayerCombatAuthority(
 
     private void ApplyLatestCarry(PlayerCombatSession combatSession)
     {
-        if (!combatSession.Detached
+        if (!combatSession.AwaitingRelease
             && entityRegistry.TryGetPlayerByCharacterId(combatSession.Session.CharacterId, out var entity))
         {
             carrySync.ApplyLatest(entity!);
@@ -1068,13 +1115,27 @@ internal sealed class PlayerCombatAuthority(
         combatSession.PendingShots = 0;
     }
 
+    // The session cannot go on. A session whose entity went is released; a lingering body's
+    // session ends here, so the body goes at once; a connected player is disconnected.
     private void EndSession(PlayerCombatSession combatSession, string code, string message)
     {
         sessions.Remove(combatSession.Session.SimulationSessionId);
         scheduler.Release(combatSession.Context);
-        if (combatSession.Detached)
+        if (combatSession.AwaitingRelease)
         {
             sessionOperations.ReleaseDetachedInBackground(combatSession.Session);
+            return;
+        }
+
+        if (combatSession.Detached)
+        {
+            var session = combatSession.Session;
+            sessionStore.Invalidate(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code,
+                message);
             return;
         }
 
@@ -1134,16 +1195,6 @@ internal sealed class PlayerCombatAuthority(
         public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
         {
             Owner.StartQuestCredit(CombatSession, Credit);
-        }
-    }
-
-    private sealed record QueuedLeave(
-        PlayerCombatAuthority Owner,
-        PlayerCombatSession CombatSession) : IRealtimeAuthorityOperation
-    {
-        public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
-        {
-            Owner.FinishLeave(context, CombatSession);
         }
     }
 }

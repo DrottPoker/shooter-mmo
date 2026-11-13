@@ -31,8 +31,8 @@ internal sealed class RealtimePeerContext(
 
     public bool JoinStarted { get; set; }
 
-    public bool LeaveStarted { get; set; }
-
+    // The session the peer plays, from its join until its connection ends; null before the join
+    // and once a leave, an invalidation, or a reconnect from another client let go of it.
     public ActiveSimulationSession? Session { get; set; }
 
     public Queue<IRealtimeAuthorityOperation> AuthorityOperationQueue { get; } = new();

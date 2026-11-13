@@ -15,10 +15,10 @@ public readonly record struct CharacterStateSnapshot(
 public readonly record struct CharacterFinalState(long Sequence, CharacterStateSnapshot State);
 
 // The final state of every session whose release is about to run or runs, by character and
-// simulation session. The realtime loop captures it when a leave starts, when it removes a
-// player entity whose session it still holds, and at shutdown; whichever path then releases the
-// session sends it with the release, which may run later, off the loop, and again after a
-// failure. Synchronized; any thread may use it.
+// simulation session. The realtime loop captures it when it removes a player entity whose
+// session it still holds, such as a lingering body that goes, and at shutdown; whichever path
+// then releases the session sends it with the release, which may run later, off the loop, and
+// again after a failure. Synchronized; any thread may use it.
 public sealed class CharacterFinalStateStore
 {
     private readonly object syncRoot = new();

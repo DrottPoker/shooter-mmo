@@ -98,6 +98,17 @@ therefore neither blocks the bot's next attempt nor holds a connection until it
 expires. A bot whose session is still active gets
 `development_bot_already_active` instead.
 
+A bot that leaves or loses its connection leaves its body in the world, as a
+player does, and its session stays active until the body is gone, as
+[Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes. These
+bodies count against the worker's connections in GameService's placement but
+not in the bot tool's own `joined` count. After a clean logout a bot stays
+offline at least as long as the `LeaveAccepted` answer says the body stays,
+plus two seconds for the release, and longer when its random offline time is
+longer, so its next ticket is not refused. A bot that failed retries on its
+backoff, and its first retries may meet `development_bot_already_active`
+while its body still stands.
+
 ## Configuration
 
 The authority settings live in the `DevelopmentSimulationBots` section of
@@ -124,7 +135,7 @@ of `tools/ActiveSimulationBots/appsettings.json`:
 | `StartupBotsPerSecond` | `20` | 0.1 to 1000 | Maximum ticket and connection ramp rate; every request that is due starts in the same poll, so rates above one per poll hold |
 | `PopulationChangeIntervalSeconds` | `30` | 1 to 3600 | Interval between random target changes |
 | `MinimumOnlineSeconds`, `MaximumOnlineSeconds` | `120`, `240` | 1 to 86,400 | Random joined lifetime before graceful logout |
-| `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | 0 to 86,400 | Random rest before the same slot may log in again |
+| `MinimumOfflineSeconds`, `MaximumOfflineSeconds` | `5`, `25` | 0 to 86,400 | Random rest before the same slot may log in again, at least as long as the body of its last clean logout stays |
 | `MinimumBehaviorSeconds`, `MaximumBehaviorSeconds` | `2`, `6` | 1 to 3600 | Random behavior duration; a walk heads for a destination about that many seconds of walking away |
 | `IdleChance` | `0.15` | 0 to 1 | Chance that a new behavior interval is idle |
 | `JoinAndLeaveTimeoutSeconds` | `10` | 1 to 300 | UDP handshake and graceful leave deadline |
@@ -258,8 +269,9 @@ with its speed. With `Tint bodies` on, the local player is tinted purple, every
 `Active Bot N` blue, because SimulationWorker spawns bots with the presentation
 archetype `player.development_bot`, and a second Unity client's character
 orange. Bots appear only after reliable spawn messages, movement is
-interpolated from SimulationWorker snapshots, and a graceful bot logout removes
-the matching remote instance through a reliable despawn. Bots that come into
+interpolated from SimulationWorker snapshots, and a graceful bot logout leaves
+the bot's body standing for 20 seconds before a reliable despawn removes the
+matching remote instance. Bots that come into
 interest at once, as at a join, get their bodies over a few frames, the nearest
 first, so the frame rate does not drop while they appear. The 64 m stress arena
 keeps every client, bot, and actor within the same interest area, so it is a

@@ -20,9 +20,13 @@ internal sealed class RealtimeLoopFixture : IDisposable
 {
     public RealtimeLoopFixture(
         bool enableWorldActors = false,
-        IReadOnlyList<IWorldActorCapabilityHandler>? capabilityHandlers = null)
+        IReadOnlyList<IWorldActorCapabilityHandler>? capabilityHandlers = null,
+        int? lingeringBodySeconds = null)
     {
-        Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions());
+        Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions
+        {
+            LingeringBodySeconds = lingeringBodySeconds
+        });
         StaticCollisionWorld = CollisionTestWorldFactory.Create();
         CollisionWorld = new CompositeCollisionWorld(
             StaticCollisionWorld,
@@ -47,6 +51,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
                 WorldActorMetrics);
         }
 
+        Bodies = new LingeringBodies(Config.LingeringBodySeconds, Config.MovementSimulation.TickRateHz, Clock);
         Registry = new RealtimePeerRegistry(Directory, Bindings, Entities, Metrics);
         Sender = new RealtimePeerSender(Metrics, NullLogger.Instance);
         Presence = new EntityPresenceReplicator(
@@ -71,8 +76,10 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Bindings,
             Entities,
             Metrics,
-            Hooks);
+            Hooks,
+            Bodies);
         Scheduler = new AuthorityOperationScheduler(Registry);
+        CompletionTargets = new OperationCompletionTargets(Registry, Bindings, Entities, SessionStore);
     }
 
     public SimulationWorkerConfig Config { get; }
@@ -127,7 +134,11 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
     public RealtimeSessionTeardown Teardown { get; }
 
+    public LingeringBodies Bodies { get; }
+
     public AuthorityOperationScheduler Scheduler { get; }
+
+    public OperationCompletionTargets CompletionTargets { get; }
 
     // Registers a joined player at the movement spawn, bound to a connected peer.
     public ConnectedPlayer ConnectPlayer(int peerId, string name = "Loop Hero")
@@ -174,9 +185,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Sender,
             SessionStore,
             CharacterItemStateStore,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             new ItemInteractionAccessService(
@@ -193,9 +204,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             WorldInteractionAuthority,
             Registry,
             Sender,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             CreateWorldInteractionOperations(),
@@ -216,9 +227,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Presence,
             SessionStore,
             CharacterItemStateStore,
-            Entities,
             CarrySync,
             Teardown,
+            CompletionTargets,
             Scheduler,
             OperationTracker,
             new GatheringAuthorityOperations(gatheringService, Completions, NullLogger.Instance),

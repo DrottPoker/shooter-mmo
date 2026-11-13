@@ -583,7 +583,12 @@ namespace Mmorpg.SharedTests
             ["Session/JoinRequest/multibyte"] =
                 "17 00 62 69 6c 6a 65 74 74 2d c3 a5 c3 a4 c3 b6 " +
                 "2d e2 9c 93 2d f0 9f 98 80",
-            ["Session/LeaveAccepted/empty"] = "",
+            ["Session/LeaveAccepted/left at once"] =
+                "00 00",
+            ["Session/LeaveAccepted/lingering body"] =
+                "14 00",
+            ["Session/LeaveAccepted/longest stay"] =
+                "10 0e",
             ["Session/LeaveRejected/basic"] =
                 "10 00 6c 65 61 76 65 5f 6e 6f 74 5f 6a 6f 69 6e " +
                 "65 64 20 00 4e 6f 20 73 69 6d 75 6c 61 74 69 6f " +

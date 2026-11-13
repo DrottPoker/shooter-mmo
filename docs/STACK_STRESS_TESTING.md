@@ -240,8 +240,12 @@ Expected result:
   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#protocol-handling)
   describes, and act on owner snapshots and the results of their own item and
   corpse operations. A bot that fails releases its worker connection at once,
-  so its character does not stay joined until the run ends.
-- Every joined bot requests a graceful leave after the steady interval.
+  so its character does not stay joined until the run ends; like a player's,
+  its body stays in the world for 20 seconds, as
+  [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes.
+- Every joined bot requests a graceful leave after the steady interval. The
+  bodies stay 20 seconds after the run; in full-stack mode the account logout
+  that follows ends them within the session heartbeat.
 - The worker log shows no `Movement simulation exceeded its catch-up budget`
   warning.
 - The command exits with code 0 only when every requested bot joined and left

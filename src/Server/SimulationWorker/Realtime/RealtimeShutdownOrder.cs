@@ -27,6 +27,10 @@ internal static class RealtimeShutdownOrder
 
     public const int Entities = 600;
 
+    // Forgets the lingering bodies with the entities they were; the flushes saved them like
+    // connected players.
+    public const int LingeringBodies = 650;
+
     // Clears the per-character state of every session, after the entities that used it.
     public const int CharacterState = 700;
 

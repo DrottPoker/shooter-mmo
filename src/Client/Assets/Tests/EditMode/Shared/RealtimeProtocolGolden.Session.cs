@@ -12,6 +12,7 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType joinAccepted = RealtimeMessageType.JoinAccepted;
             const RealtimeMessageType joinRejected = RealtimeMessageType.JoinRejected;
             const RealtimeMessageType leaveRequest = RealtimeMessageType.LeaveRequest;
+            const RealtimeMessageType leaveAccepted = RealtimeMessageType.LeaveAccepted;
             const RealtimeMessageType leaveRejected = RealtimeMessageType.LeaveRejected;
             const RealtimeMessageType serverDisconnect = RealtimeMessageType.ServerDisconnect;
 
@@ -32,7 +33,9 @@ namespace Mmorpg.SharedTests
                 "Session/LeaveRequest/basic",
                 leaveRequest,
                 () => RealtimeProtocol.EncodeLeaveRequest("6f0d1c9a-0000-4000-8000-000000000001"));
-            r.Vector("Session/LeaveAccepted/empty", RealtimeMessageType.LeaveAccepted, RealtimeProtocol.EncodeLeaveAccepted);
+            r.Vector("Session/LeaveAccepted/lingering body", leaveAccepted, () => RealtimeProtocol.EncodeLeaveAccepted(20));
+            r.Vector("Session/LeaveAccepted/left at once", leaveAccepted, () => RealtimeProtocol.EncodeLeaveAccepted(0));
+            r.Vector("Session/LeaveAccepted/longest stay", leaveAccepted, () => RealtimeProtocol.EncodeLeaveAccepted(3600));
             r.Vector(
                 "Session/LeaveRejected/basic",
                 leaveRejected,
@@ -64,6 +67,9 @@ namespace Mmorpg.SharedTests
                 "Session/LeaveRequest/declared length above four bytes per character",
                 LeaveRequestWire(WireText.Raw(new byte[513])));
             r.AcceptsUnencodable("Session/LeaveRequest/whitespace text", LeaveRequestWire(" "));
+            r.Accepts("Session/LeaveAccepted/3600 seconds", Wire.Message(leaveAccepted).U16(3600));
+            r.Rejects("Session/LeaveAccepted/3601 seconds", Wire.Message(leaveAccepted).U16(3601));
+            r.Rejects("Session/LeaveAccepted/without seconds", Wire.Message(leaveAccepted));
 
             foreach (var type in new[] { joinRejected, leaveRejected, serverDisconnect })
             {
@@ -115,6 +121,7 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode("Session/JoinRequest/1025 character ticket", () => RealtimeProtocol.EncodeJoinRequest(Repeat("t", 1025)));
             r.RejectsEncode("Session/LeaveRequest/whitespace session", () => RealtimeProtocol.EncodeLeaveRequest(" "));
             r.RejectsEncode("Session/LeaveRequest/129 character session", () => RealtimeProtocol.EncodeLeaveRequest(Repeat("s", 129)));
+            r.RejectsEncode("Session/LeaveAccepted/3601 seconds", () => RealtimeProtocol.EncodeLeaveAccepted(3601));
             r.RejectsEncode("Session/JoinRejected/null code", () => RealtimeProtocol.EncodeJoinRejected(null, "message"));
             r.RejectsEncode("Session/JoinRejected/whitespace code", () => RealtimeProtocol.EncodeJoinRejected(" ", "message"));
             r.RejectsEncode("Session/JoinRejected/65 character code", () => RealtimeProtocol.EncodeJoinRejected(Repeat("c", 65), "message"));

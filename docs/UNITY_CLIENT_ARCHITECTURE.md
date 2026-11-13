@@ -760,11 +760,12 @@ snapshot delivery:
   during and immediately after leave are ignored outside the `Joined` state. They
   are not protocol failures because LiteNetLib delivery methods do not provide
   ordering relative to each other.
-- While a leave is pending, SimulationWorker keeps sending reliable presence,
-  world actor, interaction, corpse, gathering, combat, and item-operation
-  messages until it has released the session. The client ignores these in-flight
-  messages in the `Leaving` state, so a graceful leave never turns into a
-  protocol disconnect.
+- While a leave is pending, reliable presence, world actor, interaction,
+  corpse, gathering, combat, and item-operation messages that SimulationWorker
+  sent before it took the leave can still arrive. The client ignores these
+  in-flight messages in the `Leaving` state, so a graceful leave never turns
+  into a protocol disconnect. The worker answers the leave at once with
+  `LeaveAccepted`; the client does not use its `BodySeconds` yet.
 - After the session ended in one poll, later packets in the same poll are
   ignored, so the first failure reason is the one shown to the player.
 

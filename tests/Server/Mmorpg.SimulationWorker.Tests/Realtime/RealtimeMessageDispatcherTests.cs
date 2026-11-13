@@ -20,7 +20,6 @@ public sealed class RealtimeMessageDispatcherTests
         "unauthenticated",
         "join_started",
         "authenticated",
-        "leave_started",
         "disconnect_pending"
     ];
 
@@ -215,7 +214,7 @@ public sealed class RealtimeMessageDispatcherTests
     {
         var fixture = new DispatcherFixture();
         var (_, peer) = fixture.AddPeer(state);
-        var packet = RealtimeProtocol.EncodeLeaveAccepted();
+        var packet = RealtimeProtocol.EncodeLeaveAccepted(0);
         packet[6] = type;
         fixture.Dispatcher.Dispatch(peer, packet, channel, delivery);
         return fixture.Outcome(peer);
@@ -294,8 +293,7 @@ public sealed class RealtimeMessageDispatcherTests
 
         if (messageType != RealtimeMessageType.LeaveRequest
             || channel != RealtimeProtocol.ControlChannel
-            || delivery != DeliveryMethod.ReliableOrdered
-            || state == "leave_started")
+            || delivery != DeliveryMethod.ReliableOrdered)
         {
             return "reject:unexpected_message";
         }
@@ -305,7 +303,7 @@ public sealed class RealtimeMessageDispatcherTests
 
     private static byte[] Header(RealtimeMessageType type)
     {
-        var packet = RealtimeProtocol.EncodeLeaveAccepted();
+        var packet = RealtimeProtocol.EncodeLeaveAccepted(0);
         packet[6] = (byte)type;
         return packet;
     }
@@ -389,12 +387,11 @@ public sealed class RealtimeMessageDispatcherTests
             directory.Peers[peer.Id] = peer;
             var context = new RealtimePeerContext(peer.Id, DateTime.UtcNow, quotas);
             context.JoinStarted = state == "join_started";
-            if (state is "authenticated" or "leave_started" or "disconnect_pending")
+            if (state is "authenticated" or "disconnect_pending")
             {
                 context.Session = CreateSession();
             }
 
-            context.LeaveStarted = state == "leave_started";
             if (state == "disconnect_pending")
             {
                 context.ScheduleDisconnect(DateTime.UtcNow);

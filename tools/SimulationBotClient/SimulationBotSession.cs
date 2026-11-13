@@ -44,6 +44,7 @@ public sealed class SimulationBotSession
     private long despawnPackets;
     private long unacknowledgedInputsDropped;
     private uint latestServerTick;
+    private int bodySeconds;
 
     public SimulationBotSession(
         SimulationBotIdentity identity,
@@ -264,7 +265,8 @@ public sealed class SimulationBotSession
             unacknowledgedInputsDropped,
             latestServerTick,
             failureCode,
-            failureMessage);
+            failureMessage,
+            bodySeconds);
     }
 
     public void Fail(string code, string message)
@@ -505,12 +507,13 @@ public sealed class SimulationBotSession
             return;
         }
 
-        if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var error))
+        if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var seconds, out var error))
         {
             Fail("invalid_leave_acceptance", error);
             return;
         }
 
+        bodySeconds = seconds;
         State = SimulationBotClientState.Completed;
     }
 
