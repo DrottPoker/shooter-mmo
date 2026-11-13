@@ -91,6 +91,15 @@ public sealed record StressRunSummary(
             numbers[$"operationP95Ms.{operation.Key}"] = operation.Value.Latency?.P95Ms;
         }
 
+        numbers["generatorPollLatenessP99Ms"] = report.GeneratorTiming?.PollLateness?.P99Ms;
+        if (report.Playing is { } playing)
+        {
+            numbers["attackFirstHitP95Ms"] = playing.Timings.GetValueOrDefault(PlayingMetrics.AttackFirstHit)?.P95Ms;
+            numbers["routeQueueP99Ms"] = report.GeneratorTiming?.RouteQueue?.P99Ms;
+            numbers["kills"] = playing.Counters.GetValueOrDefault("kills");
+            numbers["botDeaths"] = playing.Counters.GetValueOrDefault("botDeaths");
+        }
+
         var worker = report.WorkerPerformance;
         if (worker is not null && worker.SteadyIntervals > 0)
         {
@@ -116,7 +125,12 @@ public sealed record StressRunSummary(
             report.Configuration.Workload,
             report.Configuration.BotCount,
             report.Configuration.SteadyDurationSeconds,
-            exitCode == 0 ? "passed" : "failed",
+            exitCode switch
+            {
+                0 => "passed",
+                Program.CouldNotMeasureExitCode => "could not measure",
+                _ => "failed"
+            },
             report.Verdict?.Rules ?? [],
             numbers);
     }

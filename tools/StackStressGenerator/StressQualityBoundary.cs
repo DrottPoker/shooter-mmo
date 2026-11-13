@@ -15,7 +15,8 @@ public enum StressRuleKind
 public sealed record StressQualityRule(string Rule, double Limit, string Unit, string Description);
 
 // One judged rule. Measured is null when the rule could not be evaluated, which fails it, or
-// when it does not apply to the mode or workload, which the note says and which passes.
+// when it does not apply to the mode or workload, which the note says and which passes. A
+// validity rule judges the generator, not the stack: when one fails, the run measured nothing.
 public sealed record StressVerdictEntry(
     string Rule,
     string Comparison,
@@ -23,9 +24,17 @@ public sealed record StressVerdictEntry(
     string Unit,
     double? Measured,
     bool Passed,
-    string? Note);
+    string? Note)
+{
+    public bool Validity { get; init; }
+}
 
-public sealed record StressVerdict(bool Passed, IReadOnlyList<StressVerdictEntry> Rules);
+// Passed judges the quality rules and Valid the validity rules; a run that is not valid could
+// not measure, whatever the quality rules say.
+public sealed record StressVerdict(bool Passed, IReadOnlyList<StressVerdictEntry> Rules)
+{
+    public bool Valid { get; init; } = true;
+}
 
 // The quality boundary of tools/load/quality-boundary.json: every rule that the code knows, with
 // its limit and unit. The file must name each known rule exactly once with the rule's unit and
@@ -48,8 +57,17 @@ public sealed class StressQualityBoundary
             ["owner_snapshot_gaps"] = ("count", StressRuleKind.Maximum),
             ["expired_unreleased_sessions"] = ("count", StressRuleKind.Maximum),
             ["deadlocks"] = ("count", StressRuleKind.Maximum),
-            ["item_invariant_violations"] = ("count", StressRuleKind.Maximum)
+            ["item_invariant_violations"] = ("count", StressRuleKind.Maximum),
+            ["generator_poll_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum),
+            ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum)
         };
+
+    // The rules that judge whether the generator kept up, so that the run measured anything.
+    public static readonly IReadOnlySet<string> ValidityRules = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "generator_poll_lateness_p99_ms",
+        "generator_route_queue_p99_ms"
+    };
 
     private StressQualityBoundary(IReadOnlyList<StressQualityRule> rules)
     {
@@ -147,9 +165,17 @@ public sealed class StressQualityBoundary
     public StressVerdict Evaluate(StressRunReport report)
     {
         var entries = Rules
-            .Select(rule => Judge(rule, Measure(rule.Rule, report)))
+            .Select(rule => Judge(rule, Measure(rule.Rule, report)) with
+            {
+                Validity = ValidityRules.Contains(rule.Rule)
+            })
             .ToArray();
-        return new StressVerdict(entries.All(entry => entry.Passed), entries);
+        return new StressVerdict(
+            entries.Where(entry => !entry.Validity).All(entry => entry.Passed),
+            entries)
+        {
+            Valid = entries.Where(entry => entry.Validity).All(entry => entry.Passed)
+        };
     }
 
     private static StressVerdictEntry Judge(StressQualityRule rule, Measurement measurement)
@@ -237,6 +263,14 @@ public sealed class StressQualityBoundary
                 : report.Postgres?.ItemInvariants is { } invariants
                     ? Measurement.Of(invariants.Violations, null)
                     : Measurement.Missing("the item invariants were not checked."),
+            "generator_poll_lateness_p99_ms" => report.GeneratorTiming?.PollLateness is { } lateness
+                ? Measurement.Of(lateness.P99Ms, Invariant($"{lateness.Samples} poll rounds of the steady interval, worst {lateness.MaximumMs:0.0} ms"))
+                : Measurement.Skip("no steady interval was measured"),
+            "generator_route_queue_p99_ms" => report.GeneratorTiming is not { PlansRoutes: true }
+                ? Measurement.Skip("the workload plans no routes")
+                : report.GeneratorTiming.RouteQueue is { } queue
+                    ? Measurement.Of(queue.P99Ms, Invariant($"{queue.Samples} route plans of the steady interval, worst {queue.MaximumMs:0.0} ms"))
+                    : Measurement.Skip("no route was planned in the steady interval"),
             _ => throw new InvalidOperationException($"The rule '{rule}' has no measurement.")
         };
     }

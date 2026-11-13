@@ -124,6 +124,14 @@ public sealed record StressRemoteCadenceSummary(
     }
 }
 
+// The generator's own timing in the steady interval: how late the latest bot's poll ran against
+// the poll interval in every poll round, and how long route plans waited for a planner thread.
+public sealed record StressGeneratorTimingSummary(
+    double PollIntervalMs,
+    StressLatencySummary? PollLateness,
+    StressLatencySummary? RouteQueue,
+    bool PlansRoutes);
+
 public sealed record StressRunConfiguration(
     string Mode,
     string Workload,
@@ -170,6 +178,12 @@ public sealed record StressRunReport(
 
     // The judgement against the quality boundary, when one was given.
     public StressVerdict? Verdict { get; init; }
+
+    // The playing workload's roles, counters, timings, and expected conflicts.
+    public PlayingSummary? Playing { get; init; }
+
+    // How far the generator itself kept up, which the validity rules judge.
+    public StressGeneratorTimingSummary? GeneratorTiming { get; init; }
 
     public static StressRunReport Create(
         DateTime startedAt,

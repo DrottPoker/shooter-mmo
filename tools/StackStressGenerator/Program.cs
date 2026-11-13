@@ -9,6 +9,11 @@ public static class Program
             return WritePlan(args[1..]);
         }
 
+        if (args.Length > 0 && args[0] == "world-variant")
+        {
+            return WriteWorldVariant(args[1..]);
+        }
+
         if (StressGeneratorOptions.IsHelpRequested(args))
         {
             Console.WriteLine(StressGeneratorOptions.HelpText);
@@ -86,11 +91,13 @@ public static class Program
 
         await report.WriteAsync(options.OutputPath, cancellationToken);
         WriteFinalSummary(report, options.OutputPath);
-        var exitCode = !PassedOwnChecks(report, options)
-            ? 1
-            : report.Verdict is { Passed: false }
-                ? 3
-                : 0;
+        var exitCode = report.Verdict is { Valid: false }
+            ? CouldNotMeasureExitCode
+            : !PassedOwnChecks(report, options)
+                ? 1
+                : report.Verdict is { Passed: false }
+                    ? 3
+                    : 0;
         if (options.SummaryPath is not null)
         {
             await StressRunSummary.Create(report, options, exitCode, StressMachine.Current())
@@ -100,6 +107,9 @@ public static class Program
 
         return exitCode;
     }
+
+    // The generator fell behind, so the run measured nothing; it is neither passed nor failed.
+    public const int CouldNotMeasureExitCode = 4;
 
     // The generator's own checks, which decide exit code 1 as before the quality boundary.
     internal static bool PassedOwnChecks(StressRunReport report, StressGeneratorOptions options)
@@ -126,6 +136,51 @@ public static class Program
         catch (StressGeneratorOptionException exception)
         {
             Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+    }
+
+    // StackStressGenerator world-variant --scenario <file> --run-folder <dir>: writes the
+    // scenario's World variant into <dir>/world-variant and says whether it keeps the checked-in
+    // collision revision, so a Unity client can still join the run.
+    private static int WriteWorldVariant(string[] args)
+    {
+        try
+        {
+            if (args.Length != 4 || args[0] != "--scenario" || args[2] != "--run-folder")
+            {
+                throw new StressGeneratorOptionException(
+                    "Usage: StackStressGenerator world-variant --scenario <file> --run-folder <dir>");
+            }
+
+            var workingDirectory = Directory.GetCurrentDirectory();
+            var scenario = StressLoadScenario.Load(Path.GetFullPath(args[1], workingDirectory));
+            var variantRoot = Path.Combine(
+                Path.GetFullPath(args[3], workingDirectory),
+                StressLoadPlan.WorldVariantFolderName);
+            var log = Path.Combine(Path.GetFullPath(args[3], workingDirectory), "world-variant.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+            using var logWriter = new StreamWriter(log);
+            var result = StressWorldVariant.Write(
+                scenario,
+                variantRoot,
+                Mmorpg.WorldData.Content.ContentLayout.FindRepositoryRoot(workingDirectory),
+                logWriter);
+            Console.WriteLine(
+                $"World variant of {result.WorldId}: {result.AddedInstances} added actors on walkable ground, spawn revision {result.SpawnRevision}.");
+            Console.WriteLine(result.KeepsCollisionRevision
+                ? $"The variant keeps the checked-in collision revision {result.CollisionRevision}, so a Unity client can join this run."
+                : $"The variant's collision revision {result.CollisionRevision} differs from the checked-in {result.CheckedInCollisionRevision}, because it adds resource nodes; a Unity client cannot join this run.");
+            return 0;
+        }
+        catch (StressGeneratorOptionException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"The World variant could not be written: {exception.Message}");
             return 2;
         }
     }
@@ -258,6 +313,19 @@ public static class Program
                 $"Full-stack lifecycle: {report.FullStack.RegisteredBots} registered, {report.FullStack.FixtureAccounts} fixture accounts, {report.FullStack.InventoryFixtureBots} inventory fixtures, {report.FullStack.ProvisionedBots} provisioned, {report.FullStack.LoggedInBots} logged in, {report.FullStack.AdmittedBots} admitted, {report.FullStack.LoggedOutBots} logged out.");
         }
 
+        if (report.Playing is { } playing)
+        {
+            Console.WriteLine(
+                "Playing roles: " + string.Join(", ", playing.Roles.Select(role => $"{role.Value} {role.Key}"))
+                + "; counters: " + string.Join(", ", playing.Counters.Where(counter => counter.Value != 0).Select(counter => $"{counter.Key} {counter.Value}"))
+                + ".");
+            foreach (var timing in playing.Timings.Where(timing => timing.Value is not null))
+            {
+                Console.WriteLine(
+                    $"Playing timing {timing.Key}: {timing.Value!.Samples} samples, p50 {timing.Value.P50Ms:0.0} ms, p95 {timing.Value.P95Ms:0.0} ms, max {timing.Value.MaximumMs:0.0} ms.");
+            }
+        }
+
         foreach (var operation in report.Gameplay.Operations)
         {
             var latency = operation.Value.Latency;
@@ -291,7 +359,9 @@ public static class Program
                     $"Quality rule {rule.Rule}: {(rule.Passed ? "passed" : "FAILED")}, measured {(rule.Measured is { } measured ? measured.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "n/a")} {rule.Unit}, limit {rule.Comparison} {rule.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture)}{(rule.Note is null ? string.Empty : $" ({rule.Note})")}.");
             }
 
-            Console.WriteLine($"Quality boundary {(verdict.Passed ? "passed" : "FAILED")}.");
+            Console.WriteLine(verdict.Valid
+                ? $"Quality boundary {(verdict.Passed ? "passed" : "FAILED")}."
+                : "The generator fell behind, so the run could not measure; see the validity rules.");
         }
 
         Console.WriteLine($"JSON report: {outputPath}");

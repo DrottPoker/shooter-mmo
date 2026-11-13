@@ -41,7 +41,13 @@ without a network.
   because the worker keeps sending until it has released the session.
 - The bot acts only on owner snapshots and on the results of its own item and
   corpse operations. It decodes and drops everything else, such as the look the
-  worker sends every player when it joins, and the looks of other players.
+  worker sends every player when it joins, and the looks of other players. The
+  playing bots of the stress generator also keep a world view in the session,
+  as [What A Playing Bot Sees And Sends](STACK_STRESS_TESTING.md#what-a-playing-bot-sees-and-sends)
+  describes; a session without one keeps nothing.
+- The worker drops the movement inputs of a dead character until it respawns.
+  The inputs a bot sends while dead, and the ones still unacknowledged when its
+  death arrives, are left out of the input acknowledgement latency.
 - A server-to-client message type the session does not handle fails the bot
   with `unexpected_message`. `SimulationBotSessionTests` in
   `tests/Tools/Mmorpg.Tools.Tests` feeds the golden vector of every message type
@@ -209,7 +215,8 @@ Expected result:
   the World's compiled collision, which the build copies to its output below
   `WorldData/Worlds`, and plans the walk around obstacles with the shared
   `MovementPathPlanner` on up to four background threads, as the Unity client
-  plans a click. The bot keeps its previous path until the plan arrives, and it
+  plans a click. `SimulationBotNavigation` in `tools/SimulationBotClient` runs
+  those threads for both bot tools. The bot keeps its previous path until the plan arrives, and it
   stands when no route exists or the planners are busy. When the collision
   cannot be loaded, or the worker reports another collision revision, a walk is
   a straight one-waypoint line of at most 200 meters that the worker's collision

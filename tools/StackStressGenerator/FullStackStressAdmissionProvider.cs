@@ -14,6 +14,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private readonly StressPostgresSampler postgresSampler;
     private readonly SemaphoreSlim concurrency;
     private readonly ConcurrentDictionary<int, ActiveAccountSession> activeAccountSessions = [];
+    private readonly ConcurrentDictionary<int, ProvisionedAccount> provisionedAccounts = [];
+    private readonly ConcurrentDictionary<int, string> provisioningFailures = [];
     private readonly object workerGate = new();
     private readonly string password;
     private StressProcessSampler? gameServiceProcessSampler;
@@ -120,6 +122,11 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         int botIndex,
         CancellationToken cancellationToken)
     {
+        if (options.Workload == StressWorkloadProfile.Playing)
+        {
+            return await AdmitProvisionedAsync(botIndex, cancellationToken);
+        }
+
         await concurrency.WaitAsync(cancellationToken);
         string? activeToken = null;
         try
@@ -280,6 +287,20 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 }
             });
 
+        // An account that was provisioned but never admitted logs out too.
+        foreach (var leftover in provisionedAccounts.Values)
+        {
+            try
+            {
+                await client.LogoutAsync(leftover.SessionToken, cancellationToken);
+            }
+            catch (FullStackApiException exception)
+            {
+                Console.WriteLine($"A provisioned account logout failed with {exception.Code}: {exception.Message}");
+            }
+        }
+
+        provisionedAccounts.Clear();
         await postgresSampler.VerifyAccountCountAsync(
             Volatile.Read(ref registeredBots) + Volatile.Read(ref fixtureAccounts),
             cancellationToken);
@@ -301,6 +322,12 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
 
     public async Task PrepareAsync(CancellationToken cancellationToken)
     {
+        if (options.Workload == StressWorkloadProfile.Playing)
+        {
+            await ProvisionPlayingAccountsAsync(cancellationToken);
+            return;
+        }
+
         if (options.Workload is not (
                 StressWorkloadProfile.LootHotspot
                 or StressWorkloadProfile.MixedGameplay))
@@ -512,5 +539,148 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
     }
 
+    // Players have accounts and characters before they play, so the playing workload registers
+    // every account, creates its character, grants its kit, and logs it in before the first bot
+    // joins. The ramp then measures only the way into the game: the character list, the Shards,
+    // the join ticket, and the UDP join.
+    private async Task ProvisionPlayingAccountsAsync(CancellationToken cancellationToken)
+    {
+        var scenario = options.Playing
+            ?? throw new InvalidOperationException("The playing workload needs its scenario.");
+        var assignments = PlayingRoster.Assign(scenario, options.BotCount, options.BotStartIndex, options.Seed);
+        var started = Stopwatch.GetTimestamp();
+        Console.WriteLine(
+            $"Registering, equipping, and logging in {assignments.Count} accounts before the first bot joins.");
+        await Parallel.ForEachAsync(
+            assignments,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = options.HttpConcurrency
+            },
+            async (assignment, token) =>
+            {
+                try
+                {
+                    provisionedAccounts[assignment.BotIndex] =
+                        await ProvisionAsync(assignment, token);
+                }
+                catch (FullStackApiException exception)
+                {
+                    provisioningFailures[assignment.BotIndex] = exception.Code + ": " + exception.Message;
+                }
+            });
+        Console.WriteLine(
+            $"Provisioned {provisionedAccounts.Count} of {assignments.Count} accounts in {Stopwatch.GetElapsedTime(started).TotalSeconds:0.0} s.");
+    }
+
+    private async Task<ProvisionedAccount> ProvisionAsync(
+        PlayingAssignment assignment,
+        CancellationToken cancellationToken)
+    {
+        var username = $"stress_{options.RunId}_{assignment.BotIndex}";
+        var registration = await client.RegisterAsync(
+            $"{username}@stack-stress.local",
+            username,
+            password,
+            cancellationToken);
+        Interlocked.Increment(ref registeredBots);
+        var character = await client.CreateCharacterAsync(
+            registration.SessionToken,
+            $"Stack {options.RunId} {assignment.BotIndex}",
+            cancellationToken);
+        Interlocked.Increment(ref provisionedBots);
+        FullStackCharacterInventoryResponse? inventory = null;
+        if (assignment.Kit is not null)
+        {
+            var kit = await client.SeedKitAsync(
+                registration.SessionToken,
+                character.Id,
+                assignment.Kit,
+                options.RunId,
+                options.FixtureSecret!,
+                cancellationToken);
+            inventory = kit.Inventory;
+            Interlocked.Increment(ref inventoryFixtureBots);
+        }
+
+        await client.LogoutAsync(registration.SessionToken, cancellationToken);
+        var login = await client.LoginAsync(username, password, cancellationToken);
+        Interlocked.Increment(ref loggedInBots);
+        return new ProvisionedAccount(login.AccountId, login.SessionToken, character, inventory);
+    }
+
+    private async Task<StressAdmissionResult> AdmitProvisionedAsync(
+        int botIndex,
+        CancellationToken cancellationToken)
+    {
+        if (!provisionedAccounts.TryRemove(botIndex, out var account))
+        {
+            return StressAdmissionResult.Failure(
+                "stress_provisioning_failed",
+                provisioningFailures.GetValueOrDefault(botIndex) ?? $"Bot {botIndex} has no provisioned account.");
+        }
+
+        await concurrency.WaitAsync(cancellationToken);
+        try
+        {
+            var characters = await client.ListCharactersAsync(account.SessionToken, cancellationToken);
+            if (!characters.Any(candidate => candidate.Id == account.Character.Id))
+            {
+                throw new FullStackApiException(
+                    "character_missing_after_login",
+                    $"Character {account.Character.Id} was not returned after login.",
+                    0);
+            }
+
+            var shards = await client.ListShardsAsync(cancellationToken);
+            if (!shards.Any(candidate =>
+                    string.Equals(candidate.Id, options.ShardId, StringComparison.Ordinal) && candidate.IsOnline))
+            {
+                throw new FullStackApiException(
+                    "stress_shard_unavailable",
+                    $"Shard '{options.ShardId}' was not online during admission.",
+                    0);
+            }
+
+            var join = await client.JoinShardAsync(
+                account.SessionToken,
+                options.ShardId,
+                account.Character.Id,
+                cancellationToken);
+            ValidateJoin(account.Character, join);
+            CaptureWorker(join);
+            activeAccountSessions[botIndex] = new ActiveAccountSession(account.SessionToken, account.Character.Id);
+            Interlocked.Increment(ref admittedBots);
+            return StressAdmissionResult.Success(new StressBotAdmission(
+                botIndex,
+                account.AccountId,
+                account.Character.Id,
+                account.Character.Name,
+                join.JoinTicket,
+                join.ExpiresAt,
+                join.Endpoint.Host,
+                join.Endpoint.UdpPort,
+                join.Shard.Id,
+                join.Shard.WorldId,
+                account.Inventory));
+        }
+        catch (FullStackApiException exception)
+        {
+            await TryLogoutAfterFailureAsync(account.SessionToken, cancellationToken);
+            return StressAdmissionResult.Failure(exception.Code, exception.Message);
+        }
+        finally
+        {
+            concurrency.Release();
+        }
+    }
+
     private sealed record ActiveAccountSession(string SessionToken, Guid CharacterId);
+
+    private sealed record ProvisionedAccount(
+        Guid AccountId,
+        string SessionToken,
+        FullStackCharacterResponse Character,
+        FullStackCharacterInventoryResponse? Inventory);
 }

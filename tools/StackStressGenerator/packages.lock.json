@@ -16,7 +16,19 @@
       "mmorpg.gameprotocol": {
         "type": "Project"
       },
+      "mmorpg.gamesimulation": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.server.common": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.contentpipeline": {
         "type": "Project",
         "dependencies": {
           "Mmorpg.WorldData": "[1.0.0, )"
@@ -26,7 +38,23 @@
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",
-          "Mmorpg.GameProtocol": "[1.0.0, )"
+          "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.worldactorcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.worldcollisioncompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )"
         }
       },
       "mmorpg.worlddata": {

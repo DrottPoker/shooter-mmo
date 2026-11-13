@@ -374,20 +374,46 @@
           "xunit.v3.extensibility.core": "[4.0.2, )"
         }
       },
+      "mmorpg.tools.contentpipeline": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
       "mmorpg.tools.simulationbotclient": {
         "type": "Project",
         "dependencies": {
           "LiteNetLib": "[2.1.4, )",
-          "Mmorpg.GameProtocol": "[1.0.0, )"
+          "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Server.Common": "[1.0.0, )"
         }
       },
       "mmorpg.tools.stackstressgenerator": {
         "type": "Project",
         "dependencies": {
           "Mmorpg.GameProtocol": "[1.0.0, )",
+          "Mmorpg.GameSimulation": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
           "Mmorpg.Tools.SimulationBotClient": "[1.0.0, )",
+          "Mmorpg.Tools.WorldActorCompiler": "[1.0.0, )",
+          "Mmorpg.Tools.WorldCollisionCompiler": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
+        }
+      },
+      "mmorpg.tools.worldactorcompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
+          "Mmorpg.WorldData": "[1.0.0, )"
+        }
+      },
+      "mmorpg.tools.worldcollisioncompiler": {
+        "type": "Project",
+        "dependencies": {
+          "Mmorpg.GameSimulation": "[1.0.0, )",
+          "Mmorpg.Tools.ContentPipeline": "[1.0.0, )"
         }
       },
       "mmorpg.worlddata": {

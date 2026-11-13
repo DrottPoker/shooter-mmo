@@ -3,6 +3,8 @@ using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.StackStress;
+using Mmorpg.Server.Common.Items;
+using Mmorpg.Testing;
 using Npgsql;
 
 namespace Mmorpg.GameService.Tests;
@@ -199,6 +201,72 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Contains("Development", production.Message, StringComparison.Ordinal);
         Assert.Contains("loopback", production.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("stress", production.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StackStressKitsComeFromConfigurationAndAMalformedKitIsRejected()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["StackStressFixtures:Kits:bow:0:DefinitionId"] = "fixture.bow",
+            ["StackStressFixtures:Kits:bow:0:Quantity"] = "1",
+            ["StackStressFixtures:Kits:bow:1:DefinitionId"] = "fixture.arrow",
+            ["StackStressFixtures:Kits:bow:1:Quantity"] = "40"
+        };
+
+        var options = StackStressFixtureOptions.FromConfiguration(
+            new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
+            isDevelopment: true,
+            "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test");
+
+        var kit = Assert.Single(options.Kits);
+        Assert.Equal("bow", kit.Key);
+        Assert.Equal(
+            [new StackStressFixtureOptions.KitGrant("fixture.bow", 1), new StackStressFixtureOptions.KitGrant("fixture.arrow", 40)],
+            kit.Value);
+
+        settings["StackStressFixtures:Kits:bow:1:Quantity"] = "0";
+        settings["StackStressFixtures:Kits:Bad_Name:0:DefinitionId"] = "fixture.sword";
+        settings["StackStressFixtures:Kits:Bad_Name:0:Quantity"] = "1";
+        var invalid = Assert.Throws<InvalidOperationException>(() =>
+            StackStressFixtureOptions.FromConfiguration(
+                new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
+                isDevelopment: true,
+                "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test"));
+        Assert.Contains("Kits:bow:1", invalid.Message, StringComparison.Ordinal);
+        Assert.Contains("Kits:Bad_Name", invalid.Message, StringComparison.Ordinal);
+    }
+
+    // The checked-in Development settings name only items of the compiled catalog, so a renamed
+    // item fails here instead of in a load run.
+    [Fact]
+    public void TheCheckedInStackStressFixturesNameCatalogItems()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(
+                RepositoryPaths.Root,
+                "src",
+                "Server",
+                "GameService",
+                "Config",
+                "appsettings.Development.json"))
+            .Build();
+        var options = StackStressFixtureOptions.FromConfiguration(
+            configuration,
+            isDevelopment: true,
+            "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test");
+        var definitions = ItemCatalogFileLoader
+            .Load(Path.Combine(RepositoryPaths.Generated, "Items", "core.item-catalog.json"))
+            .Definitions
+            .Select(definition => definition.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains(options.InventoryDefinitionId, definitions);
+        Assert.Contains(options.LootDefinitionId, definitions);
+        Assert.NotEmpty(options.Kits);
+        Assert.All(
+            options.Kits.Values.SelectMany(kit => kit),
+            grant => Assert.Contains(grant.DefinitionId, definitions));
     }
 
     [Fact]

@@ -84,6 +84,18 @@
       "limit": 0,
       "unit": "count",
       "description": "Maximum. Exact item quantities, unique occupied slots, valid custody, and no pending item operation after a full-stack run."
+    },
+    {
+      "rule": "generator_poll_lateness_p99_ms",
+      "limit": 16.67,
+      "unit": "ms",
+      "description": "Validity. In every poll round of the steady interval, how late the latest bot's poll ran against the 3 ms poll schedule; the p99 over the rounds stays within half a 30 Hz tick, so every bot sends its input in the tick it is due. A run that fails a validity rule could not measure: the generator, not the stack, fell behind."
+    },
+    {
+      "rule": "generator_route_queue_p99_ms",
+      "limit": 1000,
+      "unit": "ms",
+      "description": "Validity. How long a route plan of the steady interval waited for a planner thread; the p99 stays within a second, so the bots walk when they decide to instead of standing. Not applicable to a workload that plans no routes."
     }
   ]
 }

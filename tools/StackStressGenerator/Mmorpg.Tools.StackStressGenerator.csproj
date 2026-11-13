@@ -2,9 +2,27 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Shared\DotNet\GameProtocol\Mmorpg.GameProtocol.csproj" />
+    <ProjectReference Include="..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
     <ProjectReference Include="..\..\src\Server\Common\Mmorpg.Server.Common.csproj" />
     <ProjectReference Include="..\SimulationBotClient\Mmorpg.Tools.SimulationBotClient.csproj" />
+    <!-- The World variant runs the real content compilers into the run folder. -->
+    <ProjectReference Include="..\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />
+    <ProjectReference Include="..\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
+    <ProjectReference Include="..\WorldCollisionCompiler\Mmorpg.Tools.WorldCollisionCompiler.csproj" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same compiled collision and item catalog the worker uses, for the playing bots. -->
+    <Content Include="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*"
+             Exclude="..\..\src\Shared\WorldData\Generated\WorldCollision\**\*.meta"
+             Link="WorldData\Worlds\%(RecursiveDir)Collision\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\src\Shared\WorldData\Generated\Items\core.item-catalog.json"
+             Link="WorldData\Items\core.item-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

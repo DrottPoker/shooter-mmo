@@ -2659,6 +2659,45 @@ The other two-client checks sit with their features:
 [looting one corpse together](#two-clients-at-one-corpse), and
 [looks, garments, and corpses](#other-players-bots-and-corpses).
 
+## Load Tooling
+
+Needs Docker Desktop running and no local stack on TCP 5500 and UDP 27025.
+[Stack Stress Testing](STACK_STRESS_TESTING.md#run-a-scenario) describes the
+command, the scenarios, and the rules of the table it prints. Run both checks
+after a change to `tools/Test-Load.ps1`, `tools/StackStressGenerator`,
+`tools/SimulationBotClient`, or the stress fixture routes.
+
+### The Smoke Scenario
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario smoke
+```
+
+Expected result: the services start, ten bots join, walk, move inventory items,
+and deposit into and loot from the shared corpse for 40 seconds, leave, and log
+out. Every rule of the table reads `pass`, the script prints
+`Load scenario smoke passed` and exits with code 0, and no `Mmorpg.*` process
+and no `shooter-mmo-stack-stress` container is left. A run takes about one and
+a half minutes.
+
+### Bots That Play
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario playing-smoke
+```
+
+Expected result: the script writes the World variant and says that it keeps
+the checked-in collision revision. The generator registers, equips, and logs in
+20 accounts, the bots join Development World 2, the fighters equip their kits,
+and everyone is teleported to a home ground. For 90 seconds the fighters hunt
+and loot wolves, some die and walk back to their corpses, and the walkers walk.
+Then every bot leaves and logs out, the generator prints the role mix and
+counters such as `kills` and `botDeaths` above zero, every rule reads `pass`,
+and the script prints `Load scenario playing-smoke passed` in about two and a
+half minutes.
+
+No manual Unity Editor steps are required for either check.
+
 ## Backend API Smoke Test
 
 These checks call GameService directly from PowerShell. Start PostgreSQL,

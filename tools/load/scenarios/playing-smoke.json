@@ -1,0 +1,36 @@
+{
+  "description": "Tooling check of the playing workload: 20 full-stack bots on Development World 2 with a small variant of 20 extra wolves in two hunting grounds; 12 fighters, a quarter of them with bows, and 8 walkers for 90 seconds.",
+  "mode": "full-stack",
+  "workload": "playing",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-2",
+  "generator": {
+    "bots": 20,
+    "ramp-step": 10,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 90,
+    "http-concurrency": 16,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  },
+  "playing": {
+    "roles": {
+      "fighter": 60,
+      "walker": 40
+    },
+    "fighterBowPercent": 25,
+    "teleportToGrounds": true,
+    "grounds": [
+      { "name": "west-field", "kind": "hunting", "minimumX": -150, "minimumZ": -50, "maximumX": -120, "maximumZ": -20 },
+      { "name": "south-field", "kind": "hunting", "minimumX": -30, "minimumZ": -160, "maximumX": 0, "maximumZ": -130 },
+      { "name": "north-road", "kind": "walking", "minimumX": -10, "minimumZ": 44, "maximumX": 10, "maximumZ": 60 },
+      { "name": "east-road", "kind": "walking", "minimumX": 44, "minimumZ": -10, "maximumX": 60, "maximumZ": 10 }
+    ]
+  },
+  "worldVariant": {
+    "areas": [
+      { "name": "west-field-wolves", "actorId": "mob.feral_wolf", "minimumX": -148, "minimumZ": -48, "maximumX": -122, "maximumZ": -22, "count": 10 },
+      { "name": "south-field-wolves", "actorId": "mob.grey_wolf", "minimumX": -28, "minimumZ": -158, "maximumX": -2, "maximumZ": -132, "count": 10 }
+    ]
+  }
+}

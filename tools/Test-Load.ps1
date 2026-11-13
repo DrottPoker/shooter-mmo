@@ -12,8 +12,13 @@
 # then the containers, also when the run fails or the script is interrupted with Ctrl+C. It
 # refuses to start while another process uses a port it needs.
 #
+# A scenario with a World variant gets it written into the run folder with
+# StackStressGenerator world-variant before the worker starts, and the script says whether the
+# variant keeps the checked-in collision revision, so a Unity client can join the run.
+#
 # Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the boundary or the
-# generator's own checks, 2 it could not run.
+# generator's own checks, 2 it could not run, including a run that could not measure because the
+# generator itself fell behind.
 param(
     # The scenario name, the file name in tools/load/scenarios without .json.
     [Parameter(Mandatory = $true)]
@@ -96,6 +101,10 @@ function Write-Plan($LoadPlan) {
     Write-Host "  Mode $($LoadPlan.mode), workload $($LoadPlan.workload), shard $($LoadPlan.shardId), worker UDP $($LoadPlan.workerUdpPort)."
     if ($LoadPlan.needsContainers) {
         Write-Host "  Recreates the containers of docker-compose.stack-stress.yml on TCP $($LoadPlan.containerTcpPorts -join ', ')."
+    }
+
+    if ($LoadPlan.worldVariantPath) {
+        Write-Host "  Writes the scenario's World variant to $($LoadPlan.worldVariantPath) before the worker starts."
     }
 
     if ($LoadPlan.needsGameService) {
@@ -216,6 +225,7 @@ if (-not (Test-Path -LiteralPath $scenarioPath)) {
 
 $total = [Diagnostics.Stopwatch]::StartNew()
 $exitCode = 2
+$couldNotMeasure = $false
 $gameService = $null
 $worker = $null
 $generator = $null
@@ -268,6 +278,19 @@ try {
     else {
         $summaryPath = $loadPlan.summaryPath
         Assert-PortsFree @($loadPlan.tcpPorts) @($loadPlan.udpPorts)
+        if ($loadPlan.worldVariantPath) {
+            Write-Step "Writing the scenario's World variant with the content compilers."
+            $variantResult = Invoke-Captured $generatorExe @("world-variant", "--scenario", $scenarioPath, "--run-folder", $runFolder)
+            if ($variantResult.ExitCode -ne 0) {
+                throw "The World variant could not be written: $($variantResult.Error.Trim())"
+            }
+
+            foreach ($line in ($variantResult.Output -split "`r?`n")) {
+                if ($line) {
+                    Write-Host "  $line"
+                }
+            }
+        }
 
         Write-Step "Building SimulationWorker$(if ($loadPlan.needsGameService) { ' and GameService' }) in Release."
         Build-Project $projects.worker (Join-Path $runFolder "build-worker.log")
@@ -359,6 +382,11 @@ try {
         if ((Test-Path -LiteralPath $summaryPath) -and $generatorExit -in @(0, 1, 3)) {
             $exitCode = if ($generatorExit -eq 0) { 0 } else { 1 }
         }
+        elseif ((Test-Path -LiteralPath $summaryPath) -and $generatorExit -eq 4) {
+            # The generator fell behind, so the run measured nothing: it could not run.
+            $couldNotMeasure = $true
+            $exitCode = 2
+        }
         else {
             throw "The generator ended with exit code $generatorExit before it wrote a summary; its log is in '$runFolder'."
         }
@@ -395,6 +423,6 @@ if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     }
 }
 
-$result = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 1) { "FAILED" } else { "could not run" }
+$result = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 1) { "FAILED" } elseif ($couldNotMeasure) { "could not measure: the generator fell behind" } else { "could not run" }
 Write-Step ("Load scenario $Scenario $result in {0:N0} s. Run folder: $runFolder" -f $total.Elapsed.TotalSeconds)
 exit $exitCode

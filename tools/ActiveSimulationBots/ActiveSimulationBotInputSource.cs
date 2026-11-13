@@ -20,7 +20,7 @@ public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
     private const double MaximumStraightWalkDistance = 200d;
 
     private readonly ActiveSimulationBotOptions options;
-    private readonly ActiveSimulationBotNavigation? navigation;
+    private readonly SimulationBotNavigation? navigation;
     private readonly Random random;
     private uint nextBehaviorTick;
     private uint lastPathId;
@@ -30,7 +30,7 @@ public sealed class ActiveSimulationBotInputSource : ISimulationBotInputSource
     public ActiveSimulationBotInputSource(
         ActiveSimulationBotOptions options,
         int botIndex,
-        ActiveSimulationBotNavigation? navigation = null)
+        SimulationBotNavigation? navigation = null)
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.navigation = navigation;

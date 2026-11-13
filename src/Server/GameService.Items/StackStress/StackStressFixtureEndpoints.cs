@@ -47,6 +47,32 @@ internal static class StackStressFixtureEndpoints
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapPost(
+                "/api/development/stack-stress/characters/{characterId:guid}/kit",
+                async (
+                    Guid characterId,
+                    StackStressKitRequest request,
+                    ClaimsPrincipal principal,
+                    HttpContext httpContext,
+                    StackStressFixtureService fixtureService,
+                    CancellationToken cancellationToken) =>
+                {
+                    var authorization = Authorize(httpContext, options);
+                    if (authorization is not null)
+                    {
+                        return authorization;
+                    }
+
+                    var result = await fixtureService.SeedKitAsync(
+                        principal.GetAccountId(),
+                        characterId,
+                        request,
+                        cancellationToken);
+                    return result.ToHttpResult();
+                })
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .WithMetadata(new SensitiveResponseAttribute());
+
+        app.MapPost(
                 "/api/development/stack-stress/loot-hotspot",
                 async (
                     StackStressLootHotspotRequest request,

@@ -26,7 +26,8 @@ public sealed class SimulationBotClient : IDisposable
         SimulationBotIdentity identity,
         ISimulationBotInputSource inputSource,
         Action<double>? inputAcknowledged = null,
-        ISimulationBotRealtimeObserver? realtimeObserver = null)
+        ISimulationBotRealtimeObserver? realtimeObserver = null,
+        SimulationBotWorldView? world = null)
     {
         this.connectionOptions = connectionOptions
             ?? throw new ArgumentNullException(nameof(connectionOptions));
@@ -44,7 +45,8 @@ public sealed class SimulationBotClient : IDisposable
             connectionOptions.JoinAndLeaveTimeout,
             inputSource,
             inputAcknowledged,
-            realtimeObserver);
+            realtimeObserver,
+            world);
         client = new NetManager(listener)
         {
             ChannelsCount = RealtimeProtocol.ChannelCount,
@@ -58,6 +60,8 @@ public sealed class SimulationBotClient : IDisposable
     }
 
     public SimulationBotClientState State => session.State;
+
+    public SimulationBotWorldView? World => session.World;
 
     public void Start()
     {
@@ -135,6 +139,24 @@ public sealed class SimulationBotClient : IDisposable
     {
         ThrowIfDisposed();
         return session.SendCorpseInteraction(intent);
+    }
+
+    public bool SendCombatIntent(RealtimeCombatIntent intent)
+    {
+        ThrowIfDisposed();
+        return session.SendCombatIntent(intent);
+    }
+
+    public bool SendWorldInteraction(RealtimeWorldInteractionIntent intent)
+    {
+        ThrowIfDisposed();
+        return session.SendWorldInteraction(intent);
+    }
+
+    public bool SendAdminIntent(RealtimeAdminIntent intent)
+    {
+        ThrowIfDisposed();
+        return session.SendAdminIntent(intent);
     }
 
     public SimulationBotClientSnapshot Capture()

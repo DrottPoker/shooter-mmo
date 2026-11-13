@@ -33,7 +33,7 @@ public sealed class ActiveSimulationBotCoordinator(
     private long lifetimePacketsReceived;
     private long lifetimeBytesSent;
     private long lifetimeBytesReceived;
-    private readonly Dictionary<string, ActiveSimulationBotNavigation?> navigations =
+    private readonly Dictionary<string, SimulationBotNavigation?> navigations =
         new(StringComparer.Ordinal);
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -160,17 +160,17 @@ public sealed class ActiveSimulationBotCoordinator(
 
     // Loads a World's collision for planned walks once; bots of every World keep theirs until
     // the tool stops. Bots walk straight lines when it cannot be loaded.
-    private ActiveSimulationBotNavigation? NavigationFor(string worldId)
+    private SimulationBotNavigation? NavigationFor(string worldId)
     {
         if (navigations.TryGetValue(worldId, out var loaded))
         {
             return loaded;
         }
 
-        ActiveSimulationBotNavigation? navigation = null;
+        SimulationBotNavigation? navigation = null;
         try
         {
-            navigation = ActiveSimulationBotNavigation.Load(
+            navigation = SimulationBotNavigation.Load(
                 WorldDataPath,
                 worldId,
                 Math.Clamp(Environment.ProcessorCount / 4, 1, 4));

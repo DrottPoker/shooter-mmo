@@ -1,16 +1,17 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Worlds;
 
-namespace Mmorpg.Tools.ActiveSimulationBots;
+namespace Mmorpg.Tools.SimulationBotClient;
 
 // Plans bot walks with the shared planner on the World's baked collision, as the Unity client
 // plans click-to-move paths, so bots walk around buildings instead of into them. Plans run on
 // background threads, each with its own planner, because one search can take milliseconds and
-// the poll loop must send every bot's inputs on time.
-public sealed class ActiveSimulationBotNavigation : IDisposable
+// the poll loop must send every bot's inputs on time. Both bot tools use this one copy.
+public sealed class SimulationBotNavigation : IDisposable
 {
     private static readonly JsonSerializerOptions ManifestJsonOptions = new()
     {
@@ -20,10 +21,15 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
 
     private readonly BlockingCollection<PlanRequest> requests;
     private readonly Thread[] threads;
+    private readonly Action<SimulationBotPlanTiming>? planned;
 
-    private ActiveSimulationBotNavigation(ChunkedStaticCollisionWorld collisionWorld, int threadCount)
+    private SimulationBotNavigation(
+        ChunkedStaticCollisionWorld collisionWorld,
+        int threadCount,
+        Action<SimulationBotPlanTiming>? planned)
     {
         CollisionWorld = collisionWorld;
+        this.planned = planned;
         requests = new BlockingCollection<PlanRequest>(threadCount * 64);
         threads = new Thread[threadCount];
         for (var index = 0; index < threadCount; index++)
@@ -31,7 +37,7 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
             threads[index] = new Thread(PlanRequests)
             {
                 IsBackground = true,
-                Name = $"ActiveSimulationBots planner {index + 1}"
+                Name = $"Simulation bot planner {index + 1}"
             };
             threads[index].Start();
         }
@@ -39,12 +45,29 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
 
     public ChunkedStaticCollisionWorld CollisionWorld { get; }
 
-    // Loads every collision chunk of the World from the tool's output, where the build copies
-    // the same compiled collision the worker uses, and checks it like the worker does.
-    public static ActiveSimulationBotNavigation Load(string worldDataPath, string worldId, int threadCount)
+    // Loads every collision chunk of the World from a World data folder laid out as the
+    // worker's, <root>/<worldId>/Collision, and checks it like the worker does. Planned is
+    // called on a planner thread with the queue wait and the search time of every plan.
+    public static SimulationBotNavigation Load(
+        string worldDataPath,
+        string worldId,
+        int threadCount,
+        Action<SimulationBotPlanTiming>? planned = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(threadCount, 1);
-        var directory = WorldManifestFileStore.ResolveCollisionRuntimePath(worldDataPath, worldId);
+        return Create(LoadCollisionWorld(worldDataPath, worldId), threadCount, planned);
+    }
+
+    public static ChunkedStaticCollisionWorld LoadCollisionWorld(string worldDataPath, string worldId)
+    {
+        return LoadCollisionDirectory(
+            WorldManifestFileStore.ResolveCollisionRuntimePath(worldDataPath, worldId),
+            worldId);
+    }
+
+    // Loads the compiled collision of one World from the folder that holds its manifest.
+    public static ChunkedStaticCollisionWorld LoadCollisionDirectory(string directory, string worldId)
+    {
         var manifestPath = Path.Combine(directory, "manifest.json");
         var manifest = JsonSerializer.Deserialize<CollisionWorldManifest>(
                 File.ReadAllText(manifestPath),
@@ -79,16 +102,17 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
             }
         }
 
-        return Create(collisionWorld, threadCount);
+        return collisionWorld;
     }
 
-    public static ActiveSimulationBotNavigation Create(
+    public static SimulationBotNavigation Create(
         ChunkedStaticCollisionWorld collisionWorld,
-        int threadCount)
+        int threadCount,
+        Action<SimulationBotPlanTiming>? planned = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentOutOfRangeException.ThrowIfLessThan(threadCount, 1);
-        return new ActiveSimulationBotNavigation(collisionWorld, threadCount);
+        return new SimulationBotNavigation(collisionWorld, threadCount, planned);
     }
 
     // Queues a plan from start toward destination. Returns null when the planners are busy, so
@@ -100,7 +124,12 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
     {
         var completion = new TaskCompletionSource<MovementPathPlan>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        return requests.TryAdd(new PlanRequest(movement, start, destination, completion))
+        return requests.TryAdd(new PlanRequest(
+                movement,
+                start,
+                destination,
+                completion,
+                Stopwatch.GetTimestamp()))
             ? completion.Task
             : null;
     }
@@ -122,6 +151,7 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
         MovementPathPlanner? planner = null;
         foreach (var request in requests.GetConsumingEnumerable())
         {
+            var started = Stopwatch.GetTimestamp();
             try
             {
                 // Every bot of one worker shares the same settings, so a thread keeps its
@@ -135,7 +165,12 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
                         MovementPathPlannerSettings.Default);
                 }
 
-                request.Completion.TrySetResult(planner.Plan(request.Start, request.Destination));
+                var plan = planner.Plan(request.Start, request.Destination);
+                planned?.Invoke(new SimulationBotPlanTiming(
+                    Stopwatch.GetElapsedTime(request.QueuedTimestamp, started),
+                    Stopwatch.GetElapsedTime(started),
+                    plan.Status));
+                request.Completion.TrySetResult(plan);
             }
             catch (Exception exception)
             {
@@ -197,5 +232,12 @@ public sealed class ActiveSimulationBotNavigation : IDisposable
         RealtimeMovementSettings Movement,
         SimulationVector3 Start,
         SimulationVector3 Destination,
-        TaskCompletionSource<MovementPathPlan> Completion);
+        TaskCompletionSource<MovementPathPlan> Completion,
+        long QueuedTimestamp);
 }
+
+// How long one plan waited for a planner thread and how long its search took.
+public readonly record struct SimulationBotPlanTiming(
+    TimeSpan QueueWait,
+    TimeSpan SearchTime,
+    MovementPathPlanStatus Status);
