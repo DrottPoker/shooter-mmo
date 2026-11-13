@@ -21,9 +21,10 @@ namespace Mmorpg.Client.Networking
 
     public sealed class RealtimeSimulationClient : MonoBehaviour, IRealtimeCorpseChannel
     {
-        private EventBasedNetListener listener;
-        private NetManager client;
-        private NetPeer serverPeer;
+        private IRealtimeTransport transport;
+        private Func<float> realtimeClock;
+        // Whether the transport reported the connection while the hub was connecting.
+        private bool serverConnected;
         private RealtimeClientError operationError;
         private ActiveSimulationSessionResponse joinedSession;
         private RealtimeClientError pendingUnexpectedDisconnect;
@@ -168,7 +169,7 @@ namespace Mmorpg.Client.Networking
         // LiteNetLib's Ping is half the round trip, so the round trip is read directly.
         public int RoundTripTimeMilliseconds
         {
-            get { return serverPeer == null ? 0 : serverPeer.RoundTripTime; }
+            get { return serverConnected ? transport.RoundTripTimeMilliseconds : 0; }
         }
 
         public float LatestSnapshotAgeSeconds
@@ -177,7 +178,7 @@ namespace Mmorpg.Client.Networking
             {
                 return latestSnapshotReceivedAt < 0f
                     ? -1f
-                    : Mathf.Max(0f, Time.realtimeSinceStartup - latestSnapshotReceivedAt);
+                    : Mathf.Max(0f, realtimeClock() - latestSnapshotReceivedAt);
             }
         }
 
@@ -218,28 +219,54 @@ namespace Mmorpg.Client.Networking
             FailProtocol(code, message);
         }
 
+        // Gives the hub its transport and its clock before Awake, which otherwise gives it the
+        // LiteNetLib transport and Unity's realtime clock. EditMode tests pass fakes.
+        internal void Initialize(IRealtimeTransport realtimeTransport, Func<float> clock)
+        {
+            if (realtimeTransport == null)
+            {
+                throw new ArgumentNullException(nameof(realtimeTransport));
+            }
+
+            if (clock == null)
+            {
+                throw new ArgumentNullException(nameof(clock));
+            }
+
+            if (transport != null)
+            {
+                throw new InvalidOperationException("The realtime client already has a transport.");
+            }
+
+            transport = realtimeTransport;
+            realtimeClock = clock;
+            transport.Connected += OnTransportConnected;
+            transport.Disconnected += OnTransportDisconnected;
+            transport.Received += OnTransportReceived;
+            transport.NetworkError += OnTransportError;
+        }
+
         private void Awake()
         {
-            listener = new EventBasedNetListener();
-            client = new NetManager(listener);
-            listener.PeerConnectedEvent += OnPeerConnected;
-            listener.PeerDisconnectedEvent += OnPeerDisconnected;
-            listener.NetworkReceiveEvent += OnNetworkReceive;
-            listener.NetworkErrorEvent += OnNetworkError;
-            client.ChannelsCount = RealtimeProtocol.ChannelCount;
+            if (transport == null)
+            {
+                Initialize(new LiteNetLibRealtimeTransport(), () => Time.realtimeSinceStartup);
+            }
+
             State = RealtimeConnectionState.Disconnected;
         }
 
-        private void Update()
+        // Internal so EditMode tests can run a frame.
+        internal void Update()
         {
             if (transportStarted)
             {
-                client.PollEvents();
+                transport.PollEvents();
             }
 
             if (State != RealtimeConnectionState.Disconnected
                 && State != RealtimeConnectionState.Joined
-                && Time.realtimeSinceStartup >= operationDeadline)
+                && realtimeClock() >= operationDeadline)
             {
                 FailCurrentOperation(new RealtimeClientError(
                     RealtimeClientErrorKind.Timeout,
@@ -355,7 +382,6 @@ namespace Mmorpg.Client.Networking
             ConnectedHost = placement.endpoint.host.Trim();
             ConnectedPort = placement.endpoint.udpPort;
             pendingJoinTicket = placement.joinTicket.Trim();
-            client.DisconnectTimeout = ClientSession.RealtimeTimeoutSeconds * 1000;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Opening UDP connection to SimulationWorker '" + placement.endpoint.workerId
@@ -365,7 +391,7 @@ namespace Mmorpg.Client.Networking
             RealtimeClientError connectionStartError = null;
             try
             {
-                if (!client.Start())
+                if (!transport.Start(ClientSession.RealtimeTimeoutSeconds * 1000))
                 {
                     connectionStartError = new RealtimeClientError(
                         RealtimeClientErrorKind.Network,
@@ -376,8 +402,8 @@ namespace Mmorpg.Client.Networking
                 {
                     transportStarted = true;
                     State = RealtimeConnectionState.Connecting;
-                    operationDeadline = Time.realtimeSinceStartup + ClientSession.RealtimeTimeoutSeconds;
-                    client.Connect(ConnectedHost, ConnectedPort, RealtimeProtocol.ConnectionKey);
+                    operationDeadline = realtimeClock() + ClientSession.RealtimeTimeoutSeconds;
+                    transport.Connect(ConnectedHost, ConnectedPort, RealtimeProtocol.ConnectionKey);
                 }
             }
             catch (Exception)
@@ -427,7 +453,7 @@ namespace Mmorpg.Client.Networking
             Action onSuccess,
             Action<RealtimeClientError> onError)
         {
-            if (State != RealtimeConnectionState.Joined || serverPeer == null)
+            if (State != RealtimeConnectionState.Joined || !serverConnected)
             {
                 var error = new RealtimeClientError(
                     RealtimeClientErrorKind.Validation,
@@ -452,12 +478,12 @@ namespace Mmorpg.Client.Networking
             operationError = null;
             leaveAccepted = false;
             State = RealtimeConnectionState.Leaving;
-            operationDeadline = Time.realtimeSinceStartup + ClientSession.RealtimeTimeoutSeconds;
+            operationDeadline = realtimeClock() + ClientSession.RealtimeTimeoutSeconds;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Requesting a graceful leave for simulation session '" + simulationSessionId.Trim() + "'.");
             var leavePacket = RealtimeProtocol.EncodeLeaveRequest(simulationSessionId.Trim());
-            serverPeer.Send(leavePacket, DeliveryMethod.ReliableOrdered);
+            transport.Send(leavePacket, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
             RecordSentPacket(leavePacket.Length);
 
             while (State == RealtimeConnectionState.Leaving)
@@ -489,7 +515,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendMovementInputs(PlayerMovementInput[] inputs, MovementPath unconfirmedPath)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || inputs == null
                 || inputs.Length == 0
                 || inputs.Length > RealtimeProtocol.MaximumInputBatchSize)
@@ -511,13 +537,13 @@ namespace Mmorpg.Client.Networking
             {
                 var movementPacket = RealtimeProtocol.EncodeMovementInputBatch(
                     new RealtimeMovementInputBatch(protocolInputs, ToRealtimePath(unconfirmedPath)));
-                serverPeer.Send(
+                transport.Send(
                     movementPacket,
                     RealtimeProtocol.MovementInputChannel,
                     DeliveryMethod.Sequenced);
                 // The transport otherwise sends on its own 15 ms update, which made inputs reach
                 // the worker unevenly.
-                client.TriggerUpdate();
+                transport.TriggerUpdate();
                 RecordSentPacket(movementPacket.Length);
                 return true;
             }
@@ -533,7 +559,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendItemOperation(RealtimeItemOperationIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -542,7 +568,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeItemOperationIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -562,7 +588,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendCorpseInteraction(RealtimeCorpseInteractionIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -571,7 +597,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeCorpseInteractionIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -591,7 +617,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendWorldInteraction(RealtimeWorldInteractionIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -600,7 +626,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeWorldInteractionIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -620,7 +646,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendAdminIntent(RealtimeAdminIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -629,7 +655,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeAdminIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -649,7 +675,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendAppearanceIntent(RealtimeAppearanceIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -658,7 +684,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeAppearanceIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -678,7 +704,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendQuestIntent(RealtimeQuestIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -687,7 +713,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeQuestIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -707,7 +733,7 @@ namespace Mmorpg.Client.Networking
         public bool TrySendCombatIntent(RealtimeCombatIntent intent)
         {
             if (State != RealtimeConnectionState.Joined
-                || serverPeer == null
+                || !serverConnected
                 || intent == null)
             {
                 return false;
@@ -716,7 +742,7 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = RealtimeProtocol.EncodeCombatIntent(intent);
-                serverPeer.Send(
+                transport.Send(
                     packet,
                     RealtimeProtocol.ControlChannel,
                     DeliveryMethod.ReliableOrdered);
@@ -756,27 +782,27 @@ namespace Mmorpg.Client.Networking
             }
         }
 
-        private void OnPeerConnected(NetPeer peer)
+        private void OnTransportConnected()
         {
             if (State != RealtimeConnectionState.Connecting)
             {
                 return;
             }
 
-            serverPeer = peer;
+            serverConnected = true;
             State = RealtimeConnectionState.Joining;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "UDP transport connected to " + ConnectedHost + ":" + ConnectedPort
                 + "/udp. Sending the short-lived join ticket to SimulationWorker.");
             var joinPacket = RealtimeProtocol.EncodeJoinRequest(pendingJoinTicket);
-            peer.Send(joinPacket, DeliveryMethod.ReliableOrdered);
+            transport.Send(joinPacket, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
             RecordSentPacket(joinPacket.Length);
         }
 
-        private void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
+        private void OnTransportDisconnected(DisconnectReason reason)
         {
-            serverPeer = null;
+            serverConnected = false;
             if (State == RealtimeConnectionState.Disconnected)
             {
                 return;
@@ -786,7 +812,7 @@ namespace Mmorpg.Client.Networking
             var error = new RealtimeClientError(
                 RealtimeClientErrorKind.Network,
                 "connection_lost",
-                "The realtime connection closed: " + disconnectInfo.Reason + ".");
+                "The realtime connection closed: " + reason + ".");
             operationError = operationError ?? error;
             State = RealtimeConnectionState.Disconnected;
             MovementSession = null;
@@ -804,190 +830,178 @@ namespace Mmorpg.Client.Networking
             }
         }
 
-        private void OnNetworkReceive(
-            NetPeer peer,
-            NetPacketReader reader,
-            byte channel,
-            DeliveryMethod deliveryMethod)
+        private void OnTransportReceived(byte[] packet, byte channel, DeliveryMethod deliveryMethod)
         {
-            try
+            RealtimePacketsReceived++;
+            RealtimeBytesReceived += packet.Length;
+            if (State == RealtimeConnectionState.Disconnected || stopTransportAfterPoll)
             {
-                var packet = reader.GetRemainingBytes();
-                RealtimePacketsReceived++;
-                RealtimeBytesReceived += packet.Length;
-                if (State == RealtimeConnectionState.Disconnected || stopTransportAfterPoll)
-                {
-                    // The session already ended in this poll; later packets must not
-                    // replace the first failure reason.
-                    return;
-                }
+                // The session already ended in this poll; later packets must not
+                // replace the first failure reason.
+                return;
+            }
 
-                if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType)
-                    || !RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor))
-                {
-                    FailProtocol("invalid_packet", "SimulationWorker returned an invalid realtime packet.");
-                    return;
-                }
+            if (!RealtimeProtocol.TryReadMessageType(packet, out var messageType)
+                || !RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor))
+            {
+                FailProtocol("invalid_packet", "SimulationWorker returned an invalid realtime packet.");
+                return;
+            }
 
-                // The protocol schema declares which messages travel unreliably: the snapshots.
-                if (descriptor.Delivery == RealtimeDelivery.Unreliable)
-                {
-                    if (channel != descriptor.Channel
-                        || deliveryMethod != DeliveryMethod.Unreliable)
-                    {
-                        FailProtocol(
-                            "invalid_snapshot_delivery",
-                            "Simulation snapshots require unreliable delivery.");
-                        return;
-                    }
-
-                    if (ShouldIgnoreSimulationSnapshot(State))
-                    {
-                        return;
-                    }
-
-                    if (messageType == RealtimeMessageType.OwnerSimulationSnapshot)
-                    {
-                        HandleOwnerSimulationSnapshot(packet);
-                    }
-                    else if (messageType == RealtimeMessageType.SimulationSnapshot)
-                    {
-                        HandleSimulationSnapshot(packet);
-                    }
-                    else
-                    {
-                        FailProtocol(
-                            "unexpected_message",
-                            "SimulationWorker returned a message that is invalid for clients.");
-                    }
-
-                    return;
-                }
-
-                if (channel != RealtimeProtocol.ControlChannel
-                    || deliveryMethod != DeliveryMethod.ReliableOrdered)
+            // The protocol schema declares which messages travel unreliably: the snapshots.
+            if (descriptor.Delivery == RealtimeDelivery.Unreliable)
+            {
+                if (channel != descriptor.Channel
+                    || deliveryMethod != DeliveryMethod.Unreliable)
                 {
                     FailProtocol(
-                        "invalid_control_delivery",
-                        "SimulationWorker control messages require the reliable ordered control channel.");
+                        "invalid_snapshot_delivery",
+                        "Simulation snapshots require unreliable delivery.");
                     return;
                 }
 
-                if (State == RealtimeConnectionState.Leaving
-                    && ShouldIgnoreWhileLeaving(messageType))
+                if (ShouldIgnoreSimulationSnapshot(State))
                 {
                     return;
                 }
 
-                switch (messageType)
+                if (messageType == RealtimeMessageType.OwnerSimulationSnapshot)
                 {
-                    case RealtimeMessageType.JoinAccepted:
-                        HandleJoinAccepted(packet);
-                        break;
-                    case RealtimeMessageType.JoinRejected:
-                        HandleJoinRejected(packet);
-                        break;
-                    case RealtimeMessageType.LeaveAccepted:
-                        HandleLeaveAccepted(packet);
-                        break;
-                    case RealtimeMessageType.LeaveRejected:
-                        HandleLeaveRejected(packet);
-                        break;
-                    case RealtimeMessageType.ServerDisconnect:
-                        HandleServerDisconnect(packet);
-                        break;
-                    case RealtimeMessageType.EntitySpawn:
-                        HandleEntitySpawn(packet);
-                        break;
-                    case RealtimeMessageType.EntityDespawn:
-                        HandleEntityDespawn(packet);
-                        break;
-                    case RealtimeMessageType.CarryStateChanged:
-                        HandleCarryStateChanged(packet);
-                        break;
-                    case RealtimeMessageType.ItemOperationResult:
-                        HandleItemOperationResult(packet);
-                        break;
-                    case RealtimeMessageType.CorpsePresenceSnapshotChunk:
-                        HandleCorpsePresenceChunk(packet);
-                        break;
-                    case RealtimeMessageType.CorpseInteractionResult:
-                        HandleCorpseInteractionResult(packet);
-                        break;
-                    case RealtimeMessageType.CorpseViewStateChunk:
-                        HandleCorpseViewStateChunk(packet);
-                        break;
-                    case RealtimeMessageType.CorpseViewClosed:
-                        HandleCorpseViewClosed(packet);
-                        break;
-                    case RealtimeMessageType.WorldActorSpawn:
-                        HandleWorldActorSpawn(packet);
-                        break;
-                    case RealtimeMessageType.WorldActorState:
-                        HandleWorldActorState(packet);
-                        break;
-                    case RealtimeMessageType.WorldActorDespawn:
-                        HandleWorldActorDespawn(packet);
-                        break;
-                    case RealtimeMessageType.WorldInteractionOpened:
-                        HandleWorldInteractionOpened(packet);
-                        break;
-                    case RealtimeMessageType.WorldInteractionResult:
-                        HandleWorldInteractionResult(packet);
-                        break;
-                    case RealtimeMessageType.WorldInteractionClosed:
-                        HandleWorldInteractionClosed(packet);
-                        break;
-                    case RealtimeMessageType.GatheringState:
-                        HandleGatheringState(packet);
-                        break;
-                    case RealtimeMessageType.CombatIntentResult:
-                        HandleCombatIntentResult(packet);
-                        break;
-                    case RealtimeMessageType.CombatantState:
-                        HandleCombatantState(packet);
-                        break;
-                    case RealtimeMessageType.CombatEventBatch:
-                        HandleCombatEventBatch(packet);
-                        break;
-                    case RealtimeMessageType.OwnerCombatState:
-                        HandleOwnerCombatState(packet);
-                        break;
-                    case RealtimeMessageType.OwnerItemQuantityChanged:
-                        HandleOwnerItemQuantityChanged(packet);
-                        break;
-                    case RealtimeMessageType.OwnerItemStateChanged:
-                        HandleOwnerItemStateChanged(packet);
-                        break;
-                    case RealtimeMessageType.EntityAppearanceChanged:
-                        HandleEntityAppearanceChanged(packet);
-                        break;
-                    case RealtimeMessageType.AppearanceIntentResult:
-                        HandleAppearanceIntentResult(packet);
-                        break;
-                    case RealtimeMessageType.AdminIntentResult:
-                        HandleAdminIntentResult(packet);
-                        break;
-                    case RealtimeMessageType.AdminStateChanged:
-                        HandleAdminStateChanged(packet);
-                        break;
-                    case RealtimeMessageType.QuestIntentResult:
-                        HandleQuestIntentResult(packet);
-                        break;
-                    case RealtimeMessageType.QuestLogChanged:
-                        HandleQuestLogChanged(packet);
-                        break;
-                    case RealtimeMessageType.QuestDropInCorpse:
-                        HandleQuestDropInCorpse(packet);
-                        break;
-                    default:
-                        FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
-                        break;
+                    HandleOwnerSimulationSnapshot(packet);
                 }
+                else if (messageType == RealtimeMessageType.SimulationSnapshot)
+                {
+                    HandleSimulationSnapshot(packet);
+                }
+                else
+                {
+                    FailProtocol(
+                        "unexpected_message",
+                        "SimulationWorker returned a message that is invalid for clients.");
+                }
+
+                return;
             }
-            finally
+
+            if (channel != RealtimeProtocol.ControlChannel
+                || deliveryMethod != DeliveryMethod.ReliableOrdered)
             {
-                reader.Recycle();
+                FailProtocol(
+                    "invalid_control_delivery",
+                    "SimulationWorker control messages require the reliable ordered control channel.");
+                return;
+            }
+
+            if (State == RealtimeConnectionState.Leaving
+                && ShouldIgnoreWhileLeaving(messageType))
+            {
+                return;
+            }
+
+            switch (messageType)
+            {
+                case RealtimeMessageType.JoinAccepted:
+                    HandleJoinAccepted(packet);
+                    break;
+                case RealtimeMessageType.JoinRejected:
+                    HandleJoinRejected(packet);
+                    break;
+                case RealtimeMessageType.LeaveAccepted:
+                    HandleLeaveAccepted(packet);
+                    break;
+                case RealtimeMessageType.LeaveRejected:
+                    HandleLeaveRejected(packet);
+                    break;
+                case RealtimeMessageType.ServerDisconnect:
+                    HandleServerDisconnect(packet);
+                    break;
+                case RealtimeMessageType.EntitySpawn:
+                    HandleEntitySpawn(packet);
+                    break;
+                case RealtimeMessageType.EntityDespawn:
+                    HandleEntityDespawn(packet);
+                    break;
+                case RealtimeMessageType.CarryStateChanged:
+                    HandleCarryStateChanged(packet);
+                    break;
+                case RealtimeMessageType.ItemOperationResult:
+                    HandleItemOperationResult(packet);
+                    break;
+                case RealtimeMessageType.CorpsePresenceSnapshotChunk:
+                    HandleCorpsePresenceChunk(packet);
+                    break;
+                case RealtimeMessageType.CorpseInteractionResult:
+                    HandleCorpseInteractionResult(packet);
+                    break;
+                case RealtimeMessageType.CorpseViewStateChunk:
+                    HandleCorpseViewStateChunk(packet);
+                    break;
+                case RealtimeMessageType.CorpseViewClosed:
+                    HandleCorpseViewClosed(packet);
+                    break;
+                case RealtimeMessageType.WorldActorSpawn:
+                    HandleWorldActorSpawn(packet);
+                    break;
+                case RealtimeMessageType.WorldActorState:
+                    HandleWorldActorState(packet);
+                    break;
+                case RealtimeMessageType.WorldActorDespawn:
+                    HandleWorldActorDespawn(packet);
+                    break;
+                case RealtimeMessageType.WorldInteractionOpened:
+                    HandleWorldInteractionOpened(packet);
+                    break;
+                case RealtimeMessageType.WorldInteractionResult:
+                    HandleWorldInteractionResult(packet);
+                    break;
+                case RealtimeMessageType.WorldInteractionClosed:
+                    HandleWorldInteractionClosed(packet);
+                    break;
+                case RealtimeMessageType.GatheringState:
+                    HandleGatheringState(packet);
+                    break;
+                case RealtimeMessageType.CombatIntentResult:
+                    HandleCombatIntentResult(packet);
+                    break;
+                case RealtimeMessageType.CombatantState:
+                    HandleCombatantState(packet);
+                    break;
+                case RealtimeMessageType.CombatEventBatch:
+                    HandleCombatEventBatch(packet);
+                    break;
+                case RealtimeMessageType.OwnerCombatState:
+                    HandleOwnerCombatState(packet);
+                    break;
+                case RealtimeMessageType.OwnerItemQuantityChanged:
+                    HandleOwnerItemQuantityChanged(packet);
+                    break;
+                case RealtimeMessageType.OwnerItemStateChanged:
+                    HandleOwnerItemStateChanged(packet);
+                    break;
+                case RealtimeMessageType.EntityAppearanceChanged:
+                    HandleEntityAppearanceChanged(packet);
+                    break;
+                case RealtimeMessageType.AppearanceIntentResult:
+                    HandleAppearanceIntentResult(packet);
+                    break;
+                case RealtimeMessageType.AdminIntentResult:
+                    HandleAdminIntentResult(packet);
+                    break;
+                case RealtimeMessageType.AdminStateChanged:
+                    HandleAdminStateChanged(packet);
+                    break;
+                case RealtimeMessageType.QuestIntentResult:
+                    HandleQuestIntentResult(packet);
+                    break;
+                case RealtimeMessageType.QuestLogChanged:
+                    HandleQuestLogChanged(packet);
+                    break;
+                case RealtimeMessageType.QuestDropInCorpse:
+                    HandleQuestDropInCorpse(packet);
+                    break;
+                default:
+                    FailProtocol("unexpected_message", "SimulationWorker returned a message that is invalid for clients.");
+                    break;
             }
         }
 
@@ -1036,7 +1050,7 @@ namespace Mmorpg.Client.Networking
             }
         }
 
-        private void OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError)
+        private void OnTransportError(System.Net.Sockets.SocketError socketError)
         {
             if (State == RealtimeConnectionState.Disconnected)
             {
@@ -1186,7 +1200,7 @@ namespace Mmorpg.Client.Networking
 
             if (snapshot.SnapshotSequence == latestSnapshotSequence)
             {
-                latestSnapshotReceivedAt = Time.realtimeSinceStartup;
+                latestSnapshotReceivedAt = realtimeClock();
             }
 
             if (LatestServerTick == 0
@@ -2124,11 +2138,11 @@ namespace Mmorpg.Client.Networking
             stopTransportAfterPoll = false;
             if (transportStarted)
             {
-                client.Stop();
+                transport.Stop();
                 transportStarted = false;
             }
 
-            serverPeer = null;
+            serverConnected = false;
             ConnectedHost = string.Empty;
             ConnectedPort = 0;
             pendingJoinTicket = string.Empty;

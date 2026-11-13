@@ -6,6 +6,7 @@
     "Mmorpg.Client.Core",
     "Mmorpg.Client.Worlds",
     "Mmorpg.Client.Networking",
+    "LiteNetLib",
     "Mmorpg.Client.Items",
     "Mmorpg.Client.Quests",
     "Mmorpg.Client.Gameplay",
