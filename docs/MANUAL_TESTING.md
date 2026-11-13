@@ -511,7 +511,9 @@ filter loopback traffic.
    turn the camera with the arrow keys. About 5 seconds later, resume the
    worker.
 2. Suspend the worker again and keep it suspended for at least 35 seconds, then
-   resume it.
+   resume it. Its registration lease of 30 seconds has expired by then, so the
+   resumed worker logs `Simulation worker registration lease expired` and stops
+   itself. Start the worker again and click `Refresh` in the client.
 3. Click `Enter World` with the same character. Press F2, click `Leave Shard`,
    choose the other character, and click `Enter World` within 20 seconds.
 
@@ -520,18 +522,20 @@ Expected result:
 - In step 1, a notice in the upper middle of the screen reads `CONNECTION LOST`
   and `Reconnecting to the world. 20 s left.`, counting down. The World stays:
   the character stands where it was, the click does not move it, the camera
-  turns, other players and Mobs disappear, and the Inventory stays open. The
-  Console holds `[CLIENT] The connection of simulation session '<id>' was lost.
-  Reconnecting for up to 20 s:` with the reason, and a failed attempt adds
-  `Reconnect attempt <n> failed; trying again:`. A few seconds after the
-  resume the notice goes and the character stands where it stood, with its
-  health and mana; Mobs and players come back, clicks walk again, and the
-  Console holds `... was restored as '<id>' after <n> attempts, resuming the
-  character's body.` No scene loads.
+  turns, other players, NPCs, and Mobs disappear, the health and mana panel
+  hides, and the Inventory stays open. The Console holds `[CLIENT] The
+  connection of simulation session '<id>' was lost. Reconnecting for up to 20
+  s:` with the reason, and a failed attempt adds `Reconnect attempt <n> failed;
+  trying again:`. A few seconds after the resume the notice goes and the
+  character stands where it stood, with its health and mana; the panel, NPCs,
+  Mobs, and players come back, clicks walk again, and the Console holds `... was
+  restored as '<id>' after <n> attempts, resuming the character's body.` No
+  scene loads.
 - In step 2, the notice counts down to 0, and the client returns to
   CharacterSelect, which reads `The connection to the world was lost and could
   not be restored.` above the cards. The Console holds `... could not be
-  restored: the 20 s to reconnect ended after <n> attempts.`
+  restored: the 20 s to reconnect ended after <n> attempts.` `Local Shard 1`
+  reads `Offline` until the worker runs again and `Refresh` is clicked.
 - In step 3 the character enters where it stood. After the leave, the
   character's page counts its body down, and the other character's page reads
   `<name> is still in the world for about <n> more seconds. Another character
