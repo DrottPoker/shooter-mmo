@@ -789,24 +789,40 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(secondLogin.Succeeded, secondLogin.Error?.Message);
 
+        // The tickets of the replaced session are gone, while its simulation session goes on for
+        // the character's body: the heartbeat renews it and names the replacement.
         Assert.Equal(0, await CountActiveTicketsAsync(context));
-        Assert.Equal(0, await CountActiveSimulationSessionsAsync(context));
+        Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
         var replacedHeartbeat = await context.SimulationSessionService.HeartbeatAsync(
             firstSimulationSession.Value!.SimulationSessionId,
             LocalWorkerId,
             Credential(firstSimulationSession.Value.SimulationSessionToken),
             CancellationToken.None);
-        Assert.False(replacedHeartbeat.Succeeded);
+        Assert.True(replacedHeartbeat.Succeeded, replacedHeartbeat.Error?.Message);
         Assert.Equal(
             Mmorpg.GameService.Accounts.Contracts.AccountSessionErrorCode.SessionReplaced,
-            replacedHeartbeat.Error!.Code);
+            replacedHeartbeat.Value!.AccountSessionEnded);
 
         var replacementAccount = await context.SessionService.AuthenticateTokenAsync(
             secondLogin.Value!.SessionToken,
             CancellationToken.None);
         Assert.NotNull(replacementAccount);
 
+        var blockedJoin = await context.ShardService.CreateJoinTicketAsync(
+            replacementAccount!,
+            LocalShardId,
+            new JoinShardRequest(secondCharacterId),
+            CancellationToken.None);
+        Assert.Equal("account_character_already_active", blockedJoin.Error!.Code);
+
+        // Once the worker releases the body's session, the new session enters another character.
+        var released = await context.SimulationSessionService.ReleaseAsync(
+            firstSimulationSession.Value.SimulationSessionId,
+            LocalWorkerId,
+            Release(firstSimulationSession.Value.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(released.Succeeded, released.Error?.Message);
         var replacementJoin = await context.ShardService.CreateJoinTicketAsync(
             replacementAccount!,
             LocalShardId,

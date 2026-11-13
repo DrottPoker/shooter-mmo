@@ -1,3 +1,5 @@
+using Mmorpg.GameService.Placement.Contracts;
+
 namespace Mmorpg.GameService.Items.Contracts;
 
 // The error codes of item transactions. Their values are client and worker protocol. The
@@ -53,5 +55,10 @@ public static class ItemTransactionErrorCodes
     public const string WrongSimulationWorker = "wrong_simulation_worker";
     public const string WorkerRuntimeChanged = "worker_runtime_changed";
     public const string SimulationSessionInvalid = "simulation_session_invalid";
+
+    // A client's operation on a session whose account session a new login replaced or that
+    // otherwise ended; the session goes on for the character's body.
+    public const string AccountSessionReplaced = SimulationAccountSessionEndCodes.Replaced;
+    public const string AccountSessionEnded = SimulationAccountSessionEndCodes.Ended;
     public const string SimulationOperationInvalid = "item_simulation_operation_invalid";
 }

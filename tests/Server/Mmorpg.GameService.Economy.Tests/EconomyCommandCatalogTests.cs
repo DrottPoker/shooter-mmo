@@ -61,6 +61,7 @@ public sealed class EconomyCommandCatalogTests
         Assert.DoesNotContain(registrations, registration => registration.RetriedSystemOperation);
         Assert.DoesNotContain(registrations, registration => registration.OperationallySignificant);
         Assert.DoesNotContain(registrations, registration => registration.PolicyAction);
+        Assert.DoesNotContain(registrations, registration => registration.MayRunAfterAccountSessionEnd);
     }
 
     [Fact]

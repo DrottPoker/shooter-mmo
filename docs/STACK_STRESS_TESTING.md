@@ -244,8 +244,8 @@ Expected result:
   its body stays in the world for 20 seconds, as
   [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes.
 - Every joined bot requests a graceful leave after the steady interval. The
-  bodies stay 20 seconds after the run; in full-stack mode the account logout
-  that follows ends them within the session heartbeat.
+  bodies stay 20 seconds after the run, also in full-stack mode, where the
+  account logout that follows does not shorten them.
 - The worker log shows no `Movement simulation exceeded its catch-up budget`
   warning.
 - The command exits with code 0 only when every requested bot joined and left

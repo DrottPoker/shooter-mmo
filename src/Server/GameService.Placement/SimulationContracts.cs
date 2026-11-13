@@ -237,4 +237,9 @@ internal sealed record SimulationSessionLeaseResponse(
 
     // Whether a release stored the final state it carried.
     public bool FinalStateSaved { get; init; }
+
+    // A heartbeat's code for how the session's account session ended, account_session_replaced or
+    // account_session_ended, or null while it is valid. The session goes on: the worker ends the
+    // connection and keeps the character's body.
+    public string? AccountSessionEnded { get; init; }
 }

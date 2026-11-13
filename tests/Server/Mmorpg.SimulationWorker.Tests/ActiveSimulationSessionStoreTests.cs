@@ -217,6 +217,42 @@ public sealed class ActiveSimulationSessionStoreTests
         Assert.False(store.TryTakeInvalidation(detached.SimulationSessionId, out _));
     }
 
+    // The end of an account session marks the current generation and keeps the session current; an
+    // earlier generation is not marked, and a reconnect, a removal, or an invalidation forgets it.
+    [Fact]
+    public void AnEndedAccountSessionMarksOnlyTheCurrentGenerationAndKeepsItCurrent()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var session = CreateSession();
+        store.Register(session);
+        Assert.False(store.TryGetAccountSessionEnd(session, out _));
+
+        Assert.False(store.MarkAccountSessionEnded(session.CharacterId, session.SimulationSessionId, "older-token", "account_session_ended"));
+        Assert.True(store.MarkAccountSessionEnded(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, "account_session_replaced"));
+        Assert.False(store.MarkAccountSessionEnded(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, "account_session_ended"));
+
+        Assert.True(store.TryGetAccountSessionEnd(session, out var code));
+        Assert.Equal("account_session_replaced", code);
+        Assert.True(store.IsCurrent(session, DateTime.UtcNow));
+        Assert.False(store.TryTakeInvalidation(session.SimulationSessionId, out _));
+        Assert.False(store.TryGetAccountSessionEnd(session with { SimulationSessionToken = "older-token" }, out _));
+
+        var reconnected = session with { SimulationSessionToken = "newer-token" };
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(reconnected));
+        Assert.False(store.TryGetAccountSessionEnd(reconnected, out _));
+
+        Assert.True(store.MarkAccountSessionEnded(reconnected.CharacterId, reconnected.SimulationSessionId, reconnected.SimulationSessionToken, "account_session_ended"));
+        Assert.True(store.Remove(reconnected.CharacterId, reconnected.SimulationSessionId, reconnected.SimulationSessionToken));
+        Assert.False(store.TryGetAccountSessionEnd(reconnected, out _));
+
+        var invalidated = CreateSession();
+        store.Register(invalidated);
+        Assert.True(store.MarkAccountSessionEnded(invalidated.CharacterId, invalidated.SimulationSessionId, invalidated.SimulationSessionToken, "account_session_ended"));
+        Assert.True(store.Invalidate(invalidated.CharacterId, invalidated.SimulationSessionId, invalidated.SimulationSessionToken, "session_revoked", "Ended."));
+        Assert.Equal(ActiveSimulationSessionRegistration.Joined, store.Register(invalidated));
+        Assert.False(store.TryGetAccountSessionEnd(invalidated, out _));
+    }
+
     private static ActiveSimulationSession CreateSession(
         Guid? simulationSessionId = null,
         string sessionToken = "session-token",

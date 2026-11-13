@@ -610,6 +610,44 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             Problem(HttpStatusCode.NotFound, "quest_not_found", "The quest catalog holds no such quest."));
         OnQuestDrops = (_, request, _) => Task.FromResult(Json(new SimulationQuestDropResponse(request.Drops)));
         OnCheckpoint = (request, _) => Task.FromResult(Json(new SimulationCharacterCheckpointResponse(request.States.Count, 0)));
+        OnSessionHeartbeat = (sessionId, _, _) => Task.FromResult(DefaultSessionHeartbeat(sessionId));
+    }
+
+    // Answers a session heartbeat; by default GameService renews the lease of a registered
+    // character with the carry state its ticket named.
+    public Func<Guid, SimulationSessionCredentialRequest, CancellationToken, Task<HttpResponseMessage>>
+        OnSessionHeartbeat
+    { get; set; }
+
+    public HttpResponseMessage DefaultSessionHeartbeat(Guid simulationSessionId, string? accountSessionEnded = null)
+    {
+        RealtimeTestCharacter? character;
+        lock (sync)
+        {
+            charactersBySession.TryGetValue(simulationSessionId, out character);
+        }
+
+        if (character is null)
+        {
+            return Problem(HttpStatusCode.Unauthorized, "invalid_simulation_session", "The session is not active.");
+        }
+
+        return Json(new SimulationSessionLeaseResponse(
+            simulationSessionId,
+            character.CharacterId,
+            RealtimeServerHarness.ShardId,
+            RealtimeServerHarness.WorkerId,
+            RealtimeServerHarness.RuntimeId,
+            DateTime.UtcNow.AddMilliseconds(character.SessionLeaseDurationMilliseconds),
+            character.ItemStateRevision,
+            character.CarriedWeight,
+            character.CarryCapacity,
+            false)
+        {
+            LeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
+            Equipment = character.Equipment,
+            AccountSessionEnded = accountSessionEnded
+        });
     }
 
     // Answers a checkpoint; by default GameService saves every state.
@@ -1050,6 +1088,13 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 }
 
                 return await OnRelease(simulationSessionId, release!, cancellationToken);
+            }
+
+            if (segments.Length == 4 && segments[3] == "heartbeat")
+            {
+                var credential = await request.Content!
+                    .ReadFromJsonAsync<SimulationSessionCredentialRequest>(cancellationToken);
+                return await OnSessionHeartbeat(simulationSessionId, credential!, cancellationToken);
             }
 
             if (segments.Length == 4 && segments[3] == "ammunition-consumptions")

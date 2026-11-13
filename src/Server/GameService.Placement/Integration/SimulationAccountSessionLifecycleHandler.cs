@@ -4,8 +4,11 @@ using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Placement.Integration;
 
-// Ends simulation access in the same transaction that ends the account session, so a
-// replaced or revoked session can never keep a simulation lease or a join ticket.
+// Ends simulation access in the same transaction that ends the account session. A pending join
+// ticket of the ended session is consumed. A simulation session is not released but marked: the
+// character's body stays in the world its full time on the worker, which renews the lease and
+// releases it when the body goes, while everything a client asks for on the session is refused
+// and the worker ends the connection at the next session heartbeat, or at the first refusal.
 internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSessionLifecycleHandler
 {
     public async Task OnSessionsReplacedAsync(
@@ -16,15 +19,15 @@ internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSession
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(sessionsReplaced);
 
-        const string releaseSimulationSessionsSql = """
+        const string markSimulationSessionsSql = """
             update character_simulation_sessions
-            set released_at = coalesce(released_at, now())
+            set account_session_ended_at = coalesce(account_session_ended_at, now())
             where account_id = @AccountId
               and released_at is null;
             """;
 
         await scope.Connection.ExecuteAsync(new CommandDefinition(
-            releaseSimulationSessionsSql,
+            markSimulationSessionsSql,
             new { sessionsReplaced.AccountId },
             scope.Transaction,
             cancellationToken: cancellationToken));
@@ -51,14 +54,14 @@ internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSession
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(sessionRevoked);
 
-        const string releaseSimulationSessionsSql = """
+        const string markSimulationSessionsSql = """
             update character_simulation_sessions
-            set released_at = coalesce(released_at, now())
+            set account_session_ended_at = coalesce(account_session_ended_at, now())
             where account_session_id = @SessionId and released_at is null;
             """;
 
         await scope.Connection.ExecuteAsync(new CommandDefinition(
-            releaseSimulationSessionsSql,
+            markSimulationSessionsSql,
             new { SessionId = sessionRevoked.AccountSessionId },
             scope.Transaction,
             cancellationToken: cancellationToken));

@@ -311,6 +311,6 @@ public sealed class LiveMobCorpseInteractionService(
             requiresCorpseRefresh: requiresRefresh,
             requiresInventoryRefresh: true,
             shouldCloseView: error.Code is "corpse_not_found" or "wrong_simulation_worker",
-            shouldDisconnect: GameServiceOutcome.EndsSession(error.Code));
+            shouldDisconnect: GameServiceOutcome.EndsSession(error.Code) || GameServiceOutcome.EndsAccountSession(error.Code));
     }
 }

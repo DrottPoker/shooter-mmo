@@ -46,7 +46,10 @@ internal sealed class QuestCommandSource : IItemCommandSource
             new ItemCommandRegistration<CreditQuestKillCommand>(
                 QuestOperationKinds.CreditQuestKill,
                 static command => command.CharacterId,
-                quest),
+                quest)
+            {
+                MayRunAfterAccountSessionEnd = true
+            },
             new ItemCommandRegistration<TurnInQuestCommand>(
                 QuestOperationKinds.TurnInQuest,
                 static command => command.CharacterId,

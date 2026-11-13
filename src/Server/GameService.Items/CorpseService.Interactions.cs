@@ -421,7 +421,7 @@ internal sealed partial class CorpseService
             new PostgresTransactionScope(connection, transaction),
             simulationSessionId,
             cancellationToken);
-        if (row is null || !row.SessionIsActive)
+        if (row is null || !row.SessionIsLive)
         {
             return new SnapshotError(
                 ItemTransactionErrorCodes.SimulationSessionInvalid,
@@ -452,11 +452,18 @@ internal sealed partial class CorpseService
                 "The simulation worker runtime no longer owns a fresh registry lease.");
         }
 
-        return row.WorkerHasAssignment
-            ? null
-            : new SnapshotError(
+        if (!row.WorkerHasAssignment)
+        {
+            return new SnapshotError(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The simulation worker no longer owns the requested Shard assignment.");
+        }
+
+        // Opening a corpse is what a client asks for, so none opens once the account session
+        // ended, even while the character's body stays in the world.
+        return row.AccountSessionEnd is { } end
+            ? new SnapshotError(SimulationAccountSessionEndCodes.Of(end), SimulationAccountSessionEndCodes.MessageOf(end))
+            : null;
     }
 
     // A viewer may only see a corpse it may loot; the committed view after a mutation that
@@ -795,7 +802,9 @@ internal sealed partial class CorpseService
     {
         return error.Code switch
         {
-            ItemTransactionErrorCodes.SimulationSessionInvalid =>
+            ItemTransactionErrorCodes.SimulationSessionInvalid or
+            ItemTransactionErrorCodes.AccountSessionReplaced or
+            ItemTransactionErrorCodes.AccountSessionEnded =>
                 ServiceResult<CorpseViewSnapshotResponse>.Unauthorized(
                     error.Code,
                     error.Message),

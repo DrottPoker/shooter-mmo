@@ -10,6 +10,7 @@ using Mmorpg.GameService.Quests;
 using Mmorpg.GameService.Testing;
 using ServerCheckpointRequest = Mmorpg.GameService.Placement.SimulationCharacterCheckpointRequest;
 using ServerConsumeRequest = Mmorpg.GameService.Placement.ConsumeSimulationJoinTicketRequest;
+using ServerCredentialRequest = Mmorpg.GameService.Placement.SimulationSessionCredentialRequest;
 using ServerItemOperationRequest = Mmorpg.GameService.Items.SimulationItemOperationRequest;
 using ServerMobLootGrantRequest = Mmorpg.GameService.Items.SimulationMobLootGrantRequest;
 using ServerQuestDropRequest = Mmorpg.GameService.Quests.SimulationQuestDropRequest;
@@ -19,8 +20,8 @@ using ServerReleaseRequest = Mmorpg.GameService.Placement.SimulationSessionRelea
 
 namespace Mmorpg.Integration.Tests;
 
-// Serves the worker's join ticket consume, session release, checkpoint, item operations, quest log
-// read, quest operations, quest drop read, and live Mob loot grants with the GameService
+// Serves the worker's join ticket consume, session heartbeat and release, checkpoint, item
+// operations, quest log read, quest operations, quest drop read, and live Mob loot grants with the GameService
 // services, the routes' request types, and their HTTP result mapping, without a web host, so the
 // worker's own requests and response validation meet the real routes.
 internal sealed class InProcessWorkerRoutes(PostgresIntegrationTestContext context, string workerId)
@@ -62,6 +63,11 @@ internal sealed class InProcessWorkerRoutes(PostgresIntegrationTestContext conte
         var simulationSessionId = Guid.Parse(segments[2]);
         IResult result = segments[3] switch
         {
+            "heartbeat" => (await scope.ServiceProvider.GetRequiredService<SimulationSessionService>().HeartbeatAsync(
+                simulationSessionId,
+                workerId,
+                JsonSerializer.Deserialize<ServerCredentialRequest>(body, WebJson)!,
+                cancellationToken)).ToHttpResult(),
             "release" => (await scope.ServiceProvider.GetRequiredService<SimulationSessionService>().ReleaseAsync(
                 simulationSessionId,
                 workerId,

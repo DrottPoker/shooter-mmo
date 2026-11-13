@@ -23,6 +23,8 @@ internal sealed class AppearanceIntentHandler(
     CharacterLookStore looks,
     RealtimeOperationTracker operationTracker,
     RealtimeCompletionQueue completions,
+    RealtimeSessionTeardown teardown,
+    OperationCompletionTargets targets,
     GameServiceClient? gameServiceClient,
     ILogger logger) : IRealtimeCompletionHandler
 {
@@ -79,28 +81,35 @@ internal sealed class AppearanceIntentHandler(
         var session = completed.Session;
         var stored = completed.Result is { Succeeded: true, Value: { } appearance }
             && looks.TryApply(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, appearance);
-        if (completed.Context.Session?.SimulationSessionId != session.SimulationSessionId
-            || !peers.TryGetCurrentPeer(completed.Context, out var peer))
+        var failure = stored ? null : completed.Result?.Error;
+        if (completed.Context.Session?.SimulationSessionId == session.SimulationSessionId
+            && peers.TryGetCurrentPeer(completed.Context, out var peer))
         {
-            return;
+            if (stored)
+            {
+                sender.SendControl(peer, RealtimeProtocol.EncodeAppearanceIntentResult(new RealtimeAppearanceIntentResult(
+                    completed.Intent.OperationId,
+                    completed.Intent.Kind,
+                    true,
+                    null)));
+            }
+            else
+            {
+                SendResult(
+                    peer,
+                    completed.Intent,
+                    failure?.Code ?? "appearance_change_failed",
+                    failure?.Message ?? "SimulationWorker could not change the look.");
+            }
         }
 
-        if (stored)
+        // The account session ended: the connection ends and the character's body stays.
+        if (failure is not null
+            && GameServiceOutcome.EndsAccountSession(failure.Code)
+            && targets.TryResolve(completed.Context, session, out var target))
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeAppearanceIntentResult(new RealtimeAppearanceIntentResult(
-                completed.Intent.OperationId,
-                completed.Intent.Kind,
-                true,
-                null)));
-            return;
+            teardown.EndForAuthorityFailure(target, failure.Code, failure.Message);
         }
-
-        var failure = completed.Result?.Error;
-        SendResult(
-            peer,
-            completed.Intent,
-            failure?.Code ?? "appearance_change_failed",
-            failure?.Message ?? "SimulationWorker could not change the look.");
     }
 
     public void OnCompletionFailed(RealtimeOperationResult completion)

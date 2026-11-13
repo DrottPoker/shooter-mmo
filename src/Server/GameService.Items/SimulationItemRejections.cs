@@ -13,7 +13,9 @@ public static class SimulationItemRejections
             ?? throw new InvalidOperationException("A rejected item operation has no error.");
         return error.Code switch
         {
-            ItemTransactionErrorCodes.SimulationSessionInvalid =>
+            ItemTransactionErrorCodes.SimulationSessionInvalid or
+            ItemTransactionErrorCodes.AccountSessionReplaced or
+            ItemTransactionErrorCodes.AccountSessionEnded =>
                 ServiceResult<T>.Unauthorized(error.Code, error.Message),
             ItemTransactionErrorCodes.AuthorityRequired or
             ItemTransactionErrorCodes.WrongSimulationWorker or

@@ -153,12 +153,13 @@ internal sealed class SimulationQuestDropService(
                 && drop.Quantity > 0);
     }
 
-    // The same checks in the same order as the worker's corpse view read.
+    // The same checks in the same order as the worker's corpse view read. A session whose account
+    // session ended is read too, since a body's kill still rolls the quest drops it needs.
     private static ServiceResult<SimulationQuestDropResponse>? Validate(
         SimulationSessionReadAuthority? session,
         SimulationQuestDropRequest request)
     {
-        if (session is null || !session.SessionIsActive)
+        if (session is null || !session.SessionIsLive)
         {
             return ServiceResult<SimulationQuestDropResponse>.Unauthorized(
                 SessionInvalid,

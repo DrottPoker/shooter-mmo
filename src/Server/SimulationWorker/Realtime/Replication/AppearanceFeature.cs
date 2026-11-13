@@ -56,6 +56,8 @@ internal sealed class AppearanceFeature
             dependencies.Looks,
             core.OperationTracker,
             core.Completions,
+            core.Teardown,
+            core.CompletionTargets,
             dependencies.GameServiceClient,
             core.Logger);
         AppearanceIntentHandler.AddRoute(core.Registries.Routes, intents.HandleIntent);

@@ -48,7 +48,10 @@ internal sealed class CoreItemCommandSource : IItemCommandSource
             new ItemCommandRegistration<ConsumeEquippedAmmunitionCommand>(
                 ItemOperationKinds.ConsumeEquippedAmmunition,
                 static command => command.CharacterId,
-                new AmmunitionConsumptionCommandHandler()),
+                new AmmunitionConsumptionCommandHandler())
+            {
+                MayRunAfterAccountSessionEnd = true
+            },
             new ItemCommandRegistration<DestroyItemCommand>(
                 ItemOperationKinds.Destroy,
                 static command => command.CharacterId,

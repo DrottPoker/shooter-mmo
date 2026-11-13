@@ -984,10 +984,17 @@ answer says how long the body stays.
   moving, equipping, or looting an item, still completes, and the body shows its
   outcome: what it wears, carries, and looted. The body leaves only after that
   action completed.
-- The body leaves at once when its session ends: when GameService revoked it,
-  when a new login on the account replaced it, when its lease expired, and when
-  the worker stops, which saves it like a connected player. An account logout
-  or a new login therefore ends the body within the session heartbeat interval.
+- Logging the account out, logging in again, or letting the account session
+  expire does not shorten the body: it stays its full time whatever the player
+  does. A new login or a logout from elsewhere throws a client that still plays
+  the character out within the session heartbeat interval, or at once when it
+  asks for an item, corpse, quest, or look change, and the character stays as a
+  body. The new login may enter the same character and resume the body; another
+  character waits until the body is gone.
+- The body leaves at once only when its session itself ends: when its lease
+  expired because nobody renewed it, when GameService no longer accepts the
+  session, such as after a newer worker runtime took the Shard over, and when
+  the worker stops, which saves it like a connected player.
 - Development bots follow the same rules.
 
 ### What A Character Keeps
@@ -1230,7 +1237,7 @@ The MVP is built in named slices:
 | Vendor and gathering | Complete | One NPC vendor, persistent Gold, shared resource nodes gathered with a tool in the Tool slot, gathering through the item transaction service, and buying from and selling to the vendor |
 | Target-based combat and simple Mob | Complete | Ranged, Melee, and Magic weapons with consumed ammunition or mana, target selection and auto attack, health and Normal damage, authoritative death events, aggressive Mobs with live loot, and a boss with a durable corpse |
 | Death, Recovery, and corpse looting | Complete | The death partition, Recovery Storage, durable and live corpses, concurrent looting, Bag swaps, Loot all, insurance, and the combat death producer |
-| Gameplay rule areas and presence lifecycle | Partly complete | Done: a body that stays 20 seconds everywhere after a leave or a lost connection, kept longer by every hit, and reconnect to the same body. Deferred until a larger authored map exists: content-authored Safe City and Open Risk rule areas, instant logout in the Safe City, and a five-minute body in the Open Risk area |
+| Gameplay rule areas and presence lifecycle | Partly complete | Done: a body that stays 20 seconds everywhere after a leave or a lost connection, also across a logout or a new login, kept longer by every hit, and reconnect to the same body. Deferred until a larger authored map exists: content-authored Safe City and Open Risk rule areas, instant logout in the Safe City, and a five-minute body in the Open Risk area |
 
 ## Deferred Features
 
