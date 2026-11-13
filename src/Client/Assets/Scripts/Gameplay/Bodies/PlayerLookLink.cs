@@ -9,34 +9,37 @@ namespace Mmorpg.Client.Gameplay
 {
     // Keeps the local player's look in step with SimulationWorker: it stores the look the worker
     // sends for the controlled player, and sends the changes the Admin menu and the
-    // inventory ask for. A refused change shows its reason in the game messages.
+    // inventory ask for. A refused change shows its reason in the game messages. The look is
+    // forgotten when the client leaves its World or its account, not when a connection ends, so
+    // the body keeps its look while a lost connection is restored.
     public sealed class PlayerLookLink : IDisposable
     {
         private readonly TextCatalog texts;
         private readonly IRealtimeLookChannel looks;
         private readonly IRealtimeMovementChannel movement;
-        private readonly IRealtimeSession session;
+        private readonly IClientSession clientSession;
         private readonly PlayerBodyLookSetting look;
         private readonly GameMessageLog messages;
 
         public PlayerLookLink(
             IRealtimeLookChannel lookChannel,
             IRealtimeMovementChannel movementChannel,
-            IRealtimeSession realtimeSession,
+            IClientSession accountSession,
             PlayerBodyLookSetting lookSetting,
             GameMessageLog gameMessages,
             TextCatalog messageTexts)
         {
             looks = lookChannel ?? throw new ArgumentNullException(nameof(lookChannel));
             movement = movementChannel ?? throw new ArgumentNullException(nameof(movementChannel));
-            session = realtimeSession ?? throw new ArgumentNullException(nameof(realtimeSession));
+            clientSession = accountSession ?? throw new ArgumentNullException(nameof(accountSession));
             texts = messageTexts ?? throw new ArgumentNullException(nameof(messageTexts));
             look = lookSetting ?? throw new ArgumentNullException(nameof(lookSetting));
             messages = gameMessages;
             looks.EntityAppearanceChanged += OnEntityAppearanceChanged;
             looks.AppearanceIntentCompleted += OnAppearanceIntentCompleted;
-            session.SessionEnded += OnSessionEnded;
-            session.UnexpectedlyDisconnected += OnSessionEnded;
+            clientSession.WorldLeft += OnWorldLeft;
+            clientSession.SignedIn += OnWorldLeft;
+            clientSession.SignedOut += OnWorldLeft;
             look.DevelopmentLookRequested += OnDevelopmentLookRequested;
             look.HeadwearRequested += OnHeadwearRequested;
         }
@@ -45,8 +48,9 @@ namespace Mmorpg.Client.Gameplay
         {
             looks.EntityAppearanceChanged -= OnEntityAppearanceChanged;
             looks.AppearanceIntentCompleted -= OnAppearanceIntentCompleted;
-            session.SessionEnded -= OnSessionEnded;
-            session.UnexpectedlyDisconnected -= OnSessionEnded;
+            clientSession.WorldLeft -= OnWorldLeft;
+            clientSession.SignedIn -= OnWorldLeft;
+            clientSession.SignedOut -= OnWorldLeft;
             look.DevelopmentLookRequested -= OnDevelopmentLookRequested;
             look.HeadwearRequested -= OnHeadwearRequested;
         }
@@ -63,7 +67,7 @@ namespace Mmorpg.Client.Gameplay
             look.Receive(appearance.BodyModel, CharacterLooks.LookOf(appearance.Choices), appearance.HeadwearLowered);
         }
 
-        private void OnSessionEnded(RealtimeClientError error)
+        private void OnWorldLeft()
         {
             look.Reset();
         }

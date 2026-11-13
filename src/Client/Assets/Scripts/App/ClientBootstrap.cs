@@ -32,8 +32,10 @@ namespace Mmorpg.Client.App
 
         private string previousSceneName;
         private ClientSession clientSession;
+        private ClientNotices notices;
         private ClientSessionRecovery sessionRecovery;
         private WorldExit worldExit;
+        private WorldReconnect reconnect;
         private ApiClient apiClient;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private Coroutine accountSessionMonitor;
@@ -155,9 +157,30 @@ namespace Mmorpg.Client.App
             DeleteRetiredPreferences();
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
             simulationClient.Initialize(clientSession.Settings);
-            sessionRecovery = new ClientSessionRecovery(clientSession, simulationClient.Session);
-            worldExit = new WorldExit(clientSession, simulationClient.Session, sessionRecovery);
+            notices = new ClientNotices(() => Time.realtimeSinceStartup);
+            sessionRecovery = new ClientSessionRecovery(clientSession, simulationClient.Session, notices);
+            worldExit = new WorldExit(clientSession, simulationClient.Session, sessionRecovery, notices);
+            reconnect = new WorldReconnect(
+                clientSession,
+                simulationClient.Session,
+                new WorldJoin(clientSession, apiClient, simulationClient.Session),
+                worldExit,
+                sessionRecovery,
+                () => Time.realtimeSinceStartup,
+                IsWorldSceneShown,
+                routine => StartCoroutine(routine));
             previousSceneName = SceneManager.GetActiveScene().name;
+        }
+
+        // The reconnect ends its window and starts its attempts on the frame.
+        private void Update()
+        {
+            reconnect?.Tick();
+        }
+
+        private static bool IsWorldSceneShown()
+        {
+            return WorldSceneCatalog.IsWorldScene(SceneManager.GetActiveScene().name);
         }
 
         private void Start()
@@ -248,7 +271,7 @@ namespace Mmorpg.Client.App
             lookLink = new PlayerLookLink(
                 simulationClient.Looks,
                 simulationClient.Movement,
-                session,
+                clientSession,
                 bodyLook,
                 gameMessages,
                 texts);
@@ -341,7 +364,8 @@ namespace Mmorpg.Client.App
 
         private void OnDestroy()
         {
-            worldExit?.Dispose();
+            reconnect?.Dispose();
+            reconnect = null;
             worldExit = null;
 
             if (bodyTint != null)
@@ -476,7 +500,7 @@ namespace Mmorpg.Client.App
             if (scene.name == SceneNames.LoginMenu)
             {
                 AddSceneComponentIfMissing<LoginMenuPanel>(
-                    panel => panel.Initialize(clientSession, texts, ClientNotice()));
+                    panel => panel.Initialize(clientSession, texts, ContentNotice(), TakeExitNotice()));
                 return;
             }
 
@@ -484,7 +508,14 @@ namespace Mmorpg.Client.App
             if (scene.name == SceneNames.CharacterSelect)
             {
                 AddSceneComponentIfMissing<CharacterSelectPanel>(
-                    panel => panel.Initialize(clientSession, sessionRecovery, worldExit, realtime.Session, texts));
+                    panel => panel.Initialize(
+                        clientSession,
+                        sessionRecovery,
+                        worldExit,
+                        realtime.Session,
+                        texts,
+                        notices,
+                        TakeExitNotice()));
                 return;
             }
 
@@ -602,6 +633,8 @@ namespace Mmorpg.Client.App
                 menu => menu.Initialize(worldMenu));
             AddSceneComponentIfMissing<TemporaryGameMessagePanel>(
                 panel => panel.Initialize(gameMessages));
+            AddSceneComponentIfMissing<ReconnectNotice>(
+                notice => notice.Initialize(uiTheme, reconnect, texts));
 
             var combatantViews = new CombatantViewLocator(
                 realtime.Movement,
@@ -641,11 +674,19 @@ namespace Mmorpg.Client.App
         }
 
         // The entry screen says when the served content is newer than this client reads.
-        private string ClientNotice()
+        private string ContentNotice()
         {
             return contentReport != null && contentReport.UpdateRequired
                 ? ClientMessages.Text(texts, contentReport.FallbackCode)
                 : string.Empty;
+        }
+
+        // Why the client left its World or its account session, shown once by the next entry
+        // screen.
+        private string TakeExitNotice()
+        {
+            var code = notices.Take();
+            return code.Length > 0 ? ClientMessages.Text(texts, code) : string.Empty;
         }
 
         // Returns the scene's existing component, or a new one initialized before it activates.

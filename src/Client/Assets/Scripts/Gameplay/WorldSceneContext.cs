@@ -166,17 +166,27 @@ namespace Mmorpg.Client.Gameplay
 
         private void Start()
         {
-            if (!ValidateReferences())
+            if (!TryEnterWorld())
             {
                 enabled = false;
-                return;
+            }
+        }
+
+        // The first entry into the World of the joined session: spawns the local player, binds
+        // it to the movement session, and presents the players already in view. False when the
+        // scene cannot enter a World. Start runs it once; a join that restores a lost connection
+        // later binds the same player again in OnSessionJoined.
+        internal bool TryEnterWorld()
+        {
+            if (!ValidateReferences())
+            {
+                return false;
             }
 
             var world = clientSession != null ? clientSession.ActiveSimulationSession : null;
             if (world == null)
             {
-                enabled = false;
-                return;
+                return false;
             }
 
             if (!WorldSceneCatalog.TryResolveScene(
@@ -188,8 +198,7 @@ namespace Mmorpg.Client.Gameplay
                     "WorldSceneContext cannot activate because the joined world cannot be resolved. "
                     + sceneError,
                     this);
-                enabled = false;
-                return;
+                return false;
             }
 
             var activeSceneName = SceneManager.GetActiveScene().name;
@@ -204,8 +213,7 @@ namespace Mmorpg.Client.Gameplay
                     + world.worldId
                     + "', which requires scene '" + expectedSceneName + "'.",
                     this);
-                enabled = false;
-                return;
+                return false;
             }
 
             if (realtimeSession == null
@@ -218,14 +226,12 @@ namespace Mmorpg.Client.Gameplay
                 Debug.LogError(
                     "WorldSceneContext cannot spawn the local player because the joined realtime movement session is unavailable.",
                     this);
-                enabled = false;
-                return;
+                return false;
             }
 
             if (!TrySpawnLocalPlayer())
             {
-                enabled = false;
-                return;
+                return false;
             }
 
             if (!localPlayer.EnableServerAuthoritativeMovement(realtimeSession, realtimeMovement, realtimeAdmin))
@@ -234,8 +240,7 @@ namespace Mmorpg.Client.Gameplay
                     "WorldSceneContext cannot start server-authoritative movement for the joined local player.",
                     this);
                 DestroyLocalPlayer();
-                enabled = false;
-                return;
+                return false;
             }
 
             CombineBody(localPlayer);
@@ -261,14 +266,68 @@ namespace Mmorpg.Client.Gameplay
             realtimePlayers.EntityDespawned += OnEntityDespawned;
             realtimeLooks.EntityAppearanceChanged += OnEntityAppearanceChanged;
             realtimeMovement.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+            realtimeSession.SessionEnded += OnSessionEnded;
+            realtimeSession.SessionJoined += OnSessionJoined;
             foreach (var spawn in realtimePlayers.SpawnedEntities)
             {
                 OnEntitySpawned(spawn);
             }
+
+            return true;
+        }
+
+        // The World stays while a lost connection is restored: the local player stands where it
+        // was, and its input neither moves it nor sends, until a join binds it again. The other
+        // players went with the session's presence.
+        private void OnSessionEnded(RealtimeClientError error)
+        {
+            if (localPlayer != null)
+            {
+                localPlayer.DisableServerAuthoritativeMovement();
+            }
+        }
+
+        // A join that restores the lost connection binds the same local player to the new
+        // movement session, where and as the worker says it stands: the body it resumed, or a new
+        // entity at the saved place. The scene, the camera, and the player object stay, so the
+        // local player source raises nothing; the other players spawn again as the worker sends
+        // them.
+        private void OnSessionJoined()
+        {
+            if (localPlayer == null)
+            {
+                return;
+            }
+
+            var world = clientSession != null ? clientSession.ActiveSimulationSession : null;
+            var joined = realtimeSession.JoinedSession;
+            if (world == null
+                || joined == null
+                || !string.Equals(world.worldId, joined.worldId, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (!localPlayer.EnableServerAuthoritativeMovement(realtimeSession, realtimeMovement, realtimeAdmin))
+            {
+                Debug.LogError(
+                    "WorldSceneContext cannot bind the local player to the movement session of the join that restored the connection.",
+                    this);
+                return;
+            }
+
+            // The player stands where the worker placed it, so its loose cloth jumps along.
+            ClothChainSolver.NotifyDiscontinuity(localPlayer.gameObject);
         }
 
         private void OnDestroy()
         {
+            if (realtimeSession != null)
+            {
+                realtimeSession.SessionEnded -= OnSessionEnded;
+                realtimeSession.SessionJoined -= OnSessionJoined;
+            }
+
             if (realtimePlayers != null)
             {
                 realtimePlayers.EntitySpawned -= OnEntitySpawned;

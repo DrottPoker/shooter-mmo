@@ -7,10 +7,23 @@ using UnityEngine.Networking;
 
 namespace Mmorpg.Client.Api
 {
+    // The GameService call that issues a join ticket for a character on a shard: the one call
+    // that entering a World shares with the reconnect, which tests replace.
+    public interface IJoinTicketApi
+    {
+        IEnumerator CreateJoinTicket(
+            string gameServiceBaseUrl,
+            string sessionToken,
+            string shardId,
+            JoinShardRequest request,
+            Action<JoinShardResponse> onSuccess,
+            Action<ApiError> onError);
+    }
+
     // Owners dispose the client when they are destroyed. Unity stops a coroutine without
     // disposing its iterator, so a request still in flight would otherwise never release
     // its native resources.
-    public sealed class ApiClient : IDisposable
+    public sealed class ApiClient : IDisposable, IJoinTicketApi
     {
         private readonly int timeoutSeconds;
         private readonly HashSet<UnityWebRequest> activeRequests = new HashSet<UnityWebRequest>();

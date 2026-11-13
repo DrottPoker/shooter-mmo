@@ -8,15 +8,18 @@ using Mmorpg.GameProtocol;
 namespace Mmorpg.Client.Tests.PlayMode
 {
     // The hub's real LiteNetLib transport with two additions for the live stack test: it keeps
-    // the BodySeconds of every LeaveAccepted it delivers, which the hub does not expose, and it
-    // can drop the line without a disconnect message, as a lost connection looks to the worker.
+    // the BodySeconds of every LeaveAccepted it delivers, and it can drop the line without a
+    // disconnect message, as a lost connection looks to the worker, either quietly or so that the
+    // client finds the loss at once, as its disconnect timeout would report it.
     internal sealed class LiveStackTransport : IRealtimeTransport
     {
         private readonly LiteNetLibRealtimeTransport inner = new LiteNetLibRealtimeTransport();
+        private bool lineLost;
 
         public LiveStackTransport()
         {
             inner.Received += OnReceived;
+            inner.Disconnected += reason => Disconnected?.Invoke(reason);
         }
 
         public event Action Connected
@@ -25,11 +28,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             remove { inner.Connected -= value; }
         }
 
-        public event Action<DisconnectReason> Disconnected
-        {
-            add { inner.Disconnected += value; }
-            remove { inner.Disconnected -= value; }
-        }
+        public event Action<DisconnectReason> Disconnected;
 
         public event Action<byte[], byte, DeliveryMethod> Received;
 
@@ -64,6 +63,11 @@ namespace Mmorpg.Client.Tests.PlayMode
         public void PollEvents()
         {
             inner.PollEvents();
+            if (lineLost)
+            {
+                lineLost = false;
+                Disconnected?.Invoke(DisconnectReason.Timeout);
+            }
         }
 
         public void TriggerUpdate()
@@ -73,6 +77,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
         public void Stop()
         {
+            lineLost = false;
             inner.Stop();
         }
 
@@ -80,6 +85,14 @@ namespace Mmorpg.Client.Tests.PlayMode
         public void DropLine()
         {
             inner.StopWithoutDisconnectMessage();
+        }
+
+        // Drops the line as DropLine does, and the next poll reports the loss to the hub, as the
+        // client's own disconnect timeout reports a line that stays silent.
+        public void LoseLine()
+        {
+            inner.StopWithoutDisconnectMessage();
+            lineLost = true;
         }
 
         private void OnReceived(byte[] packet, byte channel, DeliveryMethod deliveryMethod)

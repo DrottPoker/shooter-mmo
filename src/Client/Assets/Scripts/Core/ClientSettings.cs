@@ -3,22 +3,31 @@ using System;
 namespace Mmorpg.Client.Core
 {
     // The client settings that the bootstrap reads from the configuration once: where GameService
-    // is, the request and realtime timeouts, and how often the account session is checked. They
-    // never change afterwards.
+    // is, the request and realtime timeouts, how often the account session is checked, and how
+    // long the client tries to restore a lost connection. They never change afterwards.
     public sealed class ClientSettings
     {
+        // Mirrors the 20 seconds that SimulationWorker keeps a character's body after its
+        // connection ended. The server decides how long the body stays; this is only how long the
+        // client tries before it gives up.
+        public const int DefaultReconnectWindowSeconds = 20;
+
         public ClientSettings(
             string gameServiceBaseUrl,
             int requestTimeoutSeconds,
             int realtimeTimeoutSeconds,
-            int sessionValidationIntervalSeconds)
+            int sessionValidationIntervalSeconds,
+            int reconnectWindowSeconds = DefaultReconnectWindowSeconds)
         {
             if (string.IsNullOrWhiteSpace(gameServiceBaseUrl))
             {
                 throw new ArgumentException("A GameService base URL is required.", nameof(gameServiceBaseUrl));
             }
 
-            if (requestTimeoutSeconds <= 0 || realtimeTimeoutSeconds <= 0 || sessionValidationIntervalSeconds <= 0)
+            if (requestTimeoutSeconds <= 0
+                || realtimeTimeoutSeconds <= 0
+                || sessionValidationIntervalSeconds <= 0
+                || reconnectWindowSeconds <= 0)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(requestTimeoutSeconds),
@@ -29,6 +38,7 @@ namespace Mmorpg.Client.Core
             RequestTimeoutSeconds = requestTimeoutSeconds;
             RealtimeTimeoutSeconds = realtimeTimeoutSeconds;
             SessionValidationIntervalSeconds = sessionValidationIntervalSeconds;
+            ReconnectWindowSeconds = reconnectWindowSeconds;
         }
 
         public string GameServiceBaseUrl { get; }
@@ -38,6 +48,9 @@ namespace Mmorpg.Client.Core
         public int RealtimeTimeoutSeconds { get; }
 
         public int SessionValidationIntervalSeconds { get; }
+
+        // How long after a lost connection the client tries to join the World again.
+        public int ReconnectWindowSeconds { get; }
 
         public static ClientSettings From(ClientConfig config)
         {
@@ -50,7 +63,8 @@ namespace Mmorpg.Client.Core
                 config.GameServiceBaseUrl,
                 config.RequestTimeoutSeconds,
                 config.RealtimeTimeoutSeconds,
-                config.SessionValidationIntervalSeconds);
+                config.SessionValidationIntervalSeconds,
+                config.ReconnectWindowSeconds);
         }
 
         // The same settings with another GameService, such as an unreachable one in a test.
@@ -60,7 +74,8 @@ namespace Mmorpg.Client.Core
                 gameServiceBaseUrl,
                 RequestTimeoutSeconds,
                 RealtimeTimeoutSeconds,
-                SessionValidationIntervalSeconds);
+                SessionValidationIntervalSeconds,
+                ReconnectWindowSeconds);
         }
     }
 }

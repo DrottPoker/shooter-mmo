@@ -28,10 +28,13 @@ namespace Mmorpg.Client.Ui
         private readonly CharacterSelectState state = new CharacterSelectState();
 
         private ApiClient apiClient;
+        private WorldJoin worldJoin;
         private ClientSession clientSession;
         private ClientSessionRecovery recovery;
         private WorldExit worldExit;
         private RealtimeSession realtimeSession;
+        private ClientNotices notices;
+        private string exitNotice = string.Empty;
         private bool operationStepFailed;
 
         public CharacterSelectState State
@@ -46,19 +49,25 @@ namespace Mmorpg.Client.Ui
 
         // Called by the composition root before the component is activated. The panel selects in
         // the client session, enters the World of a join, and signs out; a 401 goes to the
-        // recovery, and a joined World that does not load to the World exit.
+        // recovery, and a joined World that does not load to the World exit. The notice says why
+        // the client left its last World, and the client notices tell how long a character that
+        // left still stands in it.
         public void Initialize(
             ClientSession session,
             ClientSessionRecovery sessionRecovery,
             WorldExit exit,
             RealtimeSession realtime,
-            TextCatalog messageTexts)
+            TextCatalog messageTexts,
+            ClientNotices clientNotices,
+            string notice)
         {
             clientSession = session;
             recovery = sessionRecovery;
             worldExit = exit;
             realtimeSession = realtime;
             texts = messageTexts;
+            notices = clientNotices;
+            exitNotice = notice ?? string.Empty;
         }
 
         // Loads the characters and the shards again, keeping what is chosen.
@@ -99,6 +108,7 @@ namespace Mmorpg.Client.Ui
         private void Awake()
         {
             apiClient = new ApiClient(clientSession.Settings.RequestTimeoutSeconds);
+            worldJoin = new WorldJoin(clientSession, apiClient, realtimeSession);
         }
 
         private void Start()
@@ -126,6 +136,7 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
+            RefreshBodyNote();
             if (screen == null || !screen.ReadKeys() || operationState.IsBusy)
             {
                 return;
@@ -341,80 +352,35 @@ namespace Mmorpg.Client.Ui
             }
 
             clientSession.Select(character, shard);
-            ClientLog.Info(
-                ClientLogCategory.Client,
-                "Character '" + character.name + "' (" + character.id + ") is requesting access to shard '"
-                + shard.id + "'.");
 
-            JoinShardResponse joinTicket = null;
-            ApiError error = null;
-            yield return apiClient.CreateJoinTicket(
-                clientSession.Settings.GameServiceBaseUrl,
-                clientSession.SessionToken,
+            // The ticket and the join are the part that the reconnect shares; the ticket's World
+            // must be one this client has, and the ticket's shard is the placement it joins.
+            WorldJoinResult join = null;
+            yield return worldJoin.Run(
+                character.id,
+                character.name,
                 shard.id,
-                new JoinShardRequest { characterId = character.id },
-                result => joinTicket = result,
-                result => error = result);
+                ticket => AcceptTicket(shard, ticket, out worldSceneName),
+                result => join = result);
 
-            if (HandleError(error))
+            switch (join.Status)
             {
-                yield break;
+                case WorldJoinStatus.TicketRefused:
+                    HandleError(join.TicketError);
+                    yield break;
+                case WorldJoinStatus.TicketIncomplete:
+                    SetJoinError(texts.Format(
+                        "ui/characters/join-incomplete",
+                        MessageArgument.Text("shard", shard.displayName)));
+                    yield break;
+                case WorldJoinStatus.TicketDeclined:
+                    yield break;
+                case WorldJoinStatus.JoinFailed:
+                    HandleRealtimeError(join.JoinError);
+                    yield break;
             }
 
-            if (joinTicket == null || joinTicket.shard == null)
-            {
-                SetJoinError(texts.Format(
-                    "ui/characters/join-incomplete",
-                    MessageArgument.Text("shard", shard.displayName)));
-                yield break;
-            }
-
-            if (!WorldSceneCatalog.TryResolveScene(
-                    joinTicket.shard.worldId,
-                    out worldSceneName,
-                    out worldSceneError))
-            {
-                SetJoinError(JoinFailed(shard, WorldSceneUnavailable(worldSceneError)));
-                yield break;
-            }
-
-            if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
-            {
-                SetJoinError(SceneMissing(shard, worldSceneName));
-                yield break;
-            }
-
-            clientSession.Select(clientSession.SelectedCharacter, joinTicket.shard);
-
-            ClientLog.Info(
-                ClientLogCategory.Auth,
-                "GameService issued a short-lived join ticket for character '" + character.name
-                + "' on shard '" + shard.id + "'.");
-
-            if (realtimeSession == null)
-            {
-                ClientLog.Error(
-                    ClientLogCategory.Client,
-                    "The persistent realtime client is unavailable, so the simulation join cannot start.");
-                HandleRealtimeError(new RealtimeClientError(
-                    RealtimeClientErrorKind.Network,
-                    "realtime_client_missing",
-                    "The persistent realtime client is unavailable."));
-                yield break;
-            }
-
-            ActiveSimulationSessionResponse activeSession = null;
-            RealtimeClientError realtimeError = null;
-            yield return realtimeSession.Join(
-                joinTicket,
-                result => activeSession = result,
-                result => realtimeError = result);
-
-            if (HandleRealtimeError(realtimeError))
-            {
-                yield break;
-            }
-
+            var activeSession = join.Session;
             clientSession.EnterWorld(activeSession);
             AccountEntryPreferences.RememberWorldEntry(character.id, shard.id);
             SetStatus(
@@ -444,6 +410,29 @@ namespace Mmorpg.Client.Ui
                         WorldSceneLoadFailedCode,
                         sceneLoad.OperationException?.Message))));
             yield return worldExit.Release(activeSession);
+        }
+
+        // Resolves the scene of the ticket's World again, so a shard list cached across an
+        // offline rebind cannot load the previous scene, and selects the ticket's shard.
+        private bool AcceptTicket(ShardResponse shard, JoinShardResponse ticket, out string worldSceneName)
+        {
+            if (!WorldSceneCatalog.TryResolveScene(
+                    ticket.shard.worldId,
+                    out worldSceneName,
+                    out var worldSceneError))
+            {
+                SetJoinError(JoinFailed(shard, WorldSceneUnavailable(worldSceneError)));
+                return false;
+            }
+
+            if (!ClientSceneLoader.IsWorldSceneAvailable(worldSceneName))
+            {
+                SetJoinError(SceneMissing(shard, worldSceneName));
+                return false;
+            }
+
+            clientSession.Select(clientSession.SelectedCharacter, ticket.shard);
+            return true;
         }
 
         private void BeginOperation(ClientOperation operation, IEnumerator routine, string progress)

@@ -319,9 +319,14 @@ describes. Its one scenario asserts, step by step:
    reconnect to the same entity, at the place where the character stood.
 5. A line dropped without a leave, so the worker still holds the connection,
    and a join a second later reconnect to the same entity too.
-6. After a leave and the body's 20 seconds, the join is no reconnect: a new
+6. The client's own reconnect, composed on the test's hub as the bootstrap
+   composes it, restores a line that drops while the client is in the World:
+   one `UnexpectedlyDisconnected`, one `SessionEnded`, and, without a manual
+   join, a fresh ticket and one join that reconnects to the same entity where it
+   stood, which the client's World follows.
+7. After a leave and the body's 20 seconds, the join is no reconnect: a new
    entity at the saved place, with the saved health and mana.
-7. A last leave is answered like the first.
+8. A last leave is answered like the first.
 
 No default run selects the test;
 [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) says
@@ -329,7 +334,7 @@ how each runner leaves it out. CI does not run it because the self-hosted runner
 has no stack of its own and the scenario takes a body's 20 seconds; a run
 against no stack fails at once with a message that names the script. The
 character takes no damage, so
-step 6 compares full health and mana; the manual check
+step 7 compares full health and mana; the manual check
 [Place And Vitals Across A Logout](../docs/MANUAL_TESTING.md#place-and-vitals-across-a-logout)
 covers lost health.
 

@@ -48,7 +48,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 realtime.Items,
                 realtime.Session,
                 session,
-                new ClientSessionRecovery(session, realtime.Session),
+                new ClientSessionRecovery(session, realtime.Session, new ClientNotices(() => 0f)),
                 null,
                 texts);
 
@@ -113,7 +113,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 realtime.Quests,
                 realtime.Session,
                 session,
-                new ClientSessionRecovery(session, realtime.Session),
+                new ClientSessionRecovery(session, realtime.Session, new ClientNotices(() => 0f)),
                 null,
                 texts);
 

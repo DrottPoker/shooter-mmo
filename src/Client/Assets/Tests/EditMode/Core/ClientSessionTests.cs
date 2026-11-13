@@ -22,9 +22,12 @@ namespace Mmorpg.Client.Tests.EditMode
             var config = ScriptableObject.CreateInstance<ClientConfig>();
             try
             {
+                // The reconnect window mirrors the worker's 20 s body time by default.
+                Assert.That(ClientSettings.From(config).ReconnectWindowSeconds, Is.EqualTo(20));
+
                 JsonUtility.FromJsonOverwrite(
                     "{\"gameServiceBaseUrl\":\" http://game.test:5000/ \",\"requestTimeoutSeconds\":7,"
-                    + "\"realtimeTimeoutSeconds\":500,\"sessionValidationIntervalSeconds\":1}",
+                    + "\"realtimeTimeoutSeconds\":500,\"sessionValidationIntervalSeconds\":1,\"reconnectWindowSeconds\":0}",
                     config);
 
                 var settings = ClientSettings.From(config);
@@ -32,13 +35,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 // The configuration trims the URL and clamps the values.
                 Assert.That(
                     (settings.GameServiceBaseUrl, settings.RequestTimeoutSeconds, settings.RealtimeTimeoutSeconds,
-                        settings.SessionValidationIntervalSeconds),
-                    Is.EqualTo(("http://game.test:5000", 7, 120, 2)));
+                        settings.SessionValidationIntervalSeconds, settings.ReconnectWindowSeconds),
+                    Is.EqualTo(("http://game.test:5000", 7, 120, 2, 1)));
                 Assert.That(
                     settings.WithGameServiceBaseUrl("http://127.0.0.1:9").GameServiceBaseUrl,
                     Is.EqualTo("http://127.0.0.1:9"));
+                Assert.That(settings.WithGameServiceBaseUrl("http://127.0.0.1:9").ReconnectWindowSeconds, Is.EqualTo(1));
                 Assert.Throws<ArgumentException>(() => new ClientSettings(" ", 1, 1, 1));
                 Assert.Throws<ArgumentOutOfRangeException>(() => new ClientSettings("http://game.test", 1, 0, 1));
+                Assert.Throws<ArgumentOutOfRangeException>(() => new ClientSettings("http://game.test", 1, 1, 1, 0));
             }
             finally
             {
@@ -143,7 +148,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var realtime = owner.AddComponent<RealtimeSimulationClient>();
                 realtime.Initialize(Settings);
                 var session = new ClientSession(Settings);
-                var recovery = new ClientSessionRecovery(session, realtime.Session);
+                var recovery = new ClientSessionRecovery(session, realtime.Session, new ClientNotices(() => 0f));
                 var texts = FixtureTexts.Messages();
                 var inventory = owner.AddComponent<InventoryClientController>();
                 inventory.Initialize(api, realtime.Items, realtime.Session, session, recovery, null, texts);

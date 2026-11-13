@@ -1,4 +1,5 @@
 using Mmorpg.Client.Core;
+using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.ResourceManagement.ResourceProviders;
@@ -14,12 +15,21 @@ namespace Mmorpg.Client.Worlds
     {
         public static void LoadLoginMenu()
         {
-            SceneManager.LoadScene(SceneNames.LoginMenu);
+            LoadBuiltInScene(SceneNames.LoginMenu);
         }
 
         public static void LoadCharacterSelect()
         {
-            SceneManager.LoadScene(SceneNames.CharacterSelect);
+            LoadBuiltInScene(SceneNames.CharacterSelect);
+        }
+
+        // Outside Play Mode, as in EditMode tests of the ways out of a World, no scene changes.
+        private static void LoadBuiltInScene(string sceneName)
+        {
+            if (Application.isPlaying)
+            {
+                SceneManager.LoadScene(sceneName);
+            }
         }
 
         public static bool IsWorldSceneAvailable(string sceneName)
