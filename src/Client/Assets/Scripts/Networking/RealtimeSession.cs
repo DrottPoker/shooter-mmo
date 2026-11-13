@@ -82,6 +82,7 @@ namespace Mmorpg.Client.Networking
         private bool pendingSessionEnded;
         private RealtimeClientError pendingSessionEndError;
         private bool leaveAccepted;
+        private int leaveBodySeconds;
 
         internal RealtimeSession(
             RealtimeConnection connection,
@@ -309,9 +310,11 @@ namespace Mmorpg.Client.Networking
             onError(joinError);
         }
 
+        // A graceful leave. onSuccess gets the seconds that the worker keeps the character's body,
+        // 0 when it left at once; hits extend the body without telling the client.
         public IEnumerator Leave(
             string simulationSessionId,
-            Action onSuccess,
+            Action<int> onSuccess,
             Action<RealtimeClientError> onError)
         {
             if (State != RealtimeConnectionState.Joined || !connection.IsServerConnected)
@@ -338,6 +341,7 @@ namespace Mmorpg.Client.Networking
 
             operationError = null;
             leaveAccepted = false;
+            leaveBodySeconds = 0;
             State = RealtimeConnectionState.Leaving;
             operationDeadline = realtimeClock() + settings.RealtimeTimeoutSeconds;
             ClientLog.Info(
@@ -354,7 +358,7 @@ namespace Mmorpg.Client.Networking
 
             if (leaveAccepted)
             {
-                onSuccess();
+                onSuccess(leaveBodySeconds);
                 yield break;
             }
 
@@ -572,7 +576,7 @@ namespace Mmorpg.Client.Networking
         // The presence is cleared while the state is still Leaving, with the movement session.
         private void HandleLeaveAccepted(byte[] packet)
         {
-            if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out _, out var error))
+            if (!RealtimeProtocol.TryDecodeLeaveAccepted(packet, out var bodySeconds, out var error))
             {
                 FailProtocol("invalid_leave_response", error);
                 return;
@@ -583,10 +587,11 @@ namespace Mmorpg.Client.Networking
                 ClientLog.Info(
                     ClientLogCategory.Simulation,
                     "SimulationWorker accepted the leave for character '" + JoinedSession.characterName
-                    + "' from shard '" + JoinedSession.shardId + "'.");
+                    + "' from shard '" + JoinedSession.shardId + "'; its body stays " + bodySeconds + " s.");
             }
 
             leaveAccepted = true;
+            leaveBodySeconds = bodySeconds;
             presence.Clear("left_shard");
             ReleaseSession();
             State = RealtimeConnectionState.Disconnected;

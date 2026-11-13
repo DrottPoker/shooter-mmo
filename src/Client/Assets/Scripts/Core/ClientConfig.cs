@@ -11,6 +11,12 @@ namespace Mmorpg.Client.Core
         [SerializeField] private int requestTimeoutSeconds = 10;
         [SerializeField] private int realtimeTimeoutSeconds = 10;
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
+
+        // How long the client tries to restore a lost connection before it returns to character
+        // select. It mirrors the 20 seconds that the worker keeps the character's body; the server
+        // decides how long the body stays.
+        [SerializeField] private int reconnectWindowSeconds = ClientSettings.DefaultReconnectWindowSeconds;
+
         // The bundled content set: the seed and fallback of the content that the client resolves
         // from GameService at start, as ClientContentResolver describes.
         // The compiled item catalog, core.item-catalog.json.
@@ -58,6 +64,11 @@ namespace Mmorpg.Client.Core
         public int SessionValidationIntervalSeconds
         {
             get { return Mathf.Clamp(sessionValidationIntervalSeconds, 2, 60); }
+        }
+
+        public int ReconnectWindowSeconds
+        {
+            get { return Mathf.Clamp(reconnectWindowSeconds, 1, 120); }
         }
 
         public TextAsset ItemGameplayCatalog

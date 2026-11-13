@@ -3,6 +3,10 @@
   "tableId": "ui",
   "entries": [
     {
+      "key": "ui/characters/body-in-world",
+      "text": "This character is still in the world for about {seconds} more seconds. Enter World takes over its body where it stands."
+    },
+    {
       "key": "ui/characters/character-count-many",
       "text": "{count} characters"
     },
@@ -145,6 +149,10 @@
     {
       "key": "ui/characters/no-shards",
       "text": "GameService lists no shard. Press Refresh once a SimulationWorker runs."
+    },
+    {
+      "key": "ui/characters/other-body-in-world",
+      "text": "{character} is still in the world for about {seconds} more seconds. Another character can enter once it is gone."
     },
     {
       "key": "ui/characters/refresh",
@@ -1623,6 +1631,10 @@
       "text": "The world interaction close request could not be sent."
     },
     {
+      "key": "ui/world/connection-lost",
+      "text": "Connection lost"
+    },
+    {
       "key": "ui/world/corpse-examine",
       "text": "The remains of {name}."
     },
@@ -1665,6 +1677,10 @@
     {
       "key": "ui/world/nothing-open",
       "text": "No world interaction or corpse view is open."
+    },
+    {
+      "key": "ui/world/reconnecting",
+      "text": "Reconnecting to the world. {seconds} s left."
     },
     {
       "key": "ui/world/session-unavailable",

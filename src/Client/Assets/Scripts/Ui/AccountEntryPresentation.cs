@@ -145,6 +145,43 @@ namespace Mmorpg.Client.Ui
             return null;
         }
 
+        // How long the body of a character that left still stands in the World, for the chosen
+        // character: its own body, which Enter World resumes, or the body that keeps another
+        // character of the account out until it is gone. Null for none. The seconds are a lower
+        // bound, since hits extend a body on the server.
+        public static string BodyNote(
+            CharacterSelectState state,
+            string bodyCharacterId,
+            int secondsLeft,
+            TextCatalog texts)
+        {
+            var chosen = state.SelectedCharacter;
+            if (chosen == null || string.IsNullOrEmpty(bodyCharacterId) || secondsLeft <= 0)
+            {
+                return null;
+            }
+
+            var seconds = MessageArgument.Text("seconds", secondsLeft.ToString(CultureInfo.InvariantCulture));
+            if (string.Equals(chosen.id, bodyCharacterId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return texts.Format("ui/characters/body-in-world", seconds);
+            }
+
+            foreach (var character in state.Characters)
+            {
+                if (character != null
+                    && string.Equals(character.id, bodyCharacterId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return texts.Format(
+                        "ui/characters/other-body-in-world",
+                        MessageArgument.Text("character", character.name),
+                        seconds);
+                }
+            }
+
+            return null;
+        }
+
         // The client's text for the code of a failed request. A request that never reached
         // GameService names the address it tried instead, and its caller logs the diagnostic.
         public static string ErrorText(ApiError error, string gameServiceBaseUrl, TextCatalog texts)

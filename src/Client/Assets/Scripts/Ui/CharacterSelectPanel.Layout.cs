@@ -38,6 +38,8 @@ namespace Mmorpg.Client.Ui
         private TextMeshProUGUI lookNote;
         private Button cancelCreationButton;
         private TextMeshProUGUI statusText;
+        private TextMeshProUGUI noticeText;
+        private TextMeshProUGUI bodyNote;
         private int shownCharactersVersion = -1;
         private int shownShardsVersion = -1;
         private CharacterCreationLook shownLook;
@@ -48,6 +50,18 @@ namespace Mmorpg.Client.Ui
         public string StatusText
         {
             get { return statusText != null ? statusText.text : string.Empty; }
+        }
+
+        // Why the client left its last World, or empty.
+        public string NoticeText
+        {
+            get { return noticeText != null && noticeText.gameObject.activeSelf ? noticeText.text : string.Empty; }
+        }
+
+        // How long a character that left still stands in the World, or empty.
+        public string BodyNoteText
+        {
+            get { return bodyNote != null && bodyNote.gameObject.activeSelf ? bodyNote.text : string.Empty; }
         }
 
         private string CharacterNameInput
@@ -87,6 +101,23 @@ namespace Mmorpg.Client.Ui
                 new Vector2(0.5f, 0f),
                 new Vector2(-500f, 28f),
                 new Vector2(500f, 84f));
+
+            // Why the client left its last World, between the top bar and the cards.
+            noticeText = TemporaryUiKit.AddText(
+                TemporaryUiKit.CreateUiObject("Notice", screen.Root),
+                exitNotice,
+                16,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center,
+                TemporaryUiKit.WarningColor);
+            noticeText.textWrappingMode = TextWrappingModes.Normal;
+            TemporaryUiKit.Stretch(
+                noticeText.rectTransform,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(-500f, -140f),
+                new Vector2(500f, -72f));
+            noticeText.gameObject.SetActive(exitNotice.Length > 0);
         }
 
         private void BuildTopBar(RectTransform parent)
@@ -139,6 +170,9 @@ namespace Mmorpg.Client.Ui
             enterPage = TemporaryEntryScreen.AddPage(card, "EnterPage");
             characterTitle = TemporaryEntryScreen.AddHeading(enterPage, string.Empty, 28);
             characterDetail = TemporaryEntryScreen.AddText(enterPage, string.Empty, 14, TemporaryUiKit.TextSecondary);
+            bodyNote = TemporaryEntryScreen.AddText(enterPage, string.Empty, 13, TemporaryUiKit.WarningColor);
+            bodyNote.gameObject.name = "BodyNote";
+            bodyNote.gameObject.SetActive(false);
             TemporaryEntryScreen.AddSpace(enterPage, 8f, false);
             TemporaryMenuWindow.AddSection(enterPage, texts.Get("ui/characters/heading-shard"));
             shardList = TemporaryEntryScreen.AddScrollList(enterPage, "ShardList");
@@ -322,6 +356,34 @@ namespace Mmorpg.Client.Ui
             var blocker = state.CharactersLoaded ? AccountEntryPresentation.EnterWorldBlocker(state, texts) : null;
             enterWorldBlocker.text = blocker ?? string.Empty;
             enterWorldBlocker.gameObject.SetActive(blocker != null);
+            RefreshBodyNote();
+        }
+
+        // Counts down while a character that left still stands in the World; the text goes when
+        // the time is up, and it never blocks Enter World.
+        private void RefreshBodyNote()
+        {
+            if (bodyNote == null)
+            {
+                return;
+            }
+
+            string note = null;
+            if (notices != null && notices.TryGetBody(out var bodyCharacterId, out var secondsLeft))
+            {
+                note = AccountEntryPresentation.BodyNote(state, bodyCharacterId, secondsLeft, texts);
+            }
+
+            var visible = note != null;
+            if (bodyNote.gameObject.activeSelf != visible)
+            {
+                bodyNote.gameObject.SetActive(visible);
+            }
+
+            if (visible && !string.Equals(bodyNote.text, note, System.StringComparison.Ordinal))
+            {
+                bodyNote.text = note;
+            }
         }
 
         // The body buttons and look rows are built again for another catalog or body model; a

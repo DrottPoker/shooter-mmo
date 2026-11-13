@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
@@ -42,6 +43,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         private LiveStackTransport transport;
         private RealtimeSimulationClient hub;
         private LiveStackProbe probe;
+        private AuthResponse account;
         private string sessionToken;
         private string characterId;
         private JoinShardResponse ticket;
@@ -135,35 +137,39 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return WaitFor(() => probe.LatestOwnerCombatState != null, 5f, "e. the owner's combat state");
                 var vitals = probe.LatestOwnerCombatState;
 
-                // f. Once the body is gone, a join is new: a new entity at the saved place and vitals.
-                yield return Leave("f");
-                Assert.That(lastBodySeconds, Is.EqualTo(ExpectedBodySeconds), "f. LeaveAccepted names the body's time.");
+                // f. A line lost while the client is in the World is restored by the client's own
+                // reconnect: a fresh ticket and a join, to the same entity, without a manual join.
+                yield return LoseLineAndReconnect(firstEntity);
+
+                // g. Once the body is gone, a join is new: a new entity at the saved place and vitals.
+                yield return Leave("g");
+                Assert.That(lastBodySeconds, Is.EqualTo(ExpectedBodySeconds), "g. LeaveAccepted names the body's time.");
                 yield return new WaitForSecondsRealtime(lastBodySeconds);
                 yield return RequestTicket(true);
                 yield return Join();
-                Assert.That(joined.isReconnect, Is.False, "f. The body is gone, so the join is no reconnect.");
+                Assert.That(joined.isReconnect, Is.False, "g. The body is gone, so the join is no reconnect.");
                 var newEntity = ControlledEntityId;
-                Assert.That(newEntity, Is.Not.EqualTo(firstEntity), "f. The join creates a new entity.");
+                Assert.That(newEntity, Is.Not.EqualTo(firstEntity), "g. The join creates a new entity.");
                 var savedPlaceOffset = Distance(JoinedPosition, standing);
                 Assert.That(
                     savedPlaceOffset,
                     Is.LessThanOrEqualTo(SavedPlaceTolerance),
-                    "f. The new entity starts at the saved place, " + Format(standing) + ", not at "
+                    "g. The new entity starts at the saved place, " + Format(standing) + ", not at "
                     + Format(JoinedPosition) + ".");
-                yield return WaitFor(() => probe.LatestOwnerCombatState != null, 5f, "f. the owner's combat state");
+                yield return WaitFor(() => probe.LatestOwnerCombatState != null, 5f, "g. the owner's combat state");
                 var restored = probe.LatestOwnerCombatState;
                 Assert.That(
                     (restored.Health, restored.Mana),
                     Is.EqualTo((vitals.Health, vitals.Mana)),
-                    "f. The new entity has the saved vitals.");
-                Report("f. after the body's " + lastBodySeconds + " s: no reconnect, new entity " + newEntity
+                    "g. The new entity has the saved vitals.");
+                Report("g. after the body's " + lastBodySeconds + " s: no reconnect, new entity " + newEntity
                     + " at " + Format(JoinedPosition) + " (" + Meters(savedPlaceOffset) + " from where it stood), health "
                     + restored.Health + "/" + restored.MaximumHealth + ", mana " + restored.Mana + "/"
                     + restored.MaximumMana + " as before");
 
-                // g. A clean leave ends the scenario.
-                yield return Leave("g");
-                Report("g. left cleanly with BodySeconds " + lastBodySeconds);
+                // h. A clean leave ends the scenario.
+                yield return Leave("h");
+                Report("h. left cleanly with BodySeconds " + lastBodySeconds);
             }
             finally
             {
@@ -197,7 +203,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             // A random name, so reruns against the same database never collide.
             var suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
             var username = "live_" + suffix;
-            AuthResponse account = null;
+            account = null;
             ApiError error = null;
             yield return api.Register(
                 BaseUrl,
@@ -296,7 +302,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var answersBefore = transport.LeaveBodySeconds.Count;
             var left = false;
             RealtimeClientError error = null;
-            yield return hub.Session.Leave(joined.simulationSessionId, () => left = true, value => error = value);
+            yield return hub.Session.Leave(joined.simulationSessionId, _ => left = true, value => error = value);
             Assert.That(error, Is.Null, error != null ? step + ". The leave failed: " + error.ToDiagnostic() : null);
             Assert.That(left, Is.True);
 
@@ -306,6 +312,65 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(probe.UnexpectedlyDisconnectedCount - unexpectedBefore, Is.Zero, step + ". No UnexpectedlyDisconnected.");
             Assert.That(transport.LeaveBodySeconds.Count, Is.EqualTo(answersBefore + 1), step + ". One LeaveAccepted.");
             lastBodySeconds = transport.LeaveBodySeconds[transport.LeaveBodySeconds.Count - 1];
+        }
+
+        // The client's reconnect, composed on this hub as the bootstrap composes it on its own, for
+        // a client in the World of the joined session. The line drops so that the client finds the
+        // loss at once, and the reconnect asks GameService for a ticket and joins by itself.
+        private IEnumerator LoseLineAndReconnect(ulong firstEntity)
+        {
+            var session = new ClientSession(PlayModeClient.Session.Settings);
+            session.SignIn(account);
+            session.EnterWorld(joined);
+            var notices = new ClientNotices(() => Time.realtimeSinceStartup);
+            var recovery = new ClientSessionRecovery(session, hub.Session, notices);
+            var reconnect = new WorldReconnect(
+                session,
+                hub.Session,
+                new WorldJoin(session, api, hub.Session),
+                new WorldExit(session, hub.Session, recovery, notices),
+                recovery,
+                () => Time.realtimeSinceStartup,
+                () => true,
+                routine => hub.StartCoroutine(routine));
+            try
+            {
+                probe.Reset();
+                LogAssert.Expect(LogType.Error, new Regex("connection_lost"));
+                transport.LoseLine();
+                var started = Time.realtimeSinceStartup;
+                var deadline = started + session.Settings.ReconnectWindowSeconds + 5f;
+                var sawReconnect = false;
+                while (!sawReconnect || reconnect.IsReconnecting)
+                {
+                    Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "f. The reconnect did not end.");
+                    yield return null;
+                    reconnect.Tick();
+                    sawReconnect |= reconnect.IsReconnecting;
+                }
+
+                var restoredAfter = Time.realtimeSinceStartup - started;
+                Assert.That(
+                    session.ActiveSimulationSession,
+                    Is.Not.Null,
+                    "f. The reconnect gave up and left the World with the notice '" + notices.PendingCode + "'.");
+                Assert.That(probe.UnexpectedlyDisconnectedCount, Is.EqualTo(1), "f. One UnexpectedlyDisconnected.");
+                Assert.That(probe.SessionEndedCount, Is.EqualTo(1), "f. The lost session ends once.");
+                Assert.That(probe.SessionJoinedCount, Is.EqualTo(1), "f. One join restores it.");
+                joined = session.ActiveSimulationSession;
+                Assert.That(joined, Is.SameAs(hub.Session.JoinedSession), "f. The client's World is the joined session.");
+                Assert.That(joined.isReconnect, Is.True, "f. The join is a reconnect.");
+                Assert.That(ControlledEntityId, Is.EqualTo(firstEntity), "f. The reconnect keeps the entity.");
+                var offset = Distance(JoinedPosition, standing);
+                Assert.That(offset, Is.LessThanOrEqualTo(ResumedPlaceTolerance), "f. The entity is where it stood.");
+                Report("f. the client's reconnect restored the lost line by itself after "
+                    + restoredAfter.ToString("0.0", CultureInfo.InvariantCulture) + " s: entity " + ControlledEntityId
+                    + " at " + Format(JoinedPosition) + ", " + Meters(offset) + " from where it stood");
+            }
+            finally
+            {
+                reconnect.Dispose();
+            }
         }
 
         private void AssertResumed(string step, ulong firstEntity)

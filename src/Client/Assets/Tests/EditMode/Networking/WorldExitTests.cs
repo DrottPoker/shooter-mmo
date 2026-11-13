@@ -1,6 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
-using LiteNetLib;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
@@ -10,11 +7,14 @@ using NUnit.Framework;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // Every way out of a World leaves the client session's World by the exact simulation session,
-    // on the hub of the harness. The tests run outside a World scene, so no exit loads a scene.
+    // on the hub of the harness, and tells the next entry screen why. The tests run outside a
+    // World scene, so no exit loads a scene. How a lost connection reaches the exit is in
+    // WorldReconnectTests.
     public sealed class WorldExitTests
     {
         private RealtimeHubHarness harness;
         private ClientSession session;
+        private ClientNotices notices;
         private WorldExit exit;
         private int worldsLeft;
 
@@ -23,7 +23,12 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             harness = new RealtimeHubHarness();
             session = new ClientSession(RealtimeHubHarness.Settings);
-            exit = new WorldExit(session, harness.Hub.Session, new ClientSessionRecovery(session, harness.Hub.Session));
+            notices = new ClientNotices(() => harness.Now);
+            exit = new WorldExit(
+                session,
+                harness.Hub.Session,
+                new ClientSessionRecovery(session, harness.Hub.Session, notices),
+                notices);
             worldsLeft = 0;
             session.WorldLeft += () => worldsLeft++;
         }
@@ -31,22 +36,76 @@ namespace Mmorpg.Client.Tests.EditMode
         [TearDown]
         public void TearDown()
         {
-            exit.Dispose();
             harness.Dispose();
         }
 
+        // An end that does not reconnect leaves the World of its session, and the next entry
+        // screen shows the text of its code.
         [Test]
-        public void ALostConnectionLeavesTheWorldOfItsSession()
+        public void AnEndedConnectionLeavesTheWorldOfItsSessionWithItsCode()
         {
             harness.JoinSession();
             session.EnterWorld(harness.JoinedSession);
-            harness.Transport.QueueDisconnected(DisconnectReason.Timeout);
 
-            harness.Frame();
+            exit.LeaveEndedWorld(new RealtimeClientError(RealtimeClientErrorKind.Server, "session_revoked", "Ended."));
 
             Assert.That(session.ActiveSimulationSession, Is.Null);
             Assert.That(worldsLeft, Is.EqualTo(1));
-            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT connection_lost" }));
+            Assert.That(notices.Take(), Is.EqualTo("session_revoked"));
+            Assert.That(notices.Take(), Is.Empty, "A notice shows once.");
+        }
+
+        // A lost connection that the reconnect gave up on names its session, so a newer World
+        // stays; the notice says that the connection was not restored.
+        [Test]
+        public void ALostWorldIsLeftOnlyByItsOwnSession()
+        {
+            var newer = World("c0000000-0000-4000-8000-0000000000aa");
+            session.EnterWorld(newer);
+
+            exit.LeaveLostWorld("c0000000-0000-4000-8000-0000000000bb");
+
+            Assert.That(session.ActiveSimulationSession, Is.SameAs(newer));
+            Assert.That(worldsLeft, Is.Zero);
+            Assert.That(notices.PendingCode, Is.EqualTo(WorldExit.ReconnectFailedCode));
+        }
+
+        // Rule 7: an accepted leave says how long the body stays, which CharacterSelect counts down.
+        [Test]
+        public void ALeaveRemembersHowLongTheBodyStays()
+        {
+            harness.JoinSession();
+            var world = harness.JoinedSession;
+            session.EnterWorld(world);
+            var left = false;
+            var leave = new TestRoutine(exit.Leave(_ => Assert.Fail("The leave was accepted."), () => left = true));
+
+            Assert.That(leave.Step(), Is.True);
+            harness.Deliver(RealtimeProtocol.EncodeLeaveAccepted(20));
+            Assert.That(leave.Step(), Is.False);
+
+            Assert.That(left, Is.True);
+            Assert.That(session.ActiveSimulationSession, Is.Null);
+            Assert.That(notices.TryGetBody(out var characterId, out var secondsLeft), Is.True);
+            Assert.That((characterId, secondsLeft), Is.EqualTo((world.characterId, 20)));
+            Assert.That(notices.PendingCode, Is.Empty, "A leave needs no notice.");
+        }
+
+        // A leave without a connection joined to the World's session, as while a lost connection
+        // is restored, sends nothing and leaves the World at once.
+        [Test]
+        public void ALeaveWithoutAJoinedConnectionLeavesTheWorldAtOnce()
+        {
+            var world = World("c0000000-0000-4000-8000-0000000000dd");
+            session.EnterWorld(world);
+            var left = false;
+
+            Assert.That(new TestRoutine(exit.Leave(_ => Assert.Fail("No leave is sent."), () => left = true)).Step(), Is.False);
+
+            Assert.That(left, Is.True);
+            Assert.That(harness.Transport.Sent, Is.Empty);
+            Assert.That(session.ActiveSimulationSession, Is.Null);
+            Assert.That(notices.TryGetBody(out _, out _), Is.False);
         }
 
         // A World that a scene change abandoned is left gracefully. The release names its own
@@ -57,9 +116,9 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.JoinSession();
             var abandoned = harness.JoinedSession;
             session.EnterWorld(abandoned);
-            var release = Routine(exit.Release(abandoned));
+            var release = new TestRoutine(exit.Release(abandoned));
 
-            Assert.That(Step(release), Is.True);
+            Assert.That(release.Step(), Is.True);
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
             Assert.That(
                 harness.Transport.Sent[harness.Transport.Sent.Count - 1].Packet,
@@ -69,10 +128,12 @@ namespace Mmorpg.Client.Tests.EditMode
 
             harness.Deliver(RealtimeProtocol.EncodeLeaveAccepted(20));
 
-            Assert.That(Step(release), Is.False);
+            Assert.That(release.Step(), Is.False);
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(session.ActiveSimulationSession, Is.SameAs(newer));
             Assert.That(worldsLeft, Is.Zero);
+            Assert.That(notices.TryGetBody(out var characterId, out var secondsLeft), Is.True);
+            Assert.That((characterId, secondsLeft), Is.EqualTo((abandoned.characterId, 20)));
         }
 
         // A release names its session for the connection too: a connection joined to another
@@ -84,7 +145,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var world = World("c0000000-0000-4000-8000-0000000000cc");
             session.EnterWorld(world);
 
-            Assert.That(Step(Routine(exit.Release(world))), Is.False);
+            Assert.That(new TestRoutine(exit.Release(world)).Step(), Is.False);
 
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
             Assert.That(harness.Transport.Sent, Is.Empty);
@@ -98,7 +159,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var world = World("c0000000-0000-4000-8000-0000000000bb");
             session.EnterWorld(world);
 
-            Assert.That(Step(Routine(exit.Release(world))), Is.False);
+            Assert.That(new TestRoutine(exit.Release(world)).Step(), Is.False);
 
             Assert.That(session.ActiveSimulationSession, Is.Null);
             Assert.That(worldsLeft, Is.EqualTo(1));
@@ -112,48 +173,17 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.JoinSession();
             var world = harness.JoinedSession;
             session.EnterWorld(world);
-            var release = Routine(exit.Release(world));
-            Assert.That(Step(release), Is.True);
+            var release = new TestRoutine(exit.Release(world));
+            Assert.That(release.Step(), Is.True);
 
             harness.Deliver(RealtimeProtocol.EncodeLeaveRejected("leave_not_joined", "No simulation session is active."));
 
-            Assert.That(Step(release), Is.False);
+            Assert.That(release.Step(), Is.False);
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.Transport.IsStarted, Is.False);
             Assert.That(session.ActiveSimulationSession, Is.Null);
+            Assert.That(notices.TryGetBody(out _, out _), Is.False);
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION leave_not_joined" }));
-        }
-
-        private static Stack<IEnumerator> Routine(IEnumerator routine)
-        {
-            var stack = new Stack<IEnumerator>();
-            stack.Push(routine);
-            return stack;
-        }
-
-        // Runs a routine to its next wait as Unity does, with a nested routine at once; false once
-        // it ended.
-        private static bool Step(Stack<IEnumerator> routine)
-        {
-            while (routine.Count > 0)
-            {
-                var current = routine.Peek();
-                if (!current.MoveNext())
-                {
-                    routine.Pop();
-                    continue;
-                }
-
-                if (current.Current is IEnumerator nested)
-                {
-                    routine.Push(nested);
-                    continue;
-                }
-
-                return true;
-            }
-
-            return false;
         }
 
         private static ActiveSimulationSessionResponse World(string simulationSessionId)
@@ -161,6 +191,7 @@ namespace Mmorpg.Client.Tests.EditMode
             return new ActiveSimulationSessionResponse
             {
                 simulationSessionId = simulationSessionId,
+                characterId = RealtimeHubMessages.CharacterId.ToString("D"),
                 shardId = RealtimeHubMessages.ShardId,
                 worldId = RealtimeHubMessages.WorldId
             };

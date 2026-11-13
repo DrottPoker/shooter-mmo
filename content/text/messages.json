@@ -19,6 +19,10 @@
       "text": "The account was not found."
     },
     {
+      "key": "message/account_session_ended",
+      "text": "This account was logged out. Log in again."
+    },
+    {
       "key": "message/account_session_replaced",
       "text": "This account logged in from another client."
     },
@@ -209,6 +213,10 @@
     {
       "key": "message/interaction_opened",
       "text": "{capability} is open."
+    },
+    {
+      "key": "message/internal_error",
+      "text": "The shard ran into a problem and closed the connection. Try again."
     },
     {
       "key": "message/invalid_character_appearance",
@@ -441,6 +449,10 @@
     {
       "key": "message/realtime_timeout",
       "text": "The shard did not answer in time. Try again shortly."
+    },
+    {
+      "key": "message/reconnect_failed",
+      "text": "The connection to the world was lost and could not be restored."
     },
     {
       "key": "message/recovery_access_required",

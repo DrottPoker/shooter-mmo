@@ -55,7 +55,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 
 | Area | Implemented | Next or deferred |
 | --- | --- | --- |
-| Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout, and a body that stays 20 seconds after a leave or a lost connection, longer while attacked, which its player resumes by coming back in time | Body times per gameplay rule area; character deletion is an open question |
+| Accounts and characters | Registration, login, one active session per account, characters with looks that keep their place, health, and mana across a logout, and a body that stays 20 seconds after a leave or a lost connection, longer while attacked, which its player resumes by coming back in time; the client keeps the World through a lost connection and joins again by itself for those 20 seconds, says why it returned to character select or login, and counts down a body after a leave | Body times per gameplay rule area; character deletion is an open question |
 | Topology and placement | Fleets, Nodes, workers, Shards, Worlds, heartbeat leases, failover, exact-runtime join tickets, offline Shard-to-World rebinding | Production orchestration |
 | Movement and collision | Click-to-move with client-planned routes, prediction, reconciliation, shared checksummed collision with terrain, lakes, rivers, and sea that are waded and stop at deep water, stylized water with foam, waterfalls, and wakes | Fishing, dynamic collision |
 | World actors | NPCs with composable capabilities, Mobs, resource nodes, visual spawn authoring, the world menu, server-validated interaction | Durable unique actors, dialogue, crafting, and trainer operations |
@@ -117,7 +117,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | Character visuals: bodies, garments, cloth, and appearance | Provisional | |
 | The art pipeline | Provisional | |
 | The content tools and the World Builder | Provisional | |
-| The client's realtime hub, session state, and scene flow | Provisional | |
+| The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |
 | The UI kit and the windows built on it | Provisional | |
 | Monitoring, stress tools, and bots | Provisional | |
 | The panels named `Temporary` | Temporary | Move onto the UI kit |

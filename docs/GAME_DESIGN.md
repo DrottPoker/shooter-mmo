@@ -975,6 +975,17 @@ answer says how long the body stays.
   health and mana.
 - A player who enters the same character again while the body stands resumes
   it where it stands, with its health and mana, and its time ends.
+- A connection that the network lost, and only that, keeps the World on the
+  player's screen: a notice says that the connection was lost and counts down
+  20 seconds while the client enters the same character again by itself, which
+  resumes the body. After those seconds, or when the join is refused for good,
+  the player returns to character select, which says that the connection could
+  not be restored. Every end that the server or the client decided returns to
+  character select, or to the login screen when the account session ended,
+  with the reason.
+- After a voluntary leave, character select shows how long the body still
+  stands, counting down. The count is the least time, since hits extend it, so
+  it never keeps the player from entering.
 - While the body stands, the account cannot enter another character; it is
   told that its previous character is still in the world for a short while.
 - The spent arrows and the quest credits of the character still commit while

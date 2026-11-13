@@ -448,8 +448,8 @@ storage, corpse, and vendor windows with the errors of their controllers, below
 words that several windows share, take every text from the table. So do the
 login and character screens below `ui/login/` and `ui/characters/`, the status
 texts of the combat HUD below `ui/combat/`, and the world menu, its game
-messages, and the errors of the world interaction controller below
-`ui/world/`. The literals of the `Temporary` panels and of the F2 Debug and F3
+messages, the errors of the world interaction controller, and the notice over
+a World whose connection is restored below `ui/world/`. The literals of the `Temporary` panels and of the F2 Debug and F3
 Admin menus stay English by decision. A technical failure of the API and
 realtime clients, the World scene catalog, or the catalog loaders shows the
 text of its code from the messages, as [Messages](#messages) describes.

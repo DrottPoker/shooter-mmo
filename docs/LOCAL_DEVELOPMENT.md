@@ -291,7 +291,8 @@ script compilation finish. With GameService and a worker running, open
 `Assets/Scenes/LoginMenu.unity` and enter Play Mode;
 [Manual Testing](MANUAL_TESTING.md#shared-setup) walks through the flow.
 
-- The client reads the GameService address and its timeouts from
+- The client reads the GameService address, its timeouts, and how long it
+  tries to restore a lost connection from
   `Assets/Content/Config/ClientConfig.asset`, which points to
   `http://localhost:5000`. Change the asset before building a client for
   another environment; the login panel cannot change it.
@@ -762,7 +763,8 @@ real local stack instead: `ApiClient` registers a fresh account, creates a
 character, lists the shards, and asks for the join tickets, and
 `RealtimeSimulationClient` joins the default worker over UDP through
 `LiteNetLibRealtimeTransport`. It walks the character, leaves, reconnects at once
-to the body, drops the line without a leave and reconnects again, leaves and
+to the body, drops the line without a leave and reconnects again, drops it once
+more and lets the client's own reconnect restore it, leaves and
 waits until the body is gone, joins as a new entity at the saved place and
 vitals, and leaves again; [Live Stack Test](../tests/README.md#live-stack-test)
 lists what each step asserts. Run it after a change to the client's network
@@ -790,7 +792,7 @@ GameService with `Ctrl+C`, so the worker saves its characters and marks itself
 offline, ends a service that does not stop within 30 seconds, and stops the
 containers that it started; containers that ran before keep running.
 
-Expected result: the lines of the steps `a.` to `g.` with what each observed,
+Expected result: the lines of the steps `a.` to `h.` with what each observed,
 such as the entity ids, the places, `IsReconnect`, and `BodySeconds 20`, then
 `Live stack test passed`, exit code 0, and the stack as it was before. A run
 takes about two and a half minutes: about one minute to start the containers,

@@ -365,7 +365,10 @@ Expected result:
 Expected result: `Leave Shard` gets the server's acknowledgement at once,
 closes UDP, and returns to CharacterSelect with the same character and shard
 chosen, and SimulationWorker logs the leave. The character's body stays in the
-world, as [The Body That Stays](#the-body-that-stays) describes. `Log Out`
+world, as [The Body That Stays](#the-body-that-stays) describes, and the
+character's page reads `This character is still in the world for about 20 more
+seconds. Enter World takes over its body where it stands.`, counting down to
+`1` and then disappearing. `Log Out`
 revokes the GameService session before the client clears its local state and
 returns to LoginMenu, whose `Log In` tab shows the account's login name. The
 logout does not shorten the body: within the 10-second session heartbeat the
@@ -452,7 +455,8 @@ worker without the option afterwards.
 
 Expected result:
 
-- After step 2 the Editor returns to CharacterSelect at once, while the
+- After step 2 the Editor returns to CharacterSelect at once and counts the
+  body's 20 seconds down on the character's page, while the
   standalone player still sees the character standing where it left: it does
   not move, its health bar stays, and the wolves attack it. Each bite keeps it
   in the world. It either dies, leaves a corpse that the standalone player can
@@ -469,9 +473,11 @@ Expected result:
 - In step 4 the body stays as long as the attacks go on and disappears 20
   seconds after the last hit, and the next entry starts at its place with the
   health it had left.
-- In step 5 CharacterSelect reads `Another character on this account is still
-  in the world. A character stays for a short while after it leaves; try again
-  in a moment.`, and after the body is gone `Enter World` works.
+- In step 5 the other character's page reads `<name> is still in the world for
+  about <n> more seconds. Another character can enter once it is gone.`, and
+  `Enter World` reads `Another character on this account is still in the world.
+  A character stays for a short while after it leaves; try again in a moment.`;
+  after the body is gone `Enter World` works.
 - In step 6 the body stays as after a leave, and entering again within 20
   seconds resumes it where it stood.
 - In step 7 the logout does not shorten the body: the standalone player sees it
@@ -481,11 +487,57 @@ Expected result:
   stays.` within 10 seconds, and later `...: left_shard.` or `...: died.`, never
   `session_revoked`.
 - In step 8 the Editor is thrown out within 10 seconds of the second login and
-  returns to LoginMenu with `account_session_replaced`, as
+  returns to LoginMenu, whose card reads `This account logged in from another
+  client.`, as
   [One Active Account Session](#one-active-account-session) describes, while
   the standalone player still sees the character standing. Entering it again
   from the new login within 20 seconds resumes the body where it stood; another
   character of the account gets the message of step 5 until the body is gone.
+
+### A Lost Connection
+
+Needs the stack and an account with two characters, the first one in the World
+of `Local Shard 1` in the Editor, as
+[Register, Create, And Join](#register-create-and-join) describes. The client
+finds a silent line after its 10-second realtime timeout, so the worker stays
+silent longer than that. On Windows, Resource Monitor suspends a process: run
+`resmon`, open the `CPU` tab, find `Mmorpg.SimulationWorker.exe` under
+`Processes`, and right-click it for `Suspend Process` and `Resume Process`.
+Blocking the UDP port does not work, because the Windows Firewall does not
+filter loopback traffic.
+
+1. Walk away from the spawn, open the Inventory with `I`, and suspend the
+   worker. When the notice appears after about 10 seconds, click the ground and
+   turn the camera with the arrow keys. About 5 seconds later, resume the
+   worker.
+2. Suspend the worker again and keep it suspended for at least 35 seconds, then
+   resume it.
+3. Click `Enter World` with the same character. Press F2, click `Leave Shard`,
+   choose the other character, and click `Enter World` within 20 seconds.
+
+Expected result:
+
+- In step 1, a notice in the upper middle of the screen reads `CONNECTION LOST`
+  and `Reconnecting to the world. 20 s left.`, counting down. The World stays:
+  the character stands where it was, the click does not move it, the camera
+  turns, other players and Mobs disappear, and the Inventory stays open. The
+  Console holds `[CLIENT] The connection of simulation session '<id>' was lost.
+  Reconnecting for up to 20 s:` with the reason, and a failed attempt adds
+  `Reconnect attempt <n> failed; trying again:`. A few seconds after the
+  resume the notice goes and the character stands where it stood, with its
+  health and mana; Mobs and players come back, clicks walk again, and the
+  Console holds `... was restored as '<id>' after <n> attempts, resuming the
+  character's body.` No scene loads.
+- In step 2, the notice counts down to 0, and the client returns to
+  CharacterSelect, which reads `The connection to the world was lost and could
+  not be restored.` above the cards. The Console holds `... could not be
+  restored: the 20 s to reconnect ended after <n> attempts.`
+- In step 3 the character enters where it stood. After the leave, the
+  character's page counts its body down, and the other character's page reads
+  `<name> is still in the world for about <n> more seconds. Another character
+  can enter once it is gone.` Its `Enter World` shows `Another character on this
+  account is still in the world. A character stays for a short while after it
+  leaves; try again in a moment.`, and works once the count has ended.
 
 ### Remembered Choices And Shortcuts
 
@@ -678,14 +730,18 @@ The client shows its own text for every code that a server sends, as
    worker logs the leave and, once the body left, the end of the body, and a
    snapshot that arrives during the leave causes no `invalid_snapshot_delivery`
    error.
-4. Join again and stop SimulationWorker while the World scene is open. Expected
-   result: the client clears its shard state and returns to CharacterSelect.
+4. Join again and stop SimulationWorker with `Ctrl+C` while the World scene is
+   open. Expected result: the World stays behind the notice `CONNECTION LOST`
+   for 20 seconds while the client tries to join again, as
+   [A Lost Connection](#a-lost-connection) describes, and then returns to
+   CharacterSelect with `The connection to the world was lost and could not be
+   restored.`
 5. While the client shows CharacterSelect, log into the same account
    elsewhere, for example with `POST /api/accounts/login` and the body
    `{ "login": "<username>", "password": "<password>" }`, which revokes the
    client's session. Expected result: within about five seconds, or at the next
    `Refresh`, the client clears all local state and returns to
-   LoginMenu.
+   LoginMenu, whose card reads `This account logged in from another client.`
 
 ### One Active Account Session
 
@@ -698,8 +754,9 @@ Needs the [second client](#add-a-second-client).
 4. Join `local-shard-1` with character two from the Editor.
 
 Expected result: the standalone player is disconnected, clears its account and
-shard state, and returns to LoginMenu, and its log has an `[AUTH]` message that
-the account logged in from another client, with `account_session_replaced`. The
+shard state, and returns to LoginMenu, whose card reads `This account logged in
+from another client.`, and its log has an `[AUTH]` message that the account
+logged in from another client, with `account_session_replaced`. The
 first character stays in the world as a body for 20 seconds after the
 disconnect, as [The Body That Stays](#the-body-that-stays) describes, so step 4
 is refused with the message that another character is still in the world until

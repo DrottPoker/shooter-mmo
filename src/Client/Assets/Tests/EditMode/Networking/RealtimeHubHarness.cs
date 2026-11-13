@@ -62,6 +62,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public bool LeaveSucceeded { get; private set; }
 
+        // The seconds that the accepted leave says the body stays.
+        public int LeaveBodySeconds { get; private set; }
+
         public RealtimeClientError LeaveError { get; private set; }
 
         public static float TimeoutSeconds
@@ -196,10 +199,15 @@ namespace Mmorpg.Client.Tests.EditMode
         public bool BeginLeave(string simulationSessionId = null)
         {
             LeaveSucceeded = false;
+            LeaveBodySeconds = -1;
             LeaveError = null;
             leave = Hub.Session.Leave(
                 simulationSessionId ?? RealtimeHubMessages.SessionId.ToString("D"),
-                () => LeaveSucceeded = true,
+                bodySeconds =>
+                {
+                    LeaveSucceeded = true;
+                    LeaveBodySeconds = bodySeconds;
+                },
                 error => LeaveError = error);
             return leave.MoveNext();
         }

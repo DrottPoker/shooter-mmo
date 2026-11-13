@@ -52,10 +52,11 @@ bindings and player-configurable rebinding are not implemented.
   code; when GameService does not answer, the message names its address.
 - Only one client session may be active for an account. A login on a second
   client replaces the first one: the first client is disconnected from its
-  shard, clears its local account state, and returns to LoginMenu with an
-  explanation in the Unity Console.
+  shard, clears its local account state, and returns to LoginMenu, whose card
+  says `This account logged in from another client.`
 - When the account session expires or is revoked, the client returns to
-  LoginMenu within a few seconds, also outside a World.
+  LoginMenu within a few seconds, also outside a World, and the card says why,
+  such as `Your login has expired. Log in again.`
 
 ## Character Selection
 
@@ -99,16 +100,38 @@ character, progression, and statistics are not implemented.
   load shows the error and leaves the shard. A refused join stays in
   CharacterSelect and shows the server's reason.
 - `Leave Shard` in the Debug menu waits until the worker confirms the leave and
-  then returns to CharacterSelect.
-- An unexpected disconnect returns the player to CharacterSelect, and an expired
-  account session returns it to LoginMenu.
+  then returns to CharacterSelect. While a lost connection is restored, it
+  returns at once.
+- A lost connection keeps the World on screen. A notice in the upper middle of
+  the screen says `CONNECTION LOST` and `Reconnecting to the world. <n> s
+  left.`, counting down from 20, while the client joins the same character
+  again by itself, one attempt after another with a short pause. The character
+  stands where it was, a click does not move it, and nothing is sent; the
+  camera still turns. Other players, NPCs, and Mobs leave the screen and come
+  back with the join. When the join succeeds, the notice goes and the
+  character goes on where the shard says it stands, with its health and mana:
+  its body, if it was still there, or a new entity at the place it was saved.
+- When the 20 seconds pass without a join, or the shard or GameService refuses
+  the join for good, the client returns to CharacterSelect, which says `The
+  connection to the world was lost and could not be restored.`
+- Every other end of a World returns to CharacterSelect with its reason above
+  the cards, such as `This character connected from another client.`, `The
+  character is no longer in the world.`, or `The connection sent too much at
+  once and was closed.`; without an account session, or after a login on
+  another client, it returns to LoginMenu with the reason on the card.
 - After a leave or a lost connection the character's body stays in the world
   for 20 seconds, and longer while it is attacked: others see it standing,
   Mobs and players can attack and kill it, and entering the same character
-  again in time takes it over where it stands, with its health and mana. While
-  it stands, entering another character of the account shows `Another
-  character on this account is still in the world.` with the hint to try again
-  in a moment. The rules are in
+  again in time takes it over where it stands, with its health and mana. After
+  `Leave Shard`, CharacterSelect counts down on that character's page: `This
+  character is still in the world for about <n> more seconds. Enter World
+  takes over its body where it stands.`, and on any other character's page
+  `<name> is still in the world for about <n> more seconds. Another character
+  can enter once it is gone.` The count is the least the body stays, since a
+  hit extends it on the shard, so the text goes at zero and `Enter World`
+  stays usable throughout. While the body stands, entering another character
+  of the account shows `Another character on this account is still in the
+  world.` with the hint to try again in a moment. The rules are in
   [The Body That Stays](GAME_DESIGN.md#the-body-that-stays).
 - A character enters where it left the World, facing the same way, with the
   health and mana it had, after a leave, a logout, a disconnect, or a worker

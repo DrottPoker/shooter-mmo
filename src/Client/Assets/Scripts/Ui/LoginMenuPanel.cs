@@ -17,16 +17,19 @@ namespace Mmorpg.Client.Ui
     {
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private string notice = string.Empty;
+        private string exitNotice = string.Empty;
         private ClientSession clientSession;
 
         // Called by the composition root before the component is activated, with the client
         // session that a login signs in. A notice, such as that the client is out of date, shows in
-        // the card and never blocks the form.
-        public void Initialize(ClientSession session, TextCatalog messageTexts, string clientNotice)
+        // the card and never blocks the form; so does the exit notice, why the client returned
+        // here, such as a login of the account from another client.
+        public void Initialize(ClientSession session, TextCatalog messageTexts, string clientNotice, string clientExitNotice)
         {
             clientSession = session;
             texts = messageTexts;
             notice = clientNotice ?? string.Empty;
+            exitNotice = clientExitNotice ?? string.Empty;
         }
 
         public const string ScreenName = "LoginMenu";
@@ -66,6 +69,11 @@ namespace Mmorpg.Client.Ui
         public string NoticeText
         {
             get { return notice; }
+        }
+
+        public string ExitNoticeText
+        {
+            get { return exitNotice; }
         }
 
         // Shows the Create Account tab, or the Log In tab.
@@ -133,6 +141,11 @@ namespace Mmorpg.Client.Ui
             if (notice.Length > 0)
             {
                 TemporaryEntryScreen.AddText(card, notice, 14, TemporaryUiKit.WarningColor).gameObject.name = "Notice";
+            }
+
+            if (exitNotice.Length > 0)
+            {
+                TemporaryEntryScreen.AddText(card, exitNotice, 14, TemporaryUiKit.WarningColor).gameObject.name = "ExitNotice";
             }
 
             TemporaryEntryScreen.AddSpace(card, 8f, false);

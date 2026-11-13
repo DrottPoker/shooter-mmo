@@ -244,8 +244,10 @@ development build wrote them, so the next build has nothing to change.
 ```text
 ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes)
   +-- ClientConfig, its Addressables handle held while the bootstrap lives
+  +-- ClientNotices, what the next entry screen tells the player
   +-- ClientSession with the ClientSettings from the configuration
   |   +-- ClientSessionRecovery (forced sign-out) and WorldExit (every way out of a World)
+  |   +-- WorldReconnect (a lost connection) with a WorldJoin on the bootstrap's ApiClient
   +-- LocalPlayerSource, which WorldSceneContext fills
   +-- ApiClient
   +-- RealtimeSimulationClient (owns the transport and the frame)
@@ -284,8 +286,8 @@ LoginMenu and CharacterSelect
   +-- LoginMenuPanel or CharacterSelectPanel (code-built uGUI on TemporaryEntryScreen)
       +-- ClientOperationState
       +-- API coroutine flow
-      +-- the bootstrap's ClientSession, and for CharacterSelect its ClientSessionRecovery
-          and WorldExit
+      +-- the bootstrap's ClientSession and the exit notice, and for CharacterSelect its
+          ClientSessionRecovery, WorldExit, ClientNotices, and a WorldJoin of its own
 
 World scene
   +-- WorldSceneContext (scene-authored composition root of the scene)
@@ -303,6 +305,8 @@ World scene
       +-- MovementDestinationMarker
       +-- WorldNameplates (runtime uGUI)
       +-- InventoryWindows (runtime uGUI of the UI kit, themed by UiTheme)
+      +-- ReconnectNotice (runtime uGUI of the UI kit) over a World whose connection is
+      |   restored
       +-- temporary uGUI: TemporaryWorldInteractionPanel, TemporaryWorldContextMenu,
           TemporaryGameMessagePanel, TemporaryCombatHud, TemporaryDebugMenu,
           TemporaryAdminMenu
@@ -383,8 +387,9 @@ that the client resolves from GameService:
    `ClientSession` with the `ClientSettings` of the configuration, the materials
    and the arrow model, the UI theme, `ApiClient`, the body tint setting,
    `RealtimeSimulationClient`, which `Initialize` composes with those settings,
-   `ClientSessionRecovery`, and `WorldExit`. The account-session check starts in
-   `OnEnable`.
+   `ClientNotices`, `ClientSessionRecovery`, `WorldExit`, and `WorldReconnect`,
+   which runs its attempts as the bootstrap's coroutines and which the
+   bootstrap's `Update` ticks. The account-session check starts in `OnEnable`.
 2. `Start` runs one coroutine. It shows `ContentCheckPanel` in the active
    scene, the entry screen with the title and the status line
    `ui/login/checking-content` from the bundled `ui` table, and resolves the
@@ -425,7 +430,9 @@ the EventSystem that uGUI needs when the scene has none, and
 the bootstrap, and measures from the camera that renders the game.
 
 When a scene loads, the bootstrap composes it. LoginMenu gets `LoginMenuPanel`
-and CharacterSelect gets `CharacterSelectPanel`. In a World scene, the
+and CharacterSelect gets `CharacterSelectPanel`, each with the text of the code
+that `ClientNotices` holds, which it takes so the notice shows once, as
+[Entry Screen Notices](#entry-screen-notices) describes. In a World scene, the
 scene-authored `WorldSceneContext` receives the client session, the realtime
 session and its movement, player, look, and admin channels, the local player
 source, the pointer focus, and the body settings before `Start` runs, and the
@@ -525,6 +532,7 @@ endpoints.
 | Request timeout | 10 s | Every HTTP request |
 | Realtime timeout | 10 s | Realtime join and leave deadlines and the UDP disconnect timeout |
 | Session validation interval | 5 s, clamped to 2 to 60 s | The periodic account-session check |
+| Reconnect window | 20 s, clamped to 1 to 120 s | How long the client tries to [restore a lost connection](#restoring-a-lost-connection). It mirrors the 20 s that the worker keeps a body; the worker decides how long the body stays |
 | Item gameplay catalog | `core.item-catalog.json` of the local WorldData package | The bundled item catalog of the [content set](#content-resolution-at-start) |
 | Quest catalog | `core.quest-catalog.json` of the local WorldData package | The bundled quest catalog of the content set |
 | Text tables | Every table of `Text/en/` of the local WorldData package | The bundled text tables of the content set |
@@ -657,7 +665,8 @@ The quest windows, the quest tracker, the quest messages, the item rule
 reasons, the inventory, equipment, storage, Bank, Recovery Storage, corpse, and
 vendor windows, the errors of the item, corpse, and world interaction
 controllers, the login and character selection panels with
-`AccountEntryPresentation`, the status texts of the combat HUD from
+`AccountEntryPresentation` and their notices, the reconnect notice over the
+World, the status texts of the combat HUD from
 `CombatHudPresentation`, and the world menu with its Walk here, Examine,
 Attack, and Loot options, corpse names, and game messages are converted.
 `WorldMenuController`, `WorldInteractionTargetingController`, and
@@ -679,10 +688,10 @@ only through a transition with one owner:
 
 | Facts | Members | Transitions and their owners |
 | --- | --- | --- |
-| Client settings | `Settings`, a `ClientSettings` with the GameService base URL, the request and realtime timeouts, and the interval of the account-session check | None: the bootstrap reads them from `ClientConfig` once |
+| Client settings | `Settings`, a `ClientSettings` with the GameService base URL, the request and realtime timeouts, the interval of the account-session check, and the reconnect window | None: the bootstrap reads them from `ClientConfig` once |
 | Account sign-in | `Auth`, `SessionToken`, `IsAuthenticated` | `SignIn`, by `LoginMenuPanel` after a login or registration. `SignOut`, by `CharacterSelectPanel` on Log Out and when it finds no account session, and by `ClientSessionRecovery` |
 | Selection | `SelectedCharacter`, `SelectedShard` | `Select`, by `CharacterSelectPanel` whenever its state changes, and with the shard of the join ticket |
-| World | `ActiveSimulationSession`, the simulation session of the World the client is in | `EnterWorld`, by `CharacterSelectPanel` after the worker accepted the join. `LeaveWorld`, by `WorldExit` |
+| World | `ActiveSimulationSession`, the simulation session of the World the client is in | `EnterWorld`, by `CharacterSelectPanel` after the worker accepted the join, and by `WorldReconnect` after a join restored a lost connection. `LeaveWorld`, by `WorldExit` |
 
 Each transition raises its one event when it changed something: `SignedIn`,
 `SignedOut`, `SelectionChanged`, `WorldEntered`, and `WorldLeft`. `SignIn`
@@ -709,17 +718,109 @@ session id, so an exit that completes late never clears a newer World:
 
 | Way out | Started by | What happens |
 | --- | --- | --- |
-| Leave Shard | The Debug menu | `Leave`: an exact-session UDP leave. A refused leave that keeps the connection joined stays in the World; otherwise the World is left and CharacterSelect loads |
-| A World scene left outside the panel flow | `ClientBootstrap`, when another scene replaces a World scene while the World is set | `Release`: a graceful leave while the connection is joined to that session, UDP closed when it fails, so the worker runs its disconnect cleanup, and then the World of that session is left. A connection joined to another session stays |
+| Leave Shard | The Debug menu | `Leave`: an exact-session UDP leave. A refused leave that keeps the connection joined stays in the World; otherwise the World is left and CharacterSelect loads. An accepted leave keeps its `BodySeconds` in `ClientNotices` for the countdown on CharacterSelect. While a lost connection is restored the connection is not joined to the World's session, and a leave would name that session on another connection, so nothing is sent: a join that the reconnect runs is aborted, the World is left, and CharacterSelect loads |
+| A World scene left outside the panel flow | `ClientBootstrap`, when another scene replaces a World scene while the World is set | `Release`: a graceful leave while the connection is joined to that session, UDP closed when it fails, so the worker runs its disconnect cleanup, and then the World of that session is left. A connection joined to another session stays. An accepted leave keeps its `BodySeconds` as `Leave` does |
 | A joined World whose scene fails to load | `CharacterSelectPanel` | `Release`, as above, and CharacterSelect stays |
 | A World scene that starts without a joined connection | The Debug menu's session check | `LeaveUnjoinedWorld`: the World is left and CharacterSelect loads |
-| A connection that the worker or the network ended | `IRealtimeSession.UnexpectedlyDisconnected`, which `WorldExit` listens to | The World is left, and a World scene goes to CharacterSelect, or to LoginMenu without an account session. `account_session_replaced` goes to `ClientSessionRecovery` instead |
+| A connection that ended in a way that does not reconnect | `WorldReconnect`, which listens to `IRealtimeSession.UnexpectedlyDisconnected`, decides by `ReconnectRules`, and hands such an end to `LeaveEndedWorld` | The World is left and the code is posted as the notice; a World scene goes to CharacterSelect, or to LoginMenu without an account session. `account_session_replaced` goes to `ClientSessionRecovery` instead |
+| A lost connection that could not be restored | `WorldReconnect`, when its window ends or an attempt is refused for good | `LeaveLostWorld`: the World of the lost session is left, the notice is `reconnect_failed`, and a World scene goes to CharacterSelect |
 
 A forced sign-out, after a 401 from GameService or `account_session_replaced`
 from the worker, goes through `ClientSessionRecovery`, as
 [Unauthorized Recovery](#unauthorized-recovery) describes. The persistent
 bootstrap validates an authenticated account session at the configured
 interval, also outside the active World scene.
+
+### Restoring A Lost Connection
+
+`WorldReconnect`, in `Mmorpg.Client.Networking`, is the one owner of a lost
+connection. `ClientBootstrap` creates it in `Awake`, ticks it in `Update`, and
+runs its attempts as the bootstrap's coroutines; tests pass their own clock and
+runner. It listens to `IRealtimeSession.UnexpectedlyDisconnected` and decides
+by `ReconnectRules`, the one place that names which endings reconnect:
+
+| Ending | Codes | Reconnects | Where the player lands, with which text |
+| --- | --- | --- | --- |
+| The line dropped, which the server did not ask for | `connection_lost` (the transport timed out or closed), `udp_socket_error`, and `realtime_timeout`, of the network and timeout kinds that only the transport and the clock produce | Yes | The World stays; on giving up, CharacterSelect with `reconnect_failed` |
+| A login of the account on another client | `account_session_replaced` | No | LoginMenu with its text |
+| Anything else that the worker decided | Every other `ServerDisconnect` code, such as `session_reconnected`, `session_revoked`, `session_expired`, `udp_rate_limited`, `invalid_packet`, and `internal_error`; a server that sends a code of a dropped line decided too | No | CharacterSelect, or LoginMenu without an account session, with the text of the code |
+| A protocol or state failure that the client found | Every protocol code, such as `invalid_join_response`, `unexpected_message`, `placement_mismatch`, and `collision_stream_failed` from `DisconnectForClientFailure` | No | The same, mostly with the text for a code without one of its own |
+
+A leave and an abort raise no `UnexpectedlyDisconnected`, so they never
+reconnect. `ReconnectRulesTests` names every code that the client makes with a
+kind of its own and fails for a new one without a row, fails for a network or
+timeout code that is neither a dropped line nor a failed connect, and checks
+every protocol code of the client and every disconnect code of the worker
+that it reads from the sources.
+
+An ending that does not reconnect, and a dropped line while no World scene is
+shown or without an account session, goes to `WorldExit.LeaveEndedWorld`. A
+dropped line in a shown World starts a window of `ReconnectWindowSeconds` from
+the loss, and the reconnect moves through explicit states:
+
+```text
+Idle -> Pausing -> RequestingTicket -> Joining -> Idle
+           ^                                |
+           +---------- a failed attempt ----+
+```
+
+- **Pausing.** The first attempt starts on the next tick; every later one 1 s
+  (`PauseSeconds`) after the last failed.
+- **RequestingTicket.** One attempt at a time asks GameService for a join
+  ticket for the lost session's character and shard, through `WorldJoin` on the
+  bootstrap's `ApiClient`.
+- **Joining.** A ticket for the lost World joins the worker with
+  `RealtimeSession.Join`. A ticket of another World is refused for good.
+- **Success.** The join enters the World of the new session with `EnterWorld`,
+  so the World scene goes on, as
+  [Local Player Lifecycle](#local-player-lifecycle) describes. The client does
+  not tell a resumed body from a new entity beyond `isReconnect`.
+- **Failure.** `ReconnectRules.ClassifyAttempt` decides. A dropped line, a
+  connection that did not open or closed before its join completed, a worker
+  that could not reach GameService (`auth_service_timeout`,
+  `auth_service_unavailable`), a request that got no usable answer, a 5xx, and
+  a shard or session worker that is not available right now
+  (`shard_unavailable`, `simulation_session_worker_unavailable`) pause and try
+  again. A 401 signs out through `ClientSessionRecovery`. Every other answer is
+  a definite refusal and gives up at once.
+- **Giving up.** At the end of the window, also during a join, which is
+  aborted, and after a definite refusal, the window ends and
+  `WorldExit.LeaveLostWorld` leaves the lost World. A join that the worker
+  accepted before the deadline completes.
+
+An attempt that is over never acts again: every attempt has a number, and the
+window's end, a success, and leaving the World raise the current number, so a
+late ticket of an earlier attempt starts no join and completes nothing.
+Leaving the World or the account in any other way, through `WorldExit`, the
+recovery, or a sign-in, stops the window and aborts a join in progress. A loss
+right after a success starts a window of its own.
+
+While the window runs, the World scene stays loaded. `WorldSceneContext`
+stops the local player's movement at `SessionEnded`, so input neither moves it
+nor sends, and the camera still turns. Every channel refuses to send outside a
+joined session, and the inventory, corpse, quest, world interaction, and combat
+controllers reset their session state at `SessionEnded` as at any end; they
+read again when their `Update` sees the session joined. The look link keeps the
+local look until the client leaves its World or its account, so the body keeps
+its look. `ReconnectNotice` shows the window's seconds over the World.
+
+### Entry Screen Notices
+
+`ClientNotices`, in `Mmorpg.Client.Core`, holds what the next entry screen
+tells the player, so it outlives the scene change. `WorldExit` posts the code
+of a World it leaves for an ending, or `reconnect_failed`, and
+`ClientSessionRecovery` posts the code of the 401 or of
+`account_session_replaced`. The bootstrap takes the code when it composes
+LoginMenu or CharacterSelect and passes the panel its text from the messages
+table, the same way it passes the login card the notice that the client is
+out of date, so a notice shows once.
+
+An accepted leave keeps the character and its `BodySeconds` there too.
+`ClientNotices.TryGetBody` gives the whole seconds left, rounded up, against
+the client's realtime clock, and forgets the body when they are up. The count
+is a lower bound, since hits extend a body on the worker without telling the
+client, so the text goes at zero and nothing more is assumed; it never blocks
+`Enter World`. A lost connection gets no number and no countdown.
 
 ## API Layer
 
@@ -788,7 +889,7 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 
 | Part | Owns | Features read it through |
 | --- | --- | --- |
-| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. `CharacterSelectPanel` takes `RealtimeSession` itself for `Join`, and `WorldExit` for `Leave` |
+| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. `WorldJoin` takes `RealtimeSession` itself for `Join`, for CharacterSelect and the reconnect, and `WorldExit` for `Leave` |
 | `RealtimeMessageTable` | One entry per server message type: its handler, the states it runs in, the states it is dropped in, and the failure code of every other state | The hub only |
 | `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
 | A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
@@ -822,8 +923,8 @@ World identity, and exact worker runtime placement, then connects to the provide
 UDP endpoint. It sends the short-lived join ticket in a versioned reliable ordered
 packet. Join acceptance must match the placed character, shard, World, simulation
 revision, and collision revision before its non-secret metadata becomes the
-joined session, which `CharacterSelectPanel` then enters as the World of
-`ClientSession`.
+joined session, which `CharacterSelectPanel`, or the reconnect, then enters as
+the World of `ClientSession`.
 
 `SessionJoined` is raised when the worker accepts a join, before any later
 message of that session is handled; the combat controller clears its state
@@ -878,12 +979,12 @@ replayed.
 The session raises `SessionEnded` once whenever a joined session ends for any
 reason, including a graceful leave, `Abort`, or a failure while leaving, with a
 null error for a leave and an abort. The inventory, quest, corpse, world actor,
-world interaction, and combat controllers and the look link reset their
-session-scoped state on that event, so a pending operation, open view, or corpse
-presence sequence never blocks the next join. An end while joined that is no
-leave and no abort raises `UnexpectedlyDisconnected` first; `WorldExit` then
-leaves the World and returns an authenticated player to CharacterSelect. An
-ending
+world interaction, and combat controllers reset their session-scoped state on
+that event, so a pending operation, open view, or corpse presence sequence never
+blocks the next join. An end while joined that is no leave and no abort raises
+`UnexpectedlyDisconnected` first; `WorldReconnect` then restores a dropped line
+or hands the end to `WorldExit`, as
+[Restoring A Lost Connection](#restoring-a-lost-connection) describes. An ending
 that a poll finds raises its events at the end of the same `Update`, after the
 transport stopped; a `DisconnectForClientFailure` outside `Update` raises them
 at the end of the next frame; `Abort` raises `SessionEnded` at once. Two rules
@@ -906,9 +1007,9 @@ If another client logs into the same account, SimulationWorker can send
 `account_session_replaced` over the reliable control path. The session ends
 and stops its transport, and `WorldExit` hands the end to
 `ClientSessionRecovery`, which signs the client session out, logs an `[AUTH]`
-error, and loads LoginMenu. The periodic GameService validation provides the
-same recovery when
-the displaced client is not connected to a shard.
+error, and loads LoginMenu, whose card says why. The periodic GameService
+validation provides the same recovery when the displaced client is not
+connected to a shard.
 
 ### Adding A Message Type Or A Channel
 
@@ -970,7 +1071,8 @@ snapshot delivery:
   in-flight messages in the `Leaving` state, so a graceful leave never turns
   into a protocol disconnect. A carry state still advances the movement session
   while leaving, without its event. The worker answers the leave at once with
-  `LeaveAccepted`; the client does not use its `BodySeconds` yet.
+  `LeaveAccepted`, and `Leave` hands its `BodySeconds` to the caller, which
+  CharacterSelect counts down.
 
 ### Presence And The Movement Session
 
@@ -1124,7 +1226,10 @@ username. Only the Editor and development builds, `Debug.isDebugBuild`, fill in
 the local development account. A failed request puts the caret back in the
 password field once the form is enabled again. When the served content is in a
 newer format than the build reads, the card shows the text of
-`client_update_required` below its subtitle, and the form stays usable.
+`client_update_required` below its subtitle, and the form stays usable. Below
+it the card shows the exit notice, why the client returned here, such as the
+text of `account_session_replaced`, as
+[Entry Screen Notices](#entry-screen-notices) describes.
 
 ### CharacterSelect
 
@@ -1140,7 +1245,19 @@ and shard in `ClientSession`, whose `SelectionChanged` the inventory and quest
 controllers listen to. Creation uses
 the appearance offers of [Character Looks](#character-looks). Join ticket
 creation and the UDP handshake run inside one coroutine so the operation cannot
-be partially overlapped by another click.
+be partially overlapped by another click. The ticket and the join are
+`WorldJoin`, which the reconnect shares: the panel checks the ticket's World
+against the scene catalog before the join, selects the ticket's shard, and
+enters the World and loads its scene after it.
+
+Between the top bar and the cards the panel shows the exit notice, why the
+client left its last World, in the warning color. While the body of a
+character that left stands, the enter page counts its seconds down from
+`ClientNotices`: on that character's page that Enter World takes its body over,
+and on another character's page that the account can enter another character
+once the body is gone. The text goes at zero, and it never disables
+`Enter World`; GameService refuses another character with
+`account_character_already_active`, whose text the status line shows.
 
 ### World Scenes
 
@@ -1161,6 +1278,7 @@ The canvases sort from the bottom up:
 | 40 | `TemporaryWorldInteractionPanel` |
 | 100 | `InventoryWindows` |
 | 120 | `TemporaryDebugMenu` and `TemporaryAdminMenu` |
+| 130 | `ReconnectNotice`, without a raycaster, so it takes no click |
 | 140 | `TemporaryWorldContextMenu` |
 | 150 | The death overlay, a nested canvas of the combat HUD |
 
@@ -1239,8 +1357,9 @@ controllers, `CharacterSelectPanel`, and its own account-session check. On HTTP
 1. Aborts the realtime connection.
 2. Signs the client session out, which clears the account, the selection, and
    the World.
-3. Loads LoginMenu, and the failed panel flow stops instead of continuing with
-   stale data.
+3. Posts the code of the 401 to `ClientNotices`, so LoginMenu shows its text,
+   and loads LoginMenu, and the failed panel flow stops instead of continuing
+   with stale data.
 
 The stable `account_session_replaced` code identifies a login from another
 client, from GameService as a 401 or from the worker as the reason it closed
@@ -1263,6 +1382,21 @@ to input and CameraTarget. Opening a World scene without an active joined sessio
 creates no local player and reports no missing reference. The context never
 selects a global camera and never generates a player asset, map object, material,
 light, or collider.
+
+The first entry is `TryEnterWorld`, which `Start` runs once. The World scene then
+outlives a lost connection: at `SessionEnded` the context turns the local
+player's server-authoritative movement off, so the player stands where it was,
+its navigator and prediction are gone, a click does not move it, and nothing is
+sent, while its camera still turns. The presence of the ended session already
+despawned the other players and the world actors. When a later join of the same
+World raises `SessionJoined`, as the reconnect's join does, the context binds
+the same `LocalPlayerController` to the new movement session with
+`EnableServerAuthoritativeMovement`, which starts the prediction at the state
+the worker sent, the resumed body or a new entity at the saved place, and moves
+the player there; its cloth is told the body jumped. The player object, its
+camera, and the scene stay, so `LocalPlayerSource` raises nothing, and the
+other players and actors spawn again as the worker sends them.
+`WorldReconnectPlayModeTests` pins this on Development World 1.
 
 Once the spawned player has its input and camera, the context sets it in the
 bootstrap's `LocalPlayerSource`, and clears it again when it destroys the player
@@ -3408,7 +3542,9 @@ namespace rule are in [Folder Layout](#folder-layout).
   a real body: the bootstrap and its controllers, a World scene loaded through
   Addressables without a joined session, the inventory panel drawn from a
   committed snapshot, the LoginMenu and CharacterSelect screens against an
-  unreachable GameService, and real bodies dying, using tools, and attacking.
+  unreachable GameService, real bodies dying, using tools, and attacking, and a
+  World scene that keeps its player across a lost connection and the join that
+  restores it, on the hub of a `ScriptedRealtimeTransport`.
 - **Fixtures.** Tests never depend on the layout of a development World:
   `FixtureCollisionWorld`, `FixtureItemCatalog`, and `FixtureWorldActorContent` in
   `Tests/EditMode/Fixtures` provide test-owned collision, items, and actors; see
@@ -3442,13 +3578,20 @@ namespace rule are in [Folder Layout](#folder-layout).
   for it: a sample in `RealtimeHubMessages`, the event it raises, its codes, and
   its `Leaving` reaction. A new client message needs an entry in the client cases
   there. Tests of other areas read the table through
-  `RealtimeMessageTable.IsDropped` of a harness's hub.
+  `RealtimeMessageTable.IsDropped` of a harness's hub. `WorldExitTests` and
+  `WorldReconnectTests` run the ways out of a World and the reconnect on a
+  harness's hub, with `FakeJoinTickets` as GameService's ticket call and
+  `TestRoutine` running the coroutines by hand, and `ReconnectRulesTests` pins
+  the table of endings and attempt failures of
+  [Restoring A Lost Connection](#restoring-a-lost-connection).
 - **Live stack.** `LiveStackPlayModeTests` plays one character through the real
   `ApiClient`, `RealtimeSimulationClient`, and LiteNetLib transport against a
   running local stack. It composes the hub with `LiveStackTransport`, which wraps
   `LiteNetLibRealtimeTransport` to read `BodySeconds` and to drop the line without
-  a disconnect message, so the Networking assembly shows its internals to the
-  PlayMode tests too, and with the settings of the running client's session.
+  a disconnect message, quietly or so that the hub finds the loss at once, so the
+  Networking assembly shows its internals to the PlayMode tests too, and with the
+  settings of the running client's session. One step composes the client's
+  `WorldReconnect` on that hub and lets it restore a dropped line by itself.
   The test is explicit and has the `LiveStack` category, so
   only `tools/Test-LiveStack.ps1` runs it, as
   [Live Stack Test](../tests/README.md#live-stack-test) describes.
@@ -3577,6 +3720,10 @@ How to run the suites, in the Editor or headless, is in
 - Route every way out of a World through `WorldExit`, which leaves by an
   exact-session UDP leave or the disconnect fallback and clears the client
   session's World only for that exact simulation session.
+- Decide whether an ending reconnects only in `ReconnectRules`: only a dropped
+  line does. A new network or timeout code of the client needs its place there,
+  and a new code that the client makes with a kind of its own a row in
+  `ReconnectRulesTests`, which fails until it has one.
 - Temporary implementation shortcuts are permitted only inside the replaceable UI
   presentation layer. UI-independent state and behavior must not be embedded in
   temporary panels.

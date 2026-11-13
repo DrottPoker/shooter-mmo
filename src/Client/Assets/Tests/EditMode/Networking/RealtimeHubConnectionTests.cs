@@ -453,7 +453,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // The leave request leaves at once, outside a frame. BodySeconds, how long the body stays
-        // in the world, is decoded and not used.
+        // in the world, reaches the caller of the leave.
         [TestCase((ushort)0)]
         [TestCase((ushort)20)]
         [TestCase((ushort)3600)]
@@ -488,6 +488,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.Hub.Items.CarryItemStateRevision, Is.EqualTo(-1));
             Assert.That(harness.StepLeave(), Is.False);
             Assert.That(harness.LeaveSucceeded, Is.True);
+            Assert.That(harness.LeaveBodySeconds, Is.EqualTo(bodySeconds));
             Assert.That(harness.LeaveError, Is.Null);
         }
 

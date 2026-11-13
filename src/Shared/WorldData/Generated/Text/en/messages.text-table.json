@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "f888fbdabb511288eb88a93af3ae5400a070bbe29e39a23fc10ff2a741217b65",
+  "revision": "92207db421e7ae9c6ec3e2661599a16de818ff77d7697189f08e7694d6ad4aa2",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -19,6 +19,10 @@
     {
       "key": "message/account_not_found",
       "text": "The account was not found."
+    },
+    {
+      "key": "message/account_session_ended",
+      "text": "This account was logged out. Log in again."
     },
     {
       "key": "message/account_session_replaced",
@@ -211,6 +215,10 @@
     {
       "key": "message/interaction_opened",
       "text": "{capability} is open."
+    },
+    {
+      "key": "message/internal_error",
+      "text": "The shard ran into a problem and closed the connection. Try again."
     },
     {
       "key": "message/invalid_character_appearance",
@@ -443,6 +451,10 @@
     {
       "key": "message/realtime_timeout",
       "text": "The shard did not answer in time. Try again shortly."
+    },
+    {
+      "key": "message/reconnect_failed",
+      "text": "The connection to the world was lost and could not be restored."
     },
     {
       "key": "message/recovery_access_required",
