@@ -279,6 +279,14 @@ changes always go through GameService.
 
 ## Account, Character, And Shard Flow
 
+The live stack test, `tools/Test-LiveStack.ps1`, checks the network side of the
+join, the leave, the reconnect to a body, and the saved place automatically on
+the real stack, as
+[Run The Live Stack Test](LOCAL_DEVELOPMENT.md#run-the-live-stack-test)
+describes. Run it first after a change to them; the checks below still judge
+what only a person sees, such as the screens, the messages, and the body in the
+world.
+
 ### Login Menu
 
 1. Enter Play Mode from `LoginMenu`.

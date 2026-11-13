@@ -734,12 +734,82 @@ the tests only when `-UnityCliPath` or `UNITY_CLI_PATH` is set, or when neither
 path is set and the CLI exists at `%LOCALAPPDATA%\Unity\bin\unity.exe`;
 otherwise the script starts the Editor from the default Unity Hub path. Unity
 runs without a graphics device there, so the tests of the `Graphics` category,
-which draw, run only in the Editor.
+which draw, run only in the Editor. The script also leaves out the `LiveStack`
+category, which needs the local stack and runs through
+[Run The Live Stack Test](#run-the-live-stack-test); the CI Unity gate and
+`tools/Test-Changes.ps1` run this script, so they leave it out too. That test
+is also explicit, so `tools/Run-UnityEditorTests.ps1` and the Editor's Test
+Runner do not select it. `-Platform PlayMode` runs
+one suite, `-TestCategory` replaces the default category filter
+`!Graphics;!LiveStack`, and `-Preflight` only checks that Unity is installed and
+the project is free. Unity opens a project only once, so the script stops before
+it starts Unity while an Editor or another Unity process has the project open.
 
 Expected result: fresh EditMode and PlayMode result files and Unity logs below
 `TestResults/Unity`, and both suites reported as passed. As in the backend
 gate, a skipped or inconclusive test, or a suite without tests, fails the run.
 `Window > General > Test Runner` in the Editor runs the same suites by hand.
+An interrupted run ends the Unity process it started and removes the
+`InitTestScene` that Unity's PlayMode runner made in `Assets` and deletes only
+at the end of a run.
+
+### Run The Live Stack Test
+
+Every other client test drives the network layer through a fake transport or a
+scripted GameService. The live stack test, `LiveStackPlayModeTests` in the
+PlayMode assembly, plays one character through the real client code against the
+real local stack instead: `ApiClient` registers a fresh account, creates a
+character, lists the shards, and asks for the join tickets, and
+`RealtimeSimulationClient` joins the default worker over UDP through
+`LiteNetLibRealtimeTransport`. It walks the character, leaves, reconnects at once
+to the body, drops the line without a leave and reconnects again, leaves and
+waits until the body is gone, joins as a new entity at the saved place and
+vitals, and leaves again; [Live Stack Test](../tests/README.md#live-stack-test)
+lists what each step asserts. Run it after a change to the client's network
+layer, the realtime protocol, joins and leaves, lingering bodies, or the saved
+place and vitals, and before a playtest. It does not replace the manual checks
+in [Manual Testing](MANUAL_TESTING.md), which judge what a person sees.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-LiveStack.ps1
+```
+
+The script needs Docker, the `.env` file, the Unity Editor of the
+[requirements](#requirements), and a free project: it refuses to run while an
+Editor has `src/Client` open, or while a GameService or worker already uses port
+5000 or UDP port 27015, so it never meets a stack it did not start. It starts
+PostgreSQL and Redis with `docker compose up -d --wait` when they do not run,
+builds GameService and SimulationWorker, starts them in the Development
+environment as background processes, each in its own hidden console, waits until
+GameService answers `/health/ready` and the worker listens and has registered
+`local-shard-1`, and runs only the `LiveStack` category headless through
+`tools/Run-UnityTests.ps1`. The test checks that every join ticket names the
+worker runtime that the script started. When the test ends, passed or failed,
+and when the script is interrupted with `Ctrl+C`, the script stops the worker and
+GameService with `Ctrl+C`, so the worker saves its characters and marks itself
+offline, ends a service that does not stop within 30 seconds, and stops the
+containers that it started; containers that ran before keep running.
+
+Expected result: the lines of the steps `a.` to `g.` with what each observed,
+such as the entity ids, the places, `IsReconnect`, and `BodySeconds 20`, then
+`Live stack test passed`, exit code 0, and the stack as it was before. A run
+takes about two and a half minutes: about one minute to start the containers,
+build, and start the services, and about 80 seconds of Unity, of which the
+scenario takes 30 seconds, most of them the 20 seconds that the body stays.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | The scenario passed |
+| 1 | The test failed; the step lines and the Unity log say where |
+| 2 | The stack or Unity could not run the test, for example without Docker, with an open Editor, or with a port in use |
+
+Each run keeps its logs in a new folder below
+`%TEMP%\shooter-mmo-live-stack`, which the script prints: the build output, the
+output of both services, the Compose output, and the Unity log and result file.
+Each run also leaves one account named `live_<hex>` with one character in the
+local database. A script that is killed, instead of interrupted with `Ctrl+C`,
+cannot clean up: stop the two processes whose ids it printed, and run
+`docker compose stop` if it had started the containers.
 
 ## Upgrade The Unity Editor
 

@@ -142,6 +142,7 @@ databases.
 | `Infrastructure=Postgres` or `Infrastructure=Redis` | The same attributes | Which service the test needs |
 | `Category=Load` | `[Trait("Category", "Load")]` | Deterministic scalability workloads with a timing budget that is sensitive to machine load |
 | Unity `Graphics` | `[Category("Graphics")]` on a Unity test | The test draws with a camera, so it needs a graphics device |
+| Unity `LiveStack` | `[Category("LiveStack")]` and `[Explicit]` on a Unity test | The test needs the running local stack; only `tools/Test-LiveStack.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
 
 Use `--filter "Category!=Integration"` for a fast loop without containers and
 `--filter "Category=Integration"` for only the infrastructure tests. The
@@ -294,6 +295,43 @@ described in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 The ruleset `development CI gate` in `.github/rulesets/development-ci-gate.json`
 requires all five jobs to pass before a commit reaches `development`; a skipped
 job counts as passed. Rename a job only together with that ruleset.
+
+## Live Stack Test
+
+`LiveStackPlayModeTests` in `src/Client/Assets/Tests/PlayMode/LiveStack` is the
+one client test that runs against the real local stack: the client's own
+`ApiClient` and `RealtimeSimulationClient` on the real LiteNetLib transport, a
+GameService, and the default SimulationWorker. `tools/Test-LiveStack.ps1` starts
+the stack, runs it, and stops the stack again, as
+[Run The Live Stack Test](../docs/LOCAL_DEVELOPMENT.md#run-the-live-stack-test)
+describes. Its one scenario asserts, step by step:
+
+1. A fresh account with a random name and a new character join `local-shard-1`
+   over UDP: the ticket and the join are no reconnect, the session is joined,
+   and an owner snapshot, the spawns of the world actors around the spawn, and
+   the owner's combat state arrive.
+2. One movement input per tick along a route about six meters long moves the
+   character: the owner snapshots confirm the route and show it standing at
+   least 2.5 meters from the spawn.
+3. A leave is answered with `LeaveAccepted` and `BodySeconds` 20 and ends the
+   session with one `SessionEnded` and no `UnexpectedlyDisconnected`.
+4. A join right after it, with a new ticket for the same character, is a
+   reconnect to the same entity, at the place where the character stood.
+5. A line dropped without a leave, so the worker still holds the connection,
+   and a join a second later reconnect to the same entity too.
+6. After a leave and the body's 20 seconds, the join is no reconnect: a new
+   entity at the saved place, with the saved health and mana.
+7. A last leave is answered like the first.
+
+No default run selects the test;
+[Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) says
+how each runner leaves it out. CI does not run it because the self-hosted runner
+has no stack of its own and the scenario takes a body's 20 seconds; a run
+against no stack fails at once with a message that names the script. The
+character takes no damage, so
+step 6 compares full health and mana; the manual check
+[Place And Vitals Across A Logout](../docs/MANUAL_TESTING.md#place-and-vitals-across-a-logout)
+covers lost health.
 
 ## Item Catalog Fixture
 

@@ -11,7 +11,8 @@ its header comment. The C# tools are projects of `Mmorpg.slnx` and run with
 | --- | --- |
 | `Test-Changes.ps1` | Runs the checks that the changes of the branch can affect; run it before every push. `-Plan` shows what it would run, `-All` runs the full gate. See [Checks For A Change](../docs/LOCAL_DEVELOPMENT.md#checks-for-a-change) |
 | `Run-UnityEditorTests.ps1` | Runs the Unity EditMode and PlayMode tests in the open Unity Editor of this checkout; `-Mode EditMode -Filter <Fixture>` runs one fixture |
-| `Run-UnityTests.ps1` | Runs both Unity suites headless when no Editor has the project open; CI uses it |
+| `Run-UnityTests.ps1` | Runs both Unity suites headless when no Editor has the project open, without the `Graphics` and `LiveStack` categories; CI uses it |
+| `Test-LiveStack.ps1` | Starts the local stack, runs the client's live stack test against it, and stops what it started. See [Run The Live Stack Test](../docs/LOCAL_DEVELOPMENT.md#run-the-live-stack-test) |
 | `Wait-PullRequest.ps1` | Waits until a pull request is ready to merge or needs work. See [Pull Request Workflow](../docs/LOCAL_DEVELOPMENT.md#pull-request-workflow) |
 | `Complete-PullRequest.ps1` | Merges a ready pull request into `development` and cleans up its branches |
 | `PullRequestCommon.ps1` | Shared helpers of the two pull request scripts |
