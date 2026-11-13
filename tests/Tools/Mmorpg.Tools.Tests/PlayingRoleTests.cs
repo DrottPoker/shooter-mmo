@@ -110,6 +110,7 @@ public sealed class PlayingRoleTests
     [InlineData(PlayingOperations.LootOpen, "corpse_not_found")]
     [InlineData(PlayingOperations.LootOpen, "combat_character_dead")]
     [InlineData(PlayingOperations.LootAll, "corpse_not_found")]
+    [InlineData(PlayingOperations.LootAll, "inventory_full")]
     [InlineData(PlayingOperations.LootAll, "combat_character_dead")]
     public void EveryExpectedConflictOfAFighterPausesItAndItPlaysOn(string operation, string code)
     {

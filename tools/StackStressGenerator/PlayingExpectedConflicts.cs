@@ -64,6 +64,8 @@ public static class PlayingExpectedConflicts
             {
                 ["corpse_not_found"] =
                     "The corpse decayed between the open and the loot.",
+                ["inventory_full"] =
+                    "The fighter's slots or carry capacity are used up by what it looted, so nothing more fits; a player meets the same answer until it sells or drops something.",
                 ["combat_character_dead"] =
                     "A Mob killed the bot while it looted; a death closes every view."
             },

@@ -541,6 +541,7 @@ the generator holds this table, and the report repeats it:
 | `loot_open` | `corpse_not_found` | The corpse decayed or was emptied and removed after the bot saw it |
 | `loot_open`, `loot_all`, `loot_close` | `combat_character_dead` | A Mob killed the bot during the loot; a death closes every view |
 | `loot_all` | `corpse_not_found` | The corpse decayed between the open and the loot |
+| `loot_all` | `inventory_full` | The fighter's slots or carry capacity are used up by what it looted; a player meets the same answer until it sells or drops something |
 | `loot_close` | `corpse_not_found` | The looted corpse was emptied and removed, or decayed, before the close arrived |
 
 `teleport` has no expected conflict.
