@@ -272,23 +272,9 @@ ignores:
 | `build-*.log`, `docker-compose-*.log` | The build and container output |
 | `world-variant/`, `world-variant.log` | The scenario's [World Variant](#world-variant) and the output of the content compilers that wrote it |
 
-Expected result of `smoke`: the services start, ten bots join, walk, move
-inventory items, and deposit into and loot from the shared corpse for 40
-seconds, leave, and log out, every rule of the table passes, the script prints
-`Load scenario smoke passed`, exits with code 0, and no `Mmorpg.*` process and
-no `shooter-mmo-stack-stress` container is left. A run takes about one and a
-half minutes. Run `smoke` after changing the load tooling and the tiers when
-[Purpose](#purpose) says. No manual Unity Editor steps are required.
-
-Expected result of `playing-smoke`: the script writes the World variant and
-says that it keeps the checked-in collision revision; the generator registers,
-equips, and logs in 20 accounts, the bots join Development World 2, the
-fighters equip their kits, everyone is teleported to a home ground, and for 90
-seconds the fighters hunt and loot wolves, some die and walk back to their
-corpses, and the walkers walk; then every bot leaves and logs out, the
-generator prints the role mix and counters such as `kills` and `botDeaths`,
-every rule passes, and the script prints `Load scenario playing-smoke passed`
-in about two and a half minutes.
+Run `smoke` and `playing-smoke` after changing the load tooling, and the tiers
+when [Purpose](#purpose) says. What each of the two shows when it works is the
+manual check [Load Tooling](MANUAL_TESTING.md#load-tooling).
 
 The load tests do not run in CI, and `tools/Test-Changes.ps1` runs none: they
 need an idle machine, and their numbers depend on it.
@@ -445,10 +431,13 @@ A fighter picks the nearest living Mob of its ground, up to 12 m outside the
 rectangle, that no other player's attack owns or busies, as the combatant state
 tells it, walks into range of its weapon, stands, and attacks. A Mob that
 attacks the fighter is fought first. It attacks until the Mob dies, walks back
-into range when the Mob moved away, and below 30 percent health stops
-attacking, walks 25 m away, and rests. When the Mob died and its corpse is
-lootable for the fighter, it walks to the corpse, opens it, loots all, and
-closes it; a corpse that another player's attack owns is left and counted.
+into range when the Mob moved away, and below 30 percent health stops attacking,
+walks 25 m away, and rests. When it stands in range and the worker reports that
+cover blocks its line of sight, it waits three seconds for the Mob to move and
+then gives that Mob up for 30 seconds and takes another one, because walking
+into range again would leave it standing where it is. When the Mob died and its
+corpse is lootable for the fighter, it walks to the corpse, opens it, loots all,
+and closes it; a corpse that another player's attack owns is left and counted.
 Below 60 percent health it rests until 90 percent, at most 40 seconds.
 
 After a death the fighter waits for the respawn at the World spawn, walks back
@@ -582,7 +571,11 @@ which `tools/Test-Load.ps1` runs before the worker starts, writes it into
 1. It copies the actor definitions and the World's `world.json`,
    `collision.json`, and `actor-spawns.json` from `content/` into
    `world-variant/content`, and adds the scenario's areas and groups to the
-   spawn authoring, with the spawn ids `<world>.load_<name>`.
+   spawn authoring, with the spawn ids `<world>.load_<name>`. A Mob is put on
+   the ground by the worker, but a resource node stands at the height of its
+   spawn and its collision is baked there. So each node of a group becomes its
+   own spawn point, `<world>.load_<name>.node<n>`, at the height of the ground
+   under it on the World without the variant's nodes.
 2. It runs the real World actor and World collision compilers, their own entry
    points, on that content into `world-variant/generated`, beside a copy of the
    compiled item catalog that the actor compiler reads.
@@ -592,8 +585,9 @@ which `tools/Test-Load.ps1` runs before the worker starts, writes it into
    ground that a route from the area's center reaches, as the worker places a
    Mob on the ground under its spawn, and a Mob must be at least 12 m from the
    World spawn; a node of a group is checked on the World without the
-   variant's nodes, because a node blocks movement where it stands. A failure
-   names the area and the point.
+   variant's nodes, because a node blocks movement where it stands, and its
+   compiled height must be the ground's. A failure names the area and the
+   point.
 
 `content/` and `src/Shared/WorldData/Generated` are only read, and a test proves
 that both are unchanged after a variant. The variant's actor catalog must equal

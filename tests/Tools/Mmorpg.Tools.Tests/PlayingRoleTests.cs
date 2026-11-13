@@ -167,6 +167,34 @@ public sealed class PlayingRoleTests
         Assert.Equal("seek", test.Role.State);
     }
 
+    // In range behind cover the worker reports a blocked line of sight. Walking into range
+    // again would stand still, so the fighter waits a moment and then takes another Mob.
+    [Fact]
+    public void AFighterInRangeBehindCoverGivesTheTargetUpAfterAMoment()
+    {
+        var test = new FighterTest(teleport: false, equipped: true);
+        test.Body.MoveTo(-131.5f, -35f);
+        test.AddWolf(-130f, -35f);
+        test.Think();
+        test.Body.Answer();
+        test.Body.View.ApplyOwnerCombatState(OwnCombat(2, target: Wolf, status: RealtimeCombatAttackStatus.LineOfSightBlocked));
+
+        test.Think();
+        Assert.Equal("fight", test.Role.State);
+        Assert.Equal([PlayingOperations.Attack], test.Body.Sent);
+        Assert.Empty(test.Body.Walks);
+
+        test.Think(FighterRole.LineOfSightPatience);
+        Assert.Equal(PlayingOperations.ClearTarget, test.Body.Pending);
+        test.Body.Answer();
+        test.Body.View.ApplyOwnerCombatState(OwnCombat(3));
+        test.Think();
+
+        // The wolf is ignored for a while, so the fighter does not choose it again at once.
+        Assert.Equal("seek", test.Role.State);
+        Assert.Equal([PlayingOperations.Attack, PlayingOperations.ClearTarget], test.Body.Sent);
+    }
+
     [Fact]
     public void AFighterDoesNotLootACorpseThatAnotherPlayerOwnsAndCountsIt()
     {

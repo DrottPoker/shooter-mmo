@@ -66,6 +66,37 @@ public sealed class StressWorldVariantTests
         }
     }
 
+    // The worker stands a resource node at the height of its spawn and bakes its collision
+    // there, so on a slope every node of a group gets the height of the ground under it.
+    [Fact]
+    public void TheNodesOfAGroupOnASlopeStandOnTheGround()
+    {
+        var scenario = VariantScenario(
+            "\"groups\": [ { \"name\": \"hill-veins\", \"actorId\": \"resource.iron_vein\", \"centerX\": 132, \"centerZ\": 152, \"rows\": 2, \"columns\": 2, \"spacing\": 6 } ]");
+        var folder = TemporaryFolder();
+        try
+        {
+            var result = StressWorldVariant.Write(scenario, Path.Combine(folder, "world-variant"), RepositoryPaths.Root, TextWriter.Null);
+
+            Assert.Equal(4, result.AddedInstances);
+            var spawns = WorldActorJson.DeserializeSpawnRuntime(File.ReadAllText(Path.Combine(
+                result.WorkerWorldDataPath,
+                "development-world-2",
+                "world-actor-spawns.json")));
+            var heights = Enumerable.Range(0, 4)
+                .Select(index => spawns.SpawnInstances.Single(instance =>
+                    instance.SpawnDefinitionId == StressWorldVariant.VariantNodeId("development-world-2", "hill-veins", index)).Y)
+                .ToArray();
+            // The ground is well above the World's base height here, and not level.
+            Assert.All(heights, height => Assert.True(height > 1f, $"height {height}"));
+            Assert.True(heights.Max() - heights.Min() > 0.1f, string.Join(", ", heights));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("\"name\": \"out-of-world\", \"actorId\": \"mob.feral_wolf\", \"minimumX\": 300, \"minimumZ\": 300, \"maximumX\": 320, \"maximumZ\": 320, \"count\": 3", "'out-of-world'")]
     [InlineData("\"name\": \"at-the-spawn\", \"actorId\": \"mob.feral_wolf\", \"minimumX\": -4, \"minimumZ\": -16, \"maximumX\": 4, \"maximumZ\": -8, \"count\": 3", "closer than 12 m to the World spawn")]

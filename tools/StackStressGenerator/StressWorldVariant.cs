@@ -78,8 +78,14 @@ public static class StressWorldVariant
                 Path.Combine(worldDirectory, fileName));
         }
 
+        // A node blocks movement where it stands, so its ground is the World's without the
+        // variant's nodes.
+        var checkedInCollision = SimulationBotNavigation.LoadCollisionDirectory(
+            ContentLayout.GeneratedCollisionDirectory(repositoryGenerated, worldId),
+            worldId);
+        var settings = MovementSettings(repositoryRoot, Path.Combine(worldDirectory, "world.json"));
         var spawns = WorldActorContent.LoadSpawns(repositoryContent, worldId);
-        AddVariantActors(spawns, variant);
+        AddVariantActors(spawns, variant, new PlayingGroundProbe(checkedInCollision, settings));
         File.WriteAllText(
             ContentLayout.ActorSpawnsPath(content, worldId),
             StrictContentJson.Serialize(spawns));
@@ -116,10 +122,6 @@ public static class StressWorldVariant
         var compiled = WorldActorJson.DeserializeSpawnRuntime(
             File.ReadAllText(ContentLayout.GeneratedWorldActorSpawnsPath(generated, worldId)));
         var collision = SimulationBotNavigation.LoadCollisionWorld(workerWorlds, worldId);
-        var checkedInCollision = SimulationBotNavigation.LoadCollisionDirectory(
-            ContentLayout.GeneratedCollisionDirectory(repositoryGenerated, worldId),
-            worldId);
-        var settings = MovementSettings(repositoryRoot, Path.Combine(workerWorld, "world.json"));
         var spawn = WorldSpawn(Path.Combine(workerWorld, "world.json"));
         var added = 0;
         foreach (var area in variant.Areas)
@@ -139,15 +141,23 @@ public static class StressWorldVariant
         {
             // A node blocks movement where it stands, so its ground is checked on the World
             // without the variant's nodes.
+            if (!new PlayingGroundProbe(checkedInCollision, settings)
+                    .TryFindGroundFromAbove(group.CenterX, group.CenterZ, out var groupCenter))
+            {
+                throw new StressGeneratorOptionException(
+                    $"The variant area '{group.Name}' has no walkable ground at its center ({Format(group.CenterX)}, {Format(group.CenterZ)}).");
+            }
+
             added += ValidateInstances(
                 group.Name,
                 VariantId(worldId, group.Name),
-                new SimulationVector3(group.CenterX, 0f, group.CenterZ),
+                groupCenter,
                 compiled,
                 checkedInCollision,
                 settings,
                 spawn,
-                checkSpawnDistance: false);
+                checkSpawnDistance: false,
+                standsOnGround: true);
         }
 
         return new StressWorldVariantResult(
@@ -165,7 +175,23 @@ public static class StressWorldVariant
         return worldId.Replace('-', '_') + "." + VariantIdPrefix + name.Replace('-', '_');
     }
 
-    private static void AddVariantActors(WorldActorSpawnAuthoringDocument spawns, WorldVariantScenario variant)
+    // The id of one node of a variant group. A name holds no '.', so no area's id starts
+    // like it.
+    public static string VariantNodeId(string worldId, string name, int index)
+    {
+        return VariantId(worldId, name) + NodeIdInfix + index.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private const string NodeIdInfix = ".node";
+
+    // The worker stands a resource node exactly where its spawn says, and its collision is
+    // baked there, so a node may not be further from the ground than this.
+    private const float NodeGroundTolerance = 0.05f;
+
+    private static void AddVariantActors(
+        WorldActorSpawnAuthoringDocument spawns,
+        WorldVariantScenario variant,
+        PlayingGroundProbe nodeGround)
     {
         var areas = (spawns.SpawnAreas ?? []).ToList();
         for (var index = 0; index < variant.Areas.Count; index++)
@@ -187,26 +213,42 @@ public static class StressWorldVariant
             });
         }
 
-        var groups = (spawns.SpawnGroups ?? []).ToList();
+        // A Mob is put on the ground by the worker, a resource node is not: it stands at the
+        // height of its spawn. A spawn group has one height for all its instances, so each node
+        // of a variant group becomes its own spawn point at the height of the ground under it.
+        var points = (spawns.SpawnPoints ?? []).ToList();
         foreach (var group in variant.Groups)
         {
-            groups.Add(new WorldActorSpawnGroupAuthoringEntry
+            var index = 0;
+            for (var row = 0; row < group.Rows; row++)
             {
-                Id = VariantId(spawns.WorldId, group.Name),
-                ActorId = group.ActorId,
-                CenterX = group.CenterX,
-                CenterY = 0f,
-                CenterZ = group.CenterZ,
-                YawDegrees = 0f,
-                Rows = group.Rows,
-                Columns = group.Columns,
-                Spacing = group.Spacing,
-                PatrolPathId = string.Empty
-            });
+                for (var column = 0; column < group.Columns; column++)
+                {
+                    var x = group.CenterX + ((column - ((group.Columns - 1) / 2f)) * group.Spacing);
+                    var z = group.CenterZ + ((row - ((group.Rows - 1) / 2f)) * group.Spacing);
+                    if (!nodeGround.TryFindGroundFromAbove(x, z, out var ground))
+                    {
+                        throw new StressGeneratorOptionException(
+                            $"The variant area '{group.Name}' places an actor at ({Format(x)}, {Format(z)}), where no walkable ground is.");
+                    }
+
+                    points.Add(new WorldActorSpawnPointAuthoringEntry
+                    {
+                        Id = VariantNodeId(spawns.WorldId, group.Name, index),
+                        ActorId = group.ActorId,
+                        X = x,
+                        Y = ground.Y,
+                        Z = z,
+                        YawDegrees = 0f,
+                        PatrolPathId = string.Empty
+                    });
+                    index++;
+                }
+            }
         }
 
         spawns.SpawnAreas = areas.ToArray();
-        spawns.SpawnGroups = groups.ToArray();
+        spawns.SpawnPoints = points.ToArray();
     }
 
     // Every instance of one area or group stands on walkable ground that a route from the
@@ -219,7 +261,8 @@ public static class StressWorldVariant
         ICollisionWorld collision,
         MovementSimulationSettings settings,
         SimulationVector3 worldSpawn,
-        bool checkSpawnDistance)
+        bool checkSpawnDistance,
+        bool standsOnGround = false)
     {
         var probe = new PlayingGroundProbe(collision, settings);
         if (!probe.TryFindGround(center.X, center.Y, center.Z, out var centerGround))
@@ -230,7 +273,8 @@ public static class StressWorldVariant
 
         var planner = new MovementPathPlanner(collision, settings, MovementPathPlannerSettings.Default);
         var instances = compiled.SpawnInstances
-            .Where(instance => string.Equals(instance.SpawnDefinitionId, spawnDefinitionId, StringComparison.Ordinal))
+            .Where(instance => string.Equals(instance.SpawnDefinitionId, spawnDefinitionId, StringComparison.Ordinal)
+                || instance.SpawnDefinitionId.StartsWith(spawnDefinitionId + NodeIdInfix, StringComparison.Ordinal))
             .ToArray();
         if (instances.Length == 0)
         {
@@ -251,6 +295,12 @@ public static class StressWorldVariant
             {
                 throw new StressGeneratorOptionException(
                     $"The variant area '{name}' places an actor at {at}, where no walkable ground is.");
+            }
+
+            if (standsOnGround && MathF.Abs(ground.Y - instance.Y) > NodeGroundTolerance)
+            {
+                throw new StressGeneratorOptionException(
+                    $"The variant area '{name}' places a node at {at} at height {Format(instance.Y)}, but the ground there is at {Format(ground.Y)}.");
             }
 
             if (PlanarDistance(ground.X, ground.Z, centerGround.X, centerGround.Z) <= ReachTolerance)
@@ -382,7 +432,25 @@ public static class StressWorldVariant
 public sealed class PlayingGroundProbe(ICollisionWorld collision, MovementSimulationSettings settings)
 {
     private const float SearchHeight = 20f;
+
+    // Higher than any World's terrain and roofs.
+    private const float SearchCeiling = 1000f;
     private readonly CollisionQueryBuffer buffer = new();
+
+    // The highest ground at a point, for placing something whose height is not known yet.
+    public bool TryFindGroundFromAbove(float x, float z, out SimulationVector3 ground)
+    {
+        ground = default;
+        return CollisionRaycast.TryRaycast(
+                collision,
+                new SimulationVector3(x, SearchCeiling, z),
+                new SimulationVector3(0f, -1f, 0f),
+                SearchCeiling * 2f,
+                CollisionLayers.CharacterMovement,
+                buffer,
+                out var hit)
+            && TryFindGround(x, hit.Point.Y, z, out ground);
+    }
 
     public bool TryFindGround(float x, float y, float z, out SimulationVector3 ground)
     {

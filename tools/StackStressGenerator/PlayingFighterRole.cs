@@ -32,6 +32,10 @@ public sealed class FighterRole : PlayingRoleBase
     private static readonly TimeSpan IgnoreTarget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReplanInterval = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan TargetSettle = TimeSpan.FromSeconds(1.5);
+
+    // How long a fighter in range waits for a blocked line of sight to clear, such as while the
+    // Mob walks around a rock, before it gives the target up.
+    public static readonly TimeSpan LineOfSightPatience = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OwnCorpseSearch = TimeSpan.FromSeconds(5);
     private const int MaximumApproachLegs = 6;
     private const float FleeDistance = 25f;
@@ -41,6 +45,7 @@ public sealed class FighterRole : PlayingRoleBase
 
     private readonly Dictionary<ulong, TimeSpan> ignored = [];
     private FighterState state = FighterState.Seek;
+    private TimeSpan? sightBlockedSince;
     private TimeSpan stateSince;
     private WalkerRole? walker;
     private ulong target;
@@ -300,13 +305,25 @@ public sealed class FighterRole : PlayingRoleBase
                 Enter(FighterState.Seek, now);
                 return;
             case RealtimeCombatAttackStatus.OutOfRange:
-            case RealtimeCombatAttackStatus.LineOfSightBlocked:
                 approachLegs = 0;
                 approachPlanned = false;
                 Enter(FighterState.Approach, now);
                 Approach(body, now);
                 return;
+            case RealtimeCombatAttackStatus.LineOfSightBlocked:
+                // The fighter is in range and cover blocks the attack. Walking into range again
+                // would stand still where it is, so it waits a moment for the Mob to move and
+                // then gives this target up for another one.
+                sightBlockedSince ??= now;
+                if (now - sightBlockedSince >= LineOfSightPatience && body.ClearTarget())
+                {
+                    Drop(now);
+                }
+
+                return;
         }
+
+        sightBlockedSince = null;
 
         // The worker cleared the target, such as after the Mob evaded; choose again. The owner
         // state follows the accepted intent a tick later, so a fresh fight waits for it.
@@ -698,6 +715,7 @@ public sealed class FighterRole : PlayingRoleBase
 
     private void Enter(FighterState next, TimeSpan now)
     {
+        sightBlockedSince = null;
         state = next;
         stateSince = now;
         if (next != FighterState.Recover)
