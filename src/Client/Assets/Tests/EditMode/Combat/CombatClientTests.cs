@@ -337,12 +337,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeMessageType.OwnerItemQuantityChanged
             };
 
-            foreach (var messageType in combatMessages)
+            using (var harness = new RealtimeHubHarness())
             {
-                Assert.That(
-                    RealtimeSimulationClient.ShouldIgnoreWhileLeaving(messageType),
-                    Is.True,
-                    messageType.ToString());
+                foreach (var messageType in combatMessages)
+                {
+                    Assert.That(
+                        harness.Hub.Messages.IsDropped(messageType, RealtimeConnectionState.Leaving),
+                        Is.True,
+                        messageType.ToString());
+                }
             }
         }
 
@@ -361,19 +364,22 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeMessageType.CarryStateChanged
             };
 
-            foreach (RealtimeMessageType messageType in Enum.GetValues(typeof(RealtimeMessageType)))
+            using (var harness = new RealtimeHubHarness())
             {
-                if (!RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor)
-                    || descriptor.Direction != RealtimeMessageDirection.ServerToClient
-                    || descriptor.Delivery != RealtimeDelivery.ReliableOrdered)
+                foreach (RealtimeMessageType messageType in Enum.GetValues(typeof(RealtimeMessageType)))
                 {
-                    continue;
-                }
+                    if (!RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor)
+                        || descriptor.Direction != RealtimeMessageDirection.ServerToClient
+                        || descriptor.Delivery != RealtimeDelivery.ReliableOrdered)
+                    {
+                        continue;
+                    }
 
-                Assert.That(
-                    RealtimeSimulationClient.ShouldIgnoreWhileLeaving(messageType),
-                    Is.EqualTo(!handledWhileLeaving.Contains(messageType)),
-                    messageType.ToString());
+                    Assert.That(
+                        harness.Hub.Messages.IsDropped(messageType, RealtimeConnectionState.Leaving),
+                        Is.EqualTo(!handledWhileLeaving.Contains(messageType)),
+                        messageType.ToString());
+                }
             }
         }
 

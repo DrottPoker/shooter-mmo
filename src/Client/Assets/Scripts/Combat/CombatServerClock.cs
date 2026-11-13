@@ -27,18 +27,21 @@ namespace Mmorpg.Client.Combat
             get { return LatestServerTick != 0 && TickRateHz > 0; }
         }
 
-        public static CombatServerClock FromClient(RealtimeSimulationClient client)
+        // The clock of the joined session, from its diagnostics and the tick rate of its
+        // movement session; unknown outside a session or before its first owner snapshot.
+        public static CombatServerClock FromDiagnostics(
+            IRealtimeDiagnostics diagnostics,
+            NetworkMovementSession session)
         {
-            var session = client != null ? client.MovementSession : null;
-            if (session == null || client.LatestSnapshotAgeSeconds < 0f)
+            if (diagnostics == null || session == null || diagnostics.LatestSnapshotAgeSeconds < 0f)
             {
                 return default(CombatServerClock);
             }
 
-            var oneWayLatencySeconds = client.RoundTripTimeMilliseconds * 0.0005f;
+            var oneWayLatencySeconds = diagnostics.RoundTripTimeMilliseconds * 0.0005f;
             return new CombatServerClock(
-                client.LatestServerTick,
-                client.LatestSnapshotAgeSeconds + oneWayLatencySeconds,
+                diagnostics.LatestServerTick,
+                diagnostics.LatestSnapshotAgeSeconds + oneWayLatencySeconds,
                 session.Settings.TickRateHz);
         }
 

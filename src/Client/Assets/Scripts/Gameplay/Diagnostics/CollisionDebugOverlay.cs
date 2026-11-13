@@ -39,7 +39,7 @@ namespace Mmorpg.Client.Gameplay
         private readonly List<Vector3> pathPoints = new List<Vector3>();
         private readonly List<Vector3> vertices = new List<Vector3>();
         private readonly List<int> indices = new List<int>();
-        private RealtimeSimulationClient client;
+        private IRealtimeMovementChannel movement;
         private Material material;
         private LocalPlayerController player;
         private Mesh pathMesh;
@@ -56,9 +56,9 @@ namespace Mmorpg.Client.Gameplay
         public int ShownShapeCount { get; private set; }
 
         // Called by its owner before the component is activated.
-        public void Initialize(RealtimeSimulationClient realtimeClient, Material lineMaterial)
+        public void Initialize(IRealtimeMovementChannel movementChannel, Material lineMaterial)
         {
-            client = realtimeClient;
+            movement = movementChannel;
             material = lineMaterial;
         }
 
@@ -109,7 +109,7 @@ namespace Mmorpg.Client.Gameplay
                 player = FindAnyObjectByType<LocalPlayerController>();
             }
 
-            var session = client != null ? client.MovementSession : null;
+            var session = movement != null ? movement.MovementSession : null;
             if (player == null || !player.IsServerAuthoritative || session == null)
             {
                 builtWorld = null;

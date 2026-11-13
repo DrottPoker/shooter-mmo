@@ -29,7 +29,7 @@ namespace Mmorpg.Client.WorldActors
         private readonly List<CreatureFall> falls = new List<CreatureFall>();
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeMovementChannel realtimeMovement;
         private Material primitiveMaterial;
         private bool snapshotsSubscribed;
         private AsyncOperationHandle<WorldActorPresentationRegistry> registryLoad;
@@ -149,11 +149,11 @@ namespace Mmorpg.Client.WorldActors
         // Called by the composition root before the component is activated.
         public void Initialize(
             WorldActorClientController worldActors,
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeMovementChannel movement,
             Material runtimePrimitiveMaterial)
         {
             actorController = worldActors;
-            simulationClient = realtimeClient;
+            realtimeMovement = movement;
             primitiveMaterial = runtimePrimitiveMaterial;
         }
 
@@ -228,9 +228,9 @@ namespace Mmorpg.Client.WorldActors
                 Rebuild();
             }
 
-            if (simulationClient != null)
+            if (realtimeMovement != null)
             {
-                simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+                realtimeMovement.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
                 snapshotsSubscribed = true;
             }
         }
@@ -244,7 +244,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (snapshotsSubscribed)
             {
-                simulationClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
+                realtimeMovement.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
                 snapshotsSubscribed = false;
             }
 
@@ -451,7 +451,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (view is MobView mob)
             {
-                mob.ConfigureMovement(simulationClient != null ? simulationClient.MovementSession : null);
+                mob.ConfigureMovement(realtimeMovement != null ? realtimeMovement.MovementSession : null);
             }
 
             view.Initialize(actor);

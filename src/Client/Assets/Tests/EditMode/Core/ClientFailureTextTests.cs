@@ -38,10 +38,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 FixtureTexts.UiTable()
             });
             var controller = controllerObject.AddComponent<InventoryClientController>();
+            var realtime = controllerObject.AddComponent<RealtimeSimulationClient>();
 
             controller.Initialize(
                 new ApiClient(5),
-                controllerObject.AddComponent<RealtimeSimulationClient>(),
+                realtime.Items,
+                realtime.Session,
                 null,
                 texts);
 
@@ -98,10 +100,12 @@ namespace Mmorpg.Client.Tests.EditMode
                 FixtureTexts.UiTable()
             });
             var controller = controllerObject.AddComponent<QuestClientController>();
+            var realtime = controllerObject.AddComponent<RealtimeSimulationClient>();
 
             controller.Initialize(
                 new ApiClient(5),
-                controllerObject.AddComponent<RealtimeSimulationClient>(),
+                realtime.Quests,
+                realtime.Session,
                 null,
                 texts);
 

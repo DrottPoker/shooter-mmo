@@ -49,16 +49,16 @@ namespace Mmorpg.Client.Combat
         private static readonly Dictionary<ulong, RemotePlayerView> NoRemotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
 
-        private readonly RealtimeSimulationClient realtimeClient;
+        private readonly IRealtimeMovementChannel realtimeMovement;
         private readonly WorldSceneContext sceneContext;
         private readonly WorldActorPresentationController actorPresentation;
 
         public CombatantViewLocator(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeMovementChannel realtimeMovement,
             WorldSceneContext sceneContext,
             WorldActorPresentationController actorPresentation)
         {
-            this.realtimeClient = realtimeClient;
+            this.realtimeMovement = realtimeMovement;
             this.sceneContext = sceneContext;
             this.actorPresentation = actorPresentation;
         }
@@ -73,7 +73,7 @@ namespace Mmorpg.Client.Combat
         {
             get
             {
-                var session = realtimeClient != null ? realtimeClient.MovementSession : null;
+                var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
                 return session != null ? session.ControlledEntityId : 0;
             }
         }
@@ -143,7 +143,7 @@ namespace Mmorpg.Client.Combat
 
                 view = new CombatantView(
                     player.transform,
-                    realtimeClient.MovementSession.Settings.CharacterCollision.Height,
+                    realtimeMovement.MovementSession.Settings.CharacterCollision.Height,
                     LocalPlayerName);
                 return true;
             }

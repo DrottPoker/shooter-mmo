@@ -44,7 +44,8 @@ namespace Mmorpg.Client.Items
 
         private ApiClient apiClient;
         private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeItemChannel itemChannel;
+        private IRealtimeSession realtimeSession;
         private Coroutine refreshCoroutine;
         // Set before the routine starts: its first step raises Changed synchronously, and a
         // listener that asks for state again must queue instead of starting a second routine.
@@ -75,7 +76,8 @@ namespace Mmorpg.Client.Items
 
         public void Initialize(
             ApiClient client,
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeItemChannel items,
+            IRealtimeSession session,
             string gameplayCatalogJson,
             TextCatalog texts)
         {
@@ -85,8 +87,8 @@ namespace Mmorpg.Client.Items
             }
 
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
-            simulationClient = realtimeClient
-                ?? throw new ArgumentNullException(nameof(realtimeClient));
+            itemChannel = items ?? throw new ArgumentNullException(nameof(items));
+            realtimeSession = session ?? throw new ArgumentNullException(nameof(session));
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientItemCatalog.TryLoad(gameplayCatalogJson, texts, out var catalog, out var error))
             {
@@ -100,12 +102,12 @@ namespace Mmorpg.Client.Items
                     false);
             }
 
-            simulationClient.ItemOperationCompleted += OnItemOperationCompleted;
-            simulationClient.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
-            simulationClient.OwnerItemStateChanged += OnOwnerItemStateChanged;
-            simulationClient.SessionEnded += OnSessionEnded;
+            itemChannel.ItemOperationCompleted += OnItemOperationCompleted;
+            itemChannel.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
+            itemChannel.OwnerItemStateChanged += OnOwnerItemStateChanged;
+            realtimeSession.SessionEnded += OnSessionEnded;
             initialized = true;
-            observedRealtimeJoin = simulationClient.IsJoined;
+            observedRealtimeJoin = realtimeSession.IsJoined;
             ObserveSessionIdentity();
         }
 
@@ -114,7 +116,7 @@ namespace Mmorpg.Client.Items
             if (initialized)
             {
                 var identityChanged = ObserveSessionIdentity();
-                var joined = simulationClient != null && simulationClient.IsJoined;
+                var joined = realtimeSession != null && realtimeSession.IsJoined;
                 if (joined && (!observedRealtimeJoin || identityChanged))
                 {
                     BeginRefresh(
@@ -127,7 +129,7 @@ namespace Mmorpg.Client.Items
                 // A committed change that no client intent caused, such as a death, reaches
                 // the client only as a newer carry state. It is read a frame later, so an
                 // arrow batch that patches its stack in the same packet needs no refresh.
-                var serverRevision = joined ? simulationClient.CarryItemStateRevision : -1;
+                var serverRevision = joined ? itemChannel.CarryItemStateRevision : -1;
                 if (serverRevisionFollower.ShouldRefresh(
                         serverRevision,
                         State.KnownItemStateRevision,
@@ -144,12 +146,12 @@ namespace Mmorpg.Client.Items
 
         private void OnDestroy()
         {
-            if (simulationClient != null)
+            if (itemChannel != null)
             {
-                simulationClient.ItemOperationCompleted -= OnItemOperationCompleted;
-                simulationClient.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
-                simulationClient.OwnerItemStateChanged -= OnOwnerItemStateChanged;
-                simulationClient.SessionEnded -= OnSessionEnded;
+                itemChannel.ItemOperationCompleted -= OnItemOperationCompleted;
+                itemChannel.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
+                itemChannel.OwnerItemStateChanged -= OnOwnerItemStateChanged;
+                realtimeSession.SessionEnded -= OnSessionEnded;
             }
 
             if (refreshCoroutine != null)
@@ -425,8 +427,8 @@ namespace Mmorpg.Client.Items
             if (!initialized
                 || State.Catalog == null
                 || !(State.CanPredict || State.CanMutate)
-                || simulationClient == null
-                || !simulationClient.IsJoined)
+                || realtimeSession == null
+                || !realtimeSession.IsJoined)
             {
                 error = State.PendingOperations.Count >= InventoryClientState.MaximumPendingOperations
                     ? Text("ui/inventory/too-many-pending")
@@ -461,8 +463,8 @@ namespace Mmorpg.Client.Items
             if (!initialized
                 || refreshInProgress
                 || sentOperationId != Guid.Empty
-                || simulationClient == null
-                || !simulationClient.IsJoined
+                || realtimeSession == null
+                || !realtimeSession.IsJoined
                 || State.PendingOperations.Count == 0
                 || State.Status != InventoryClientStatus.Ready
                 || !State.HasCoherentFullSnapshot)
@@ -500,7 +502,7 @@ namespace Mmorpg.Client.Items
                 return;
             }
 
-            if (!simulationClient.TrySendItemOperation(intent))
+            if (!itemChannel.TrySendItemOperation(intent))
             {
                 State.RollBackPredictions(new InventoryClientError(
                     "item_move_unsent",
@@ -930,7 +932,7 @@ namespace Mmorpg.Client.Items
                     if (State.Status != InventoryClientStatus.UpdateRequired
                         && !ClientSessionRecovery.ReturnToLoginIfUnauthorized(
                             apiError,
-                            simulationClient))
+                            realtimeSession))
                     {
                         State.SetError(InventoryClientError.FromApi(apiError, messageTexts), true);
                     }

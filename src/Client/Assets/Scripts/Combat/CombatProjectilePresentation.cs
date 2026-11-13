@@ -87,7 +87,8 @@ namespace Mmorpg.Client.Combat
         private readonly Stack<GameObject> idleArrows = new Stack<GameObject>();
         private readonly Stack<GameObject> idleBolts = new Stack<GameObject>();
         private CombatClientController combatController;
-        private RealtimeSimulationClient realtimeClient;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimeDiagnostics realtimeDiagnostics;
         private CombatantViewLocator views;
         private Material primitiveMaterial;
         private GameObject arrowModel;
@@ -121,13 +122,15 @@ namespace Mmorpg.Client.Combat
         // its point at its root and flies along its forward axis; without one, arrows are cubes.
         public void Initialize(
             CombatClientController combat,
-            RealtimeSimulationClient realtime,
+            IRealtimeMovementChannel movement,
+            IRealtimeDiagnostics diagnostics,
             CombatantViewLocator combatantViews,
             Material runtimePrimitiveMaterial,
             GameObject arrow = null)
         {
             combatController = combat;
-            realtimeClient = realtime;
+            realtimeMovement = movement;
+            realtimeDiagnostics = diagnostics;
             views = combatantViews;
             primitiveMaterial = runtimePrimitiveMaterial;
             arrowModel = arrow;
@@ -199,9 +202,9 @@ namespace Mmorpg.Client.Combat
                 return;
             }
 
-            var session = realtimeClient != null ? realtimeClient.MovementSession : null;
+            var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             var tickRateHz = session != null ? session.Settings.TickRateHz : 0;
-            var clock = CombatServerClock.FromClient(realtimeClient);
+            var clock = CombatServerClock.FromDiagnostics(realtimeDiagnostics, session);
             for (var index = 0; index < batch.Events.Length; index++)
             {
                 var combatEvent = batch.Events[index];

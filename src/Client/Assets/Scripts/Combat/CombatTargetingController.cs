@@ -25,7 +25,7 @@ namespace Mmorpg.Client.Combat
         private readonly CombatTargetSelection selection = new CombatTargetSelection();
         private readonly CombatApproachPlanner approach = new CombatApproachPlanner();
         private CombatClientController combatController;
-        private RealtimeSimulationClient realtimeClient;
+        private IRealtimeSession realtimeSession;
         private WorldActorClientController actorController;
         private InventoryClientController inventoryController;
         private CombatantViewLocator views;
@@ -59,7 +59,7 @@ namespace Mmorpg.Client.Combat
         // Called by the composition root before the component is activated.
         public void Initialize(
             CombatClientController combat,
-            RealtimeSimulationClient realtime,
+            IRealtimeSession session,
             WorldActorClientController worldActors,
             InventoryClientController inventory,
             CombatantViewLocator combatantViews,
@@ -67,7 +67,7 @@ namespace Mmorpg.Client.Combat
             TextCatalog uiTexts)
         {
             combatController = combat;
-            realtimeClient = realtime;
+            realtimeSession = session;
             actorController = worldActors;
             inventoryController = inventory;
             views = combatantViews;
@@ -192,9 +192,9 @@ namespace Mmorpg.Client.Combat
 
         private ulong AttackableTarget(WorldPointerCandidate candidate)
         {
-            var playerVersusPlayer = realtimeClient != null
-                && realtimeClient.ShardRules != null
-                && realtimeClient.ShardRules.PlayerVersusPlayer;
+            var playerVersusPlayer = realtimeSession != null
+                && realtimeSession.ShardRules != null
+                && realtimeSession.ShardRules.PlayerVersusPlayer;
             return CombatClickRules.AttackableTarget(
                 candidate,
                 actorController != null ? actorController.State : null,

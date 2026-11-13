@@ -28,7 +28,7 @@ namespace Mmorpg.Client.Ui
         private readonly CharacterSelectState state = new CharacterSelectState();
 
         private ApiClient apiClient;
-        private RealtimeSimulationClient simulationClient;
+        private RealtimeSession realtimeSession;
         private bool operationStepFailed;
 
         public CharacterSelectState State
@@ -42,9 +42,9 @@ namespace Mmorpg.Client.Ui
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(RealtimeSimulationClient realtimeClient, TextCatalog messageTexts)
+        public void Initialize(RealtimeSession session, TextCatalog messageTexts)
         {
-            simulationClient = realtimeClient;
+            realtimeSession = session;
             texts = messageTexts;
         }
 
@@ -380,7 +380,7 @@ namespace Mmorpg.Client.Ui
                 "GameService issued a short-lived join ticket for character '" + character.name
                 + "' on shard '" + shard.id + "'.");
 
-            if (simulationClient == null)
+            if (realtimeSession == null)
             {
                 ClientLog.Error(
                     ClientLogCategory.Client,
@@ -394,7 +394,7 @@ namespace Mmorpg.Client.Ui
 
             ActiveSimulationSessionResponse activeSession = null;
             RealtimeClientError realtimeError = null;
-            yield return simulationClient.Join(
+            yield return realtimeSession.Join(
                 joinTicket,
                 result => activeSession = result,
                 result => realtimeError = result);
@@ -433,13 +433,13 @@ namespace Mmorpg.Client.Ui
                         WorldSceneLoadFailedCode,
                         sceneLoad.OperationException?.Message))));
             RealtimeClientError leaveError = null;
-            yield return simulationClient.Leave(
+            yield return realtimeSession.Leave(
                 activeSession.simulationSessionId,
                 () => { },
                 value => leaveError = value);
             if (leaveError != null)
             {
-                simulationClient.Abort();
+                realtimeSession.Abort();
             }
 
             ClientSession.ActiveSimulationSession = null;
@@ -486,7 +486,7 @@ namespace Mmorpg.Client.Ui
 
             operationStepFailed = true;
 
-            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient))
+            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, realtimeSession))
             {
                 SetStatus(
                     AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),

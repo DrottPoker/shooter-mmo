@@ -9,10 +9,10 @@ namespace Mmorpg.Client.Networking
     {
         public const string AccountSessionReplacedCode = "account_session_replaced";
 
-        // The caller passes the persistent realtime client it was given, or null when it has none.
+        // The caller passes the realtime session it was given, or null when it has none.
         public static bool ReturnToLoginIfUnauthorized(
             ApiError error,
-            RealtimeSimulationClient simulationClient)
+            IRealtimeSession realtimeSession)
         {
             if (error == null || !error.IsUnauthorized)
             {
@@ -30,9 +30,9 @@ namespace Mmorpg.Client.Networking
                         + error.ToDiagnostic()
                     : "The account session is no longer authorized. Clearing local session state and returning to LoginMenu. "
                         + error.ToDiagnostic());
-            if (simulationClient != null)
+            if (realtimeSession != null)
             {
-                simulationClient.Abort();
+                realtimeSession.Abort();
             }
 
             ClientSession.Clear();

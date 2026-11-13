@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mmorpg.Client.Api;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
@@ -32,7 +33,7 @@ namespace Mmorpg.Client.Tests.EditMode
             controller = host.AddComponent<CorpseClientController>();
             equippedSword = new InventoryItem(Guid.NewGuid(), "fixture.sword", 1, 4, Array.Empty<InventoryPolicy>());
             inventory = new ImmediateInventoryQueue(equippedSword);
-            controller.Initialize(channel, inventory, FixtureTexts.Corpses());
+            controller.Initialize(channel, channel, inventory, FixtureTexts.Corpses());
             corpseId = Guid.NewGuid();
             itemId = Guid.NewGuid();
             containers = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
@@ -429,7 +430,9 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
-        private sealed class FakeCorpseChannel : IRealtimeCorpseChannel
+        // The corpse channel and the session in one fake: it delivers corpse messages, records
+        // what the controller sends and every client failure it reports, and ends the session.
+        private sealed class FakeCorpseChannel : IRealtimeCorpseChannel, IRealtimeSession
         {
             private uint presenceSequence;
 
@@ -443,7 +446,34 @@ namespace Mmorpg.Client.Tests.EditMode
 
             public event Action<RealtimeClientError> SessionEnded;
 
+            public event Action SessionJoined
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action<RealtimeClientError> UnexpectedlyDisconnected
+            {
+                add { }
+                remove { }
+            }
+
             public bool IsJoined { get; private set; } = true;
+
+            public RealtimeConnectionState State
+            {
+                get { return IsJoined ? RealtimeConnectionState.Joined : RealtimeConnectionState.Disconnected; }
+            }
+
+            public ActiveSimulationSessionResponse JoinedSession
+            {
+                get { return null; }
+            }
+
+            public RealtimeShardRules ShardRules
+            {
+                get { return null; }
+            }
 
             public List<RealtimeCorpseInteractionIntent> Sent { get; } =
                 new List<RealtimeCorpseInteractionIntent>();
@@ -464,6 +494,11 @@ namespace Mmorpg.Client.Tests.EditMode
             public void DisconnectForClientFailure(string code, string message)
             {
                 Disconnects.Add(code);
+            }
+
+            public void Abort()
+            {
+                IsJoined = false;
             }
 
             public void DeliverPresence(params RealtimeCorpsePresence[] corpses)

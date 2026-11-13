@@ -13,42 +13,48 @@ namespace Mmorpg.Client.Gameplay
     public sealed class PlayerLookLink : IDisposable
     {
         private readonly TextCatalog texts;
-        private readonly RealtimeSimulationClient client;
+        private readonly IRealtimeLookChannel looks;
+        private readonly IRealtimeMovementChannel movement;
+        private readonly IRealtimeSession session;
         private readonly PlayerBodyLookSetting look;
         private readonly GameMessageLog messages;
 
         public PlayerLookLink(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeLookChannel lookChannel,
+            IRealtimeMovementChannel movementChannel,
+            IRealtimeSession realtimeSession,
             PlayerBodyLookSetting lookSetting,
             GameMessageLog gameMessages,
             TextCatalog messageTexts)
         {
-            client = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
+            looks = lookChannel ?? throw new ArgumentNullException(nameof(lookChannel));
+            movement = movementChannel ?? throw new ArgumentNullException(nameof(movementChannel));
+            session = realtimeSession ?? throw new ArgumentNullException(nameof(realtimeSession));
             texts = messageTexts ?? throw new ArgumentNullException(nameof(messageTexts));
             look = lookSetting ?? throw new ArgumentNullException(nameof(lookSetting));
             messages = gameMessages;
-            client.EntityAppearanceChanged += OnEntityAppearanceChanged;
-            client.AppearanceIntentCompleted += OnAppearanceIntentCompleted;
-            client.SessionEnded += OnSessionEnded;
-            client.UnexpectedlyDisconnected += OnSessionEnded;
+            looks.EntityAppearanceChanged += OnEntityAppearanceChanged;
+            looks.AppearanceIntentCompleted += OnAppearanceIntentCompleted;
+            session.SessionEnded += OnSessionEnded;
+            session.UnexpectedlyDisconnected += OnSessionEnded;
             look.DevelopmentLookRequested += OnDevelopmentLookRequested;
             look.HeadwearRequested += OnHeadwearRequested;
         }
 
         public void Dispose()
         {
-            client.EntityAppearanceChanged -= OnEntityAppearanceChanged;
-            client.AppearanceIntentCompleted -= OnAppearanceIntentCompleted;
-            client.SessionEnded -= OnSessionEnded;
-            client.UnexpectedlyDisconnected -= OnSessionEnded;
+            looks.EntityAppearanceChanged -= OnEntityAppearanceChanged;
+            looks.AppearanceIntentCompleted -= OnAppearanceIntentCompleted;
+            session.SessionEnded -= OnSessionEnded;
+            session.UnexpectedlyDisconnected -= OnSessionEnded;
             look.DevelopmentLookRequested -= OnDevelopmentLookRequested;
             look.HeadwearRequested -= OnHeadwearRequested;
         }
 
         private void OnEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
         {
-            var session = client.MovementSession;
-            if (session == null || change.EntityId != session.ControlledEntityId)
+            var movementSession = movement.MovementSession;
+            if (movementSession == null || change.EntityId != movementSession.ControlledEntityId)
             {
                 return;
             }
@@ -73,7 +79,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            client.TrySendAppearanceIntent(RealtimeAppearanceIntent.CreateSetDevelopmentLook(
+            looks.TrySendAppearanceIntent(RealtimeAppearanceIntent.CreateSetDevelopmentLook(
                 Guid.NewGuid(),
                 model,
                 CharacterLooks.ChoicesOf(requested, look.Catalog)));
@@ -81,7 +87,7 @@ namespace Mmorpg.Client.Gameplay
 
         private void OnHeadwearRequested(bool lowered)
         {
-            client.TrySendAppearanceIntent(lowered
+            looks.TrySendAppearanceIntent(lowered
                 ? RealtimeAppearanceIntent.CreateLowerHeadwear(Guid.NewGuid())
                 : RealtimeAppearanceIntent.CreateRaiseHeadwear(Guid.NewGuid()));
         }

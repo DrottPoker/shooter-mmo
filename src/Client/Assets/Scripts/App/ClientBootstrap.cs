@@ -143,7 +143,7 @@ namespace Mmorpg.Client.App
             bodyTint.Changed += SaveBodyTint;
             DeleteRetiredPreferences();
             simulationClient = GetOrAddComponent<RealtimeSimulationClient>();
-            simulationClient.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
+            simulationClient.Session.UnexpectedlyDisconnected += OnUnexpectedlyDisconnected;
             previousSceneName = SceneManager.GetActiveScene().name;
         }
 
@@ -231,12 +231,20 @@ namespace Mmorpg.Client.App
         private void CreateControllers(ClientContentReport report)
         {
             texts = LoadTexts(report);
-            lookLink = new PlayerLookLink(simulationClient, bodyLook, gameMessages, texts);
+            var session = simulationClient.Session;
+            lookLink = new PlayerLookLink(
+                simulationClient.Looks,
+                simulationClient.Movement,
+                session,
+                bodyLook,
+                gameMessages,
+                texts);
 
             inventoryController = GetOrAddComponent<InventoryClientController>();
             inventoryController.Initialize(
                 apiClient,
-                simulationClient,
+                simulationClient.Items,
+                session,
                 report.TextOf(ClientContentKinds.ItemCatalog, ClientContentKinds.CoreCatalogId),
                 texts);
             inventoryController.State.Changed += UpdatePlayerEquipment;
@@ -245,20 +253,22 @@ namespace Mmorpg.Client.App
             questController = GetOrAddComponent<QuestClientController>();
             questController.Initialize(
                 apiClient,
-                simulationClient,
+                simulationClient.Quests,
+                session,
                 report.TextOf(ClientContentKinds.QuestCatalog, ClientContentKinds.CoreCatalogId),
                 texts,
                 inventoryController);
 
             corpseController = GetOrAddComponent<CorpseClientController>();
-            corpseController.Initialize(simulationClient, inventoryController, texts);
+            corpseController.Initialize(simulationClient.Corpses, session, inventoryController, texts);
 
             worldActorController = GetOrAddComponent<WorldActorClientController>();
-            worldActorController.Initialize(simulationClient, texts);
+            worldActorController.Initialize(simulationClient.WorldActors, session, texts);
 
             worldInteractionController = GetOrAddComponent<WorldInteractionClientController>();
             worldInteractionController.Initialize(
-                simulationClient,
+                simulationClient.WorldInteractions,
+                session,
                 worldActorController,
                 corpseController,
                 inventoryController,
@@ -268,7 +278,12 @@ namespace Mmorpg.Client.App
 
             // Mirrors the worker's combat state across scenes.
             combatController = GetOrAddComponent<CombatClientController>();
-            combatController.Initialize(simulationClient);
+            combatController.Initialize(
+                simulationClient.Combat,
+                session,
+                simulationClient.Movement,
+                simulationClient.Players,
+                simulationClient.WorldActors);
         }
 
         // Without readable text tables the client still runs, and every content text shows as
@@ -311,7 +326,7 @@ namespace Mmorpg.Client.App
         {
             if (simulationClient != null)
             {
-                simulationClient.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
+                simulationClient.Session.UnexpectedlyDisconnected -= OnUnexpectedlyDisconnected;
             }
 
             if (bodyTint != null)
@@ -408,9 +423,9 @@ namespace Mmorpg.Client.App
             }
 
             RealtimeClientError error = null;
-            if (simulationClient != null && simulationClient.IsJoined)
+            if (simulationClient != null && simulationClient.Session.IsJoined)
             {
-                yield return simulationClient.Leave(
+                yield return simulationClient.Session.Leave(
                     session.simulationSessionId,
                     () => { },
                     value => error = value);
@@ -423,7 +438,7 @@ namespace Mmorpg.Client.App
                     "Fallback shard leave did not complete. Closing UDP locally: " + error.ToDiagnostic());
                 if (simulationClient != null)
                 {
-                    simulationClient.Abort();
+                    simulationClient.Session.Abort();
                 }
             }
 
@@ -502,7 +517,7 @@ namespace Mmorpg.Client.App
                     continue;
                 }
 
-                ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient);
+                ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, simulationClient.Session);
             }
         }
 
@@ -522,10 +537,11 @@ namespace Mmorpg.Client.App
                 return;
             }
 
+            var realtime = simulationClient;
             if (scene.name == SceneNames.CharacterSelect)
             {
                 AddSceneComponentIfMissing<CharacterSelectPanel>(
-                    panel => panel.Initialize(simulationClient, texts));
+                    panel => panel.Initialize(realtime.Session, texts));
                 return;
             }
 
@@ -539,20 +555,40 @@ namespace Mmorpg.Client.App
             {
                 foreach (var context in root.GetComponentsInChildren<WorldSceneContext>(true))
                 {
-                    context.Initialize(simulationClient, pointerFocus, bodyTint, bodyLook, playerEquipment);
+                    context.Initialize(
+                        realtime.Session,
+                        realtime.Movement,
+                        realtime.Players,
+                        realtime.Looks,
+                        realtime.Admin,
+                        pointerFocus,
+                        bodyTint,
+                        bodyLook,
+                        playerEquipment);
                     sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }
 
             AddSceneComponentIfMissing<TemporaryDebugMenu>(
-                menu => menu.Initialize(simulationClient, bodyTint, debugView, debugLineMaterial, texts, contentReport));
+                menu => menu.Initialize(
+                    realtime.Session,
+                    realtime.Diagnostics,
+                    realtime.Movement,
+                    realtime.Players,
+                    bodyTint,
+                    debugView,
+                    debugLineMaterial,
+                    texts,
+                    contentReport));
             AddSceneComponentIfMissing<MovementDestinationMarker>(
                 marker => marker.Initialize(runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
                 menu => menu.Initialize(worldActorController, gameMessages, texts));
             AddSceneComponentIfMissing<TemporaryAdminMenu>(
                 menu => menu.Initialize(
-                    simulationClient,
+                    realtime.Admin,
+                    realtime.Session,
+                    realtime.Movement,
                     bodyLook,
                     worldMenu,
                     combatController,
@@ -585,7 +621,7 @@ namespace Mmorpg.Client.App
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
                     worldActorController,
-                    simulationClient,
+                    realtime.Movement,
                     runtimePrimitiveMaterial));
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(
@@ -595,7 +631,7 @@ namespace Mmorpg.Client.App
                     actorPresentation));
             AddSceneComponentIfMissing<WaterWakePresentation>(
                 wakes => wakes.Initialize(
-                    simulationClient,
+                    realtime.Movement,
                     sceneContext,
                     actorPresentation,
                     WaterSurfaces.FromScene(scene),
@@ -616,13 +652,13 @@ namespace Mmorpg.Client.App
                 panel => panel.Initialize(gameMessages));
 
             var combatantViews = new CombatantViewLocator(
-                simulationClient,
+                realtime.Movement,
                 sceneContext,
                 actorPresentation);
             var combatTargeting = AddSceneComponentIfMissing<CombatTargetingController>(
                 targeting => targeting.Initialize(
                     combatController,
-                    simulationClient,
+                    realtime.Session,
                     worldActorController,
                     inventoryController,
                     combatantViews,
@@ -631,7 +667,8 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<CombatProjectilePresentation>(
                 presentation => presentation.Initialize(
                     combatController,
-                    simulationClient,
+                    realtime.Movement,
+                    realtime.Diagnostics,
                     combatantViews,
                     runtimePrimitiveMaterial,
                     arrowModel));
@@ -645,7 +682,8 @@ namespace Mmorpg.Client.App
                 hud => hud.Initialize(
                     combatController,
                     combatTargeting,
-                    simulationClient,
+                    realtime.Movement,
+                    realtime.Diagnostics,
                     combatantViews,
                     texts));
         }

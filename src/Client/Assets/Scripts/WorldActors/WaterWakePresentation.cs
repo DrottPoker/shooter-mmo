@@ -26,7 +26,7 @@ namespace Mmorpg.Client.WorldActors
         private readonly Dictionary<uint, RingOnWaves> ringsOnWaves = new Dictionary<uint, RingOnWaves>();
         private readonly List<uint> finishedRings = new List<uint>();
         private readonly ParticleSystem.Particle[] ringParticles = new ParticleSystem.Particle[MaximumRings];
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeMovementChannel realtimeMovement;
         private WorldSceneContext sceneContext;
         private WorldActorPresentationController actorPresentation;
         private WaterSurfaces waterSurfaces;
@@ -38,14 +38,14 @@ namespace Mmorpg.Client.WorldActors
         // component shows nothing; without the scene's water surfaces the wakes stay on the
         // still water.
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeMovementChannel movement,
             WorldSceneContext worldSceneContext,
             WorldActorPresentationController worldActorPresentation,
             WaterSurfaces sceneWaterSurfaces,
             Material ringMaterial,
             Material sprayMaterial)
         {
-            simulationClient = realtimeClient;
+            realtimeMovement = movement;
             sceneContext = worldSceneContext;
             actorPresentation = worldActorPresentation;
             waterSurfaces = sceneWaterSurfaces;
@@ -70,7 +70,7 @@ namespace Mmorpg.Client.WorldActors
 
         private void LateUpdate()
         {
-            var session = simulationClient != null ? simulationClient.MovementSession : null;
+            var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (rings == null || session == null || Time.deltaTime <= 0f)
             {
                 return;
