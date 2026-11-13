@@ -8,7 +8,7 @@ using Mmorpg.Tools.SimulationBotClient;
 
 namespace Mmorpg.Tools.Tests;
 
-public sealed class ActiveSimulationBotNavigationTests
+public sealed class SimulationBotNavigationTests
 {
     private static readonly RealtimeMovementSettings Movement = new(
         30,
@@ -34,7 +34,7 @@ public sealed class ActiveSimulationBotNavigationTests
     [Fact]
     public void LoadsTheCompiledWorldCollisionThatTheWorkerUses()
     {
-        using var navigation = ActiveSimulationBotNavigation.Load(
+        using var navigation = SimulationBotNavigation.Load(
             "WorldData/Worlds",
             "development-world-2",
             1);
@@ -56,7 +56,7 @@ public sealed class ActiveSimulationBotNavigationTests
     [Fact]
     public async Task PlansAWalkAroundAWallInsteadOfIntoIt()
     {
-        using var navigation = ActiveSimulationBotNavigation.Create(WorldWithWall(), 1);
+        using var navigation = SimulationBotNavigation.Create(WorldWithWall(), 1);
 
         var plan = await navigation.TryPlan(
             Movement,
@@ -71,7 +71,7 @@ public sealed class ActiveSimulationBotNavigationTests
     [Fact]
     public async Task WalkingBotKeepsItsPathUntilThePlanArrivesThenFollowsIt()
     {
-        using var navigation = ActiveSimulationBotNavigation.Create(WorldWithWall(), 1);
+        using var navigation = SimulationBotNavigation.Create(WorldWithWall(), 1);
         var options = WalkingOptions();
         var source = new ActiveSimulationBotInputSource(options, 1, navigation);
         var joined = JoinedSession(navigation.CollisionWorld.Revision);
@@ -94,7 +94,7 @@ public sealed class ActiveSimulationBotNavigationTests
     [Fact]
     public void WithoutMatchingCollisionTheBotWalksAStraightLine()
     {
-        using var navigation = ActiveSimulationBotNavigation.Create(WorldWithWall(), 1);
+        using var navigation = SimulationBotNavigation.Create(WorldWithWall(), 1);
         var options = WalkingOptions();
         var source = new ActiveSimulationBotInputSource(options, 1, navigation);
 

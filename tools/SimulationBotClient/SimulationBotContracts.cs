@@ -59,6 +59,27 @@ public interface ISimulationBotRealtimeObserver
     void OnCorpseViewState(RealtimeCorpseViewStateChunk chunk);
 
     void OnCorpseViewClosed(RealtimeCorpseViewClosed closed);
+
+    // The results of the playing intents. A bot that sends none needs none of them.
+    void OnCombatIntentResult(RealtimeCombatIntentResult result)
+    {
+    }
+
+    void OnWorldInteractionOpened(RealtimeWorldInteractionOpened opened)
+    {
+    }
+
+    void OnWorldInteractionResult(RealtimeWorldInteractionResult result)
+    {
+    }
+
+    void OnGatheringState(RealtimeGatheringState state)
+    {
+    }
+
+    void OnAdminIntentResult(RealtimeAdminIntentResult result)
+    {
+    }
 }
 
 // BodySeconds is how long the worker keeps the bot's body in the world after a completed leave,

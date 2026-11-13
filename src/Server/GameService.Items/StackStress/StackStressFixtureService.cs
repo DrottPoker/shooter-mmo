@@ -14,6 +14,13 @@ internal sealed record StackStressInventoryFixtureResponse(
     string InventoryDefinitionId,
     string LootDefinitionId);
 
+internal sealed record StackStressKitRequest(string Kit, string RunId);
+
+// The kit's items lie in the permanent inventory of the response; the bot equips them itself.
+internal sealed record StackStressKitResponse(
+    string Kit,
+    CharacterInventorySnapshotResponse Inventory);
+
 internal sealed record StackStressLootHotspotRequest(
     string RunId,
     string WorkerId,
@@ -126,6 +133,80 @@ internal sealed class StackStressFixtureService(
                 finalSnapshot.Value!,
                 options.InventoryDefinitionId,
                 options.LootDefinitionId));
+    }
+
+    // Grants a new character the kit of its role into its permanent inventory, one stack per
+    // slot from the first, through the same item transactions as every other fixture.
+    public async Task<ServiceResult<StackStressKitResponse>> SeedKitAsync(
+        Guid accountId,
+        Guid characterId,
+        StackStressKitRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsRunId(request.RunId)
+            || string.IsNullOrWhiteSpace(request.Kit)
+            || !options.Kits.TryGetValue(request.Kit, out var kit))
+        {
+            return ServiceResult<StackStressKitResponse>.BadRequest(
+                "stack_stress_fixture_invalid",
+                "The stack stress kit request is invalid or names no configured kit.");
+        }
+
+        var snapshotResult = await itemQueryService.GetCharacterInventoryAsync(
+            accountId,
+            characterId,
+            cancellationToken);
+        if (!snapshotResult.Succeeded)
+        {
+            return ForwardError<CharacterInventorySnapshotResponse, StackStressKitResponse>(
+                snapshotResult);
+        }
+
+        var snapshot = snapshotResult.Value!;
+        if (HasItems(snapshot))
+        {
+            return ServiceResult<StackStressKitResponse>.Conflict(
+                "stack_stress_fixture_not_empty",
+                "The stack stress kit requires a new character with no items or Recovery deliveries.");
+        }
+
+        var expectedRevision = snapshot.ItemStateRevision;
+        for (var index = 0; index < kit.Count; index++)
+        {
+            var result = await transactionService.ExecuteAsync(
+                new ItemTransactionRequest<GrantItemCommand>(
+                    Guid.NewGuid(),
+                    ItemTransactionActor.ForSystem(),
+                    new GrantItemCommand(
+                        characterId,
+                        expectedRevision,
+                        kit[index].DefinitionId,
+                        kit[index].Quantity,
+                        snapshot.PermanentInventory.ContainerId,
+                        index)),
+                cancellationToken);
+            if (!result.Succeeded)
+            {
+                return ServiceResult<StackStressKitResponse>.Conflict(
+                    result.Error!.Code,
+                    result.Error.Message);
+            }
+
+            expectedRevision = result.CharacterRevisions.Single().Revision;
+        }
+
+        var finalSnapshot = await itemQueryService.GetCharacterInventoryAsync(
+            accountId,
+            characterId,
+            cancellationToken);
+        if (!finalSnapshot.Succeeded)
+        {
+            return ForwardError<CharacterInventorySnapshotResponse, StackStressKitResponse>(
+                finalSnapshot);
+        }
+
+        return ServiceResult<StackStressKitResponse>.Ok(
+            new StackStressKitResponse(request.Kit, finalSnapshot.Value!));
     }
 
     public async Task<ServiceResult<StackStressLootHotspotResponse>>

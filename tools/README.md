@@ -52,10 +52,10 @@ compilers also write the [text table](../content/README.md#text-tables) of their
 
 | Tool | Does |
 | --- | --- |
-| `StackStressGenerator/` | Finite stress benchmark of a SimulationWorker or the full stack. See [Stack Stress Testing](../docs/STACK_STRESS_TESTING.md) |
+| `StackStressGenerator/` | Finite stress benchmark of a SimulationWorker or the full stack; `plan` prints a scenario's run plan, and `world-variant` writes a scenario's load variant of its World into a run folder with the content compilers. See [Stack Stress Testing](../docs/STACK_STRESS_TESTING.md) |
 | `load/` | The load scenarios, the quality boundary, and the checked-in baselines that `Test-Load.ps1` uses |
 | `ActiveSimulationBots/` | Long-running bot population that shares a local shard with Unity players. See [Active Simulation Bots](../docs/ACTIVE_SIMULATION_BOTS.md) |
-| `SimulationBotClient/` | The headless UDP client library both bot tools use |
+| `SimulationBotClient/` | The headless UDP client library both bot tools use, with the world view of the playing bots and the route planner both tools share |
 
 ## Art Pipeline
 

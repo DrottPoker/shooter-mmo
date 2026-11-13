@@ -16,7 +16,7 @@ public enum StressBotState
     Failed
 }
 
-public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
+public sealed class StressBot : IStressBot, ISimulationBotRealtimeObserver
 {
     private readonly StressGeneratorOptions options;
     private readonly StressBotAdmission admission;

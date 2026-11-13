@@ -82,8 +82,53 @@ public sealed class StressQualityVerdictTests
         var verdict = Boundary().Evaluate(FullStackReport());
 
         Assert.True(verdict.Passed, string.Join("; ", verdict.Rules.Where(rule => !rule.Passed).Select(rule => $"{rule.Rule} {rule.Note}")));
+        Assert.True(verdict.Valid);
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
         Assert.All(verdict.Rules, rule => Assert.NotNull(rule.Measured));
+        Assert.Equal(
+            StressQualityBoundary.ValidityRules.Order(StringComparer.Ordinal),
+            verdict.Rules.Where(rule => rule.Validity).Select(rule => rule.Rule).Order(StringComparer.Ordinal));
+    }
+
+    // A generator that fell behind measured nothing: the run is invalid, and the quality rules
+    // keep their own result.
+    [Theory]
+    [InlineData("generator_poll_lateness_p99_ms")]
+    [InlineData("generator_route_queue_p99_ms")]
+    public void AValidityRuleFailsAloneAndMakesTheRunInvalid(string rule)
+    {
+        var report = FullStackReport();
+        var timing = report.GeneratorTiming!;
+        report = report with
+        {
+            GeneratorTiming = rule == "generator_poll_lateness_p99_ms"
+                ? timing with { PollLateness = timing.PollLateness! with { P99Ms = 40 } }
+                : timing with { RouteQueue = timing.RouteQueue! with { P99Ms = 2500 } }
+        };
+
+        var verdict = Boundary().Evaluate(report);
+
+        var failed = Assert.Single(verdict.Rules, entry => !entry.Passed);
+        Assert.Equal(rule, failed.Rule);
+        Assert.True(failed.Validity);
+        Assert.False(verdict.Valid);
+        Assert.True(verdict.Passed);
+    }
+
+    [Fact]
+    public void AWorkloadWithoutRoutesOrSteadyPollsSkipsTheValidityRules()
+    {
+        var report = FullStackReport() with
+        {
+            GeneratorTiming = new StressGeneratorTimingSummary(3, null, null, PlansRoutes: false)
+        };
+
+        var verdict = Boundary().Evaluate(report);
+
+        Assert.True(verdict.Valid);
+        Assert.All(
+            verdict.Rules.Where(rule => rule.Validity),
+            rule => Assert.StartsWith("Not applicable", rule.Note, StringComparison.Ordinal));
     }
 
     public static TheoryData<string> BrokenRules => new()
@@ -384,7 +429,12 @@ public sealed class StressQualityVerdictTests
         {
             SteadyStartedAt = SteadyStart,
             SteadyEndedAt = SteadyEnd,
-            WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd)
+            WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd),
+            GeneratorTiming = new StressGeneratorTimingSummary(
+                3,
+                new StressLatencySummary(13_000, 0, 0.4, 1.2, 2.5, 9, 0.5),
+                new StressLatencySummary(500, 0, 0.1, 2, 5, 12, 0.6),
+                PlansRoutes: true)
         };
     }
 

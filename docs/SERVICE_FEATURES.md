@@ -64,6 +64,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-sessions/{id}/mob-loot-grants/loot-all` | Worker service policy | Grant every live Mob loot entry that fits, whole, in one transaction, and name every grant that left the corpse |
 | `POST /api/development/simulation-bots/join-tickets` | Development loopback secret | Issue an in-memory exact-runtime bot ticket when explicitly enabled |
 | `POST /api/development/stack-stress/characters/{characterId}/inventory-fixture` | Account session and Development loopback secret | Seed the starting items of a stack stress inventory workload for an owned empty character when explicitly enabled |
+| `POST /api/development/stack-stress/characters/{characterId}/kit` | Account session and Development loopback secret | Grant an owned empty character the configured kit of its stack stress role, such as a weapon and its arrows, when explicitly enabled |
 | `POST /api/development/stack-stress/loot-hotspot` | Account session and Development loopback secret | Create the shared loot corpse of a stack stress workload when explicitly enabled |
 | `GET /health/live` | Public | Report process liveness |
 | `GET /health/ready` | Public | Verify obligatory dependencies |
@@ -1875,7 +1876,7 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
 | `Items:Development:ItemPackagesPath` | `Content/Development/item-packages.json` in the output | The Development item packages |
 | `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, ticket and lease lifetimes of `30` seconds, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
-| `StackStressFixtures:*` and `STACK_STRESS_FIXTURE_SECRET` | off | Development only: `Enabled` and the inventory and loot definitions that the fixtures grant |
+| `StackStressFixtures:*` and `STACK_STRESS_FIXTURE_SECRET` | off | Development only: `Enabled`, the inventory and loot definitions that the fixtures grant, and the `Kits` of the playing load bots |
 
 ### SimulationWorker
 

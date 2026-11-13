@@ -19,6 +19,15 @@ public sealed record StressLoadScenario(
     IReadOnlyDictionary<string, string> WorkerSettings,
     IReadOnlyDictionary<string, string> GameServiceSettings)
 {
+    // The file the scenario came from, which the playing bots read again.
+    public string? SourcePath { get; init; }
+
+    // The roles and home grounds of the playing workload.
+    public PlayingScenario? Playing { get; init; }
+
+    // The extra Mobs and nodes of a load variant of the World, or null for the checked-in World.
+    public WorldVariantScenario? WorldVariant { get; init; }
+
     // The generator options a scenario may set. Endpoints, identities, secrets, and output paths
     // belong to the plan.
     public static readonly IReadOnlySet<string> GeneratorOptions = new HashSet<string>(StringComparer.Ordinal)
@@ -57,7 +66,7 @@ public sealed record StressLoadScenario(
             throw new StressGeneratorOptionException($"The scenario '{path}' cannot be read: {exception.Message}");
         }
 
-        return Parse(Path.GetFileNameWithoutExtension(path), text, path);
+        return Parse(Path.GetFileNameWithoutExtension(path), text, path) with { SourcePath = Path.GetFullPath(path) };
     }
 
     public static StressLoadScenario Parse(string name, string json, string source)
@@ -87,7 +96,9 @@ public sealed record StressLoadScenario(
                 "worldId",
                 "generator",
                 "workerSettings",
-                "gameServiceSettings");
+                "gameServiceSettings",
+                "playing",
+                "worldVariant");
             var mode = StrictJson.RequireString(root, "mode", source, "the scenario") switch
             {
                 "worker-only" => StressRunMode.WorkerOnly,
@@ -101,9 +112,35 @@ public sealed record StressLoadScenario(
                 "inventory" => StressWorkloadProfile.Inventory,
                 "loot-hotspot" => StressWorkloadProfile.LootHotspot,
                 "mixed-gameplay" => StressWorkloadProfile.MixedGameplay,
+                "playing" => StressWorkloadProfile.Playing,
                 var other => throw new StressGeneratorOptionException(
                     $"'{source}': the workload '{other}' is unknown.")
             };
+            PlayingScenario? playing = null;
+            if (root.TryGetProperty("playing", out var playingElement))
+            {
+                if (workload != StressWorkloadProfile.Playing)
+                {
+                    throw new StressGeneratorOptionException(
+                        $"'{source}': only the playing workload takes a 'playing' section.");
+                }
+
+                playing = PlayingScenario.Parse(playingElement, source);
+            }
+            else if (workload == StressWorkloadProfile.Playing)
+            {
+                throw new StressGeneratorOptionException(
+                    $"'{source}': the playing workload needs a 'playing' section.");
+            }
+
+            var worldVariant = root.TryGetProperty("worldVariant", out var variantElement)
+                ? WorldVariantScenario.Parse(variantElement, source)
+                : null;
+            if (worldVariant is not null && mode != StressRunMode.FullStack)
+            {
+                throw new StressGeneratorOptionException(
+                    $"'{source}': a World variant needs full-stack mode.");
+            }
             if (mode == StressRunMode.WorkerOnly && workload != StressWorkloadProfile.Lifecycle)
             {
                 throw new StressGeneratorOptionException(
@@ -128,7 +165,11 @@ public sealed record StressLoadScenario(
                 StrictJson.RequireString(root, "worldId", source, "the scenario"),
                 generator,
                 workerSettings,
-                gameServiceSettings);
+                gameServiceSettings)
+            {
+                Playing = playing,
+                WorldVariant = worldVariant
+            };
         }
     }
 
@@ -228,6 +269,10 @@ public sealed record StressLoadPlan(
     string SummaryPath,
     string WorkerPerformancePath)
 {
+    // The folder the World variant goes to, which tools/Test-Load.ps1 writes with
+    // StackStressGenerator world-variant before the worker starts, or null for none.
+    public string? WorldVariantPath { get; init; }
+
     public const string FullStackGameServiceUrl = "http://127.0.0.1:5500";
     public const int FullStackGameServicePort = 5500;
     public const int FullStackWorkerUdpPort = 27025;
@@ -239,6 +284,7 @@ public sealed record StressLoadPlan(
     public const string Database = "shooter_mmo_stack_stress_test";
     public const string WorkerId = "local-simulation-worker-2";
     public const string MetricsIntervalSetting = "SimulationWorker__NetworkMetricsLogSeconds";
+    public const string WorldVariantFolderName = "world-variant";
 
     private const string PostgresConnection =
         "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only";
@@ -285,6 +331,9 @@ public sealed record StressLoadPlan(
         var performancePath = Path.Combine(runFolder, "worker-performance.jsonl");
         var fullStack = scenario.Mode == StressRunMode.FullStack;
         var gameplay = scenario.Workload != StressWorkloadProfile.Lifecycle;
+        var worldVariantPath = scenario.WorldVariant is null
+            ? null
+            : Path.Combine(runFolder, WorldVariantFolderName);
 
         var gameServiceEnvironment = new Dictionary<string, string>(StringComparer.Ordinal);
         var workerEnvironment = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -314,6 +363,20 @@ public sealed record StressLoadPlan(
             workerEnvironment["SIMULATION_WORKER_ID"] = WorkerId;
             workerEnvironment["SIMULATION_SHARD_ID"] = scenario.ShardId;
             workerEnvironment["SIMULATION_WORLD_ID"] = scenario.WorldId;
+            if (scenario.Playing?.TeleportToGrounds == true)
+            {
+                // The admin teleport needs DevelopmentAdmin:Enabled, which the worker allows only
+                // in the Development environment. That environment also loads the worker's
+                // appsettings.Development.json, so its other Development option stays off here.
+                workerEnvironment["DOTNET_ENVIRONMENT"] = "Development";
+                workerEnvironment["DevelopmentAdmin__Enabled"] = "true";
+                workerEnvironment["DevelopmentItemInteractions__GlobalBankAndRecoveryAccess"] = "false";
+            }
+
+            if (worldVariantPath is not null)
+            {
+                workerEnvironment["SimulationWorker__WorldDataPath"] = StressWorldVariant.WorkerWorldsPath(worldVariantPath);
+            }
 
             generatorEnvironment[StressGeneratorOptions.PostgresConnectionEnvironmentVariable] = PostgresConnection;
             if (gameplay)
@@ -328,6 +391,17 @@ public sealed record StressLoadPlan(
                 "--game-service-url", FullStackGameServiceUrl,
                 "--confirm-disposable-database", Database
             ]);
+            if (scenario.Workload == StressWorkloadProfile.Playing)
+            {
+                arguments.AddRange(["--scenario-file", scenario.SourcePath
+                    ?? throw new StressGeneratorOptionException(
+                        $"The playing scenario '{scenario.Name}' must be loaded from a file.")]);
+            }
+
+            if (worldVariantPath is not null)
+            {
+                arguments.AddRange(["--world-data-path", StressWorldVariant.WorkerWorldsPath(worldVariantPath)]);
+            }
         }
         else
         {
@@ -394,7 +468,8 @@ public sealed record StressLoadPlan(
             arguments.AddRange(["--source-tree-dirty", dirty ? "true" : "false"]);
         }
 
-        // The generator validates its arguments exactly as it will when the run starts.
+        // The generator validates its arguments exactly as it will when the run starts; the World
+        // variant does not exist yet, so its path is checked when the run starts.
         StressGeneratorOptions.Parse(
             arguments.ToArray(),
             workingDirectory,
@@ -422,7 +497,10 @@ public sealed record StressLoadPlan(
             SensitiveNames,
             reportPath,
             summaryPath,
-            performancePath);
+            performancePath)
+        {
+            WorldVariantPath = worldVariantPath
+        };
     }
 
     public string ToJson()

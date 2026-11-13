@@ -22,6 +22,7 @@ does after joining:
 | `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory slots |
 | `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
 | `mixed-gameplay` | `full-stack` | Yes | Step back and forth beside the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
+| `playing` | `full-stack` | Yes | Planned walks over the World, like players | Play like players in roles: fight Mobs, loot them, die and recover, and walk, as [Playing Workload](#playing-workload) describes |
 
 Both modes run independent headless LiteNetLib clients through the real join,
 movement, snapshot, entity lifecycle, simulation-session, and graceful-leave
@@ -35,7 +36,8 @@ walking.
 Runs target `local-shard-2` and Development World 1, the 64 m stress arena, by
 default, and every bot starts on the World spawn, so all bots stay inside the
 same interest radius. This intentionally measures a worst-case local crowd, not the
-distributed capacity of a future larger World.
+distributed capacity of a future larger World. The `playing` workload runs
+Development World 2 instead, with every bot on its own home ground.
 
 Run the stress flow before accepting a new capacity baseline and after changing
 the realtime loop, collision, interest, snapshots, session heartbeats, accounts,
@@ -91,6 +93,14 @@ Each full-stack bot completes the normal public lifecycle:
 8. Join SimulationWorker over UDP and run the same realtime workload as
    worker-only mode.
 9. Leave the simulation cleanly and log out the account session.
+
+The `playing` workload registers, equips, and logs in every account before the
+first bot joins, because players have accounts and characters before they play:
+steps 1 to 4 and the kit of
+[Kits](#kits) run for all bots first, with the same HTTP concurrency, and the
+ramp then measures only the way into the game, steps 6 to 9. This keeps the
+registration and login burst, whose BCrypt work kept GameService busy for
+seconds in `mixed-100`, out of the measured gameplay.
 
 All bots use production account authentication, placement, join tickets, UDP
 item commands, worker authority checks, GameService transactions, and
@@ -151,6 +161,11 @@ with `StackStressFixtures:Enabled` set to true unless:
   Development settings use `potion.minor_healing` and `material.iron_ore`. The
   fixture responses carry both ids, so the generator and its invariant sampler
   never name game content.
+- `StackStressFixtures:Kits` names the kits of the `playing` workload, each a
+  list of `DefinitionId` and `Quantity`, as [Kits](#kits) describes. A kit
+  name is lowercase letters, digits, and dashes, and a kit grants one to eight
+  stacks of 1 to 10,000; startup fails on a malformed kit. A test checks that
+  every definition the checked-in settings name exists in the item catalog.
 
 Every fixture request must also come from loopback, be authenticated as a real
 account, and carry the fixture secret in the `X-Stack-Stress-Fixture-Key`
@@ -239,8 +254,11 @@ the generator's process sampler finds the worker and GameService by name.
 
 Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the
 boundary or the generator's own checks, 2 it could not run, for example
-because of a busy port, an invalid scenario, a failed build, or a service that
-ended.
+because of a busy port, an invalid scenario, a failed build, a World variant
+whose area has no walkable ground, or a service that ended. A run in which the
+generator itself fell behind, which the
+[validity rules](#validity) judge, measured nothing: the script prints
+`could not measure: the generator fell behind` and also exits with 2.
 
 Every run writes `artifacts/load/<yyyyMMdd-HHmmss>-<scenario>/`, which Git
 ignores:
@@ -252,6 +270,7 @@ ignores:
 | `worker-performance.jsonl` | The worker's performance file, one JSON object per metrics interval |
 | `generator.log`, `game-service.log`, `simulation-worker.log` | The output of each process, with `.err.log` files for standard error |
 | `build-*.log`, `docker-compose-*.log` | The build and container output |
+| `world-variant/`, `world-variant.log` | The scenario's [World Variant](#world-variant) and the output of the content compilers that wrote it |
 
 Expected result of `smoke`: the services start, ten bots join, walk, move
 inventory items, and deposit into and loot from the shared corpse for 40
@@ -260,6 +279,16 @@ seconds, leave, and log out, every rule of the table passes, the script prints
 no `shooter-mmo-stack-stress` container is left. A run takes about one and a
 half minutes. Run `smoke` after changing the load tooling and the tiers when
 [Purpose](#purpose) says. No manual Unity Editor steps are required.
+
+Expected result of `playing-smoke`: the script writes the World variant and
+says that it keeps the checked-in collision revision; the generator registers,
+equips, and logs in 20 accounts, the bots join Development World 2, the
+fighters equip their kits, everyone is teleported to a home ground, and for 90
+seconds the fighters hunt and loot wolves, some die and walk back to their
+corpses, and the walkers walk; then every bot leaves and logs out, the
+generator prints the role mix and counters such as `kills` and `botDeaths`,
+every rule passes, and the script prints `Load scenario playing-smoke passed`
+in about two and a half minutes.
 
 The load tests do not run in CI, and `tools/Test-Changes.ps1` runs none: they
 need an idle machine, and their numbers depend on it.
@@ -279,11 +308,13 @@ sets is an error.
 | --- | --- |
 | `description` | What the scenario measures |
 | `mode` | `worker-only` or `full-stack` |
-| `workload` | `lifecycle`, `inventory`, `loot-hotspot`, or `mixed-gameplay`; worker-only runs only `lifecycle` |
+| `workload` | `lifecycle`, `inventory`, `loot-hotspot`, `mixed-gameplay`, or `playing`; worker-only runs only `lifecycle` |
 | `shardId`, `worldId` | The Shard the worker registers and its World |
 | `generator` | Generator options without their dashes and their integer values: `bots` and `duration-seconds` are required, and `ramp-step`, `ramp-interval-seconds`, `http-concurrency`, `session-validation-requests-per-bot`, the operation intervals and timeouts, `report-interval-seconds`, `seed`, and the other shape options of the [Command Reference](#command-reference) are allowed |
 | `workerSettings` | Extra worker environment variables, such as `SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds` |
 | `gameServiceSettings` | Extra GameService environment variables, full-stack only |
+| `playing` | The roles and home grounds of the `playing` workload, which needs it, as [Playing Scenarios](#playing-scenarios) describes |
+| `worldVariant` | Extra Mob areas and node groups of a [World Variant](#world-variant), full-stack only |
 
 | Scenario | Mode and workload | Shape |
 | --- | --- | --- |
@@ -293,6 +324,7 @@ sets is an error.
 | `mixed-100` | full-stack `mixed-gameplay` | 100 bots, 32-way admission, steps of 25 ten seconds apart, 120 s steady |
 | `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady |
 | `session-cache-on`, `session-cache-off` | full-stack `lifecycle` | The [Redis Session-cache A/B Baseline](#redis-session-cache-ab-baseline) |
+| `playing-smoke` | full-stack `playing` | 20 bots on Development World 2, 12 fighters, a quarter of them with bows, in two hunting grounds and 8 walkers; a variant with 10 Feral Wolves and 10 Grey Wolves more; steps of 10 five seconds apart, 90 s steady; a tooling check of the playing workload |
 
 The tier scenarios use the arguments of the
 [Current Worker-only Baseline](#current-worker-only-baseline) and the
@@ -354,10 +386,224 @@ masked. The local secrets and the connection string are the test values that
   visible quickly. The generator
   gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
   in `STACK_STRESS_FIXTURE_SECRET`, never as arguments.
+- A `playing` scenario with `teleportToGrounds`: the worker gets
+  `DOTNET_ENVIRONMENT=Development`, `DevelopmentAdmin__Enabled=true`, and
+  `DevelopmentItemInteractions__GlobalBankAndRecoveryAccess=false`, as
+  [The Teleport To The Home Ground](#the-teleport-to-the-home-ground)
+  explains, and the generator gets `--scenario-file` with the scenario.
+- A scenario with a `worldVariant`: before the worker starts, the script runs
+  `StackStressGenerator world-variant` and prints whether the variant keeps
+  the checked-in collision revision; the worker gets
+  `SimulationWorker__WorldDataPath` and the generator `--world-data-path`, both
+  the variant's `world-variant/worker` folder.
 
 The generator still runs on its own with the options of the
 [Command Reference](#command-reference) when a service is started by hand. In
 worker-only mode it then prints the environment commands for the worker.
+
+## Playing Workload
+
+The `playing` workload makes the bots play like players, so a run exercises
+combat, Mobs, corpses, deaths, and travel over a World instead of a crowd in one
+spot. It runs only in full-stack mode, because synthetic sessions never take
+part in combat and are refused by the item and admin paths.
+
+### Roles And Home Grounds
+
+Every bot plays one role, and the scenario gives the share of each in percent.
+The counts follow the shares by the largest remainder, and a shuffle by the
+seed decides which bot plays which role. Each bot gets a home ground of its
+role's kind, in turn over the grounds of that kind, and a share of the fighters,
+also chosen by the seed, carries a bow instead of a sword. The same scenario,
+seed, and bot indices give every bot the same role, ground, kit, and decisions;
+no decision draws on the wall clock.
+
+| Role | Ground kind | Kit | What it does |
+| --- | --- | --- | --- |
+| Fighter | `hunting` | `sword`, or `bow` | Hunts the Mobs of its ground, as [Fighter](#fighter) describes |
+| Walker | `walking` | None | Starts on its ground, then walks to random reachable destinations over the whole World with pauses, as the [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) do |
+
+The gatherer and the trader of the reference scenario follow in a later step;
+a scenario that gives them a share is refused until they exist.
+
+A role is a small state machine that thinks at human speed: between two
+decisions it waits 250 to 650 ms, drawn per bot from the seed, and it sends at
+most one intent at a time. A rejected intent, expected or not, is followed by a
+pause of two to four seconds, so no bot repeats an intent in a tight loop.
+Before it plays, a bot equips its kit over UDP like a player, one item at a
+time, and is teleported once to its home ground. Tests drive every role on a
+fake body and a fake clock.
+
+### Fighter
+
+A fighter picks the nearest living Mob of its ground, up to 12 m outside the
+rectangle, that no other player's attack owns or busies, as the combatant state
+tells it, walks into range of its weapon, stands, and attacks. A Mob that
+attacks the fighter is fought first. It attacks until the Mob dies, walks back
+into range when the Mob moved away, and below 30 percent health stops
+attacking, walks 25 m away, and rests. When the Mob died and its corpse is
+lootable for the fighter, it walks to the corpse, opens it, loots all, and
+closes it; a corpse that another player's attack owns is left and counted.
+Below 60 percent health it rests until 90 percent, at most 40 seconds.
+
+After a death the fighter waits for the respawn at the World spawn, walks back
+to its death spot in legs of at most one planned route, opens its own corpse,
+loots it all, which puts the kit back into the equipment, and hunts on. When
+the corpse is not there within five seconds of arriving, the walk makes no
+progress, or four minutes pass, the bot goes on as a walker, and the report
+counts the lost corpse. A fighter whose weapon or arrows are gone goes on as a
+walker too.
+
+### What A Playing Bot Sees And Sends
+
+Each playing bot keeps a world view in its `SimulationBotSession` from the
+messages it decodes anyway, and the session decides nothing:
+
+- The world actors in interest, with the Mob positions of the remote snapshots,
+  and the remote players.
+- Every combatant's state, with its health, target, and the player whose
+  attack owns it; the bot's own combat state; and the combat events.
+- The corpses of the newest complete presence snapshot, with `IsLootable`, and
+  the revision of the open corpse view.
+- World interaction and gathering state, and the admin state.
+- Its own items, from the kit or a full read, patched by
+  `OwnerItemStateChanged` and `OwnerItemQuantityChanged`. When a committed
+  change reached the bot only as a newer carry state, such as a death, or a
+  result reports a revision its items do not have, the bot reads the full item
+  state over HTTP, as the Unity client does; it never polls.
+
+It sends only what a Unity client can send: movement inputs with planned paths,
+`ItemOperationIntent` equip, `CombatIntent`, `CorpseInteractionIntent`, and the
+one `AdminIntent` teleport. Routes come from the same planner and collision as
+the Unity client's clicks, through `SimulationBotNavigation` in
+`tools/SimulationBotClient`, which the active simulation bots share. The worker
+drops the movement inputs of a dead character until it respawns, so their
+acknowledgement waits for the respawn; the inputs a bot sends while dead, and
+the ones still unacknowledged when its death arrives, are left out of the
+input acknowledgement latency.
+
+### Kits
+
+The kit fixture route,
+`POST /api/development/stack-stress/characters/{characterId}/kit`, grants a new
+character the kit of its role into its permanent inventory, one stack per slot
+from the first, through `ItemTransactionService`, with the guards of the other
+fixture routes. The kit names are the generator's, and the definitions come
+from `StackStressFixtures:Kits`:
+
+| Kit | Checked-in Development definitions |
+| --- | --- |
+| `sword` | `weapon.iron_sword` |
+| `bow` | `weapon.training_shortbow` and 500 `ammunition.bronze_arrow` |
+| `pickaxe` | `tool.starter_pickaxe` |
+| `woodcutting-axe` | `tool.woodcutting_axe` |
+
+The bot reads the equipment slot of every kit item and the range of its weapon
+from the compiled item catalog, as the client does, and equips the items itself.
+Wolves drop arrows, and a loot all tops up the equipped stack, so archers keep
+shooting in long runs.
+
+### The Teleport To The Home Ground
+
+Every character joins at the World spawn, so walking out during the ramp would
+put the whole population in one place for the first minute. With
+`teleportToGrounds`, each bot sends one development admin teleport right after
+its join to the ground under the center of its home ground; everything after
+that is walking, also the way back after a death.
+
+The worker carries out admin intents only with `DevelopmentAdmin:Enabled`,
+which it accepts only in the Development environment, so the plan sets both on
+the worker. The Development environment also changes this on the worker:
+
+- It loads `Config/appsettings.Development.json`, which turns on
+  `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess`; the plan turns it
+  off again, so Bank and Recovery Storage still need their NPC.
+- The host validates its service registrations when it starts.
+- The worker logs the warning `Development admin tools are enabled` at startup,
+  sends every joining player its admin state, one small reliable message, and
+  accepts the quest tools of the admin menu, which the bots never send.
+- The telemetry resource names the Development environment when metrics are
+  exported.
+
+None of this changes what a run measures beyond the one admin state message
+per join.
+
+### Expected Conflicts
+
+A rejection that a correct client can meet when other players act at the same
+time is an expected conflict: it stays visible in the report and does not fail
+the run. Every other rejection is unexpected and fails the run, and a rejection
+nobody can explain is a finding, not a new entry. `PlayingExpectedConflicts` in
+the generator holds this table, and the report repeats it:
+
+| Operation | Code | Reason |
+| --- | --- | --- |
+| `equip` | `item_state_conflict` | The item state changed between the intent and its handling: spent arrows commit in batches without an intent, and a death or a loot moves items too |
+| `attack` | `combat_target_dead` | The Mob died, to this bot or another player, after the bot chose it and before the intent arrived |
+| `attack` | `combat_target_not_found` | The Mob left the bot's view, by despawning after its death or by walking out of interest, before the intent arrived |
+| `attack` | `combat_target_not_attackable` | The Mob began to evade, walking home after it lost its target, before the intent arrived |
+| `attack` | `combat_character_dead` | A Mob killed the bot after it decided to attack and before the intent arrived |
+| `attack_clear` | `combat_character_dead` | A Mob killed the bot after it decided to stop attacking |
+| `loot_open` | `corpse_not_found` | The corpse decayed or was emptied and removed after the bot saw it |
+| `loot_open`, `loot_all`, `loot_close` | `combat_character_dead` | A Mob killed the bot during the loot; a death closes every view |
+| `loot_all` | `corpse_not_found` | The corpse decayed between the open and the loot |
+| `loot_close` | `corpse_not_found` | The looted corpse was emptied and removed, or decayed, before the close arrived |
+
+`teleport` has no expected conflict.
+
+### Playing Scenarios
+
+The `playing` section of a scenario:
+
+| Property | Meaning |
+| --- | --- |
+| `roles` | The percent of every role, `fighter`, `gatherer`, `walker`, and `trader`, adding up to 100 |
+| `fighterBowPercent` | The percent of the fighters that carry a bow, 0 by default |
+| `teleportToGrounds` | Whether every bot is teleported to its home ground once after its join |
+| `grounds` | The home grounds: a `name`, a `kind` of `hunting`, `nodes`, `town`, or `walking`, and a rectangle of `minimumX`, `minimumZ`, `maximumX`, and `maximumZ`. Fighters need a hunting ground |
+
+A run fails before the first bot joins when a ground has no ground under its
+center, and a bot fails its teleport when the worker finds no walkable ground
+there.
+
+## World Variant
+
+A scenario with a `worldVariant` runs a load variant of its World, with more
+Mobs and resource nodes, while the game content stays untouched.
+`StackStressGenerator world-variant --scenario <file> --run-folder <dir>`,
+which `tools/Test-Load.ps1` runs before the worker starts, writes it into
+`<dir>/world-variant`:
+
+1. It copies the actor definitions and the World's `world.json`,
+   `collision.json`, and `actor-spawns.json` from `content/` into
+   `world-variant/content`, and adds the scenario's areas and groups to the
+   spawn authoring, with the spawn ids `<world>.load_<name>`.
+2. It runs the real World actor and World collision compilers, their own entry
+   points, on that content into `world-variant/generated`, beside a copy of the
+   compiled item catalog that the actor compiler reads.
+3. It lays the compiled World out as the worker reads it, in
+   `world-variant/worker/<world>`, and the worker and the bots use that folder.
+4. It checks every added actor: an actor of an area must stand on walkable
+   ground that a route from the area's center reaches, as the worker places a
+   Mob on the ground under its spawn, and a Mob must be at least 12 m from the
+   World spawn; a node of a group is checked on the World without the
+   variant's nodes, because a node blocks movement where it stands. A failure
+   names the area and the point.
+
+`content/` and `src/Shared/WorldData/Generated` are only read, and a test proves
+that both are unchanged after a variant. The variant's actor catalog must equal
+the checked-in one, because the worker keeps loading its own.
+
+| Property | Meaning |
+| --- | --- |
+| `areas` | Rectangles with a `name`, an `actorId`, `minimumX`, `minimumZ`, `maximumX`, `maximumZ`, and a `count` of 1 to 256, placed by the compiler's seeded area spawns |
+| `groups` | Grids with a `name`, an `actorId`, `centerX`, `centerZ`, `rows` and `columns` of 1 to 16, and a `spacing` of at least 2 m |
+
+Mobs do not change the collision, so a variant that adds only Mobs keeps the
+checked-in collision revision, and a Unity client can join the run and watch
+it. Resource nodes block movement with their collision boxes, so a variant with
+nodes has another collision revision, and a Unity client refuses it. The script
+prints which applies.
 
 ## Redis Session-cache A/B Baseline
 
@@ -458,6 +704,10 @@ Every JSON report contains:
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
   summaries, including steady-state memory trend windows.
+- `generatorTiming`: how late the latest bot's poll ran against the 3 ms poll
+  schedule in every poll round of the steady interval, and, for the `playing`
+  workload, how long its route plans of the steady interval waited for a
+  planner thread, which the [validity rules](#validity) judge.
 
 Worker-only reports also contain ticket, simulation-session, heartbeat, and
 release counters from the in-memory authority.
@@ -478,7 +728,19 @@ Full-stack reports additionally contain:
 - Maximum active and expired unreleased simulation sessions, minimum observed
   lease headroom, and session-table insert and update counts.
 - Final expected and actual item quantities, duplicate occupied slots, invalid
-  item custody, and pending item-operation counts.
+  item custody, and pending item-operation counts. The `playing` workload has
+  no fixed quantity to expect, because Mobs drop loot and arrows are spent, so
+  only the slot, custody, and pending-operation invariants judge it.
+- `playing`, for the `playing` workload: the role and kit counts; the counters
+  `kills`, `mobDamageTaken`, `botDeaths`, `corpsesRecovered`, `corpsesLost`,
+  `lootRefusedOwned`, `nodesFoundEmpty`, `routePlans`, `routePlansBusy`,
+  `routePlansWithoutPath`, `walksFailed`, `itemStateReloads`, and
+  `rejectionPauses`; the timings `attack_first_hit`, from an attack intent to
+  the bot's first hit on its target, and `route_plan` and `route_queue` of the
+  steady interval; and the table of [Expected Conflicts](#expected-conflicts).
+  Its gameplay operations are `equip`, `teleport`, `attack`, `attack_clear`,
+  `loot_open`, `loot_all`, and `loot_close`, each with its latency from intent
+  to result and its result codes.
 
 SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
@@ -562,6 +824,22 @@ worker-only mode, passes and says so.
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
+
+### Validity
+
+A run in which the generator itself fell behind measures nothing: its bots sent
+inputs late and stood when they meant to walk, whatever the stack did. Two
+validity rules judge the generator, not the stack:
+
+| Rule | Limit | Why |
+| --- | --- | --- |
+| `generator_poll_lateness_p99_ms` | p99 <= 16.67 ms over the poll rounds of the steady interval | Within half a 30 Hz tick, every bot sends its input in the tick it is due. Four `playing-smoke` runs on the reference machine measured a p99 between 3.1 and 4.6 ms, with single rounds of up to about 100 ms |
+| `generator_route_queue_p99_ms` | p99 <= 1,000 ms over the route plans of the steady interval | A bot that waits longer than a second for its route stands instead of walking. Four `playing-smoke` runs measured a p99 below 0.5 ms with 4 planner threads; a workload without routes skips it |
+
+A failed validity rule makes the verdict invalid: the generator exits with 4,
+the summary's result is `could not measure`, and `tools/Test-Load.ps1` exits
+with 2. The quality rules keep their own result in the verdict, for reading,
+but judge nothing.
 
 Every other number, such as join and ticket latency, CPU, memory, and
 bandwidth, is reported and compared with the baseline, not judged. Watch the
@@ -707,9 +985,10 @@ leave, and logout. Explicit gameplay workloads also measure durable inventory
 relocation and shared corpse deposit and loot through the real worker and
 GameService transaction path.
 
-Trading, combat-driven deaths, insurance claims, quest item policies, Bank,
-Recovery Storage, equipment, Bag nesting, and multiple geographically separated
-loot hotspots are not generated. Add those as explicit future workload profiles
+The `playing` workload adds combat with Mobs, Mob loot, deaths and corpse
+recovery, equipment, the admin teleport, and walks over a World. Gathering,
+trading, insurance claims, quest item policies, Bank, Recovery Storage, and Bag
+nesting are not generated yet. Add those as explicit workload profiles or roles
 so the stable lifecycle baseline does not silently change.
 
 Distributed load generation and remote service targets are not implemented:
@@ -726,7 +1005,7 @@ dotnet run --project tools/StackStressGenerator -- --help
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--mode` | `worker-only` | `worker-only` or `full-stack` |
-| `--workload` | `lifecycle` | `lifecycle`, `inventory`, `loot-hotspot`, or `mixed-gameplay`; every workload except `lifecycle` needs `full-stack` |
+| `--workload` | `lifecycle` | `lifecycle`, `inventory`, `loot-hotspot`, `mixed-gameplay`, or `playing`; every workload except `lifecycle` needs `full-stack` |
 | `--authority-url` | `http://127.0.0.1:5099` | Loopback URL of the worker-only in-memory authority |
 | `--game-service-url` | `http://127.0.0.1:5000` | Loopback URL of the full-stack GameService |
 | `--postgres-connection-string` | `STACK_STRESS_POSTGRES` | Full-stack metrics and safety connection; prefer the variable |
@@ -761,6 +1040,9 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--summary-output` | none | Also writes the summary of [Baselines](#baselines) |
 | `--scenario-name`, `--source-commit`, `--source-tree-dirty` | none | The scenario, commit, and `true` or `false` for the summary |
 | `--authority-hold-seconds` | `0` | Worker-only: how long the in-memory authority stays up at most after the report, until `Ctrl+C` |
+| `--scenario-file` | none | `playing`: the load scenario whose `playing` section the bots play; the workload needs it |
+| `--world-data-path` | `WorldData/Worlds` below the generator's output | `playing`: the World data folder, laid out as the worker's, whose collision the bots plan on; the build copies the checked-in collision there |
+| `--item-catalog-path` | `WorldData/Items/core.item-catalog.json` below the output | `playing`: the compiled item catalog the bots read like a client |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The
@@ -771,8 +1053,9 @@ Exit codes: 0 when every requested bot joined and left cleanly, every admitted
 account logged out, no gameplay operation failed unexpectedly, the item
 invariants held, and the run passed the quality boundary when one was given; 1
 for any other result or failure of those own checks; 2 for an invalid option; 3
-when the run passed its own checks but failed the quality boundary; 130 when
-the run was cancelled with Ctrl+C.
+when the run passed its own checks but failed the quality boundary; 4 when a
+[validity rule](#validity) failed, so the run could not measure, whatever the
+other checks say; 130 when the run was cancelled with Ctrl+C.
 
 `StackStressGenerator plan --scenario <file> --run-folder <folder>` prints the
 plan of a scenario as JSON for `tools/Test-Load.ps1` and runs nothing. It takes
@@ -780,3 +1063,11 @@ plan of a scenario as JSON for `tools/Test-Load.ps1` and runs nothing. It takes
 `--source-tree-dirty`, validates the scenario, the generator arguments it
 results in, and the quality boundary file, and exits with 2 and the reason when
 one is invalid.
+
+`StackStressGenerator world-variant --scenario <file> --run-folder <folder>`
+writes the scenario's [World Variant](#world-variant) into
+`<folder>/world-variant`, with the compilers' output in
+`<folder>/world-variant.log`, and prints whether it keeps the checked-in
+collision revision. It runs from the repository root, refuses a folder that is
+not empty, and exits with 2 and the reason when the scenario has no variant or
+an added actor has no walkable ground.

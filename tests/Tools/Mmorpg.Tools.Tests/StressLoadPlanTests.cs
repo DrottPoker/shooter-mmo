@@ -26,7 +26,7 @@ public sealed class StressLoadPlanTests
 
         Assert.Subset(
             new HashSet<string>(names),
-            new HashSet<string> { "smoke", "worker-only-200", "worker-only-500", "mixed-100", "mixed-250", "session-cache-on", "session-cache-off" });
+            new HashSet<string> { "smoke", "worker-only-200", "worker-only-500", "mixed-100", "mixed-250", "session-cache-on", "session-cache-off", "playing-smoke" });
     }
 
     [Theory]
@@ -71,6 +71,63 @@ public sealed class StressLoadPlanTests
             plan.GeneratorEnvironment["STACK_STRESS_FIXTURE_SECRET"]);
         Assert.Contains("Database=shooter_mmo_stack_stress_test", plan.GeneratorEnvironment["STACK_STRESS_POSTGRES"], StringComparison.Ordinal);
         Assert.False(plan.WorkerEnvironment.ContainsKey("SimulationWorker__LingeringBodySeconds"));
+    }
+
+    // The teleport to the home grounds needs the worker's development admin tools, which only
+    // its Development environment allows; the other Development option of the worker stays off.
+    [Fact]
+    public void APlayingPlanEnablesTheAdminTeleportAndPointsWorkerAndBotsAtTheWorldVariant()
+    {
+        var scenario = LoadShipped("playing-smoke");
+
+        var plan = Plan(scenario);
+
+        Assert.Equal("playing", plan.Workload);
+        Assert.Equal("Development", plan.WorkerEnvironment["DOTNET_ENVIRONMENT"]);
+        Assert.Equal("true", plan.WorkerEnvironment["DevelopmentAdmin__Enabled"]);
+        Assert.Equal("false", plan.WorkerEnvironment["DevelopmentItemInteractions__GlobalBankAndRecoveryAccess"]);
+        Assert.Equal(Path.Combine(RunFolder(), StressLoadPlan.WorldVariantFolderName), plan.WorldVariantPath);
+        var workerWorlds = StressWorldVariant.WorkerWorldsPath(plan.WorldVariantPath!);
+        Assert.Equal(workerWorlds, plan.WorkerEnvironment["SimulationWorker__WorldDataPath"]);
+        var arguments = plan.GeneratorArguments.ToList();
+        Assert.Equal(workerWorlds, arguments[arguments.IndexOf("--world-data-path") + 1]);
+        Assert.Equal(scenario.SourcePath, arguments[arguments.IndexOf("--scenario-file") + 1]);
+        Assert.Equal("true", plan.GameServiceEnvironment["StackStressFixtures__Enabled"]);
+    }
+
+    [Theory]
+    [InlineData("\"roles\": { \"fighter\": 50, \"walker\": 40 }", "add up to 100")]
+    [InlineData("\"roles\": { \"fighter\": 50, \"gatherer\": 50 }", "'gatherer' is not implemented yet")]
+    [InlineData("\"roles\": { \"walker\": 100 }, \"color\": 1", "unknown property 'color'")]
+    [InlineData("\"roles\": { \"fighter\": 100 }", "at least one ground of kind 'hunting'")]
+    public void APlayingSectionIsValidatedStrictly(string playing, string expected)
+    {
+        var json = Scenario(
+            "\"mode\": \"full-stack\",",
+            "\"bots\": 5, \"duration-seconds\": 10",
+            "\"playing\": { " + playing + " },",
+            "playing");
+
+        var exception = Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", json, "bad.json"));
+
+        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OnlyThePlayingWorkloadTakesAPlayingSectionAndItNeedsOne()
+    {
+        var walkers = "\"playing\": { \"roles\": { \"walker\": 100 } },";
+        var withoutSection = Scenario("\"mode\": \"full-stack\",", "\"bots\": 5, \"duration-seconds\": 10", workload: "playing");
+        var onOtherWorkload = Scenario("\"mode\": \"full-stack\",", "\"bots\": 5, \"duration-seconds\": 10", walkers);
+
+        Assert.Contains(
+            "needs a 'playing' section",
+            Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", withoutSection, "bad.json")).Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "only the playing workload",
+            Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", onOtherWorkload, "bad.json")).Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

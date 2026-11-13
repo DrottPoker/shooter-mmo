@@ -14,7 +14,8 @@ public enum StressWorkloadProfile
     Lifecycle,
     Inventory,
     LootHotspot,
-    MixedGameplay
+    MixedGameplay,
+    Playing
 }
 
 public sealed record StressGeneratorOptions(
@@ -74,6 +75,24 @@ public sealed record StressGeneratorOptions(
     // Ctrl+C, so the worker can stop against it; 0 stops it at once.
     public int AuthorityHoldSeconds { get; init; }
 
+    // The playing workload: the scenario file whose playing section it reads.
+    public string? ScenarioFilePath { get; init; }
+
+    // The playing section of that scenario.
+    public PlayingScenario? Playing { get; init; }
+
+    // Where the bots read the World's collision, laid out as the worker's World data folder.
+    public string WorldDataPath { get; init; } = DefaultWorldDataPath;
+
+    // The compiled item catalog the bots read like a client, for equipment slots and ranges.
+    public string ItemCatalogPath { get; init; } = DefaultItemCatalogPath;
+
+    // The build copies the compiled World collision and item catalog below the output.
+    public static string DefaultWorldDataPath => Path.Combine(AppContext.BaseDirectory, "WorldData", "Worlds");
+
+    public static string DefaultItemCatalogPath =>
+        Path.Combine(AppContext.BaseDirectory, "WorldData", "Items", "core.item-catalog.json");
+
     public const string PostgresConnectionEnvironmentVariable = "STACK_STRESS_POSTGRES";
     public const string FixtureSecretEnvironmentVariable = "STACK_STRESS_FIXTURE_SECRET";
 
@@ -100,7 +119,26 @@ public sealed record StressGeneratorOptions(
             && workload != StressWorkloadProfile.Lifecycle)
         {
             throw new StressGeneratorOptionException(
-                "Inventory and loot workload profiles require --mode full-stack because synthetic worker-only sessions cannot mutate durable items.");
+                "Inventory, loot, and playing workload profiles require --mode full-stack because synthetic worker-only sessions cannot mutate durable items or fight.");
+        }
+
+        var scenarioFile = OptionalPath(values, "scenario-file", workingDirectory);
+        PlayingScenario? playing = null;
+        if (workload == StressWorkloadProfile.Playing)
+        {
+            if (scenarioFile is null)
+            {
+                throw new StressGeneratorOptionException(
+                    "The playing workload requires --scenario-file with the scenario's playing section.");
+            }
+
+            playing = StressLoadScenario.Load(scenarioFile).Playing
+                ?? throw new StressGeneratorOptionException(
+                    $"The scenario '{scenarioFile}' has no playing section.");
+        }
+        else if (scenarioFile is not null)
+        {
+            throw new StressGeneratorOptionException("--scenario-file requires the playing workload.");
         }
         var authorityKey = mode == StressRunMode.WorkerOnly
             ? "authority-url"
@@ -243,7 +281,11 @@ public sealed record StressGeneratorOptions(
             ScenarioName = GetOptional(values, "scenario-name")?.Trim(),
             SourceCommit = GetOptional(values, "source-commit")?.Trim(),
             SourceTreeDirty = ParseOptionalBool(values, "source-tree-dirty"),
-            AuthorityHoldSeconds = ParseInt(values, "authority-hold-seconds", 0, 0, 3600)
+            AuthorityHoldSeconds = ParseInt(values, "authority-hold-seconds", 0, 0, 3600),
+            ScenarioFilePath = scenarioFile,
+            Playing = playing,
+            WorldDataPath = OptionalPath(values, "world-data-path", workingDirectory) ?? DefaultWorldDataPath,
+            ItemCatalogPath = OptionalPath(values, "item-catalog-path", workingDirectory) ?? DefaultItemCatalogPath
         };
     }
 
@@ -283,7 +325,7 @@ public sealed record StressGeneratorOptions(
 
         Options:
           --mode <worker-only|full-stack>   Run mode. Default: worker-only
-          --workload <profile>              lifecycle, inventory, loot-hotspot, or mixed-gameplay. Default: lifecycle
+          --workload <profile>              lifecycle, inventory, loot-hotspot, mixed-gameplay, or playing. Default: lifecycle
           --authority-url <url>             Loopback authority URL. Default: http://127.0.0.1:5099
           --game-service-url <url>          Full-stack GameService URL. Default: http://127.0.0.1:5000
           --postgres-connection-string <cs> Full-stack metrics and safety connection. Prefer STACK_STRESS_POSTGRES.
@@ -322,13 +364,22 @@ public sealed record StressGeneratorOptions(
           --source-tree-dirty <true|false>  Whether the tree had changes, for the summary.
           --authority-hold-seconds <s>      Worker-only: keep the authority up after the report for
                                             at most this long, until Ctrl+C. Default: 0
+          --scenario-file <path>            Playing: the load scenario whose playing section the bots play.
+          --world-data-path <dir>           Playing: the World data folder whose collision the bots plan on.
+                                            Default: the copy below the generator's output
+          --item-catalog-path <path>        Playing: the compiled item catalog. Default: the copy below the output
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
-        boundary, 130 cancelled.
+        boundary, 4 the run could not measure because the generator itself fell behind,
+        130 cancelled.
 
         StackStressGenerator plan --scenario <file> --run-folder <dir> [--bots <n>] [--duration-seconds <n>]
           Prints the run plan of a tools/load scenario as JSON for tools/Test-Load.ps1.
+
+        StackStressGenerator world-variant --scenario <file> --run-folder <dir>
+          Writes the scenario's load variant of its World into the run folder with the content
+          compilers and checks that every added actor stands on walkable ground.
         """;
 
     private static Dictionary<string, string> ParseValues(string[] args)
@@ -404,7 +455,10 @@ public sealed record StressGeneratorOptions(
             "scenario-name",
             "source-commit",
             "source-tree-dirty",
-            "authority-hold-seconds"
+            "authority-hold-seconds",
+            "scenario-file",
+            "world-data-path",
+            "item-catalog-path"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)
@@ -435,8 +489,9 @@ public sealed record StressGeneratorOptions(
             "inventory" => StressWorkloadProfile.Inventory,
             "loot-hotspot" => StressWorkloadProfile.LootHotspot,
             "mixed-gameplay" => StressWorkloadProfile.MixedGameplay,
+            "playing" => StressWorkloadProfile.Playing,
             _ => throw new StressGeneratorOptionException(
-                "--workload must be lifecycle, inventory, loot-hotspot, or mixed-gameplay.")
+                "--workload must be lifecycle, inventory, loot-hotspot, mixed-gameplay, or playing.")
         };
     }
 
@@ -458,6 +513,7 @@ public sealed record StressGeneratorOptions(
             StressWorkloadProfile.Inventory => "inventory",
             StressWorkloadProfile.LootHotspot => "loot-hotspot",
             StressWorkloadProfile.MixedGameplay => "mixed-gameplay",
+            StressWorkloadProfile.Playing => "playing",
             _ => throw new ArgumentOutOfRangeException(nameof(workload))
         };
     }

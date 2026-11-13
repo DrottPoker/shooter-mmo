@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Timing;
+using Mmorpg.Tools.SimulationBotClient;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -7,7 +9,7 @@ public sealed class StressRunCoordinator(
     StressGeneratorOptions options,
     IStressAdmissionProvider admissionProvider)
 {
-    private readonly List<StressBot> bots = [];
+    private readonly List<IStressBot> bots = [];
     private readonly List<StressBotSnapshot> admissionFailures = [];
     private readonly List<PendingAdmission> pendingAdmissions = [];
     private readonly HashSet<int> admittedBotIndexes = [];
@@ -19,7 +21,11 @@ public sealed class StressRunCoordinator(
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(3);
 
     private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
+    private readonly StressLatencyAccumulator pollLateness = new(unchecked(options.Seed + 2));
+    private readonly Dictionary<IStressBot, long> lastPolls = [];
     private PreciseDelay? pollDelay;
+    private PlayingRunContext? playing;
+    private bool measuringSteady;
     private int launchedBots;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
@@ -31,6 +37,9 @@ public sealed class StressRunCoordinator(
             cancellationToken);
         Console.WriteLine(
             $"Stress target shard {target.ShardId}, World {target.WorldId}, capacity {target.Capacity} is ready.");
+        playing = options.Workload == StressWorkloadProfile.Playing
+            ? CreatePlayingContext()
+            : null;
         await admissionProvider.PrepareAsync(cancellationToken);
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         // Task.Delay(1) waited a whole 15.6 ms Windows timer tick, so bots sent their inputs
@@ -89,6 +98,8 @@ public sealed class StressRunCoordinator(
                     generatorProcessSampler.MarkSteadyState();
                     admissionProvider.MarkSteadyState();
                     steadyStartedAt = DateTime.UtcNow;
+                    measuringSteady = true;
+                    playing?.Metrics.BeginSteadyMeasurement();
                     foreach (var bot in bots)
                     {
                         bot.BeginRemoteCadenceWindow(now);
@@ -121,6 +132,8 @@ public sealed class StressRunCoordinator(
 
             var steadyEndTimestamp = Stopwatch.GetTimestamp();
             var steadyEndedAt = DateTime.UtcNow;
+            measuringSteady = false;
+            playing?.Metrics.EndSteadyMeasurement();
             foreach (var bot in bots)
             {
                 bot.EndRemoteCadenceWindow(steadyEndTimestamp);
@@ -157,7 +170,13 @@ public sealed class StressRunCoordinator(
                     providerReport.FullStack?.LootHotspotCorpseId)) with
             {
                 SteadyStartedAt = steadyStartedAt,
-                SteadyEndedAt = steadyEndedAt
+                SteadyEndedAt = steadyEndedAt,
+                Playing = playing?.Metrics.Capture(),
+                GeneratorTiming = new StressGeneratorTimingSummary(
+                    PollInterval.TotalMilliseconds,
+                    pollLateness.CaptureSummary(),
+                    playing?.Metrics.CaptureTiming(PlayingMetrics.RouteQueue),
+                    playing is not null)
             };
         }
         finally
@@ -166,7 +185,73 @@ public sealed class StressRunCoordinator(
             {
                 bot.Dispose();
             }
+
+            playing?.Navigation?.Dispose();
         }
+    }
+
+    // The playing bots share one navigation on the World's collision, the item catalog they
+    // read like a client, and their assignments. Every home ground must have ground under its
+    // center, which a run checks before the first bot joins.
+    private PlayingRunContext CreatePlayingContext()
+    {
+        var scenario = options.Playing
+            ?? throw new InvalidOperationException("The playing workload needs its scenario.");
+        var metrics = new PlayingMetrics(options.Seed);
+        SimulationBotNavigation navigation;
+        try
+        {
+            navigation = SimulationBotNavigation.Load(
+                options.WorldDataPath,
+                options.WorldId,
+                Math.Clamp(Environment.ProcessorCount / 4, 1, 4),
+                timing => metrics.RecordRouteTiming(timing));
+        }
+        catch (Exception exception) when (exception is IOException
+            or InvalidDataException
+            or UnauthorizedAccessException
+            or System.Text.Json.JsonException)
+        {
+            throw new InvalidOperationException(
+                $"The playing bots need the collision of World {options.WorldId} below '{options.WorldDataPath}': {exception.Message}",
+                exception);
+        }
+
+        var buffer = new CollisionQueryBuffer();
+        foreach (var ground in scenario.Grounds)
+        {
+            if (!CollisionRaycast.TryRaycast(
+                    navigation.CollisionWorld,
+                    new SimulationVector3(ground.Area.CenterX, 100f, ground.Area.CenterZ),
+                    new SimulationVector3(0f, -1f, 0f),
+                    200f,
+                    CollisionLayers.CharacterMovement,
+                    buffer,
+                    out _))
+            {
+                navigation.Dispose();
+                throw new InvalidOperationException(
+                    $"The ground '{ground.Name}' has no ground under its center ({ground.Area.CenterX}, {ground.Area.CenterZ}).");
+            }
+        }
+
+        var assignments = PlayingRoster.Assign(scenario, options.BotCount, options.BotStartIndex, options.Seed);
+        foreach (var assignment in assignments)
+        {
+            metrics.AssignRole(assignment.Role, assignment.Kit);
+        }
+
+        Console.WriteLine(
+            $"Playing bots plan on the collision of World {options.WorldId}, revision {navigation.CollisionWorld.Revision}: "
+            + string.Join(", ", PlayingRoster.RoleCounts(scenario, options.BotCount)
+                .Where(pair => pair.Value > 0)
+                .Select(pair => $"{pair.Value} {PlayingScenario.FormatRole(pair.Key)}")) + ".");
+        return new PlayingRunContext(
+            scenario,
+            assignments.ToDictionary(assignment => assignment.BotIndex),
+            PlayingRoster.LoadItemCatalog(options.ItemCatalogPath),
+            navigation,
+            metrics);
     }
 
     private void LaunchRampStep(CancellationToken cancellationToken)
@@ -223,15 +308,24 @@ public sealed class StressRunCoordinator(
 
             var admission = result.Admission!;
             admittedBotIndexes.Add(admission.BotIndex);
-            var bot = new StressBot(
-                options,
-                admission,
-                inputAcknowledgementLatencies,
-                intervalInputAcknowledgementLatencies,
-                gameplayMetrics,
-                token => admissionProvider.RefreshInventoryAsync(
-                    admission.BotIndex,
-                    token));
+            Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refresh =
+                token => admissionProvider.RefreshInventoryAsync(admission.BotIndex, token);
+            IStressBot bot = playing is null
+                ? new StressBot(
+                    options,
+                    admission,
+                    inputAcknowledgementLatencies,
+                    intervalInputAcknowledgementLatencies,
+                    gameplayMetrics,
+                    refresh)
+                : new PlayingStressBot(
+                    options,
+                    admission,
+                    playing,
+                    inputAcknowledgementLatencies,
+                    intervalInputAcknowledgementLatencies,
+                    gameplayMetrics,
+                    refresh);
             bots.Add(bot);
             bot.Start();
         }
@@ -242,11 +336,33 @@ public sealed class StressRunCoordinator(
         return pollDelay!.DelayAsync(PollInterval, cancellationToken);
     }
 
+    // During the steady interval it records how late the latest bot's poll ran against the
+    // 3 ms schedule, the time since that bot's previous poll beyond the interval. A run whose
+    // generator falls behind measures nothing, as the validity rules judge.
     private void PollBots(long nowTimestamp, CancellationToken cancellationToken)
     {
+        var worstLateness = 0d;
         foreach (var bot in bots)
         {
+            if (measuringSteady)
+            {
+                var polled = Stopwatch.GetTimestamp();
+                if (lastPolls.TryGetValue(bot, out var previous))
+                {
+                    worstLateness = Math.Max(
+                        worstLateness,
+                        Stopwatch.GetElapsedTime(previous, polled).TotalMilliseconds - PollInterval.TotalMilliseconds);
+                }
+
+                lastPolls[bot] = polled;
+            }
+
             bot.Poll(nowTimestamp, cancellationToken);
+        }
+
+        if (measuringSteady && bots.Count > 0)
+        {
+            pollLateness.Record(Math.Max(0d, worstLateness));
         }
     }
 

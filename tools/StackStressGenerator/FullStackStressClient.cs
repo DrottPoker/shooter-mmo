@@ -151,6 +151,24 @@ public sealed class FullStackStressClient(
             fixtureSecret);
     }
 
+    public Task<FullStackStackStressKitResponse> SeedKitAsync(
+        string sessionToken,
+        Guid characterId,
+        string kit,
+        string runId,
+        string fixtureSecret,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync<FullStackStackStressKitResponse>(
+            "stress_kit_fixture",
+            HttpMethod.Post,
+            $"/api/development/stack-stress/characters/{characterId:D}/kit",
+            new FullStackStackStressKitRequest(kit, runId),
+            sessionToken,
+            cancellationToken,
+            fixtureSecret);
+    }
+
     public Task<FullStackStackStressLootHotspotResponse> CreateLootHotspotAsync(
         string sessionToken,
         FullStackStackStressLootHotspotRequest request,
@@ -476,6 +494,12 @@ public sealed record FullStackStackStressInventoryFixtureResponse(
     FullStackCharacterInventoryResponse Inventory,
     string InventoryDefinitionId,
     string LootDefinitionId);
+
+public sealed record FullStackStackStressKitRequest(string Kit, string RunId);
+
+public sealed record FullStackStackStressKitResponse(
+    string Kit,
+    FullStackCharacterInventoryResponse Inventory);
 
 public sealed record FullStackStackStressLootHotspotRequest(
     string RunId,

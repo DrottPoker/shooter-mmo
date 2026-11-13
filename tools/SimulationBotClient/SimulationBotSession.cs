@@ -6,8 +6,10 @@ namespace Mmorpg.Tools.SimulationBotClient;
 // The protocol side of one headless bot connection, apart from its transport: the join and
 // leave flow, the movement inputs and their acknowledgement, and the checks on every message
 // the worker sends. A message must travel on the channel and with the delivery that its
-// protocol descriptor names and must decode, as the Unity client requires. Timestamps are
-// Stopwatch timestamps that the caller passes in, so the session runs the same in tests.
+// protocol descriptor names and must decode, as the Unity client requires. With a world view,
+// the session also keeps what the messages say about the world in it; it decides nothing.
+// Timestamps are Stopwatch timestamps that the caller passes in, so the session runs the same
+// in tests.
 public sealed class SimulationBotSession
 {
     private const int MaximumTrackedUnacknowledgedInputs = 256;
@@ -18,6 +20,7 @@ public sealed class SimulationBotSession
     private readonly ISimulationBotInputSource inputSource;
     private readonly Action<double>? inputAcknowledged;
     private readonly ISimulationBotRealtimeObserver? realtimeObserver;
+    private readonly SimulationBotWorldView? world;
     private readonly List<PendingInput> pendingInputs = [];
     private readonly SimulationBotRemoteCadence remoteCadence = new();
     private ISimulationBotTransport? transport;
@@ -46,13 +49,16 @@ public sealed class SimulationBotSession
     private long unacknowledgedInputsDropped;
     private uint latestServerTick;
     private int bodySeconds;
+    private long ownerCombatRevision = -1;
+    private bool ownerDead;
 
     public SimulationBotSession(
         SimulationBotIdentity identity,
         TimeSpan joinAndLeaveTimeout,
         ISimulationBotInputSource inputSource,
         Action<double>? inputAcknowledged = null,
-        ISimulationBotRealtimeObserver? realtimeObserver = null)
+        ISimulationBotRealtimeObserver? realtimeObserver = null,
+        SimulationBotWorldView? world = null)
     {
         this.identity = identity ?? throw new ArgumentNullException(nameof(identity));
         this.inputSource = inputSource ?? throw new ArgumentNullException(nameof(inputSource));
@@ -77,10 +83,14 @@ public sealed class SimulationBotSession
         this.joinAndLeaveTimeout = joinAndLeaveTimeout;
         this.inputAcknowledged = inputAcknowledged;
         this.realtimeObserver = realtimeObserver;
+        this.world = world;
     }
 
     public SimulationBotClientState State { get; private set; } =
         SimulationBotClientState.Created;
+
+    // The world view the session keeps, or null when it keeps none.
+    public SimulationBotWorldView? World => world;
 
     // The transport is connecting; the join must complete before the join timeout.
     public void Start(long nowTimestamp)
@@ -178,6 +188,31 @@ public sealed class SimulationBotSession
         return SendJoined(
             RealtimeMessageType.CorpseInteractionIntent,
             RealtimeProtocol.EncodeCorpseInteractionIntent(intent));
+    }
+
+    public bool SendCombatIntent(RealtimeCombatIntent intent)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        return SendJoined(
+            RealtimeMessageType.CombatIntent,
+            RealtimeProtocol.EncodeCombatIntent(intent));
+    }
+
+    public bool SendWorldInteraction(RealtimeWorldInteractionIntent intent)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        return SendJoined(
+            RealtimeMessageType.WorldInteractionIntent,
+            RealtimeProtocol.EncodeWorldInteractionIntent(intent));
+    }
+
+    // Only a worker that allows the development admin tools carries an admin intent out.
+    public bool SendAdminIntent(RealtimeAdminIntent intent)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        return SendJoined(
+            RealtimeMessageType.AdminIntent,
+            RealtimeProtocol.EncodeAdminIntent(intent));
     }
 
     // Handles one received packet. After the session completed or failed, packets only count
@@ -296,9 +331,10 @@ public sealed class SimulationBotSession
         State = SimulationBotClientState.Failed;
     }
 
-    // Bots act only on snapshots and the results of their own operations, but every other
-    // message must still decode. A server-to-client message type that is missing here fails
-    // the bot, and a test feeds every protocol vector through this switch.
+    // Every message must decode. A bot with a world view keeps what the messages say in it, and
+    // the observer hears the results of the bot's own operations. A server-to-client message
+    // type that is missing here fails the bot, and a test feeds every protocol vector through
+    // this switch.
     private void HandleSessionMessage(
         RealtimeMessageType messageType,
         byte[] packet,
@@ -314,6 +350,8 @@ public sealed class SimulationBotSession
                     {
                         remoteCadence.OnRecord(entity.EntityId, remoteSnapshot.SnapshotSequence, nowTimestamp);
                     }
+
+                    world?.ApplySnapshot(remoteSnapshot);
                 }
 
                 break;
@@ -329,6 +367,7 @@ public sealed class SimulationBotSession
                 {
                     spawnPackets++;
                     remoteCadence.OnSpawn(spawn.EntityId, nowTimestamp);
+                    world?.ApplyEntitySpawn(spawn);
                 }
 
                 break;
@@ -337,29 +376,41 @@ public sealed class SimulationBotSession
                 {
                     despawnPackets++;
                     remoteCadence.OnDespawn(despawn.EntityId, nowTimestamp);
+                    world?.ApplyEntityDespawn(despawn);
                 }
 
                 break;
             case RealtimeMessageType.WorldActorSpawn:
-                if (Decode<RealtimeWorldActorSpawn>(packet, "invalid_world_actor_spawn", RealtimeProtocol.TryDecodeWorldActorSpawn, out _))
+                if (Decode<RealtimeWorldActorSpawn>(packet, "invalid_world_actor_spawn", RealtimeProtocol.TryDecodeWorldActorSpawn, out var actorSpawn))
                 {
                     spawnPackets++;
+                    world?.ApplyWorldActorSpawn(actorSpawn);
                 }
 
                 break;
             case RealtimeMessageType.WorldActorDespawn:
-                if (Decode<RealtimeWorldActorDespawn>(packet, "invalid_world_actor_despawn", RealtimeProtocol.TryDecodeWorldActorDespawn, out _))
+                if (Decode<RealtimeWorldActorDespawn>(packet, "invalid_world_actor_despawn", RealtimeProtocol.TryDecodeWorldActorDespawn, out var actorDespawn))
                 {
                     despawnPackets++;
+                    world?.ApplyWorldActorDespawn(actorDespawn);
                 }
 
                 break;
             case RealtimeMessageType.WorldActorState:
-                Decode<RealtimeWorldActorState>(packet, "invalid_world_actor_state", RealtimeProtocol.TryDecodeWorldActorState, out _);
+                if (Decode<RealtimeWorldActorState>(packet, "invalid_world_actor_state", RealtimeProtocol.TryDecodeWorldActorState, out var actorState))
+                {
+                    world?.ApplyWorldActorState(actorState);
+                }
+
                 break;
             case RealtimeMessageType.ItemOperationResult:
                 if (Decode<RealtimeItemOperationResult>(packet, "invalid_item_operation_result", RealtimeProtocol.TryDecodeItemOperationResult, out var itemResult))
                 {
+                    if (itemResult.CarryState is not null)
+                    {
+                        world?.Items.ObserveServerRevision(itemResult.CarryState.ItemStateRevision);
+                    }
+
                     realtimeObserver?.OnItemOperationResult(itemResult);
                 }
 
@@ -367,6 +418,7 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.CorpsePresenceSnapshotChunk:
                 if (Decode<RealtimeCorpsePresenceSnapshotChunk>(packet, "invalid_corpse_presence", RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk, out var presence))
                 {
+                    world?.ApplyCorpsePresence(presence);
                     realtimeObserver?.OnCorpsePresence(presence);
                 }
 
@@ -374,6 +426,7 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.CorpseInteractionResult:
                 if (Decode<RealtimeCorpseInteractionResult>(packet, "invalid_corpse_interaction_result", RealtimeProtocol.TryDecodeCorpseInteractionResult, out var corpseResult))
                 {
+                    world?.ApplyCorpseInteractionResult(corpseResult);
                     realtimeObserver?.OnCorpseInteractionResult(corpseResult);
                 }
 
@@ -381,6 +434,7 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.CorpseViewStateChunk:
                 if (Decode<RealtimeCorpseViewStateChunk>(packet, "invalid_corpse_view_state", RealtimeProtocol.TryDecodeCorpseViewStateChunk, out var viewState))
                 {
+                    world?.ApplyCorpseViewState(viewState);
                     realtimeObserver?.OnCorpseViewState(viewState);
                 }
 
@@ -388,18 +442,31 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.CorpseViewClosed:
                 if (Decode<RealtimeCorpseViewClosed>(packet, "invalid_corpse_view_closed", RealtimeProtocol.TryDecodeCorpseViewClosed, out var viewClosed))
                 {
+                    world?.ApplyCorpseViewClosed(viewClosed);
                     realtimeObserver?.OnCorpseViewClosed(viewClosed);
                 }
 
                 break;
             case RealtimeMessageType.CarryStateChanged:
-                Decode<RealtimeCarryState>(packet, "invalid_carry_state", RealtimeProtocol.TryDecodeCarryStateChanged, out _);
+                if (Decode<RealtimeCarryState>(packet, "invalid_carry_state", RealtimeProtocol.TryDecodeCarryStateChanged, out var carryState))
+                {
+                    world?.Items.ObserveServerRevision(carryState.ItemStateRevision);
+                }
+
                 break;
             case RealtimeMessageType.OwnerItemQuantityChanged:
-                Decode<RealtimeOwnerItemQuantityChanged>(packet, "invalid_owner_item_quantity", RealtimeProtocol.TryDecodeOwnerItemQuantityChanged, out _);
+                if (Decode<RealtimeOwnerItemQuantityChanged>(packet, "invalid_owner_item_quantity", RealtimeProtocol.TryDecodeOwnerItemQuantityChanged, out var quantityChange))
+                {
+                    world?.Items.Apply(quantityChange);
+                }
+
                 break;
             case RealtimeMessageType.OwnerItemStateChanged:
-                Decode<RealtimeOwnerItemStateChanged>(packet, "invalid_owner_item_state", RealtimeProtocol.TryDecodeOwnerItemStateChanged, out _);
+                if (Decode<RealtimeOwnerItemStateChanged>(packet, "invalid_owner_item_state", RealtimeProtocol.TryDecodeOwnerItemStateChanged, out var itemChange))
+                {
+                    world?.Items.Apply(itemChange);
+                }
+
                 break;
             case RealtimeMessageType.EntityAppearanceChanged:
                 Decode<RealtimeEntityAppearanceChanged>(packet, "invalid_entity_appearance", RealtimeProtocol.TryDecodeEntityAppearanceChanged, out _);
@@ -408,10 +475,18 @@ public sealed class SimulationBotSession
                 Decode<RealtimeAppearanceIntentResult>(packet, "invalid_appearance_intent_result", RealtimeProtocol.TryDecodeAppearanceIntentResult, out _);
                 break;
             case RealtimeMessageType.AdminIntentResult:
-                Decode<RealtimeAdminIntentResult>(packet, "invalid_admin_intent_result", RealtimeProtocol.TryDecodeAdminIntentResult, out _);
+                if (Decode<RealtimeAdminIntentResult>(packet, "invalid_admin_intent_result", RealtimeProtocol.TryDecodeAdminIntentResult, out var adminResult))
+                {
+                    realtimeObserver?.OnAdminIntentResult(adminResult);
+                }
+
                 break;
             case RealtimeMessageType.AdminStateChanged:
-                Decode<RealtimeAdminStateChanged>(packet, "invalid_admin_state", RealtimeProtocol.TryDecodeAdminStateChanged, out _);
+                if (Decode<RealtimeAdminStateChanged>(packet, "invalid_admin_state", RealtimeProtocol.TryDecodeAdminStateChanged, out var adminState))
+                {
+                    world?.ApplyAdminState(adminState);
+                }
+
                 break;
             case RealtimeMessageType.QuestIntentResult:
                 Decode<RealtimeQuestIntentResult>(packet, "invalid_quest_intent_result", RealtimeProtocol.TryDecodeQuestIntentResult, out _);
@@ -423,28 +498,64 @@ public sealed class SimulationBotSession
                 Decode<RealtimeQuestDropInCorpse>(packet, "invalid_quest_drop", RealtimeProtocol.TryDecodeQuestDropInCorpse, out _);
                 break;
             case RealtimeMessageType.WorldInteractionOpened:
-                Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out _);
+                if (Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out var interactionOpened))
+                {
+                    world?.ApplyWorldInteractionOpened(interactionOpened);
+                    realtimeObserver?.OnWorldInteractionOpened(interactionOpened);
+                }
+
                 break;
             case RealtimeMessageType.WorldInteractionResult:
-                Decode<RealtimeWorldInteractionResult>(packet, "invalid_world_interaction_result", RealtimeProtocol.TryDecodeWorldInteractionResult, out _);
+                if (Decode<RealtimeWorldInteractionResult>(packet, "invalid_world_interaction_result", RealtimeProtocol.TryDecodeWorldInteractionResult, out var interactionResult))
+                {
+                    world?.ApplyWorldInteractionResult(interactionResult);
+                    realtimeObserver?.OnWorldInteractionResult(interactionResult);
+                }
+
                 break;
             case RealtimeMessageType.WorldInteractionClosed:
-                Decode<RealtimeWorldInteractionClosed>(packet, "invalid_world_interaction_closed", RealtimeProtocol.TryDecodeWorldInteractionClosed, out _);
+                if (Decode<RealtimeWorldInteractionClosed>(packet, "invalid_world_interaction_closed", RealtimeProtocol.TryDecodeWorldInteractionClosed, out var interactionClosed))
+                {
+                    world?.ApplyWorldInteractionClosed(interactionClosed);
+                }
+
                 break;
             case RealtimeMessageType.GatheringState:
-                Decode<RealtimeGatheringState>(packet, "invalid_gathering_state", RealtimeProtocol.TryDecodeGatheringState, out _);
+                if (Decode<RealtimeGatheringState>(packet, "invalid_gathering_state", RealtimeProtocol.TryDecodeGatheringState, out var gathering))
+                {
+                    world?.ApplyGatheringState(gathering);
+                    realtimeObserver?.OnGatheringState(gathering);
+                }
+
                 break;
             case RealtimeMessageType.CombatIntentResult:
-                Decode<RealtimeCombatIntentResult>(packet, "invalid_combat_intent_result", RealtimeProtocol.TryDecodeCombatIntentResult, out _);
+                if (Decode<RealtimeCombatIntentResult>(packet, "invalid_combat_intent_result", RealtimeProtocol.TryDecodeCombatIntentResult, out var combatResult))
+                {
+                    realtimeObserver?.OnCombatIntentResult(combatResult);
+                }
+
                 break;
             case RealtimeMessageType.CombatantState:
-                Decode<RealtimeCombatantState>(packet, "invalid_combatant_state", RealtimeProtocol.TryDecodeCombatantState, out _);
+                if (Decode<RealtimeCombatantState>(packet, "invalid_combatant_state", RealtimeProtocol.TryDecodeCombatantState, out var combatantState))
+                {
+                    world?.ApplyCombatantState(combatantState);
+                }
+
                 break;
             case RealtimeMessageType.CombatEventBatch:
-                Decode<RealtimeCombatEventBatch>(packet, "invalid_combat_event_batch", RealtimeProtocol.TryDecodeCombatEventBatch, out _);
+                if (Decode<RealtimeCombatEventBatch>(packet, "invalid_combat_event_batch", RealtimeProtocol.TryDecodeCombatEventBatch, out var combatEvents))
+                {
+                    world?.ApplyCombatEvents(combatEvents);
+                }
+
                 break;
             case RealtimeMessageType.OwnerCombatState:
-                Decode<RealtimeOwnerCombatState>(packet, "invalid_owner_combat_state", RealtimeProtocol.TryDecodeOwnerCombatState, out _);
+                if (Decode<RealtimeOwnerCombatState>(packet, "invalid_owner_combat_state", RealtimeProtocol.TryDecodeOwnerCombatState, out var ownerCombat))
+                {
+                    ObserveOwnerLife(ownerCombat);
+                    world?.ApplyOwnerCombatState(ownerCombat);
+                }
+
                 break;
             default:
                 Fail(
@@ -505,6 +616,7 @@ public sealed class SimulationBotSession
         State = SimulationBotClientState.Joined;
         joinLatencyMs = ElapsedMilliseconds(startedTimestamp, nowTimestamp);
         nextInputTimestamp = nowTimestamp;
+        world?.ApplyJoin(session);
         realtimeObserver?.OnJoined(session);
     }
 
@@ -591,9 +703,34 @@ public sealed class SimulationBotSession
                 snapshot.State.PositionY,
                 snapshot.State.PositionZ);
             confirmedPathId = snapshot.PathProgress.PathId;
+            world?.ApplyOwnerSnapshot(snapshot);
         }
 
         AcknowledgeInputs(snapshot.LastProcessedInputSequence, nowTimestamp);
+    }
+
+    // The worker drops the inputs of a dead character until it respawns, so their
+    // acknowledgement waits for the respawn. Those inputs, and the ones still unacknowledged
+    // when the death arrives, measure the death and not the input path, so they are not
+    // measured.
+    private void ObserveOwnerLife(RealtimeOwnerCombatState state)
+    {
+        if (state.StateRevision < ownerCombatRevision)
+        {
+            return;
+        }
+
+        ownerCombatRevision = state.StateRevision;
+        var dead = state.LifeState == RealtimeCombatLifeState.Dead;
+        if (dead && !ownerDead)
+        {
+            for (var index = 0; index < pendingInputs.Count; index++)
+            {
+                pendingInputs[index] = pendingInputs[index] with { Measured = false };
+            }
+        }
+
+        ownerDead = dead;
     }
 
     private void SendDueInputs(long nowTimestamp)
@@ -619,7 +756,7 @@ public sealed class SimulationBotSession
                 nextInputSequence,
                 clientTick,
                 path?.PathId ?? 0);
-            pendingInputs.Add(new PendingInput(command, nowTimestamp));
+            pendingInputs.Add(new PendingInput(command, nowTimestamp, !ownerDead));
             if (pendingInputs.Count > MaximumTrackedUnacknowledgedInputs)
             {
                 pendingInputs.RemoveAt(0);
@@ -660,7 +797,11 @@ public sealed class SimulationBotSession
                 break;
             }
 
-            inputAcknowledged?.Invoke(ElapsedMilliseconds(pending.SentTimestamp, nowTimestamp));
+            if (pending.Measured)
+            {
+                inputAcknowledged?.Invoke(ElapsedMilliseconds(pending.SentTimestamp, nowTimestamp));
+            }
+
             removeCount++;
         }
 
@@ -711,5 +852,6 @@ public sealed class SimulationBotSession
 
     private sealed record PendingInput(
         RealtimeMovementInput Command,
-        long SentTimestamp);
+        long SentTimestamp,
+        bool Measured);
 }
