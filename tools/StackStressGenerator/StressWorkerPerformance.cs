@@ -89,6 +89,10 @@ public sealed record StressWorkerPerformanceSummary(
     DateTime? LastSteadyIntervalEnd,
     double SteadySeconds,
     int RunIntervals,
+    // Null when the worker intervals cover the whole run without a gap; else what is missing.
+    string? RunCoverageGap,
+    // Null when the steady worker intervals follow each other without a gap; else what is missing.
+    string? SteadyCoverageGap,
     long RunSnapshotDrops,
     long RunQuotaRejections,
     IReadOnlyDictionary<string, StressWorkerDurationFold> Durations,
@@ -220,6 +224,14 @@ public static class StressWorkerPerformance
         var run = intervals
             .Where(interval => interval.IntervalEnd > runStartedAt && interval.IntervalStart < runEndedAt)
             .ToArray();
+        var runCoverageGap = run.Length == 0
+            ? "No worker interval overlaps the run."
+            : run[0].IntervalStart > runStartedAt + CoverageTolerance
+                ? $"The worker intervals cover the run only from {run[0].IntervalStart:O}."
+                : run[^1].IntervalEnd < runEndedAt
+                    ? $"The worker intervals cover the run only until {run[^1].IntervalEnd:O}."
+                    : FindGap(run);
+        var steadyCoverageGap = steady.Length == 0 ? null : FindGap(steady);
         string? note = null;
         if (intervals.Count == 0)
         {
@@ -229,9 +241,9 @@ public static class StressWorkerPerformance
         {
             note = "No worker interval lies entirely inside the steady window; lengthen the run or shorten NetworkMetricsLogSeconds.";
         }
-        else if (run.Length > 0 && run[^1].IntervalEnd < runEndedAt)
+        else if (steadyCoverageGap is not null || runCoverageGap is not null)
         {
-            note = $"The worker intervals cover the run only until {run[^1].IntervalEnd:O}.";
+            note = steadyCoverageGap ?? runCoverageGap;
         }
 
         return new StressWorkerPerformanceSummary(
@@ -241,6 +253,8 @@ public static class StressWorkerPerformance
             steady.Length == 0 ? null : steady[^1].IntervalEnd,
             steady.Sum(interval => interval.IntervalSeconds),
             run.Length,
+            runCoverageGap,
+            steadyCoverageGap,
             run.Sum(interval => interval.SnapshotDrops),
             run.Sum(interval => interval.QuotaRejections),
             DurationFields
@@ -264,6 +278,23 @@ public static class StressWorkerPerformance
                         steady.Max(field.Value)),
                     StringComparer.Ordinal),
             note);
+    }
+
+    // The worker writes one interval right after the other, so a later start than the previous
+    // end means a line is missing, for example after a failed write.
+    private static readonly TimeSpan CoverageTolerance = TimeSpan.FromSeconds(1);
+
+    private static string? FindGap(IReadOnlyList<StressWorkerInterval> ordered)
+    {
+        for (var index = 1; index < ordered.Count; index++)
+        {
+            if (ordered[index].IntervalStart - ordered[index - 1].IntervalEnd > CoverageTolerance)
+            {
+                return $"The worker intervals have a gap from {ordered[index - 1].IntervalEnd:O} to {ordered[index].IntervalStart:O}.";
+            }
+        }
+
+        return null;
     }
 
     private static StressWorkerDurationFold? FoldDuration(IEnumerable<StressWorkerDuration?> source)

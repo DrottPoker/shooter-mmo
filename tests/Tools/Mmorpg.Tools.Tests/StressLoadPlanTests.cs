@@ -40,7 +40,14 @@ public sealed class StressLoadPlanTests
         Assert.Equal(name, plan.Scenario);
         Assert.Contains("--quality-boundary", plan.GeneratorArguments);
         Assert.Equal(plan.WorkerPerformancePath, plan.WorkerEnvironment["SimulationWorker__PerformanceReportPath"]);
-        Assert.Equal("10", plan.WorkerEnvironment[StressLoadPlan.MetricsIntervalSetting]);
+        // Every shipped scenario can be judged: its steady interval holds the worker intervals
+        // that the tick rules need.
+        var steadySeconds = scenario.Generator["duration-seconds"];
+        var metricsSeconds = int.Parse(
+            plan.WorkerEnvironment[StressLoadPlan.MetricsIntervalSetting],
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(StressLoadPlan.MetricsIntervalSeconds(steadySeconds), metricsSeconds);
+        Assert.True(steadySeconds >= metricsSeconds * (StressLoadPlan.MinimumSteadyWorkerIntervals + 1));
         Assert.Equal(scenario.ShardId, plan.WorkerEnvironment["SIMULATION_SHARD_ID"]);
         Assert.Equal(scenario.WorldId, plan.WorkerEnvironment["SIMULATION_WORLD_ID"]);
     }

@@ -205,18 +205,19 @@ public sealed class StressQualityVerdictTests
         StressWorkerInterval[] intervals =
         [
             Interval(RunStart.AddSeconds(-10), tickP99: 100, resynchronizations: 3, drops: 1),
+            Interval(RunStart, tickP99: 50),
             Interval(RunStart.AddSeconds(10), tickP99: 50, resynchronizations: 1, drops: 2),
             Interval(RunStart.AddSeconds(20), tickP99: 8, cpu: 40),
             Interval(RunStart.AddSeconds(30), tickP99: 16, cpu: 60),
             Interval(RunStart.AddSeconds(40), tickP99: 4, cpu: 50),
             Interval(RunStart.AddSeconds(50), tickP99: 8, cpu: 50, quota: 1),
             Interval(RunStart.AddSeconds(60), tickP99: 24, drops: 5),
-            Interval(RunStart.AddSeconds(80), tickP99: 250, drops: 7)
+            Interval(RunStart.AddSeconds(70), tickP99: 250, drops: 7)
         ];
 
         var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
 
-        Assert.Equal(8, fold.IntervalsRead);
+        Assert.Equal(9, fold.IntervalsRead);
         Assert.Equal(4, fold.SteadyIntervals);
         Assert.Equal(SteadyStart, fold.FirstSteadyIntervalStart);
         Assert.Equal(SteadyEnd, fold.LastSteadyIntervalEnd);
@@ -227,10 +228,68 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(60, fold.Levels["cpuSingleCorePercent"].Worst);
         Assert.Equal(1, fold.Counters["quotaRejections"].Total);
         // The run intervals overlap the run, from the one that ends in it to the one that starts in it.
-        Assert.Equal(6, fold.RunIntervals);
+        Assert.Equal(7, fold.RunIntervals);
         Assert.Equal(7, fold.RunSnapshotDrops);
         Assert.Equal(1, fold.RunQuotaRejections);
+        Assert.Null(fold.RunCoverageGap);
+        Assert.Null(fold.SteadyCoverageGap);
         Assert.Null(fold.Note);
+    }
+
+    [Fact]
+    public void WorkerIntervalsThatEndBeforeTheRunCannotJudgeTheCounterRules()
+    {
+        // The worker stopped writing after the steady interval began: the drops and quota
+        // rejections of the rest of the run were never seen.
+        var intervals = Enumerable.Range(-1, 5)
+            .Select(index => Interval(RunStart.AddSeconds(index * 10), tickP99: 8))
+            .ToArray();
+        var report = FullStackReport() with
+        {
+            WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd)
+        };
+
+        Assert.NotNull(report.WorkerPerformance!.RunCoverageGap);
+        var rules = Boundary().Evaluate(report).Rules.ToDictionary(rule => rule.Rule);
+
+        Assert.False(rules["quota_rejections"].Passed);
+        Assert.False(rules["snapshot_drops"].Passed);
+        Assert.Null(rules["snapshot_drops"].Measured);
+        Assert.StartsWith("Could not be evaluated", rules["snapshot_drops"].Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkerIntervalsThatStartAfterTheRunCannotJudgeTheCounterRules()
+    {
+        var intervals = Enumerable.Range(1, 7)
+            .Select(index => Interval(RunStart.AddSeconds(index * 10), tickP99: 8))
+            .ToArray();
+
+        var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
+
+        Assert.NotNull(fold.RunCoverageGap);
+        Assert.Null(fold.SteadyCoverageGap);
+    }
+
+    [Fact]
+    public void AMissingWorkerIntervalInsideTheSteadyIntervalCannotJudgeAnyWorkerRule()
+    {
+        // The line of the interval from 30 s to 40 s is missing, for example after a failed write.
+        var intervals = new[] { -10, 0, 10, 20, 40, 50, 60, 70 }
+            .Select(second => Interval(RunStart.AddSeconds(second), tickP99: 8))
+            .ToArray();
+        var report = FullStackReport() with
+        {
+            WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd)
+        };
+
+        Assert.NotNull(report.WorkerPerformance!.SteadyCoverageGap);
+        var failed = Boundary().Evaluate(report).Rules.Where(rule => !rule.Passed).Select(rule => rule.Rule).ToArray();
+
+        Assert.Contains("simulation_tick_p99_ms", failed);
+        Assert.Contains("fixed_tick_resynchronizations", failed);
+        Assert.Contains("quota_rejections", failed);
+        Assert.Contains("snapshot_drops", failed);
     }
 
     [Fact]

@@ -336,10 +336,15 @@ masked. The local secrets and the connection string are the test values that
 `docker-compose.stack-stress.yml` and this document use.
 
 - Both modes: the worker's identity `local-simulation-worker-2`, the scenario's
-  Shard and World, its UDP and advertised endpoint on `127.0.0.1`, a ten-second
-  `SimulationWorker:NetworkMetricsLogSeconds`, which a scenario may change, so
-  a short run still has several worker intervals in its steady interval, and
-  `SimulationWorker:PerformanceReportPath` in the run folder.
+  Shard and World, its UDP and advertised endpoint on `127.0.0.1`,
+  `SimulationWorker:NetworkMetricsLogSeconds`, and
+  `SimulationWorker:PerformanceReportPath` in the run folder. The worker
+  interval is ten seconds, and a quarter of the steady interval when that is
+  shorter, because the tick rules judge only worker intervals that lie entirely
+  inside the steady interval and the worker's reporter does not start with it.
+  A scenario may set the interval itself; the plan refuses a scenario whose
+  steady interval is shorter than four worker intervals, since it could never
+  be judged.
 - Worker-only: the generator's in-memory authority on `http://127.0.0.1:5099`
   as the worker's GameService, a random worker secret that only this run knows,
   and as many worker connections as bots, at least 100. The worker uses its
@@ -509,6 +514,12 @@ seconds, and adds a `workerPerformance` section to the report:
 - `runIntervals`, `runSnapshotDrops`, and `runQuotaRejections`: the intervals
   that overlap the whole run, ramp and leave included, and their drops and
   quota rejections.
+- `runCoverageGap` and `steadyCoverageGap`: empty when the worker intervals
+  cover the whole run and follow each other without a gap, else what is
+  missing. The worker writes one interval right after the other, so a gap means
+  that the worker stopped writing or lost a line. The drop and quota rules need
+  the whole run and the tick rules need the steady intervals without a gap; a
+  partial measurement fails the rule as not evaluated, never as zero.
 - `note`: why a part is missing, such as no interval inside a short steady
   interval.
 
