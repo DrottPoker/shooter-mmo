@@ -95,7 +95,7 @@ in the shared WorldData package at `src/Shared/WorldData/Editor`.
 
 | Folder | Holds |
 | --- | --- |
-| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Protocol`, `Quests`, and `WorldActors` |
+| `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Networking`, `Protocol`, `Quests`, and `WorldActors` |
 | `Tests/EditMode/Fixtures` | Test-owned fixtures: a collision world, an item catalog, actor content, the quest catalog, and a copy of the quest content |
 | `Tests/EditMode/Shared` | Test sources that the .NET test projects compile too |
 | `Tests/PlayMode` | The PlayMode assembly |
@@ -134,7 +134,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
-| `Mmorpg.Client.Networking` | `RealtimeSimulationClient`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Quests` | The quest catalog, the joined character's quest log and its loading, quest progress, the quest dialog's entries, and quest notices, described in [Quest Client](#quest-client) | Api, Core, Networking, Items |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
@@ -692,8 +692,18 @@ identifiers may be logged for local diagnosis.
 ## Realtime Networking Layer
 
 `RealtimeSimulationClient` is a persistent MonoBehaviour owned by the bootstrap.
-It wraps one LiteNetLib `NetManager` and polls network events on Unity's main
-thread. It owns an explicit connection state:
+It reaches the network only through `IRealtimeTransport`: start and stop,
+connect, send bytes on a channel with a delivery method, poll, wake the send
+thread, the round trip time, and the four events it handles: connected,
+disconnected with the reason, received bytes with their channel and delivery,
+and socket error. `LiteNetLibRealtimeTransport` implements it with one
+LiteNetLib `NetManager` on the protocol's channels with synchronized events, so
+every event fires inside the poll that the hub's `Update` runs on Unity's main
+thread, and it returns each packet's reader to LiteNetLib's pool once the hub
+handled the packet. The transport only moves bytes; decoding, dispatch, state,
+and the registries stay in the hub. `Awake` gives the hub the LiteNetLib
+transport and Unity's realtime clock, unless `Initialize` gave it others first,
+as EditMode tests do. The hub owns an explicit connection state:
 
 ```text
 Disconnected -> Connecting -> Joining -> Joined -> Leaving -> Disconnected
@@ -3187,6 +3197,24 @@ namespace rule are in [Folder Layout](#folder-layout).
   `Mmorpg.Shared.Tests` compiles all of them and `Mmorpg.Tools.Tests` the
   protocol goldens; the protocol goldens are described in
   [Realtime Protocol Goldens](../tests/README.md#realtime-protocol-goldens).
+- **Realtime hub.** The tests in `Tests/EditMode/Networking` pin what
+  `RealtimeSimulationClient` does today through `FakeRealtimeTransport`, which
+  records every call and raises queued connect, disconnect, socket error, and
+  packet events only inside the poll, as LiteNetLib does, and a clock the test
+  sets. `RealtimeHubHarness` scripts a session: `Frame()` runs one `Update`, and
+  one timeline holds every hub event and transport call with a `frame` marker,
+  so a test pins the order of events and the frame they fire on. The packets
+  come from the generated encoders, with the samples in `RealtimeHubMessages`.
+  The connection tests pin the join, leave, timeouts, and every way a session
+  ends; the dispatch tests pin, for every message type, the event it raises with
+  its decoded content while joined, the failure code before the join and of a
+  malformed payload, what the `Leaving` state does with it, and the channel and
+  delivery it needs; the ordering tests pin the rules between handlers; the send
+  tests pin every `TrySend*` and the diagnostics counters. A new server message
+  type fails `EveryMessageTypeHasACase` until `RealtimeHubDispatchTests` gets a
+  case for it: a sample in `RealtimeHubMessages`, the event it raises, its
+  codes, and its `Leaving` reaction. A new client message needs an entry in the
+  client cases there.
 - **Movement determinism.** `MovementDeterminismScenario` runs one movement
   scenario in both runtimes and pins `ExpectedSimulationRevision` and
   `ExpectedFingerprint`. An intended change to shared movement or collision
