@@ -63,6 +63,7 @@ sessions that `AGENTS.md` forbids.
   and mechanical, follows a pattern that already exists, and fits in a short
   brief. Send a broad code search to a search agent when only the conclusion
   is needed.
+- Never run a subagent on a model below Sonnet 5.5, also not for a search.
 - The session picks the effort level of each subagent: the lowest level that
   does the part well, lower for mechanical work after an exact brief, higher
   when the subagent has to reason on its own. `xhigh` is welcome for a part
@@ -131,6 +132,14 @@ With Unity CLI.
 - The headless `tools/Run-UnityTests.ps1` cannot run while the Editor has the
   project open. Use the live Editor commands above instead.
 - Exit Play Mode with `unity command editor_stop` before finishing.
+- Look at every change that a player can see or feel, as `AGENTS.md` requires
+  under Verification, also when a subagent made it. When `editor_status`
+  reports no Editor for the checkout, open one with
+  `unity open <checkout>/src/Client`, start the local stack, enter Play Mode
+  from `LoginMenu`, drive the real flow with `eval_file`, and read each
+  `capture_game_view` image before reporting. Close an Editor that the session
+  opened, with `UnityEditor.EditorApplication.Exit(0)` through `eval_file`, and
+  leave an Editor that Victor had open as it was.
 - An Addressables content build started through `eval_file` blocks the Editor
   on a modal dialog when an open scene is unsaved, and once per Library on the
   "Addressables Build Report" question. Open a saved scene first and answer the

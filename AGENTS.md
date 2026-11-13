@@ -43,6 +43,12 @@ Follow these rules for all future work in this repository.
   and add the missing rule to that script in the same task.
 - Run Unity tests in a running Editor with `tools/Run-UnityEditorTests.ps1`,
   not with hand-written loops around `run_tests` and `test_status`.
+- Tests do not show what the player sees. Before reporting a change that a
+  player can see or feel in the client, such as UI, a notice, a flow between
+  screens, or gameplay in the World, run it in Play Mode in a Unity Editor
+  against the local stack and look at the result. The report says what was
+  looked at and what it showed. When this was not possible, the report says
+  exactly why.
 
 ## Branches
 
