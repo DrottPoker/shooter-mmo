@@ -9,16 +9,22 @@ namespace Mmorpg.Client.WorldActors
     [DisallowMultipleComponent]
     public sealed class WorldActorClientController : MonoBehaviour
     {
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeWorldActorChannel worldActorChannel;
+        private IRealtimeSession realtimeSession;
         private bool initialized;
 
         public WorldActorClientState State { get; } = new WorldActorClientState();
 
-        public void Initialize(RealtimeSimulationClient realtimeClient, TextCatalog texts)
+        public void Initialize(IRealtimeWorldActorChannel worldActors, IRealtimeSession session, TextCatalog texts)
         {
-            if (realtimeClient == null)
+            if (worldActors == null)
             {
-                throw new ArgumentNullException(nameof(realtimeClient));
+                throw new ArgumentNullException(nameof(worldActors));
+            }
+
+            if (session == null)
+            {
+                throw new ArgumentNullException(nameof(session));
             }
 
             if (texts == null)
@@ -31,16 +37,17 @@ namespace Mmorpg.Client.WorldActors
                 Unsubscribe();
             }
 
-            simulationClient = realtimeClient;
-            simulationClient.WorldActorSpawned += OnSpawned;
-            simulationClient.WorldActorStateReceived += OnStateReceived;
-            simulationClient.WorldActorDespawned += OnDespawned;
-            simulationClient.SessionEnded += OnSessionEnded;
+            worldActorChannel = worldActors;
+            realtimeSession = session;
+            worldActorChannel.WorldActorSpawned += OnSpawned;
+            worldActorChannel.WorldActorStateReceived += OnStateReceived;
+            worldActorChannel.WorldActorDespawned += OnDespawned;
+            realtimeSession.SessionEnded += OnSessionEnded;
             initialized = true;
 
             State.UseTexts(texts);
             State.Clear();
-            foreach (var spawn in simulationClient.SpawnedWorldActors)
+            foreach (var spawn in worldActorChannel.SpawnedWorldActors)
             {
                 OnSpawned(spawn);
             }
@@ -55,7 +62,7 @@ namespace Mmorpg.Client.WorldActors
         {
             if (!State.TryApplySpawn(spawn, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_actor_state_conflict",
                     error);
             }
@@ -65,7 +72,7 @@ namespace Mmorpg.Client.WorldActors
         {
             if (!State.TryApplyState(state, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_actor_state_conflict",
                     error);
             }
@@ -75,7 +82,7 @@ namespace Mmorpg.Client.WorldActors
         {
             if (!State.TryRemove(despawn, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_actor_state_conflict",
                     error);
             }
@@ -88,15 +95,15 @@ namespace Mmorpg.Client.WorldActors
 
         private void Unsubscribe()
         {
-            if (!initialized || simulationClient == null)
+            if (!initialized || worldActorChannel == null)
             {
                 return;
             }
 
-            simulationClient.WorldActorSpawned -= OnSpawned;
-            simulationClient.WorldActorStateReceived -= OnStateReceived;
-            simulationClient.WorldActorDespawned -= OnDespawned;
-            simulationClient.SessionEnded -= OnSessionEnded;
+            worldActorChannel.WorldActorSpawned -= OnSpawned;
+            worldActorChannel.WorldActorStateReceived -= OnStateReceived;
+            worldActorChannel.WorldActorDespawned -= OnDespawned;
+            realtimeSession.SessionEnded -= OnSessionEnded;
             initialized = false;
         }
     }

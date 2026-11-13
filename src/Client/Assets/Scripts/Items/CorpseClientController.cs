@@ -21,7 +21,8 @@ namespace Mmorpg.Client.Items
         private const float SettleTimeoutSeconds = 2f;
 
         private readonly List<PendingCorpseOperation> pendingOperations = new List<PendingCorpseOperation>();
-        private IRealtimeCorpseChannel simulationClient;
+        private IRealtimeCorpseChannel corpseChannel;
+        private IRealtimeSession realtimeSession;
         private IInventoryOperationQueue inventoryController;
         private bool initialized;
         private bool refreshAfterPending;
@@ -31,13 +32,19 @@ namespace Mmorpg.Client.Items
         private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
 
         public void Initialize(
-            IRealtimeCorpseChannel realtimeClient,
+            IRealtimeCorpseChannel corpses,
+            IRealtimeSession session,
             IInventoryOperationQueue inventory,
             TextCatalog texts)
         {
-            if (realtimeClient == null)
+            if (corpses == null)
             {
-                throw new ArgumentNullException(nameof(realtimeClient));
+                throw new ArgumentNullException(nameof(corpses));
+            }
+
+            if (session == null)
+            {
+                throw new ArgumentNullException(nameof(session));
             }
 
             State.UseTexts(texts);
@@ -48,17 +55,18 @@ namespace Mmorpg.Client.Items
                 Unsubscribe();
             }
 
-            simulationClient = realtimeClient;
+            corpseChannel = corpses;
+            realtimeSession = session;
             inventoryController = inventory;
             if (inventoryController != null)
             {
                 inventoryController.State.PredictionsDiscarded += OnPredictionsDiscarded;
             }
-            simulationClient.CorpsePresenceChunkReceived += OnPresenceChunk;
-            simulationClient.CorpseInteractionCompleted += OnInteractionCompleted;
-            simulationClient.CorpseViewStateChunkReceived += OnViewStateChunk;
-            simulationClient.CorpseViewClosed += OnViewClosed;
-            simulationClient.SessionEnded += OnSessionEnded;
+            corpseChannel.CorpsePresenceChunkReceived += OnPresenceChunk;
+            corpseChannel.CorpseInteractionCompleted += OnInteractionCompleted;
+            corpseChannel.CorpseViewStateChunkReceived += OnViewStateChunk;
+            corpseChannel.CorpseViewClosed += OnViewClosed;
+            realtimeSession.SessionEnded += OnSessionEnded;
             initialized = true;
         }
 
@@ -589,7 +597,7 @@ namespace Mmorpg.Client.Items
 
         private bool CanQueue(out string error)
         {
-            if (!initialized || simulationClient == null || !simulationClient.IsJoined || inventoryController == null)
+            if (!initialized || realtimeSession == null || !realtimeSession.IsJoined || inventoryController == null)
             {
                 error = Text("ui/corpse/session-required");
                 return false;
@@ -664,7 +672,7 @@ namespace Mmorpg.Client.Items
             out string error)
         {
             operationId = Guid.Empty;
-            if (!simulationClient.TrySendCorpseInteraction(intent))
+            if (!corpseChannel.TrySendCorpseInteraction(intent))
             {
                 error = Text("ui/corpse/request-unsent");
                 return InventoryOperationSendResult.Failed;
@@ -947,7 +955,7 @@ namespace Mmorpg.Client.Items
             string errorMessage,
             out string error)
         {
-            if (!simulationClient.TrySendCorpseInteraction(intent))
+            if (!corpseChannel.TrySendCorpseInteraction(intent))
             {
                 error = errorMessage;
                 return false;
@@ -960,7 +968,7 @@ namespace Mmorpg.Client.Items
 
         private bool CanBegin(out string error)
         {
-            if (!initialized || simulationClient == null || !simulationClient.IsJoined)
+            if (!initialized || realtimeSession == null || !realtimeSession.IsJoined)
             {
                 error = Text("ui/corpse/session-required");
                 return false;
@@ -981,7 +989,7 @@ namespace Mmorpg.Client.Items
             var result = State.ApplyPresenceChunk(chunk);
             if (result == CorpseStateApplyResult.Invalid)
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "invalid_corpse_presence_state",
                     "Corpse presence chunks could not be assembled safely.");
             }
@@ -992,7 +1000,7 @@ namespace Mmorpg.Client.Items
             var result = State.ApplyViewChunk(chunk);
             if (result == CorpseStateApplyResult.Invalid)
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "invalid_corpse_view_state",
                     "Corpse view chunks could not be assembled safely.");
                 return;
@@ -1017,7 +1025,7 @@ namespace Mmorpg.Client.Items
             var completesAutomaticRefresh = State.IsAutomaticRefreshPending;
             if (!State.TryComplete(result, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "corpse_operation_result_mismatch",
                     error);
                 return;
@@ -1082,7 +1090,7 @@ namespace Mmorpg.Client.Items
                 Guid.NewGuid(),
                 State.ActiveView.CorpseId,
                 State.ActiveView.Revision);
-            if (simulationClient.TrySendCorpseInteraction(intent))
+            if (corpseChannel.TrySendCorpseInteraction(intent))
             {
                 State.BeginAutomaticRefresh(intent.OperationId, intent.CorpseId);
             }
@@ -1107,7 +1115,7 @@ namespace Mmorpg.Client.Items
 
         private void Unsubscribe()
         {
-            if (!initialized || simulationClient == null)
+            if (!initialized || corpseChannel == null)
             {
                 return;
             }
@@ -1117,11 +1125,11 @@ namespace Mmorpg.Client.Items
                 inventoryController.State.PredictionsDiscarded -= OnPredictionsDiscarded;
             }
 
-            simulationClient.CorpsePresenceChunkReceived -= OnPresenceChunk;
-            simulationClient.CorpseInteractionCompleted -= OnInteractionCompleted;
-            simulationClient.CorpseViewStateChunkReceived -= OnViewStateChunk;
-            simulationClient.CorpseViewClosed -= OnViewClosed;
-            simulationClient.SessionEnded -= OnSessionEnded;
+            corpseChannel.CorpsePresenceChunkReceived -= OnPresenceChunk;
+            corpseChannel.CorpseInteractionCompleted -= OnInteractionCompleted;
+            corpseChannel.CorpseViewStateChunkReceived -= OnViewStateChunk;
+            corpseChannel.CorpseViewClosed -= OnViewClosed;
+            realtimeSession.SessionEnded -= OnSessionEnded;
             initialized = false;
         }
     }

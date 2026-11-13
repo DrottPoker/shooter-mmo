@@ -71,6 +71,7 @@ largest, is split by area:
 | `Gameplay/Animation` | Human and creature locomotion and their Animator drivers |
 | `Gameplay/Cloth` | The cloth chains on the bodies with their solver and scheduler; the cloth math itself is the assembly `Mmorpg.Client.Cloth` |
 | `Gameplay/Diagnostics` | The Debug menu's collision and path overlay and its settings |
+| `Networking/Channels` | A channel per feature of the realtime client, each an interface with its implementation; see [Realtime Networking Layer](#realtime-networking-layer) |
 | `Ui/Kit` | The themed widgets of the permanent UI; see [UI Kit And Theme](#ui-kit-and-theme) |
 | `Ui/Inventory` | The inventory windows and the logic of what their actions send; see [Inventory UI](#inventory-ui) |
 
@@ -134,7 +135,7 @@ layers from the bottom up:
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
 | `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
-| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, `IRealtimeCorpseChannel`, `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Quests` | The quest catalog, the joined character's quest log and its loading, quest progress, the quest dialog's entries, and quest notices, described in [Quest Client](#quest-client) | Api, Core, Networking, Items |
 | `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
@@ -244,8 +245,15 @@ development build wrote them, so the next build has nothing to change.
 ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes)
   +-- ClientConfig, its Addressables handle held while the bootstrap lives
   +-- ApiClient
-  +-- RealtimeSimulationClient
-  |   +-- NetworkMovementSession while a session is joined
+  +-- RealtimeSimulationClient (owns the transport and the frame)
+  |   +-- RealtimeConnection over LiteNetLibRealtimeTransport
+  |   +-- RealtimeSession (IRealtimeSession)
+  |   |   +-- NetworkMovementSession while a session is joined
+  |   +-- RealtimeMessageTable, one entry per server message type
+  |   +-- RealtimePresenceRegistry (spawned players, looks, world actors)
+  |   +-- channels: movement, players, looks, items, corpses, world actors,
+  |   |   world interactions, combat, quests, admin
+  |   +-- RealtimeDiagnostics (IRealtimeDiagnostics) and RealtimeSender
   +-- ClientContentReport, the content set that ClientContentResolver resolved at start
   +-- created once the content is resolved:
   +-- InventoryClientController
@@ -395,8 +403,9 @@ dependencies.
 
 When a scene loads, the bootstrap composes it. LoginMenu gets `LoginMenuPanel`
 and CharacterSelect gets `CharacterSelectPanel`. In a World scene, the
-scene-authored `WorldSceneContext` receives the realtime client, the pointer
-focus, and the body settings before `Start` runs, and the bootstrap adds the
+scene-authored `WorldSceneContext` receives the realtime session and its movement,
+player, look, and admin channels, the pointer focus, and the body settings
+before `Start` runs, and the bootstrap adds the
 runtime components listed in [Runtime Structure](#runtime-structure). A
 component the scene already has is kept.
 
@@ -691,8 +700,14 @@ identifiers may be logged for local diagnosis.
 
 ## Realtime Networking Layer
 
-`RealtimeSimulationClient` is a persistent MonoBehaviour owned by the bootstrap.
-It reaches the network only through `IRealtimeTransport`: start and stop,
+`RealtimeSimulationClient` is the client's one network entry point: a
+persistent MonoBehaviour owned by the bootstrap that owns the transport and the
+frame. It composes the parts below, all in `Mmorpg.Client.Networking`, polls the
+transport once per `Update`, and exposes the parts. A feature never takes the
+hub: `ClientBootstrap` hands each feature controller the narrow interfaces it
+needs through `Initialize`, usually its channel and `IRealtimeSession`.
+
+The hub reaches the network only through `IRealtimeTransport`: start and stop,
 connect, send bytes on a channel with a delivery method, poll, wake the send
 thread, the round trip time, and the four events it handles: connected,
 disconnected with the reason, received bytes with their channel and delivery,
@@ -700,10 +715,35 @@ and socket error. `LiteNetLibRealtimeTransport` implements it with one
 LiteNetLib `NetManager` on the protocol's channels with synchronized events, so
 every event fires inside the poll that the hub's `Update` runs on Unity's main
 thread, and it returns each packet's reader to LiteNetLib's pool once the hub
-handled the packet. The transport only moves bytes; decoding, dispatch, state,
-and the registries stay in the hub. `Awake` gives the hub the LiteNetLib
-transport and Unity's realtime clock, unless `Initialize` gave it others first,
-as EditMode tests do. The hub owns an explicit connection state:
+handled the packet. The transport only moves bytes. The hub composes its parts
+when `Awake` runs or a part is first read, with the LiteNetLib transport and
+Unity's realtime clock, unless `Initialize` gave it others first, as EditMode
+tests do.
+
+| Part | Owns | Features read it through |
+| --- | --- | --- |
+| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. The lifecycle owners, `ClientBootstrap`, `CharacterSelectPanel`, and `TemporaryDebugMenu`, take `RealtimeSession` itself for `Join` and `Leave` |
+| `RealtimeMessageTable` | One entry per server message type: its handler, the states it runs in, the states it is dropped in, and the failure code of every other state | The hub only |
+| `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
+| A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
+| `RealtimeDiagnostics` | The packet and byte counters, the owner snapshot sequence and its loss estimate, the newest server tick, the snapshot age, the round trip time, and the endpoint | `IRealtimeDiagnostics`, which the Debug menu and `CombatServerClock` read |
+| `RealtimeSender` | The one send path: a joined session with a connected server, the intent's cached encoder, and reliable ordered delivery on the control channel; movement input has its own channel and wakes the transport | The channels |
+| `RealtimeConnection` | The transport and what is known of its one connection: whether it runs, whether the server connected, and the endpoint | The session, the sender, and the diagnostics |
+
+| Channel interface | Server messages | Events and reads | Send |
+| --- | --- | --- | --- |
+| `IRealtimeMovementChannel` | `SimulationSnapshot`, `OwnerSimulationSnapshot`, `CarryStateChanged` | `SimulationSnapshotReceived`, `OwnerSimulationSnapshotReceived`, `CarryStateChanged`, `MovementSession` | `TrySendMovementInputs` |
+| `IRealtimePlayerChannel` | `EntitySpawn`, `EntityDespawn` | `EntitySpawned`, `EntityDespawned`, `SpawnedEntities`, `SpawnedEntityCount` | none |
+| `IRealtimeLookChannel` | `EntityAppearanceChanged`, `AppearanceIntentResult` | `EntityAppearanceChanged`, `AppearanceIntentCompleted`, `TryGetAppearance` | `TrySendAppearanceIntent` |
+| `IRealtimeItemChannel` | `ItemOperationResult`, `OwnerItemQuantityChanged`, `OwnerItemStateChanged` | `ItemOperationCompleted`, `OwnerItemQuantityChanged`, `OwnerItemStateChanged`, `CarryItemStateRevision` | `TrySendItemOperation` |
+| `IRealtimeCorpseChannel` | `CorpsePresenceSnapshotChunk`, `CorpseInteractionResult`, `CorpseViewStateChunk`, `CorpseViewClosed` | `CorpsePresenceChunkReceived`, `CorpseInteractionCompleted`, `CorpseViewStateChunkReceived`, `CorpseViewClosed` | `TrySendCorpseInteraction` |
+| `IRealtimeWorldActorChannel` | `WorldActorSpawn`, `WorldActorState`, `WorldActorDespawn` | `WorldActorSpawned`, `WorldActorStateReceived`, `WorldActorDespawned`, `SpawnedWorldActors` | none |
+| `IRealtimeWorldInteractionChannel` | `WorldInteractionOpened`, `WorldInteractionResult`, `WorldInteractionClosed`, `GatheringState` | `WorldInteractionOpened`, `WorldInteractionCompleted`, `WorldInteractionClosed`, `GatheringStateReceived` | `TrySendWorldInteraction` |
+| `IRealtimeCombatChannel` | `CombatIntentResult`, `CombatantState`, `CombatEventBatch`, `OwnerCombatState` | `CombatIntentCompleted`, `CombatantStateReceived`, `CombatEventBatchReceived`, `OwnerCombatStateReceived` | `TrySendCombatIntent` |
+| `IRealtimeQuestChannel` | `QuestIntentResult`, `QuestLogChanged`, `QuestDropInCorpse` | `QuestIntentCompleted`, `QuestLogChanged`, `QuestDropInCorpse` | `TrySendQuestIntent` |
+| `IRealtimeAdminChannel` | `AdminIntentResult`, `AdminStateChanged` | `AdminIntentCompleted`, `AdminStateChanged`, `AdminState` | `TrySendAdminIntent` |
+
+The session owns an explicit connection state:
 
 ```text
 Disconnected -> Connecting -> Joining -> Joined -> Leaving -> Disconnected
@@ -718,26 +758,110 @@ packet. Join acceptance must match the placed character, shard, World, simulatio
 revision, and collision revision before non-secret metadata is copied into
 `ClientSession`.
 
-Unexpected disconnect clears the active shard view and returns an authenticated
-player to CharacterSelect. `RealtimeSimulationClient` also raises `SessionEnded`
-once whenever a joined session ends for any reason, including a graceful leave,
-`Abort`, or a failure while leaving. The inventory, corpse, world actor, world
-interaction, and combat controllers reset their session-scoped state on that
-event, so a pending operation, open view, or corpse presence sequence never
-blocks the next join. `SessionJoined` is raised when the worker accepts a join,
-before any later message of that session is handled; the combat controller clears
-its state there as well, because combat revisions start again in every session.
-The accepted join also carries the Shard rules, which the client exposes as
-`ShardRules` while the session is joined, such as whether player versus player
-attacks are allowed. Join rejection stays in CharacterSelect and displays the
-structured server code. Protocol decoding rejects wrong versions, invalid types,
-oversized values, and trailing data.
+`SessionJoined` is raised when the worker accepts a join, before any later
+message of that session is handled; the combat controller clears its state
+there, because combat revisions start again in every session. The accepted join
+also carries the Shard rules, which the session exposes as `ShardRules` while it
+is joined, such as whether player versus player attacks are allowed. Join
+rejection stays in CharacterSelect and displays the structured server code.
+Protocol decoding rejects wrong versions, invalid types, oversized values, and
+trailing data.
+
+### One Frame
+
+One `Update` polls the transport. Every connection event and packet of the poll
+is handled in the order it arrived, and every handler raises its events at once,
+so the events of a poll keep the order of their packets across channels:
+
+1. A connection event goes to the session.
+2. A packet is counted by the diagnostics and dropped when the session already
+   ended in this poll, so the first failure reason is the one shown to the
+   player.
+3. The table reads the message type and checks the channel and delivery that the
+   generated descriptor names, before anything else, so even a message that the
+   state would drop fails on the wrong channel. A snapshot needs unreliable
+   delivery on its descriptor's channel, every other message reliable ordered
+   delivery on channel 0.
+4. The table's entry decides by the state: the handler runs, the message is
+   dropped, or it fails the session with the entry's code. A client message, or a
+   type without an entry, is `unexpected_message`.
+5. The handler of the message's channel decodes it, runs its checks, changes the
+   state it owns, and raises its events. A message that carries a carry state
+   advances the movement session first, and raises `CarryStateChanged` before its
+   own event.
+
+After the poll the session fails a join or leave whose deadline passed, and then
+finishes a session that ended since the last frame: it stops the transport and
+raises `UnexpectedlyDisconnected` for an unexpected end, then `SessionEnded`.
+
+### How A Session Ends
+
+A session ends through a lost connection, a socket error, a deadline, a protocol
+failure, a client failure that a feature reports with
+`DisconnectForClientFailure`, a `ServerDisconnect`, an accepted leave, or an
+`Abort`. Every ending clears the presence, despawning every player and then
+every world actor with the ending's code, at a point that each ending pins: a
+lost connection and `Abort` clear it after the state changed, so a despawn
+listener sees `Disconnected` without a movement session; a protocol failure, a
+client failure, and a server disconnect clear it before, in `Joined` with the
+movement session; an accepted leave clears it in `Leaving` with the movement
+session. The registries are empty when `SessionEnded` fires, and nothing is
+replayed.
+
+The session raises `SessionEnded` once whenever a joined session ends for any
+reason, including a graceful leave, `Abort`, or a failure while leaving, with a
+null error for a leave and an abort. The inventory, quest, corpse, world actor,
+world interaction, and combat controllers and the look link reset their
+session-scoped state on that event, so a pending operation, open view, or corpse
+presence sequence never blocks the next join. An end while joined that is no
+leave and no abort raises `UnexpectedlyDisconnected` first; it clears the active
+shard view and returns an authenticated player to CharacterSelect. An ending
+that a poll finds raises its events at the end of the same `Update`, after the
+transport stopped; a `DisconnectForClientFailure` outside `Update` raises them
+at the end of the next frame; `Abort` raises `SessionEnded` at once. Two rules
+hold whatever is called after an ending:
+
+- **No ending loses its events.** A session that was joined ends with exactly
+  one `SessionEnded`, and an unexpected end raises exactly one
+  `UnexpectedlyDisconnected` before it. An `Abort` while an ended session still
+  owes its events raises them at once and adds no `SessionEnded` of its own.
+- **A join right after a failure works.** A join first finishes the pending end
+  of the previous session: it stops the transport and raises the owed events in
+  order, and then starts. A listener that joins again from
+  `UnexpectedlyDisconnected`, as a reconnect does, sees `SessionEnded` of the
+  lost session before the new transport starts.
+
+A leave rejection keeps the session joined, without what the `Leaving` state
+dropped.
 
 If another client logs into the same account, SimulationWorker can send
 `account_session_replaced` over the reliable control path. The client aborts its
 transport, clears the entire account session, logs an `[AUTH]` error, and loads
 LoginMenu. The periodic GameService validation provides the same recovery when
 the displaced client is not connected to a shard.
+
+### Adding A Message Type Or A Channel
+
+A new server message type costs its generated protocol code, one handler in the
+channel of its feature, and one table entry, which the channel registers in its
+constructor with `RealtimeMessageTable.Register`: the handler, the states it runs
+in, the states it is dropped in, and its `unexpected_` code and message. The hub
+seals the table when it composes, and a server message type without an entry
+fails that composition, so every hub test fails until the type has one;
+`EveryMessageTypeHasACase` then asks for its dispatch case.
+
+A new feature channel is an internal class with a public interface in
+`Networking/Channels`, in the style of the existing ones. `RealtimeSimulationClient`
+creates it in `Compose` with the session, the table, and the sender or the parts
+it reads, and exposes its interface. Its constructor registers its message
+types; its handlers decode, check, and raise its events; its sends go through
+`RealtimeSender.TrySendIntent` with a cached encoder delegate, so a send
+allocates only its packet. A channel that keeps state of one session implements
+`IRealtimeSessionScoped` and registers with `RealtimeSession.Track`, which clears
+it wherever the session drops the session. `ClientBootstrap` hands the interface
+to the feature's controller through `Initialize`.
+
+### Delivery
 
 The realtime protocol uses two explicit LiteNetLib channels plus unchanneled
 snapshot delivery:
@@ -762,7 +886,7 @@ snapshot delivery:
   worker's state after the acknowledged input, and the worker steps once per
   input like the prediction, so a replay of the later inputs lands where the
   prediction stands.
-- `RealtimeSimulationClient.TrySendMovementInputs` wakes LiteNetLib's update
+- `IRealtimeMovementChannel.TrySendMovementInputs` wakes LiteNetLib's update
   thread after each batch, so the input leaves at once instead of on the
   transport's next 15 ms update. Remote chunks update admitted remote entities
   and may arrive at a lower fair cadence under dense worker-wide byte pressure.
@@ -772,31 +896,35 @@ snapshot delivery:
   ordering relative to each other.
 - While a leave is pending, reliable presence, world actor, interaction,
   corpse, gathering, combat, and item-operation messages that SimulationWorker
-  sent before it took the leave can still arrive. The client ignores these
+  sent before it took the leave can still arrive. Their table entries drop these
   in-flight messages in the `Leaving` state, so a graceful leave never turns
-  into a protocol disconnect. The worker answers the leave at once with
+  into a protocol disconnect. A carry state still advances the movement session
+  while leaving, without its event. The worker answers the leave at once with
   `LeaveAccepted`; the client does not use its `BodySeconds` yet.
-- After the session ended in one poll, later packets in the same poll are
-  ignored, so the first failure reason is the one shown to the player.
+
+### Presence And The Movement Session
 
 Every accepted simulation session identifies the local player's server-assigned
-nonzero network entity id. `RealtimeSimulationClient` owns an in-memory registry
-of the reliable spawn baseline and subsequent spawn or despawn changes. The
-registry survives the transition from CharacterSelect to the selected World
-scene, so entities that spawned before scene loading are still presented.
-Conflicting reuse of an active entity id is treated as a protocol failure.
-Snapshots never create or remove entities. They update only ids already admitted
-by the reliable lifecycle.
+nonzero network entity id. `RealtimePresenceRegistry` holds the reliable spawn
+baseline and subsequent spawn or despawn changes. It survives the transition
+from CharacterSelect to the selected World scene, so entities that spawned
+before scene loading are still presented through `SpawnedEntities` and
+`SpawnedWorldActors`. Conflicting reuse of an active entity id, a player and a
+world actor on one id, a world actor state before its spawn, and a combatant
+state without presence are protocol failures. Snapshots never create or remove
+entities. They update only ids already admitted by the reliable lifecycle.
 
-`NetworkMovementSession` is created only from a validated join response. It owns
-the server-provided movement settings, initial state, and admission-fenced carry
-tuple used by the client. The tuple contains the monotonic item-state revision,
-unitless carried weight, and capacity. Reliable carry-state updates advance the
-tuple only when their revision is newer. The client does not maintain a second
-editable copy of movement speed, tick rate, gravity, bounds, snapshot frequency,
-weight, or capacity for an active network session. The join response must also
-match the client's compiled movement-simulation revision and baked collision
-revision. Either mismatch aborts activation with a structured client error.
+`NetworkMovementSession` is created only from a validated join response, by the
+session, and the movement channel exposes it while the session is joined or
+leaving. It owns the server-provided movement settings, initial state, and
+admission-fenced carry tuple used by the client. The tuple contains the
+monotonic item-state revision, unitless carried weight, and capacity. Reliable
+carry-state updates advance the tuple only when their revision is newer. The
+client does not maintain a second editable copy of movement speed, tick rate,
+gravity, bounds, snapshot frequency, weight, or capacity for an active network
+session. The join response must also match the client's compiled
+movement-simulation revision and baked collision revision. Either mismatch
+aborts activation with a structured client error.
 
 Client and worker must run the same protocol and simulation code, as
 [Versioning](REALTIME_PROTOCOL.md#versioning) describes; what to restart and
@@ -982,7 +1110,7 @@ What they show is in [Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
 from client state only. Its Leave Shard action waits for an exact-session UDP
 leave acknowledgement before loading CharacterSelect, and it owns the World
 scene's session check, which sends a player build without a joined session back
-to CharacterSelect. `RealtimeSimulationClient` counts application-level realtime
+to CharacterSelect. `IRealtimeDiagnostics` counts application-level realtime
 packets and bytes, owner snapshot sequences, remote snapshot chunks, and
 estimated missing owner sequences, and `WorldDebugTelemetryTracker` derives
 rolling frame percentiles and half-second network rates from those counters. The
@@ -1007,7 +1135,7 @@ Editor at well over 100 FPS.
 
 `TemporaryAdminMenu`, toggled by `ToggleAdminMenu`, holds the development admin
 tools in three tabs, Look, Movement, and Combat. They are available while
-`RealtimeSimulationClient.AdminState` is set, which a worker that allows the tools
+`IRealtimeAdminChannel.AdminState` is set, which a worker that allows the tools
 sends after every join; otherwise the tabs are greyed out and the footer says
 why. Look steps the stored body model and look through `PlayerBodyLookSetting`;
 Movement sends `SetMovementSpeed` and `Teleport`; Combat sends `RestoreHealth`
@@ -1363,14 +1491,14 @@ trigger at runtime. Neither prefab holds a body of its own.
 
 The persistent `InventoryClientController` owns the client's view of the
 character's items, Bank, and Recovery Storage, predicts item operations, and
-sends them through the realtime client. The item rules it mirrors are in
+sends them through `IRealtimeItemChannel`. The item rules it mirrors are in
 [Inventory And Death Loot Design](INVENTORY_AND_DEATH_LOOT_DESIGN.md), and what
 the player sees is in
 [Player Inventory Foundation](GAME_FEATURES.md#player-inventory-foundation).
 
 ### Item Operations And Catalog
 
-`RealtimeSimulationClient.TrySendItemOperation` accepts only a typed protocol
+`IRealtimeItemChannel.TrySendItemOperation` accepts only a typed protocol
 intent while joined and sends it on the reliable ordered control path. Committed
 or rejected results are decoded only in the joined state. A committed newer carry
 revision advances `NetworkMovementSession` before `ItemOperationCompleted` is
@@ -1436,7 +1564,7 @@ Spent arrows commit in worker batches that no client intent caused. The worker
 reports each committed batch with `OwnerItemQuantityChanged`: the item-state
 revision it applies to, the new carry state, the equipped stack, its new
 quantity, and its new revision, where quantity `0` means the stack was used up.
-`RealtimeSimulationClient` first advances `NetworkMovementSession` with the carry
+The item channel first advances `NetworkMovementSession` with the carry
 state, raising `CarryStateChanged` when it changed, and then raises
 `OwnerItemQuantityChanged`. `InventoryClientController` patches the stack in the
 `ammunition` equipment slot in place, or empties the slot at quantity `0`, and
@@ -1452,7 +1580,7 @@ coherent snapshot already reached it.
 Other committed changes that no client intent caused, such as a death that moves
 the carried items into the corpse and Recovery Storage, reach the client only as
 a newer carry state in `NetworkMovementSession`, which
-`RealtimeSimulationClient.CarryItemStateRevision` exposes. Every frame,
+`IRealtimeItemChannel.CarryItemStateRevision` exposes. Every frame,
 `InventoryClientController` compares it with the newest known revision, and
 `InventoryServerRevisionFollower` asks for a complete refresh to that revision
 once no own operation is pending and no refresh runs. A refresh that fails or
@@ -1749,9 +1877,9 @@ when no change patched it.
 ### Corpse Client State And Presentation
 
 `CorpseClientController` is a persistent bootstrap-owned adapter over the corpse
-messages of `RealtimeSimulationClient`, which it reaches through
-`IRealtimeCorpseChannel` in `Mmorpg.Client.Networking` so EditMode tests can drive
-it with a fake channel. It owns immutable nearby-presence and active-view state,
+messages of the realtime client, which it reaches through
+`IRealtimeCorpseChannel` and `IRealtimeSession` in `Mmorpg.Client.Networking` so
+EditMode tests can drive it with a fake. It owns immutable nearby-presence and active-view state,
 assembles complete multi-packet snapshots, applies only monotonic targeted deltas,
 correlates one pending corpse operation, and requests a refresh when a stale base
 or concurrency result requires it. It never writes inventory or corpse custody
@@ -2325,9 +2453,10 @@ server, as [The Look On The Server](EQUIPMENT_VISUALS_DESIGN.md#the-look-on-the-
 describes. `CharacterLooks` turns the choices the server sends into the
 `BodyLook` a body shows, and back: `face` and `eyes` are options of the `Face` and
 `Eye` slots, `underwear`, `scar`, and `tattoo` paint layers, and `hair` a garment
-of the hair slot. `RealtimeSimulationClient` keeps the latest
+of the hair slot. The realtime client keeps the latest
 `CharacterAppearance` of every spawned player and of the controlled one, from
-`EntitySpawn` and `EntityAppearanceChanged`, and sends `AppearanceIntent`; see
+`EntitySpawn` and `EntityAppearanceChanged`, and `IRealtimeLookChannel` reads it
+and sends `AppearanceIntent`; see
 [Character Appearance](REALTIME_PROTOCOL.md#character-appearance).
 
 - **The local player.** `ClientBootstrap` owns the `PlayerBodyLookSetting`, the
@@ -2472,8 +2601,9 @@ a tinted primitive, with one warning per archetype, and a missing registry logs
 one warning instead. An EditMode test fails when an authored archetype has no
 prefab.
 
-The persistent realtime client decodes the actor, interaction, and gathering
-messages through the shared GameProtocol source and keeps the explicit mismatch
+The world actor and world interaction channels of the realtime client decode
+the actor, interaction, and gathering messages through the shared GameProtocol
+source and keeps the explicit mismatch
 path for older or partially updated clients. Typed insurance apply or remove,
 quest actions, vendor purchase and sale, and start gathering payloads ride on
 the capability action instead of a second NPC or item interaction transport;
@@ -2767,11 +2897,11 @@ every stop.
 
 ## Combat Client
 
-Combat is server-authoritative and never predicted. `RealtimeSimulationClient`
-decodes the four server messages of the Combat family and the Items-family
-quantity change in the joined state and raises a typed event for each:
-`CombatIntentCompleted`, `CombatantStateReceived`, `CombatEventBatchReceived`,
-`OwnerCombatStateReceived`, and `OwnerItemQuantityChanged`. A decode failure fails
+Combat is server-authoritative and never predicted. `IRealtimeCombatChannel`
+decodes the four server messages of the Combat family in the joined state and
+raises a typed event for each: `CombatIntentCompleted`, `CombatantStateReceived`,
+`CombatEventBatchReceived`, and `OwnerCombatStateReceived`; the Items-family
+quantity change arrives as `OwnerItemQuantityChanged` of `IRealtimeItemChannel`. A decode failure fails
 the protocol like every other control message, and so does a `CombatantState` for
 an entity without reliable presence, because the worker sends it right after
 every spawn of a combatant. `TrySendCombatIntent` sends a typed `CombatIntent`,
@@ -2781,7 +2911,8 @@ the reliable ordered control channel. The messages are in
 [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat).
 
 `CombatClientController` is a persistent bootstrap-owned adapter that the
-bootstrap initializes with the realtime client. Its `CombatClientState` keeps:
+bootstrap initializes with the session and the combat, movement, player, and
+world actor channels. Its `CombatClientState` keeps:
 
 - One combatant state per visible player or Mob entity. A newer state revision
   replaces it, an older one is ignored, and an equal revision with different
@@ -2875,9 +3006,9 @@ frame, so they follow a moving Mob; the worker never sees these positions.
 
 `CombatServerClock` is the client's best estimate of the worker's current tick
 for presentation: the tick of the newest owner snapshot,
-`RealtimeSimulationClient.LatestServerTick`, plus the time since it arrived,
+`IRealtimeDiagnostics.LatestServerTick`, plus the time since it arrived,
 `LatestSnapshotAgeSeconds`, plus half of `RoundTripTimeMilliseconds`, at the
-session's tick rate. The worker keeps sending owner snapshots while the character
+movement session's tick rate. The worker keeps sending owner snapshots while the character
 is dead, so the clock keeps running for the respawn countdown.
 `RoundTripTimeMilliseconds` reads LiteNetLib's round trip time; LiteNetLib's
 `Ping` is only half of it.
@@ -3198,23 +3329,29 @@ namespace rule are in [Folder Layout](#folder-layout).
   protocol goldens; the protocol goldens are described in
   [Realtime Protocol Goldens](../tests/README.md#realtime-protocol-goldens).
 - **Realtime hub.** The tests in `Tests/EditMode/Networking` pin what
-  `RealtimeSimulationClient` does today through `FakeRealtimeTransport`, which
-  records every call and raises queued connect, disconnect, socket error, and
-  packet events only inside the poll, as LiteNetLib does, and a clock the test
-  sets. `RealtimeHubHarness` scripts a session: `Frame()` runs one `Update`, and
-  one timeline holds every hub event and transport call with a `frame` marker,
-  so a test pins the order of events and the frame they fire on. The packets
-  come from the generated encoders, with the samples in `RealtimeHubMessages`.
-  The connection tests pin the join, leave, timeouts, and every way a session
-  ends; the dispatch tests pin, for every message type, the event it raises with
-  its decoded content while joined, the failure code before the join and of a
-  malformed payload, what the `Leaving` state does with it, and the channel and
-  delivery it needs; the ordering tests pin the rules between handlers; the send
-  tests pin every `TrySend*` and the diagnostics counters. A new server message
-  type fails `EveryMessageTypeHasACase` until `RealtimeHubDispatchTests` gets a
-  case for it: a sample in `RealtimeHubMessages`, the event it raises, its
-  codes, and its `Leaving` reaction. A new client message needs an entry in the
-  client cases there.
+  `RealtimeSimulationClient` and its parts do through `FakeRealtimeTransport`,
+  which records every call and raises queued connect, disconnect, socket error,
+  and packet events only inside the poll, as LiteNetLib does, and a clock the
+  test sets. `RealtimeHubHarness` scripts a session: `Frame()` runs one `Update`,
+  and one timeline holds every event of the session and the channels and every
+  transport call with a `frame` marker, so a test pins the order of events and
+  the frame they fire on. The harness is the one place that subscribes to the
+  parts; a test reads a part through `harness.Hub`, such as
+  `harness.Hub.Session.State`. The packets come from the generated encoders, with
+  the samples in `RealtimeHubMessages`. The connection tests pin the join, leave,
+  timeouts, every way a session ends, and the two rules of
+  [How A Session Ends](#how-a-session-ends); the dispatch tests pin, for every
+  message type, the event it raises with its decoded content while joined, the
+  failure code before the join and of a malformed payload, what the `Leaving`
+  state does with it, and the channel and delivery it needs; the ordering tests
+  pin the rules between handlers; the send tests pin every `TrySend*` and the
+  diagnostics counters. A server message type without an entry in the message
+  table fails the composition of every hub test, and one without a dispatch case
+  fails `EveryMessageTypeHasACase` until `RealtimeHubDispatchTests` gets a case
+  for it: a sample in `RealtimeHubMessages`, the event it raises, its codes, and
+  its `Leaving` reaction. A new client message needs an entry in the client cases
+  there. Tests of other areas read the table through
+  `RealtimeMessageTable.IsDropped` of a harness's hub.
 - **Movement determinism.** `MovementDeterminismScenario` runs one movement
   scenario in both runtimes and pins `ExpectedSimulationRevision` and
   `ExpectedFingerprint`. An intended change to shared movement or collision
@@ -3271,8 +3408,13 @@ How to run the suites, in the Editor or headless, is in
 - Create runtime primitives only through `RuntimePrimitives` with the configured
   material.
 - Keep HTTP serialization and failure mapping inside the API layer.
-- Keep realtime transport state and packet handling inside
-  `RealtimeSimulationClient`, not scene panels.
+- Keep realtime transport state and packet handling inside the parts of
+  `RealtimeSimulationClient`, not scene panels: the connection state in
+  `RealtimeSession`, the routing in `RealtimeMessageTable`, presence in
+  `RealtimePresenceRegistry`, and a feature's messages and send in its channel,
+  as [Adding A Message Type Or A Channel](#adding-a-message-type-or-a-channel)
+  describes. A feature takes the interfaces of the parts it needs through
+  `Initialize`, never the hub.
 - Keep deterministic movement rules in `GameSimulation`, not in transport or
   presentation components.
 - Wrap every float intermediate in `GameSimulation` in an explicit `(float)` cast.

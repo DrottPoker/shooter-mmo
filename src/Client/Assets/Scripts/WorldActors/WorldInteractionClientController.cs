@@ -186,7 +186,8 @@ namespace Mmorpg.Client.WorldActors
     [DisallowMultipleComponent]
     public sealed class WorldInteractionClientController : MonoBehaviour
     {
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeWorldInteractionChannel interactionChannel;
+        private IRealtimeSession realtimeSession;
         private WorldActorClientController actorController;
         private CorpseClientController corpseController;
         private InventoryClientController inventoryController;
@@ -225,13 +226,15 @@ namespace Mmorpg.Client.WorldActors
         }
 
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeWorldInteractionChannel interactions,
+            IRealtimeSession session,
             WorldActorClientController worldActors,
             CorpseClientController corpses,
             InventoryClientController inventory,
             TextCatalog texts)
         {
-            if (realtimeClient == null
+            if (interactions == null
+                || session == null
                 || worldActors == null
                 || corpses == null
                 || inventory == null
@@ -250,15 +253,16 @@ namespace Mmorpg.Client.WorldActors
                 Unsubscribe();
             }
 
-            simulationClient = realtimeClient;
+            interactionChannel = interactions;
+            realtimeSession = session;
             actorController = worldActors;
             corpseController = corpses;
             inventoryController = inventory;
-            simulationClient.WorldInteractionOpened += OnOpened;
-            simulationClient.WorldInteractionCompleted += OnCompleted;
-            simulationClient.WorldInteractionClosed += OnClosed;
-            simulationClient.GatheringStateReceived += OnGatheringState;
-            simulationClient.SessionEnded += OnSessionEnded;
+            interactionChannel.WorldInteractionOpened += OnOpened;
+            interactionChannel.WorldInteractionCompleted += OnCompleted;
+            interactionChannel.WorldInteractionClosed += OnClosed;
+            interactionChannel.GatheringStateReceived += OnGatheringState;
+            realtimeSession.SessionEnded += OnSessionEnded;
             inventoryController.State.PredictionsDiscarded += OnPredictionsDiscarded;
             initialized = true;
             State.Clear();
@@ -287,8 +291,7 @@ namespace Mmorpg.Client.WorldActors
                 return false;
             }
 
-            if (simulationClient.MovementSession == null
-                || !Guid.TryParse(
+            if (!Guid.TryParse(
                     ClientSession.ActiveSimulationSession?.simulationSessionId,
                     out var simulationSessionId))
             {
@@ -304,7 +307,7 @@ namespace Mmorpg.Client.WorldActors
                 actor.EntityId,
                 actor.RuntimeActorId,
                 actor.InteractionRevision);
-            if (!simulationClient.TrySendWorldInteraction(intent))
+            if (!interactionChannel.TrySendWorldInteraction(intent))
             {
                 error = "The world interaction open request could not be sent.";
                 return false;
@@ -435,7 +438,7 @@ namespace Mmorpg.Client.WorldActors
                 active.TargetEntityId,
                 active.TargetRuntimeId,
                 active.TargetRevision);
-            if (!simulationClient.TrySendWorldInteraction(intent))
+            if (!interactionChannel.TrySendWorldInteraction(intent))
             {
                 error = Text("ui/world/close-unsent");
                 return false;
@@ -695,7 +698,7 @@ namespace Mmorpg.Client.WorldActors
                 questId ?? string.Empty,
                 questObjectiveId ?? string.Empty,
                 rewardChoiceDefinitionId ?? string.Empty);
-            if (!simulationClient.TrySendWorldInteraction(intent))
+            if (!interactionChannel.TrySendWorldInteraction(intent))
             {
                 error = Text("ui/world/capability-unsent");
                 return false;
@@ -782,7 +785,7 @@ namespace Mmorpg.Client.WorldActors
         private bool CanBeginWorldOperation(out string error)
         {
             error = string.Empty;
-            if (simulationClient == null || !simulationClient.IsJoined)
+            if (realtimeSession == null || !realtimeSession.IsJoined)
             {
                 error = "World interaction requires an active simulation connection.";
                 return false;
@@ -812,7 +815,7 @@ namespace Mmorpg.Client.WorldActors
                 || actor.RuntimeActorId != opened.TargetRuntimeId
                 || opened.TargetRevision < actor.InteractionRevision)
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_interaction_state_conflict",
                     "World interaction open conflicts with actor presence.");
                 return;
@@ -824,7 +827,7 @@ namespace Mmorpg.Client.WorldActors
             ClearPendingOpen();
             if (!State.TryOpen(opened, actor, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_interaction_state_conflict",
                     error);
                 return;
@@ -845,7 +848,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (!State.TryComplete(result, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "world_interaction_operation_conflict",
                     error);
                 return;
@@ -932,16 +935,16 @@ namespace Mmorpg.Client.WorldActors
 
         private void Unsubscribe()
         {
-            if (!initialized || simulationClient == null)
+            if (!initialized || interactionChannel == null)
             {
                 return;
             }
 
-            simulationClient.WorldInteractionOpened -= OnOpened;
-            simulationClient.WorldInteractionCompleted -= OnCompleted;
-            simulationClient.WorldInteractionClosed -= OnClosed;
-            simulationClient.GatheringStateReceived -= OnGatheringState;
-            simulationClient.SessionEnded -= OnSessionEnded;
+            interactionChannel.WorldInteractionOpened -= OnOpened;
+            interactionChannel.WorldInteractionCompleted -= OnCompleted;
+            interactionChannel.WorldInteractionClosed -= OnClosed;
+            interactionChannel.GatheringStateReceived -= OnGatheringState;
+            realtimeSession.SessionEnded -= OnSessionEnded;
             inventoryController.State.PredictionsDiscarded -= OnPredictionsDiscarded;
             initialized = false;
         }

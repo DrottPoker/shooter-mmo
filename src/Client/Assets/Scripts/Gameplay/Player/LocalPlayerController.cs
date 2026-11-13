@@ -32,7 +32,9 @@ namespace Mmorpg.Client.Gameplay
         private CharacterBody characterBody;
         private CharacterLocomotionAnimator body;
         private LocalPlayerInput playerInput;
-        private RealtimeSimulationClient realtimeClient;
+        private IRealtimeSession realtimeSession;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimeAdminChannel realtimeAdmin;
         private ClientMovementPrediction movementPrediction;
         private LocalPlayerNavigator navigator;
         private WorldPointerFocus pointerFocus;
@@ -81,7 +83,7 @@ namespace Mmorpg.Client.Gameplay
 
         public bool IsServerAuthoritative
         {
-            get { return movementPrediction != null && realtimeClient != null; }
+            get { return movementPrediction != null && realtimeMovement != null; }
         }
 
         public int PendingPredictedInputCount
@@ -197,34 +199,41 @@ namespace Mmorpg.Client.Gameplay
             UpdateNetworkMovement();
         }
 
-        public bool EnableServerAuthoritativeMovement(RealtimeSimulationClient simulationClient)
+        public bool EnableServerAuthoritativeMovement(
+            IRealtimeSession session,
+            IRealtimeMovementChannel movement,
+            IRealtimeAdminChannel admin)
         {
-            if (simulationClient == null
-                || !simulationClient.IsJoined
-                || simulationClient.MovementSession == null)
+            if (session == null
+                || movement == null
+                || admin == null
+                || !session.IsJoined
+                || movement.MovementSession == null)
             {
                 return false;
             }
 
             DisableServerAuthoritativeMovement();
             CacheComponents();
-            realtimeClient = simulationClient;
-            var session = simulationClient.MovementSession;
-            networkSettings = session.Settings;
+            realtimeSession = session;
+            realtimeMovement = movement;
+            realtimeAdmin = admin;
+            var movementSession = movement.MovementSession;
+            networkSettings = movementSession.Settings;
             movementPrediction = new ClientMovementPrediction(
-                session.InitialState,
-                session.PredictionSettings,
-                session.CarryState,
-                session.CollisionWorld);
+                movementSession.InitialState,
+                movementSession.PredictionSettings,
+                movementSession.CarryState,
+                movementSession.CollisionWorld);
             navigator = new LocalPlayerNavigator(
-                session.CollisionWorld,
+                movementSession.CollisionWorld,
                 networkSettings,
                 MovementPathPlannerSettings.Default);
-            authoritativeState = session.InitialState;
+            authoritativeState = movementSession.InitialState;
             hasAuthoritativeState = true;
-            realtimeClient.OwnerSimulationSnapshotReceived += OnOwnerSimulationSnapshotReceived;
-            realtimeClient.CarryStateChanged += OnCarryStateChanged;
-            realtimeClient.AdminStateChanged += OnAdminStateChanged;
+            realtimeMovement.OwnerSimulationSnapshotReceived += OnOwnerSimulationSnapshotReceived;
+            realtimeMovement.CarryStateChanged += OnCarryStateChanged;
+            realtimeAdmin.AdminStateChanged += OnAdminStateChanged;
             networkTickAccumulator = 0f;
             isInitialNetworkTickPending = true;
             nextInputSequence = 0;
@@ -237,14 +246,16 @@ namespace Mmorpg.Client.Gameplay
 
         public void DisableServerAuthoritativeMovement()
         {
-            if (realtimeClient != null)
+            if (realtimeMovement != null)
             {
-                realtimeClient.OwnerSimulationSnapshotReceived -= OnOwnerSimulationSnapshotReceived;
-                realtimeClient.CarryStateChanged -= OnCarryStateChanged;
-                realtimeClient.AdminStateChanged -= OnAdminStateChanged;
+                realtimeMovement.OwnerSimulationSnapshotReceived -= OnOwnerSimulationSnapshotReceived;
+                realtimeMovement.CarryStateChanged -= OnCarryStateChanged;
+                realtimeAdmin.AdminStateChanged -= OnAdminStateChanged;
             }
 
-            realtimeClient = null;
+            realtimeSession = null;
+            realtimeMovement = null;
+            realtimeAdmin = null;
             movementPrediction = null;
             navigator = null;
             networkSettings = null;
@@ -315,7 +326,7 @@ namespace Mmorpg.Client.Gameplay
         public bool TryFindGroundPoint(Ray ray, out Vector3 point)
         {
             point = default(Vector3);
-            var movementSession = realtimeClient != null ? realtimeClient.MovementSession : null;
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (movementSession == null
                 || !CollisionRaycast.TryRaycast(
                     movementSession.CollisionWorld,
@@ -387,15 +398,15 @@ namespace Mmorpg.Client.Gameplay
 
         private void PredictAndSendNetworkTick()
         {
-            var collisionSession = realtimeClient != null
-                ? realtimeClient.MovementSession
+            var collisionSession = realtimeMovement != null
+                ? realtimeMovement.MovementSession
                 : null;
             if (collisionSession != null
                 && !collisionSession.TryEnsureCollisionChunks(
                     new[] { movementPrediction.State.Position },
                     out var collisionError))
             {
-                realtimeClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "collision_stream_failed",
                     collisionError);
                 return;
@@ -414,13 +425,13 @@ namespace Mmorpg.Client.Gameplay
             movementPrediction.Predict(input);
             movementPresentation.Retarget(movementPrediction.State);
             var batch = movementPrediction.CreateRedundantInputBatch(out var unconfirmedPath);
-            realtimeClient.TrySendMovementInputs(batch, unconfirmedPath);
+            realtimeMovement.TrySendMovementInputs(batch, unconfirmedPath);
         }
 
         private void OnOwnerSimulationSnapshotReceived(
             RealtimeOwnerSimulationSnapshot snapshot)
         {
-            var movementSession = realtimeClient != null ? realtimeClient.MovementSession : null;
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (movementSession == null)
             {
                 return;
@@ -435,7 +446,7 @@ namespace Mmorpg.Client.Gameplay
                     collisionStreamingAnchor,
                     out var collisionError))
             {
-                realtimeClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "collision_stream_failed",
                     collisionError);
                 return;
@@ -473,9 +484,9 @@ namespace Mmorpg.Client.Gameplay
         // A development admin changed the walk speed, which the worker walks at from its next tick.
         private void OnAdminStateChanged()
         {
-            if (movementPrediction != null && realtimeClient.MovementSession != null)
+            if (movementPrediction != null && realtimeMovement.MovementSession != null)
             {
-                movementPrediction.ApplySettings(realtimeClient.MovementSession.PredictionSettings);
+                movementPrediction.ApplySettings(realtimeMovement.MovementSession.PredictionSettings);
             }
         }
 
@@ -514,8 +525,8 @@ namespace Mmorpg.Client.Gameplay
                 state.PositionX,
                 state.PositionY,
                 state.PositionZ) + reconciliationOffset;
-            var movementSession = realtimeClient != null
-                ? realtimeClient.MovementSession
+            var movementSession = realtimeMovement != null
+                ? realtimeMovement.MovementSession
                 : null;
             var shouldSmoothGroundedHeight = false;
             if (movementSession != null

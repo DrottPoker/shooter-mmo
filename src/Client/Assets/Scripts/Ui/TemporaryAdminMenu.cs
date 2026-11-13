@@ -38,7 +38,9 @@ namespace Mmorpg.Client.Ui
         private readonly Dictionary<Guid, string> pendingDescriptions = new Dictionary<Guid, string>();
         private readonly List<Button> speedButtons = new List<Button>();
         private readonly List<CanvasGroup> toolPages = new List<CanvasGroup>();
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeAdminChannel adminChannel;
+        private IRealtimeSession realtimeSession;
+        private IRealtimeMovementChannel realtimeMovement;
         private PlayerBodyLookSetting bodyLook;
         private WorldMenuController worldMenu;
         private CombatClientController combat;
@@ -73,7 +75,7 @@ namespace Mmorpg.Client.Ui
         // The worker allows the admin tools for this session.
         public bool ToolsAvailable
         {
-            get { return simulationClient != null && simulationClient.IsJoined && simulationClient.AdminState != null; }
+            get { return realtimeSession != null && realtimeSession.IsJoined && adminChannel.AdminState != null; }
         }
 
         public TemporaryMenuWindow Window
@@ -83,14 +85,18 @@ namespace Mmorpg.Client.Ui
 
         // Called by the composition root before the component is activated.
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeAdminChannel admin,
+            IRealtimeSession session,
+            IRealtimeMovementChannel movement,
             PlayerBodyLookSetting lookSetting,
             WorldMenuController menu,
             CombatClientController combatController,
             InventoryWindowRequests windowRequests = null,
             QuestClientController questController = null)
         {
-            simulationClient = realtimeClient;
+            adminChannel = admin;
+            realtimeSession = session;
+            realtimeMovement = movement;
             bodyLook = lookSetting;
             worldMenu = menu;
             combat = combatController;
@@ -163,11 +169,11 @@ namespace Mmorpg.Client.Ui
         {
             BuildUi();
             SetOpen(false);
-            if (simulationClient != null)
+            if (adminChannel != null && realtimeSession != null)
             {
-                simulationClient.AdminStateChanged += RefreshAll;
-                simulationClient.AdminIntentCompleted += OnAdminIntentCompleted;
-                simulationClient.SessionJoined += RefreshAll;
+                adminChannel.AdminStateChanged += RefreshAll;
+                adminChannel.AdminIntentCompleted += OnAdminIntentCompleted;
+                realtimeSession.SessionJoined += RefreshAll;
             }
 
             if (bodyLook != null)
@@ -185,11 +191,11 @@ namespace Mmorpg.Client.Ui
 
         private void OnDestroy()
         {
-            if (simulationClient != null)
+            if (adminChannel != null && realtimeSession != null)
             {
-                simulationClient.AdminStateChanged -= RefreshAll;
-                simulationClient.AdminIntentCompleted -= OnAdminIntentCompleted;
-                simulationClient.SessionJoined -= RefreshAll;
+                adminChannel.AdminStateChanged -= RefreshAll;
+                adminChannel.AdminIntentCompleted -= OnAdminIntentCompleted;
+                realtimeSession.SessionJoined -= RefreshAll;
             }
 
             if (bodyLook != null)
@@ -378,7 +384,7 @@ namespace Mmorpg.Client.Ui
                 return false;
             }
 
-            if (!simulationClient.TrySendAdminIntent(intent))
+            if (!adminChannel.TrySendAdminIntent(intent))
             {
                 ShowResult(description + " could not be sent.", TemporaryUiKit.DangerColor);
                 return false;
@@ -434,7 +440,7 @@ namespace Mmorpg.Client.Ui
                 SetPicking(false);
                 pendingDescriptions.Clear();
                 window.SetStatus(
-                    simulationClient != null && simulationClient.IsJoined
+                    realtimeSession != null && realtimeSession.IsJoined
                         ? "The admin tools are off: only a SimulationWorker in the Development environment allows them."
                         : "Join a World to use the admin tools.",
                     TemporaryUiKit.WarningColor);
@@ -455,9 +461,9 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshSpeed()
         {
-            var state = ToolsAvailable ? simulationClient.AdminState : null;
+            var state = ToolsAvailable ? adminChannel.AdminState : null;
             var percent = state != null ? state.SpeedPercent : 100;
-            var session = simulationClient != null ? simulationClient.MovementSession : null;
+            var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             speedValue.text = percent + "%"
                 + (session != null
                     ? " (" + session.Settings.WithWalkSpeedPercent(percent).WalkSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s)"

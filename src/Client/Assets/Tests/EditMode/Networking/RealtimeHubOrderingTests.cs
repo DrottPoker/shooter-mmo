@@ -97,7 +97,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Frame();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "WorldActorSpawned 21" }));
-            Assert.That(harness.Hub.SpawnedWorldActors.Single().StateRevision, Is.EqualTo(6));
+            Assert.That(harness.Hub.WorldActors.SpawnedWorldActors.Single().StateRevision, Is.EqualTo(6));
         }
 
         [TestCase("another runtime actor")]
@@ -181,8 +181,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 bodyModel: "Human_Male")));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "EntitySpawned 11" }));
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.EqualTo(1));
-            Assert.That(harness.Hub.TryGetAppearance(PlayerEntityId, out var look), Is.True);
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.EqualTo(1));
+            Assert.That(harness.Hub.Looks.TryGetAppearance(PlayerEntityId, out var look), Is.True);
             Assert.That(look.BodyModel, Is.EqualTo("Human_Male"));
         }
 
@@ -221,8 +221,8 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeEntityAppearanceChanged(AppearanceChanged(OtherPlayerEntityId)));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-            Assert.That(harness.Hub.TryGetAppearance(OtherPlayerEntityId, out _), Is.False);
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.Hub.Looks.TryGetAppearance(OtherPlayerEntityId, out _), Is.False);
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
         }
 
         [Test]
@@ -231,8 +231,8 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.JoinSession();
             harness.Deliver(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId)));
             var seen = new List<string>();
-            harness.Hub.EntityAppearanceChanged += _ =>
-                seen.Add(harness.Hub.TryGetAppearance(PlayerEntityId, out var current) ? current.BodyModel : null);
+            harness.Hub.Looks.EntityAppearanceChanged += _ =>
+                seen.Add(harness.Hub.Looks.TryGetAppearance(PlayerEntityId, out var current) ? current.BodyModel : null);
             harness.Clear();
 
             harness.Deliver(RealtimeProtocol.EncodeEntityAppearanceChanged(AppearanceChanged(PlayerEntityId)));
@@ -258,10 +258,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 harness.Timeline,
                 Is.EqualTo(new[] { "frame", "EntityDespawned 7 out_of_interest", "EntityDespawned 11 out_of_interest" }));
-            Assert.That(harness.Hub.TryGetAppearance(ControlledEntityId, out var look), Is.True);
+            Assert.That(harness.Hub.Looks.TryGetAppearance(ControlledEntityId, out var look), Is.True);
             Assert.That(look.BodyModel, Is.EqualTo("Human_Male"));
-            Assert.That(harness.Hub.TryGetAppearance(PlayerEntityId, out _), Is.False);
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.Zero);
+            Assert.That(harness.Hub.Looks.TryGetAppearance(PlayerEntityId, out _), Is.False);
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.Zero);
         }
 
         // Five handlers apply the carry state of their message to the movement session before
@@ -277,11 +277,11 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             harness.JoinSession();
             var seen = new List<long>();
-            harness.Hub.CarryStateChanged += _ => seen.Add(harness.Hub.CarryItemStateRevision);
-            harness.Hub.ItemOperationCompleted += _ => seen.Add(harness.Hub.CarryItemStateRevision);
-            harness.Hub.CorpseInteractionCompleted += _ => seen.Add(harness.Hub.CarryItemStateRevision);
-            harness.Hub.OwnerItemQuantityChanged += _ => seen.Add(harness.Hub.CarryItemStateRevision);
-            harness.Hub.OwnerItemStateChanged += _ => seen.Add(harness.Hub.CarryItemStateRevision);
+            harness.Hub.Movement.CarryStateChanged += _ => seen.Add(harness.Hub.Items.CarryItemStateRevision);
+            harness.Hub.Items.ItemOperationCompleted += _ => seen.Add(harness.Hub.Items.CarryItemStateRevision);
+            harness.Hub.Corpses.CorpseInteractionCompleted += _ => seen.Add(harness.Hub.Items.CarryItemStateRevision);
+            harness.Hub.Items.OwnerItemQuantityChanged += _ => seen.Add(harness.Hub.Items.CarryItemStateRevision);
+            harness.Hub.Items.OwnerItemStateChanged += _ => seen.Add(harness.Hub.Items.CarryItemStateRevision);
 
             harness.Deliver(CarryPacket(type, Carry(1)));
 
@@ -332,8 +332,8 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeCarryStateChanged(Carry(3)));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-            Assert.That(harness.Hub.CarryItemStateRevision, Is.EqualTo(3));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Leaving));
+            Assert.That(harness.Hub.Items.CarryItemStateRevision, Is.EqualTo(3));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
         }
 
         [Test]
@@ -341,8 +341,8 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             harness.JoinSession();
             var seen = new List<(int, int)>();
-            harness.Hub.AdminStateChanged += () =>
-                seen.Add((harness.Hub.AdminState.SpeedPercent, harness.Hub.MovementSession.WalkSpeedPercent));
+            harness.Hub.Admin.AdminStateChanged += () =>
+                seen.Add((harness.Hub.Admin.AdminState.SpeedPercent, harness.Hub.Movement.MovementSession.WalkSpeedPercent));
 
             harness.Deliver(RealtimeProtocol.EncodeAdminStateChanged(AdminState(250)));
 
@@ -376,12 +376,12 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 new[]
                 {
-                    harness.Hub.SnapshotPacketsReceived,
-                    harness.Hub.SnapshotFramesReceived,
-                    harness.Hub.EstimatedMissingSnapshotFrames
+                    harness.Hub.Diagnostics.SnapshotPacketsReceived,
+                    harness.Hub.Diagnostics.SnapshotFramesReceived,
+                    harness.Hub.Diagnostics.EstimatedMissingSnapshotFrames
                 },
                 Is.EqualTo(new[] { 5L, 3L, 2L }));
-            Assert.That(harness.Hub.LatestServerTick, Is.EqualTo(110u));
+            Assert.That(harness.Hub.Diagnostics.LatestServerTick, Is.EqualTo(110u));
         }
 
         [Test]
@@ -393,7 +393,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeOwnerSimulationSnapshot(OwnerSnapshot(1, 101)));
 
             Assert.That(
-                (harness.Hub.SnapshotFramesReceived, harness.Hub.EstimatedMissingSnapshotFrames),
+                (harness.Hub.Diagnostics.SnapshotFramesReceived, harness.Hub.Diagnostics.EstimatedMissingSnapshotFrames),
                 Is.EqualTo((2L, 1L)));
             Assert.That(
                 harness.Timeline.Count(entry => entry.StartsWith("OwnerSimulationSnapshotReceived", StringComparison.Ordinal)),
@@ -405,7 +405,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void TheSnapshotAgeFollowsTheNewestSequence()
         {
             harness.JoinSession();
-            Assert.That(harness.Hub.LatestSnapshotAgeSeconds, Is.EqualTo(-1f));
+            Assert.That(harness.Hub.Diagnostics.LatestSnapshotAgeSeconds, Is.EqualTo(-1f));
             harness.Now = 101f;
             harness.Deliver(RealtimeProtocol.EncodeOwnerSimulationSnapshot(OwnerSnapshot(5, 100)));
             harness.Now = 102f;
@@ -413,9 +413,9 @@ namespace Mmorpg.Client.Tests.EditMode
 
             harness.Now = 102.5f;
 
-            Assert.That(harness.Hub.LatestSnapshotAgeSeconds, Is.EqualTo(1.5f));
+            Assert.That(harness.Hub.Diagnostics.LatestSnapshotAgeSeconds, Is.EqualTo(1.5f));
             harness.Deliver(RealtimeProtocol.EncodeOwnerSimulationSnapshot(OwnerSnapshot(9, 90)));
-            Assert.That(harness.Hub.LatestSnapshotAgeSeconds, Is.Zero, "A newer sequence with an older tick still counts.");
+            Assert.That(harness.Hub.Diagnostics.LatestSnapshotAgeSeconds, Is.Zero, "A newer sequence with an older tick still counts.");
         }
 
         // Remote snapshots carry no order of their own in the hub: each one is raised.
@@ -439,7 +439,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "SimulationSnapshotReceived 4/99"
                 }));
             Assert.That(
-                (harness.Hub.SnapshotPacketsReceived, harness.Hub.SnapshotFramesReceived, harness.Hub.LatestServerTick),
+                (harness.Hub.Diagnostics.SnapshotPacketsReceived, harness.Hub.Diagnostics.SnapshotFramesReceived, harness.Hub.Diagnostics.LatestServerTick),
                 Is.EqualTo((3L, 0L, 0u)));
         }
 
@@ -456,19 +456,19 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Queue(RealtimeProtocol.EncodeEntityDespawn(EntityDespawn(OtherPlayerEntityId)));
             harness.Frame();
             var lateSubscriberEvents = 0;
-            harness.Hub.EntitySpawned += _ => lateSubscriberEvents++;
-            harness.Hub.WorldActorSpawned += _ => lateSubscriberEvents++;
+            harness.Hub.Players.EntitySpawned += _ => lateSubscriberEvents++;
+            harness.Hub.WorldActors.WorldActorSpawned += _ => lateSubscriberEvents++;
 
-            var players = harness.Hub.SpawnedEntities;
-            var actors = harness.Hub.SpawnedWorldActors;
+            var players = harness.Hub.Players.SpawnedEntities;
+            var actors = harness.Hub.WorldActors.SpawnedWorldActors;
 
             Assert.That(lateSubscriberEvents, Is.Zero, "Subscribing raises nothing; a late reader reads the registry.");
             Assert.That(players.Select(spawn => spawn.EntityId), Is.EqualTo(new[] { PlayerEntityId }));
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.EqualTo(1));
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.EqualTo(1));
             Assert.That(actors.Select(spawn => spawn.EntityId), Is.EquivalentTo(new[] { ActorEntityId, OtherActorEntityId }));
             harness.Deliver(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(OtherPlayerEntityId, persistentId: "9c3d2e1f-0b4a-4c5d-9e6f-a1b2c3d4e5f6")));
             Assert.That(players.Count, Is.EqualTo(1), "A registry read is a copy.");
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.EqualTo(2));
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.EqualTo(2));
         }
 
         // At the end of a session the hub despawns every player, then every world actor, each in
@@ -526,7 +526,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     .Where(entry => !entry.StartsWith("EntityDespawned", StringComparison.Ordinal)
                         && !entry.StartsWith("WorldActorDespawned", StringComparison.Ordinal)),
                 Is.EqualTo(new[] { "frame", "Stop", "UnexpectedlyDisconnected " + code, "SessionEnded " + code }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT " + code }));
         }
     }

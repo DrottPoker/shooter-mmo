@@ -36,7 +36,11 @@ namespace Mmorpg.Client.Gameplay
             new Dictionary<ulong, RealtimeCharacterAppearance>();
         private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
         private bool localLookDeferred;
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeSession realtimeSession;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimePlayerChannel realtimePlayers;
+        private IRealtimeLookChannel realtimeLooks;
+        private IRealtimeAdminChannel realtimeAdmin;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
@@ -124,17 +128,25 @@ namespace Mmorpg.Client.Gameplay
             return remotePlayers.TryGetValue(entityId, out view) && view != null;
         }
 
-        // The composition root passes the persistent realtime client, the pointer focus, the
-        // body tint and look settings, and the local player's equipment when the scene loads,
-        // before Start runs.
+        // The composition root passes the realtime session and the movement, player, look, and
+        // admin channels, the pointer focus, the body tint and look settings, and the local
+        // player's equipment when the scene loads, before Start runs.
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeSession session,
+            IRealtimeMovementChannel movement,
+            IRealtimePlayerChannel players,
+            IRealtimeLookChannel looks,
+            IRealtimeAdminChannel admin,
             WorldPointerFocus focus,
             PlayerBodyTintSetting tintSetting,
             PlayerBodyLookSetting lookSetting,
             PlayerEquipment playerEquipment = null)
         {
-            simulationClient = realtimeClient;
+            realtimeSession = session;
+            realtimeMovement = movement;
+            realtimePlayers = players;
+            realtimeLooks = looks;
+            realtimeAdmin = admin;
             pointerFocus = focus;
             bodyTint = tintSetting;
             bodyLook = lookSetting;
@@ -188,9 +200,12 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (simulationClient == null
-                || !simulationClient.IsJoined
-                || simulationClient.MovementSession == null)
+            if (realtimeSession == null
+                || realtimeMovement == null
+                || realtimePlayers == null
+                || realtimeLooks == null
+                || !realtimeSession.IsJoined
+                || realtimeMovement.MovementSession == null)
             {
                 Debug.LogError(
                     "WorldSceneContext cannot spawn the local player because the joined realtime movement session is unavailable.",
@@ -205,7 +220,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (!localPlayer.EnableServerAuthoritativeMovement(simulationClient))
+            if (!localPlayer.EnableServerAuthoritativeMovement(realtimeSession, realtimeMovement, realtimeAdmin))
             {
                 Debug.LogError(
                     "WorldSceneContext cannot start server-authoritative movement for the joined local player.",
@@ -234,11 +249,11 @@ namespace Mmorpg.Client.Gameplay
                 equipment.Changed += OnEquipmentChanged;
             }
 
-            simulationClient.EntitySpawned += OnEntitySpawned;
-            simulationClient.EntityDespawned += OnEntityDespawned;
-            simulationClient.EntityAppearanceChanged += OnEntityAppearanceChanged;
-            simulationClient.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
-            foreach (var spawn in simulationClient.SpawnedEntities)
+            realtimePlayers.EntitySpawned += OnEntitySpawned;
+            realtimePlayers.EntityDespawned += OnEntityDespawned;
+            realtimeLooks.EntityAppearanceChanged += OnEntityAppearanceChanged;
+            realtimeMovement.SimulationSnapshotReceived += OnSimulationSnapshotReceived;
+            foreach (var spawn in realtimePlayers.SpawnedEntities)
             {
                 OnEntitySpawned(spawn);
             }
@@ -246,12 +261,20 @@ namespace Mmorpg.Client.Gameplay
 
         private void OnDestroy()
         {
-            if (simulationClient != null)
+            if (realtimePlayers != null)
             {
-                simulationClient.EntitySpawned -= OnEntitySpawned;
-                simulationClient.EntityDespawned -= OnEntityDespawned;
-                simulationClient.EntityAppearanceChanged -= OnEntityAppearanceChanged;
-                simulationClient.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
+                realtimePlayers.EntitySpawned -= OnEntitySpawned;
+                realtimePlayers.EntityDespawned -= OnEntityDespawned;
+            }
+
+            if (realtimeLooks != null)
+            {
+                realtimeLooks.EntityAppearanceChanged -= OnEntityAppearanceChanged;
+            }
+
+            if (realtimeMovement != null)
+            {
+                realtimeMovement.SimulationSnapshotReceived -= OnSimulationSnapshotReceived;
             }
 
             if (bodyTint != null)
@@ -290,7 +313,7 @@ namespace Mmorpg.Client.Gameplay
 
         private void OnEntitySpawned(RealtimeEntitySpawn spawn)
         {
-            var movementSession = simulationClient != null ? simulationClient.MovementSession : null;
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (movementSession == null || spawn.EntityId == movementSession.ControlledEntityId)
             {
                 return;
@@ -328,7 +351,7 @@ namespace Mmorpg.Client.Gameplay
                     movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
                 waitingBodies[spawn.EntityId] =
-                    simulationClient.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance;
+                    realtimeLooks.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance;
             }
 
             remotePlayer.PushSnapshot(spawn.ServerTick, spawn.InitialState);
@@ -500,7 +523,7 @@ namespace Mmorpg.Client.Gameplay
         // snapshot, and every other id is ignored.
         private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
         {
-            var movementSession = simulationClient != null ? simulationClient.MovementSession : null;
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (movementSession == null)
             {
                 return;

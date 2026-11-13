@@ -31,7 +31,10 @@ namespace Mmorpg.Client.Ui
         private readonly ClientOperationState operationState = new ClientOperationState();
         private readonly WorldDebugTelemetryTracker telemetry = new WorldDebugTelemetryTracker();
         private readonly CollisionQueryBuffer waterBuffer = new CollisionQueryBuffer();
-        private RealtimeSimulationClient simulationClient;
+        private RealtimeSession realtimeSession;
+        private IRealtimeDiagnostics realtimeDiagnostics;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimePlayerChannel realtimePlayers;
         private PlayerBodyTintSetting bodyTint;
         private WorldDebugViewSettings viewSettings;
         private Material lineMaterial;
@@ -112,16 +115,23 @@ namespace Mmorpg.Client.Ui
             get { return overlay; }
         }
 
-        // Called by the composition root before the component is activated.
+        // Called by the composition root before the component is activated, with every realtime
+        // part or none.
         public void Initialize(
-            RealtimeSimulationClient realtimeClient,
+            RealtimeSession session,
+            IRealtimeDiagnostics diagnostics,
+            IRealtimeMovementChannel movement,
+            IRealtimePlayerChannel players,
             PlayerBodyTintSetting tintSetting,
             WorldDebugViewSettings debugViewSettings,
             Material debugLineMaterial,
             TextCatalog textCatalog,
             ClientContentReport contentReport)
         {
-            simulationClient = realtimeClient;
+            realtimeSession = session;
+            realtimeDiagnostics = diagnostics;
+            realtimeMovement = movement;
+            realtimePlayers = players;
             bodyTint = tintSetting;
             viewSettings = debugViewSettings;
             lineMaterial = debugLineMaterial;
@@ -167,8 +177,8 @@ namespace Mmorpg.Client.Ui
 #endif
             }
 
-            if (simulationClient == null
-                || !simulationClient.IsJoined)
+            if (realtimeSession == null
+                || !realtimeSession.IsJoined)
             {
                 ClientSession.ActiveSimulationSession = null;
                 ClientSceneLoader.LoadCharacterSelect();
@@ -236,7 +246,7 @@ namespace Mmorpg.Client.Ui
 
             overlay = new GameObject("CollisionDebugOverlay").AddComponent<CollisionDebugOverlay>();
             overlay.transform.SetParent(transform, false);
-            overlay.Initialize(simulationClient, lineMaterial);
+            overlay.Initialize(realtimeMovement, lineMaterial);
         }
 
         private void BuildOverviewTab(RectTransform page)
@@ -420,8 +430,8 @@ namespace Mmorpg.Client.Ui
 
         private void SampleNetwork()
         {
-            var client = simulationClient;
-            if (client == null)
+            var diagnostics = realtimeDiagnostics;
+            if (diagnostics == null)
             {
                 telemetry.ResetNetwork();
                 return;
@@ -429,12 +439,12 @@ namespace Mmorpg.Client.Ui
 
             telemetry.SampleNetwork(
                 Time.realtimeSinceStartup,
-                client.RealtimePacketsReceived,
-                client.RealtimeBytesReceived,
-                client.RealtimePacketsSent,
-                client.RealtimeBytesSent,
-                client.SnapshotPacketsReceived,
-                client.SnapshotFramesReceived);
+                diagnostics.RealtimePacketsReceived,
+                diagnostics.RealtimeBytesReceived,
+                diagnostics.RealtimePacketsSent,
+                diagnostics.RealtimeBytesSent,
+                diagnostics.SnapshotPacketsReceived,
+                diagnostics.SnapshotFramesReceived);
         }
 
         // The ground under the pointer, kept while the pointer is over the menu so it can be copied.
@@ -462,7 +472,7 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshPosition()
         {
-            var session = simulationClient != null ? simulationClient.MovementSession : null;
+            var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (localPlayerController == null || !localPlayerController.IsServerAuthoritative || session == null)
             {
                 Set(playerPosition, "No local player", WorldDebugHealth.Unavailable);
@@ -513,27 +523,32 @@ namespace Mmorpg.Client.Ui
                 WorldDebugDiagnostics.Rate(telemetry.FramesPerSecond, "FPS") + ", P95 "
                 + WorldDebugDiagnostics.Milliseconds(telemetry.P95FrameMilliseconds),
                 WorldDebugDiagnostics.EvaluateFrame(telemetry.P95FrameMilliseconds, TargetFrameBudgetMilliseconds));
-            var client = simulationClient;
-            if (client == null || client.MovementSession == null)
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
+            if (realtimeSession == null || movementSession == null)
             {
                 Set(glancePing, "-", WorldDebugHealth.Unavailable);
                 Set(glanceSnapshots, "-", WorldDebugHealth.Unavailable);
-                Set(glanceConnection, client != null ? client.State.ToString() : "No client", WorldDebugHealth.Unavailable);
+                Set(
+                    glanceConnection,
+                    realtimeSession != null ? realtimeSession.State.ToString() : "No client",
+                    WorldDebugHealth.Unavailable);
                 return;
             }
 
             Set(
                 glancePing,
-                client.RoundTripTimeMilliseconds + " ms",
-                WorldDebugDiagnostics.EvaluatePing(client.RoundTripTimeMilliseconds));
+                realtimeDiagnostics.RoundTripTimeMilliseconds + " ms",
+                WorldDebugDiagnostics.EvaluatePing(realtimeDiagnostics.RoundTripTimeMilliseconds));
             Set(
                 glanceSnapshots,
-                WorldDebugDiagnostics.Age(client.LatestSnapshotAgeSeconds) + " ago",
-                WorldDebugDiagnostics.EvaluateSnapshotAge(client.LatestSnapshotAgeSeconds, client.MovementSession.SnapshotRateHz));
+                WorldDebugDiagnostics.Age(realtimeDiagnostics.LatestSnapshotAgeSeconds) + " ago",
+                WorldDebugDiagnostics.EvaluateSnapshotAge(
+                    realtimeDiagnostics.LatestSnapshotAgeSeconds,
+                    movementSession.SnapshotRateHz));
             Set(
                 glanceConnection,
-                client.State.ToString(),
-                client.IsJoined ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
+                realtimeSession.State.ToString(),
+                realtimeSession.IsJoined ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
         }
 
         private void RefreshRendering()
@@ -560,8 +575,7 @@ namespace Mmorpg.Client.Ui
         private void RefreshConnection()
         {
             var session = ClientSession.ActiveSimulationSession;
-            var client = simulationClient;
-            if (session == null || client == null)
+            if (session == null || realtimeSession == null)
             {
                 Set(connectionState, "No local simulation session", WorldDebugHealth.Unavailable);
                 Set(connectionCharacter, "-", WorldDebugHealth.Unavailable);
@@ -574,8 +588,8 @@ namespace Mmorpg.Client.Ui
 
             Set(
                 connectionState,
-                client.State.ToString(),
-                client.IsJoined ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
+                realtimeSession.State.ToString(),
+                realtimeSession.IsJoined ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
             Set(connectionCharacter, session.characterName);
             Set(connectionWorld, session.shardId + " / " + session.worldId);
             Set(
@@ -583,14 +597,15 @@ namespace Mmorpg.Client.Ui
                 session.workerId + " / " + WorldDebugDiagnostics.ShortIdentifier(session.workerRuntimeId));
             Set(
                 connectionEndpoint,
-                client.ConnectedHost + ":" + client.ConnectedPort + " / v" + RealtimeProtocol.Version);
-            Set(connectionTick, client.LatestServerTick.ToString(CultureInfo.InvariantCulture));
+                realtimeDiagnostics.ConnectedHost + ":" + realtimeDiagnostics.ConnectedPort
+                + " / v" + RealtimeProtocol.Version);
+            Set(connectionTick, realtimeDiagnostics.LatestServerTick.ToString(CultureInfo.InvariantCulture));
         }
 
         private void RefreshNetwork()
         {
-            var client = simulationClient;
-            if (client == null || client.MovementSession == null)
+            var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
+            if (realtimeDiagnostics == null || movementSession == null)
             {
                 foreach (var text in new[]
                 {
@@ -606,16 +621,18 @@ namespace Mmorpg.Client.Ui
 
             Set(
                 networkPing,
-                client.RoundTripTimeMilliseconds + " ms",
-                WorldDebugDiagnostics.EvaluatePing(client.RoundTripTimeMilliseconds));
+                realtimeDiagnostics.RoundTripTimeMilliseconds + " ms",
+                WorldDebugDiagnostics.EvaluatePing(realtimeDiagnostics.RoundTripTimeMilliseconds));
             Set(
                 networkSnapshotAge,
-                WorldDebugDiagnostics.Age(client.LatestSnapshotAgeSeconds),
-                WorldDebugDiagnostics.EvaluateSnapshotAge(client.LatestSnapshotAgeSeconds, client.MovementSession.SnapshotRateHz));
+                WorldDebugDiagnostics.Age(realtimeDiagnostics.LatestSnapshotAgeSeconds),
+                WorldDebugDiagnostics.EvaluateSnapshotAge(
+                    realtimeDiagnostics.LatestSnapshotAgeSeconds,
+                    movementSession.SnapshotRateHz));
             Set(
                 networkSnapshotRate,
                 WorldDebugDiagnostics.Rate(telemetry.SnapshotFramesPerSecond, "frames/s")
-                + " of " + client.MovementSession.SnapshotRateHz + " configured");
+                + " of " + movementSession.SnapshotRateHz + " configured");
             Set(
                 networkSnapshotPackets,
                 WorldDebugDiagnostics.Rate(telemetry.SnapshotPacketsPerSecond, "pkt/s")
@@ -629,22 +646,24 @@ namespace Mmorpg.Client.Ui
                 WorldDebugDiagnostics.Rate(telemetry.ReceivedKibibytesPerSecond, "KiB/s")
                 + " / " + WorldDebugDiagnostics.Rate(telemetry.SentKibibytesPerSecond, "KiB/s"));
             var estimatedLoss = WorldDebugDiagnostics.EstimateSnapshotLossPercent(
-                client.SnapshotFramesReceived,
-                client.EstimatedMissingSnapshotFrames);
+                realtimeDiagnostics.SnapshotFramesReceived,
+                realtimeDiagnostics.EstimatedMissingSnapshotFrames);
             Set(
                 networkLoss,
-                WorldDebugDiagnostics.Percent(estimatedLoss) + " (" + client.EstimatedMissingSnapshotFrames + " missing)",
+                WorldDebugDiagnostics.Percent(estimatedLoss) + " (" + realtimeDiagnostics.EstimatedMissingSnapshotFrames + " missing)",
                 WorldDebugDiagnostics.EvaluateLoss(estimatedLoss));
-            Set(networkTotals, client.SnapshotFramesReceived + " / " + client.SnapshotPacketsReceived);
-            var knownEntities = client.SpawnedEntityCount;
+            Set(
+                networkTotals,
+                realtimeDiagnostics.SnapshotFramesReceived + " / " + realtimeDiagnostics.SnapshotPacketsReceived);
+            var knownEntities = realtimePlayers.SpawnedEntityCount;
             Set(networkEntities, knownEntities + " / " + Math.Max(0, knownEntities - 1));
             Set(networkWindow, WorldDebugDiagnostics.Age(telemetry.NetworkSampleSeconds));
         }
 
         private void RefreshMovement()
         {
-            var client = simulationClient;
-            if (client == null || client.MovementSession == null || localPlayerController == null)
+            var session = realtimeMovement != null ? realtimeMovement.MovementSession : null;
+            if (session == null || localPlayerController == null)
             {
                 foreach (var text in new[]
                 {
@@ -658,7 +677,6 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var session = client.MovementSession;
             Set(
                 movementAuthority,
                 localPlayerController.IsServerAuthoritative ? "Server authoritative with client prediction" : "Offline",
@@ -824,7 +842,7 @@ namespace Mmorpg.Client.Ui
         private IEnumerator LeaveShardRoutine()
         {
             var session = ClientSession.ActiveSimulationSession;
-            if (session == null || simulationClient == null)
+            if (session == null || realtimeSession == null)
             {
                 ClientSession.ActiveSimulationSession = null;
                 ClientSceneLoader.LoadCharacterSelect();
@@ -832,7 +850,7 @@ namespace Mmorpg.Client.Ui
             }
 
             RealtimeClientError error = null;
-            yield return simulationClient.Leave(
+            yield return realtimeSession.Leave(
                 session.simulationSessionId,
                 () => { },
                 value => error = value);
@@ -840,7 +858,7 @@ namespace Mmorpg.Client.Ui
             if (error != null)
             {
                 SetStatus("Error: " + AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
-                if (simulationClient.IsJoined)
+                if (realtimeSession.IsJoined)
                 {
                     yield break;
                 }

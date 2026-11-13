@@ -39,7 +39,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(harness.BeginJoin(RealtimeHubHarness.Placement(host: " 127.0.0.1 ")), Is.True);
 
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Connecting));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Connecting));
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "Start", "Connect" }));
             Assert.That(
                 harness.Transport.DisconnectTimeoutMilliseconds,
@@ -47,9 +47,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 harness.Transport.ConnectedEndpoint,
                 Is.EqualTo("127.0.0.1:27015 " + RealtimeProtocol.ConnectionKey));
-            Assert.That((harness.Hub.ConnectedHost, harness.Hub.ConnectedPort), Is.EqualTo(("127.0.0.1", 27015)));
+            Assert.That((harness.Hub.Diagnostics.ConnectedHost, harness.Hub.Diagnostics.ConnectedPort), Is.EqualTo(("127.0.0.1", 27015)));
             Assert.That(harness.Transport.Sent, Is.Empty);
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.Zero, "No round trip before the connection.");
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero, "No round trip before the connection.");
         }
 
         [Test]
@@ -62,15 +62,15 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Frame();
 
             var request = RealtimeProtocol.EncodeJoinRequest("ticket-1");
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joining));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
             Assert.That(
                 harness.Timeline,
                 Is.EqualTo(new[] { "Start", "Connect", "frame", "Send JoinRequest on 0 ReliableOrdered" }));
             Assert.That(harness.Transport.Sent.Single().Packet, Is.EqualTo(request));
             Assert.That(
-                (harness.Hub.RealtimePacketsSent, harness.Hub.RealtimeBytesSent),
+                (harness.Hub.Diagnostics.RealtimePacketsSent, harness.Hub.Diagnostics.RealtimeBytesSent),
                 Is.EqualTo((1L, (long)request.Length)));
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.EqualTo(40));
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.EqualTo(40));
             Assert.That(harness.StepJoin(), Is.True, "The join waits for its answer.");
         }
 
@@ -84,7 +84,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Frame();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joining));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
         }
 
         [Test]
@@ -93,19 +93,19 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.BeginJoinAndConnect();
             harness.Queue(RealtimeProtocol.EncodeOwnerSimulationSnapshot(OwnerSnapshot(1, 10)));
             harness.Frame();
-            Assert.That(harness.Hub.RealtimePacketsReceived, Is.EqualTo(1), "A snapshot before the join is counted.");
+            Assert.That(harness.Hub.Diagnostics.RealtimePacketsReceived, Is.EqualTo(1), "A snapshot before the join is counted.");
             harness.Clear();
             var seenAtJoin = new List<(RealtimeConnectionState, bool, bool)>();
-            harness.Hub.SessionJoined += () => seenAtJoin.Add((
-                harness.Hub.State,
-                harness.Hub.MovementSession != null,
-                harness.Hub.ShardRules != null));
+            harness.Hub.Session.SessionJoined += () => seenAtJoin.Add((
+                harness.Hub.Session.State,
+                harness.Hub.Movement.MovementSession != null,
+                harness.Hub.Session.ShardRules != null));
 
             harness.Deliver(RealtimeProtocol.EncodeJoinAccepted(RealtimeHubHarness.JoinAccepted()));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "SessionJoined" }));
             Assert.That(seenAtJoin, Is.EqualTo(new[] { (RealtimeConnectionState.Joined, true, true) }));
-            Assert.That(harness.Hub.IsJoined, Is.True);
+            Assert.That(harness.Hub.Session.IsJoined, Is.True);
             Assert.That(harness.JoinedSession, Is.Null, "The routine reports the join on its next step.");
             Assert.That(harness.StepJoin(), Is.False);
             var session = harness.JoinedSession;
@@ -123,16 +123,16 @@ namespace Mmorpg.Client.Tests.EditMode
                     "2026-11-13T10:00:00.0000000Z", "2026-11-13T22:00:00.0000000Z"
                 }));
             Assert.That(session.isReconnect, Is.False);
-            Assert.That(harness.Hub.MovementSession.ControlledEntityId, Is.EqualTo(ControlledEntityId));
-            Assert.That(harness.Hub.MovementSession.CharacterId, Is.EqualTo(CharacterId.ToString("D")));
-            Assert.That(harness.Hub.CarryItemStateRevision, Is.Zero);
-            Assert.That(harness.Hub.ShardRules.PlayerVersusPlayer, Is.False);
-            Assert.That(harness.Hub.AdminState, Is.Null);
+            Assert.That(harness.Hub.Movement.MovementSession.ControlledEntityId, Is.EqualTo(ControlledEntityId));
+            Assert.That(harness.Hub.Movement.MovementSession.CharacterId, Is.EqualTo(CharacterId.ToString("D")));
+            Assert.That(harness.Hub.Items.CarryItemStateRevision, Is.Zero);
+            Assert.That(harness.Hub.Session.ShardRules.PlayerVersusPlayer, Is.False);
+            Assert.That(harness.Hub.Admin.AdminState, Is.Null);
             Assert.That(
                 new[]
                 {
-                    harness.Hub.RealtimePacketsSent, harness.Hub.RealtimeBytesSent,
-                    harness.Hub.RealtimePacketsReceived, harness.Hub.RealtimeBytesReceived
+                    harness.Hub.Diagnostics.RealtimePacketsSent, harness.Hub.Diagnostics.RealtimeBytesSent,
+                    harness.Hub.Diagnostics.RealtimePacketsReceived, harness.Hub.Diagnostics.RealtimeBytesReceived
                 },
                 Is.All.Zero,
                 "The join resets the counters, so neither the join request nor the acceptance counts.");
@@ -159,7 +159,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "SessionJoined" }));
             Assert.That(harness.JoinedSession.isReconnect, Is.EqualTo(acceptedAsReconnect));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
         }
 
         [Test]
@@ -182,8 +182,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Start", "Connect", "frame", "Send JoinRequest on 0 ReliableOrdered", "frame", "SessionJoined"
                 }));
             Assert.That(harness.JoinedSession.isReconnect, Is.True);
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.Zero);
-            Assert.That(harness.Hub.SpawnedWorldActors, Is.Empty);
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.Zero);
+            Assert.That(harness.Hub.WorldActors.SpawnedWorldActors, Is.Empty);
         }
 
         [TestCase("another character", "placement_mismatch")]
@@ -225,8 +225,8 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeJoinAccepted(accepted));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "Stop" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
-            Assert.That(harness.Hub.MovementSession, Is.Null);
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Movement.MovementSession, Is.Null);
             Assert.That(harness.StepJoin(), Is.False);
             Assert.That(harness.JoinedSession, Is.Null);
             Assert.That(
@@ -244,7 +244,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeJoinRejected("join_ticket_expired", "The join ticket expired."));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "Stop" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.StepJoin(), Is.False);
             Assert.That(
                 (harness.JoinError.Kind, harness.JoinError.Code, harness.JoinError.Message),
@@ -309,7 +309,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 (harness.JoinError.Kind, harness.JoinError.Code),
                 Is.EqualTo((RealtimeClientErrorKind.Validation, code)));
             Assert.That(harness.Timeline, Is.Empty);
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT " + code }));
         }
 
@@ -319,12 +319,12 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.BeginJoin(), Is.True);
             RealtimeClientError busy = null;
 
-            var second = harness.Hub.Join(RealtimeHubHarness.Placement(), _ => { }, error => busy = error);
+            var second = harness.Hub.Session.Join(RealtimeHubHarness.Placement(), _ => { }, error => busy = error);
 
             Assert.That(second.MoveNext(), Is.False);
             Assert.That((busy.Kind, busy.Code), Is.EqualTo((RealtimeClientErrorKind.Busy, "realtime_busy")));
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "Start", "Connect" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Connecting));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Connecting));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT realtime_busy" }));
         }
 
@@ -339,8 +339,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 (harness.JoinError.Kind, harness.JoinError.Code),
                 Is.EqualTo((RealtimeClientErrorKind.Network, "udp_start_failed")));
-            Assert.That((harness.Hub.ConnectedHost, harness.Hub.ConnectedPort), Is.EqualTo((string.Empty, 0)));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That((harness.Hub.Diagnostics.ConnectedHost, harness.Hub.Diagnostics.ConnectedPort), Is.EqualTo((string.Empty, 0)));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT udp_start_failed" }));
         }
 
@@ -370,8 +370,8 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 (harness.JoinError.Kind, harness.JoinError.Code),
                 Is.EqualTo((RealtimeClientErrorKind.Network, "udp_connect_failed")));
-            Assert.That((harness.Hub.ConnectedHost, harness.Hub.ConnectedPort), Is.EqualTo((string.Empty, 0)));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That((harness.Hub.Diagnostics.ConnectedHost, harness.Hub.Diagnostics.ConnectedPort), Is.EqualTo((string.Empty, 0)));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT udp_connect_failed" }));
         }
 
@@ -384,14 +384,14 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Now = 100f + RealtimeHubHarness.TimeoutSeconds - 0.5f;
             harness.Transport.QueueConnected();
             harness.Frame();
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joining));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
             harness.Clear();
 
             harness.Now = 100f + RealtimeHubHarness.TimeoutSeconds;
             harness.Frame();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "Stop" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.StepJoin(), Is.False);
             Assert.That(
                 (harness.JoinError.Kind, harness.JoinError.Code),
@@ -409,7 +409,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Frame();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "Stop" }));
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.Zero);
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero);
             Assert.That(harness.StepJoin(), Is.False);
             Assert.That(
                 (harness.JoinError.Kind, harness.JoinError.Code, harness.JoinError.Message),
@@ -464,7 +464,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(harness.BeginLeave(" " + SessionId.ToString("D") + " "), Is.True);
 
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Leaving));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "Send LeaveRequest on 0 ReliableOrdered" }));
             Assert.That(
                 harness.Transport.Sent.Single().Packet,
@@ -483,10 +483,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Stop",
                     "SessionEnded null"
                 }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
-            Assert.That(harness.Hub.MovementSession, Is.Null);
-            Assert.That(harness.Hub.ShardRules, Is.Null);
-            Assert.That(harness.Hub.CarryItemStateRevision, Is.EqualTo(-1));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Movement.MovementSession, Is.Null);
+            Assert.That(harness.Hub.Session.ShardRules, Is.Null);
+            Assert.That(harness.Hub.Items.CarryItemStateRevision, Is.EqualTo(-1));
             Assert.That(harness.StepLeave(), Is.False);
             Assert.That(harness.LeaveSucceeded, Is.True);
             Assert.That(harness.LeaveError, Is.Null);
@@ -502,9 +502,9 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Deliver(RealtimeProtocol.EncodeLeaveRejected("leave_not_joined", "No simulation session is active."));
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
-            Assert.That(harness.Hub.MovementSession, Is.Not.Null);
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.EqualTo(1));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.Hub.Movement.MovementSession, Is.Not.Null);
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.EqualTo(1));
             Assert.That(harness.Transport.IsStarted, Is.True);
             Assert.That(harness.StepLeave(), Is.False);
             Assert.That(harness.LeaveSucceeded, Is.False);
@@ -550,7 +550,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Clear();
             harness.Now = 200f + RealtimeHubHarness.TimeoutSeconds - 0.5f;
             harness.Frame();
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Leaving));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
 
             harness.Now = 200f + RealtimeHubHarness.TimeoutSeconds;
             harness.Frame();
@@ -596,7 +596,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 (harness.LeaveError.Kind, harness.LeaveError.Code),
                 Is.EqualTo((RealtimeClientErrorKind.Validation, "missing_simulation_session")));
             Assert.That(harness.Timeline, Is.Empty);
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT missing_simulation_session" }));
         }
 
@@ -652,7 +652,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "UnexpectedlyDisconnected " + code,
                     "SessionEnded " + code
                 }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.LastPayload("SessionEnded"), Is.SameAs(harness.LastPayload("UnexpectedlyDisconnected")));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { logCategory + " " + code }));
         }
@@ -681,7 +681,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "UnexpectedlyDisconnected unexpected_join_rejection",
                     "SessionEnded unexpected_join_rejection"
                 }));
-            Assert.That(harness.Hub.RealtimePacketsReceived, Is.EqualTo(1), "The failure reset the counters.");
+            Assert.That(harness.Hub.Diagnostics.RealtimePacketsReceived, Is.EqualTo(1), "The failure reset the counters.");
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT unexpected_join_rejection" }));
         }
 
@@ -693,7 +693,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             JoinWithPresence();
 
-            harness.Hub.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+            harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
 
             Assert.That(
                 harness.Timeline,
@@ -702,7 +702,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "EntityDespawned 11 combat_state_conflict",
                     "WorldActorDespawned 21 combat_state_conflict"
                 }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.Transport.IsStarted, Is.True);
             harness.Clear();
             harness.Queue(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(OtherPlayerEntityId)));
@@ -720,15 +720,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 }));
             var error = (RealtimeClientError)harness.LastPayload("SessionEnded");
             Assert.That(error.Kind, Is.EqualTo(RealtimeClientErrorKind.Protocol));
-            Assert.That(harness.Hub.RealtimePacketsReceived, Is.EqualTo(1));
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.Zero);
+            Assert.That(harness.Hub.Diagnostics.RealtimePacketsReceived, Is.EqualTo(1));
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.Zero);
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT combat_state_conflict" }));
         }
 
         [Test]
         public void AClientFailureWithoutAConnectionDoesNothing()
         {
-            harness.Hub.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+            harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
             harness.Frame();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
@@ -739,7 +739,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             JoinWithPresence();
 
-            harness.Hub.Abort();
+            harness.Hub.Session.Abort();
             harness.Frame();
 
             Assert.That(
@@ -752,7 +752,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "SessionEnded null",
                     "frame"
                 }));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
         }
 
         // The join routine finds no error of the hub and reports its own.
@@ -762,7 +762,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.BeginJoinAndConnect();
             harness.Clear();
 
-            harness.Hub.Abort();
+            harness.Hub.Session.Abort();
 
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "Stop" }));
             Assert.That(harness.StepJoin(), Is.False);
@@ -772,15 +772,15 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT connection_closed" }));
         }
 
-        // Surprising but pinned: Abort clears the session events that a failure in the same
-        // frame deferred, so neither UnexpectedlyDisconnected nor SessionEnded ever fires.
+        // An abort after a failure that waits for its frame stops the transport and raises the
+        // events that the failure owes at once, in order, and no SessionEnded of its own.
         [Test]
-        public void AbortAfterAFailureBeforeTheNextFrameDropsTheDeferredSessionEvents()
+        public void AbortAfterAFailureBeforeTheNextFrameRaisesTheOwedSessionEventsAtOnce()
         {
             JoinWithPresence();
-            harness.Hub.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+            harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
 
-            harness.Hub.Abort();
+            harness.Hub.Session.Abort();
             harness.Frame();
 
             Assert.That(
@@ -790,31 +790,116 @@ namespace Mmorpg.Client.Tests.EditMode
                     "EntityDespawned 11 combat_state_conflict",
                     "WorldActorDespawned 21 combat_state_conflict",
                     "Stop",
+                    "UnexpectedlyDisconnected combat_state_conflict",
+                    "SessionEnded combat_state_conflict",
                     "frame"
                 }));
+            Assert.That(harness.LastPayload("SessionEnded"), Is.SameAs(harness.LastPayload("UnexpectedlyDisconnected")));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT combat_state_conflict" }));
         }
 
-        // Surprising but pinned: a join that starts after a failure, before the frame that stops
-        // the failed transport, starts the still running transport, which refuses, and stops it.
-        // The join fails, UnexpectedlyDisconnected of the failure is dropped, SessionEnded is not.
+        // A join that starts after a failure, before the frame that would stop the failed
+        // transport, first finishes the failed session: it stops the transport and raises the
+        // events that the failure owes, in order. Then it starts on the stopped transport and joins.
         [Test]
-        public void AJoinBeforeTheFrameAfterAFailureFailsAndDropsTheUnexpectedDisconnect()
+        public void AJoinBeforeTheFrameAfterAFailureFinishesTheFailedSessionAndJoins()
         {
             JoinWithPresence();
-            harness.Hub.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+            harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
             harness.Clear();
 
-            Assert.That(harness.BeginJoin(), Is.False);
+            Assert.That(harness.BeginJoin(), Is.True);
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "Stop",
+                    "UnexpectedlyDisconnected combat_state_conflict",
+                    "SessionEnded combat_state_conflict",
+                    "Start",
+                    "Connect"
+                }));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Connecting));
+            harness.Clear();
+            harness.Transport.QueueConnected();
+            harness.Frame();
+            harness.Deliver(RealtimeProtocol.EncodeJoinAccepted(RealtimeHubHarness.JoinAccepted(true)));
+            Assert.That(harness.StepJoin(), Is.False);
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[] { "frame", "Send JoinRequest on 0 ReliableOrdered", "frame", "SessionJoined" }));
+            Assert.That(harness.JoinError, Is.Null);
+            Assert.That(harness.JoinedSession.isReconnect, Is.True);
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT combat_state_conflict" }));
+        }
+
+        // A listener that joins again from UnexpectedlyDisconnected, as a reconnect does, sees
+        // SessionEnded of the lost session before its new transport starts.
+        [Test]
+        public void AJoinFromTheUnexpectedDisconnectStartsAfterTheLostSessionEnded()
+        {
+            JoinWithPresence();
+            harness.Hub.Session.UnexpectedlyDisconnected += _ => harness.BeginJoin();
+            harness.Transport.QueueDisconnected(DisconnectReason.Timeout);
+
             harness.Frame();
 
-            Assert.That(harness.Timeline, Is.EqualTo(new[] { "Start", "Stop", "frame", "SessionEnded combat_state_conflict" }));
             Assert.That(
-                (harness.JoinError.Kind, harness.JoinError.Code),
-                Is.EqualTo((RealtimeClientErrorKind.Network, "udp_start_failed")));
-            Assert.That(
-                harness.TakeFailures(),
-                Is.EqualTo(new[] { "CLIENT combat_state_conflict", "CLIENT udp_start_failed" }));
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "EntityDespawned 11 connection_lost",
+                    "WorldActorDespawned 21 connection_lost",
+                    "Stop",
+                    "UnexpectedlyDisconnected connection_lost",
+                    "SessionEnded connection_lost",
+                    "Start",
+                    "Connect"
+                }));
+            harness.Clear();
+            harness.Transport.QueueConnected();
+            harness.Frame();
+            harness.Deliver(RealtimeProtocol.EncodeJoinAccepted(RealtimeHubHarness.JoinAccepted(true)));
+            Assert.That(harness.StepJoin(), Is.False);
+            Assert.That(harness.JoinError, Is.Null);
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT connection_lost" }));
+        }
+
+        // Whatever is called after a joined session ended, before or after its frame, the session
+        // ends with exactly one SessionEnded, and an unexpected end raises exactly one
+        // UnexpectedlyDisconnected before it.
+        [Test]
+        public void AJoinedSessionEndsWithOneSessionEndedWhateverFollows(
+            [Values("a lost connection", "a server disconnect", "a client failure", "an accepted leave", "an abort")]
+            string ending,
+            [Values("nothing", "an abort", "a join", "a client failure", "a leave")]
+            string next)
+        {
+            JoinWithPresence();
+
+            EndSessionBeforeItsFrame(ending);
+            Follow(next);
+            harness.Frame();
+
+            var ended = harness.Timeline.Where(entry => entry.StartsWith("SessionEnded ", StringComparison.Ordinal)).ToArray();
+            var unexpected = harness.Timeline
+                .Where(entry => entry.StartsWith("UnexpectedlyDisconnected ", StringComparison.Ordinal))
+                .ToArray();
+            var endsUnexpectedly = ending != "an accepted leave" && ending != "an abort";
+            Assert.That(ended.Length, Is.EqualTo(1));
+            Assert.That(unexpected.Length, Is.EqualTo(endsUnexpectedly ? 1 : 0));
+            if (endsUnexpectedly)
+            {
+                Assert.That(harness.Timeline.IndexOf(unexpected[0]), Is.LessThan(harness.Timeline.IndexOf(ended[0])));
+                Assert.That(harness.LastPayload("SessionEnded"), Is.SameAs(harness.LastPayload("UnexpectedlyDisconnected")));
+            }
+
+            harness.TakeFailures();
         }
 
         // Surprising but pinned: what a despawn subscriber reads of the hub depends on where the
@@ -832,8 +917,8 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             JoinWithPresence();
             var seen = new List<(RealtimeConnectionState, bool)>();
-            harness.Hub.EntityDespawned += _ => seen.Add((harness.Hub.State, harness.Hub.MovementSession != null));
-            harness.Hub.WorldActorDespawned += _ => seen.Add((harness.Hub.State, harness.Hub.MovementSession != null));
+            harness.Hub.Players.EntityDespawned += _ => seen.Add((harness.Hub.Session.State, harness.Hub.Movement.MovementSession != null));
+            harness.Hub.WorldActors.WorldActorDespawned += _ => seen.Add((harness.Hub.Session.State, harness.Hub.Movement.MovementSession != null));
 
             EndSession(ending);
 
@@ -849,10 +934,10 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             JoinWithPresence();
             var seen = new List<(int, int, bool)>();
-            harness.Hub.SessionEnded += error => seen.Add((
-                harness.Hub.SpawnedEntityCount,
-                harness.Hub.SpawnedWorldActors.Count,
-                harness.Hub.TryGetAppearance(PlayerEntityId, out _)));
+            harness.Hub.Session.SessionEnded += error => seen.Add((
+                harness.Hub.Players.SpawnedEntityCount,
+                harness.Hub.WorldActors.SpawnedWorldActors.Count,
+                harness.Hub.Looks.TryGetAppearance(PlayerEntityId, out _)));
 
             EndSession(ending);
 
@@ -867,7 +952,7 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Queue(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId)));
             harness.Queue(RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawn()));
             harness.Frame();
-            Assert.That(harness.Hub.SpawnedEntityCount, Is.EqualTo(1));
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.EqualTo(1));
             harness.Clear();
         }
 
@@ -892,7 +977,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     harness.Deliver(packet.Take(3).ToArray(), RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
                     break;
                 case "a client failure":
-                    harness.Hub.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+                    harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
                     harness.Frame();
                     break;
                 case "an accepted leave":
@@ -900,10 +985,45 @@ namespace Mmorpg.Client.Tests.EditMode
                     harness.Deliver(RealtimeProtocol.EncodeLeaveAccepted(20));
                     break;
                 case "an abort":
-                    harness.Hub.Abort();
+                    harness.Hub.Session.Abort();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ending), ending, null);
+            }
+        }
+
+        // Like EndSession, but a client failure stops before the frame that raises its events.
+        private void EndSessionBeforeItsFrame(string ending)
+        {
+            if (ending == "a client failure")
+            {
+                harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");
+                return;
+            }
+
+            EndSession(ending);
+        }
+
+        private void Follow(string next)
+        {
+            switch (next)
+            {
+                case "nothing":
+                    break;
+                case "an abort":
+                    harness.Hub.Session.Abort();
+                    break;
+                case "a join":
+                    Assert.That(harness.BeginJoin(), Is.True);
+                    break;
+                case "a client failure":
+                    harness.Hub.Session.DisconnectForClientFailure("inventory_state_conflict", "The inventory conflicts.");
+                    break;
+                case "a leave":
+                    Assert.That(harness.BeginLeave(), Is.False);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(next), next, null);
             }
         }
     }

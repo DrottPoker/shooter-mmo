@@ -26,7 +26,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 yield return new SendCase(
                     "TrySendMovementInputs",
-                    hub => hub.TrySendMovementInputs(
+                    hub => hub.Movement.TrySendMovementInputs(
                         new[] { new PlayerMovementInput(1, 10, null), new PlayerMovementInput(2, 11, Route) },
                         Route),
                     () => RealtimeProtocol.EncodeMovementInputBatch(new RealtimeMovementInputBatch(
@@ -42,31 +42,31 @@ namespace Mmorpg.Client.Tests.EditMode
                     DeliveryMethod.Sequenced);
                 yield return Control(
                     "TrySendItemOperation",
-                    hub => hub.TrySendItemOperation(ItemIntent()),
+                    hub => hub.Items.TrySendItemOperation(ItemIntent()),
                     () => RealtimeProtocol.EncodeItemOperationIntent(ItemIntent()));
                 yield return Control(
                     "TrySendCorpseInteraction",
-                    hub => hub.TrySendCorpseInteraction(CorpseIntent()),
+                    hub => hub.Corpses.TrySendCorpseInteraction(CorpseIntent()),
                     () => RealtimeProtocol.EncodeCorpseInteractionIntent(CorpseIntent()));
                 yield return Control(
                     "TrySendWorldInteraction",
-                    hub => hub.TrySendWorldInteraction(WorldIntent()),
+                    hub => hub.WorldInteractions.TrySendWorldInteraction(WorldIntent()),
                     () => RealtimeProtocol.EncodeWorldInteractionIntent(WorldIntent()));
                 yield return Control(
                     "TrySendAdminIntent",
-                    hub => hub.TrySendAdminIntent(AdminIntent()),
+                    hub => hub.Admin.TrySendAdminIntent(AdminIntent()),
                     () => RealtimeProtocol.EncodeAdminIntent(AdminIntent()));
                 yield return Control(
                     "TrySendAppearanceIntent",
-                    hub => hub.TrySendAppearanceIntent(AppearanceIntent()),
+                    hub => hub.Looks.TrySendAppearanceIntent(AppearanceIntent()),
                     () => RealtimeProtocol.EncodeAppearanceIntent(AppearanceIntent()));
                 yield return Control(
                     "TrySendQuestIntent",
-                    hub => hub.TrySendQuestIntent(QuestIntent()),
+                    hub => hub.Quests.TrySendQuestIntent(QuestIntent()),
                     () => RealtimeProtocol.EncodeQuestIntent(QuestIntent()));
                 yield return Control(
                     "TrySendCombatIntent",
-                    hub => hub.TrySendCombatIntent(CombatIntent()),
+                    hub => hub.Combat.TrySendCombatIntent(CombatIntent()),
                     () => RealtimeProtocol.EncodeCombatIntent(CombatIntent()));
             }
         }
@@ -90,22 +90,22 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             get
             {
-                yield return Invalid("no inputs", hub => hub.TrySendMovementInputs(null, null));
-                yield return Invalid("an empty batch", hub => hub.TrySendMovementInputs(Array.Empty<PlayerMovementInput>(), null));
+                yield return Invalid("no inputs", hub => hub.Movement.TrySendMovementInputs(null, null));
+                yield return Invalid("an empty batch", hub => hub.Movement.TrySendMovementInputs(Array.Empty<PlayerMovementInput>(), null));
                 yield return Invalid(
                     "five inputs",
-                    hub => hub.TrySendMovementInputs(
+                    hub => hub.Movement.TrySendMovementInputs(
                         Enumerable.Range(1, RealtimeProtocol.MaximumInputBatchSize + 1)
                             .Select(index => new PlayerMovementInput((uint)index, (uint)index, null))
                             .ToArray(),
                         null));
-                yield return Invalid("no item intent", hub => hub.TrySendItemOperation(null));
-                yield return Invalid("no corpse intent", hub => hub.TrySendCorpseInteraction(null));
-                yield return Invalid("no world intent", hub => hub.TrySendWorldInteraction(null));
-                yield return Invalid("no admin intent", hub => hub.TrySendAdminIntent(null));
-                yield return Invalid("no appearance intent", hub => hub.TrySendAppearanceIntent(null));
-                yield return Invalid("no quest intent", hub => hub.TrySendQuestIntent(null));
-                yield return Invalid("no combat intent", hub => hub.TrySendCombatIntent(null));
+                yield return Invalid("no item intent", hub => hub.Items.TrySendItemOperation(null));
+                yield return Invalid("no corpse intent", hub => hub.Corpses.TrySendCorpseInteraction(null));
+                yield return Invalid("no world intent", hub => hub.WorldInteractions.TrySendWorldInteraction(null));
+                yield return Invalid("no admin intent", hub => hub.Admin.TrySendAdminIntent(null));
+                yield return Invalid("no appearance intent", hub => hub.Looks.TrySendAppearanceIntent(null));
+                yield return Invalid("no quest intent", hub => hub.Quests.TrySendQuestIntent(null));
+                yield return Invalid("no combat intent", hub => hub.Combat.TrySendCombatIntent(null));
             }
         }
 
@@ -138,7 +138,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 : new[] { "Send " + sent };
             Assert.That(harness.Timeline, Is.EqualTo(expectedCalls));
             Assert.That(
-                (harness.Hub.RealtimePacketsSent, harness.Hub.RealtimeBytesSent),
+                (harness.Hub.Diagnostics.RealtimePacketsSent, harness.Hub.Diagnostics.RealtimeBytesSent),
                 Is.EqualTo((1L, (long)expected.Length)));
         }
 
@@ -157,18 +157,18 @@ namespace Mmorpg.Client.Tests.EditMode
                     break;
                 case "ended":
                     harness.JoinSession();
-                    harness.Hub.Abort();
+                    harness.Hub.Session.Abort();
                     break;
             }
 
             harness.Clear();
-            var sentBefore = harness.Hub.RealtimePacketsSent;
+            var sentBefore = harness.Hub.Diagnostics.RealtimePacketsSent;
 
             Assert.That(item.Send(harness.Hub), Is.False);
 
             Assert.That(harness.Transport.Sent, Is.Empty);
             Assert.That(harness.Timeline, Is.Empty);
-            Assert.That(harness.Hub.RealtimePacketsSent, Is.EqualTo(sentBefore));
+            Assert.That(harness.Hub.Diagnostics.RealtimePacketsSent, Is.EqualTo(sentBefore));
         }
 
         [TestCaseSource(nameof(InvalidArgumentCases))]
@@ -191,14 +191,14 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.JoinSession();
 
             var sent = message == "an item operation"
-                ? harness.Hub.TrySendItemOperation(UnencodableItemIntent())
-                : harness.Hub.TrySendMovementInputs(
+                ? harness.Hub.Items.TrySendItemOperation(UnencodableItemIntent())
+                : harness.Hub.Movement.TrySendMovementInputs(
                     new[] { new PlayerMovementInput(1, 10, Route), new PlayerMovementInput(2, 11, null) },
                     Route);
 
             Assert.That(sent, Is.False);
             Assert.That(harness.Timeline, Is.Empty, "Nothing is sent and the transport is not woken.");
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
             var failures = harness.TakeFailures();
             Assert.That(failures.Length, Is.EqualTo(1));
             Assert.That(failures[0], Does.StartWith(log));
@@ -224,19 +224,19 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Frame();
             harness.Now = 101.75f;
             var intent = RealtimeProtocol.EncodeCombatIntent(CombatIntent());
-            Assert.That(harness.Hub.TrySendCombatIntent(CombatIntent()), Is.True);
+            Assert.That(harness.Hub.Combat.TrySendCombatIntent(CombatIntent()), Is.True);
 
             Assert.That(
                 new[]
                 {
-                    harness.Hub.RealtimePacketsReceived,
-                    harness.Hub.RealtimeBytesReceived,
-                    harness.Hub.RealtimePacketsSent,
-                    harness.Hub.RealtimeBytesSent,
-                    harness.Hub.SnapshotPacketsReceived,
-                    harness.Hub.SnapshotFramesReceived,
-                    harness.Hub.EstimatedMissingSnapshotFrames,
-                    harness.Hub.LatestServerTick
+                    harness.Hub.Diagnostics.RealtimePacketsReceived,
+                    harness.Hub.Diagnostics.RealtimeBytesReceived,
+                    harness.Hub.Diagnostics.RealtimePacketsSent,
+                    harness.Hub.Diagnostics.RealtimeBytesSent,
+                    harness.Hub.Diagnostics.SnapshotPacketsReceived,
+                    harness.Hub.Diagnostics.SnapshotFramesReceived,
+                    harness.Hub.Diagnostics.EstimatedMissingSnapshotFrames,
+                    harness.Hub.Diagnostics.LatestServerTick
                 },
                 Is.EqualTo(new[]
                 {
@@ -249,7 +249,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     2L,
                     110L
                 }));
-            Assert.That(harness.Hub.LatestSnapshotAgeSeconds, Is.EqualTo(0.25f));
+            Assert.That(harness.Hub.Diagnostics.LatestSnapshotAgeSeconds, Is.EqualTo(0.25f));
 
             Assert.That(harness.BeginLeave(), Is.True);
             harness.Deliver(RealtimeProtocol.EncodeLeaveAccepted(20));
@@ -257,18 +257,18 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 new[]
                 {
-                    harness.Hub.RealtimePacketsReceived,
-                    harness.Hub.RealtimeBytesReceived,
-                    harness.Hub.RealtimePacketsSent,
-                    harness.Hub.RealtimeBytesSent,
-                    harness.Hub.SnapshotPacketsReceived,
-                    harness.Hub.SnapshotFramesReceived,
-                    harness.Hub.EstimatedMissingSnapshotFrames,
-                    harness.Hub.LatestServerTick
+                    harness.Hub.Diagnostics.RealtimePacketsReceived,
+                    harness.Hub.Diagnostics.RealtimeBytesReceived,
+                    harness.Hub.Diagnostics.RealtimePacketsSent,
+                    harness.Hub.Diagnostics.RealtimeBytesSent,
+                    harness.Hub.Diagnostics.SnapshotPacketsReceived,
+                    harness.Hub.Diagnostics.SnapshotFramesReceived,
+                    harness.Hub.Diagnostics.EstimatedMissingSnapshotFrames,
+                    harness.Hub.Diagnostics.LatestServerTick
                 },
                 Is.All.Zero);
-            Assert.That(harness.Hub.LatestSnapshotAgeSeconds, Is.EqualTo(-1f));
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.Zero);
+            Assert.That(harness.Hub.Diagnostics.LatestSnapshotAgeSeconds, Is.EqualTo(-1f));
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero);
         }
 
         [Test]
@@ -276,14 +276,14 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             harness.Transport.ReportedRoundTripTime = 35;
             Assert.That(harness.BeginJoin(), Is.True);
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.Zero);
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero);
 
             harness.Transport.QueueConnected();
             harness.Frame();
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.EqualTo(35));
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.EqualTo(35));
 
-            harness.Hub.Abort();
-            Assert.That(harness.Hub.RoundTripTimeMilliseconds, Is.Zero);
+            harness.Hub.Session.Abort();
+            Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero);
             Assert.That(harness.StepJoin(), Is.False);
             harness.TakeFailures();
         }

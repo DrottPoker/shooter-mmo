@@ -254,7 +254,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         "admin_intent_result",
                         "AdminIntentCompleted")
                     .WhileLeaving(Reaction.Ignored);
-                // The event has no argument; the harness records the hub's AdminState with it.
+                // The event has no argument; the harness records the admin channel's AdminState with it.
                 yield return Feature(
                         RealtimeMessageType.AdminStateChanged,
                         () => AdminState(),
@@ -402,7 +402,7 @@ namespace Mmorpg.Client.Tests.EditMode
             if (item.Joined == Reaction.Raises)
             {
                 Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }.Concat(item.JoinedEvents)));
-                Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+                Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
                 var featureEvent = item.JoinedEvents.Last().Split(' ')[0];
                 Assert.That(
                     item.Content(harness.LastPayload(featureEvent)),
@@ -426,7 +426,7 @@ namespace Mmorpg.Client.Tests.EditMode
             if (item.BeforeJoin == Reaction.Ignored)
             {
                 Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-                Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Joining));
+                Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
                 Assert.That(harness.StepJoin(), Is.True);
                 return;
             }
@@ -441,15 +441,15 @@ namespace Mmorpg.Client.Tests.EditMode
             item.Prepare?.Invoke(harness);
             Assert.That(harness.BeginLeave(), Is.True);
             harness.Clear();
-            var received = harness.Hub.RealtimePacketsReceived;
+            var received = harness.Hub.Diagnostics.RealtimePacketsReceived;
 
             harness.Deliver(item.Packet());
 
             if (item.Leaving == Reaction.Ignored)
             {
                 Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
-                Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Leaving));
-                Assert.That(harness.Hub.RealtimePacketsReceived, Is.EqualTo(received + 1), "An ignored packet is counted.");
+                Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
+                Assert.That(harness.Hub.Diagnostics.RealtimePacketsReceived, Is.EqualTo(received + 1), "An ignored packet is counted.");
                 Assert.That(harness.StepLeave(), Is.True);
                 return;
             }
@@ -607,7 +607,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 ((RealtimeClientError)harness.LastPayload("SessionEnded")).Kind,
                 Is.EqualTo(RealtimeClientErrorKind.Protocol));
-            Assert.That(harness.Hub.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT " + code }));
         }
 

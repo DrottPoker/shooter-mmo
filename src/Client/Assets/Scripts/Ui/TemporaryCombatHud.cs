@@ -52,7 +52,8 @@ namespace Mmorpg.Client.Ui
         private readonly Stack<TextMeshProUGUI> idleDamageTexts = new Stack<TextMeshProUGUI>();
         private CombatClientController combatController;
         private CombatTargetingController targetingController;
-        private RealtimeSimulationClient realtimeClient;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimeDiagnostics realtimeDiagnostics;
         private CombatantViewLocator views;
         private RectTransform worldLayer;
         private GameObject ownerFrame;
@@ -91,14 +92,16 @@ namespace Mmorpg.Client.Ui
         public void Initialize(
             CombatClientController combat,
             CombatTargetingController targeting,
-            RealtimeSimulationClient realtime,
+            IRealtimeMovementChannel movement,
+            IRealtimeDiagnostics diagnostics,
             CombatantViewLocator combatantViews,
             TextCatalog messageTexts)
         {
             texts = messageTexts;
             combatController = combat;
             targetingController = targeting;
-            realtimeClient = realtime;
+            realtimeMovement = movement;
+            realtimeDiagnostics = diagnostics;
             views = combatantViews;
         }
 
@@ -234,7 +237,9 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var clock = CombatServerClock.FromClient(realtimeClient);
+            var clock = CombatServerClock.FromDiagnostics(
+                realtimeDiagnostics,
+                realtimeMovement != null ? realtimeMovement.MovementSession : null);
             var seconds = clock.IsKnown
                 ? Mathf.CeilToInt(Mathf.Max(0f, clock.SecondsUntil(owner.RespawnTick)))
                 : -1;

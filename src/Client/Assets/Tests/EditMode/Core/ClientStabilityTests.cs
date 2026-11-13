@@ -52,50 +52,39 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(error.Message, Is.EqualTo("This account logged in from another client."));
         }
 
-        [Test]
-        public void SnapshotsOutsideJoinedStateAreIgnoredAsInFlightPackets()
+        [TestCase(RealtimeMessageType.SimulationSnapshot)]
+        [TestCase(RealtimeMessageType.OwnerSimulationSnapshot)]
+        public void SnapshotsOutsideJoinedStateAreIgnoredAsInFlightPackets(RealtimeMessageType snapshot)
         {
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Joining),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Leaving),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Disconnected),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreSimulationSnapshot(RealtimeConnectionState.Joined),
-                Is.False);
+            using (var harness = new RealtimeHubHarness())
+            {
+                var messages = harness.Hub.Messages;
+                Assert.That(messages.IsDropped(snapshot, RealtimeConnectionState.Joining), Is.True);
+                Assert.That(messages.IsDropped(snapshot, RealtimeConnectionState.Leaving), Is.True);
+                Assert.That(messages.IsDropped(snapshot, RealtimeConnectionState.Disconnected), Is.True);
+                Assert.That(messages.IsDropped(snapshot, RealtimeConnectionState.Joined), Is.False);
+            }
         }
 
         [Test]
         public void InFlightSessionMessagesAreIgnoredWhileLeaving()
         {
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.EntitySpawn),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.WorldActorState),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.ItemOperationResult),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.CorpseViewClosed),
-                Is.True);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.LeaveAccepted),
-                Is.False);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.ServerDisconnect),
-                Is.False);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.JoinAccepted),
-                Is.False);
-            Assert.That(
-                RealtimeSimulationClient.ShouldIgnoreWhileLeaving(RealtimeMessageType.CarryStateChanged),
-                Is.False);
+            using (var harness = new RealtimeHubHarness())
+            {
+                var messages = harness.Hub.Messages;
+                Assert.That(messages.IsDropped(RealtimeMessageType.EntitySpawn, RealtimeConnectionState.Leaving), Is.True);
+                Assert.That(messages.IsDropped(RealtimeMessageType.WorldActorState, RealtimeConnectionState.Leaving), Is.True);
+                Assert.That(
+                    messages.IsDropped(RealtimeMessageType.ItemOperationResult, RealtimeConnectionState.Leaving),
+                    Is.True);
+                Assert.That(messages.IsDropped(RealtimeMessageType.CorpseViewClosed, RealtimeConnectionState.Leaving), Is.True);
+                Assert.That(messages.IsDropped(RealtimeMessageType.LeaveAccepted, RealtimeConnectionState.Leaving), Is.False);
+                Assert.That(messages.IsDropped(RealtimeMessageType.ServerDisconnect, RealtimeConnectionState.Leaving), Is.False);
+                Assert.That(messages.IsDropped(RealtimeMessageType.JoinAccepted, RealtimeConnectionState.Leaving), Is.False);
+                Assert.That(
+                    messages.IsDropped(RealtimeMessageType.CarryStateChanged, RealtimeConnectionState.Leaving),
+                    Is.False);
+            }
         }
 
         [Test]

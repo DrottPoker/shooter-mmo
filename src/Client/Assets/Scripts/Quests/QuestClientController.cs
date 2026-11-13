@@ -27,7 +27,8 @@ namespace Mmorpg.Client.Quests
         private readonly QuestLogRetry retry = new QuestLogRetry();
         private ApiClient apiClient;
         private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeQuestChannel questChannel;
+        private IRealtimeSession realtimeSession;
         private IInventoryOperationQueue inventory;
         private Guid pendingIntentId;
         private bool initialized;
@@ -68,7 +69,8 @@ namespace Mmorpg.Client.Quests
 
         public void Initialize(
             ApiClient client,
-            RealtimeSimulationClient realtimeClient,
+            IRealtimeQuestChannel quests,
+            IRealtimeSession session,
             string questCatalogJson,
             TextCatalog texts,
             IInventoryOperationQueue inventoryQueue = null)
@@ -79,7 +81,8 @@ namespace Mmorpg.Client.Quests
             }
 
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
-            simulationClient = realtimeClient ?? throw new ArgumentNullException(nameof(realtimeClient));
+            questChannel = quests ?? throw new ArgumentNullException(nameof(quests));
+            realtimeSession = session ?? throw new ArgumentNullException(nameof(session));
             inventory = inventoryQueue;
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientQuestCatalog.TryParse(questCatalogJson, texts, out var catalog, out var error))
@@ -93,12 +96,12 @@ namespace Mmorpg.Client.Quests
                 State.SetFailed("quest_catalog_invalid", ClientMessages.Text(texts, "quest_catalog_invalid"));
             }
 
-            simulationClient.QuestLogChanged += OnQuestLogChanged;
-            simulationClient.QuestIntentCompleted += OnQuestIntentCompleted;
-            simulationClient.QuestDropInCorpse += OnQuestDropInCorpse;
-            simulationClient.SessionEnded += OnSessionEnded;
+            questChannel.QuestLogChanged += OnQuestLogChanged;
+            questChannel.QuestIntentCompleted += OnQuestIntentCompleted;
+            questChannel.QuestDropInCorpse += OnQuestDropInCorpse;
+            realtimeSession.SessionEnded += OnSessionEnded;
             initialized = true;
-            observedJoin = simulationClient.IsJoined;
+            observedJoin = realtimeSession.IsJoined;
             ObserveSessionIdentity();
         }
 
@@ -144,7 +147,7 @@ namespace Mmorpg.Client.Quests
                 return false;
             }
 
-            if (!simulationClient.TrySendQuestIntent(intent))
+            if (!questChannel.TrySendQuestIntent(intent))
             {
                 error = messageTexts.Get("ui/quests/error-unsent");
                 return false;
@@ -197,7 +200,7 @@ namespace Mmorpg.Client.Quests
             }
 
             var identityChanged = ObserveSessionIdentity();
-            var joined = simulationClient.IsJoined;
+            var joined = realtimeSession.IsJoined;
             if (joined && (!observedJoin || identityChanged))
             {
                 Reload();
@@ -215,12 +218,12 @@ namespace Mmorpg.Client.Quests
 
         private void OnDestroy()
         {
-            if (simulationClient != null)
+            if (questChannel != null)
             {
-                simulationClient.QuestLogChanged -= OnQuestLogChanged;
-                simulationClient.QuestIntentCompleted -= OnQuestIntentCompleted;
-                simulationClient.QuestDropInCorpse -= OnQuestDropInCorpse;
-                simulationClient.SessionEnded -= OnSessionEnded;
+                questChannel.QuestLogChanged -= OnQuestLogChanged;
+                questChannel.QuestIntentCompleted -= OnQuestIntentCompleted;
+                questChannel.QuestDropInCorpse -= OnQuestDropInCorpse;
+                realtimeSession.SessionEnded -= OnSessionEnded;
             }
         }
 
@@ -328,7 +331,7 @@ namespace Mmorpg.Client.Quests
 
                 if (apiError != null)
                 {
-                    if (ClientSessionRecovery.ReturnToLoginIfUnauthorized(apiError, simulationClient))
+                    if (ClientSessionRecovery.ReturnToLoginIfUnauthorized(apiError, realtimeSession))
                     {
                         loading = false;
                         yield break;

@@ -16,9 +16,10 @@ using UnityEngine.TestTools;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // One RealtimeSimulationClient on a recording fake transport and a hand-driven clock. Every
-    // hub event and every call into the transport lands on one timeline, and Frame() writes
-    // "frame" before it runs one Update, so a test reads what happened and on which frame.
-    // Server packets queue until the next frame polls them, as LiteNetLib delivers them.
+    // event of the session and of each channel and every call into the transport lands on one
+    // timeline, and Frame() writes "frame" before it runs one Update, so a test reads what
+    // happened and on which frame. Server packets queue until the next frame polls them, as
+    // LiteNetLib delivers them.
     internal sealed class RealtimeHubHarness : IDisposable
     {
         public const string FailurePrefix = "Realtime operation failed: ";
@@ -154,7 +155,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             JoinedSession = null;
             JoinError = null;
-            join = Hub.Join(
+            join = Hub.Session.Join(
                 placement,
                 session => JoinedSession = session,
                 error => JoinError = error);
@@ -173,7 +174,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(BeginJoin(), Is.True);
             Transport.QueueConnected();
             Frame();
-            Assert.That(Hub.State, Is.EqualTo(RealtimeConnectionState.Joining));
+            Assert.That(Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
         }
 
         // Runs a whole join and then clears the timeline, so a test starts in a joined session.
@@ -183,7 +184,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Deliver(RealtimeProtocol.EncodeJoinAccepted(accepted ?? JoinAccepted()));
             Assert.That(StepJoin(), Is.False);
             Assert.That(JoinError, Is.Null, JoinError?.ToDiagnostic());
-            Assert.That(Hub.State, Is.EqualTo(RealtimeConnectionState.Joined));
+            Assert.That(Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joined));
             Assert.That(TakeFailures(), Is.Empty);
             Clear();
         }
@@ -192,7 +193,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             LeaveSucceeded = false;
             LeaveError = null;
-            leave = Hub.Leave(
+            leave = Hub.Session.Leave(
                 simulationSessionId ?? RealtimeHubMessages.SessionId.ToString("D"),
                 () => LeaveSucceeded = true,
                 error => LeaveError = error);
@@ -291,72 +292,72 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private void Subscribe()
         {
-            Hub.SessionJoined += () => Record("SessionJoined", "SessionJoined", null);
-            Hub.SessionEnded += error => Record("SessionEnded " + Code(error), "SessionEnded", error);
-            Hub.UnexpectedlyDisconnected += error =>
+            Hub.Session.SessionJoined += () => Record("SessionJoined", "SessionJoined", null);
+            Hub.Session.SessionEnded += error => Record("SessionEnded " + Code(error), "SessionEnded", error);
+            Hub.Session.UnexpectedlyDisconnected += error =>
                 Record("UnexpectedlyDisconnected " + Code(error), "UnexpectedlyDisconnected", error);
-            Hub.SimulationSnapshotReceived += snapshot => Record(
+            Hub.Movement.SimulationSnapshotReceived += snapshot => Record(
                 "SimulationSnapshotReceived " + snapshot.SnapshotSequence + "/" + snapshot.ServerTick,
                 "SimulationSnapshotReceived",
                 snapshot);
-            Hub.OwnerSimulationSnapshotReceived += snapshot => Record(
+            Hub.Movement.OwnerSimulationSnapshotReceived += snapshot => Record(
                 "OwnerSimulationSnapshotReceived " + snapshot.SnapshotSequence + "/" + snapshot.ServerTick,
                 "OwnerSimulationSnapshotReceived",
                 snapshot);
-            Hub.CarryStateChanged += carry =>
+            Hub.Movement.CarryStateChanged += carry =>
                 Record("CarryStateChanged " + carry.ItemStateRevision, "CarryStateChanged", carry);
-            Hub.ItemOperationCompleted += result => Record("ItemOperationCompleted", "ItemOperationCompleted", result);
-            Hub.CorpsePresenceChunkReceived += chunk =>
+            Hub.Items.ItemOperationCompleted += result => Record("ItemOperationCompleted", "ItemOperationCompleted", result);
+            Hub.Corpses.CorpsePresenceChunkReceived += chunk =>
                 Record("CorpsePresenceChunkReceived", "CorpsePresenceChunkReceived", chunk);
-            Hub.CorpseInteractionCompleted += result =>
+            Hub.Corpses.CorpseInteractionCompleted += result =>
                 Record("CorpseInteractionCompleted", "CorpseInteractionCompleted", result);
-            Hub.CorpseViewStateChunkReceived += chunk =>
+            Hub.Corpses.CorpseViewStateChunkReceived += chunk =>
                 Record("CorpseViewStateChunkReceived", "CorpseViewStateChunkReceived", chunk);
-            Hub.CorpseViewClosed += closed => Record("CorpseViewClosed", "CorpseViewClosed", closed);
-            Hub.EntitySpawned += spawn => Record("EntitySpawned " + spawn.EntityId, "EntitySpawned", spawn);
-            Hub.EntityDespawned += despawn => Record(
+            Hub.Corpses.CorpseViewClosed += closed => Record("CorpseViewClosed", "CorpseViewClosed", closed);
+            Hub.Players.EntitySpawned += spawn => Record("EntitySpawned " + spawn.EntityId, "EntitySpawned", spawn);
+            Hub.Players.EntityDespawned += despawn => Record(
                 "EntityDespawned " + despawn.EntityId + " " + despawn.Reason,
                 "EntityDespawned",
                 despawn);
-            Hub.WorldActorSpawned += spawn =>
+            Hub.WorldActors.WorldActorSpawned += spawn =>
                 Record("WorldActorSpawned " + spawn.EntityId, "WorldActorSpawned", spawn);
-            Hub.WorldActorStateReceived += state => Record(
+            Hub.WorldActors.WorldActorStateReceived += state => Record(
                 "WorldActorStateReceived " + state.EntityId + " " + state.StateRevision,
                 "WorldActorStateReceived",
                 state);
-            Hub.WorldActorDespawned += despawn => Record(
+            Hub.WorldActors.WorldActorDespawned += despawn => Record(
                 "WorldActorDespawned " + despawn.EntityId + " " + despawn.Reason,
                 "WorldActorDespawned",
                 despawn);
-            Hub.WorldInteractionOpened += opened =>
+            Hub.WorldInteractions.WorldInteractionOpened += opened =>
                 Record("WorldInteractionOpened", "WorldInteractionOpened", opened);
-            Hub.WorldInteractionCompleted += result =>
+            Hub.WorldInteractions.WorldInteractionCompleted += result =>
                 Record("WorldInteractionCompleted", "WorldInteractionCompleted", result);
-            Hub.WorldInteractionClosed += closed =>
+            Hub.WorldInteractions.WorldInteractionClosed += closed =>
                 Record("WorldInteractionClosed", "WorldInteractionClosed", closed);
-            Hub.GatheringStateReceived += state => Record("GatheringStateReceived", "GatheringStateReceived", state);
-            Hub.CombatIntentCompleted += result => Record("CombatIntentCompleted", "CombatIntentCompleted", result);
-            Hub.CombatantStateReceived += state =>
+            Hub.WorldInteractions.GatheringStateReceived += state => Record("GatheringStateReceived", "GatheringStateReceived", state);
+            Hub.Combat.CombatIntentCompleted += result => Record("CombatIntentCompleted", "CombatIntentCompleted", result);
+            Hub.Combat.CombatantStateReceived += state =>
                 Record("CombatantStateReceived " + state.EntityId, "CombatantStateReceived", state);
-            Hub.CombatEventBatchReceived += batch =>
+            Hub.Combat.CombatEventBatchReceived += batch =>
                 Record("CombatEventBatchReceived", "CombatEventBatchReceived", batch);
-            Hub.OwnerCombatStateReceived += state =>
+            Hub.Combat.OwnerCombatStateReceived += state =>
                 Record("OwnerCombatStateReceived", "OwnerCombatStateReceived", state);
-            Hub.OwnerItemQuantityChanged += change =>
+            Hub.Items.OwnerItemQuantityChanged += change =>
                 Record("OwnerItemQuantityChanged", "OwnerItemQuantityChanged", change);
-            Hub.OwnerItemStateChanged += change => Record("OwnerItemStateChanged", "OwnerItemStateChanged", change);
-            Hub.EntityAppearanceChanged += change => Record(
+            Hub.Items.OwnerItemStateChanged += change => Record("OwnerItemStateChanged", "OwnerItemStateChanged", change);
+            Hub.Looks.EntityAppearanceChanged += change => Record(
                 "EntityAppearanceChanged " + change.EntityId,
                 "EntityAppearanceChanged",
                 change);
-            Hub.AppearanceIntentCompleted += result =>
+            Hub.Looks.AppearanceIntentCompleted += result =>
                 Record("AppearanceIntentCompleted", "AppearanceIntentCompleted", result);
-            // The event has no argument; the state it announces is the hub's AdminState.
-            Hub.AdminStateChanged += () => Record("AdminStateChanged", "AdminStateChanged", Hub.AdminState);
-            Hub.AdminIntentCompleted += result => Record("AdminIntentCompleted", "AdminIntentCompleted", result);
-            Hub.QuestLogChanged += change => Record("QuestLogChanged", "QuestLogChanged", change);
-            Hub.QuestIntentCompleted += result => Record("QuestIntentCompleted", "QuestIntentCompleted", result);
-            Hub.QuestDropInCorpse += drop => Record("QuestDropInCorpse", "QuestDropInCorpse", drop);
+            // The event has no argument; the state it announces is the admin channel's AdminState.
+            Hub.Admin.AdminStateChanged += () => Record("AdminStateChanged", "AdminStateChanged", Hub.Admin.AdminState);
+            Hub.Admin.AdminIntentCompleted += result => Record("AdminIntentCompleted", "AdminIntentCompleted", result);
+            Hub.Quests.QuestLogChanged += change => Record("QuestLogChanged", "QuestLogChanged", change);
+            Hub.Quests.QuestIntentCompleted += result => Record("QuestIntentCompleted", "QuestIntentCompleted", result);
+            Hub.Quests.QuestDropInCorpse += drop => Record("QuestDropInCorpse", "QuestDropInCorpse", drop);
         }
     }
 }

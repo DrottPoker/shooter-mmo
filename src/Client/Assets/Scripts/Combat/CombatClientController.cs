@@ -10,21 +10,51 @@ namespace Mmorpg.Client.Combat
     [DisallowMultipleComponent]
     public sealed class CombatClientController : MonoBehaviour
     {
-        private RealtimeSimulationClient simulationClient;
+        private IRealtimeCombatChannel combatChannel;
+        private IRealtimeSession realtimeSession;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimePlayerChannel realtimePlayers;
+        private IRealtimeWorldActorChannel realtimeWorldActors;
         private bool initialized;
 
         public CombatClientState State { get; } = new CombatClientState();
 
         // The entity the local player controls, or 0 outside a session.
-        public ulong LocalEntityId => simulationClient != null && simulationClient.MovementSession != null
-            ? simulationClient.MovementSession.ControlledEntityId
+        public ulong LocalEntityId => realtimeMovement != null && realtimeMovement.MovementSession != null
+            ? realtimeMovement.MovementSession.ControlledEntityId
             : 0;
 
-        public void Initialize(RealtimeSimulationClient realtimeClient)
+        // A combatant leaves the state when its player or world actor despawns.
+        public void Initialize(
+            IRealtimeCombatChannel combat,
+            IRealtimeSession session,
+            IRealtimeMovementChannel movement,
+            IRealtimePlayerChannel players,
+            IRealtimeWorldActorChannel worldActors)
         {
-            if (realtimeClient == null)
+            if (combat == null)
             {
-                throw new ArgumentNullException(nameof(realtimeClient));
+                throw new ArgumentNullException(nameof(combat));
+            }
+
+            if (session == null)
+            {
+                throw new ArgumentNullException(nameof(session));
+            }
+
+            if (movement == null)
+            {
+                throw new ArgumentNullException(nameof(movement));
+            }
+
+            if (players == null)
+            {
+                throw new ArgumentNullException(nameof(players));
+            }
+
+            if (worldActors == null)
+            {
+                throw new ArgumentNullException(nameof(worldActors));
             }
 
             if (initialized)
@@ -32,15 +62,19 @@ namespace Mmorpg.Client.Combat
                 Unsubscribe();
             }
 
-            simulationClient = realtimeClient;
-            simulationClient.SessionJoined += OnSessionJoined;
-            simulationClient.SessionEnded += OnSessionEnded;
-            simulationClient.CombatIntentCompleted += OnIntentCompleted;
-            simulationClient.CombatantStateReceived += OnCombatantState;
-            simulationClient.CombatEventBatchReceived += OnEventBatch;
-            simulationClient.OwnerCombatStateReceived += OnOwnerState;
-            simulationClient.EntityDespawned += OnEntityDespawned;
-            simulationClient.WorldActorDespawned += OnWorldActorDespawned;
+            combatChannel = combat;
+            realtimeSession = session;
+            realtimeMovement = movement;
+            realtimePlayers = players;
+            realtimeWorldActors = worldActors;
+            realtimeSession.SessionJoined += OnSessionJoined;
+            realtimeSession.SessionEnded += OnSessionEnded;
+            combatChannel.CombatIntentCompleted += OnIntentCompleted;
+            combatChannel.CombatantStateReceived += OnCombatantState;
+            combatChannel.CombatEventBatchReceived += OnEventBatch;
+            combatChannel.OwnerCombatStateReceived += OnOwnerState;
+            realtimePlayers.EntityDespawned += OnEntityDespawned;
+            realtimeWorldActors.WorldActorDespawned += OnWorldActorDespawned;
             initialized = true;
             State.Clear();
         }
@@ -67,7 +101,7 @@ namespace Mmorpg.Client.Combat
                 return false;
             }
 
-            if (targetEntityId == simulationClient.MovementSession.ControlledEntityId)
+            if (targetEntityId == realtimeMovement.MovementSession.ControlledEntityId)
             {
                 error = "The character cannot attack itself.";
                 return false;
@@ -111,9 +145,9 @@ namespace Mmorpg.Client.Combat
         {
             error = string.Empty;
             if (!initialized
-                || simulationClient == null
-                || !simulationClient.IsJoined
-                || simulationClient.MovementSession == null)
+                || realtimeSession == null
+                || !realtimeSession.IsJoined
+                || realtimeMovement.MovementSession == null)
             {
                 error = "Combat requires an active simulation connection.";
                 return false;
@@ -129,7 +163,7 @@ namespace Mmorpg.Client.Combat
                 return false;
             }
 
-            if (!simulationClient.TrySendCombatIntent(intent))
+            if (!combatChannel.TrySendCombatIntent(intent))
             {
                 State.CancelIntent(intent.OperationId);
                 error = "The combat request could not be sent.";
@@ -143,7 +177,7 @@ namespace Mmorpg.Client.Combat
         {
             if (!State.TryCompleteIntent(result, out var error))
             {
-                simulationClient.DisconnectForClientFailure(
+                realtimeSession.DisconnectForClientFailure(
                     "combat_intent_result_mismatch",
                     error);
             }
@@ -153,7 +187,7 @@ namespace Mmorpg.Client.Combat
         {
             if (!State.TryApplyCombatant(state, out var error))
             {
-                simulationClient.DisconnectForClientFailure("combat_state_conflict", error);
+                realtimeSession.DisconnectForClientFailure("combat_state_conflict", error);
             }
         }
 
@@ -161,7 +195,7 @@ namespace Mmorpg.Client.Combat
         {
             if (!State.TryApplyOwner(state, out var error))
             {
-                simulationClient.DisconnectForClientFailure("combat_state_conflict", error);
+                realtimeSession.DisconnectForClientFailure("combat_state_conflict", error);
             }
         }
 
@@ -192,19 +226,19 @@ namespace Mmorpg.Client.Combat
 
         private void Unsubscribe()
         {
-            if (!initialized || simulationClient == null)
+            if (!initialized || combatChannel == null)
             {
                 return;
             }
 
-            simulationClient.SessionJoined -= OnSessionJoined;
-            simulationClient.SessionEnded -= OnSessionEnded;
-            simulationClient.CombatIntentCompleted -= OnIntentCompleted;
-            simulationClient.CombatantStateReceived -= OnCombatantState;
-            simulationClient.CombatEventBatchReceived -= OnEventBatch;
-            simulationClient.OwnerCombatStateReceived -= OnOwnerState;
-            simulationClient.EntityDespawned -= OnEntityDespawned;
-            simulationClient.WorldActorDespawned -= OnWorldActorDespawned;
+            realtimeSession.SessionJoined -= OnSessionJoined;
+            realtimeSession.SessionEnded -= OnSessionEnded;
+            combatChannel.CombatIntentCompleted -= OnIntentCompleted;
+            combatChannel.CombatantStateReceived -= OnCombatantState;
+            combatChannel.CombatEventBatchReceived -= OnEventBatch;
+            combatChannel.OwnerCombatStateReceived -= OnOwnerState;
+            realtimePlayers.EntityDespawned -= OnEntityDespawned;
+            realtimeWorldActors.WorldActorDespawned -= OnWorldActorDespawned;
             initialized = false;
         }
     }
