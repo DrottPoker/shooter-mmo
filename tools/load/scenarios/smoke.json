@@ -1,0 +1,21 @@
+{
+  "description": "Tooling check: ten full-stack mixed-gameplay bots for 40 seconds. Run it after changing the load tooling.",
+  "mode": "full-stack",
+  "workload": "mixed-gameplay",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 10,
+    "ramp-step": 10,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 40,
+    "http-concurrency": 32,
+    "inventory-operation-interval-seconds": 3,
+    "loot-operation-interval-seconds": 4,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  },
+  "workerSettings": {
+    "SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds": "1"
+  }
+}

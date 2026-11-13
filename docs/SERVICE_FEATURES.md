@@ -1898,6 +1898,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
+| `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
 | `LingeringBodySeconds` | `20` | How long a character's body stays in the world after its connection ended and after every hit it takes, 1 to 3,600 seconds, as [Lingering Bodies](#lingering-bodies) describes |
 | `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |

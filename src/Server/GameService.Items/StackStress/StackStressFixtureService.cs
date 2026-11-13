@@ -172,7 +172,8 @@ internal sealed class StackStressFixtureService(
                     0,
                     0,
                     1,
-                    ItemTransactionService.DefaultPlayerCorpsePresentationKey,
+                    // A durable Mob corpse must carry a Mob corpse key.
+                    Mmorpg.WorldData.Actors.WorldActorCorpseRules.MobCorpsePresentationKey,
                     request.LifetimeSeconds,
                     checked((int)workerLeasePolicy.HeartbeatTimeout.TotalSeconds),
                     loot)),

@@ -754,6 +754,22 @@ An interrupted run ends the Unity process it started and removes the
 `InitTestScene` that Unity's PlayMode runner made in `Assets` and deletes only
 at the end of a run.
 
+### Run A Load Scenario
+
+`tools/Test-Load.ps1 -Scenario <name>` starts a disposable stack, runs one load
+scenario against it, judges it against the quality boundary, and stops what it
+started. It needs Docker for the full-stack scenarios and refuses to run while
+another process uses its ports, so it can run beside the normal local stack.
+The scenarios, the run folder, and the verdict are described in
+[Run A Scenario](STACK_STRESS_TESTING.md#run-a-scenario).
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario smoke
+```
+
+Expected result: a table in which every rule passes, `Load scenario smoke
+passed`, and exit code 0, in about one and a half minutes.
+
 ### Run The Live Stack Test
 
 Every other client test drives the network layer through a fake transport or a

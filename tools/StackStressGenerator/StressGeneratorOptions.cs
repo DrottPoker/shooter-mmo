@@ -54,13 +54,44 @@ public sealed record StressGeneratorOptions(
     string OutputPath)
 {
     public const int MaximumBotCount = 10_000;
+
+    // The quality boundary file that judges the run, or null for no verdict.
+    public string? QualityBoundaryPath { get; init; }
+
+    // The worker's performance file, SimulationWorker:PerformanceReportPath, or null.
+    public string? WorkerPerformanceFilePath { get; init; }
+
+    // Where the small summary of tools/Test-Load.ps1 goes, or null for none.
+    public string? SummaryPath { get; init; }
+
+    public string? ScenarioName { get; init; }
+
+    public string? SourceCommit { get; init; }
+
+    public bool? SourceTreeDirty { get; init; }
+
+    // Worker-only: after the report, how long the in-memory authority stays up at most, until
+    // Ctrl+C, so the worker can stop against it; 0 stops it at once.
+    public int AuthorityHoldSeconds { get; init; }
+
     public const string PostgresConnectionEnvironmentVariable = "STACK_STRESS_POSTGRES";
     public const string FixtureSecretEnvironmentVariable = "STACK_STRESS_FIXTURE_SECRET";
 
     public static StressGeneratorOptions Parse(string[] args, string workingDirectory)
     {
+        return Parse(args, workingDirectory, Environment.GetEnvironmentVariable);
+    }
+
+    // The environment lookup lets the load plan validate generator arguments against the
+    // environment it will start the generator with.
+    public static StressGeneratorOptions Parse(
+        string[] args,
+        string workingDirectory,
+        Func<string, string?> environment)
+    {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        ArgumentNullException.ThrowIfNull(environment);
 
         var values = ParseValues(args);
         var mode = ParseMode(Get(values, "mode", "worker-only"));
@@ -104,7 +135,7 @@ public sealed record StressGeneratorOptions(
         else
         {
             postgresConnectionString = GetOptional(values, "postgres-connection-string")
-                ?? Environment.GetEnvironmentVariable(PostgresConnectionEnvironmentVariable);
+                ?? environment(PostgresConnectionEnvironmentVariable);
             if (string.IsNullOrWhiteSpace(postgresConnectionString))
             {
                 throw new StressGeneratorOptionException(
@@ -120,8 +151,7 @@ public sealed record StressGeneratorOptions(
 
             if (workload != StressWorkloadProfile.Lifecycle)
             {
-                fixtureSecret = Environment.GetEnvironmentVariable(
-                    FixtureSecretEnvironmentVariable)?.Trim();
+                fixtureSecret = environment(FixtureSecretEnvironmentVariable)?.Trim();
                 if (string.IsNullOrWhiteSpace(fixtureSecret)
                     || fixtureSecret.Length < 32)
                 {
@@ -205,7 +235,38 @@ public sealed record StressGeneratorOptions(
             ParseInt(values, "loot-hotspot-z", 0, -1_000_000, 1_000_000),
             TimeSpan.FromSeconds(ParseInt(values, "report-interval-seconds", 10, 1, 3600)),
             ParseInt(values, "seed", 1337, int.MinValue, int.MaxValue),
-            Path.GetFullPath(output, workingDirectory));
+            Path.GetFullPath(output, workingDirectory))
+        {
+            QualityBoundaryPath = OptionalPath(values, "quality-boundary", workingDirectory),
+            WorkerPerformanceFilePath = OptionalPath(values, "worker-performance-file", workingDirectory),
+            SummaryPath = OptionalPath(values, "summary-output", workingDirectory),
+            ScenarioName = GetOptional(values, "scenario-name")?.Trim(),
+            SourceCommit = GetOptional(values, "source-commit")?.Trim(),
+            SourceTreeDirty = ParseOptionalBool(values, "source-tree-dirty"),
+            AuthorityHoldSeconds = ParseInt(values, "authority-hold-seconds", 0, 0, 3600)
+        };
+    }
+
+    private static string? OptionalPath(
+        IReadOnlyDictionary<string, string> values,
+        string key,
+        string workingDirectory)
+    {
+        var value = GetOptional(values, key);
+        return value is null ? null : Path.GetFullPath(Require(value, key), workingDirectory);
+    }
+
+    private static bool? ParseOptionalBool(IReadOnlyDictionary<string, string> values, string key)
+    {
+        var value = GetOptional(values, key);
+        if (value is null)
+        {
+            return null;
+        }
+
+        return bool.TryParse(value, out var parsed)
+            ? parsed
+            : throw new StressGeneratorOptionException($"--{key} must be true or false.");
     }
 
     public static bool IsHelpRequested(string[] args)
@@ -253,6 +314,21 @@ public sealed record StressGeneratorOptions(
           --report-interval-seconds <sec>   Console report interval. Default: 10
           --seed <number>                   Deterministic movement seed. Default: 1337
           --output <path>                   JSON result path under artifacts/stress by default.
+          --quality-boundary <path>         Judge the run against this limits file and add a verdict.
+          --worker-performance-file <path>  The worker's SimulationWorker:PerformanceReportPath file to fold in.
+          --summary-output <path>           Also write the small summary that tools/Test-Load.ps1 keeps.
+          --scenario-name <name>            Scenario name for the summary.
+          --source-commit <sha>             Commit for the summary.
+          --source-tree-dirty <true|false>  Whether the tree had changes, for the summary.
+          --authority-hold-seconds <s>      Worker-only: keep the authority up after the report for
+                                            at most this long, until Ctrl+C. Default: 0
+
+        Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
+        failed, 2 invalid options, 3 the run passed its own checks but failed the quality
+        boundary, 130 cancelled.
+
+        StackStressGenerator plan --scenario <file> --run-folder <dir> [--bots <n>] [--duration-seconds <n>]
+          Prints the run plan of a tools/load scenario as JSON for tools/Test-Load.ps1.
         """;
 
     private static Dictionary<string, string> ParseValues(string[] args)
@@ -321,7 +397,14 @@ public sealed record StressGeneratorOptions(
             "loot-hotspot-z",
             "report-interval-seconds",
             "seed",
-            "output"
+            "output",
+            "quality-boundary",
+            "worker-performance-file",
+            "summary-output",
+            "scenario-name",
+            "source-commit",
+            "source-tree-dirty",
+            "authority-hold-seconds"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

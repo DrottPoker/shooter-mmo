@@ -196,7 +196,18 @@ public sealed class StressBot : IDisposable, ISimulationBotRealtimeObserver
             snapshot.UnacknowledgedInputsDropped,
             snapshot.LatestServerTick,
             snapshot.FailureCode,
-            snapshot.FailureMessage);
+            snapshot.FailureMessage,
+            snapshot.RemoteCadence);
+    }
+
+    public void BeginRemoteCadenceWindow(long nowTimestamp)
+    {
+        client.BeginRemoteCadenceWindow(nowTimestamp);
+    }
+
+    public void EndRemoteCadenceWindow(long nowTimestamp)
+    {
+        client.EndRemoteCadenceWindow(nowTimestamp);
     }
 
     public void Dispose()
@@ -698,4 +709,5 @@ public sealed record StressBotSnapshot(
     long UnacknowledgedInputsDropped,
     uint LatestServerTick,
     string? FailureCode,
-    string? FailureMessage);
+    string? FailureMessage,
+    SimulationBotRemoteCadenceSummary? RemoteCadence = null);

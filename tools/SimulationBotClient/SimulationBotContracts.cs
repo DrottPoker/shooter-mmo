@@ -62,7 +62,8 @@ public interface ISimulationBotRealtimeObserver
 }
 
 // BodySeconds is how long the worker keeps the bot's body in the world after a completed leave,
-// during which the bot's session stays active.
+// during which the bot's session stays active. RemoteCadence is set once the measurement window
+// of the remote state cadence ended.
 public sealed record SimulationBotClientSnapshot(
     int BotIndex,
     string CharacterName,
@@ -80,4 +81,5 @@ public sealed record SimulationBotClientSnapshot(
     uint LatestServerTick,
     string? FailureCode,
     string? FailureMessage,
-    int BodySeconds = 0);
+    int BodySeconds = 0,
+    SimulationBotRemoteCadenceSummary? RemoteCadence = null);

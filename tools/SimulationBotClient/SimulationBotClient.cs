@@ -113,6 +113,18 @@ public sealed class SimulationBotClient : IDisposable
         session.BeginLeave(nowTimestamp);
     }
 
+    public void BeginRemoteCadenceWindow(long nowTimestamp)
+    {
+        ThrowIfDisposed();
+        session.BeginRemoteCadenceWindow(nowTimestamp);
+    }
+
+    public void EndRemoteCadenceWindow(long nowTimestamp)
+    {
+        ThrowIfDisposed();
+        session.EndRemoteCadenceWindow(nowTimestamp);
+    }
+
     public bool SendItemOperation(RealtimeItemOperationIntent intent)
     {
         ThrowIfDisposed();

@@ -314,6 +314,22 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    [Fact]
+    public void ThePerformanceReportPathIsOptionalAndResolvedToAFullPath()
+    {
+        var settings = WorkerSettings();
+        var unset = SimulationWorkerConfig.FromConfiguration(
+            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        settings["SimulationWorker:PerformanceReportPath"] = "artifacts/load/worker-performance.jsonl";
+        var set = SimulationWorkerConfig.FromConfiguration(
+            new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+
+        Assert.Null(unset.PerformanceReportPath);
+        Assert.Equal(
+            Path.GetFullPath("artifacts/load/worker-performance.jsonl"),
+            set.PerformanceReportPath);
+    }
+
     private static Dictionary<string, string?> WorkerSettings()
     {
         return new Dictionary<string, string?>
