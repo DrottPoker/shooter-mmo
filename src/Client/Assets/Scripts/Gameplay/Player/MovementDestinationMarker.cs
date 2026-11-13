@@ -13,28 +13,25 @@ namespace Mmorpg.Client.Gameplay
         private const float GroundOffset = 0.03f;
         private static readonly Color MarkerColor = new Color(1f, 0.85f, 0.2f, 1f);
 
-        private LocalPlayerController localPlayer;
+        private LocalPlayerSource localPlayer;
         private Material primitiveMaterial;
         private GameObject marker;
         private Material markerMaterial;
 
         // Called by the composition root before the component is activated.
-        public void Initialize(Material runtimePrimitiveMaterial)
+        public void Initialize(LocalPlayerSource localPlayerSource, Material runtimePrimitiveMaterial)
         {
+            localPlayer = localPlayerSource;
             primitiveMaterial = runtimePrimitiveMaterial;
         }
 
         private void LateUpdate()
         {
-            if (localPlayer == null)
-            {
-                localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            }
-
-            var path = localPlayer != null && localPlayer.IsServerAuthoritative
-                ? localPlayer.CurrentPath
+            var player = localPlayer != null ? localPlayer.Controller : null;
+            var path = player != null && player.IsServerAuthoritative
+                ? player.CurrentPath
                 : null;
-            if (path == null || !localPlayer.PredictedState.PathProgress.IsFollowing(path))
+            if (path == null || !player.PredictedState.PathProgress.IsFollowing(path))
             {
                 SetVisible(false);
                 return;

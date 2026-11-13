@@ -48,6 +48,8 @@ namespace Mmorpg.Client.Ui
         private QuestClientController quests;
         private TemporaryAdminQuestTab questTab;
         private int questTabIndex = -1;
+        private LocalPlayerSource localPlayers;
+        // The local player of this frame.
         private LocalPlayerController localPlayer;
         private TemporaryMenuWindow window;
         private RectTransform lookPage;
@@ -88,6 +90,7 @@ namespace Mmorpg.Client.Ui
             IRealtimeAdminChannel admin,
             IRealtimeSession session,
             IRealtimeMovementChannel movement,
+            LocalPlayerSource localPlayerSource,
             PlayerBodyLookSetting lookSetting,
             WorldMenuController menu,
             CombatClientController combatController,
@@ -97,6 +100,7 @@ namespace Mmorpg.Client.Ui
             adminChannel = admin;
             realtimeSession = session;
             realtimeMovement = movement;
+            localPlayers = localPlayerSource;
             bodyLook = lookSetting;
             worldMenu = menu;
             combat = combatController;
@@ -155,7 +159,7 @@ namespace Mmorpg.Client.Ui
             }
 
             SetPicking(false);
-            FindLocalPlayer();
+            ReadLocalPlayer();
             if (localPlayer == null || !localPlayer.TryFindGroundPoint(option.Ray, out var point))
             {
                 ShowResult("There is no ground there to teleport to.", TemporaryUiKit.WarningColor);
@@ -215,7 +219,7 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
-            FindLocalPlayer();
+            ReadLocalPlayer();
             var input = localPlayer != null ? localPlayer.PlayerInput : null;
             if (input == null)
             {
@@ -677,12 +681,9 @@ namespace Mmorpg.Client.Ui
             TemporaryMenuWindow.AddStepper(lookPage, label, step).text = value;
         }
 
-        private void FindLocalPlayer()
+        private void ReadLocalPlayer()
         {
-            if (localPlayer == null)
-            {
-                localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            }
+            localPlayer = localPlayers != null ? localPlayers.Controller : null;
         }
     }
 }

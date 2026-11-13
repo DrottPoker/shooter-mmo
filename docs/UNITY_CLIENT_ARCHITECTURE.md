@@ -133,12 +133,12 @@ layers from the bottom up:
 |---|---|---|
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
-| `Mmorpg.Client.Core` | `ClientSession`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
+| `Mmorpg.Client.Core` | `ClientSession` with `IClientSession` and `ClientSettings`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
-| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery` | Api, Core, Worlds |
+| `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery`, `WorldExit` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
 | `Mmorpg.Client.Quests` | The quest catalog, the joined character's quest log and its loading, quest progress, the quest dialog's entries, and quest notices, described in [Quest Client](#quest-client) | Api, Core, Networking, Items |
-| `Mmorpg.Client.Gameplay` | Local and remote players, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
+| `Mmorpg.Client.Gameplay` | Local and remote players with `LocalPlayerSource`, orbit camera, input, click-to-move navigation, pointer focus, game messages, prediction, remote player and Mob interpolation, player bodies and the garments their equipment shows, creature animation, `WorldSceneContext` | Cloth, Api, Core, Worlds, Networking |
 | `Mmorpg.Client.WorldActors` | Actor and interaction state, the shared pointer picker, the world menu and its providers, interaction targeting, actor and corpse presentation, the water wakes | Api, Core, Worlds, Networking, Items, Gameplay |
 | `Mmorpg.Client.Combat` | `CombatClientController` and `CombatClientState`, the combat state mirror, combat targeting and approach, the combatant view locator, death and projectile presentation | Core, Networking, Items, Gameplay, WorldActors |
 | `Mmorpg.Client.Ui` | Every panel including the combat HUD, the UI kit and theme, the inventory and quest windows, drag and drop, `ClientOperationState` | Api, Core, Worlds, Networking, Items, Quests, Gameplay, WorldActors, Combat |
@@ -244,6 +244,9 @@ development build wrote them, so the next build has nothing to change.
 ```text
 ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes)
   +-- ClientConfig, its Addressables handle held while the bootstrap lives
+  +-- ClientSession with the ClientSettings from the configuration
+  |   +-- ClientSessionRecovery (forced sign-out) and WorldExit (every way out of a World)
+  +-- LocalPlayerSource, which WorldSceneContext fills
   +-- ApiClient
   +-- RealtimeSimulationClient (owns the transport and the frame)
   |   +-- RealtimeConnection over LiteNetLibRealtimeTransport
@@ -272,7 +275,7 @@ ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes
   +-- WorldPointerFocus and GameMessageLog
   +-- PlayerBodyLookSetting with PlayerLookLink, and PlayerEquipment
   +-- PlayerBodyTintSetting and WorldDebugViewSettings
-  +-- account-session validation and scene lifecycle recovery
+  +-- account-session validation, and the release of a World scene left outside the panels
 
 The active scene while the content check runs
   +-- ContentCheckPanel (one status line on TemporaryEntryScreen, no form)
@@ -281,12 +284,13 @@ LoginMenu and CharacterSelect
   +-- LoginMenuPanel or CharacterSelectPanel (code-built uGUI on TemporaryEntryScreen)
       +-- ClientOperationState
       +-- API coroutine flow
-      +-- ClientSessionRecovery
+      +-- the bootstrap's ClientSession, and for CharacterSelect its ClientSessionRecovery
+          and WorldExit
 
 World scene
   +-- WorldSceneContext (scene-authored composition root of the scene)
   |   +-- LocalPlayer prefab, RemotePlayer prefab, and PlayerSpawn references
-  |   +-- runtime LocalPlayer instance after an accepted join
+  |   +-- runtime LocalPlayer instance after an accepted join, set in LocalPlayerSource
   |   +-- runtime remote player views, each a root of the World scene
   |   +-- PlayerBodyMeshes, PlayerBodyMaterials, PlayerCorpseBodies
   +-- runtime components that ClientBootstrap adds:
@@ -363,22 +367,24 @@ Combat (World scene, created at runtime by ClientBootstrap)
 
 `ClientBootstrap` creates itself after the first scene loads, through
 `RuntimeInitializeOnLoadMethod` with `AfterSceneLoad`, on an object that
-survives every scene change. It owns one `RealtimeSimulationClient`, one
-`InventoryClientController`, and the quest, corpse, world actor, world
-interaction, and combat controllers, observes scene transitions, and performs
-the fallback leave when an active World scene is left outside the normal panel
-flow. A configuration without its runtime primitive material, debug line
-material, or arrow model logs a warning, because markers and fallback models
-then draw with the error shader in a player build, the Debug menu draws no
-lines, and arrows fly as plain bars.
+survives every scene change. It owns the `ClientSession`, one
+`RealtimeSimulationClient`, one `InventoryClientController`, and the quest,
+corpse, world actor, world interaction, and combat controllers, observes scene
+transitions, and has `WorldExit` release the World when an active World scene is
+left outside the normal panel flow. A configuration without its runtime
+primitive material, debug line material, or arrow model logs a warning, because
+markers and fallback models then draw with the error shader in a player build,
+the Debug menu draws no lines, and arrows fly as plain bars.
 
 The bootstrap starts in two steps, because the controllers need the content
 that the client resolves from GameService:
 
 1. `Awake` creates what does not depend on content: the configuration, the
-   materials and the arrow model, the UI theme, `ApiClient`, the body tint
-   setting, and `RealtimeSimulationClient`. The account-session check starts
-   in `OnEnable`.
+   `ClientSession` with the `ClientSettings` of the configuration, the materials
+   and the arrow model, the UI theme, `ApiClient`, the body tint setting,
+   `RealtimeSimulationClient`, which `Initialize` composes with those settings,
+   `ClientSessionRecovery`, and `WorldExit`. The account-session check starts in
+   `OnEnable`.
 2. `Start` runs one coroutine. It shows `ContentCheckPanel` in the active
    scene, the entry screen with the title and the status line
    `ui/login/checking-content` from the bundled `ui` table, and resolves the
@@ -391,7 +397,11 @@ No controller and no panel that needs content exists before the check ends. A
 scene that loads during the check is composed when the content is ready, and
 the services stay passed explicitly; nothing finds content through a static or
 a `Find` call. PlayMode tests wait for `IsContentReady` with
-`PlayModeClient.WaitForContent` before they load a scene.
+`PlayModeClient.WaitForContent` before they load a scene. They reach the running
+client's session through `ClientBootstrap.Session`, to sign in and select as the
+entry screens do, and `PlayModeClient.UseGameService` points it at another
+GameService, such as an unreachable one, through an internal method of
+`ClientSession` that only the test assemblies see.
 
 `ClientBootstrap` is the only composition root, and no runtime assembly
 references it. It creates the persistent services and passes them explicitly to
@@ -401,18 +411,34 @@ their dependencies through `Initialize`, and then activated, so `Awake` and
 `OnEnable` already see them. Tests construct the same components with their own
 dependencies.
 
+The local player exists only after `WorldSceneContext` spawned it in `Start`,
+after the bootstrap initialized everything else, so nobody can be handed the
+player at `Initialize`. The bootstrap hands every component that needs it the
+one `LocalPlayerSource` instead, which tells who the local player is right now,
+as [Local Player Lifecycle](#local-player-lifecycle) describes. No runtime code
+searches the scene for a service or the player, or asks for `Camera.main`, except
+in four places that `ClientServiceAccessTests` lists with their reasons: the
+bootstrap's guard against a second bootstrap, its `AddSceneComponentIfMissing`,
+which keeps a component that a scene already has, `TemporaryUiKit`, which adds
+the EventSystem that uGUI needs when the scene has none, and
+`ClothChainScheduler`, which serves every body, also in tools and tests without
+the bootstrap, and measures from the camera that renders the game.
+
 When a scene loads, the bootstrap composes it. LoginMenu gets `LoginMenuPanel`
 and CharacterSelect gets `CharacterSelectPanel`. In a World scene, the
-scene-authored `WorldSceneContext` receives the realtime session and its movement,
-player, look, and admin channels, the pointer focus, and the body settings
-before `Start` runs, and the bootstrap adds the
-runtime components listed in [Runtime Structure](#runtime-structure). A
-component the scene already has is kept.
+scene-authored `WorldSceneContext` receives the client session, the realtime
+session and its movement, player, look, and admin channels, the local player
+source, the pointer focus, and the body settings before `Start` runs, and the
+bootstrap adds the runtime components listed in
+[Runtime Structure](#runtime-structure). A component the scene already has is
+kept.
 
-The fallback release is bound to the exact simulation-session identity.
-Completion of an older request cannot clear a newer local reconnect state. If
-graceful leave fails after the scene already changed, the client closes UDP so
-SimulationWorker can run disconnect cleanup.
+When a World scene is replaced by another scene while the client session still
+has a World, the bootstrap starts `WorldExit.Release` for that World, which
+[Client Session State](#client-session-state) describes. The release is bound to
+the exact simulation session, so it never clears a newer World, and if the
+graceful leave fails after the scene already changed, it closes UDP so
+SimulationWorker can run its disconnect cleanup.
 
 ## Content Resolution At Start
 
@@ -645,17 +671,55 @@ pseudo-locale, which `PseudoText` builds from the resolved tables.
 
 ## Client Session State
 
-`ClientSession` stores the current in-memory client view:
+`ClientSession`, in `Mmorpg.Client.Core`, is the client's in-memory view of its
+account session: a cache, not an authority. `ClientBootstrap` creates one in
+`Awake` and passes it through `Initialize` to every component that needs it.
+Its facts fall into four groups by who may change them, and each fact changes
+only through a transition with one owner:
 
-- GameService endpoint.
-- Account and bearer session details.
-- Selected character and shard.
-- Active simulation-session, shard, World, worker, and worker-runtime metadata.
+| Facts | Members | Transitions and their owners |
+| --- | --- | --- |
+| Client settings | `Settings`, a `ClientSettings` with the GameService base URL, the request and realtime timeouts, and the interval of the account-session check | None: the bootstrap reads them from `ClientConfig` once |
+| Account sign-in | `Auth`, `SessionToken`, `IsAuthenticated` | `SignIn`, by `LoginMenuPanel` after a login or registration. `SignOut`, by `CharacterSelectPanel` on Log Out and when it finds no account session, and by `ClientSessionRecovery` |
+| Selection | `SelectedCharacter`, `SelectedShard` | `Select`, by `CharacterSelectPanel` whenever its state changes, and with the shard of the join ticket |
+| World | `ActiveSimulationSession`, the simulation session of the World the client is in | `EnterWorld`, by `CharacterSelectPanel` after the worker accepted the join. `LeaveWorld`, by `WorldExit` |
 
-This state is a client cache, not an authority. The persistent bootstrap
-validates an authenticated account session at the configured interval, also
-outside the active World scene. HTTP 401 clears all local session state before
-loading LoginMenu.
+Each transition raises its one event when it changed something: `SignedIn`,
+`SignedOut`, `SelectionChanged`, `WorldEntered`, and `WorldLeft`. `SignIn`
+also empties the selection and the World, and `SignOut` empties everything, so
+a reader of the selection or the World listens to those two as well. Readers
+take `IClientSession`, which has the facts and the events but no transition. The
+inventory and quest controllers listen to the sign-in, sign-out, and selection
+events: a new account or character empties their state, and a session that is
+already joined then reads the inventory and the quest log at once, as a join
+does. `EnterWorld` replaces the session of a World the client is in, so a join
+after a lost connection can keep the World.
+
+The World and the realtime connection are two facts with one owner each.
+`IRealtimeSession.JoinedSession` is the session that the worker accepted, while
+the connection is joined or leaving, and it is gone at every end of the
+connection; what sends on the connection, such as a world interaction, reads
+it. `ActiveSimulationSession` is the World the client is in; it outlives the
+connection until a way out of the World leaves it, and that way out names it by
+its simulation session.
+
+`WorldExit`, in `Mmorpg.Client.Networking`, owns every way out of a World but a
+forced sign-out. Each leaves the client session's World by the exact simulation
+session id, so an exit that completes late never clears a newer World:
+
+| Way out | Started by | What happens |
+| --- | --- | --- |
+| Leave Shard | The Debug menu | `Leave`: an exact-session UDP leave. A refused leave that keeps the connection joined stays in the World; otherwise the World is left and CharacterSelect loads |
+| A World scene left outside the panel flow | `ClientBootstrap`, when another scene replaces a World scene while the World is set | `Release`: a graceful leave while the connection is joined to that session, UDP closed when it fails, so the worker runs its disconnect cleanup, and then the World of that session is left. A connection joined to another session stays |
+| A joined World whose scene fails to load | `CharacterSelectPanel` | `Release`, as above, and CharacterSelect stays |
+| A World scene that starts without a joined connection | The Debug menu's session check | `LeaveUnjoinedWorld`: the World is left and CharacterSelect loads |
+| A connection that the worker or the network ended | `IRealtimeSession.UnexpectedlyDisconnected`, which `WorldExit` listens to | The World is left, and a World scene goes to CharacterSelect, or to LoginMenu without an account session. `account_session_replaced` goes to `ClientSessionRecovery` instead |
+
+A forced sign-out, after a 401 from GameService or `account_session_replaced`
+from the worker, goes through `ClientSessionRecovery`, as
+[Unauthorized Recovery](#unauthorized-recovery) describes. The persistent
+bootstrap validates an authenticated account session at the configured
+interval, also outside the active World scene.
 
 ## API Layer
 
@@ -715,14 +779,16 @@ and socket error. `LiteNetLibRealtimeTransport` implements it with one
 LiteNetLib `NetManager` on the protocol's channels with synchronized events, so
 every event fires inside the poll that the hub's `Update` runs on Unity's main
 thread, and it returns each packet's reader to LiteNetLib's pool once the hub
-handled the packet. The transport only moves bytes. The hub composes its parts
-when `Awake` runs or a part is first read, with the LiteNetLib transport and
-Unity's realtime clock, unless `Initialize` gave it others first, as EditMode
-tests do.
+handled the packet. The transport only moves bytes. `ClientBootstrap` composes
+the hub's parts with `Initialize` and the client settings, on the LiteNetLib
+transport and Unity's realtime clock; the session takes its join and leave
+deadlines and the transport's disconnect timeout from the settings' realtime
+timeout. EditMode tests and the live stack test pass their own transport and
+clock to the internal `Initialize`. A part read before `Initialize` throws.
 
 | Part | Owns | Features read it through |
 | --- | --- | --- |
-| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. The lifecycle owners, `ClientBootstrap`, `CharacterSelectPanel`, and `TemporaryDebugMenu`, take `RealtimeSession` itself for `Join` and `Leave` |
+| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. `CharacterSelectPanel` takes `RealtimeSession` itself for `Join`, and `WorldExit` for `Leave` |
 | `RealtimeMessageTable` | One entry per server message type: its handler, the states it runs in, the states it is dropped in, and the failure code of every other state | The hub only |
 | `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
 | A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
@@ -755,7 +821,8 @@ checks ticket expiry, protocol version, simulation revision, shard identity,
 World identity, and exact worker runtime placement, then connects to the provided
 UDP endpoint. It sends the short-lived join ticket in a versioned reliable ordered
 packet. Join acceptance must match the placed character, shard, World, simulation
-revision, and collision revision before non-secret metadata is copied into
+revision, and collision revision before its non-secret metadata becomes the
+joined session, which `CharacterSelectPanel` then enters as the World of
 `ClientSession`.
 
 `SessionJoined` is raised when the worker accepts a join, before any later
@@ -814,8 +881,9 @@ null error for a leave and an abort. The inventory, quest, corpse, world actor,
 world interaction, and combat controllers and the look link reset their
 session-scoped state on that event, so a pending operation, open view, or corpse
 presence sequence never blocks the next join. An end while joined that is no
-leave and no abort raises `UnexpectedlyDisconnected` first; it clears the active
-shard view and returns an authenticated player to CharacterSelect. An ending
+leave and no abort raises `UnexpectedlyDisconnected` first; `WorldExit` then
+leaves the World and returns an authenticated player to CharacterSelect. An
+ending
 that a poll finds raises its events at the end of the same `Update`, after the
 transport stopped; a `DisconnectForClientFailure` outside `Update` raises them
 at the end of the next frame; `Abort` raises `SessionEnded` at once. Two rules
@@ -835,9 +903,11 @@ A leave rejection keeps the session joined, without what the `Leaving` state
 dropped.
 
 If another client logs into the same account, SimulationWorker can send
-`account_session_replaced` over the reliable control path. The client aborts its
-transport, clears the entire account session, logs an `[AUTH]` error, and loads
-LoginMenu. The periodic GameService validation provides the same recovery when
+`account_session_replaced` over the reliable control path. The session ends
+and stops its transport, and `WorldExit` hands the end to
+`ClientSessionRecovery`, which signs the client session out, logs an `[AUTH]`
+error, and loads LoginMenu. The periodic GameService validation provides the
+same recovery when
 the displaced client is not connected to a shard.
 
 ### Adding A Message Type Or A Channel
@@ -1022,9 +1092,9 @@ Every scene change goes through `ClientSceneLoader`. LoginMenu and
 CharacterSelect load as built-in scenes. After an accepted join, CharacterSelect
 loads the World scene asynchronously and stays visible, with its controls
 disabled, until the World scene replaces it. If the load fails, the panel shows
-the error and leaves the joined simulation session gracefully. Addressables
-releases the World scene's handle and bundles when the scene unloads, so a return
-to a built-in scene needs no explicit release.
+the error and `WorldExit` releases the joined simulation session gracefully.
+Addressables releases the World scene's handle and bundles when the scene
+unloads, so a return to a built-in scene needs no explicit release.
 
 ### Account Entry Screens
 
@@ -1065,8 +1135,9 @@ keeps the chosen character and shard by id across a refresh, lets only an online
 shard be chosen, and keeps creation open while the account has no character. A
 list is built again only when its version changes, so a selection only recolors
 rows, and a double click, read by `TemporaryDoubleClick` from the pointer's click
-count, lands on the row it started on. The panel copies the chosen character and
-shard to `ClientSession`, which the inventory controller observes. Creation uses
+count, lands on the row it started on. The panel selects the chosen character
+and shard in `ClientSession`, whose `SelectionChanged` the inventory and quest
+controllers listen to. Creation uses
 the appearance offers of [Character Looks](#character-looks). Join ticket
 creation and the UDP handshake run inside one coroutine so the operation cannot
 be partially overlapped by another click.
@@ -1107,17 +1178,18 @@ What they show is in [Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
 [Admin Menu (F3)](GAME_FEATURES.md#admin-menu-f3).
 
 `TemporaryDebugMenu`, toggled by `ToggleDebugMenu`, refreshes four times a second
-from client state only. Its Leave Shard action waits for an exact-session UDP
-leave acknowledgement before loading CharacterSelect, and it owns the World
-scene's session check, which sends a player build without a joined session back
-to CharacterSelect. `IRealtimeDiagnostics` counts application-level realtime
-packets and bytes, owner snapshot sequences, remote snapshot chunks, and
-estimated missing owner sequences, and `WorldDebugTelemetryTracker` derives
-rolling frame percentiles and half-second network rates from those counters. The
-menu labels payload rates as application payload rather than total socket
-bandwidth. Its `Show in the world` settings live in `WorldDebugViewSettings`,
-which `ClientBootstrap` owns, so they last across World scenes and are off
-whenever the client starts.
+from client state only. Its Leave Shard action runs `WorldExit.Leave`, which
+waits for an exact-session UDP leave acknowledgement before loading
+CharacterSelect, and it runs the World scene's session check, which sends a
+player build without a World back to CharacterSelect and leaves a World whose
+connection is no longer joined through `WorldExit`. `IRealtimeDiagnostics`
+counts application-level realtime packets and bytes, owner snapshot sequences,
+remote snapshot chunks, and estimated missing owner sequences, and
+`WorldDebugTelemetryTracker` derives rolling frame percentiles and half-second
+network rates from those counters. The menu labels payload rates as application
+payload rather than total socket bandwidth. Its `Show in the world` settings live
+in `WorldDebugViewSettings`, which `ClientBootstrap` owns, so they last across
+World scenes and are off whenever the client starts.
 
 `CollisionDebugOverlay` draws, while the Debug menu is open and its toggles are
 on, the baked collision around the local player and the rest of its route.
@@ -1159,15 +1231,22 @@ join, leave, or authentication requests.
 
 ## Unauthorized Recovery
 
-`ClientSessionRecovery` centralizes HTTP 401 handling:
+`ClientSessionRecovery` owns the forced sign-out. The bootstrap creates one and
+passes it to every component that reads GameService: the inventory and quest
+controllers, `CharacterSelectPanel`, and its own account-session check. On HTTP
+401 it:
 
-1. Clear account, selection, and active simulation-session state.
-2. Load LoginMenu.
-3. Stop the failed panel flow from continuing with stale data.
+1. Aborts the realtime connection.
+2. Signs the client session out, which clears the account, the selection, and
+   the World.
+3. Loads LoginMenu, and the failed panel flow stops instead of continuing with
+   stale data.
 
 The stable `account_session_replaced` code identifies a login from another
-client. Recovery writes a specific temporary Unity Console message rather than
-presenting it as an ordinary expired session.
+client, from GameService as a 401 or from the worker as the reason it closed
+the connection, which `WorldExit` hands over. Recovery writes a specific
+temporary Unity Console message rather than presenting it as an ordinary expired
+session.
 
 Logout is different from recovery. A normal `Log Out` action first asks
 GameService to revoke the active account session, then clears local state.
@@ -1184,6 +1263,18 @@ to input and CameraTarget. Opening a World scene without an active joined sessio
 creates no local player and reports no missing reference. The context never
 selects a global camera and never generates a player asset, map object, material,
 light, or collider.
+
+Once the spawned player has its input and camera, the context sets it in the
+bootstrap's `LocalPlayerSource`, and clears it again when it destroys the player
+or the scene goes, also when the scene destroyed the player first. The source
+answers who the local player is right now: `Controller`, its `Input` for the
+components that only read keys, `HasPlayer`, and `Changed`, raised when a player
+appears and when it goes. It reads a destroyed player as none, and a clear of an
+older player never clears a newer one. The Debug and Admin menus, the collision
+overlay, the destination marker, the inventory and quest windows, the world
+menu, and world interaction targeting read the player there; nothing searches
+the scene for it. The context orders the bodies that wait to be put on by their
+distance from the local player's own camera.
 
 Runtime instances of the authored RemotePlayer prefab are created only from
 reliable player-entity spawn messages, each a root of the World scene, so Unity's
@@ -3357,7 +3448,8 @@ namespace rule are in [Folder Layout](#folder-layout).
   running local stack. It composes the hub with `LiveStackTransport`, which wraps
   `LiteNetLibRealtimeTransport` to read `BodySeconds` and to drop the line without
   a disconnect message, so the Networking assembly shows its internals to the
-  PlayMode tests too. The test is explicit and has the `LiveStack` category, so
+  PlayMode tests too, and with the settings of the running client's session.
+  The test is explicit and has the `LiveStack` category, so
   only `tools/Test-LiveStack.ps1` runs it, as
   [Live Stack Test](../tests/README.md#live-stack-test) describes.
 - **Movement determinism.** `MovementDeterminismScenario` runs one movement
@@ -3388,8 +3480,15 @@ namespace rule are in [Folder Layout](#folder-layout).
   every presentation icon, and every registry prefab, loads content through
   `ClientAssets`, and fails on any `Resources` folder other than TextMesh Pro's
   and on any `Resources` call in the client and shared packages. `RuntimePresentationTests` keeps runtime primitives on the
-  configured material, and a test lists the types with static state that must
-  reset on play mode entry, see [Extension Rules](#extension-rules).
+  configured material. `ClientServiceAccessTests` reads the sources below
+  `Assets/Scripts` and fails on a scene search, `FindAnyObjectByType`,
+  `FindFirstObjectByType`, `FindObjectsByType`, `FindObjectOfType`,
+  `GameObject.Find`, a find by tag, or `Camera.main`, outside its four allowed
+  places, each with its reason, and on an allowed place that is gone. It reads
+  the client's runtime assemblies and fails on a type that keeps state in
+  statics, an assignable static field or a static collection, outside its list
+  of such types, each of which resets at subsystem registration, see
+  [Extension Rules](#extension-rules).
 - **Built bundles.** The PlayMode tests run against the Asset Database by default
   and also pass with the "Use Existing Build" play mode script against built
   bundles.
@@ -3403,7 +3502,10 @@ How to run the suites, in the Editor or headless, is in
   client assemblies must point to a lower layer and be added to
   `ClientAssemblyArchitectureTests`.
 - Pass services from `ClientBootstrap` through `Initialize`; never add static
-  service access or reference `Mmorpg.Client.App` from runtime code.
+  service access or reference `Mmorpg.Client.App` from runtime code. Never
+  search the scene for a service or the local player, or ask for `Camera.main`:
+  take the service through `Initialize` and read the player from
+  `LocalPlayerSource`. `ClientServiceAccessTests` fails on a new search.
 - Load runtime content only through Addressables, following
   [Working Rules For New Content](#working-rules-for-new-content): refer to fixed
   addresses through `ClientAddresses`, release every handle you own, and never
@@ -3452,8 +3554,11 @@ How to run the suites, in the Editor or headless, is in
 - Register a world menu provider with a `WorldMenuOrder` value and never rely on
   registration order. Read pointer targets from the menu builder, which picks them
   once through `WorldPointerPicker` for every feature.
-- Keep persistent cross-scene session state in `ClientSession` and item and corpse
-  state in their bootstrap-owned controllers, not scene panels.
+- Keep persistent cross-scene account state in the bootstrap's `ClientSession`,
+  change it only through its transitions with the owners that
+  [Client Session State](#client-session-state) names, and listen to its events
+  instead of polling it. Keep item and corpse state in their bootstrap-owned
+  controllers, not scene panels.
 - Keep planned actor and world-interaction state in bootstrap-owned controllers,
   not actor prefabs or the temporary interaction panel.
 - Keep combat state in `CombatClientController`. Presentation reads its state and
@@ -3464,12 +3569,14 @@ How to run the suites, in the Editor or headless, is in
   `CombatantViewLocator` instead of searching the scene.
 - Keep one operation owner per panel until a more explicit navigation state
   machine replaces it.
-- Give every type that holds static state a
+- Keep state in objects that the bootstrap passes, not in statics. A type that
+  must hold static state, such as a cache of loaded assets, gets a
   `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]`
   reset, so the client stays correct when Enter Play Mode Options disable domain
-  reload. An EditMode test lists the types that must have one.
-- Route every World-scene exit through exact-session UDP leave or disconnect
-  fallback.
+  reload, and an entry in the list of `ClientServiceAccessTests`.
+- Route every way out of a World through `WorldExit`, which leaves by an
+  exact-session UDP leave or the disconnect fallback and clears the client
+  session's World only for that exact simulation session.
 - Temporary implementation shortcuts are permitted only inside the replaceable UI
   presentation layer. UI-independent state and behavior must not be embedded in
   temporary panels.

@@ -23,21 +23,20 @@ namespace Mmorpg.Client.Tests.PlayMode
         private const string UnreachableGameServiceUrl = "http://127.0.0.1:9";
         private const float RequestWaitSeconds = 15f;
 
-        private string previousBaseUrl;
+        private IDisposable gameService;
 
         [SetUp]
         public void SetUp()
         {
-            previousBaseUrl = ClientSession.GameServiceBaseUrl;
-            ClientSession.Clear();
-            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
+            PlayModeClient.Session.SignOut();
+            gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
         }
 
         [TearDown]
         public void TearDown()
         {
-            ClientSession.Clear();
-            ConfigureGameServiceUrl(previousBaseUrl);
+            PlayModeClient.Session.SignOut();
+            gameService.Dispose();
         }
 
         [UnityTest]
@@ -67,19 +66,19 @@ namespace Mmorpg.Client.Tests.PlayMode
                     MessageArgument.Text("url", UnreachableGameServiceUrl),
                     MessageArgument.Text("code", "network_error"))));
             Assert.That(panel.GetComponentInChildren<CanvasGroup>().interactable, Is.True);
-            Assert.That(ClientSession.IsAuthenticated, Is.False);
+            Assert.That(PlayModeClient.Session.IsAuthenticated, Is.False);
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(SceneNames.LoginMenu));
         }
 
         [UnityTest]
         public IEnumerator CharacterSelectShowsCreationWithoutCharactersAndTheShardsOtherwise()
         {
-            ClientSession.Auth = new AuthResponse
+            PlayModeClient.Session.SignIn(new AuthResponse
             {
                 accountId = Guid.NewGuid().ToString(),
                 username = "screen_probe",
                 sessionToken = "unreachable-token"
-            };
+            });
             LogAssert.Expect(LogType.Error, new Regex("API request failed: network_error"));
             yield return LoadScene(SceneNames.CharacterSelect);
             var panel = UnityEngine.Object.FindAnyObjectByType<CharacterSelectPanel>();
@@ -118,9 +117,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             var enterPage = Page(panel, "EnterPage");
             Assert.That(enterPage.activeInHierarchy, Is.True);
             Assert.That(createPage.activeInHierarchy, Is.False);
-            Assert.That(ClientSession.SelectedCharacter, Is.SameAs(state.SelectedCharacter));
+            Assert.That(PlayModeClient.Session.SelectedCharacter, Is.SameAs(state.SelectedCharacter));
             Assert.That(state.SelectedCharacter.id, Is.EqualTo(second.id));
-            Assert.That(ClientSession.SelectedShard.id, Is.EqualTo("local-shard-1"));
+            Assert.That(PlayModeClient.Session.SelectedShard.id, Is.EqualTo("local-shard-1"));
 
             var shardRows = Rows(enterPage);
             Assert.That(shardRows.Select(row => row.interactable), Is.EqualTo(new[] { true, false }), "An offline shard cannot be chosen.");
@@ -241,14 +240,6 @@ namespace Mmorpg.Client.Tests.PlayMode
                     },
                 },
             };
-        }
-
-        private static void ConfigureGameServiceUrl(string baseUrl)
-        {
-            var config = ScriptableObject.CreateInstance<ClientConfig>();
-            JsonUtility.FromJsonOverwrite("{\"gameServiceBaseUrl\":\"" + baseUrl + "\"}", config);
-            ClientSession.Configure(config);
-            UnityEngine.Object.Destroy(config);
         }
     }
 }

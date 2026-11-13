@@ -1,5 +1,6 @@
 using System;
 using Mmorpg.Client.Api;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Quests;
@@ -15,6 +16,7 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class ClientFailureTextTests
     {
         private static readonly Guid CharacterId = Guid.Parse("c0000000-0000-4000-8000-000000000003");
+        private static readonly ClientSettings Settings = new ClientSettings("http://127.0.0.1:9", 5, 5, 5);
         private GameObject controllerObject;
 
         [SetUp]
@@ -38,12 +40,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 FixtureTexts.UiTable()
             });
             var controller = controllerObject.AddComponent<InventoryClientController>();
-            var realtime = controllerObject.AddComponent<RealtimeSimulationClient>();
+            var realtime = Realtime();
+            var session = new ClientSession(Settings);
 
             controller.Initialize(
                 new ApiClient(5),
                 realtime.Items,
                 realtime.Session,
+                session,
+                new ClientSessionRecovery(session, realtime.Session),
                 null,
                 texts);
 
@@ -100,12 +105,15 @@ namespace Mmorpg.Client.Tests.EditMode
                 FixtureTexts.UiTable()
             });
             var controller = controllerObject.AddComponent<QuestClientController>();
-            var realtime = controllerObject.AddComponent<RealtimeSimulationClient>();
+            var realtime = Realtime();
+            var session = new ClientSession(Settings);
 
             controller.Initialize(
                 new ApiClient(5),
                 realtime.Quests,
                 realtime.Session,
+                session,
+                new ClientSessionRecovery(session, realtime.Session),
                 null,
                 texts);
 
@@ -113,6 +121,14 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 (controller.State.ErrorCode, controller.State.ErrorMessage),
                 Is.EqualTo(("quest_catalog_invalid", "The quests could not be loaded.")));
+        }
+
+        // A hub on the real transport, which these tests never start.
+        private RealtimeSimulationClient Realtime()
+        {
+            var realtime = controllerObject.AddComponent<RealtimeSimulationClient>();
+            realtime.Initialize(Settings);
+            return realtime;
         }
 
         [Test]

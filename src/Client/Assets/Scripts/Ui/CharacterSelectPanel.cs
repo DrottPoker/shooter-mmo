@@ -28,6 +28,9 @@ namespace Mmorpg.Client.Ui
         private readonly CharacterSelectState state = new CharacterSelectState();
 
         private ApiClient apiClient;
+        private ClientSession clientSession;
+        private ClientSessionRecovery recovery;
+        private WorldExit worldExit;
         private RealtimeSession realtimeSession;
         private bool operationStepFailed;
 
@@ -41,10 +44,20 @@ namespace Mmorpg.Client.Ui
             get { return operationState.IsBusy; }
         }
 
-        // Called by the composition root before the component is activated.
-        public void Initialize(RealtimeSession session, TextCatalog messageTexts)
+        // Called by the composition root before the component is activated. The panel selects in
+        // the client session, enters the World of a join, and signs out; a 401 goes to the
+        // recovery, and a joined World that does not load to the World exit.
+        public void Initialize(
+            ClientSession session,
+            ClientSessionRecovery sessionRecovery,
+            WorldExit exit,
+            RealtimeSession realtime,
+            TextCatalog messageTexts)
         {
-            realtimeSession = session;
+            clientSession = session;
+            recovery = sessionRecovery;
+            worldExit = exit;
+            realtimeSession = realtime;
             texts = messageTexts;
         }
 
@@ -85,7 +98,7 @@ namespace Mmorpg.Client.Ui
 
         private void Awake()
         {
-            apiClient = new ApiClient(ClientSession.RequestTimeoutSeconds);
+            apiClient = new ApiClient(clientSession.Settings.RequestTimeoutSeconds);
         }
 
         private void Start()
@@ -130,14 +143,13 @@ namespace Mmorpg.Client.Ui
 
         private void OnStateChanged()
         {
-            ClientSession.SelectedCharacter = state.SelectedCharacter;
-            ClientSession.SelectedShard = state.SelectedShard;
+            clientSession.Select(state.SelectedCharacter, state.SelectedShard);
             RefreshView();
         }
 
         private IEnumerator LogoutRoutine()
         {
-            var account = ClientSession.Auth;
+            var account = clientSession.Auth;
             var accountName = account != null ? account.username : "unknown";
             var accountId = account != null ? account.accountId : "unknown";
             ClientLog.Info(
@@ -146,8 +158,8 @@ namespace Mmorpg.Client.Ui
 
             ApiError error = null;
             yield return apiClient.Logout(
-                ClientSession.GameServiceBaseUrl,
-                ClientSession.SessionToken,
+                clientSession.Settings.GameServiceBaseUrl,
+                clientSession.SessionToken,
                 () => { },
                 value => error = value);
 
@@ -160,7 +172,7 @@ namespace Mmorpg.Client.Ui
             ClientLog.Info(
                 ClientLogCategory.Auth,
                 "Account '" + accountName + "' logged out and its current session was revoked.");
-            ClientSession.Clear();
+            clientSession.SignOut();
             ClientSceneLoader.LoadLoginMenu();
         }
 
@@ -168,7 +180,7 @@ namespace Mmorpg.Client.Ui
         private IEnumerator LoadSelectionRoutine(string preferredCharacterId, string preferredShardId)
         {
             yield return RefreshCharactersRoutine(preferredCharacterId);
-            if (operationStepFailed || !ClientSession.IsAuthenticated)
+            if (operationStepFailed || !clientSession.IsAuthenticated)
             {
                 yield break;
             }
@@ -223,8 +235,8 @@ namespace Mmorpg.Client.Ui
             };
 
             yield return apiClient.CreateCharacter(
-                ClientSession.GameServiceBaseUrl,
-                ClientSession.SessionToken,
+                clientSession.Settings.GameServiceBaseUrl,
+                clientSession.SessionToken,
                 request,
                 result => createdCharacter = result,
                 result => error = result);
@@ -256,8 +268,8 @@ namespace Mmorpg.Client.Ui
             CharacterAppearanceCatalogResponse result = null;
             ApiError error = null;
             yield return apiClient.GetCharacterAppearanceCatalog(
-                ClientSession.GameServiceBaseUrl,
-                ClientSession.SessionToken,
+                clientSession.Settings.GameServiceBaseUrl,
+                clientSession.SessionToken,
                 value => result = value,
                 value => error = value);
 
@@ -279,8 +291,8 @@ namespace Mmorpg.Client.Ui
             CharacterResponse[] result = null;
             ApiError error = null;
             yield return apiClient.GetCharacters(
-                ClientSession.GameServiceBaseUrl,
-                ClientSession.SessionToken,
+                clientSession.Settings.GameServiceBaseUrl,
+                clientSession.SessionToken,
                 value => result = value,
                 value => error = value);
 
@@ -297,7 +309,7 @@ namespace Mmorpg.Client.Ui
             ShardResponse[] result = null;
             ApiError error = null;
             yield return apiClient.GetShards(
-                ClientSession.GameServiceBaseUrl,
+                clientSession.Settings.GameServiceBaseUrl,
                 value => result = value,
                 value => error = value);
 
@@ -328,8 +340,7 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            ClientSession.SelectedCharacter = character;
-            ClientSession.SelectedShard = shard;
+            clientSession.Select(character, shard);
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Character '" + character.name + "' (" + character.id + ") is requesting access to shard '"
@@ -338,8 +349,8 @@ namespace Mmorpg.Client.Ui
             JoinShardResponse joinTicket = null;
             ApiError error = null;
             yield return apiClient.CreateJoinTicket(
-                ClientSession.GameServiceBaseUrl,
-                ClientSession.SessionToken,
+                clientSession.Settings.GameServiceBaseUrl,
+                clientSession.SessionToken,
                 shard.id,
                 new JoinShardRequest { characterId = character.id },
                 result => joinTicket = result,
@@ -373,7 +384,7 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            ClientSession.SelectedShard = joinTicket.shard;
+            clientSession.Select(clientSession.SelectedCharacter, joinTicket.shard);
 
             ClientLog.Info(
                 ClientLogCategory.Auth,
@@ -404,7 +415,7 @@ namespace Mmorpg.Client.Ui
                 yield break;
             }
 
-            ClientSession.ActiveSimulationSession = activeSession;
+            clientSession.EnterWorld(activeSession);
             AccountEntryPreferences.RememberWorldEntry(character.id, shard.id);
             SetStatus(
                 texts.Format(
@@ -415,7 +426,7 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.SuccessColor);
 
             // A successful load replaces this scene and ends the routine. A failed load keeps
-            // CharacterSelect, so the joined session is released here.
+            // CharacterSelect, so the World exit releases the joined session.
             var sceneLoad = ClientSceneLoader.LoadWorldScene(worldSceneName);
             yield return sceneLoad;
             if (sceneLoad.Status == AsyncOperationStatus.Succeeded)
@@ -432,17 +443,7 @@ namespace Mmorpg.Client.Ui
                         texts,
                         WorldSceneLoadFailedCode,
                         sceneLoad.OperationException?.Message))));
-            RealtimeClientError leaveError = null;
-            yield return realtimeSession.Leave(
-                activeSession.simulationSessionId,
-                () => { },
-                value => leaveError = value);
-            if (leaveError != null)
-            {
-                realtimeSession.Abort();
-            }
-
-            ClientSession.ActiveSimulationSession = null;
+            yield return worldExit.Release(activeSession);
         }
 
         private void BeginOperation(ClientOperation operation, IEnumerator routine, string progress)
@@ -467,12 +468,12 @@ namespace Mmorpg.Client.Ui
 
         private bool EnsureAuthenticated()
         {
-            if (ClientSession.IsAuthenticated)
+            if (clientSession.IsAuthenticated)
             {
                 return true;
             }
 
-            ClientSession.Clear();
+            clientSession.SignOut();
             ClientSceneLoader.LoadLoginMenu();
             return false;
         }
@@ -486,10 +487,10 @@ namespace Mmorpg.Client.Ui
 
             operationStepFailed = true;
 
-            if (!ClientSessionRecovery.ReturnToLoginIfUnauthorized(error, realtimeSession))
+            if (!recovery.ReturnToLoginIfUnauthorized(error))
             {
                 SetStatus(
-                    AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
+                    AccountEntryPresentation.ErrorText(error, clientSession.Settings.GameServiceBaseUrl, texts),
                     TemporaryUiKit.DangerColor);
                 ClientLog.Error(ClientLogCategory.Client, "API request failed: " + error.ToDiagnostic());
             }

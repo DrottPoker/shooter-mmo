@@ -49,9 +49,10 @@ namespace Mmorpg.Client.Tests.PlayMode
         private ushort lastBodySeconds;
         private SimulationVector3 standing;
 
+        // The GameService of the client's configuration, which the script's stack serves.
         private static string BaseUrl
         {
-            get { return ClientSession.GameServiceBaseUrl; }
+            get { return PlayModeClient.Session.Settings.GameServiceBaseUrl; }
         }
 
         private ulong ControlledEntityId
@@ -75,7 +76,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var hubObject = new GameObject("Live stack hub");
             hubObject.SetActive(false);
             hub = hubObject.AddComponent<RealtimeSimulationClient>();
-            hub.Initialize(transport, () => Time.realtimeSinceStartup);
+            hub.Initialize(transport, () => Time.realtimeSinceStartup, PlayModeClient.Session.Settings);
             hubObject.SetActive(true);
             probe = new LiveStackProbe(hub);
             try

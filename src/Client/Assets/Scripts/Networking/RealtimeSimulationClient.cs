@@ -1,13 +1,14 @@
 using System;
 using LiteNetLib;
+using Mmorpg.Client.Core;
 using UnityEngine;
 
 namespace Mmorpg.Client.Networking
 {
     // The client's one network entry point: the persistent MonoBehaviour that owns the transport
-    // and the frame. It composes the parts, polls the transport once per Update, and exposes the
-    // session, the diagnostics, and a channel per feature, which ClientBootstrap hands to the
-    // features as narrow interfaces.
+    // and the frame. Initialize composes the parts with the client settings; the hub then polls
+    // the transport once per Update and exposes the session, the diagnostics, and a channel per
+    // feature, which ClientBootstrap hands to the features as narrow interfaces.
     public sealed class RealtimeSimulationClient : MonoBehaviour
     {
         private IRealtimeTransport transport;
@@ -92,10 +93,16 @@ namespace Mmorpg.Client.Networking
             get { return Composed().messages; }
         }
 
-        // Gives the hub its transport and its clock before anything reads a part, which
-        // otherwise composes the hub with the LiteNetLib transport and Unity's realtime clock.
-        // EditMode tests pass fakes.
-        internal void Initialize(IRealtimeTransport realtimeTransport, Func<float> clock)
+        // Composes the hub on the LiteNetLib transport and Unity's realtime clock, with the
+        // timeouts of the client settings. Called by the composition root before anything reads a
+        // part.
+        public void Initialize(ClientSettings settings)
+        {
+            Initialize(new LiteNetLibRealtimeTransport(), () => Time.realtimeSinceStartup, settings);
+        }
+
+        // The same with another transport and clock, as EditMode tests and the live stack test pass.
+        internal void Initialize(IRealtimeTransport realtimeTransport, Func<float> clock, ClientSettings settings)
         {
             if (realtimeTransport == null)
             {
@@ -107,17 +114,17 @@ namespace Mmorpg.Client.Networking
                 throw new ArgumentNullException(nameof(clock));
             }
 
+            if (settings == null)
+            {
+                throw new ArgumentNullException(nameof(settings));
+            }
+
             if (transport != null)
             {
                 throw new InvalidOperationException("The realtime client already has a transport.");
             }
 
-            Compose(realtimeTransport, clock);
-        }
-
-        private void Awake()
-        {
-            Composed();
+            Compose(realtimeTransport, clock, settings);
         }
 
         // One frame: the poll raises every transport event and handles every packet that
@@ -125,6 +132,11 @@ namespace Mmorpg.Client.Networking
         // Internal so EditMode tests can run a frame.
         internal void Update()
         {
+            if (transport == null)
+            {
+                return;
+            }
+
             connection.Poll();
             session.EndFrame();
         }
@@ -143,20 +155,20 @@ namespace Mmorpg.Client.Networking
         {
             if (transport == null)
             {
-                Compose(new LiteNetLibRealtimeTransport(), () => Time.realtimeSinceStartup);
+                throw new InvalidOperationException("The realtime client is read before Initialize composed it.");
             }
 
             return this;
         }
 
         // Every part registers its message types; the table then checks that none is missing.
-        private void Compose(IRealtimeTransport realtimeTransport, Func<float> clock)
+        private void Compose(IRealtimeTransport realtimeTransport, Func<float> clock, ClientSettings settings)
         {
             transport = realtimeTransport;
             connection = new RealtimeConnection(transport);
             diagnostics = new RealtimeDiagnostics(connection, clock);
             var presence = new RealtimePresenceRegistry();
-            session = new RealtimeSession(connection, clock, diagnostics, presence);
+            session = new RealtimeSession(connection, settings, clock, diagnostics, presence);
             var sender = new RealtimeSender(connection, session, diagnostics);
             messages = new RealtimeMessageTable(session);
             session.RegisterMessages(messages);

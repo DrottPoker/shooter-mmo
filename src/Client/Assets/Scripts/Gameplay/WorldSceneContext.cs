@@ -36,11 +36,13 @@ namespace Mmorpg.Client.Gameplay
             new Dictionary<ulong, RealtimeCharacterAppearance>();
         private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
         private bool localLookDeferred;
+        private IClientSession clientSession;
         private IRealtimeSession realtimeSession;
         private IRealtimeMovementChannel realtimeMovement;
         private IRealtimePlayerChannel realtimePlayers;
         private IRealtimeLookChannel realtimeLooks;
         private IRealtimeAdminChannel realtimeAdmin;
+        private LocalPlayerSource localPlayers;
         private WorldPointerFocus pointerFocus;
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
@@ -128,25 +130,30 @@ namespace Mmorpg.Client.Gameplay
             return remotePlayers.TryGetValue(entityId, out view) && view != null;
         }
 
-        // The composition root passes the realtime session and the movement, player, look, and
-        // admin channels, the pointer focus, the body tint and look settings, and the local
-        // player's equipment when the scene loads, before Start runs.
+        // The composition root passes the client session, the realtime session and the movement,
+        // player, look, and admin channels, the local player source that this context fills, the
+        // pointer focus, the body tint and look settings, and the local player's equipment when the
+        // scene loads, before Start runs.
         public void Initialize(
+            IClientSession accountSession,
             IRealtimeSession session,
             IRealtimeMovementChannel movement,
             IRealtimePlayerChannel players,
             IRealtimeLookChannel looks,
             IRealtimeAdminChannel admin,
+            LocalPlayerSource localPlayerSource,
             WorldPointerFocus focus,
             PlayerBodyTintSetting tintSetting,
             PlayerBodyLookSetting lookSetting,
             PlayerEquipment playerEquipment = null)
         {
+            clientSession = accountSession;
             realtimeSession = session;
             realtimeMovement = movement;
             realtimePlayers = players;
             realtimeLooks = looks;
             realtimeAdmin = admin;
+            localPlayers = localPlayerSource;
             pointerFocus = focus;
             bodyTint = tintSetting;
             bodyLook = lookSetting;
@@ -165,14 +172,15 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (ClientSession.ActiveSimulationSession == null)
+            var world = clientSession != null ? clientSession.ActiveSimulationSession : null;
+            if (world == null)
             {
                 enabled = false;
                 return;
             }
 
             if (!WorldSceneCatalog.TryResolveScene(
-                    ClientSession.ActiveSimulationSession.worldId,
+                    world.worldId,
                     out var expectedSceneName,
                     out var sceneError))
             {
@@ -193,7 +201,7 @@ namespace Mmorpg.Client.Gameplay
                 Debug.LogError(
                     "WorldSceneContext cannot activate because scene '" + activeSceneName
                     + "' does not match joined world '"
-                    + ClientSession.ActiveSimulationSession.worldId
+                    + world.worldId
                     + "', which requires scene '" + expectedSceneName + "'.",
                     this);
                 enabled = false;
@@ -395,7 +403,10 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            var camera = Camera.main;
+            // The local player's camera, which renders the World.
+            var camera = localPlayer != null && localPlayer.PlayerCamera != null
+                ? localPlayer.PlayerCamera.Camera
+                : null;
             var eye = camera != null ? camera.transform.position : Vector3.zero;
             bodyWatch.Restart();
             do
@@ -768,11 +779,14 @@ namespace Mmorpg.Client.Gameplay
             localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
             localPlayer.PlayerCamera.SetPointerFocus(pointerFocus);
             localPlayer.SetPointerFocus(pointerFocus);
+            localPlayers?.Set(localPlayer);
             return true;
         }
 
+        // Also when the scene already destroyed the player, the source forgets it.
         private void DestroyLocalPlayer()
         {
+            localPlayers?.Clear(localPlayer);
             if (localPlayer == null)
             {
                 return;

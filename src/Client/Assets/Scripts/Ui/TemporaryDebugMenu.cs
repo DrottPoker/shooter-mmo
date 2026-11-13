@@ -19,8 +19,8 @@ namespace Mmorpg.Client.Ui
     // the player and the pointer are, a quick check of the frame and the connection, and what the
     // world draws for debugging, such as the collision; Performance, Network, and Movement show the
     // details. It is closed when a World scene loads, and refreshes its values four times a
-    // second, the pace the frame telemetry changes at. It also owns the World scene's session
-    // check and Leave Shard.
+    // second, the pace the frame telemetry changes at. It also runs the World scene's session
+    // check and Leave Shard, through the World exit.
     public sealed class TemporaryDebugMenu : MonoBehaviour
     {
         public const string WindowName = "DebugMenu";
@@ -31,7 +31,9 @@ namespace Mmorpg.Client.Ui
         private readonly ClientOperationState operationState = new ClientOperationState();
         private readonly WorldDebugTelemetryTracker telemetry = new WorldDebugTelemetryTracker();
         private readonly CollisionQueryBuffer waterBuffer = new CollisionQueryBuffer();
-        private RealtimeSession realtimeSession;
+        private IClientSession clientSession;
+        private WorldExit worldExit;
+        private IRealtimeSession realtimeSession;
         private IRealtimeDiagnostics realtimeDiagnostics;
         private IRealtimeMovementChannel realtimeMovement;
         private IRealtimePlayerChannel realtimePlayers;
@@ -40,6 +42,8 @@ namespace Mmorpg.Client.Ui
         private Material lineMaterial;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private ClientContentReport content;
+        private LocalPlayerSource localPlayers;
+        // The local player and its input of this frame.
         private LocalPlayerInput localPlayerInput;
         private LocalPlayerController localPlayerController;
         private TemporaryMenuWindow window;
@@ -118,20 +122,26 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated, with every realtime
         // part or none.
         public void Initialize(
-            RealtimeSession session,
+            IClientSession accountSession,
+            WorldExit exit,
+            IRealtimeSession session,
             IRealtimeDiagnostics diagnostics,
             IRealtimeMovementChannel movement,
             IRealtimePlayerChannel players,
+            LocalPlayerSource localPlayerSource,
             PlayerBodyTintSetting tintSetting,
             WorldDebugViewSettings debugViewSettings,
             Material debugLineMaterial,
             TextCatalog textCatalog,
             ClientContentReport contentReport)
         {
+            clientSession = accountSession;
+            worldExit = exit;
             realtimeSession = session;
             realtimeDiagnostics = diagnostics;
             realtimeMovement = movement;
             realtimePlayers = players;
+            localPlayers = localPlayerSource;
             bodyTint = tintSetting;
             viewSettings = debugViewSettings;
             lineMaterial = debugLineMaterial;
@@ -153,7 +163,7 @@ namespace Mmorpg.Client.Ui
 
         private void Start()
         {
-            FindLocalPlayerComponents();
+            ReadLocalPlayer();
             BuildUi();
             SetOpen(false);
             if (viewSettings != null)
@@ -166,7 +176,7 @@ namespace Mmorpg.Client.Ui
                 bodyTint.Changed += OnViewSettingsChanged;
             }
 
-            if (ClientSession.ActiveSimulationSession == null)
+            if (clientSession == null || clientSession.ActiveSimulationSession == null)
             {
 #if UNITY_EDITOR
                 SetStatus("No active simulation session. Local player is not spawned.", TemporaryUiKit.WarningColor);
@@ -180,8 +190,7 @@ namespace Mmorpg.Client.Ui
             if (realtimeSession == null
                 || !realtimeSession.IsJoined)
             {
-                ClientSession.ActiveSimulationSession = null;
-                ClientSceneLoader.LoadCharacterSelect();
+                worldExit.LeaveUnjoinedWorld();
             }
         }
 
@@ -203,10 +212,7 @@ namespace Mmorpg.Client.Ui
         private void Update()
         {
             telemetry.RecordFrame(Time.unscaledDeltaTime);
-            if (localPlayerInput == null || localPlayerController == null)
-            {
-                FindLocalPlayerComponents();
-            }
+            ReadLocalPlayer();
 
             if (localPlayerInput != null && localPlayerInput.ToggleDebugMenuPressedThisFrame)
             {
@@ -246,7 +252,7 @@ namespace Mmorpg.Client.Ui
 
             overlay = new GameObject("CollisionDebugOverlay").AddComponent<CollisionDebugOverlay>();
             overlay.transform.SetParent(transform, false);
-            overlay.Initialize(realtimeMovement, lineMaterial);
+            overlay.Initialize(realtimeMovement, localPlayers, lineMaterial);
         }
 
         private void BuildOverviewTab(RectTransform page)
@@ -574,7 +580,7 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshConnection()
         {
-            var session = ClientSession.ActiveSimulationSession;
+            var session = clientSession != null ? clientSession.ActiveSimulationSession : null;
             if (session == null || realtimeSession == null)
             {
                 Set(connectionState, "No local simulation session", WorldDebugHealth.Unavailable);
@@ -802,12 +808,10 @@ namespace Mmorpg.Client.Ui
             return "<color=" + TemporaryUiKit.ColorTag(color) + ">" + text + "</color>";
         }
 
-        private void FindLocalPlayerComponents()
+        private void ReadLocalPlayer()
         {
-            localPlayerController = FindAnyObjectByType<LocalPlayerController>();
-            localPlayerInput = localPlayerController != null
-                ? localPlayerController.PlayerInput
-                : FindAnyObjectByType<LocalPlayerInput>();
+            localPlayerController = localPlayers != null ? localPlayers.Controller : null;
+            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
         }
 
         private static float BytesToMebibytes(long bytes)
@@ -841,32 +845,15 @@ namespace Mmorpg.Client.Ui
 
         private IEnumerator LeaveShardRoutine()
         {
-            var session = ClientSession.ActiveSimulationSession;
-            if (session == null || realtimeSession == null)
+            if (worldExit == null)
             {
-                ClientSession.ActiveSimulationSession = null;
                 ClientSceneLoader.LoadCharacterSelect();
                 yield break;
             }
 
-            RealtimeClientError error = null;
-            yield return realtimeSession.Leave(
-                session.simulationSessionId,
-                () => { },
-                value => error = value);
-
-            if (error != null)
-            {
-                SetStatus("Error: " + AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor);
-                if (realtimeSession.IsJoined)
-                {
-                    yield break;
-                }
-            }
-
-            ClientSession.ActiveSimulationSession = null;
-            SetStatus("Left shard.", TemporaryUiKit.TextSecondary);
-            ClientSceneLoader.LoadCharacterSelect();
+            yield return worldExit.Leave(
+                error => SetStatus("Error: " + AccountEntryPresentation.ErrorText(error, texts), TemporaryUiKit.DangerColor),
+                () => SetStatus("Left shard.", TemporaryUiKit.TextSecondary));
         }
     }
 }

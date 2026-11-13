@@ -66,6 +66,7 @@ namespace Mmorpg.Client.Networking
     public sealed class RealtimeSession : IRealtimeSession
     {
         private readonly RealtimeConnection connection;
+        private readonly ClientSettings settings;
         private readonly Func<float> realtimeClock;
         private readonly RealtimeDiagnostics diagnostics;
         private readonly RealtimePresenceRegistry presence;
@@ -84,11 +85,13 @@ namespace Mmorpg.Client.Networking
 
         internal RealtimeSession(
             RealtimeConnection connection,
+            ClientSettings settings,
             Func<float> realtimeClock,
             RealtimeDiagnostics diagnostics,
             RealtimePresenceRegistry presence)
         {
             this.connection = connection;
+            this.settings = settings;
             this.realtimeClock = realtimeClock;
             this.diagnostics = diagnostics;
             this.presence = presence;
@@ -250,7 +253,7 @@ namespace Mmorpg.Client.Networking
             RealtimeClientError connectionStartError = null;
             try
             {
-                if (!connection.Start(ClientSession.RealtimeTimeoutSeconds * 1000))
+                if (!connection.Start(settings.RealtimeTimeoutSeconds * 1000))
                 {
                     connectionStartError = new RealtimeClientError(
                         RealtimeClientErrorKind.Network,
@@ -260,7 +263,7 @@ namespace Mmorpg.Client.Networking
                 else
                 {
                     State = RealtimeConnectionState.Connecting;
-                    operationDeadline = realtimeClock() + ClientSession.RealtimeTimeoutSeconds;
+                    operationDeadline = realtimeClock() + settings.RealtimeTimeoutSeconds;
                     connection.Connect(RealtimeProtocol.ConnectionKey);
                 }
             }
@@ -336,7 +339,7 @@ namespace Mmorpg.Client.Networking
             operationError = null;
             leaveAccepted = false;
             State = RealtimeConnectionState.Leaving;
-            operationDeadline = realtimeClock() + ClientSession.RealtimeTimeoutSeconds;
+            operationDeadline = realtimeClock() + settings.RealtimeTimeoutSeconds;
             ClientLog.Info(
                 ClientLogCategory.Client,
                 "Requesting a graceful leave for simulation session '" + simulationSessionId.Trim() + "'.");

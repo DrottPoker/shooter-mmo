@@ -75,6 +75,8 @@ namespace Mmorpg.Client.Ui
         private WorldPointerFocus pointerFocus;
         private Func<bool> pointerCapture;
         private InventoryInteractions interactions;
+        private LocalPlayerSource localPlayers;
+        // The local player's input of this frame.
         private LocalPlayerInput localPlayerInput;
         private RectTransform root;
         private InventoryDragCoordinator dragCoordinator;
@@ -202,6 +204,7 @@ namespace Mmorpg.Client.Ui
             WorldInteractionClientController worldInteraction,
             CombatClientController combat,
             WorldMenuController menu,
+            LocalPlayerSource localPlayerSource,
             GameMessageLog messages,
             InventoryWindowRequests windowRequests,
             TextCatalog uiTexts,
@@ -218,6 +221,7 @@ namespace Mmorpg.Client.Ui
             worldInteractionController = worldInteraction;
             combatController = combat;
             worldMenu = menu;
+            localPlayers = localPlayerSource;
             gameMessages = messages;
             requests = windowRequests;
             bodyLook = lookSetting;
@@ -484,16 +488,13 @@ namespace Mmorpg.Client.Ui
                 requests.StorageRequested += OnStorageRequested;
             }
 
-            FindPlayerInput();
+            ReadPlayerInput();
             BuildUi();
         }
 
         private void Update()
         {
-            if (localPlayerInput == null)
-            {
-                FindPlayerInput();
-            }
+            ReadPlayerInput();
 
             if (rolledBackItemIds.Count > 0 && Time.unscaledTime >= rollbackMarkUntil)
             {
@@ -741,12 +742,9 @@ namespace Mmorpg.Client.Ui
             OpenStorage(context, InventoryStorageSource.Development);
         }
 
-        private void FindPlayerInput()
+        private void ReadPlayerInput()
         {
-            var localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            localPlayerInput = localPlayer != null
-                ? localPlayer.PlayerInput
-                : FindAnyObjectByType<LocalPlayerInput>();
+            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
         }
 
         private void BuildUi()

@@ -642,7 +642,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         // and applies a committed snapshot; disposing closes the windows and the session.
         private sealed class WindowProbe : IDisposable
         {
-            private readonly string previousBaseUrl = ClientSession.GameServiceBaseUrl;
+            private IDisposable gameService;
 
             public InventoryWindows Windows { get; private set; }
 
@@ -660,8 +660,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Func<ClientItemCatalog, (string SlotId, InventoryItem Item)> extraEquipment = null,
                 Func<ClientItemCatalog, InventoryItem> extraCarried = null)
             {
-                ConfigureGameServiceUrl(UnreachableGameServiceUrl);
-                ClientSession.Clear();
+                gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
+                PlayModeClient.Session.SignOut();
                 yield return PlayModeClient.WaitForContent();
                 var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
                 yield return worldLoad;
@@ -675,14 +675,14 @@ namespace Mmorpg.Client.Tests.PlayMode
                 Catalog = controller.State.Catalog;
                 Assert.That(Catalog, Is.Not.Null);
                 var characterId = Guid.NewGuid();
-                ClientSession.Auth = new AuthResponse { accountId = Guid.NewGuid().ToString() };
-                ClientSession.SelectedCharacter = new CharacterResponse
-                {
-                    id = characterId.ToString(),
-                    name = characterName
-                };
-
-                // The controller observes the selected character on its next update.
+                PlayModeClient.Session.SignIn(new AuthResponse { accountId = Guid.NewGuid().ToString() });
+                PlayModeClient.Session.Select(
+                    new CharacterResponse
+                    {
+                        id = characterId.ToString(),
+                        name = characterName
+                    },
+                    null);
                 yield return null;
                 Snapshot = CreateSnapshot(Catalog, characterId, extraEquipment?.Invoke(Catalog), extraCarried?.Invoke(Catalog));
                 Assert.That(controller.State.ApplyFull(Snapshot), Is.EqualTo(InventorySnapshotApplyResult.Applied));
@@ -695,8 +695,9 @@ namespace Mmorpg.Client.Tests.PlayMode
                     Windows.CloseAll();
                 }
 
-                ClientSession.Clear();
-                ConfigureGameServiceUrl(previousBaseUrl);
+                PlayModeClient.Session.SignOut();
+                gameService?.Dispose();
+                gameService = null;
             }
 
             // Picks items by their rules instead of their ids, so content changes keep the test
@@ -767,16 +768,6 @@ namespace Mmorpg.Client.Tests.PlayMode
                 }
 
                 return new InventoryContainer(Guid.NewGuid(), containerType, 1, capacity, slots);
-            }
-
-            private static void ConfigureGameServiceUrl(string baseUrl)
-            {
-                var config = ScriptableObject.CreateInstance<ClientConfig>();
-                JsonUtility.FromJsonOverwrite(
-                    "{\"gameServiceBaseUrl\":\"" + baseUrl + "\"}",
-                    config);
-                ClientSession.Configure(config);
-                UnityEngine.Object.Destroy(config);
             }
         }
     }

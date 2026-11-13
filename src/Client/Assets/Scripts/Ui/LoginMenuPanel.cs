@@ -17,11 +17,14 @@ namespace Mmorpg.Client.Ui
     {
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private string notice = string.Empty;
+        private ClientSession clientSession;
 
-        // Called by the composition root before the component is activated. A notice, such as
-        // that the client is out of date, shows in the card and never blocks the form.
-        public void Initialize(TextCatalog messageTexts, string clientNotice)
+        // Called by the composition root before the component is activated, with the client
+        // session that a login signs in. A notice, such as that the client is out of date, shows in
+        // the card and never blocks the form.
+        public void Initialize(ClientSession session, TextCatalog messageTexts, string clientNotice)
         {
+            clientSession = session;
             texts = messageTexts;
             notice = clientNotice ?? string.Empty;
         }
@@ -97,7 +100,7 @@ namespace Mmorpg.Client.Ui
 
         private void Awake()
         {
-            apiClient = new ApiClient(ClientSession.RequestTimeoutSeconds);
+            apiClient = new ApiClient(clientSession.Settings.RequestTimeoutSeconds);
         }
 
         private void Start()
@@ -194,9 +197,9 @@ namespace Mmorpg.Client.Ui
             var connection = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Connection", screen.Root),
                 AccountEntryPresentation.ConnectionLine(
-                    ClientSession.GameServiceBaseUrl,
-                    ClientSession.RequestTimeoutSeconds,
-                    ClientSession.RealtimeTimeoutSeconds,
+                    clientSession.Settings.GameServiceBaseUrl,
+                    clientSession.Settings.RequestTimeoutSeconds,
+                    clientSession.Settings.RealtimeTimeoutSeconds,
                     texts),
                 13,
                 FontStyles.Normal,
@@ -253,7 +256,7 @@ namespace Mmorpg.Client.Ui
             };
 
             yield return apiClient.Register(
-                ClientSession.GameServiceBaseUrl,
+                clientSession.Settings.GameServiceBaseUrl,
                 request,
                 response => OnAuthSuccess(response, username, "registered and logged in"),
                 error => SetError("Registration", error, registerPasswordField));
@@ -273,7 +276,7 @@ namespace Mmorpg.Client.Ui
             };
 
             yield return apiClient.Login(
-                ClientSession.GameServiceBaseUrl,
+                clientSession.Settings.GameServiceBaseUrl,
                 request,
                 response => OnAuthSuccess(response, login, "logged in"),
                 error => SetError("Login", error, logInPasswordField));
@@ -281,10 +284,7 @@ namespace Mmorpg.Client.Ui
 
         private void OnAuthSuccess(AuthResponse response, string login, string action)
         {
-            ClientSession.Auth = response;
-            ClientSession.SelectedCharacter = null;
-            ClientSession.SelectedShard = null;
-            ClientSession.ActiveSimulationSession = null;
+            clientSession.SignIn(response);
             AccountEntryPreferences.RememberLogin(login);
             SetStatus(
                 texts.Format("ui/login/logged-in", MessageArgument.Text("username", response.username)),
@@ -298,7 +298,7 @@ namespace Mmorpg.Client.Ui
         private void SetError(string operation, ApiError error, TMP_InputField retryField)
         {
             SetStatus(
-                AccountEntryPresentation.ErrorText(error, ClientSession.GameServiceBaseUrl, texts),
+                AccountEntryPresentation.ErrorText(error, clientSession.Settings.GameServiceBaseUrl, texts),
                 TemporaryUiKit.DangerColor);
             ClientLog.Error(ClientLogCategory.Auth, operation + " failed: " + error.ToDiagnostic());
             // The form is enabled again once the routine ends, so the field takes the caret then.

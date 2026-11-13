@@ -33,14 +33,16 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(controller, Is.Not.Null);
             Assert.That(controller.State.Catalog, Is.Not.Null);
 
-            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
-            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
-            ClientSession.Clear();
-            ClientSession.SelectedCharacter = new CharacterResponse
-            {
-                id = Guid.NewGuid().ToString(),
-                name = "Refresh Probe"
-            };
+            var session = PlayModeClient.Session;
+            var gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
+            session.SignOut();
+            session.Select(
+                new CharacterResponse
+                {
+                    id = Guid.NewGuid().ToString(),
+                    name = "Refresh Probe"
+                },
+                null);
 
             var depth = 0;
             var deepest = 0;
@@ -77,8 +79,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return null;
             }
 
-            ClientSession.Clear();
-            ConfigureGameServiceUrl(previousBaseUrl);
+            session.SignOut();
+            gameService.Dispose();
             Assert.That(controller.State.Status, Is.Not.EqualTo(InventoryClientStatus.Loading));
         }
 
@@ -97,28 +99,31 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return null;
             var controller = UnityEngine.Object.FindAnyObjectByType<InventoryClientController>();
             Assert.That(controller, Is.Not.Null);
-            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
-            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
-            ClientSession.Clear();
-            ClientSession.Auth = new AuthResponse { accountId = Guid.NewGuid().ToString() };
-            ClientSession.SelectedCharacter = new CharacterResponse
-            {
-                id = Guid.NewGuid().ToString(),
-                name = "First Probe"
-            };
+            var session = PlayModeClient.Session;
+            var gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
+            session.SignOut();
+            session.SignIn(new AuthResponse { accountId = Guid.NewGuid().ToString() });
+            session.Select(
+                new CharacterResponse
+                {
+                    id = Guid.NewGuid().ToString(),
+                    name = "First Probe"
+                },
+                null);
             try
             {
-                // The controller observes the selected character on its next update.
                 yield return null;
                 controller.EnsureFullState();
                 Assert.That(controller.State.Status, Is.EqualTo(InventoryClientStatus.Loading));
 
                 var next = Guid.NewGuid();
-                ClientSession.SelectedCharacter = new CharacterResponse
-                {
-                    id = next.ToString(),
-                    name = "Next Probe"
-                };
+                session.Select(
+                    new CharacterResponse
+                    {
+                        id = next.ToString(),
+                        name = "Next Probe"
+                    },
+                    null);
                 yield return null;
                 Assert.That(controller.State.CharacterId, Is.EqualTo(next));
                 var status = controller.State.Status;
@@ -136,19 +141,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             }
             finally
             {
-                ClientSession.Clear();
-                ConfigureGameServiceUrl(previousBaseUrl);
+                session.SignOut();
+                gameService.Dispose();
             }
-        }
-
-        private static void ConfigureGameServiceUrl(string baseUrl)
-        {
-            var config = ScriptableObject.CreateInstance<ClientConfig>();
-            JsonUtility.FromJsonOverwrite(
-                "{\"gameServiceBaseUrl\":\"" + baseUrl + "\"}",
-                config);
-            ClientSession.Configure(config);
-            UnityEngine.Object.Destroy(config);
         }
     }
 }

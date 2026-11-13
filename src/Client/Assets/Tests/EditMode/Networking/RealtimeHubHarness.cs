@@ -23,6 +23,10 @@ namespace Mmorpg.Client.Tests.EditMode
     internal sealed class RealtimeHubHarness : IDisposable
     {
         public const string FailurePrefix = "Realtime operation failed: ";
+
+        // The hub reads its timeouts from these; no request reaches a GameService.
+        public static readonly ClientSettings Settings = new ClientSettings("http://127.0.0.1:9", 10, 10, 5);
+
         private static string bakedCollisionRevision;
 
         private readonly GameObject owner;
@@ -37,7 +41,7 @@ namespace Mmorpg.Client.Tests.EditMode
             owner.SetActive(false);
             Hub = owner.AddComponent<RealtimeSimulationClient>();
             Transport = new FakeRealtimeTransport(Timeline.Add);
-            Hub.Initialize(Transport, () => Now);
+            Hub.Initialize(Transport, () => Now, Settings);
             Subscribe();
         }
 
@@ -62,7 +66,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public static float TimeoutSeconds
         {
-            get { return ClientSession.RealtimeTimeoutSeconds; }
+            get { return Settings.RealtimeTimeoutSeconds; }
         }
 
         // A join must announce the baked collision revision of its World.

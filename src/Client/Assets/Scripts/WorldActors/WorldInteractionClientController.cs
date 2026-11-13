@@ -292,7 +292,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             if (!Guid.TryParse(
-                    ClientSession.ActiveSimulationSession?.simulationSessionId,
+                    realtimeSession.JoinedSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = "The active simulation session is unavailable.";
@@ -422,7 +422,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             if (!Guid.TryParse(
-                    ClientSession.ActiveSimulationSession?.simulationSessionId,
+                    realtimeSession.JoinedSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = Text("ui/world/session-unavailable");
@@ -667,7 +667,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             if (!Guid.TryParse(
-                    ClientSession.ActiveSimulationSession?.simulationSessionId,
+                    realtimeSession.JoinedSession?.simulationSessionId,
                     out var simulationSessionId))
             {
                 error = Text("ui/world/session-unavailable");

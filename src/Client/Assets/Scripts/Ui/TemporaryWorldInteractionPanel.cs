@@ -30,15 +30,16 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated.
         public void Initialize(
             WorldInteractionClientController worldInteraction,
+            WorldInteractionTargetingController targeting,
             InventoryClientController inventory)
         {
             interactionController = worldInteraction;
+            targetingController = targeting;
             inventoryController = inventory;
         }
 
         private void Start()
         {
-            targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
             if (interactionController != null)
             {
                 interactionController.State.Changed += OnInteractionStateChanged;
@@ -61,16 +62,6 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
-            if (targetingController == null)
-            {
-                targetingController = FindAnyObjectByType<WorldInteractionTargetingController>();
-                if (targetingController != null)
-                {
-                    targetingController.Changed += Rebuild;
-                    Rebuild();
-                }
-            }
-
             UpdateGatheringProgress();
         }
 

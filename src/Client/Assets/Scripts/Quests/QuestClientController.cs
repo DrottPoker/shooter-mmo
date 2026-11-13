@@ -29,6 +29,8 @@ namespace Mmorpg.Client.Quests
         private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private IRealtimeQuestChannel questChannel;
         private IRealtimeSession realtimeSession;
+        private IClientSession clientSession;
+        private ClientSessionRecovery recovery;
         private IInventoryOperationQueue inventory;
         private Guid pendingIntentId;
         private bool initialized;
@@ -71,6 +73,8 @@ namespace Mmorpg.Client.Quests
             ApiClient client,
             IRealtimeQuestChannel quests,
             IRealtimeSession session,
+            IClientSession accountSession,
+            ClientSessionRecovery sessionRecovery,
             string questCatalogJson,
             TextCatalog texts,
             IInventoryOperationQueue inventoryQueue = null)
@@ -83,6 +87,8 @@ namespace Mmorpg.Client.Quests
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             questChannel = quests ?? throw new ArgumentNullException(nameof(quests));
             realtimeSession = session ?? throw new ArgumentNullException(nameof(session));
+            clientSession = accountSession ?? throw new ArgumentNullException(nameof(accountSession));
+            recovery = sessionRecovery ?? throw new ArgumentNullException(nameof(sessionRecovery));
             inventory = inventoryQueue;
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientQuestCatalog.TryParse(questCatalogJson, texts, out var catalog, out var error))
@@ -100,6 +106,9 @@ namespace Mmorpg.Client.Quests
             questChannel.QuestIntentCompleted += OnQuestIntentCompleted;
             questChannel.QuestDropInCorpse += OnQuestDropInCorpse;
             realtimeSession.SessionEnded += OnSessionEnded;
+            clientSession.SignedIn += OnSessionIdentityChanged;
+            clientSession.SignedOut += OnSessionIdentityChanged;
+            clientSession.SelectionChanged += OnSessionIdentityChanged;
             initialized = true;
             observedJoin = realtimeSession.IsJoined;
             ObserveSessionIdentity();
@@ -199,9 +208,8 @@ namespace Mmorpg.Client.Quests
                 return;
             }
 
-            var identityChanged = ObserveSessionIdentity();
             var joined = realtimeSession.IsJoined;
-            if (joined && (!observedJoin || identityChanged))
+            if (joined && !observedJoin)
             {
                 Reload();
             }
@@ -224,6 +232,9 @@ namespace Mmorpg.Client.Quests
                 questChannel.QuestIntentCompleted -= OnQuestIntentCompleted;
                 questChannel.QuestDropInCorpse -= OnQuestDropInCorpse;
                 realtimeSession.SessionEnded -= OnSessionEnded;
+                clientSession.SignedIn -= OnSessionIdentityChanged;
+                clientSession.SignedOut -= OnSessionIdentityChanged;
+                clientSession.SelectionChanged -= OnSessionIdentityChanged;
             }
         }
 
@@ -319,8 +330,8 @@ namespace Mmorpg.Client.Quests
                 CharacterQuestLogResponse response = null;
                 ApiError apiError = null;
                 yield return apiClient.GetCharacterQuests(
-                    ClientSession.GameServiceBaseUrl,
-                    ClientSession.SessionToken,
+                    clientSession.Settings.GameServiceBaseUrl,
+                    clientSession.SessionToken,
                     characterId.ToString(),
                     value => response = value,
                     value => apiError = value);
@@ -331,7 +342,7 @@ namespace Mmorpg.Client.Quests
 
                 if (apiError != null)
                 {
-                    if (ClientSessionRecovery.ReturnToLoginIfUnauthorized(apiError, realtimeSession))
+                    if (recovery.ReturnToLoginIfUnauthorized(apiError))
                     {
                         loading = false;
                         yield break;
@@ -397,10 +408,28 @@ namespace Mmorpg.Client.Quests
             }
         }
 
+        // A new account or character starts empty, and a joined session reads its quest log at
+        // once, as a join does.
+        private void OnSessionIdentityChanged()
+        {
+            if (!ObserveSessionIdentity())
+            {
+                return;
+            }
+
+            var joined = realtimeSession.IsJoined;
+            if (joined)
+            {
+                Reload();
+            }
+
+            observedJoin = joined;
+        }
+
         private bool ObserveSessionIdentity()
         {
-            var accountId = ClientSession.Auth?.accountId ?? string.Empty;
-            var character = ClientSession.SelectedCharacter;
+            var accountId = clientSession.Auth?.accountId ?? string.Empty;
+            var character = clientSession.SelectedCharacter;
             var characterId = character?.id ?? string.Empty;
             if (string.Equals(accountId, observedAccountId, StringComparison.Ordinal)
                 && string.Equals(characterId, observedCharacterId, StringComparison.Ordinal))
@@ -422,9 +451,11 @@ namespace Mmorpg.Client.Quests
             return true;
         }
 
-        private static bool TryGetSelectedCharacterId(out Guid characterId)
+        private bool TryGetSelectedCharacterId(out Guid characterId)
         {
-            return Guid.TryParse(ClientSession.SelectedCharacter?.id, out characterId)
+            characterId = Guid.Empty;
+            return clientSession != null
+                && Guid.TryParse(clientSession.SelectedCharacter?.id, out characterId)
                 && characterId != Guid.Empty;
         }
     }
