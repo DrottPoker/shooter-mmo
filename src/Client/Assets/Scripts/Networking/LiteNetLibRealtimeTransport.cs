@@ -70,6 +70,14 @@ namespace Mmorpg.Client.Networking
             serverPeer = null;
         }
 
+        // Closes the socket without the disconnect message, so the worker sees a lost line and
+        // times the connection out. Only the live stack test uses it.
+        internal void StopWithoutDisconnectMessage()
+        {
+            manager.Stop(false);
+            serverPeer = null;
+        }
+
         private void OnPeerConnected(NetPeer peer)
         {
             serverPeer = peer;

@@ -3352,6 +3352,14 @@ namespace rule are in [Folder Layout](#folder-layout).
   its `Leaving` reaction. A new client message needs an entry in the client cases
   there. Tests of other areas read the table through
   `RealtimeMessageTable.IsDropped` of a harness's hub.
+- **Live stack.** `LiveStackPlayModeTests` plays one character through the real
+  `ApiClient`, `RealtimeSimulationClient`, and LiteNetLib transport against a
+  running local stack. It composes the hub with `LiveStackTransport`, which wraps
+  `LiteNetLibRealtimeTransport` to read `BodySeconds` and to drop the line without
+  a disconnect message, so the Networking assembly shows its internals to the
+  PlayMode tests too. The test is explicit and has the `LiveStack` category, so
+  only `tools/Test-LiveStack.ps1` runs it, as
+  [Live Stack Test](../tests/README.md#live-stack-test) describes.
 - **Movement determinism.** `MovementDeterminismScenario` runs one movement
   scenario in both runtimes and pins `ExpectedSimulationRevision` and
   `ExpectedFingerprint`. An intended change to shared movement or collision

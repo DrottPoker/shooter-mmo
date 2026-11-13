@@ -14,6 +14,8 @@
     "Mmorpg.Client.Worlds",
     "Mmorpg.WorldData",
     "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation",
+    "LiteNetLib",
     "Unity.ResourceManager",
     "Unity.TextMeshPro"
   ],

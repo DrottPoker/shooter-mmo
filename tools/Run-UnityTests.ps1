@@ -1,8 +1,21 @@
+# Runs the Unity EditMode and PlayMode tests headless and fails unless every selected test
+# passed. The CI Unity gate runs it as it is. By default it leaves out two categories: Graphics,
+# whose tests draw and need a graphics device, and LiveStack, whose tests need the local stack;
+# tools/Test-LiveStack.ps1 starts that stack and runs this script for the LiveStack tests alone.
+# Unity opens a project only once, so the script refuses to run while an Editor or another
+# Unity process has it open; tools/Run-UnityEditorTests.ps1 runs the tests in an open Editor.
 param(
     [string]$UnityEditorPath = $env:UNITY_EDITOR_PATH,
     [string]$UnityCliPath = $env:UNITY_CLI_PATH,
     [string]$ProjectPath = (Join-Path $PSScriptRoot "..\src\Client"),
-    [string]$ResultsPath = (Join-Path $PSScriptRoot "..\TestResults\Unity")
+    [string]$ResultsPath = (Join-Path $PSScriptRoot "..\TestResults\Unity"),
+    # The test platforms to run, in this order.
+    [ValidateSet("EditMode", "PlayMode")]
+    [string[]]$Platform = @("EditMode", "PlayMode"),
+    # Unity's -testCategory: categories separated by semicolons, an exclamation mark excludes one.
+    [string]$TestCategory = "!Graphics;!LiveStack",
+    # Checks that Unity is installed and the project is closed, and runs no test.
+    [switch]$Preflight
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +51,34 @@ if (-not $useUnityCli -and
 }
 
 $resolvedProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
+
+# Unity holds Temp/UnityLockfile open without sharing while it has the project open, in the
+# Editor and headless alike.
+function Test-UnityProjectOpen([string]$Path) {
+    $lockFile = Join-Path $Path "Temp\UnityLockfile"
+    if (-not (Test-Path -LiteralPath $lockFile)) {
+        return $false
+    }
+
+    try {
+        $stream = [IO.File]::Open($lockFile, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        $stream.Dispose()
+        return $false
+    }
+    catch [IO.IOException] {
+        return $true
+    }
+}
+
+if (Test-UnityProjectOpen $resolvedProjectPath) {
+    throw "A Unity Editor or another Unity process has '$resolvedProjectPath' open. Close it, or run the tests in that Editor with tools/Run-UnityEditorTests.ps1."
+}
+
+if ($Preflight) {
+    Write-Output "Unity $requiredVersion can run the tests of '$resolvedProjectPath'."
+    return
+}
+
 New-Item -ItemType Directory -Force -Path $ResultsPath | Out-Null
 
 function ConvertTo-ProcessArgument {
@@ -54,15 +95,10 @@ function ConvertTo-ProcessArgument {
     return $Value
 }
 
-# Unity runs here without a graphics device (-nographics), where a camera cannot draw, so the
-# tests of the Graphics category, which draw, are left out; tools/Run-UnityEditorTests.ps1 runs
-# them in the Editor. See tests/README.md.
-$excludedCategory = "!Graphics"
-
-foreach ($platform in @("EditMode", "PlayMode")) {
-    $resultFile = Join-Path $ResultsPath "$platform-results.xml"
-    $logFile = Join-Path $ResultsPath "$platform-unity.log"
-    $cliLogFile = Join-Path $ResultsPath "$platform-cli.log"
+foreach ($platformName in $Platform) {
+    $resultFile = Join-Path $ResultsPath "$platformName-results.xml"
+    $logFile = Join-Path $ResultsPath "$platformName-unity.log"
+    $cliLogFile = Join-Path $ResultsPath "$platformName-cli.log"
     Remove-Item -LiteralPath $resultFile, $logFile, $cliLogFile `
         -Force -ErrorAction SilentlyContinue
     if ($useUnityCli) {
@@ -70,13 +106,13 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             "--non-interactive",
             "--no-banner",
             "test", $resolvedProjectPath,
-            "--mode", $platform,
+            "--mode", $platformName,
             "--output", $resultFile,
             "--editor-version", $requiredVersion,
             "--timeout", "900",
             "--",
             "-nographics",
-            "-testCategory", $excludedCategory,
+            "-testCategory", $TestCategory,
             "-logFile", $logFile
         )
     }
@@ -86,9 +122,9 @@ foreach ($platform in @("EditMode", "PlayMode")) {
             "-nographics",
             "-projectPath", $resolvedProjectPath,
             "-runTests",
-            "-testPlatform", $platform,
+            "-testPlatform", $platformName,
             "-testResults", $resultFile,
-            "-testCategory", $excludedCategory,
+            "-testCategory", $TestCategory,
             "-logFile", $logFile
         )
     }
@@ -102,17 +138,23 @@ foreach ($platform in @("EditMode", "PlayMode")) {
     $startInfo.RedirectStandardError = $useUnityCli
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
+    $started = $false
+    $runStarted = Get-Date
     try {
         if (-not $process.Start()) {
-            throw "Unity $platform tests could not start the Unity process."
+            throw "Unity $platformName tests could not start the Unity process."
         }
 
+        $started = $true
         if ($useUnityCli) {
             $standardOutput = $process.StandardOutput.ReadToEndAsync()
             $standardError = $process.StandardError.ReadToEndAsync()
         }
 
-        $process.WaitForExit()
+        # Waits in slices, so an interrupted script reaches the cleanup below.
+        while (-not $process.WaitForExit(500)) {
+        }
+
         $exitCode = $process.ExitCode
         if ($useUnityCli) {
             $cliLog = $standardOutput.GetAwaiter().GetResult() +
@@ -121,6 +163,16 @@ foreach ($platform in @("EditMode", "PlayMode")) {
         }
     }
     finally {
+        # An interrupted run takes the Unity it started with it, and the test scene that Unity's
+        # PlayMode runner made in Assets and deletes only at the end of a run.
+        if ($started -and -not $process.HasExited) {
+            & taskkill.exe /PID $process.Id /T /F | Out-Null
+            $null = $process.WaitForExit(10000)
+            Get-ChildItem -LiteralPath (Join-Path $resolvedProjectPath "Assets") -Filter "InitTestScene*.unity*" -File |
+                Where-Object { $_.CreationTime -ge $runStarted } |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+        }
+
         $process.Dispose()
     }
 
@@ -130,11 +182,11 @@ foreach ($platform in @("EditMode", "PlayMode")) {
         }
 
         $cliHint = if ($useUnityCli) { " Inspect '$cliLogFile' locally." } else { "" }
-        throw "Unity $platform tests failed with exit code $exitCode.$cliHint"
+        throw "Unity $platformName tests failed with exit code $exitCode.$cliHint"
     }
 
     if (-not (Test-Path -LiteralPath $resultFile)) {
-        throw "Unity $platform tests did not produce '$resultFile'."
+        throw "Unity $platformName tests did not produce '$resultFile'."
     }
 
     try {
@@ -142,11 +194,11 @@ foreach ($platform in @("EditMode", "PlayMode")) {
         $testRun = $testResults.'test-run'
     }
     catch {
-        throw "Unity $platform tests produced an invalid result file '$resultFile': $($_.Exception.Message)"
+        throw "Unity $platformName tests produced an invalid result file '$resultFile': $($_.Exception.Message)"
     }
 
     if ($null -eq $testRun) {
-        throw "Unity $platform tests produced a result file without a test run."
+        throw "Unity $platformName tests produced a result file without a test run."
     }
 
     # As in the backend gate, a skipped or inconclusive test did not run and fails the suite,
@@ -154,15 +206,15 @@ foreach ($platform in @("EditMode", "PlayMode")) {
     $notPassed = @($testRun.SelectNodes(".//test-case[@result!='Passed']") |
         ForEach-Object { "$($_.fullname): $($_.result)" })
     if ($notPassed.Count -ne 0) {
-        throw "Unity $platform tests did not run or pass:`n$($notPassed -join "`n")"
+        throw "Unity $platformName tests did not run or pass:`n$($notPassed -join "`n")"
     }
 
     if ($testRun.result -ne "Passed" -or [int]$testRun.total -eq 0 -or
         [int]$testRun.passed -ne [int]$testRun.total) {
-        throw "Unity $platform test results did not report a complete passing suite."
+        throw "Unity $platformName test results did not report a complete passing suite."
     }
 
-    $summary = "Unity $platform tests passed: $($testRun.passed)/$($testRun.total)."
+    $summary = "Unity $platformName tests passed: $($testRun.passed)/$($testRun.total)."
     Write-Output $summary
     if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
         [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "- $summary`n")
@@ -170,4 +222,4 @@ foreach ($platform in @("EditMode", "PlayMode")) {
 }
 
 $runner = if ($useUnityCli) { "the licensed Unity CLI" } else { "the Unity Editor" }
-Write-Output "Unity EditMode and PlayMode tests passed with Unity $requiredVersion through $runner."
+Write-Output "Unity $($Platform -join ' and ') tests passed with Unity $requiredVersion through $runner."
