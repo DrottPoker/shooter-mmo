@@ -31,6 +31,8 @@ namespace Mmorpg.Client.WorldActors
         // A walk that ended out of range stops waiting after this long.
         private const float ApproachSettleSeconds = 1.5f;
 
+        private LocalPlayerSource localPlayers;
+        // The local player of this frame.
         private LocalPlayerController localPlayer;
         private WorldInteractionClientController interactionController;
         private WorldActorClientController actorController;
@@ -55,10 +57,12 @@ namespace Mmorpg.Client.WorldActors
             WorldInteractionClientController worldInteraction,
             WorldActorClientController worldActors,
             WorldMenuController worldMenu,
+            LocalPlayerSource localPlayerSource,
             GameMessageLog gameMessages,
             TextCatalog uiTexts)
         {
             interactionController = worldInteraction;
+            localPlayers = localPlayerSource;
             actorController = worldActors;
             menu = worldMenu;
             messages = gameMessages;
@@ -83,7 +87,7 @@ namespace Mmorpg.Client.WorldActors
 
         private void Update()
         {
-            EnsureLocalPlayer();
+            ReadLocalPlayer();
             if (localPlayer == null || localPlayer.PlayerInput == null)
             {
                 return;
@@ -336,12 +340,9 @@ namespace Mmorpg.Client.WorldActors
             return active != null && active.TargetRuntimeId == target.TargetRuntimeId;
         }
 
-        private void EnsureLocalPlayer()
+        private void ReadLocalPlayer()
         {
-            if (localPlayer == null)
-            {
-                localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            }
+            localPlayer = localPlayers != null ? localPlayers.Controller : null;
         }
 
         // A game message that names the target, such as "There is no way to reach Mira."

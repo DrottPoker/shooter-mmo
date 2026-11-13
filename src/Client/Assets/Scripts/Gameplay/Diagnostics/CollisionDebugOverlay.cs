@@ -41,7 +41,7 @@ namespace Mmorpg.Client.Gameplay
         private readonly List<int> indices = new List<int>();
         private IRealtimeMovementChannel movement;
         private Material material;
-        private LocalPlayerController player;
+        private LocalPlayerSource localPlayer;
         private Mesh pathMesh;
         private MaterialPropertyBlock pathColor;
         private ICollisionWorld builtWorld;
@@ -56,9 +56,13 @@ namespace Mmorpg.Client.Gameplay
         public int ShownShapeCount { get; private set; }
 
         // Called by its owner before the component is activated.
-        public void Initialize(IRealtimeMovementChannel movementChannel, Material lineMaterial)
+        public void Initialize(
+            IRealtimeMovementChannel movementChannel,
+            LocalPlayerSource localPlayerSource,
+            Material lineMaterial)
         {
             movement = movementChannel;
+            localPlayer = localPlayerSource;
             material = lineMaterial;
         }
 
@@ -104,11 +108,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (player == null)
-            {
-                player = FindAnyObjectByType<LocalPlayerController>();
-            }
-
+            var player = localPlayer != null ? localPlayer.Controller : null;
             var session = movement != null ? movement.MovementSession : null;
             if (player == null || !player.IsServerAuthoritative || session == null)
             {
@@ -119,7 +119,7 @@ namespace Mmorpg.Client.Gameplay
 
             if (ShowCollision)
             {
-                RebuildCollisionIfNeeded(session);
+                RebuildCollisionIfNeeded(player, session);
                 for (var kind = 0; kind < CollisionDebugLines.KindCount; kind++)
                 {
                     Draw(kindMeshes[kind], kindColors[kind]);
@@ -130,13 +130,13 @@ namespace Mmorpg.Client.Gameplay
                 builtWorld = null;
             }
 
-            if (ShowPath && BuildPath())
+            if (ShowPath && BuildPath(player))
             {
                 Draw(pathMesh, pathColor);
             }
         }
 
-        private void RebuildCollisionIfNeeded(NetworkMovementSession session)
+        private void RebuildCollisionIfNeeded(LocalPlayerController player, NetworkMovementSession session)
         {
             var world = session.CollisionWorld;
             var center = player.transform.position;
@@ -159,7 +159,7 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // From the player through every waypoint it has not reached yet.
-        private bool BuildPath()
+        private bool BuildPath(LocalPlayerController player)
         {
             var path = player.CurrentPath;
             var progress = player.PredictedState.PathProgress;

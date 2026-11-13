@@ -52,7 +52,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator LoadingWorldSceneWithoutJoinedSessionDoesNotSpawnLocalPlayer()
         {
-            ClientSession.Clear();
+            PlayModeClient.Session.SignOut();
             Assert.That(ClientSceneLoader.IsWorldSceneAvailable(SceneNames.DevelopmentWorld1), Is.True);
             yield return PlayModeClient.WaitForContent();
             var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
@@ -155,7 +155,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator TheDebugAndAdminMenusStartClosedAndOpenWithTheirTabs()
         {
-            ClientSession.Clear();
+            PlayModeClient.Session.SignOut();
             yield return PlayModeClient.WaitForContent();
             var loadOperation = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
             yield return loadOperation;
@@ -206,7 +206,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator LeavingAWorldSceneReleasesItsAddressablesHandle()
         {
-            ClientSession.Clear();
+            PlayModeClient.Session.SignOut();
             yield return PlayModeClient.WaitForContent();
             var worldLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
             yield return worldLoad;

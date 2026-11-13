@@ -34,6 +34,8 @@ namespace Mmorpg.Client.WorldActors
         private WorldActorClientController actorController;
         private GameMessageLog messages;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+        private LocalPlayerSource localPlayers;
+        // The local player of this frame.
         private LocalPlayerController localPlayer;
         // The navigation intent and destination of the latest Walk here.
         private int walkIntentId;
@@ -80,9 +82,14 @@ namespace Mmorpg.Client.WorldActors
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(WorldActorClientController worldActors, GameMessageLog gameMessages, TextCatalog uiTexts)
+        public void Initialize(
+            WorldActorClientController worldActors,
+            LocalPlayerSource localPlayerSource,
+            GameMessageLog gameMessages,
+            TextCatalog uiTexts)
         {
             actorController = worldActors;
+            localPlayers = localPlayerSource;
             messages = gameMessages;
             texts = uiTexts;
             AddProvider(this, WorldMenuOrder.WalkAndExamine);
@@ -209,7 +216,7 @@ namespace Mmorpg.Client.WorldActors
 
         private void Update()
         {
-            EnsureLocalPlayer();
+            ReadLocalPlayer();
             var input = localPlayer != null ? localPlayer.PlayerInput : null;
             if (input == null || !input.IsConfigured || !localPlayer.IsServerAuthoritative)
             {
@@ -392,12 +399,9 @@ namespace Mmorpg.Client.WorldActors
             return false;
         }
 
-        private void EnsureLocalPlayer()
+        private void ReadLocalPlayer()
         {
-            if (localPlayer == null)
-            {
-                localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            }
+            localPlayer = localPlayers != null ? localPlayers.Controller : null;
         }
 
         private readonly struct ProviderEntry

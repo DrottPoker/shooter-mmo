@@ -191,8 +191,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            accountText.text = ClientSession.Auth != null
-                ? texts.Format("ui/characters/signed-in", MessageArgument.Text("username", ClientSession.Auth.username))
+            accountText.text = clientSession.Auth != null
+                ? texts.Format("ui/characters/signed-in", MessageArgument.Text("username", clientSession.Auth.username))
                 : string.Empty;
             RefreshCharacterRows();
             RefreshShardRows();

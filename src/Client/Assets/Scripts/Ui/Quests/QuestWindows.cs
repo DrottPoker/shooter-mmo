@@ -42,6 +42,8 @@ namespace Mmorpg.Client.Ui
         private GameMessageLog messages;
         private WorldMenuController worldMenu;
         private InventoryWindows inventoryWindows;
+        private LocalPlayerSource localPlayers;
+        // The local player's input of this frame.
         private LocalPlayerInput localPlayerInput;
         private QuestNoticeFeed notices;
         private UiWindow dialog;
@@ -92,11 +94,13 @@ namespace Mmorpg.Client.Ui
             QuestClientController questController,
             InventoryClientController inventoryController,
             WorldInteractionClientController worldInteraction,
+            LocalPlayerSource localPlayerSource,
             GameMessageLog gameMessages,
             TextCatalog uiTexts,
             WorldMenuController menu = null,
             InventoryWindows inventoryWindowsBeside = null)
         {
+            localPlayers = localPlayerSource;
             theme = uiTheme;
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             quests = questController;
@@ -157,7 +161,7 @@ namespace Mmorpg.Client.Ui
         private void Start()
         {
             BuildUi();
-            FindPlayerInput();
+            ReadPlayerInput();
             if (quests != null)
             {
                 // The quest log may have loaded before the windows, so the notices start from
@@ -209,13 +213,10 @@ namespace Mmorpg.Client.Ui
                 PlaceWindows();
             }
 
+            ReadPlayerInput();
             if (localPlayerInput == null)
             {
-                FindPlayerInput();
-                if (localPlayerInput == null)
-                {
-                    return;
-                }
+                return;
             }
 
             if (localPlayerInput.ToggleQuestLogPressedThisFrame && !IsTyping())
@@ -241,12 +242,9 @@ namespace Mmorpg.Client.Ui
                 && field.isFocused;
         }
 
-        private void FindPlayerInput()
+        private void ReadPlayerInput()
         {
-            var localPlayer = FindAnyObjectByType<LocalPlayerController>();
-            localPlayerInput = localPlayer != null
-                ? localPlayer.PlayerInput
-                : FindAnyObjectByType<LocalPlayerInput>();
+            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
         }
 
         private void Abandon(QuestLogActiveEntry entry)

@@ -163,7 +163,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Apply(actors.State, Spawn(MobId, RealtimeWorldActorKind.Mob, Array.Empty<RealtimeWorldActorMenuOption>()));
             var texts = FixtureTexts.Ui();
             var targeting = Create<WorldInteractionTargetingController>("Targeting");
-            targeting.Initialize(null, actors, null, null, texts);
+            targeting.Initialize(null, actors, null, null, null, texts);
             var menu = new WorldMenuBuilder();
 
             menu.Begin(default(Ray), new[]
@@ -206,7 +206,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var texts = FixtureTexts.Ui();
             var actors = Create<WorldActorClientController>("Actors");
             var targeting = Create<WorldInteractionTargetingController>("Targeting");
-            targeting.Initialize(null, actors, null, null, texts);
+            targeting.Initialize(null, actors, null, null, null, texts);
             var menu = new WorldMenuBuilder();
 
             menu.Begin(default(Ray), new[]
@@ -233,7 +233,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var examine = texts.Get("ui/world/examine");
             var messages = new GameMessageLog();
             var worldMenu = Create<WorldMenuController>("WorldMenu");
-            worldMenu.Initialize(actors, messages, texts);
+            worldMenu.Initialize(actors, null, messages, texts);
 
             // Nothing under the pointer leaves Walk here alone.
             var empty = new WorldMenuBuilder();

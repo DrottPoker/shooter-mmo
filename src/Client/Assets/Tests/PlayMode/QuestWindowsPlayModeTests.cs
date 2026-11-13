@@ -20,9 +20,8 @@ namespace Mmorpg.Client.Tests.PlayMode
         [UnityTest]
         public IEnumerator TheQuestWindowsStandBesideAnOpenEquipmentWindow()
         {
-            var previousBaseUrl = ClientSession.GameServiceBaseUrl;
-            ConfigureGameServiceUrl(UnreachableGameServiceUrl);
-            ClientSession.Clear();
+            var gameService = PlayModeClient.UseGameService(UnreachableGameServiceUrl);
+            PlayModeClient.Session.SignOut();
             InventoryWindows inventoryWindows = null;
             try
             {
@@ -57,8 +56,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     inventoryWindows.CloseAll();
                 }
 
-                ClientSession.Clear();
-                ConfigureGameServiceUrl(previousBaseUrl);
+                PlayModeClient.Session.SignOut();
+                gameService.Dispose();
             }
         }
 
@@ -68,16 +67,6 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(
                 questWindows.Log.Rect.anchoredPosition.x,
                 Is.EqualTo(dialogLeft + QuestWindows.DialogWidth + theme.WindowGap).Within(0.01f));
-        }
-
-        private static void ConfigureGameServiceUrl(string baseUrl)
-        {
-            var config = ScriptableObject.CreateInstance<ClientConfig>();
-            JsonUtility.FromJsonOverwrite(
-                "{\"gameServiceBaseUrl\":\"" + baseUrl + "\"}",
-                config);
-            ClientSession.Configure(config);
-            Object.Destroy(config);
         }
     }
 }

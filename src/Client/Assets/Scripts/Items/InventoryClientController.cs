@@ -46,6 +46,8 @@ namespace Mmorpg.Client.Items
         private TextCatalog messageTexts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private IRealtimeItemChannel itemChannel;
         private IRealtimeSession realtimeSession;
+        private IClientSession clientSession;
+        private ClientSessionRecovery recovery;
         private Coroutine refreshCoroutine;
         // Set before the routine starts: its first step raises Changed synchronously, and a
         // listener that asks for state again must queue instead of starting a second routine.
@@ -78,6 +80,8 @@ namespace Mmorpg.Client.Items
             ApiClient client,
             IRealtimeItemChannel items,
             IRealtimeSession session,
+            IClientSession accountSession,
+            ClientSessionRecovery sessionRecovery,
             string gameplayCatalogJson,
             TextCatalog texts)
         {
@@ -89,6 +93,8 @@ namespace Mmorpg.Client.Items
             apiClient = client ?? throw new ArgumentNullException(nameof(client));
             itemChannel = items ?? throw new ArgumentNullException(nameof(items));
             realtimeSession = session ?? throw new ArgumentNullException(nameof(session));
+            clientSession = accountSession ?? throw new ArgumentNullException(nameof(accountSession));
+            recovery = sessionRecovery ?? throw new ArgumentNullException(nameof(sessionRecovery));
             messageTexts = texts ?? throw new ArgumentNullException(nameof(texts));
             if (ClientItemCatalog.TryLoad(gameplayCatalogJson, texts, out var catalog, out var error))
             {
@@ -106,6 +112,9 @@ namespace Mmorpg.Client.Items
             itemChannel.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
             itemChannel.OwnerItemStateChanged += OnOwnerItemStateChanged;
             realtimeSession.SessionEnded += OnSessionEnded;
+            clientSession.SignedIn += OnSessionIdentityChanged;
+            clientSession.SignedOut += OnSessionIdentityChanged;
+            clientSession.SelectionChanged += OnSessionIdentityChanged;
             initialized = true;
             observedRealtimeJoin = realtimeSession.IsJoined;
             ObserveSessionIdentity();
@@ -115,9 +124,8 @@ namespace Mmorpg.Client.Items
         {
             if (initialized)
             {
-                var identityChanged = ObserveSessionIdentity();
                 var joined = realtimeSession != null && realtimeSession.IsJoined;
-                if (joined && (!observedRealtimeJoin || identityChanged))
+                if (joined && !observedRealtimeJoin)
                 {
                     BeginRefresh(
                         InventoryRefreshScope.Full,
@@ -152,6 +160,9 @@ namespace Mmorpg.Client.Items
                 itemChannel.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
                 itemChannel.OwnerItemStateChanged -= OnOwnerItemStateChanged;
                 realtimeSession.SessionEnded -= OnSessionEnded;
+                clientSession.SignedIn -= OnSessionIdentityChanged;
+                clientSession.SignedOut -= OnSessionIdentityChanged;
+                clientSession.SelectionChanged -= OnSessionIdentityChanged;
             }
 
             if (refreshCoroutine != null)
@@ -825,7 +836,7 @@ namespace Mmorpg.Client.Items
                     break;
                 }
 
-                var token = ClientSession.SessionToken;
+                var token = clientSession.SessionToken;
                 ApiError apiError = null;
                 InventorySnapshotApplyResult applyResult;
                 long receivedRevision;
@@ -835,7 +846,7 @@ namespace Mmorpg.Client.Items
                     CharacterBankSnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterBank(
-                        ClientSession.GameServiceBaseUrl,
+                        clientSession.Settings.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -867,7 +878,7 @@ namespace Mmorpg.Client.Items
                     CharacterRecoverySnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterRecovery(
-                        ClientSession.GameServiceBaseUrl,
+                        clientSession.Settings.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -899,7 +910,7 @@ namespace Mmorpg.Client.Items
                     CharacterInventorySnapshotResponse response = null;
                     var mapError = string.Empty;
                     yield return apiClient.GetCharacterInventory(
-                        ClientSession.GameServiceBaseUrl,
+                        clientSession.Settings.GameServiceBaseUrl,
                         token,
                         characterId.ToString(),
                         value => response = value,
@@ -930,9 +941,7 @@ namespace Mmorpg.Client.Items
                 if (apiError != null)
                 {
                     if (State.Status != InventoryClientStatus.UpdateRequired
-                        && !ClientSessionRecovery.ReturnToLoginIfUnauthorized(
-                            apiError,
-                            realtimeSession))
+                        && !recovery.ReturnToLoginIfUnauthorized(apiError))
                     {
                         State.SetError(InventoryClientError.FromApi(apiError, messageTexts), true);
                     }
@@ -1056,10 +1065,31 @@ namespace Mmorpg.Client.Items
             return InventorySnapshotMapper.TryMap(response, State.Catalog, out snapshot, out error);
         }
 
+        // A new account or character starts empty, and a joined session reads its inventory at
+        // once, as a join does.
+        private void OnSessionIdentityChanged()
+        {
+            if (!ObserveSessionIdentity())
+            {
+                return;
+            }
+
+            var joined = realtimeSession.IsJoined;
+            if (joined)
+            {
+                BeginRefresh(
+                    InventoryRefreshScope.Full,
+                    false,
+                    State.KnownItemStateRevision);
+            }
+
+            observedRealtimeJoin = joined;
+        }
+
         private bool ObserveSessionIdentity()
         {
-            var accountId = ClientSession.Auth?.accountId ?? string.Empty;
-            var characterId = ClientSession.SelectedCharacter?.id ?? string.Empty;
+            var accountId = clientSession.Auth?.accountId ?? string.Empty;
+            var characterId = clientSession.SelectedCharacter?.id ?? string.Empty;
             if (string.Equals(accountId, observedAccountId, StringComparison.Ordinal)
                 && string.Equals(characterId, observedCharacterId, StringComparison.Ordinal))
             {
@@ -1086,9 +1116,9 @@ namespace Mmorpg.Client.Items
 
         private bool TryGetSelectedCharacterId(out Guid characterId)
         {
-            return Guid.TryParse(
-                    ClientSession.SelectedCharacter?.id,
-                    out characterId)
+            characterId = Guid.Empty;
+            return clientSession != null
+                && Guid.TryParse(clientSession.SelectedCharacter?.id, out characterId)
                 && characterId != Guid.Empty;
         }
 

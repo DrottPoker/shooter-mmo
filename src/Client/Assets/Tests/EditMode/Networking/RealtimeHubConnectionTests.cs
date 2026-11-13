@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
 using LiteNetLib;
-using Mmorpg.Client.Core;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
@@ -43,7 +42,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.Timeline, Is.EqualTo(new[] { "Start", "Connect" }));
             Assert.That(
                 harness.Transport.DisconnectTimeoutMilliseconds,
-                Is.EqualTo(ClientSession.RealtimeTimeoutSeconds * 1000));
+                Is.EqualTo(RealtimeHubHarness.Settings.RealtimeTimeoutSeconds * 1000));
             Assert.That(
                 harness.Transport.ConnectedEndpoint,
                 Is.EqualTo("127.0.0.1:27015 " + RealtimeProtocol.ConnectionKey));
