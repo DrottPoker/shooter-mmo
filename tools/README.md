@@ -13,6 +13,8 @@ its header comment. The C# tools are projects of `Mmorpg.slnx` and run with
 | `Run-UnityEditorTests.ps1` | Runs the Unity EditMode and PlayMode tests in the open Unity Editor of this checkout; `-Mode EditMode -Filter <Fixture>` runs one fixture |
 | `Run-UnityTests.ps1` | Runs both Unity suites headless when no Editor has the project open, without the `Graphics` and `LiveStack` categories; CI uses it |
 | `Test-LiveStack.ps1` | Starts the local stack, runs the client's live stack test against it, and stops what it started. See [Run The Live Stack Test](../docs/LOCAL_DEVELOPMENT.md#run-the-live-stack-test) |
+| `Test-Load.ps1` | Runs one load scenario of `load/scenarios` against a disposable stack, judges it against `load/quality-boundary.json`, and stops what it started; `-Plan` shows what it would start. See [Run A Scenario](../docs/STACK_STRESS_TESTING.md#run-a-scenario) |
+| `LocalStackCommon.ps1` | Shared helpers of the two scripts above: hidden service processes, the `Ctrl+C` stop, readiness waits, and port checks |
 | `Wait-PullRequest.ps1` | Waits until a pull request is ready to merge or needs work. See [Pull Request Workflow](../docs/LOCAL_DEVELOPMENT.md#pull-request-workflow) |
 | `Complete-PullRequest.ps1` | Merges a ready pull request into `development` and cleans up its branches |
 | `PullRequestCommon.ps1` | Shared helpers of the two pull request scripts |
@@ -51,6 +53,7 @@ compilers also write the [text table](../content/README.md#text-tables) of their
 | Tool | Does |
 | --- | --- |
 | `StackStressGenerator/` | Finite stress benchmark of a SimulationWorker or the full stack. See [Stack Stress Testing](../docs/STACK_STRESS_TESTING.md) |
+| `load/` | The load scenarios, the quality boundary, and the checked-in baselines that `Test-Load.ps1` uses |
 | `ActiveSimulationBots/` | Long-running bot population that shares a local shard with Unity players. See [Active Simulation Bots](../docs/ACTIVE_SIMULATION_BOTS.md) |
 | `SimulationBotClient/` | The headless UDP client library both bot tools use |
 

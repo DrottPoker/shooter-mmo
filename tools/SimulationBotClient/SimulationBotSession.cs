@@ -19,6 +19,7 @@ public sealed class SimulationBotSession
     private readonly Action<double>? inputAcknowledged;
     private readonly ISimulationBotRealtimeObserver? realtimeObserver;
     private readonly List<PendingInput> pendingInputs = [];
+    private readonly SimulationBotRemoteCadence remoteCadence = new();
     private ISimulationBotTransport? transport;
     private RealtimeJoinAccepted? joinedSession;
     private long startedTimestamp;
@@ -152,6 +153,17 @@ public sealed class SimulationBotSession
         leaveDeadlineTimestamp = AddDuration(nowTimestamp, joinAndLeaveTimeout);
     }
 
+    // The window in which the bot measures how often it receives each remote player's state.
+    public void BeginRemoteCadenceWindow(long nowTimestamp)
+    {
+        remoteCadence.BeginWindow(nowTimestamp);
+    }
+
+    public void EndRemoteCadenceWindow(long nowTimestamp)
+    {
+        remoteCadence.EndWindow(nowTimestamp);
+    }
+
     public bool SendItemOperation(RealtimeItemOperationIntent intent)
     {
         ArgumentNullException.ThrowIfNull(intent);
@@ -266,7 +278,8 @@ public sealed class SimulationBotSession
             latestServerTick,
             failureCode,
             failureMessage,
-            bodySeconds);
+            bodySeconds,
+            remoteCadence.Capture());
     }
 
     public void Fail(string code, string message)
@@ -294,9 +307,13 @@ public sealed class SimulationBotSession
         switch (messageType)
         {
             case RealtimeMessageType.SimulationSnapshot:
-                if (Decode<RealtimeSimulationSnapshot>(packet, "invalid_snapshot", RealtimeProtocol.TryDecodeSimulationSnapshot, out _))
+                if (Decode<RealtimeSimulationSnapshot>(packet, "invalid_snapshot", RealtimeProtocol.TryDecodeSimulationSnapshot, out var remoteSnapshot))
                 {
                     snapshotsReceived++;
+                    foreach (var entity in remoteSnapshot.Entities)
+                    {
+                        remoteCadence.OnRecord(entity.EntityId, remoteSnapshot.SnapshotSequence, nowTimestamp);
+                    }
                 }
 
                 break;
@@ -308,16 +325,18 @@ public sealed class SimulationBotSession
 
                 break;
             case RealtimeMessageType.EntitySpawn:
-                if (Decode<RealtimeEntitySpawn>(packet, "invalid_entity_spawn", RealtimeProtocol.TryDecodeEntitySpawn, out _))
+                if (Decode<RealtimeEntitySpawn>(packet, "invalid_entity_spawn", RealtimeProtocol.TryDecodeEntitySpawn, out var spawn))
                 {
                     spawnPackets++;
+                    remoteCadence.OnSpawn(spawn.EntityId, nowTimestamp);
                 }
 
                 break;
             case RealtimeMessageType.EntityDespawn:
-                if (Decode<RealtimeEntityDespawn>(packet, "invalid_entity_despawn", RealtimeProtocol.TryDecodeEntityDespawn, out _))
+                if (Decode<RealtimeEntityDespawn>(packet, "invalid_entity_despawn", RealtimeProtocol.TryDecodeEntityDespawn, out var despawn))
                 {
                     despawnPackets++;
+                    remoteCadence.OnDespawn(despawn.EntityId, nowTimestamp);
                 }
 
                 break;
@@ -477,6 +496,7 @@ public sealed class SimulationBotSession
         }
 
         joinedSession = session;
+        remoteCadence.SetOwnEntity(session.ControlledEntityId);
         latestPosition = new SimulationBotPosition(
             session.InitialPlayerState.PositionX,
             session.InitialPlayerState.PositionY,

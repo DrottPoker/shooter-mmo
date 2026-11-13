@@ -6,6 +6,9 @@ using Mmorpg.SimulationWorker.Config;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
+// Every NetworkMetricsLogSeconds it captures one interval of the realtime metrics, writes the
+// status, network, and performance log lines from it, and, when PerformanceReportPath is set,
+// appends the same interval to the performance file.
 public sealed class RealtimeMetricsReporterService(
     RealtimeNetworkMetrics metrics,
     RealtimePerformanceMetrics performanceMetrics,
@@ -13,8 +16,11 @@ public sealed class RealtimeMetricsReporterService(
     ILogger<RealtimeMetricsReporterService> logger) : BackgroundService
 {
     private readonly Stopwatch workerUptime = Stopwatch.StartNew();
+    private readonly RealtimePerformanceReportWriter? reportWriter =
+        RealtimePerformanceReportWriter.Create(config.PerformanceReportPath, logger);
     private TimeSpan previousProcessorTime = CaptureProcessorTime();
     private TimeSpan previousSampleTime;
+    private DateTime previousSampleUtc = DateTime.UtcNow;
     private RealtimeNetworkMetricsSnapshot previousNetwork = metrics.Capture();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,111 +28,139 @@ public sealed class RealtimeMetricsReporterService(
         using var timer = new PeriodicTimer(config.NetworkMetricsLogInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var snapshot = metrics.Capture();
-            var sampleTime = workerUptime.Elapsed;
-            var sampleSeconds = Math.Max(
-                double.Epsilon,
-                (sampleTime - previousSampleTime).TotalSeconds);
-            var processorTime = CaptureProcessorTime();
-            var processorSeconds = Math.Max(
-                0d,
-                (processorTime - previousProcessorTime).TotalSeconds);
-            var logicalProcessorCount = Math.Max(1, Environment.ProcessorCount);
-            var singleCoreCpuPercent = Math.Min(
-                logicalProcessorCount * 100d,
-                processorSeconds / sampleSeconds * 100d);
-            var machineCpuPercent = Math.Min(
-                100d,
-                singleCoreCpuPercent / logicalProcessorCount);
-            using var process = Process.GetCurrentProcess();
-
-            logger.LogInformation(
-                "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s, of which snapshots {SnapshotKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
-                snapshot.ActiveRealPlayers,
-                snapshot.ActiveSyntheticBots,
-                snapshot.UnauthenticatedPeers,
-                snapshot.ActivePeers,
-                snapshot.ActiveEntities,
-                machineCpuPercent,
-                singleCoreCpuPercent,
-                process.WorkingSet64 / 1024d / 1024d,
-                PerSecond(snapshot.ReceivedPackets - previousNetwork.ReceivedPackets, sampleSeconds),
-                PerSecond(snapshot.ReceivedBytes - previousNetwork.ReceivedBytes, sampleSeconds) / 1024d,
-                PerSecond(snapshot.SentPackets - previousNetwork.SentPackets, sampleSeconds),
-                PerSecond(snapshot.SentBytes - previousNetwork.SentBytes, sampleSeconds) / 1024d,
-                PerSecond(snapshot.SnapshotBytes - previousNetwork.SnapshotBytes, sampleSeconds) / 1024d,
-                PerSecond(
-                    snapshot.DroppedSnapshotPackets - previousNetwork.DroppedSnapshotPackets,
-                    sampleSeconds),
-                PerSecond(
-                    snapshot.QuotaRejectedPackets - previousNetwork.QuotaRejectedPackets,
-                    sampleSeconds),
-                sampleSeconds);
-
-            logger.LogInformation(
-                "[SIMULATION] Network metrics: peers {ActivePeers}, entities {ActiveEntities}, received {ReceivedPackets} packets and {ReceivedBytes} bytes, sent {SentPackets} packets and {SentBytes} bytes, quota rejects {QuotaRejects}, snapshot drops {SnapshotDrops}, including {SnapshotBackpressureDrops} from aggregate backpressure, joins {AcceptedJoins} accepted and {RejectedJoins} rejected, lifecycle {SpawnPackets} spawns and {DespawnPackets} despawns, snapshot entity records {SnapshotEntityRecords}.",
-                snapshot.ActivePeers,
-                snapshot.ActiveEntities,
-                snapshot.ReceivedPackets,
-                snapshot.ReceivedBytes,
-                snapshot.SentPackets,
-                snapshot.SentBytes,
-                snapshot.QuotaRejectedPackets,
-                snapshot.DroppedSnapshotPackets,
-                snapshot.BackpressureDroppedSnapshotPackets,
-                snapshot.AcceptedJoins,
-                snapshot.RejectedJoins,
-                snapshot.SpawnPackets,
-                snapshot.DespawnPackets,
-                snapshot.SnapshotEntityRecords);
-
-            var performance = performanceMetrics.CaptureAndReset();
-            logger.LogInformation(
-                "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}.",
-                Format(performance.NetworkPoll),
-                Format(performance.CompletedOperations),
-                Format(performance.JoinQueueDelay),
-                Format(performance.JoinFinalization),
-                performance.CompletedOperationBacklog,
-                performance.MaximumCompletedOperationBacklog,
-                performance.CorpseMutationBacklog,
-                performance.MaximumCorpseMutationBacklog,
-                performance.ActiveCorpseMutations,
-                Format(performance.SimulationTick),
-                Format(performance.SimulationTickLag),
-                Format(performance.CollisionStreaming),
-                Format(performance.MovementSimulation),
-                Format(performance.InterestRefresh),
-                Format(performance.SnapshotBroadcast),
-                performance.TickResynchronizations,
-                performance.TickOverruns,
-                performance.ProcessAllocatedBytes / 1024d / 1024d,
-                performance.Generation0Collections,
-                performance.Generation1Collections,
-                performance.Generation2Collections,
-                performance.ManagedHeapSizeBytes / 1024d / 1024d,
-                performance.ManagedHeapFragmentedBytes / 1024d / 1024d,
-                performance.TotalManagedMemoryBytes / 1024d / 1024d,
-                performance.SnapshotVisibilityGroups,
-                performance.SnapshotPacketsEncoded,
-                performance.SnapshotPacketsSent,
-                performance.SnapshotEntityUpdatesDeferred);
-
-            previousSampleTime = sampleTime;
-            previousProcessorTime = processorTime;
-            previousNetwork = snapshot;
+            ReportInterval();
         }
+    }
+
+    // Captures the interval since the previous report, logs it, and writes it to the file.
+    internal RealtimeMetricsInterval ReportInterval()
+    {
+        var interval = CaptureInterval();
+        LogInterval(interval);
+        reportWriter?.Append(interval);
+        return interval;
+    }
+
+    private RealtimeMetricsInterval CaptureInterval()
+    {
+        var snapshot = metrics.Capture();
+        var sampleTime = workerUptime.Elapsed;
+        var sampleUtc = DateTime.UtcNow;
+        var sampleSeconds = Math.Max(
+            double.Epsilon,
+            (sampleTime - previousSampleTime).TotalSeconds);
+        var processorTime = CaptureProcessorTime();
+        var processorSeconds = Math.Max(
+            0d,
+            (processorTime - previousProcessorTime).TotalSeconds);
+        var logicalProcessorCount = Math.Max(1, Environment.ProcessorCount);
+        var singleCoreCpuPercent = Math.Min(
+            logicalProcessorCount * 100d,
+            processorSeconds / sampleSeconds * 100d);
+        var machineCpuPercent = Math.Min(
+            100d,
+            singleCoreCpuPercent / logicalProcessorCount);
+        long workingSetBytes;
+        using (var process = Process.GetCurrentProcess())
+        {
+            workingSetBytes = process.WorkingSet64;
+        }
+
+        var interval = new RealtimeMetricsInterval(
+            previousSampleUtc,
+            sampleUtc,
+            sampleSeconds,
+            machineCpuPercent,
+            singleCoreCpuPercent,
+            workingSetBytes,
+            snapshot,
+            RealtimeMetricsInterval.Subtract(snapshot, previousNetwork),
+            performanceMetrics.CaptureAndReset());
+        previousSampleTime = sampleTime;
+        previousSampleUtc = sampleUtc;
+        previousProcessorTime = processorTime;
+        previousNetwork = snapshot;
+        return interval;
+    }
+
+    private void LogInterval(RealtimeMetricsInterval interval)
+    {
+        var snapshot = interval.Totals;
+        var delta = interval.Delta;
+        var sampleSeconds = interval.Seconds;
+        logger.LogInformation(
+            "[SIMULATION] Worker status: players {ActiveRealPlayers}, bots {ActiveBots}, unauthenticated peers {UnauthenticatedPeers}, connected peers {ConnectedPeers}, entities {ActiveEntities}; process CPU {MachineCpuPercent:F1}% of total logical-core capacity and {SingleCoreCpuPercent:F1}% single-core equivalent; working set {WorkingSetMiB:F1} MiB; traffic {ReceivedPacketsPerSecond:F1} received packets/s at {ReceivedKiBPerSecond:F1} KiB/s and {SentPacketsPerSecond:F1} sent packets/s at {SentKiBPerSecond:F1} KiB/s, of which snapshots {SnapshotKiBPerSecond:F1} KiB/s; snapshot drops {SnapshotDropsPerSecond:F1}/s and quota rejects {QuotaRejectsPerSecond:F1}/s over {SampleSeconds:F1} seconds.",
+            snapshot.ActiveRealPlayers,
+            snapshot.ActiveSyntheticBots,
+            snapshot.UnauthenticatedPeers,
+            snapshot.ActivePeers,
+            snapshot.ActiveEntities,
+            interval.MachineCpuPercent,
+            interval.SingleCoreCpuPercent,
+            interval.WorkingSetBytes / 1024d / 1024d,
+            delta.ReceivedPackets / sampleSeconds,
+            delta.ReceivedBytes / sampleSeconds / 1024d,
+            delta.SentPackets / sampleSeconds,
+            delta.SentBytes / sampleSeconds / 1024d,
+            delta.SnapshotBytes / sampleSeconds / 1024d,
+            delta.DroppedSnapshotPackets / sampleSeconds,
+            delta.QuotaRejectedPackets / sampleSeconds,
+            sampleSeconds);
+
+        logger.LogInformation(
+            "[SIMULATION] Network metrics: peers {ActivePeers}, entities {ActiveEntities}, received {ReceivedPackets} packets and {ReceivedBytes} bytes, sent {SentPackets} packets and {SentBytes} bytes, quota rejects {QuotaRejects}, snapshot drops {SnapshotDrops}, including {SnapshotBackpressureDrops} from aggregate backpressure, joins {AcceptedJoins} accepted and {RejectedJoins} rejected, lifecycle {SpawnPackets} spawns and {DespawnPackets} despawns, snapshot entity records {SnapshotEntityRecords}.",
+            snapshot.ActivePeers,
+            snapshot.ActiveEntities,
+            snapshot.ReceivedPackets,
+            snapshot.ReceivedBytes,
+            snapshot.SentPackets,
+            snapshot.SentBytes,
+            snapshot.QuotaRejectedPackets,
+            snapshot.DroppedSnapshotPackets,
+            snapshot.BackpressureDroppedSnapshotPackets,
+            snapshot.AcceptedJoins,
+            snapshot.RejectedJoins,
+            snapshot.SpawnPackets,
+            snapshot.DespawnPackets,
+            snapshot.SnapshotEntityRecords);
+
+        var performance = interval.Performance;
+        logger.LogInformation(
+            "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}.",
+            Format(performance.NetworkPoll),
+            Format(performance.CompletedOperations),
+            Format(performance.JoinQueueDelay),
+            Format(performance.JoinFinalization),
+            performance.CompletedOperationBacklog,
+            performance.MaximumCompletedOperationBacklog,
+            performance.CorpseMutationBacklog,
+            performance.MaximumCorpseMutationBacklog,
+            performance.ActiveCorpseMutations,
+            Format(performance.SimulationTick),
+            Format(performance.SimulationTickLag),
+            Format(performance.CollisionStreaming),
+            Format(performance.MovementSimulation),
+            Format(performance.InterestRefresh),
+            Format(performance.SnapshotBroadcast),
+            performance.TickResynchronizations,
+            performance.TickOverruns,
+            performance.ProcessAllocatedBytes / 1024d / 1024d,
+            performance.Generation0Collections,
+            performance.Generation1Collections,
+            performance.Generation2Collections,
+            performance.ManagedHeapSizeBytes / 1024d / 1024d,
+            performance.ManagedHeapFragmentedBytes / 1024d / 1024d,
+            performance.TotalManagedMemoryBytes / 1024d / 1024d,
+            performance.SnapshotVisibilityGroups,
+            performance.SnapshotPacketsEncoded,
+            performance.SnapshotPacketsSent,
+            performance.SnapshotEntityUpdatesDeferred);
     }
 
     private static TimeSpan CaptureProcessorTime()
     {
         using var process = Process.GetCurrentProcess();
         return process.TotalProcessorTime;
-    }
-
-    private static double PerSecond(long delta, double seconds)
-    {
-        return Math.Max(0, delta) / seconds;
     }
 
     private static string Format(RealtimeDurationSummary? summary)

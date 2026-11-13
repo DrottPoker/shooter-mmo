@@ -39,6 +39,10 @@ public sealed record SimulationWorkerConfig(
 
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
+    // Optional file that the metrics reporter appends one JSON line per interval to, for the
+    // load tooling. Null writes no file.
+    public string? PerformanceReportPath { get; init; }
+
     // How often the realtime loop saves the place and vitals of the players whose state changed.
     public TimeSpan CharacterCheckpointInterval { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -277,6 +281,10 @@ public sealed record SimulationWorkerConfig(
         var networkMetricsLogSeconds = PositiveInt(
             section["NetworkMetricsLogSeconds"],
             "SimulationWorker:NetworkMetricsLogSeconds",
+            errors);
+        var performanceReportPath = OptionalFullPath(
+            section["PerformanceReportPath"],
+            "SimulationWorker:PerformanceReportPath",
             errors);
         var characterCheckpointSeconds = string.IsNullOrWhiteSpace(
                 section["CharacterCheckpointSeconds"])
@@ -619,6 +627,7 @@ public sealed record SimulationWorkerConfig(
             SimulationSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
+            PerformanceReportPath = performanceReportPath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             LingeringBodySeconds = lingeringBodySeconds,
             UdpQuotas = new UdpQuotaConfig(
@@ -667,6 +676,25 @@ public sealed record SimulationWorkerConfig(
         return Path.GetFullPath(Path.IsPathRooted(path)
             ? path
             : Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static string? OptionalFullPath(string? value, string key, ICollection<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(value.Trim());
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            errors.Add($"{key} must be a valid file path.");
+            return null;
+        }
     }
 
     private static string? Require(string? value, string key, ICollection<string> errors)

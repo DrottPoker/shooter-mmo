@@ -55,6 +55,7 @@ public sealed class StressRunCoordinator(
         var nextReportTimestamp = AddDuration(startedTimestamp, options.ReportInterval);
         var nextProcessSampleTimestamp = AddDuration(startedTimestamp, TimeSpan.FromSeconds(1));
         long? steadyDeadlineTimestamp = null;
+        DateTime? steadyStartedAt = null;
         var rampComplete = false;
 
         try
@@ -87,6 +88,12 @@ public sealed class StressRunCoordinator(
                     processSampler?.MarkSteadyState();
                     generatorProcessSampler.MarkSteadyState();
                     admissionProvider.MarkSteadyState();
+                    steadyStartedAt = DateTime.UtcNow;
+                    foreach (var bot in bots)
+                    {
+                        bot.BeginRemoteCadenceWindow(now);
+                    }
+
                     var joined = bots.Count(bot => bot.State == StressBotState.Joined);
                     steadyDeadlineTimestamp = joined == 0
                         ? now
@@ -110,6 +117,13 @@ public sealed class StressRunCoordinator(
                 }
 
                 await WaitForNextPollAsync(cancellationToken);
+            }
+
+            var steadyEndTimestamp = Stopwatch.GetTimestamp();
+            var steadyEndedAt = DateTime.UtcNow;
+            foreach (var bot in bots)
+            {
+                bot.EndRemoteCadenceWindow(steadyEndTimestamp);
             }
 
             WriteProgress();
@@ -140,7 +154,11 @@ public sealed class StressRunCoordinator(
                 inputAcknowledgementLatencies.CaptureSummary(),
                 gameplayMetrics.Capture(
                     options.Workload,
-                    providerReport.FullStack?.LootHotspotCorpseId));
+                    providerReport.FullStack?.LootHotspotCorpseId)) with
+            {
+                SteadyStartedAt = steadyStartedAt,
+                SteadyEndedAt = steadyEndedAt
+            };
         }
         finally
         {

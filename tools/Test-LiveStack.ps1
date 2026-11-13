@@ -30,162 +30,19 @@ $runtimeVariable = "MMORPG_LIVE_STACK_WORKER_RUNTIME_ID"
 $gameServiceDll = Join-Path $repositoryRoot "src\Server\GameService\bin\Debug\net10.0\Mmorpg.GameService.dll"
 $workerDll = Join-Path $repositoryRoot "src\Server\SimulationWorker\bin\Debug\net10.0\Mmorpg.SimulationWorker.dll"
 
-function Write-Step([string]$Message) {
-    Write-Host "[live] $Message"
-}
+$StackStepPrefix = "live"
+. (Join-Path $PSScriptRoot "LocalStackCommon.ps1")
 
-# Runs a native command with its output in a log file and returns its exit code. Windows
-# PowerShell 5.1 turns redirected native stderr into errors under "Stop", so errors stay
-# suspended while it runs and the exit code decides.
-function Invoke-Logged([string]$FilePath, [string[]]$ArgumentList, [string]$LogName) {
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        & $FilePath @ArgumentList *> (Join-Path $logRoot $LogName)
-        $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
-}
-
-function Get-NativeLines([string]$FilePath, [string[]]$ArgumentList) {
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $lines = @(& $FilePath @ArgumentList 2>$null)
-        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Lines = @($lines | Where-Object { $_ } | ForEach-Object { "$_".Trim() }) }
-    }
-    finally {
-        $ErrorActionPreference = $previousPreference
-    }
-}
-
-function Write-LogTail([string]$LogName) {
-    $path = Join-Path $logRoot $LogName
-    if (Test-Path -LiteralPath $path) {
-        Get-Content -LiteralPath $path -Tail 30 | ForEach-Object { Write-Host "  $_" }
-    }
-}
-
-# Starts a built service in its own hidden console, so it can get Ctrl+C on its own, with its
-# output in the log folder and the environment of its launch profile.
-function Start-StackProcess([string]$Name, [string]$Dll, [hashtable]$Environment) {
-    $previous = @{}
-    foreach ($key in $Environment.Keys) {
-        $previous[$key] = [Environment]::GetEnvironmentVariable($key)
-        [Environment]::SetEnvironmentVariable($key, $Environment[$key])
-    }
-
-    try {
-        Start-Process -FilePath "dotnet" -ArgumentList "`"$Dll`"" -WorkingDirectory $repositoryRoot `
-            -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Join-Path $logRoot "$Name.log") `
-            -RedirectStandardError (Join-Path $logRoot "$Name.err.log")
-    }
-    finally {
-        foreach ($key in $previous.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $previous[$key])
-        }
-    }
-}
-
-# Sends Ctrl+C to the console of a process that Start-StackProcess started. A helper process
-# attaches to that console, because attaching detaches a process from its own console.
-function Send-ControlC([int]$ProcessId) {
-    $helper = @'
-using System;
-using System.Runtime.InteropServices;
-public static class ConsoleControl
-{
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool FreeConsole();
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool AttachConsole(uint processId);
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
-}
-'@
-    $command = "Add-Type -TypeDefinition @'`n$helper`n'@`n" +
-        "[void][ConsoleControl]::FreeConsole()`n" +
-        "if (-not [ConsoleControl]::AttachConsole($ProcessId)) { exit 1 }`n" +
-        "[void][ConsoleControl]::SetConsoleCtrlHandler([IntPtr]::Zero, `$true)`n" +
-        "if (-not [ConsoleControl]::GenerateConsoleCtrlEvent(0, 0)) { exit 2 }`n" +
-        "exit 0"
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-    $sender = Start-Process -FilePath "powershell.exe" `
-        -ArgumentList "-NoProfile", "-NonInteractive", "-EncodedCommand", $encoded `
-        -WindowStyle Hidden -Wait -PassThru
-    $sender.ExitCode -eq 0
-}
-
-# Stops a service with Ctrl+C, as its terminal would, and ends it when it does not stop in time.
-function Stop-StackProcess($Process, [string]$Name) {
-    if ($null -eq $Process -or $Process.HasExited) {
-        return
-    }
-
-    $signalled = Send-ControlC $Process.Id
-    if ($signalled -and $Process.WaitForExit(30000)) {
-        Write-Step "$Name stopped."
-        return
-    }
-
-    Write-Step "$Name did not stop on Ctrl+C within 30 seconds; ending the process."
-    Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
-    $null = $Process.WaitForExit(10000)
-}
-
-function Test-GameServiceReady {
-    try {
-        $response = Invoke-WebRequest -Uri "$gameServiceUrl/health/ready" -UseBasicParsing -TimeoutSec 2
-        $response.StatusCode -eq 200
-    }
-    catch {
-        $false
-    }
-}
-
-function Test-ShardOnline {
-    try {
-        $shards = @(Invoke-RestMethod -Uri "$gameServiceUrl/api/shards" -TimeoutSec 2)
-        @($shards | Where-Object { $_.id -eq $shardId -and $_.isOnline }).Count -eq 1
-    }
-    catch {
-        $false
-    }
-}
-
-function Wait-Until([scriptblock]$Condition, [string]$What, $Process, [string]$LogName) {
-    $deadline = [DateTime]::UtcNow.AddSeconds($ReadyTimeoutSeconds)
-    while (-not (& $Condition)) {
-        if ($Process.HasExited) {
-            Write-LogTail $LogName
-            throw "$What failed: the process ended; its log is in '$logRoot'."
-        }
-
-        if ([DateTime]::UtcNow -ge $deadline) {
-            Write-LogTail $LogName
-            throw "$What did not happen within $ReadyTimeoutSeconds seconds; the logs are in '$logRoot'."
-        }
-
-        Start-Sleep -Milliseconds 500
-    }
+function Start-ServiceProcess([string]$Name, [string]$Dll, [hashtable]$Environment) {
+    Start-StackProcess $Name "dotnet" @("`"$Dll`"") $Environment $logRoot $repositoryRoot
 }
 
 function Get-WorkerLog {
-    $path = Join-Path $logRoot "simulation-worker.log"
-    if (Test-Path -LiteralPath $path) {
-        # The worker still writes the file, so it is read without a lock.
-        $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-        try {
-            (New-Object IO.StreamReader($stream)).ReadToEnd()
-        }
-        finally {
-            $stream.Dispose()
-        }
-    }
-    else {
-        ""
-    }
+    Read-SharedText (Join-Path $logRoot "simulation-worker.log")
+}
+
+function Wait-Ready([scriptblock]$Condition, [string]$What, $Process, [string]$LogName) {
+    Wait-Until $Condition $What $Process (Join-Path $logRoot $LogName) $ReadyTimeoutSeconds $logRoot
 }
 
 New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
@@ -203,12 +60,12 @@ try {
     }
 
     & $runUnityTests -Preflight | ForEach-Object { Write-Step $_ }
-    $listener = Get-NetTCPConnection -LocalPort $gameServicePort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    $listener = Get-TcpListener $gameServicePort
     if ($listener) {
         throw "Process $($listener.OwningProcess) already listens on port $gameServicePort. Stop the GameService that runs, then run the live test again."
     }
 
-    $udpListener = Get-NetUDPEndpoint -LocalPort $udpPort -ErrorAction SilentlyContinue | Select-Object -First 1
+    $udpListener = Get-UdpListener $udpPort
     if ($udpListener) {
         throw "Process $($udpListener.OwningProcess) already uses UDP port $udpPort. Stop the SimulationWorker that runs, then run the live test again."
     }
@@ -233,33 +90,33 @@ try {
         Write-Step "The containers run already and stay running."
     }
 
-    if ((Invoke-Logged "docker" @("compose", "up", "-d", "--wait") "docker-compose-up.log") -ne 0) {
-        Write-LogTail "docker-compose-up.log"
+    if ((Invoke-Logged "docker" @("compose", "up", "-d", "--wait") (Join-Path $logRoot "docker-compose-up.log")) -ne 0) {
+        Write-LogTail (Join-Path $logRoot "docker-compose-up.log")
         throw "docker compose up failed."
     }
 
     Write-Step "Building GameService and SimulationWorker."
     foreach ($project in @("src\Server\GameService\Mmorpg.GameService.csproj", "src\Server\SimulationWorker\Mmorpg.SimulationWorker.csproj")) {
         $logName = "build-" + [IO.Path]::GetFileNameWithoutExtension($project) + ".log"
-        if ((Invoke-Logged "dotnet" @("build", $project, "-nologo", "-v", "q") $logName) -ne 0) {
-            Write-LogTail $logName
+        if ((Invoke-Logged "dotnet" @("build", $project, "-nologo", "-v", "q") (Join-Path $logRoot $logName)) -ne 0) {
+            Write-LogTail (Join-Path $logRoot $logName)
             throw "Building $project failed."
         }
     }
 
     Write-Step "Starting GameService."
-    $gameService = Start-StackProcess "game-service" $gameServiceDll @{
+    $gameService = Start-ServiceProcess "game-service" $gameServiceDll @{
         ASPNETCORE_ENVIRONMENT = "Development"
         ASPNETCORE_URLS = $gameServiceUrl
     }
     Write-Step "GameService runs as process $($gameService.Id)."
-    Wait-Until { Test-GameServiceReady } "GameService readiness" $gameService "game-service.log"
+    Wait-Ready { Test-HttpReady "$gameServiceUrl/health/ready" } "GameService readiness" $gameService "game-service.log"
 
     Write-Step "Starting SimulationWorker."
-    $worker = Start-StackProcess "simulation-worker" $workerDll @{ DOTNET_ENVIRONMENT = "Development" }
+    $worker = Start-ServiceProcess "simulation-worker" $workerDll @{ DOTNET_ENVIRONMENT = "Development" }
     Write-Step "SimulationWorker runs as process $($worker.Id)."
-    Wait-Until { (Get-WorkerLog) -match "Realtime transport listening on UDP port $udpPort" } "The worker's UDP listener" $worker "simulation-worker.log"
-    Wait-Until { Test-ShardOnline } "The registration of $shardId" $worker "simulation-worker.log"
+    Wait-Ready { (Get-WorkerLog) -match "Realtime transport listening on UDP port $udpPort" } "The worker's UDP listener" $worker "simulation-worker.log"
+    Wait-Ready { Test-ShardOnline $gameServiceUrl $shardId } "The registration of $shardId" $worker "simulation-worker.log"
     $runtimeMatch = [regex]::Match((Get-WorkerLog), "with runtime ([^,\s]+),")
     if (-not $runtimeMatch.Success) {
         throw "The worker log names no runtime id; the logs are in '$logRoot'."
@@ -304,7 +161,7 @@ finally {
     }
 
     if ($toStop.Count -gt 0) {
-        $null = Invoke-Logged "docker" (@("compose", "stop") + $toStop) "docker-compose-stop.log"
+        $null = Invoke-Logged "docker" (@("compose", "stop") + $toStop) (Join-Path $logRoot "docker-compose-stop.log")
         Write-Step "Stopped the containers $($toStop -join ', ')."
     }
 

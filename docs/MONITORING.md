@@ -374,6 +374,20 @@ entries of both processes, and the trace share one id.
   GC collection counts, managed heap size and fragmentation, live managed
   memory, distinct visibility groups, encoded and sent snapshot packets, and
   tick overruns.
+- With `SimulationWorker:PerformanceReportPath` set, environment form
+  `SimulationWorker__PerformanceReportPath`, the worker also appends each
+  interval of these three lines to that file as one JSON object per line,
+  written from the same captured values: the interval's start, end, and
+  length; players, bots, peers, and entities; CPU and working set; the tick
+  and every timed phase with samples, average, p95 and p99 bucket bounds, and
+  maximum; tick overruns and resynchronizations; the backlogs; the interval's
+  snapshot drops, deferrals, quota rejections, packets and bytes in and out,
+  snapshot bytes, joins, spawns, and despawns; and allocation, GC collections
+  per generation, and the managed heap. A failed write is logged as a warning
+  and never stops the worker; without the setting nothing is written. The file
+  is diagnostics for the load tooling, as
+  [Stack Stress Testing](STACK_STRESS_TESTING.md#measurements) describes, not a
+  contract for anything else.
 - GameService logs a cumulative item summary of transaction, contention,
   lifecycle, corpse, Recovery, and cleanup counts every
   `Items:Operations:MetricsIntervalSeconds`, and the Redis counters every

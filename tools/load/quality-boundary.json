@@ -1,0 +1,89 @@
+{
+  "description": "The quality boundary that a load tier must pass, judged by tools/StackStressGenerator with --quality-boundary. Victor decided these limits; docs/STACK_STRESS_TESTING.md under Quality Boundary gives the reasons. A maximum rule passes when the measured value is at most its limit, a minimum rule when it is at least its limit, and a rule that cannot be evaluated fails.",
+  "rules": [
+    {
+      "rule": "simulation_tick_p99_ms",
+      "limit": 33.34,
+      "unit": "ms",
+      "description": "Maximum. The worst simulation tick p99 of every worker interval inside the steady interval stays within the 33.34 ms budget of a 30 Hz tick. The worker's p99 is the upper bound of a histogram bucket, and 33.34 ms is one of its bounds, so the rule passes at p99 <= 33.34 ms."
+    },
+    {
+      "rule": "fixed_tick_resynchronizations",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No fixed-tick resynchronization in the worker intervals inside the steady interval."
+    },
+    {
+      "rule": "input_acknowledgement_p99_ms",
+      "limit": 150,
+      "unit": "ms",
+      "description": "Maximum. The p99 of the time from sending a movement input to the owner snapshot that acknowledges it, over the whole run."
+    },
+    {
+      "rule": "remote_update_rate_p5_hz",
+      "limit": 10,
+      "unit": "Hz",
+      "description": "Minimum. Updates per second of what a player sees: each bot counts the remote snapshot frames that carry each remote player it sees, from its spawn to its despawn inside the steady interval. The rule judges the fifth percentile over bots of each bot's rate, so the players who see the least are judged, not the average."
+    },
+    {
+      "rule": "gameplay_operation_p95_ms",
+      "limit": 1000,
+      "unit": "ms",
+      "description": "Maximum. The p95 latency of every gameplay operation kind of the workload; the worst kind is judged. The lifecycle workload has no gameplay operations."
+    },
+    {
+      "rule": "bot_failures",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Every requested bot joins and leaves cleanly, and in full-stack mode every admitted account logs out. Unexpected disconnects, protocol errors, join and leave timeouts, and admission failures all count here."
+    },
+    {
+      "rule": "gameplay_unexpected_failures",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No unexpected item or corpse rejection, operation timeout, incomplete operation, or failed inventory refresh. Expected revision conflicts stay visible in the report and are not counted."
+    },
+    {
+      "rule": "http_unexpected_failures",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No failed GameService request in full-stack mode."
+    },
+    {
+      "rule": "quota_rejections",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No UDP quota rejection of normal input in the worker intervals of the run."
+    },
+    {
+      "rule": "snapshot_drops",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No dropped snapshot packet in the worker intervals of the run; deferred remote updates are scheduled degradation and appear in the remote update rate instead."
+    },
+    {
+      "rule": "owner_snapshot_gaps",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No missing owner snapshot sequence at any bot."
+    },
+    {
+      "rule": "expired_unreleased_sessions",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No expired unreleased simulation session in any PostgreSQL sample of a full-stack run."
+    },
+    {
+      "rule": "deadlocks",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No PostgreSQL deadlock during a full-stack run."
+    },
+    {
+      "rule": "item_invariant_violations",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Exact item quantities, unique occupied slots, valid custody, and no pending item operation after a full-stack run."
+    }
+  ]
+}

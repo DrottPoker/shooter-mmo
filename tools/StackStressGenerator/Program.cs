@@ -4,6 +4,11 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "plan")
+        {
+            return WritePlan(args[1..]);
+        }
+
         if (StressGeneratorOptions.IsHelpRequested(args))
         {
             Console.WriteLine(StressGeneratorOptions.HelpText);
@@ -11,9 +16,14 @@ public static class Program
         }
 
         StressGeneratorOptions options;
+        StressQualityBoundary? boundary = null;
         try
         {
             options = StressGeneratorOptions.Parse(args, Directory.GetCurrentDirectory());
+            if (options.QualityBoundaryPath is not null)
+            {
+                boundary = StressQualityBoundary.Load(options.QualityBoundaryPath);
+            }
         }
         catch (StressGeneratorOptionException exception)
         {
@@ -31,20 +41,17 @@ public static class Program
 
         try
         {
-            var report = options.Mode == StressRunMode.WorkerOnly
-                ? await RunWorkerOnlyAsync(options, args, shutdown.Token)
-                : await RunFullStackAsync(options, shutdown.Token);
-            await report.WriteAsync(options.OutputPath, shutdown.Token);
-            WriteFinalSummary(report, options.OutputPath);
-            return report.Bots.FailedBots == 0
-                && report.Bots.JoinedBots == options.BotCount
-                && report.Bots.CompletedBots == options.BotCount
-                && (report.FullStack is null
-                    || report.FullStack.LoggedOutBots == report.FullStack.AdmittedBots)
-                && report.Gameplay.UnexpectedFailures == 0
-                && (report.Postgres?.ItemInvariants?.Violations ?? 0) == 0
-                ? 0
-                : 1;
+            return options.Mode == StressRunMode.WorkerOnly
+                ? await RunWorkerOnlyAsync(
+                    options,
+                    args,
+                    report => FinishAsync(report, options, boundary, shutdown.Token),
+                    shutdown.Token)
+                : await FinishAsync(
+                    await RunFullStackAsync(options, shutdown.Token),
+                    options,
+                    boundary,
+                    shutdown.Token);
         }
         catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
         {
@@ -63,9 +70,99 @@ public static class Program
         }
     }
 
-    private static async Task<StressRunReport> RunWorkerOnlyAsync(
+    // Adds the worker's numbers and the verdict, writes the report and the summary, and returns
+    // the exit code.
+    private static async Task<int> FinishAsync(
+        StressRunReport report,
+        StressGeneratorOptions options,
+        StressQualityBoundary? boundary,
+        CancellationToken cancellationToken)
+    {
+        report = await AddWorkerPerformanceAsync(report, options, cancellationToken);
+        if (boundary is not null)
+        {
+            report = report with { Verdict = boundary.Evaluate(report) };
+        }
+
+        await report.WriteAsync(options.OutputPath, cancellationToken);
+        WriteFinalSummary(report, options.OutputPath);
+        var exitCode = !PassedOwnChecks(report, options)
+            ? 1
+            : report.Verdict is { Passed: false }
+                ? 3
+                : 0;
+        if (options.SummaryPath is not null)
+        {
+            await StressRunSummary.Create(report, options, exitCode, StressMachine.Current())
+                .WriteAsync(options.SummaryPath, cancellationToken);
+            Console.WriteLine($"Summary: {options.SummaryPath}");
+        }
+
+        return exitCode;
+    }
+
+    // The generator's own checks, which decide exit code 1 as before the quality boundary.
+    internal static bool PassedOwnChecks(StressRunReport report, StressGeneratorOptions options)
+    {
+        return report.Bots.FailedBots == 0
+            && report.Bots.JoinedBots == options.BotCount
+            && report.Bots.CompletedBots == options.BotCount
+            && (report.FullStack is null
+                || report.FullStack.LoggedOutBots == report.FullStack.AdmittedBots)
+            && report.Gameplay.UnexpectedFailures == 0
+            && (report.Postgres?.ItemInvariants?.Violations ?? 0) == 0;
+    }
+
+    private static int WritePlan(string[] args)
+    {
+        try
+        {
+            var (scenarioPath, request) = StressLoadPlanRequest.Parse(args);
+            var workingDirectory = Directory.GetCurrentDirectory();
+            var scenario = StressLoadScenario.Load(Path.GetFullPath(scenarioPath, workingDirectory));
+            Console.WriteLine(StressLoadPlan.Create(scenario, request, workingDirectory).ToJson());
+            return 0;
+        }
+        catch (StressGeneratorOptionException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+    }
+
+    // Folds the worker's performance file into the report. The file is read once it covers the
+    // end of the run, at most one metrics interval and a few seconds later.
+    private static async Task<StressRunReport> AddWorkerPerformanceAsync(
+        StressRunReport report,
+        StressGeneratorOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (options.WorkerPerformanceFilePath is null)
+        {
+            return report;
+        }
+
+        Console.WriteLine("Waiting for the worker's performance interval that covers the end of the run.");
+        var intervals = await StressWorkerPerformance.ReadAfterRunAsync(
+            options.WorkerPerformanceFilePath,
+            report.EndedAt,
+            TimeSpan.FromSeconds(75),
+            cancellationToken);
+        return report with
+        {
+            WorkerPerformance = StressWorkerPerformance.Fold(
+                intervals,
+                report.StartedAt,
+                report.EndedAt,
+                report.SteadyStartedAt,
+                report.SteadyEndedAt)
+        };
+    }
+
+    private static async Task<int> RunWorkerOnlyAsync(
         StressGeneratorOptions options,
         string[] args,
+        Func<StressRunReport, Task<int>> finish,
         CancellationToken cancellationToken)
     {
         var authority = new StressAuthorityState(options);
@@ -80,7 +177,24 @@ public static class Program
             await app.StartAsync(cancellationToken);
             WriteWorkerOnlyStartupInstructions(options);
             var coordinator = new StressRunCoordinator(options, provider);
-            return await coordinator.RunAsync(cancellationToken);
+            var exitCode = await finish(await coordinator.RunAsync(cancellationToken));
+            if (options.AuthorityHoldSeconds > 0)
+            {
+                // The worker still reaches its authority while it stops, so its shutdown runs as
+                // against GameService instead of waiting for requests that cannot succeed.
+                Console.WriteLine(
+                    $"Keeping the authority up for at most {options.AuthorityHoldSeconds} seconds, until Ctrl+C, while the worker stops.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(options.AuthorityHoldSeconds), cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    Console.WriteLine("The authority stops.");
+                }
+            }
+
+            return exitCode;
         }
         finally
         {
@@ -161,6 +275,23 @@ public static class Program
         {
             Console.WriteLine(
                 $"Item invariants: loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
+        }
+
+        if (report.Bots.RemoteCadence is { } cadence)
+        {
+            Console.WriteLine(
+                $"Remote player updates per second during the steady interval: average {cadence.AverageHz:0.0}, p5 over bots {cadence.P5Hz:0.0}, minimum {cadence.MinimumHz:0.0}, over {cadence.Bots} bots and {cadence.Pairs} pairs.");
+        }
+
+        if (report.Verdict is { } verdict)
+        {
+            foreach (var rule in verdict.Rules)
+            {
+                Console.WriteLine(
+                    $"Quality rule {rule.Rule}: {(rule.Passed ? "passed" : "FAILED")}, measured {(rule.Measured is { } measured ? measured.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "n/a")} {rule.Unit}, limit {rule.Comparison} {rule.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture)}{(rule.Note is null ? string.Empty : $" ({rule.Note})")}.");
+            }
+
+            Console.WriteLine($"Quality boundary {(verdict.Passed ? "passed" : "FAILED")}.");
         }
 
         Console.WriteLine($"JSON report: {outputPath}");

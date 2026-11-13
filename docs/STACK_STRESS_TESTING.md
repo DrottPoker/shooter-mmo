@@ -5,6 +5,8 @@
 `tools/StackStressGenerator` is the repeatable load harness for the realtime
 stack. It has two explicit modes so SimulationWorker capacity can be measured
 separately from account, placement, session, GameService, and PostgreSQL load.
+`tools/Test-Load.ps1` runs a scenario with it from start to finish and judges
+it, as [Run A Scenario](#run-a-scenario) describes.
 
 | Mode | Real GameService | PostgreSQL | Realtime UDP | Primary use |
 | --- | :---: | :---: | :---: | --- |
@@ -131,9 +133,9 @@ refuses to start unless all of these checks pass:
 
 After the run, the account row count must equal the accounts the run
 registered, including the loot fixture account. GameService reads `.env` like in
-normal development, so set its connection strings in its terminal exactly as
-[Run Full-stack Mode](#run-full-stack-mode) shows; this final check fails when
-GameService wrote to another database.
+normal development, so its connection strings must come from its environment,
+as [What The Script Sets](#what-the-script-sets) does; this final check fails
+when GameService wrote to another database.
 
 Gameplay fixtures add another safety boundary. GameService refuses to start
 with `StackStressFixtures:Enabled` set to true unless:
@@ -169,7 +171,10 @@ secrets are not written to the JSON report.
 `docker-compose.stack-stress.yml` provides PostgreSQL on `127.0.0.1:56432` and
 Redis on `127.0.0.1:56379`, apart from the development and test containers.
 PostgreSQL keeps its data on a temporary in-memory filesystem, so
-`docker compose down` discards the complete stress database.
+`docker compose down` discards the complete stress database. Both ports lie
+below 49152, where the dynamic port range of Windows starts; when Windows
+reserves one anyway, `docker compose up` fails with a bind error, and both
+ports move together in the compose file and in `StressLoadPlan`.
 
 GameService caps its Npgsql pool at `Database:MaximumPoolSize`, 64 in the
 checked-in configuration. Do not raise it merely to make a stress tier pass.
@@ -180,299 +185,207 @@ monitoring, and administrative clients must stay below PostgreSQL's
 non-reserved connection capacity, so pool saturation queues bounded work. A
 transient database connection failure returns `503 database_unavailable`.
 
-## Build
+## Run A Scenario
 
-Run from the repository root:
-
-```powershell
-dotnet restore Mmorpg.slnx --locked-mode
-dotnet build Mmorpg.slnx --configuration Release --no-restore
-```
-
-Expected result: the complete solution, including `StackStressGenerator`,
-builds with zero warnings and zero errors.
-
-Do not record stress measurements under the debugger. Record the current
-commit, CPU, logical core count, memory, operating system, bot count, seed, and
-service configuration with every accepted baseline.
-
-## Run Worker-only Mode
-
-GameService, PostgreSQL, Redis, and Unity are not required. The worker binds UDP
-port `27016` by default, the port of the local stress arena worker, so stop that
-worker first or choose another `--worker-udp-port`.
-
-In the first PowerShell terminal, start the generator:
+`tools/Test-Load.ps1` runs one load scenario from start to finish and says
+whether it passed the [Quality Boundary](#quality-boundary). Run it from the
+repository root with Docker Desktop running:
 
 ```powershell
-dotnet run --project tools/StackStressGenerator `
-  --configuration Release `
-  --no-build `
-  -- `
-  --mode worker-only `
-  --bots 100 `
-  --ramp-step 25 `
-  --ramp-interval-seconds 10 `
-  --duration-seconds 300 `
-  --report-interval-seconds 10
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario smoke
 ```
 
-The tool binds its in-memory authority to `http://127.0.0.1:5099`, creates an
-ephemeral worker secret, prints the exact SimulationWorker environment
-commands, and waits for the worker heartbeat.
+The script:
 
-In the second PowerShell terminal, paste the printed environment commands, add
-a ten-second metrics interval, and start the worker:
+1. Builds StackStressGenerator in Release and asks it for the scenario's plan
+   with `StackStressGenerator plan`, which validates the scenario and the
+   quality boundary file and returns every setting below.
+2. Refuses to start when another process uses a port the run needs: TCP 5500
+   and UDP 27025 in full-stack mode, TCP 5099 and UDP 27016 in worker-only
+   mode, so it never meets a stack it did not start.
+3. Builds SimulationWorker, and GameService in full-stack mode, in Release.
+4. In full-stack mode, recreates the disposable stack with
+   `docker compose -f docker-compose.stack-stress.yml down` and
+   `up -d --wait`, starts GameService and waits for `/health/ready`, then
+   starts the worker and waits until it listens on UDP and its Shard is online.
+   In worker-only mode it starts the generator first, because the generator is
+   the worker's authority, and then the worker; no container and no
+   GameService run.
+5. Runs the generator and shows its output, judges the run, and writes the
+   verdict.
+6. Always stops what it started, also when the run fails or the script is
+   interrupted with `Ctrl+C`: the generator, the worker, and GameService with
+   `Ctrl+C`, so the worker saves its characters, releases their sessions, and
+   goes offline as on a normal shutdown, and then the containers with
+   `docker compose ... down`. In worker-only mode the generator keeps its
+   in-memory authority up after it wrote the summary, and the script stops the
+   worker first and the generator after it, so the worker's shutdown reaches
+   its authority.
+7. Prints a table of every rule with its limit, the measured value, and pass or
+   fail, the difference to the scenario's checked-in baseline when there is
+   one, and the result line.
 
-```powershell
-$env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
-```
+It starts the apphost executables, such as `Mmorpg.SimulationWorker.exe`, so
+the generator's process sampler finds the worker and GameService by name.
 
-Expected result:
+| Parameter | Meaning |
+| --- | --- |
+| `-Scenario <name>` | The file `tools/load/scenarios/<name>.json` |
+| `-Bots <count>` | Overrides the scenario's bot count; the ramp step shrinks to it when it is larger |
+| `-DurationSeconds <seconds>` | Overrides the scenario's steady interval |
+| `-UpdateBaseline` | Copies the run's `summary.json` to `tools/load/baselines/<scenario>.json` |
+| `-Plan` | Prints the services, their settings, and the generator arguments, and runs nothing |
+| `-ReadyTimeoutSeconds <seconds>` | How long the services may take to become ready, 180 by default |
 
-- SimulationWorker registers its exact runtime with the in-memory authority.
-- Bots ramp in groups of 25 until all 100 have started.
-- The steady interval starts after every bot has joined or failed.
-- Joined bots send movement at the worker-provided simulation rate.
+Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the
+boundary or the generator's own checks, 2 it could not run, for example
+because of a busy port, an invalid scenario, a failed build, or a service that
+ended.
+
+Every run writes `artifacts/load/<yyyyMMdd-HHmmss>-<scenario>/`, which Git
+ignores:
+
+| File | Content |
+| --- | --- |
+| `generator-report.json` | The generator's full JSON report, with the folded worker numbers and the verdict |
+| `summary.json` | The small summary described in [Baselines](#baselines) |
+| `worker-performance.jsonl` | The worker's performance file, one JSON object per metrics interval |
+| `generator.log`, `game-service.log`, `simulation-worker.log` | The output of each process, with `.err.log` files for standard error |
+| `build-*.log`, `docker-compose-*.log` | The build and container output |
+
+Expected result of `smoke`: the services start, ten bots join, walk, move
+inventory items, and deposit into and loot from the shared corpse for 40
+seconds, leave, and log out, every rule of the table passes, the script prints
+`Load scenario smoke passed`, exits with code 0, and no `Mmorpg.*` process and
+no `shooter-mmo-stack-stress` container is left. A run takes about one and a
+half minutes. Run `smoke` after changing the load tooling and the tiers when
+[Purpose](#purpose) says. No manual Unity Editor steps are required.
+
+The load tests do not run in CI, and `tools/Test-Changes.ps1` runs none: they
+need an idle machine, and their numbers depend on it.
+
+Do not run a scenario under the debugger. The generator, the services, and
+anything else on the machine share its processors, so record what else ran
+with every baseline.
+
+### Scenarios
+
+A scenario is a JSON file in `tools/load/scenarios`; adding one needs no script
+change. The generator validates it strictly: an unknown property, an unknown
+generator option, an option that the plan owns, or a setting that the plan
+sets is an error.
+
+| Property | Meaning |
+| --- | --- |
+| `description` | What the scenario measures |
+| `mode` | `worker-only` or `full-stack` |
+| `workload` | `lifecycle`, `inventory`, `loot-hotspot`, or `mixed-gameplay`; worker-only runs only `lifecycle` |
+| `shardId`, `worldId` | The Shard the worker registers and its World |
+| `generator` | Generator options without their dashes and their integer values: `bots` and `duration-seconds` are required, and `ramp-step`, `ramp-interval-seconds`, `http-concurrency`, `session-validation-requests-per-bot`, the operation intervals and timeouts, `report-interval-seconds`, `seed`, and the other shape options of the [Command Reference](#command-reference) are allowed |
+| `workerSettings` | Extra worker environment variables, such as `SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds` |
+| `gameServiceSettings` | Extra GameService environment variables, full-stack only |
+
+| Scenario | Mode and workload | Shape |
+| --- | --- | --- |
+| `smoke` | full-stack `mixed-gameplay` | 10 bots in one step, 40 s steady; a tooling check |
+| `worker-only-200` | worker-only `lifecycle` | 200 bots in steps of 50 five seconds apart, 60 s steady |
+| `worker-only-500` | worker-only `lifecycle` | 500 bots in steps of 100 five seconds apart, 60 s steady |
+| `mixed-100` | full-stack `mixed-gameplay` | 100 bots, 32-way admission, steps of 25 ten seconds apart, 120 s steady |
+| `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady |
+| `session-cache-on`, `session-cache-off` | full-stack `lifecycle` | The [Redis Session-cache A/B Baseline](#redis-session-cache-ab-baseline) |
+
+The tier scenarios use the arguments of the
+[Current Worker-only Baseline](#current-worker-only-baseline) and the
+[Current Full-stack Baseline](#current-full-stack-baseline), with seed `1337`,
+three-second inventory and four-second corpse operations, and a ten-second
+metrics interval. All of them keep the product's defaults otherwise, including
+the 20-second lingering body.
+
+### What The Bots Check
+
 - Bots check that every message arrives with the channel and delivery the
   protocol names and decodes, as
   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#protocol-handling)
   describes, and act on owner snapshots and the results of their own item and
-  corpse operations. A bot that fails releases its worker connection at once,
-  so its character does not stay joined until the run ends; like a player's,
-  its body stays in the world for 20 seconds, as
-  [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes.
-- Every joined bot requests a graceful leave after the steady interval. The
-  bodies stay 20 seconds after the run, also in full-stack mode, where the
-  account logout that follows does not shorten them.
-- The worker log shows no `Movement simulation exceeded its catch-up budget`
-  warning.
-- The command exits with code 0 only when every requested bot joined and left
-  cleanly.
-- A JSON report is written under `artifacts/stress`, which Git ignores.
-
-Stop SimulationWorker when the generator completes. Clear the printed overrides
-and the metrics override before normal local development:
-
-```powershell
-Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_MAX_CONNECTIONS -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_FLEET_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_NODE_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_SHARD_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
-Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction SilentlyContinue
-```
-
-## Run Full-stack Mode
-
-This workflow uses three PowerShell terminals plus the disposable Docker stack.
-Use the shown local-only worker secret in both service terminals, or replace it
-with another identical value of at least 32 characters. The worker uses UDP port
-`27025`, so the normal local workers can keep running.
-
-First, recreate and start the disposable dependencies:
-
-```powershell
-docker compose -f docker-compose.stack-stress.yml down
-docker compose -f docker-compose.stack-stress.yml up -d --wait
-```
-
-In terminal 1, start GameService against the disposable database. The high
-authentication limit is a load-test override: the normal local limit is five
-authentication requests per minute per client address, and GameService accepts
-at most 1,000 per window, which covers the registration and login of 100 bots
-in one minute.
-
-```powershell
-$env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
-$env:ConnectionStrings__Redis = "127.0.0.1:56379"
-$env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
-$env:DevelopmentSimulationBots__Enabled = "false"
-$env:RateLimiting__Authentication__PermitLimit = "1000"
-$env:RateLimiting__Authentication__WindowSeconds = "60"
-$env:ASPNETCORE_URLS = "http://127.0.0.1:5500"
-dotnet run --project src/Server/GameService --configuration Release --no-build --no-launch-profile
-```
-
-For `inventory`, `loot-hotspot`, or `mixed-gameplay`, also set the guarded
-fixture configuration in terminal 1 before starting GameService. The fixture
-secret is local test data, but it must contain at least 32 characters and match
-the value the generator uses.
-
-```powershell
-$env:DOTNET_ENVIRONMENT = "Development"
-$env:StackStressFixtures__Enabled = "true"
-$env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
-```
-
-Expected result: migrations complete and GameService listens on
-`http://127.0.0.1:5500`.
-
-In terminal 2, start SimulationWorker with the matching secret and the
-disposable Redis endpoint:
-
-```powershell
-$env:GAME_SERVICE_BASE_URL = "http://127.0.0.1:5500"
-$env:ConnectionStrings__Redis = "127.0.0.1:56379"
-$env:SIMULATION_WORKER_SERVICE_SECRET = "stack-stress-local-worker-secret-2026"
-$env:SIMULATION_WORKER_UDP_PORT = "27025"
-$env:SIMULATION_WORKER_ADVERTISED_HOST = "127.0.0.1"
-$env:SIMULATION_WORKER_ADVERTISED_UDP_PORT = "27025"
-$env:SIMULATION_WORKER_ID = "local-simulation-worker-2"
-$env:SIMULATION_SHARD_ID = "local-shard-2"
-$env:SIMULATION_WORLD_ID = "development-world-1"
-$env:SimulationWorker__NetworkMetricsLogSeconds = "10"
-dotnet run --project src/Server/SimulationWorker --configuration Release --no-build --no-launch-profile
-```
-
-For `loot-hotspot` or `mixed-gameplay`, also set a one-second durable corpse
-reconciliation interval in terminal 2 before starting the worker, so the new
-stress corpse becomes visible quickly:
-
-```powershell
-$env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds = "1"
-```
-
-Expected result: the worker registers `local-shard-2` and
-`development-world-1`, the stress arena, with GameService and advertises UDP
-port `27025`.
-
-In terminal 3, run the complete lifecycle. Set the connection string in the
-environment instead of passing it as an argument:
-
-```powershell
-$env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
-dotnet run --project tools/StackStressGenerator `
-  --configuration Release `
-  --no-build `
-  -- `
-  --mode full-stack `
-  --workload lifecycle `
-  --game-service-url http://127.0.0.1:5500 `
-  --confirm-disposable-database shooter_mmo_stack_stress_test `
-  --bots 100 `
-  --http-concurrency 32 `
-  --session-validation-requests-per-bot 20 `
-  --ramp-step 25 `
-  --ramp-interval-seconds 10 `
-  --duration-seconds 300 `
-  --report-interval-seconds 10
-```
-
-Expected result:
-
-- All 100 accounts register and receive one character each.
-- Every account logs in and obtains a normal GameService placement and ticket.
-- Every account performs the configured authenticated session checks, reported
-  separately as `account_session_validate`.
-- All 100 bots join, run the UDP workload, and leave cleanly.
-- Every active account session is logged out.
-- PostgreSQL reports no expired unreleased simulation sessions or deadlocks.
-- The final database account count is exactly 100.
-- The command exits with code 0 and writes a full-stack JSON report.
-
-### Run Gameplay Workloads
-
-Start the same disposable stack with the fixture configuration, then select one
-workload in terminal 3. This example runs the complete mixed path:
-
-```powershell
-$env:STACK_STRESS_POSTGRES = "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only"
-$env:STACK_STRESS_FIXTURE_SECRET = "stack-stress-local-fixture-secret-2026"
-dotnet run --project tools/StackStressGenerator `
-  --configuration Release `
-  --no-build `
-  -- `
-  --mode full-stack `
-  --workload mixed-gameplay `
-  --game-service-url http://127.0.0.1:5500 `
-  --confirm-disposable-database shooter_mmo_stack_stress_test `
-  --bots 100 `
-  --http-concurrency 32 `
-  --ramp-step 25 `
-  --ramp-interval-seconds 10 `
-  --duration-seconds 300 `
-  --inventory-operation-interval-seconds 3 `
-  --loot-operation-interval-seconds 4 `
-  --report-interval-seconds 10
-```
-
-Replace `mixed-gameplay` with `inventory` or `loot-hotspot` to isolate one item
-path. Recreate the Docker stack before every workload, because the database
-must start empty.
-
-Expected result:
-
-- Every gameplay bot receives only the minimal initial fixture items.
-- Loot workloads create one shared durable Mob corpse at the configured hotspot.
-- Item and corpse commands travel over UDP and are authorized by the worker.
-- GameService commits every accepted change through its normal item transaction
-  boundary.
+  corpse operations.
+- A bot that fails releases its worker connection at once, so its character
+  does not stay joined until the run ends; like a player's, its body stays in
+  the world for 20 seconds, as
+  [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes. After the
+  steady interval every joined bot requests a graceful leave, and the bodies
+  stay 20 seconds, also in full-stack mode, where the account logout that
+  follows does not shorten them. The simulation sessions of the bodies stay
+  active and keep their leases, so they are neither released nor expired when
+  the generator checks PostgreSQL, and the worker releases them when it stops.
 - Concurrent revision conflicts are reported as expected conflicts, not hidden
-  as successes or counted as infrastructure failures.
-- In `mixed-gameplay`, `corpse_out_of_range` also counts as an expected
-  conflict: the bots start crowded on the corpse and keep moving, so the worker
-  correctly rejects a request from a bot that drifted past the 3 m interaction
-  radius, for up to about one percent of corpse requests. The stationary
-  `loot-hotspot` bots never leave the radius, so there it stays unexpected.
-- The run exits with code 0 only when lifecycle checks, gameplay operations, and
-  final PostgreSQL item invariants pass.
+  as successes or counted as failures. In `mixed-gameplay`,
+  `corpse_out_of_range` also counts as an expected conflict: the bots start
+  crowded on the corpse and keep moving, so the worker correctly rejects a
+  request from a bot that drifted past the 3 m interaction radius, for up to
+  about one percent of corpse requests. The stationary `loot-hotspot` bots
+  never leave the radius, so there it stays unexpected.
+- The shared corpse of the loot workloads is a durable Mob corpse, and the bots
+  loot part of its stacks. The Unity client offers only whole items from a Mob
+  corpse, but no server refuses a part of a durable Mob corpse's stack, so the
+  workload's partial loot does not follow the client rule.
 
-### Clean Up
+### What The Script Sets
 
-Stop GameService and SimulationWorker with Ctrl+C, then remove the disposable
-stack and every override:
+The plan sets these for every run; `-Plan` prints them, with the secrets
+masked. The local secrets and the connection string are the test values that
+`docker-compose.stack-stress.yml` and this document use.
 
-```powershell
-docker compose -f docker-compose.stack-stress.yml down
+- Both modes: the worker's identity `local-simulation-worker-2`, the scenario's
+  Shard and World, its UDP and advertised endpoint on `127.0.0.1`,
+  `SimulationWorker:NetworkMetricsLogSeconds`, and
+  `SimulationWorker:PerformanceReportPath` in the run folder. The worker
+  interval is ten seconds, and a quarter of the steady interval when that is
+  shorter, because the tick rules judge only worker intervals that lie entirely
+  inside the steady interval and the worker's reporter does not start with it.
+  A scenario may set the interval itself; the plan refuses a scenario whose
+  steady interval is shorter than four worker intervals, since it could never
+  be judged.
+- Worker-only: the generator's in-memory authority on `http://127.0.0.1:5099`
+  as the worker's GameService, a random worker secret that only this run knows,
+  and as many worker connections as bots, at least 100. The worker uses its
+  configured Redis only for its health check.
+- Full-stack: GameService on `http://127.0.0.1:5500` with the disposable
+  PostgreSQL and Redis, the shared worker secret, no development bots, and an
+  authentication limit of 1,000 requests per minute instead of the normal five,
+  which covers the registration and login of every bot. Gameplay workloads add
+  the Development environment, `StackStressFixtures:Enabled`, and the fixture
+  secret to GameService, and the scenarios with a shared corpse set a
+  one-second durable corpse reconciliation, so the stress corpse becomes
+  visible quickly. The generator
+  gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
+  in `STACK_STRESS_FIXTURE_SECRET`, never as arguments.
 
-Remove-Item Env:ConnectionStrings__Postgres -ErrorAction SilentlyContinue
-Remove-Item Env:ConnectionStrings__Redis -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_SERVICE_SECRET -ErrorAction SilentlyContinue
-Remove-Item Env:DevelopmentSimulationBots__Enabled -ErrorAction SilentlyContinue
-Remove-Item Env:RateLimiting__Authentication__PermitLimit -ErrorAction SilentlyContinue
-Remove-Item Env:RateLimiting__Authentication__WindowSeconds -ErrorAction SilentlyContinue
-Remove-Item Env:RedisAcceleration__SessionCacheEnabled -ErrorAction SilentlyContinue
-Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
-Remove-Item Env:GAME_SERVICE_BASE_URL -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_UDP_PORT -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ADVERTISED_HOST -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ADVERTISED_UDP_PORT -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORKER_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_SHARD_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SIMULATION_WORLD_ID -ErrorAction SilentlyContinue
-Remove-Item Env:SimulationWorker__NetworkMetricsLogSeconds -ErrorAction SilentlyContinue
-Remove-Item Env:SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds -ErrorAction SilentlyContinue
-Remove-Item Env:STACK_STRESS_POSTGRES -ErrorAction SilentlyContinue
-Remove-Item Env:STACK_STRESS_FIXTURE_SECRET -ErrorAction SilentlyContinue
-Remove-Item Env:StackStressFixtures__Enabled -ErrorAction SilentlyContinue
-Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
-```
-
-No manual Unity Editor steps are required for either mode.
+The generator still runs on its own with the options of the
+[Command Reference](#command-reference) when a service is started by hand. In
+worker-only mode it then prints the environment commands for the worker.
 
 ## Redis Session-cache A/B Baseline
 
-The A/B method measures what the Redis account-session cache saves. Run the
-same full-stack `lifecycle` profile twice with many
-`--session-validation-requests-per-bot`, so session validation dominates:
-once with `$env:RedisAcceleration__SessionCacheEnabled = "false"` set in
-terminal 1 before GameService starts, and once without it, since the cache is on
-by default. Recreate the disposable stack between the runs and change nothing
-else, so both runs keep the distributed Redis authentication rate limit. Compare
-the `account_session_validate` latency and the PostgreSQL committed
-transactions of the two reports. The cache itself is described in
+The A/B method measures what the Redis account-session cache saves. It runs
+the same full-stack `lifecycle` profile twice with many session validations
+per bot, so session validation dominates: `session-cache-off` sets
+`RedisAcceleration__SessionCacheEnabled` to `false` for GameService, and
+`session-cache-on` keeps the default, the cache on. Every run recreates the
+disposable stack and both keep the distributed Redis authentication rate limit:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario session-cache-off
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario session-cache-on
+```
+
+Compare the `account_session_validate` latency and the PostgreSQL committed
+transactions of the two `generator-report.json` files. The cache itself is
+described in
 [Redis Account-session Acceleration](SERVICE_FEATURES.md#redis-account-session-acceleration).
 
-The current baseline used 100 bots on Development World 2, HTTP concurrency 64,
-and 50 validation requests per bot:
+The current baseline was measured by hand before the scenarios existed, with
+100 bots on Development World 2, HTTP concurrency 64, and 50 validation
+requests per bot; the scenarios run the stress arena, Development World 1:
 
 | Metric | Cache off | Cache on | Change |
 | --- | ---: | ---: | ---: |
@@ -541,6 +454,12 @@ Every JSON report contains:
 - Sent and received packets and bytes.
 - Owner and remote snapshot packet counts plus estimated missing owner
   sequences.
+- The remote update rate, how often the bots received the state of the remote
+  players they saw during the steady interval, as
+  [Remote Update Rate](#remote-update-rate) describes: the average, the fifth
+  percentile, and the minimum over bots, the fifth percentile over every pair
+  of bot and remote player, and the records of entities without a player spawn.
+- The steady interval's start and end.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
   summaries, including steady-state memory trend windows.
@@ -576,29 +495,89 @@ meters, listed in [Monitoring](MONITORING.md#simulationworker). Set
 [monitoring stack](MONITORING.md) to watch a run live in Grafana; the
 generator's own report remains the measurement of record.
 
+With `--worker-performance-file`, the generator also reads the worker's
+performance file, which `SimulationWorker:PerformanceReportPath` turns on, as
+[Monitoring](MONITORING.md#periodic-and-routine-logs) describes. It waits after
+the run until the file holds an interval that ends after the run, at most 75
+seconds, and adds a `workerPerformance` section to the report:
+
+- `steadyIntervals`: the worker intervals that lie entirely inside the steady
+  interval, and their first start and last end.
+- `durations`: every timed phase over those intervals, with its samples, the
+  sample-weighted average, the worst interval average, p95, and p99, and the
+  longest sample. The p95 and p99 are bucket upper bounds, as in the log.
+- `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
+  resynchronizations, allocation, and GC collections, each as its total and its
+  largest interval.
+- `levels`: players, peers, entities, CPU, working set, backlogs, and the
+  managed heap, each as its average and highest value.
+- `runIntervals`, `runSnapshotDrops`, and `runQuotaRejections`: the intervals
+  that overlap the whole run, ramp and leave included, and their drops and
+  quota rejections.
+- `runCoverageGap` and `steadyCoverageGap`: empty when the worker intervals
+  cover the whole run and follow each other without a gap, else what is
+  missing. The worker writes one interval right after the other, so a gap means
+  that the worker stopped writing or lost a line. The drop and quota rules need
+  the whole run and the tick rules need the steady intervals without a gap; a
+  partial measurement fails the rule as not evaluated, never as zero.
+- `note`: why a part is missing, such as no interval inside a short steady
+  interval.
+
+### Remote Update Rate
+
+The remote update rate measures what a player sees: how often its client
+receives the state of each remote player in its interest set. Every remote
+snapshot frame carries every player the recipient sees, unless the worker
+deferred that player's update under its snapshot budget, so a received record
+is one update. Each bot's `SimulationBotSession` counts, for every remote player
+from its reliable spawn to its despawn, the snapshot frames that carry its
+state, once per snapshot sequence, inside the steady interval, and how long it
+saw the player there. A bot's rate is its updates divided by those seconds over
+all the players it saw; a duplicated or reordered frame never counts twice, and
+records of entities without a player spawn, such as a moving Mob, stay apart as
+`untrackedRecords`. The rule judges the fifth percentile over bots, so the
+players who see the least decide, not the average.
+
+The earlier figure of about 5.6 Hz at 400 mutually visible players was not a
+measurement: it is 15 Hz scaled by 95 percent of the 38 MiB/s aggregate
+snapshot budget over the roughly 100 MB/s that full replication would need. The
+`worker-only-500` scenario measures it.
+
 ## Quality Boundary
 
-A tier is not supported merely because every process remains alive. Require:
+A tier is not supported merely because every process remains alive. The limits
+are data: `tools/load/quality-boundary.json` names every rule with its limit,
+its unit, and its meaning, and is the source of the numbers. The generator
+judges a run against it with `--quality-boundary` and adds a `verdict` with one
+entry per rule: the rule, the comparison, the limit, the unit, the measured
+value, whether it passed, and a note. The file must name every rule that the
+generator knows exactly once, with the rule's unit; an unknown rule, a missing
+rule, a wrong unit, or an unknown property is an error. A rule that cannot be
+evaluated, such as a tick rule without the worker's performance file, fails and
+says why in its note; a rule that does not apply, such as a PostgreSQL rule in
+worker-only mode, passes and says so.
 
-- Every requested bot joins and leaves successfully.
-- No unexpected disconnect, protocol error, or normal-input quota rejection.
-- No fixed-tick resynchronization during the steady interval.
-- Simulation tick p99 stays below the 33.34 ms fixed-tick budget of a 30 Hz
-  tick.
-- Owner snapshot gaps are zero, snapshot drops are zero, and input
-  acknowledgement latency remains stable.
-- Remote entity cadence and deferred-update rate match the tier's documented
-  quality target. A process remaining alive is not enough if remote presentation
-  falls below that target.
-- Worker, GameService, and generator working sets stabilize after warmup.
-- Worker registration and simulation-session leases remain valid.
-- Full-stack HTTP operations complete without unexpected failure codes.
-- Gameplay profiles complete without unexpected item or corpse rejection and
-  without operation timeouts. Expected concurrent revision conflicts remain
-  visible as a separate result.
-- Full-stack mode has no expired unreleased sessions or PostgreSQL deadlocks.
-- Gameplay profiles preserve exact item quantities, unique occupied slots,
-  valid custody, and zero pending item operations.
+| Rule | Limit | Why |
+| --- | --- | --- |
+| `simulation_tick_p99_ms` | p99 <= 33.34 ms in every steady worker interval | A tick must fit the 33.34 ms budget of a 30 Hz tick. The worker's p99 is the upper bound of a histogram bucket, and 33.34 ms is one of its bounds, so the rule passes at p99 <= 33.34 ms |
+| `fixed_tick_resynchronizations` | 0 in the steady interval | A resynchronization drops simulation time, which players see as a jump |
+| `input_acknowledgement_p99_ms` | p99 <= 150 ms over the run | Click-to-move must answer quickly; much of the time is structural, the wait for the next tick and the next owner snapshot |
+| `remote_update_rate_p5_hz` | >= 10 Hz at the fifth percentile over bots | Other players must move smoothly for the players who see the least, not only on average |
+| `gameplay_operation_p95_ms` | p95 <= 1,000 ms for every operation kind of the workload | An item or corpse action must answer within a second |
+| `bot_failures` | 0 | Every bot joins and leaves cleanly and every account logs out; a disconnect, protocol error, timeout, or admission failure counts |
+| `gameplay_unexpected_failures` | 0 | No unexpected item or corpse rejection, timeout, incomplete operation, or failed inventory refresh; expected revision conflicts stay visible in the report |
+| `http_unexpected_failures` | 0 | No failed GameService request |
+| `quota_rejections` | 0 over the run | Normal input must never hit a UDP quota |
+| `snapshot_drops` | 0 over the run | Overload must degrade through deferred remote updates, never through dropped frames |
+| `owner_snapshot_gaps` | 0 | A player's own state stays at the full rate |
+| `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
+| `deadlocks` | 0 | PostgreSQL contention stays bounded |
+| `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
+
+Every other number, such as join and ticket latency, CPU, memory, and
+bandwidth, is reported and compared with the baseline, not judged. Watch the
+worker, GameService, and generator working sets for growth after warmup, which
+a soak judges.
 
 Record the first boundary that fails and the phase whose duration grows with
 load. Optimize only after a repeatable run identifies the limiting phase, then
@@ -608,6 +587,26 @@ requires every new high-frequency gameplay feature to add or extend a workload
 before a higher tier is accepted. Before the full-stack load targets are raised,
 measure what the item-state lock and the session heartbeats cost in extra
 GameService round trips with a full-stack run.
+
+## Baselines
+
+Every run writes a small `summary.json` beside its full report: the scenario,
+the commit and whether the tree had changes, the date, the machine (CPU model,
+logical processors, memory, operating system, and .NET version), the mode,
+workload, bots, and steady seconds, the verdict entries, the result, and
+`keyNumbers`: join p95, input acknowledgement p50, p95, and p99, the remote
+update rate average and fifth percentile, the p95 of every gameplay operation
+kind, the worst steady tick p99, the worker's average single-core CPU and
+highest working set from its own intervals, the generator's average CPU, and
+the payload bytes per bot and second that the worker received and sent.
+
+`-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
+which is checked in. Without it, the script prints the difference of every key
+number to the checked-in baseline. The difference is informative and never
+part of the exit code, because machines and their load differ. Record a
+baseline only from a run on an idle machine, and name what else ran in the
+pull request that checks it in. The tables below were recorded by hand before
+the baseline files existed.
 
 ## Current Worker-only Baseline
 
@@ -647,8 +646,9 @@ What the numbers mean:
 - Full 15 Hz replication of 400 mutually visible players would need about
   100 MB/s before transport overhead, against the 38 MiB/s aggregate snapshot
   budget, so remote cadence drops in a dense crowd while owner state stays at
-  15 Hz. With 400 mutually visible players the average remote entity cadence
-  was about 5.6 Hz. Raising the budget is not the default fix: larger Worlds
+  15 Hz. The budget arithmetic gives about 5.6 Hz at 400 mutually visible
+  players; `worker-only-500` measures the real rate, as
+  [Remote Update Rate](#remote-update-rate) describes. Raising the budget is not the default fix: larger Worlds
   should reduce the visible set, and future protocol work may add measured
   quantization or delta compression.
 - Single runs on a shared machine vary; one 200-bot run measured an input
@@ -658,7 +658,11 @@ What the numbers mean:
 ## Current Full-stack Baseline
 
 These are the latest accepted full-stack numbers, from the `mixed-gameplay`
-workload on development `1eeebca` on the same machine. They used the normal
+workload on development `1eeebca` on the same machine. The full-stack
+`loot-hotspot` and `mixed-gameplay` workloads could not run from `6ed319a1`
+(2026-10-21) until the stack stress fixture created its corpse with the Mob
+corpse presentation key that durable Mob corpses require, so no later
+full-stack loot baseline exists from that time. They used the normal
 account and placement APIs, real PostgreSQL, worker ticket consumption and
 session leases, one shared durable corpse, UDP item and corpse commands,
 GameService transactions, and the final database invariant checks, with
@@ -763,6 +767,11 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--report-interval-seconds` | `10` | Console report interval |
 | `--seed` | `1337` | Movement seed |
 | `--output` | `artifacts/stress/stack-stress-<mode>-<workload>-<time>.json` | Path of the JSON report |
+| `--quality-boundary` | none | The limits file to judge the run against; adds the `verdict` |
+| `--worker-performance-file` | none | The worker's `SimulationWorker:PerformanceReportPath` file to fold into `workerPerformance` |
+| `--summary-output` | none | Also writes the summary of [Baselines](#baselines) |
+| `--scenario-name`, `--source-commit`, `--source-tree-dirty` | none | The scenario, commit, and `true` or `false` for the summary |
+| `--authority-hold-seconds` | `0` | Worker-only: how long the in-memory authority stays up at most after the report, until `Ctrl+C` |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The
@@ -770,6 +779,15 @@ same seed and bot indices reproduce movement patterns, while tickets, account
 session tokens, and generated passwords stay random for every run.
 
 Exit codes: 0 when every requested bot joined and left cleanly, every admitted
-account logged out, no gameplay operation failed unexpectedly, and the item
-invariants held; 1 for any other result or failure; 2 for an invalid option;
-130 when the run was cancelled with Ctrl+C.
+account logged out, no gameplay operation failed unexpectedly, the item
+invariants held, and the run passed the quality boundary when one was given; 1
+for any other result or failure of those own checks; 2 for an invalid option; 3
+when the run passed its own checks but failed the quality boundary; 130 when
+the run was cancelled with Ctrl+C.
+
+`StackStressGenerator plan --scenario <file> --run-folder <folder>` prints the
+plan of a scenario as JSON for `tools/Test-Load.ps1` and runs nothing. It takes
+`--bots`, `--duration-seconds`, `--quality-boundary`, `--source-commit`, and
+`--source-tree-dirty`, validates the scenario, the generator arguments it
+results in, and the quality boundary file, and exits with 2 and the reason when
+one is invalid.

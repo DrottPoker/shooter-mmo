@@ -1,0 +1,15 @@
+{
+  "description": "The 500-bot worker-only tier of the current worker-only baseline: ramp steps of 100 bots five seconds apart and a 60-second steady interval.",
+  "mode": "worker-only",
+  "workload": "lifecycle",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 500,
+    "ramp-step": 100,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 60,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  }
+}

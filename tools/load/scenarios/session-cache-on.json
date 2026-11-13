@@ -1,0 +1,17 @@
+{
+  "description": "Redis session-cache A/B, cache on: the full-stack lifecycle workload with 100 bots, 64-way admission, and 50 session validations per bot. Compare it with session-cache-off.",
+  "mode": "full-stack",
+  "workload": "lifecycle",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 100,
+    "ramp-step": 100,
+    "ramp-interval-seconds": 1,
+    "duration-seconds": 10,
+    "http-concurrency": 64,
+    "session-validation-requests-per-bot": 50,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  }
+}

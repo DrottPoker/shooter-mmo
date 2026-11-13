@@ -72,7 +72,57 @@ public sealed record StressBotAggregate(
     uint LatestServerTick,
     StressLatencySummary? JoinLatency,
     StressLatencySummary? InputAcknowledgementLatency,
-    IReadOnlyDictionary<string, int> FailureCodes);
+    IReadOnlyDictionary<string, int> FailureCodes,
+    StressRemoteCadenceSummary? RemoteCadence = null);
+
+// How often the bots received the state of the remote players they saw during the steady
+// interval. Each bot's rate is its received states per second over every remote player it saw,
+// weighted by how long it saw each; the average, p5, and minimum are over bots. PairP5Hz is the
+// fifth percentile over every bot and remote player pair.
+public sealed record StressRemoteCadenceSummary(
+    int Bots,
+    int Pairs,
+    double AverageHz,
+    double P5Hz,
+    double MinimumHz,
+    double PairP5Hz,
+    long UntrackedRecords)
+{
+    public static StressRemoteCadenceSummary? Create(
+        IEnumerable<Mmorpg.Tools.SimulationBotClient.SimulationBotRemoteCadenceSummary?> bots)
+    {
+        var measured = bots
+            .OfType<Mmorpg.Tools.SimulationBotClient.SimulationBotRemoteCadenceSummary>()
+            .Where(bot => bot.UpdatesPerSecond is not null)
+            .ToArray();
+        if (measured.Length == 0)
+        {
+            return null;
+        }
+
+        var rates = measured.Select(bot => bot.UpdatesPerSecond!.Value).Order().ToArray();
+        var pairs = measured
+            .SelectMany(bot => bot.PerEntity)
+            .Where(pair => pair.VisibleSeconds > 0)
+            .Select(pair => pair.Updates / pair.VisibleSeconds)
+            .Order()
+            .ToArray();
+        return new StressRemoteCadenceSummary(
+            measured.Length,
+            pairs.Length,
+            rates.Average(),
+            Percentile(rates, 0.05),
+            rates[0],
+            pairs.Length == 0 ? 0 : Percentile(pairs, 0.05),
+            measured.Sum(bot => bot.UntrackedRecords));
+    }
+
+    private static double Percentile(IReadOnlyList<double> sorted, double percentile)
+    {
+        var index = (int)Math.Ceiling(percentile * sorted.Count) - 1;
+        return sorted[Math.Clamp(index, 0, sorted.Count - 1)];
+    }
+}
 
 public sealed record StressRunConfiguration(
     string Mode,
@@ -110,6 +160,17 @@ public sealed record StressRunReport(
     StressBotAggregate Bots,
     StressAuthorityCounters? Authority)
 {
+    // The steady interval, in which the worker's steady intervals and the remote cadence count.
+    public DateTime? SteadyStartedAt { get; init; }
+
+    public DateTime? SteadyEndedAt { get; init; }
+
+    // The worker's own performance file folded over the steady interval, when it was given.
+    public StressWorkerPerformanceSummary? WorkerPerformance { get; init; }
+
+    // The judgement against the quality boundary, when one was given.
+    public StressVerdict? Verdict { get; init; }
+
     public static StressRunReport Create(
         DateTime startedAt,
         DateTime endedAt,
@@ -149,7 +210,8 @@ public sealed record StressRunReport(
                 bots.Where(bot => bot.JoinLatencyMs is not null)
                     .Select(bot => bot.JoinLatencyMs!.Value)),
             inputAcknowledgementLatency,
-            failureCodes);
+            failureCodes,
+            StressRemoteCadenceSummary.Create(bots.Select(bot => bot.RemoteCadence)));
 
         return new StressRunReport(
             startedAt,

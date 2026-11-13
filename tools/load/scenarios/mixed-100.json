@@ -1,0 +1,21 @@
+{
+  "description": "The 100-client tier of the current full-stack baseline: mixed gameplay, 32-way admission, four 25-client ramp steps ten seconds apart, and a 120-second steady interval.",
+  "mode": "full-stack",
+  "workload": "mixed-gameplay",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 100,
+    "ramp-step": 25,
+    "ramp-interval-seconds": 10,
+    "duration-seconds": 120,
+    "http-concurrency": 32,
+    "inventory-operation-interval-seconds": 3,
+    "loot-operation-interval-seconds": 4,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  },
+  "workerSettings": {
+    "SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds": "1"
+  }
+}

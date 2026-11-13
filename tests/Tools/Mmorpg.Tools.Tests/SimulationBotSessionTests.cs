@@ -57,6 +57,42 @@ public sealed class SimulationBotSessionTests
         AssertState(bot.Session, SimulationBotClientState.Joined);
     }
 
+    // A remote player's state counts once per snapshot frame, only inside the window and only
+    // while the player is spawned; records of entities without a player spawn stay apart.
+    [Fact]
+    public void CountsTheRemoteStatesOfEachSpawnedPlayerInsideTheWindow()
+    {
+        var bot = JoinedBot();
+        var spawnPacket = VectorOf(RealtimeMessageType.EntitySpawn);
+        Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(spawnPacket, out var spawn, out var error), error);
+        var untracked = spawn.EntityId + 1;
+        var second = Ticks(TimeSpan.FromSeconds(1));
+        var windowStart = JoinedTimestamp + second;
+        bot.Receive(spawnPacket);
+        bot.ReceiveSnapshot(RemoteSnapshot(1, spawn.EntityId, untracked), windowStart - 1);
+
+        bot.Session.BeginRemoteCadenceWindow(windowStart);
+        for (uint frame = 2; frame <= 11; frame++)
+        {
+            bot.ReceiveSnapshot(RemoteSnapshot(frame, spawn.EntityId, untracked), windowStart + frame);
+        }
+
+        bot.ReceiveSnapshot(RemoteSnapshot(11, spawn.EntityId), windowStart + 20);
+        bot.ReceiveSnapshot(RemoteSnapshot(5, spawn.EntityId), windowStart + 21);
+        Assert.Null(bot.Session.Capture().RemoteCadence);
+        bot.Session.EndRemoteCadenceWindow(windowStart + second);
+        bot.ReceiveSnapshot(RemoteSnapshot(12, spawn.EntityId), windowStart + second + 1);
+
+        var cadence = bot.Session.Capture().RemoteCadence;
+        Assert.NotNull(cadence);
+        Assert.Equal(1, cadence.Entities);
+        Assert.Equal(10, cadence.Updates);
+        Assert.Equal(1d, cadence.VisibleSeconds, 6);
+        Assert.Equal(10d, cadence.UpdatesPerSecond!.Value, 6);
+        Assert.Equal(10, cadence.UntrackedRecords);
+        AssertState(bot.Session, SimulationBotClientState.Joined);
+    }
+
     [Fact]
     public void JoinsWithItsTicketOnTheControlChannel()
     {
@@ -435,6 +471,21 @@ public sealed class SimulationBotSessionTests
             lastProcessedInput,
             new RealtimePlayerState(x, 0f, 0f, 0f, 0f, 0f, 0f, true),
             new RealtimeMovementPathProgress(pathId, 0, 0)));
+    }
+
+    private static byte[] RemoteSnapshot(uint sequence, params ulong[] entityIds)
+    {
+        return RealtimeProtocol.EncodeSimulationSnapshot(new RealtimeSimulationSnapshot(
+            sequence,
+            sequence,
+            0,
+            1,
+            entityIds
+                .Select(entityId => new RealtimeEntitySnapshot(
+                    entityId,
+                    0,
+                    new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true)))
+                .ToArray()));
     }
 
     private static RealtimeMovementPath StraightPath(uint pathId)
