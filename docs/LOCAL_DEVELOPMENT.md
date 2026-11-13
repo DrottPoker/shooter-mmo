@@ -736,7 +736,10 @@ otherwise the script starts the Editor from the default Unity Hub path. Unity
 runs without a graphics device there, so the tests of the `Graphics` category,
 which draw, run only in the Editor. The script also leaves out the `LiveStack`
 category, which needs the local stack and runs through
-[Run The Live Stack Test](#run-the-live-stack-test). `-Platform PlayMode` runs
+[Run The Live Stack Test](#run-the-live-stack-test); the CI Unity gate and
+`tools/Test-Changes.ps1` run this script, so they leave it out too. That test
+is also explicit, so `tools/Run-UnityEditorTests.ps1` and the Editor's Test
+Runner do not select it. `-Platform PlayMode` runs
 one suite, `-TestCategory` replaces the default category filter
 `!Graphics;!LiveStack`, and `-Preflight` only checks that Unity is installed and
 the project is free. Unity opens a project only once, so the script stops before

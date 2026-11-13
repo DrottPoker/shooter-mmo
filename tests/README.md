@@ -323,13 +323,12 @@ describes. Its one scenario asserts, step by step:
    entity at the saved place, with the saved health and mana.
 7. A last leave is answered like the first.
 
-The test is explicit and has the `LiveStack` category, so no default run
-selects it: `tools/Run-UnityTests.ps1`, and with it the CI Unity gate and
-`tools/Test-Changes.ps1`, passes `-testCategory "!Graphics;!LiveStack"`, and
-`tools/Run-UnityEditorTests.ps1` and the Editor's Test Runner leave explicit
-tests out. CI does not run it because the self-hosted runner has no stack of its
-own and the scenario takes a body's 20 seconds; a run against no stack fails at
-once with a message that names the script. The character takes no damage, so
+No default run selects the test;
+[Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) says
+how each runner leaves it out. CI does not run it because the self-hosted runner
+has no stack of its own and the scenario takes a body's 20 seconds; a run
+against no stack fails at once with a message that names the script. The
+character takes no damage, so
 step 6 compares full health and mana; the manual check
 [Place And Vitals Across A Logout](../docs/MANUAL_TESTING.md#place-and-vitals-across-a-logout)
 covers lost health.
