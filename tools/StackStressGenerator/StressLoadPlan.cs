@@ -286,6 +286,19 @@ public sealed record StressLoadPlan(
     public const string MetricsIntervalSetting = "SimulationWorker__NetworkMetricsLogSeconds";
     public const string WorldVariantFolderName = "world-variant";
 
+    // The tick rules judge only worker intervals that lie entirely inside the steady interval,
+    // and the reporter is not synchronized with it, so the steady interval holds this many whole
+    // worker intervals at least.
+    public const int MinimumSteadyWorkerIntervals = 3;
+    public const int LongestMetricsIntervalSeconds = 10;
+
+    // The worker interval for a steady interval: 10 seconds, shorter for a short run, so that
+    // one more interval than the minimum fits and a partial one at each end does not matter.
+    public static int MetricsIntervalSeconds(int steadySeconds)
+    {
+        return Math.Clamp(steadySeconds / (MinimumSteadyWorkerIntervals + 1), 1, LongestMetricsIntervalSeconds);
+    }
+
     private const string PostgresConnection =
         "Host=127.0.0.1;Port=56432;Database=shooter_mmo_stack_stress_test;Username=shooter_mmo_stack_stress;Password=stack_stress_local_only";
     private const string RedisConnection = "127.0.0.1:56379";
@@ -432,10 +445,15 @@ public sealed record StressLoadPlan(
         workerEnvironment["SIMULATION_WORKER_UDP_PORT"] = udpPort.ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SIMULATION_WORKER_ADVERTISED_HOST"] = "127.0.0.1";
         workerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"] = udpPort.ToString(CultureInfo.InvariantCulture);
-        workerEnvironment[MetricsIntervalSetting] = "10";
+        workerEnvironment[MetricsIntervalSetting] =
+            MetricsIntervalSeconds(generator["duration-seconds"]).ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SimulationWorker__PerformanceReportPath"] = performancePath;
 
         Merge(workerEnvironment, scenario.WorkerSettings, "workerSettings", scenario.Name);
+        RequireSteadyWorkerIntervals(
+            scenario.Name,
+            generator["duration-seconds"],
+            workerEnvironment[MetricsIntervalSetting]);
         Merge(gameServiceEnvironment, scenario.GameServiceSettings, "gameServiceSettings", scenario.Name);
 
         arguments.AddRange(
@@ -516,6 +534,25 @@ public sealed record StressLoadPlan(
 
     // A scenario adds settings; it never replaces one that the plan owns, except the metrics
     // interval.
+    // A steady interval too short for the worker's reporting interval could never be judged.
+    private static void RequireSteadyWorkerIntervals(string scenario, int steadySeconds, string metricsInterval)
+    {
+        if (!int.TryParse(metricsInterval, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds)
+            || seconds < 1)
+        {
+            throw new StressGeneratorOptionException(
+                $"The scenario '{scenario}' sets '{MetricsIntervalSetting}' to '{metricsInterval}', which is not a whole number of seconds.");
+        }
+
+        if (steadySeconds < seconds * (MinimumSteadyWorkerIntervals + 1))
+        {
+            throw new StressGeneratorOptionException(
+                $"The scenario '{scenario}' has a steady interval of {steadySeconds} s, which does not hold "
+                + $"{MinimumSteadyWorkerIntervals} whole worker intervals of {seconds} s beside a partial one at each end. "
+                + "Lengthen the run or shorten the worker interval.");
+        }
+    }
+
     private static void Merge(
         Dictionary<string, string> environment,
         IReadOnlyDictionary<string, string> settings,

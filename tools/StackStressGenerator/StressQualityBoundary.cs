@@ -211,14 +211,18 @@ public sealed class StressQualityBoundary
         {
             "simulation_tick_p99_ms" => worker is null
                 ? Measurement.Missing("no worker performance file was read.")
-                : worker.Durations.TryGetValue("tick", out var tick)
-                    ? Measurement.Of(tick.WorstP99Ms, $"worst of {worker.SteadyIntervals} steady worker intervals; the worker's p99 is a bucket upper bound")
-                    : Measurement.Missing(worker.Note ?? "no steady worker interval has tick samples."),
+                : worker.SteadyCoverageGap is { } tickGap
+                    ? Measurement.Missing(tickGap)
+                    : worker.Durations.TryGetValue("tick", out var tick)
+                        ? Measurement.Of(tick.WorstP99Ms, $"worst of {worker.SteadyIntervals} steady worker intervals; the worker's p99 is a bucket upper bound")
+                        : Measurement.Missing(worker.Note ?? "no steady worker interval has tick samples."),
             "fixed_tick_resynchronizations" => worker is null
                 ? Measurement.Missing("no worker performance file was read.")
                 : worker.SteadyIntervals == 0
                     ? Measurement.Missing(worker.Note ?? "no steady worker interval.")
-                    : Measurement.Of(worker.Counters["tickResynchronizations"].Total, $"{worker.SteadyIntervals} steady worker intervals"),
+                    : worker.SteadyCoverageGap is { } resynchronizationGap
+                        ? Measurement.Missing(resynchronizationGap)
+                        : Measurement.Of(worker.Counters["tickResynchronizations"].Total, $"{worker.SteadyIntervals} steady worker intervals"),
             "input_acknowledgement_p99_ms" => report.Bots.InputAcknowledgementLatency is { } ack
                 ? Measurement.Of(ack.P99Ms, "the whole run")
                 : Measurement.Missing("no input was acknowledged."),
@@ -235,13 +239,13 @@ public sealed class StressQualityBoundary
                 : MeasureHttpFailures(report.FullStack),
             "quota_rejections" => worker is null
                 ? Measurement.Missing("no worker performance file was read.")
-                : worker.RunIntervals == 0
-                    ? Measurement.Missing(worker.Note ?? "no worker interval overlaps the run.")
+                : worker.RunCoverageGap is { } quotaGap
+                    ? Measurement.Missing(quotaGap)
                     : Measurement.Of(worker.RunQuotaRejections, $"{worker.RunIntervals} worker intervals of the run"),
             "snapshot_drops" => worker is null
                 ? Measurement.Missing("no worker performance file was read.")
-                : worker.RunIntervals == 0
-                    ? Measurement.Missing(worker.Note ?? "no worker interval overlaps the run.")
+                : worker.RunCoverageGap is { } dropGap
+                    ? Measurement.Missing(dropGap)
                     : Measurement.Of(worker.RunSnapshotDrops, $"{worker.RunIntervals} worker intervals of the run"),
             "owner_snapshot_gaps" => Measurement.Of(report.Bots.EstimatedMissingSnapshots, null),
             "expired_unreleased_sessions" => !fullStack
