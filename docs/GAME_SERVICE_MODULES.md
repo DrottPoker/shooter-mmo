@@ -200,7 +200,7 @@ caller keeps its own check order, error codes, and messages.
 | Contract | Owner | Used by | Purpose |
 | --- | --- | --- | --- |
 | `IAccountLocks` | Accounts | Characters, Placement | Lock an account `FOR UPDATE` |
-| `IAccountSessionLifecycleHandler` | Accounts (SPI) | implemented by Placement | Release simulation sessions and join tickets when sessions are replaced or revoked |
+| `IAccountSessionLifecycleHandler` | Accounts (SPI) | implemented by Placement | Mark the simulation sessions and consume the join tickets of sessions that are replaced or revoked |
 | `AccountsSql` | Accounts | Placement, Items | Active account session, revocation reason, existing account id, and username fragments |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
@@ -210,7 +210,7 @@ caller keeps its own check order, error codes, and messages.
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
 | `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
-| `ISimulationSessionAuthority` | Placement | Quests, Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment |
+| `ISimulationSessionAuthority` | Placement | Quests, Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment; both name whether the lease is live and how its account session ended, if it did |
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
@@ -346,9 +346,10 @@ A command reaches the kernel through its registration.
 about one command kind: the persisted operation kind, the actor character that
 the live authority check and the operation claim use (none for corpse expiry,
 durable Mob corpse creation, and Recovery expiry), the handler, the retried
-system operation and operationally significant flags, and an optional canonical
-form of the command for the idempotency payload. Each area has one
-`IItemCommandSource` in its module's `Transactions/Handlers/`, next to its
+system operation, operationally significant, policy action, and
+`MayRunAfterAccountSessionEnd` flags, and an optional canonical form of the
+command for the idempotency payload. Each area has one `IItemCommandSource` in
+its module's `Transactions/Handlers/`, next to its
 handlers, registered as a singleton by the module that owns the area. A source
 builds its own handlers from the services they need and never a handler of
 another area:
@@ -391,11 +392,13 @@ whole catalog to hold exactly the kinds of Items, Quests, and Economy.
 invalid operation id or an oversized canonical payload without database access,
 opens one connection with one `READ COMMITTED` transaction, sets the
 transaction-local `statement_timeout` and `lock_timeout`, validates the actor and
-the live simulation session, claims the operation in `item_operations` or replays
-its stored result, sets the `item_mutation` savepoint, runs the handler,
-finalizes, completes the operation, and commits. A rejection rolls back to the
-savepoint and stores the rejected result, except for a timeout or a retried
-system operation, which roll back completely and release the claim. A
+the live simulation session, refuses a command whose registration does not allow
+it once the session's account session ended, claims the operation in
+`item_operations` or replays its stored result, sets the `item_mutation`
+savepoint, runs the handler, finalizes, completes the operation, and commits. A
+rejection rolls back to the savepoint and stores the rejected result, except
+for a timeout or a retried system operation, which roll back completely and
+release the claim. A
 transaction whose commit or rollback was attempted is never rolled back again,
 so a constraint that fails at COMMIT is returned as an unstored rejection or
 propagates with its original error.
@@ -529,6 +532,15 @@ significant, so their commits are logged at `Information` instead of `Debug`.
 Those of `apply_item_policy`, `remove_insurance_policy`, `abandon_quest_items`,
 and `process_player_death` mark them as policy actions: each of their
 transactions, committed or rejected, counts in the policy actions metric.
+Those of `process_player_death`, `consume_equipped_ammunition`, and
+`credit_quest_kill` set `MayRunAfterAccountSessionEnd`: they are the work of a
+character's body that stays in the world after its account session ended, as
+[Account Session End](SERVICE_FEATURES.md#account-session-end) describes, so
+they run for a simulation session whose account session ended. For such a
+session `ItemSimulationAuthority` refuses every other command, after every
+check that ends the session, with `account_session_replaced` or
+`account_session_ended`; a new kind is refused unless its registration sets
+the flag, and the catalog tests pin the three kinds.
 The `claim_recovery_delivery` registration sorts the claimed items by id and
 revision for the idempotency payload. `ItemOperationAdmission` checks the
 operation id rule and the payload limit before any database access.
@@ -892,6 +904,7 @@ topology names.
 | 36 | `202611101200_corpse_source_character_name` | Items |
 | 37 | `202611101300_item_catalog_names_removal` | Items |
 | 38 | `202611121200_character_simulation_states` | Characters |
+| 39 | `202611131200_simulation_session_account_end` | Placement |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -950,9 +963,9 @@ the statement ids.
 
 | # | Statement | Foreign access | How it crosses |
 | --- | --- | --- | --- |
-| S1 | Login session replacement releases simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionsReplacedAsync` |
+| S1 | Login session replacement marks simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionsReplacedAsync` |
 | S2 | Login session replacement consumes join tickets | Plc W | same handler, after S1 |
-| S3 | Session revoke releases simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionRevokedAsync` |
+| S3 | Session revoke marks simulation sessions | Plc W | `IAccountSessionLifecycleHandler.OnSessionRevokedAsync` |
 | S4 | Session revoke consumes join tickets | Plc W | same handler, after S3 |
 | S5 | Character create locks the account | Acc L | `IAccountLocks` |
 | S6 | Character create bootstraps item state | Itm W | `ICharacterLifecycleHandler`, implemented by Items |
@@ -961,8 +974,8 @@ the statement ids.
 | S9 | Ticket consume locks the character | Chr L | `ICharacterLocks.LockForUpdateAsync` |
 | S10 | Ticket consume reads character name and account session | Chr R, Acc R | `CharactersSql` and `AccountsSql` fragments in one statement |
 | S11 | Ticket consume locks carry state | Itm L | `ISimulationCharacterStateProvider.LockForSessionStartAsync` |
-| S12 | Session heartbeat checks the account session and reads carry state | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetAsync` |
-| S13 | Session heartbeat reads the revocation reason | Acc R | `AccountsSql.RevocationReasonOf` |
+| S12 | Session heartbeat marks a session whose account session expired and reads carry state | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetAsync` |
+| S13 | Session heartbeat, the session authority, and the look change read the revocation reason for how the account session ended | Acc R | `AccountsSql.IsActiveOrUnboundSession` and `AccountsSql.RevocationReasonOf` in `SimulationAccountSessionEndSql` |
 | S14 | Session release reads carry state | Itm R | `ISimulationCharacterStateProvider.GetAsync` |
 | S15 | World rebind counts open corpses | Itm R | `IShardWorldLocalStateProbe` |
 | S16 | Item state backfill lists active characters | Chr R | `CharactersSql.ActiveCharacters` |

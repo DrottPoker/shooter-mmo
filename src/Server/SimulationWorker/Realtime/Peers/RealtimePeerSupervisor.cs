@@ -1,13 +1,15 @@
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs once per loop iteration: completes delayed disconnects, drops peers that stop
-// acknowledging, times out joins, detaches invalidated or superseded sessions and
-// releases sessions that neither a peer nor a lingering body owns. Loop-confined.
+// acknowledging, times out joins, detaches invalidated or superseded sessions, ends the
+// connection of a session whose account session ended, and releases sessions that neither a
+// peer nor a lingering body owns. Loop-confined.
 internal sealed class RealtimePeerSupervisor(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
@@ -107,6 +109,17 @@ internal sealed class RealtimePeerSupervisor(
                 teardown.RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
                 peers.RefreshPopulationMetrics();
+                context.ScheduleDisconnect(now);
+                continue;
+            }
+
+            // The account session ended while the session goes on: the client goes with the code
+            // it got before, and the character stays in the world as a lingering body.
+            if (sessionStore.TryGetAccountSessionEnd(activeSession, out var accountSessionEnd))
+            {
+                var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(accountSessionEnd);
+                sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
+                teardown.LeaveBody(context, activeSession);
                 context.ScheduleDisconnect(now);
             }
         }

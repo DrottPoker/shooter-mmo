@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Mmorpg.GameSimulation;
 
 namespace Mmorpg.SimulationWorker.Sessions;
@@ -11,6 +12,11 @@ public sealed class ActiveSimulationSessionStore
     private readonly object syncRoot = new();
     private readonly Dictionary<Guid, ActiveSimulationSession> sessionsByCharacterId = [];
     private readonly Dictionary<Guid, StoredInvalidation> invalidationsBySimulationSessionId = [];
+
+    // The current sessions whose account session ended, with GameService's code for the end. Such
+    // a session stays current: only its connection ends, and its body stays.
+    private readonly Dictionary<Guid, string> accountSessionEndsBySimulationSessionId = [];
+    private int accountSessionEndCount;
     private DateTime nextInvalidationPruneUtc = DateTime.MinValue;
 
     public int PendingInvalidationCount
@@ -24,6 +30,8 @@ public sealed class ActiveSimulationSessionStore
         }
     }
 
+    // A new generation of a session comes from a ticket of a valid account session, so it carries
+    // no account session end.
     public ActiveSimulationSessionRegistration Register(ActiveSimulationSession session)
     {
         lock (syncRoot)
@@ -37,6 +45,7 @@ public sealed class ActiveSimulationSessionStore
 
             if (existingSession.SimulationSessionId == session.SimulationSessionId)
             {
+                ForgetAccountSessionEndLocked(session.SimulationSessionId);
                 sessionsByCharacterId[session.CharacterId] = session with
                 {
                     JoinedAt = existingSession.JoinedAt,
@@ -47,6 +56,7 @@ public sealed class ActiveSimulationSessionStore
 
             if (existingSession.SessionExpiresAt <= DateTime.UtcNow)
             {
+                ForgetAccountSessionEndLocked(existingSession.SimulationSessionId);
                 StoreInvalidation(existingSession.SimulationSessionId, SessionExpiredInvalidation());
                 sessionsByCharacterId[session.CharacterId] = session;
                 return ActiveSimulationSessionRegistration.ReplacedExpired;
@@ -84,8 +94,55 @@ public sealed class ActiveSimulationSessionStore
             }
 
             sessionsByCharacterId.Remove(expectedSession.CharacterId);
+            ForgetAccountSessionEndLocked(current.SimulationSessionId);
             StoreInvalidation(current.SimulationSessionId, SessionExpiredInvalidation());
             return false;
+        }
+    }
+
+    // Records that the account session of the current session generation ended, with GameService's
+    // code for the end. The session stays current. True only when this call recorded it: false
+    // when the generation is not the current one or its end was recorded already, whose code stays.
+    public bool MarkAccountSessionEnded(
+        Guid characterId,
+        Guid simulationSessionId,
+        string simulationSessionToken,
+        string code)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        lock (syncRoot)
+        {
+            if (!IsCurrentGenerationLocked(characterId, simulationSessionId, simulationSessionToken))
+            {
+                return false;
+            }
+
+            if (!accountSessionEndsBySimulationSessionId.TryAdd(simulationSessionId, code))
+            {
+                return false;
+            }
+
+            Volatile.Write(ref accountSessionEndCount, accountSessionEndsBySimulationSessionId.Count);
+            return true;
+        }
+    }
+
+    // GameService's code for the end of the account session of the session's current generation,
+    // which the loop reads for every connected peer, so it takes no lock while no account session
+    // ended.
+    public bool TryGetAccountSessionEnd(ActiveSimulationSession session, [NotNullWhen(true)] out string? code)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        code = null;
+        if (Volatile.Read(ref accountSessionEndCount) == 0)
+        {
+            return false;
+        }
+
+        lock (syncRoot)
+        {
+            return IsCurrentGenerationLocked(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken)
+                && accountSessionEndsBySimulationSessionId.TryGetValue(session.SimulationSessionId, out code);
         }
     }
 
@@ -166,6 +223,7 @@ public sealed class ActiveSimulationSessionStore
             }
 
             invalidationsBySimulationSessionId.Remove(simulationSessionId);
+            ForgetAccountSessionEndLocked(simulationSessionId);
             return sessionsByCharacterId.Remove(characterId);
         }
     }
@@ -190,6 +248,7 @@ public sealed class ActiveSimulationSessionStore
             }
 
             sessionsByCharacterId.Remove(characterId);
+            ForgetAccountSessionEndLocked(simulationSessionId);
             StoreInvalidation(
                 simulationSessionId,
                 new ActiveSimulationSessionInvalidation(code, message));
@@ -238,6 +297,21 @@ public sealed class ActiveSimulationSessionStore
                 .OrderBy(session => session.JoinedAt)
                 .Select(ActiveSimulationSessionResponse.FromSession)
                 .ToArray();
+        }
+    }
+
+    private bool IsCurrentGenerationLocked(Guid characterId, Guid simulationSessionId, string simulationSessionToken)
+    {
+        return sessionsByCharacterId.TryGetValue(characterId, out var current)
+            && current.SimulationSessionId == simulationSessionId
+            && string.Equals(current.SimulationSessionToken, simulationSessionToken, StringComparison.Ordinal);
+    }
+
+    private void ForgetAccountSessionEndLocked(Guid simulationSessionId)
+    {
+        if (accountSessionEndsBySimulationSessionId.Remove(simulationSessionId))
+        {
+            Volatile.Write(ref accountSessionEndCount, accountSessionEndsBySimulationSessionId.Count);
         }
     }
 

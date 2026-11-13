@@ -31,36 +31,47 @@ internal sealed class SimulationSessionService(
         var sessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim());
         var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
+        // The lease goes on after the account session ended, since the character's body stays in
+        // the world until the worker releases the session. An account session that expired is
+        // marked here, as a logout or a new login marks it, and the answer names the end.
         var sql = $"""
             with refreshed_session as (
                 update character_simulation_sessions
                 set last_heartbeat_at = clock_timestamp(),
-                    expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds)
+                    expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds),
+                    account_session_ended_at = coalesce(
+                        account_session_ended_at,
+                        case
+                            when {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")} then null
+                            else clock_timestamp()
+                        end)
                 where id = @SimulationSessionId
                   and simulation_worker_id = @WorkerId
                   and worker_runtime_id = @WorkerRuntimeId
                   and session_token_hash = @SessionTokenHash
                   and released_at is null
                   and expires_at > now()
-                  and {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")}
                 returning id,
                           character_id,
                           shard_id,
                           simulation_worker_id,
                           worker_runtime_id,
-                          expires_at
+                          expires_at,
+                          account_session_id,
+                          account_session_ended_at
             )
             select refreshed.id as "SimulationSessionId",
                    refreshed.character_id as "CharacterId",
                    refreshed.shard_id as "ShardId",
                    refreshed.simulation_worker_id as "WorkerId",
                    refreshed.worker_runtime_id as "WorkerRuntimeId",
-                   refreshed.expires_at as "ExpiresAt"
+                   refreshed.expires_at as "ExpiresAt",
+                   {SimulationAccountSessionEndSql.Of("refreshed")} as "AccountSessionEnd"
             from refreshed_session refreshed;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var refreshed = await connection.QuerySingleOrDefaultAsync<SessionLeaseRow>(
+        var refreshed = await connection.QuerySingleOrDefaultAsync<HeartbeatRow>(
             new CommandDefinition(
                 sql,
                 new
@@ -83,43 +94,18 @@ internal sealed class SimulationSessionService(
         if (refreshed is not null && carryState is not null)
         {
             return ServiceResult<SimulationSessionLeaseResponse>.Ok(
-                refreshed.ToResponse(carryState, released: false) with
+                refreshed.Lease.ToResponse(carryState, released: false) with
                 {
-                    LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L
+                    LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
+                    AccountSessionEnded = refreshed.AccountSessionEnd is { } end
+                        ? SimulationAccountSessionEndCodes.Of(end)
+                        : null
                 });
         }
 
-        var revocationReasonSql = $"""
-            select {AccountsSql.RevocationReasonOf("simulation_session.account_session_id")}
-            from character_simulation_sessions simulation_session
-            where simulation_session.id = @SimulationSessionId
-              and simulation_session.simulation_worker_id = @WorkerId
-              and simulation_session.worker_runtime_id = @WorkerRuntimeId
-              and simulation_session.session_token_hash = @SessionTokenHash;
-            """;
-
-        var revocationReason = await connection.QuerySingleOrDefaultAsync<string>(
-            new CommandDefinition(
-                revocationReasonSql,
-                new
-                {
-                    SimulationSessionId = simulationSessionId,
-                    WorkerId = workerId.Trim(),
-                    WorkerRuntimeId = request.WorkerRuntimeId!.Trim(),
-                    SessionTokenHash = sessionTokenHash
-                },
-                cancellationToken: cancellationToken));
-
-        return string.Equals(
-            revocationReason,
-            AccountSessionRevocationReason.SessionReplaced,
-            StringComparison.Ordinal)
-            ? ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
-                AccountSessionErrorCode.SessionReplaced,
-                "This account logged in from another client.")
-            : ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
-                "invalid_simulation_session",
-                "Simulation session is invalid, released, expired, or owned by another worker runtime.");
+        return ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
+            "invalid_simulation_session",
+            "Simulation session is invalid, released, expired, or owned by another worker runtime.");
     }
 
     // Releases the exact session generation, idempotently. A final state is saved in the same
@@ -511,6 +497,25 @@ internal sealed class SimulationSessionService(
                 Equipment = carryState.Equipment
             };
         }
+    }
+
+    // A renewed lease with how its account session ended, if it did.
+    private sealed record HeartbeatRow(
+        Guid SimulationSessionId,
+        Guid CharacterId,
+        string ShardId,
+        string WorkerId,
+        string WorkerRuntimeId,
+        DateTime ExpiresAt,
+        SimulationAccountSessionEnd? AccountSessionEnd)
+    {
+        public SessionLeaseRow Lease => new(
+            SimulationSessionId,
+            CharacterId,
+            ShardId,
+            WorkerId,
+            WorkerRuntimeId,
+            ExpiresAt);
     }
 
     // A released session, whether this release ended it, and the World and collision revision

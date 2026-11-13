@@ -142,6 +142,7 @@ internal sealed class ItemTransactionKernel(
                 await simulationAuthority.ValidateLiveSessionAsync(
                     session,
                     actorCharacterId,
+                    registration.MayRunAfterAccountSessionEnd,
                     cancellationToken);
             }
             catch (ItemTransactionRejectedException exception)

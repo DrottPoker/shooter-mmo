@@ -48,7 +48,8 @@ public sealed class GameServiceSchema
         "202611051300_remove_placeholder_quest_items",
         "202611101200_corpse_source_character_name",
         "202611101300_item_catalog_names_removal",
-        "202611121200_character_simulation_states"
+        "202611121200_character_simulation_states",
+        "202611131200_simulation_session_account_end"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

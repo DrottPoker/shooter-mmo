@@ -1,13 +1,15 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Detaches peers from sessions and entities: a connection that ends while its session goes on,
-// invalidation, reconnect replacement, authority failures, and the end of a lingering body.
+// invalidation, reconnect replacement, authority failures, the end of an account session, which
+// ends only the connection, and the end of a lingering body.
 // Every path releases the corpse view and interaction lease the peer held, and a removed entity
 // takes its character's state out of the registered per-character stores. Loop-confined.
 internal sealed class RealtimeSessionTeardown(
@@ -151,7 +153,9 @@ internal sealed class RealtimeSessionTeardown(
     // TerminateForAuthorityFailure does for the peer that plays it. A lingering body has no peer:
     // its session is invalidated, so the body goes at the next tick without a release. The answer
     // to an operation of an earlier generation, which a reconnect replaced, ends nothing, since
-    // the session went on with what GameService held at the reconnect.
+    // the session went on with what GameService held at the reconnect. An answer that says the
+    // account session ended keeps the session and the entity: it ends the connection of the peer
+    // that plays the session, and a body without a peer stays as it is.
     public void EndForAuthorityFailure(in OperationCompletionTarget target, string code, string message)
     {
         if (!target.SameGeneration)
@@ -160,6 +164,25 @@ internal sealed class RealtimeSessionTeardown(
         }
 
         var session = target.Session;
+        if (GameServiceOutcome.EndsAccountSession(code))
+        {
+            sessionStore.MarkAccountSessionEnded(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code);
+            if (target.Requester is { } connectedRequester)
+            {
+                EndConnectionAfterAccountSessionEnd(connectedRequester, target.RequesterContext, session, code);
+            }
+            else if (target.Owner is { } connectedOwner)
+            {
+                EndConnectionAfterAccountSessionEnd(connectedOwner, target.OwnerContext!, session, code);
+            }
+
+            return;
+        }
+
         if (target.Requester is { } requester)
         {
             TerminateForAuthorityFailure(requester, target.RequesterContext, session, code, message);
@@ -180,7 +203,8 @@ internal sealed class RealtimeSessionTeardown(
             message);
     }
 
-    // Ends a session whose authoritative state can no longer be trusted.
+    // Ends a session whose authoritative state can no longer be trusted. An answer that says the
+    // account session ended ends only the connection.
     public void TerminateForAuthorityFailure(
         IRealtimePeerConnection peer,
         RealtimePeerContext context,
@@ -188,6 +212,17 @@ internal sealed class RealtimeSessionTeardown(
         string code,
         string message)
     {
+        if (GameServiceOutcome.EndsAccountSession(code))
+        {
+            sessionStore.MarkAccountSessionEnded(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code);
+            EndConnectionAfterAccountSessionEnd(peer, context, session, code);
+            return;
+        }
+
         sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
         sessionStore.Invalidate(
             session.CharacterId,
@@ -202,6 +237,21 @@ internal sealed class RealtimeSessionTeardown(
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
         peers.RefreshPopulationMetrics();
+        context.ScheduleDisconnect(DateTime.UtcNow);
+    }
+
+    // GameService said that the account session of the peer's session ended. The session goes on,
+    // so the peer gets the disconnect it got before a logout or a new login kept the body, and the
+    // entity stays in the world as a lingering body: nothing is removed or invalidated.
+    private void EndConnectionAfterAccountSessionEnd(
+        IRealtimePeerConnection peer,
+        RealtimePeerContext context,
+        ActiveSimulationSession session,
+        string code)
+    {
+        var (disconnectCode, disconnectMessage) = GameServiceOutcome.AccountSessionEndDisconnect(code);
+        sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(disconnectCode, disconnectMessage));
+        LeaveBody(context, session);
         context.ScheduleDisconnect(DateTime.UtcNow);
     }
 }

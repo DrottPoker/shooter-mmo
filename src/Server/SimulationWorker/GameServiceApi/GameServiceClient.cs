@@ -673,6 +673,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             && !string.IsNullOrWhiteSpace(response.WorkerRuntimeId)
             && response.ExpiresAt != default
             && (response.Released || response.LeaseDurationMilliseconds > 0)
+            && (response.AccountSessionEnded is null || GameServiceOutcome.EndsAccountSession(response.AccountSessionEnded))
             && IsValidCarryState(
                 response.ItemStateRevision,
                 response.CarriedWeight,

@@ -48,7 +48,7 @@ public sealed class SimulationItemInteractionService(GameServiceClient gameServi
             error.Code,
             error.Message,
             RequiresInventoryRefresh(error.Code),
-            GameServiceOutcome.EndsItemSession(error.Code));
+            GameServiceOutcome.EndsItemSession(error.Code) || GameServiceOutcome.EndsAccountSession(error.Code));
     }
 
     private static SimulationItemOperationRequest CreateRequest(

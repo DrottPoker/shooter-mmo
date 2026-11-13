@@ -2,6 +2,27 @@ namespace Mmorpg.SimulationWorker.GameServiceApi;
 
 public static class GameServiceOutcome
 {
+    public const string AccountSessionReplacedCode = "account_session_replaced";
+    public const string AccountSessionEndedCode = "account_session_ended";
+
+    // GameService refused what a client asked for, or a heartbeat said, that the account session
+    // of the simulation session ended: a new login replaced it, or a logout, a revoke, or its
+    // expiry ended it. The session goes on for the character's body, so the worker ends only the
+    // connection, never the session or the entity.
+    public static bool EndsAccountSession(string? code)
+    {
+        return code is AccountSessionReplacedCode or AccountSessionEndedCode;
+    }
+
+    // The code and message of the disconnect that an ended account session sends the client: the
+    // ones it got before a logout or a new login kept the body, so its handling stays the same.
+    public static (string Code, string Message) AccountSessionEndDisconnect(string code)
+    {
+        return code == AccountSessionReplacedCode
+            ? (AccountSessionReplacedCode, "This account logged in from another client.")
+            : ("session_revoked", "The simulation session is no longer active.");
+    }
+
     // A timeout or lost connection can happen after GameService committed the
     // operation, so the client must refresh instead of trusting a rejection.
     public static bool IsUncertain(string code)

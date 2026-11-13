@@ -27,6 +27,12 @@ public abstract class ItemCommandRegistration
 
     // Every outcome counts in the policy actions metric, labeled with the operation kind.
     public bool PolicyAction { get; init; }
+
+    // The command may run for a simulation session whose account session ended, because it is the
+    // work of the character's body that stays in the world: its death, its spent arrows, and the
+    // quest credit of its kills. Every other command is something a client asks for and is
+    // refused for such a session.
+    public bool MayRunAfterAccountSessionEnd { get; init; }
 }
 
 public sealed class ItemCommandRegistration<TCommand> : ItemCommandRegistration

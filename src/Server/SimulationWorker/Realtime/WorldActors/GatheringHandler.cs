@@ -354,7 +354,7 @@ internal sealed class GatheringHandler(
             return;
         }
 
-        if (GameServiceOutcome.EndsItemSession(error.Code))
+        if (GameServiceOutcome.EndsItemSession(error.Code) || GameServiceOutcome.EndsAccountSession(error.Code))
         {
             metrics?.RecordGatheringCycle("rejected");
             teardown.EndForAuthorityFailure(target, error.Code, error.Message);

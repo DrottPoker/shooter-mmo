@@ -1,6 +1,6 @@
 using Dapper;
-using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
@@ -74,9 +74,11 @@ internal sealed class SimulationAppearanceService(
             new { SimulationSessionId = simulationSessionId },
             transaction,
             cancellationToken: cancellationToken));
-        if (characterId is null
+        var session = characterId is null
             || await characterLocks.LockActiveForItemMutationAsync(scope, characterId.Value, cancellationToken) is null
-            || !await LockLiveSessionAsync(scope, simulationSessionId, characterId.Value, workerId, request, cancellationToken))
+                ? null
+                : await LockLiveSessionAsync(scope, simulationSessionId, characterId.Value, workerId, request, cancellationToken);
+        if (session is null)
         {
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<SimulationAppearance>.Unauthorized(
@@ -84,11 +86,21 @@ internal sealed class SimulationAppearanceService(
                 "Simulation session is invalid, released, expired, or owned by another worker runtime.");
         }
 
+        // A change of the look is what a client asks for, so none runs once the account session
+        // ended, even while the character's body stays in the world.
+        if (session.AccountSessionEnd is { } end)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<SimulationAppearance>.Unauthorized(
+                SimulationAccountSessionEndCodes.Of(end),
+                SimulationAccountSessionEndCodes.MessageOf(end));
+        }
+
         var change = isHeadwear
-            ? await characterAppearances.SetHeadwearLoweredAsync(scope, characterId.Value, request.HeadwearLowered!.Value, cancellationToken)
+            ? await characterAppearances.SetHeadwearLoweredAsync(scope, characterId!.Value, request.HeadwearLowered!.Value, cancellationToken)
             : await characterAppearances.SetDevelopmentLookAsync(
                 scope,
-                characterId.Value,
+                characterId!.Value,
                 request.BodyModel ?? string.Empty,
                 (request.Choices ?? [])
                     .Select(choice => new CharacterAppearanceChoice(choice?.Kind, choice?.Slot, choice?.Option))
@@ -105,8 +117,9 @@ internal sealed class SimulationAppearanceService(
     }
 
     // Locks the session FOR UPDATE when it is live, still the character's, and held by this
-    // worker runtime with this session token.
-    private static async Task<bool> LockLiveSessionAsync(
+    // worker runtime with this session token, and returns how its account session ended, if it
+    // did; null when no such session exists.
+    private static async Task<LockedSessionRow?> LockLiveSessionAsync(
         PostgresTransactionScope scope,
         Guid simulationSessionId,
         Guid characterId,
@@ -114,19 +127,19 @@ internal sealed class SimulationAppearanceService(
         SimulationAppearanceChangeRequest request,
         CancellationToken cancellationToken)
     {
-        var locked = await scope.Connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+        return await scope.Connection.QuerySingleOrDefaultAsync<LockedSessionRow>(new CommandDefinition(
             $"""
-            select id
-            from character_simulation_sessions
-            where id = @SimulationSessionId
-              and character_id = @CharacterId
-              and simulation_worker_id = @WorkerId
-              and worker_runtime_id = @WorkerRuntimeId
-              and session_token_hash = @SessionTokenHash
-              and released_at is null
-              and expires_at > now()
-              and {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")}
-            for update of character_simulation_sessions;
+            select simulation_session.id as "Id",
+                   {SimulationAccountSessionEndSql.Of("simulation_session")} as "AccountSessionEnd"
+            from character_simulation_sessions simulation_session
+            where simulation_session.id = @SimulationSessionId
+              and simulation_session.character_id = @CharacterId
+              and simulation_session.simulation_worker_id = @WorkerId
+              and simulation_session.worker_runtime_id = @WorkerRuntimeId
+              and simulation_session.session_token_hash = @SessionTokenHash
+              and simulation_session.released_at is null
+              and simulation_session.expires_at > now()
+            for update of simulation_session;
             """,
             new
             {
@@ -138,6 +151,7 @@ internal sealed class SimulationAppearanceService(
             },
             scope.Transaction,
             cancellationToken: cancellationToken));
-        return locked is not null;
     }
+
+    private sealed record LockedSessionRow(Guid Id, SimulationAccountSessionEnd? AccountSessionEnd);
 }

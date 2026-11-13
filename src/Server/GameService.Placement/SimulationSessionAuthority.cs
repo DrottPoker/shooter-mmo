@@ -1,5 +1,4 @@
 using Dapper;
-using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 
@@ -26,8 +25,8 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
                     simulation_session.worker_runtime_id as "WorkerRuntimeId",
                     simulation_session.session_token_hash as "SessionTokenHash",
                     simulation_session.released_at is null
-                        and simulation_session.expires_at > now()
-                        and {AccountsSql.IsActiveOrUnboundSession("simulation_session.account_session_id")} as "IsActive"
+                        and simulation_session.expires_at > now() as "IsLive",
+                    {SimulationAccountSessionEndSql.Of("simulation_session")} as "AccountSessionEnd"
                 from character_simulation_sessions simulation_session
                 where simulation_session.id = @SimulationSessionId
                 for update of simulation_session;
@@ -44,7 +43,8 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
                 row.WorkerId,
                 row.WorkerRuntimeId,
                 row.SessionTokenHash,
-                row.IsActive);
+                row.IsLive,
+                row.AccountSessionEnd);
     }
 
     public async Task<SimulationSessionReadAuthority?> GetReadAuthorityAsync(
@@ -65,8 +65,8 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
                     session.worker_runtime_id as "WorkerRuntimeId",
                     session.session_token_hash as "SessionTokenHash",
                     session.released_at is null
-                        and session.expires_at > now()
-                        and {AccountsSql.IsActiveOrUnboundSession("session.account_session_id")} as "SessionIsActive",
+                        and session.expires_at > now() as "SessionIsLive",
+                    {SimulationAccountSessionEndSql.Of("session")} as "AccountSessionEnd",
                     worker.is_online
                         and worker.last_heartbeat_at is not null
                         and worker.last_heartbeat_at > now()
@@ -100,7 +100,8 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
                 row.WorkerId,
                 row.WorkerRuntimeId,
                 row.SessionTokenHash,
-                row.SessionIsActive,
+                row.SessionIsLive,
+                row.AccountSessionEnd,
                 row.WorkerHasFreshLease,
                 row.WorkerHasAssignment);
     }
@@ -119,7 +120,9 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
 
         public string SessionTokenHash { get; set; } = string.Empty;
 
-        public bool IsActive { get; set; }
+        public bool IsLive { get; set; }
+
+        public SimulationAccountSessionEnd? AccountSessionEnd { get; set; }
     }
 
     private sealed class ReadAuthorityRow
@@ -136,7 +139,9 @@ internal sealed class SimulationSessionAuthority(PlacementModuleOptions options)
 
         public string SessionTokenHash { get; set; } = string.Empty;
 
-        public bool SessionIsActive { get; set; }
+        public bool SessionIsLive { get; set; }
+
+        public SimulationAccountSessionEnd? AccountSessionEnd { get; set; }
 
         public bool WorkerHasFreshLease { get; set; }
 

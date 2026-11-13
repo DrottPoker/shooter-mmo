@@ -47,7 +47,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-workers/{workerId}/checkpoint` | Worker service policy | Save the place and vitals of the worker runtime's characters whose state changed, in one batch |
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket and return the character's saved place and vitals |
-| `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease |
+| `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease and name the end of its account session |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease, with the character's final place and vitals when the worker has them |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
@@ -109,8 +109,9 @@ uses them.
   lives `Auth:SessionLifetimeHours`.
 - A successful login locks the account, revokes the older session with the
   stored reason `session_replaced` and the client error code
-  `account_session_replaced`, consumes its pending tickets, releases its active
-  simulation sessions, and creates the replacement session transactionally.
+  `account_session_replaced`, consumes its pending tickets, marks its active
+  simulation sessions as [Account Session End](#account-session-end)
+  describes, and creates the replacement session transactionally.
 - Logout and manual revoke use explicit revocation reasons and dependent cleanup.
   They lock the account first, like login and join, and clean up only sessions
   that belong to the caller. Revoking another account's session id succeeds
@@ -308,7 +309,9 @@ Simulation session properties:
 - Safe stale-token rejection after reconnect.
 - A session stays active while its character's body stays in the world after
   the connection ended, as [Lingering Bodies](#lingering-bodies) describes: the
-  worker keeps renewing its lease and releases it only when the body goes.
+  worker keeps renewing its lease and releases it only when the body goes. The
+  end of its account session does not end it either, as
+  [Account Session End](#account-session-end) describes.
 
 The worker also enforces cached lease expiry locally so a GameService outage
 cannot leave a connected player or a body active forever. The local deadline is the
@@ -321,6 +324,51 @@ conflict invalidates the local lease instead of accepting contradictory weight,
 capacity, or equipment. The worker updates the item state only from committed
 GameService results and heartbeats, and sends a newer carry tuple reliably
 before it affects movement.
+
+### Account Session End
+
+When an account session ends, by a logout, a manual revoke, a new login that
+replaces it, or its expiry, the simulation session of the account goes on, so
+the character's body stays in the world its full time, as
+[Lingering Bodies](#lingering-bodies) describes:
+
+- A logout, a revoke, and a new login mark the account's unreleased simulation
+  sessions with `account_session_ended_at` in their own transaction instead of
+  releasing them, and consume the account's pending join tickets as before. An
+  account session that expired is not seen by any transaction, so the session
+  heartbeat marks it. Every check counts an expired account session as ended at
+  once, also before the heartbeat marked it.
+- The session heartbeat keeps renewing a marked session's lease and answers
+  `accountSessionEnded`: `account_session_replaced` when a new login replaced
+  the account session, `account_session_ended` for any other end, and `null`
+  while it lasts. A heartbeat is refused only for a session that is released,
+  expired, or not the worker's, with `invalid_simulation_session`.
+- On a marked session GameService runs only the body's own work: player
+  deaths, spent arrows, the kill credit of a quest, the quest log and quest drop
+  reads that these need, checkpoints, the release, and the heartbeat. An item
+  command runs only when its registration allows it, as
+  [Operation Kinds](GAME_SERVICE_MODULES.md#operation-kinds) describes, so every
+  other command, also one added later, is refused. Every operation that a
+  client asks for, items, vendors, gathering, live Mob loot, corpse views and
+  loot, quest actions, and look changes, is refused with `401` and the code of
+  the end, `account_session_replaced` or `account_session_ended`.
+- SimulationWorker treats a heartbeat that names the end, and such a refusal,
+  alike: it ends the connection of a peer that still plays the session with
+  the disconnect it sent before for that case, `account_session_replaced` after
+  a new login and `session_revoked` otherwise, and the entity stays as a
+  lingering body. Neither removes the entity nor invalidates the session, and
+  an answer that arrives when the peer is already gone changes nothing more.
+- Nothing that holds only the old account session gets a join ticket: its
+  token no longer authenticates, its pending tickets are consumed, and a ticket
+  is consumed only while its own account session is valid.
+- A ticket of the new account session for the same character is the reconnect
+  of the marked session on the worker that holds it. Consuming it binds the
+  session to the new account session and clears the mark. A ticket for another
+  character of the account is refused with `account_character_already_active`
+  until the session is released or its lease expired.
+- The worker releases a marked session when its body goes, with its final
+  state, as any session. When the worker died, nothing renews the lease, and it
+  expires as any lease does.
 
 ### Character Place And Vitals
 
@@ -407,7 +455,8 @@ valid, the character's entity stays in the world as a lingering body for
   arrows and death then build on that revision. Only the operation's result
   needs the peer that sent it; a player who came back in the meantime gets the
   item and quest log changes and the carry state. An answer that ends the
-  session invalidates the body's session, so the body goes without a release.
+  session invalidates the body's session, so the body goes without a release;
+  an answer that says the account session ended changes nothing for a body.
 - The time is counted in simulation ticks from the end of the connection. Every
   hit that the body takes moves its end to the full time after the hit when
   that is later, without an upper limit. A body whose time is up or whose death
@@ -418,10 +467,15 @@ valid, the character's entity stays in the world as a lingering body for
   and is saved as its respawn would leave it; it never respawns. The release
   waits for the spent arrows, the death, and the quest credits that the body
   still commits.
+- The end of the account session, by a logout, a new login, or its expiry,
+  does not end the simulation session, as
+  [Account Session End](#account-session-end) describes: a connected player
+  becomes a body, and a body stays its full time.
 - A body whose session ended goes at once without a release, with the
-  invalidation code as despawn reason, such as `session_revoked`,
-  `account_session_replaced`, or `session_expired`. A worker that stops saves
-  its bodies in the last checkpoint and takes them out with every other player.
+  invalidation code as despawn reason, such as `session_revoked` for a session
+  that GameService no longer renews, or `session_expired`. A worker that stops
+  saves its bodies in the last checkpoint and takes them out with every other
+  player.
 - A join ticket of the same character is a reconnect of the body's session: the
   join resumes the body's entity where it stands, with its vitals, and ends its
   time. A ticket for another character of the account is refused with
@@ -1660,7 +1714,9 @@ results and closures, and Unity adds `item_catalog_update_required`.
   request that the client aborted is logged at debug level and answered with
   `499`, not reported as a server error.
 - Item rejections map to statuses by class on the account, worker item, and
-  corpse routes: `401` for an invalid simulation session, `403` for missing
+  corpse routes: `401` for an invalid simulation session and for a client's
+  operation on a session whose account session ended,
+  `account_session_replaced` or `account_session_ended`, `403` for missing
   authority or service access, such as `item_authority_required`,
   `wrong_simulation_worker`, `bank_access_required`, `recovery_access_required`,
   `vendor_access_required`, and `quest_npc_access_required`, `404` for a missing
@@ -1690,7 +1746,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Item reads and requests | `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
 | Quest commands | `quest_not_found`, `quest_not_active`, `quest_already_active`, `quest_already_completed`, `quest_requirements_not_met`, `quest_level_too_low`, `quest_log_full`, `quest_npc_access_required`, `quest_objective_invalid`, `quest_objective_complete`, `quest_items_missing`, `quest_not_ready`, `quest_reward_choice_required`, `quest_reward_choice_invalid`, `quest_item_not_needed` |
-| Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid` |
+| Item authority and session | `item_authority_required`, `item_offline_access_required`, `item_simulation_operation_invalid`, `wrong_simulation_worker`, `simulation_session_invalid`, `account_session_replaced`, `account_session_ended` |
 | Item operations | `item_operation_id_invalid`, `item_operation_conflict`, `item_transaction_timeout`, `item_command_payload_too_large` |
 | Item state | `item_not_found`, `item_not_owned`, `item_state_conflict`, `item_quantity_changed`, `bag_state_changed` |
 | Item placement | `item_slot_occupied`, `item_slot_incompatible`, `equipment_slot_occupied`, `equipment_slot_incompatible`, `equipment_slot_blocked`, `equipment_level_requirement_not_met`, `bag_not_empty`, `carry_weight_limit_exceeded` |

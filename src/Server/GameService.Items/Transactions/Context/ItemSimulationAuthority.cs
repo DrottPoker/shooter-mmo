@@ -21,10 +21,14 @@ internal sealed class ItemSimulationAuthority(
     private readonly ISimulationWorkerAuthority simulationWorkers = simulationWorkers;
 
     // Kernel only: the live session, worker runtime, and Shard assignment of a
-    // simulation worker actor, checked before the operation claim (S22 to S25).
+    // simulation worker actor, checked before the operation claim (S22 to S25). A session whose
+    // account session ended runs only a command that may run after that end, the work of the
+    // character's body; any other command is refused with the code of the end, last, so every
+    // failure that ends the session wins over it.
     public async Task ValidateLiveSessionAsync(
         ItemTransactionSession transactionSession,
         Guid? actorCharacterId,
+        bool mayRunAfterAccountSessionEnd,
         CancellationToken cancellationToken)
     {
         if (transactionSession.Actor.Authority != ItemTransactionAuthority.SimulationWorker)
@@ -57,7 +61,7 @@ internal sealed class ItemSimulationAuthority(
             transactionSession.Scope,
             simulation.SimulationSessionId,
             cancellationToken);
-        if (session is null || !session.IsActive)
+        if (session is null || !session.IsLive)
         {
             Reject(
                 ItemTransactionErrorCodes.SimulationSessionInvalid,
@@ -123,6 +127,13 @@ internal sealed class ItemSimulationAuthority(
             Reject(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
                 "The simulation worker no longer owns the requested Shard assignment.");
+        }
+
+        if (session.AccountSessionEnd is { } end && !mayRunAfterAccountSessionEnd)
+        {
+            Reject(
+                SimulationAccountSessionEndCodes.Of(end),
+                SimulationAccountSessionEndCodes.MessageOf(end));
         }
     }
 

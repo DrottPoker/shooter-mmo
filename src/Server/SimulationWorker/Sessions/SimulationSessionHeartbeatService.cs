@@ -110,6 +110,21 @@ public sealed class SimulationSessionHeartbeatService(
                     return;
                 }
 
+                // The account session ended, but the session goes on: the realtime loop ends the
+                // connection that still plays it, and the character's body stays its full time.
+                if (result.Value.AccountSessionEnded is { } accountSessionEnd
+                    && sessionStore.MarkAccountSessionEnded(
+                        session.CharacterId,
+                        session.SimulationSessionId,
+                        session.SimulationSessionToken,
+                        accountSessionEnd))
+                {
+                    logger.LogInformation(
+                        "The account session of simulation session {SimulationSessionId} ended with {Code}; its connection ends and its body stays.",
+                        session.SimulationSessionId,
+                        accountSessionEnd);
+                }
+
                 var itemState = CharacterItemState.Create(
                     new PlayerCarryState(
                         result.Value.ItemStateRevision,
@@ -145,15 +160,8 @@ public sealed class SimulationSessionHeartbeatService(
                 or (int)HttpStatusCode.NotFound
                 or (int)HttpStatusCode.Conflict)
             {
-                var code = string.Equals(
-                    result.Error!.Code,
-                    "account_session_replaced",
-                    StringComparison.Ordinal)
-                    ? "account_session_replaced"
-                    : "session_revoked";
-                var message = code == "account_session_replaced"
-                    ? "This account logged in from another client."
-                    : "The simulation session is no longer active.";
+                // The lease was not renewed, so the session ended whatever the code says.
+                var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(result.Error!.Code);
                 var invalidated = sessionStore.Invalidate(
                     session.CharacterId,
                     session.SimulationSessionId,

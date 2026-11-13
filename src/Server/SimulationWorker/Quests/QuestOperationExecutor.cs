@@ -103,7 +103,7 @@ public sealed class QuestOperationExecutor(
         if (questLogs.IsStale(session.CharacterId, session.SimulationSessionId))
         {
             var reread = await ReadAgainAsync(session, cancellationToken);
-            if (reread.Error is { } error && GameServiceOutcome.EndsItemSession(error.Code))
+            if (reread.Error is { } error && EndsConnection(operation, error.Code))
             {
                 return QuestOperationOutcome.Rejected(error.Code, error.Message, shouldDisconnect: true);
             }
@@ -172,7 +172,7 @@ public sealed class QuestOperationExecutor(
             return QuestOperationOutcome.Rejected(
                 result.Error!.Code,
                 result.Error.Message,
-                GameServiceOutcome.EndsItemSession(result.Error.Code)) with
+                EndsConnection(operation, result.Error.Code)) with
             {
                 QuestLogChange = ReloadNotice(session, operation.ReportedOperationId, reloadFrom),
                 Uncertain = uncertain
@@ -256,6 +256,15 @@ public sealed class QuestOperationExecutor(
         questLogs.MarkStale(session.CharacterId, session.SimulationSessionId);
         await ReadAgainAsync(session, cancellationToken);
         return ReloadNotice(session, Guid.Empty, log!.Revision);
+    }
+
+    // An answer that ends the session ends the player's connection. One that says the account
+    // session ended does so only for what a client asked for; a kill credit is the body's work,
+    // which GameService still runs, so such an answer to it is a plain rejection.
+    private static bool EndsConnection(QuestOperation operation, string code)
+    {
+        return GameServiceOutcome.EndsItemSession(code)
+            || (operation.ClientIntent && GameServiceOutcome.EndsAccountSession(code));
     }
 
     // A lost answer, a failure after the commit such as a read of the committed state, or a

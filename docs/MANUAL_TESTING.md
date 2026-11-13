@@ -360,10 +360,12 @@ chosen, and SimulationWorker logs the leave. The character's body stays in the
 world, as [The Body That Stays](#the-body-that-stays) describes. `Log Out`
 revokes the GameService session before the client clears its local state and
 returns to LoginMenu, whose `Log In` tab shows the account's login name. The
-revoked session ends the body within the 10-second session heartbeat, and the
-worker logs `The body of character <name> (<character-id>) left shard
-local-shard-1: session_revoked.` with its simulation session; without the
-logout the body leaves 20 seconds after the leave with `left_shard` instead.
+logout does not shorten the body: within the 10-second session heartbeat the
+worker logs `The account session of simulation session <id> ended with
+account_session_ended; its connection ends and its body stays.`, and the body
+still leaves 20 seconds after the leave, when the worker logs `The body of
+character <name> (<character-id>) left shard local-shard-1: left_shard.` with
+its simulation session.
 
 ### Place And Vitals Across A Logout
 
@@ -433,6 +435,12 @@ worker without the option afterwards.
 6. Join with the Editor character, stand still somewhere, and close the Editor
    Play Mode without leaving, so the connection simply ends; then enter the
    World again from Play Mode within 20 seconds.
+7. Join with the Editor character next to a wolf, click `Leave Shard`, and at
+   once click `Log Out`. Watch the place from the standalone player.
+8. Join with the Editor character away from the wolves, then log into the same
+   account again, for example with `POST /api/accounts/login` and the body
+   `{ "login": "<username>", "password": "<password>" }`. Log into the Editor
+   again within 20 seconds and enter the same character.
 
 Expected result:
 
@@ -458,6 +466,18 @@ Expected result:
   in a moment.`, and after the body is gone `Enter World` works.
 - In step 6 the body stays as after a leave, and entering again within 20
   seconds resumes it where it stood.
+- In step 7 the logout does not shorten the body: the standalone player sees it
+  stand its full 20 seconds after the leave, longer while the wolves bite, or
+  die, as in step 2. The worker logs `The account session of simulation session
+  <id> ended with account_session_ended; its connection ends and its body
+  stays.` within 10 seconds, and later `...: left_shard.` or `...: died.`, never
+  `session_revoked`.
+- In step 8 the Editor is thrown out within 10 seconds of the second login and
+  returns to LoginMenu with `account_session_replaced`, as
+  [One Active Account Session](#one-active-account-session) describes, while
+  the standalone player still sees the character standing. Entering it again
+  from the new login within 20 seconds resumes the body where it stood; another
+  character of the account gets the message of step 5 until the body is gone.
 
 ### Remembered Choices And Shortcuts
 
@@ -672,8 +692,11 @@ Needs the [second client](#add-a-second-client).
 Expected result: the standalone player is disconnected, clears its account and
 shard state, and returns to LoginMenu, and its log has an `[AUTH]` message that
 the account logged in from another client, with `account_session_replaced`. The
-first character disappears for other clients once its server session ends. Only
-the second session stays authorized, and only its character stays connected.
+first character stays in the world as a body for 20 seconds after the
+disconnect, as [The Body That Stays](#the-body-that-stays) describes, so step 4
+is refused with the message that another character is still in the world until
+the body is gone. Only the second session stays authorized, and only its
+character stays connected.
 
 ## Movement And Camera
 
@@ -2766,7 +2789,8 @@ Invoke-RestMethod http://localhost:5000/api/characters -Headers $headers
 
 Expected result: the logout returns `204 No Content`, and the next call with
 the same token fails with `401 Unauthorized`. A logout also consumes pending
-join tickets and releases the simulation sessions of that account session. An
+join tickets and marks the simulation sessions of that account session, which
+go on until the character's body leaves the world. An
 authenticated session revokes one of its account's sessions, its own included,
 with `DELETE /api/accounts/sessions/{sessionId}`, which also returns `204`.
 

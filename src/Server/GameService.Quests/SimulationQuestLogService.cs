@@ -99,12 +99,13 @@ internal sealed class SimulationQuestLogService(
         }
     }
 
-    // The same checks in the same order as the worker's corpse view read.
+    // The same checks in the same order as the worker's corpse view read. A session whose account
+    // session ended is read too, since the quest credits of its body build on the log.
     private static ServiceResult<CharacterQuestLogResponse>? Validate(
         SimulationSessionReadAuthority? session,
         SimulationQuestLogRequest request)
     {
-        if (session is null || !session.SessionIsActive)
+        if (session is null || !session.SessionIsLive)
         {
             return ServiceResult<CharacterQuestLogResponse>.Unauthorized(
                 SessionInvalid,

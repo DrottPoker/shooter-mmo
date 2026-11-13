@@ -137,7 +137,8 @@ public sealed class NpcItemLifecycleCapabilityExecutor(
                 result.Error!.Code,
                 result.Error.Message,
                 0,
-                GameServiceOutcome.EndsItemSession(result.Error.Code));
+                GameServiceOutcome.EndsItemSession(result.Error.Code)
+                    || GameServiceOutcome.EndsAccountSession(result.Error.Code));
         }
 
         var itemStateRevision = ApplyCommittedCarry(session, result.Value!, out var applied);

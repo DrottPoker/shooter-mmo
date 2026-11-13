@@ -15,6 +15,8 @@ public sealed class SimulationItemRejectionsTests
     private static readonly IReadOnlyDictionary<string, int> StatusByCode = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         ["simulation_session_invalid"] = 401,
+        ["account_session_replaced"] = 401,
+        ["account_session_ended"] = 401,
         ["item_authority_required"] = 403,
         ["wrong_simulation_worker"] = 403,
         ["bank_access_required"] = 403,

@@ -81,6 +81,22 @@ public sealed class ItemCommandCatalogTests
             KindsWhere(composition, registration => registration.PolicyAction));
     }
 
+    // Only the work of a body may run once its account session ended; every other kind, also one
+    // added later, is refused for such a session unless it is named here.
+    [Fact]
+    public async Task KindsThatMayRunAfterTheAccountSessionEndArePinned()
+    {
+        await using var composition = new OfflineItemComposition();
+
+        Assert.Equal(
+            new[]
+            {
+                ItemOperationKinds.ProcessPlayerDeath,
+                ItemOperationKinds.ConsumeEquippedAmmunition
+            }.Order(StringComparer.Ordinal),
+            KindsWhere(composition, registration => registration.MayRunAfterAccountSessionEnd));
+    }
+
     [Fact]
     public async Task EveryHandlerIsRegisteredByExactlyOneSource()
     {

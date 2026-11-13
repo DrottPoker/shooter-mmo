@@ -38,6 +38,10 @@ public sealed class QuestCommandCatalogTests
             new[] { QuestOperationKinds.AbandonQuestItems },
             registrations.Where(registration => registration.PolicyAction)
                 .Select(registration => registration.OperationKind));
+        Assert.Equal(
+            new[] { QuestOperationKinds.CreditQuestKill },
+            registrations.Where(registration => registration.MayRunAfterAccountSessionEnd)
+                .Select(registration => registration.OperationKind));
     }
 
     [Fact]

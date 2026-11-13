@@ -276,7 +276,7 @@ namespace, in folders that mirror the protocol families:
 | Folder | Responsibility |
 | --- | --- |
 | `Transport` | `LiteNetLibRealtimeTransport` owns the `NetManager` and resolves peers by id, `RealtimeConnectionAdmission` decides connection requests, `RealtimePeerSender` sends packets and protocol rejections, `RealtimeDeliveryMethods` maps the delivery of a generated message descriptor to LiteNetLib. |
-| `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation and the orphan sweep. |
+| `Peers` | `RealtimePeerContext` per connection, `RealtimePeerRegistry` for the peer table, `RealtimePeerLifecycle` for connect and disconnect, `RealtimePeerSupervisor` for delayed disconnects, timeouts, invalidation, the end of an account session, and the orphan sweep. |
 | `Dispatch` | `RealtimeMessageDispatcher` applies the per-packet checks and calls one route per message type from the unauthenticated or authenticated table it builds from `RealtimeMessageRoutes`, the route table that features add to, which takes each route's channel and delivery from the generated message descriptor. |
 | `Operations` | `RealtimeCompletionQueue`, `RealtimeCompletionProcessor`, `RealtimeOperationTracker`, `AuthorityOperationScheduler`, and the completion records. |
 | `Session`, `Movement`, `Replication`, `Items`, `Corpses`, `WorldActors`, `Combat`, `Mobs`, `Admin`, `Persistence` | One loop-side handler per feature plus, where GameService calls are involved, a `*AuthorityOperations` class for the off-loop part. `SimulationTickLoop` runs the fixed ticks with the phases that features register in the order of `SimulationTickOrder`, `EntityPresenceReplicator` owns the interest manager, `SnapshotReplicator` owns snapshot budgets and fairness, `CombatSystem` and `MobSystem` run the combat and Mob phases, and `PlayerCombatAuthority` commits arrow batches and deaths. |
@@ -491,9 +491,15 @@ peer whose lane still holds the operation that runs for it, and raises the
 connection-ended hooks. The completion target that every operation finalizer
 resolves, `Realtime/Operations/OperationCompletionTargets.cs`, is core too, so
 an answer that arrives after the connection ended reaches the body or the peer
-that came back. The session unit, `SessionFeature`, registers
-the leave route, the `LingeringBodyTimer` tick phase, and the step that clears
-the bodies at shutdown. Combat registers the connection-ended hook, which drops
+that came back. `RealtimeSessionTeardown.EndForAuthorityFailure` ends the
+session of an answer that says it cannot go on, except for an answer that says
+the account session ended, which only ends the connection of the peer that
+plays the session and records the end in the session store, so a body stays
+as it is. The supervisor ends the connection of a peer whose session the store
+marks that way, which the session heartbeat does when GameService names the
+end. The session unit, `SessionFeature`, registers the leave route, the
+`LingeringBodyTimer` tick phase, and the step that clears the bodies at
+shutdown. Combat registers the connection-ended hook, which drops
 the body's target and attack in its windup and lets the combat authority commit
 the body's work without a peer; it puts a body's end after every hit and asks
 for its end once its death committed.
@@ -1133,8 +1139,19 @@ SHA-256 hash. Protected routes use the `AccountSession` ASP.NET authentication
 scheme and policy.
 
 A later login replaces the prior account session in one transaction, consumes
-its tickets, and releases its active simulation sessions. Logout and manual
-revocation perform the same dependent cleanup with distinct reason codes.
+its tickets, and marks its active simulation sessions instead of releasing
+them, so the character's body stays in the world its full time. Logout and
+manual revocation perform the same dependent cleanup with distinct reason
+codes, and the session heartbeat marks a session whose account session
+expired. A marked session runs only the body's own work: its death, its spent
+arrows, its quest kill credits, the reads they need, checkpoints, and the
+release. GameService refuses everything a client asks for on it with `401` and
+`account_session_replaced` or `account_session_ended`, and its heartbeat names
+the same code. The worker then ends the connection that still plays the
+session, which therefore holds the old account session no longer than one
+session heartbeat, or one refused operation. Only a reconnect ticket of a new,
+valid account session clears the mark, as
+[Account Session End](SERVICE_FEATURES.md#account-session-end) describes.
 
 ### Service Authentication
 
@@ -1261,11 +1278,13 @@ comes back to it:
 1. GameService finds the active session of the character and places the ticket
    on the exact worker runtime that holds it, without a capacity check; a ticket
    for another character of the account is refused with
-   `account_character_already_active`.
-2. Consuming the ticket rotates the session token, and the worker's session
-   store registers the new generation of the same session as a reconnect.
-   Until the join completes, the body's timer treats its older generation as
-   taken over and keeps the body.
+   `account_character_already_active`. This holds also after a logout or a new
+   login, whose account session the ticket then belongs to.
+2. Consuming the ticket rotates the session token, binds the session to the
+   ticket's account session and clears the mark of an ended one, and the
+   worker's session store registers the new generation of the same session as
+   a reconnect. Until the join completes, the body's timer treats its older
+   generation as taken over and keeps the body.
 3. The join reuses the body's entity, binds the new peer to it, and ends the
    body, so its timer stops. The client gets the body's place in its join
    acceptance and its vitals in the owner state that follows, and the combat
@@ -1301,9 +1320,14 @@ comes back to it:
    transaction of the release. A body that dies never respawns, so its saved
    state is the World spawn with full health and mana.
 4. A session that ended takes its entity at once and is not released: a
-   session that GameService revoked or replaced, whose heartbeat it refused,
-   whose lease expired, or that an authority failure invalidated. This holds
-   for a connected player and for a body.
+   session whose heartbeat GameService refused, whose lease expired, or that an
+   authority failure invalidated. This holds for a connected player and for a
+   body. The end of the account session ends no session: a heartbeat that names
+   it, or a refusal of a client's operation with its code, makes the worker
+   send the connected peer the disconnect it sent before for that case,
+   `account_session_replaced` after a new login and `session_revoked`
+   otherwise, and leave a body under the rules of step 2; for a body nothing
+   changes.
 5. If release is unavailable, the database lease expires on its own because
    nothing renews it. A join that is rejected during finalization releases its
    session the same way. As a safety net, the worker releases any local session

@@ -863,10 +863,13 @@ internal sealed class ShardService(
         int leaseLifetimeSeconds,
         CancellationToken cancellationToken)
     {
+        // The reconnect binds the session to the ticket's account session, which is valid, so a
+        // session whose earlier account session ended is the new one's from now on.
         const string sql = """
             update character_simulation_sessions
             set session_token_hash = @SessionTokenHash,
                 account_session_id = @AccountSessionId,
+                account_session_ended_at = null,
                 simulation_worker_id = @WorkerId,
                 worker_runtime_id = @WorkerRuntimeId,
                 last_heartbeat_at = clock_timestamp(),

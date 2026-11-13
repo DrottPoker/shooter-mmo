@@ -25,7 +25,8 @@ internal sealed class CorpseCommandSource : IItemCommandSource
             {
                 RetriedSystemOperation = true,
                 OperationallySignificant = true,
-                PolicyAction = true
+                PolicyAction = true,
+                MayRunAfterAccountSessionEnd = true
             },
             new ItemCommandRegistration<ExpireCorpseCommand>(
                 ItemOperationKinds.ExpireCorpse,

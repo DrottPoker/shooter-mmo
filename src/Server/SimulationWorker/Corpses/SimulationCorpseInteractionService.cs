@@ -141,7 +141,7 @@ public sealed class SimulationCorpseInteractionService(GameServiceClient gameSer
             RequiresCorpseRefresh(error.Code),
             RequiresInventoryRefresh(intent.OperationKind, error.Code),
             ShouldCloseView(error.Code),
-            GameServiceOutcome.EndsSession(error.Code));
+            GameServiceOutcome.EndsSession(error.Code) || GameServiceOutcome.EndsAccountSession(error.Code));
     }
 
     private static bool RequiresCorpseRefresh(string code)
