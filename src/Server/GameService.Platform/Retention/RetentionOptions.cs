@@ -17,11 +17,15 @@ public sealed record RetentionOptions(
     public const string ItemHistoryKey = "Retention:ItemHistory";
     public const string SessionHistoryKey = "Retention:SessionHistory";
 
-    // A window this short only suits a soak. It still outlasts the two minutes of a live Mob corpse,
-    // whose loot grants it keeps, and every retry of a worker operation, as
-    // docs/GAME_SERVICE_MODULES.md says under Retention.
+    // A window this short only suits a soak or a test. It still outlasts the two minutes of a live
+    // Mob corpse, whose loot grants it keeps.
     public static readonly TimeSpan MinimumWindow = TimeSpan.FromMinutes(3);
     public static readonly TimeSpan MaximumWindow = TimeSpan.FromDays(3_650);
+
+    // The shortest window outside the Development environment. A row of history is also what
+    // answers a retried operation, and a worker retries an uncertain operation for as long as its
+    // session lives, so a window must be far longer than any outage that a session survives.
+    public static readonly TimeSpan MinimumWindowOutsideDevelopment = TimeSpan.FromDays(1);
 
     public static RetentionOptions Default { get; } = new(
         TimeSpan.FromSeconds(60),
@@ -32,6 +36,27 @@ public sealed record RetentionOptions(
 
     // The time a pass may use, so a pass ends before the next one is due.
     public TimeSpan PassBudget => Interval * PassBudgetPercent / 100d;
+
+    // The errors of windows that only the Development environment may use.
+    public IReadOnlyList<string> WindowErrors(bool isDevelopment)
+    {
+        if (isDevelopment)
+        {
+            return [];
+        }
+
+        var errors = new List<string>();
+        foreach (var (key, window) in new[] { (ItemHistoryKey, ItemHistory), (SessionHistoryKey, SessionHistory) })
+        {
+            if (window < MinimumWindowOutsideDevelopment)
+            {
+                errors.Add(
+                    $"{key} is {window:c}; outside the Development environment it must be at least {MinimumWindowOutsideDevelopment.TotalDays:0} day, because its rows also answer retried operations.");
+            }
+        }
+
+        return errors;
+    }
 
     public TimeSpan WindowOf(RetentionClass retentionClass)
     {

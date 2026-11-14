@@ -6,6 +6,28 @@ namespace Mmorpg.GameService.Platform.Tests;
 
 public sealed class RetentionOptionsTests
 {
+    // A short window is for soaks and tests: outside Development a retried operation could meet
+    // a row that retention already deleted.
+    [Fact]
+    public void AWindowBelowADayIsRefusedOutsideDevelopment()
+    {
+        var soak = RetentionOptions.Default with
+        {
+            ItemHistory = TimeSpan.FromMinutes(4),
+            SessionHistory = TimeSpan.FromHours(23)
+        };
+
+        Assert.Empty(soak.WindowErrors(isDevelopment: true));
+        Assert.Empty(RetentionOptions.Default.WindowErrors(isDevelopment: false));
+        Assert.Empty((soak with { ItemHistory = TimeSpan.FromDays(1), SessionHistory = TimeSpan.FromDays(1) })
+            .WindowErrors(isDevelopment: false));
+        var errors = soak.WindowErrors(isDevelopment: false);
+        Assert.Equal(2, errors.Count);
+        Assert.Contains("Retention:ItemHistory is 00:04:00", errors[0], StringComparison.Ordinal);
+        Assert.Contains("Retention:SessionHistory is 23:00:00", errors[1], StringComparison.Ordinal);
+        Assert.All(errors, error => Assert.Contains("at least 1 day", error, StringComparison.Ordinal));
+    }
+
     [Fact]
     public void UnsetKeysKeepTheDefaults()
     {

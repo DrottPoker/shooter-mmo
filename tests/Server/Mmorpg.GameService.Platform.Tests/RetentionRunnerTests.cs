@@ -55,6 +55,31 @@ public sealed class RetentionRunnerTests
     }
 
     [PostgresIntegrationFact]
+    public async Task APassStartsWithTheTaskThatTheLastBudgetCutOff()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var time = new SteppedTime();
+        // One batch of the greedy task uses the whole budget of 48 seconds.
+        var greedy = new BacklogTask("greedy", 100_000, time, TimeSpan.FromSeconds(50));
+        var starved = new BacklogTask("starved", 10, time, TimeSpan.FromSeconds(1));
+        using var metrics = new RetentionMetrics();
+        var runner = Runner(dataSource, [greedy, starved], metrics, time);
+
+        var first = await runner.RunPassAsync(CancellationToken.None);
+        var second = await runner.RunPassAsync(CancellationToken.None);
+        var third = await runner.RunPassAsync(CancellationToken.None);
+
+        Assert.True(first.OutOfBudget);
+        Assert.Equal([1, 0], first.Tasks.Select(task => task.Batches));
+        // The second pass starts with the task that never got its turn.
+        Assert.Equal([1, 1], second.Tasks.Select(task => task.Batches));
+        Assert.Equal(0, starved.Remaining);
+        // Nothing was cut off in the second pass, so the third starts with the first task again.
+        Assert.Equal([1, 0], third.Tasks.Select(task => task.Batches));
+    }
+
+    [PostgresIntegrationFact]
     public async Task ATaskThatFailsDoesNotStopTheOthersAndALockTimeoutIsOnlyAWarning()
     {
         await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);

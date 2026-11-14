@@ -1911,8 +1911,8 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Retention:IntervalSeconds` | `60` | How often the retention host runs a pass, 1 to 3,600 seconds |
 | `Retention:BatchSize` | `1000` | Rows one retention batch deletes at most, 1 to 10,000 |
 | `Retention:PassBudgetPercent` | `80` | The share of the interval that one pass may use, 1 to 100 |
-| `Retention:ItemHistory` | `14.00:00:00` | How long item operations with their journal, item destructions, claimed Recovery deliveries, closed corpses with their death events, and live Mob loot grants stay after they ended, a time span from three minutes to 3,650 days |
-| `Retention:SessionHistory` | `14.00:00:00` | How long account sessions, simulation sessions, join tickets, and released SimulationAssignments stay after they ended, a time span from three minutes to 3,650 days |
+| `Retention:ItemHistory` | `14.00:00:00` | How long item operations with their journal, item destructions, claimed Recovery deliveries, closed corpses with their death events, and live Mob loot grants stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment, for a soak or a test |
+| `Retention:SessionHistory` | `14.00:00:00` | How long account sessions, simulation sessions, join tickets, and released SimulationAssignments stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment |
 | `Auth:SessionLifetimeHours` | `24` | Account session lifetime, 1 to 720 hours |
 | `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
 | `Auth:PasswordHashing:MaxWaitSeconds` | `10` | The longest a registration or login waits for its hash before it is refused with `auth_busy`, 1 to 10 seconds: a client allows a queued login 10 seconds on top of its request timeout, so the server may not queue longer |
