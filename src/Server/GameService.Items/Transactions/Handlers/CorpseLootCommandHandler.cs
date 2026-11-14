@@ -174,6 +174,7 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
         }
         else
         {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no equipped item is swapped into it");
             await EnsureOccupantCanEnterCorpseSlotAsync(context, source, occupant, cancellationToken);
             await CorpseCustodyWrites.SwapCorpseItemWithEquipmentAsync(
                 context,
@@ -558,6 +559,8 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
                     CorpseItemTransfers.RejectCorpseStackMerge(stackDisposition);
                 }
 
+                // The loot would swap with the item in its destination slot.
+                CorpseCustody.RequireWholeItemLoot(corpse, "no carried item is swapped into it");
                 var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);

@@ -1446,7 +1446,9 @@ Seen from outside:
   `live_mob_corpse_operation_unsupported`. GameService refuses the same for a
   durable creature corpse, one whose `source_type` is `persistent_npc`, with
   `corpse_whole_items_only`: a part of a stack, to the inventory or to an
-  equipment slot, a deposit, a move inside the corpse, and a Bag swap. `Loot
+  equipment slot, a deposit, a move inside the corpse, a Bag swap, and a loot
+  that would swap with the item in its destination slot or equipment slot,
+  which would put that item into the corpse. `Loot
   all` leaves a stack of such a corpse that does not fit whole, as the client
   predicts it.
 - Corpse reads use short read-only snapshots. Full and partial transfers,

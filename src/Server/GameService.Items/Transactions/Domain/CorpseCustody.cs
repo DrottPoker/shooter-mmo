@@ -79,9 +79,10 @@ internal static class CorpseCustody
         return corpse;
     }
 
-    // A creature's corpse gives whole items only: nothing is put into it, nothing is moved
-    // inside it, and no part of a stack is taken from it. The worker enforces the same rule for
-    // the live corpses it keeps itself; this is the rule for the durable ones.
+    // A creature's corpse gives whole items only: nothing is put into it, by a deposit or by a
+    // loot that swaps, nothing is moved inside it, and no part of a stack is taken from it. The
+    // worker enforces the same rule for the live corpses it keeps itself; this is the rule for
+    // the durable ones.
     public static void RequireWholeItemLoot(LockedCorpseRow corpse, string refusedAction)
     {
         if (corpse.IsCreatureCorpse)

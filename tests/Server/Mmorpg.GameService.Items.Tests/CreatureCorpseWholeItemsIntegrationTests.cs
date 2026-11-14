@@ -75,6 +75,52 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task ACreatureCorpseRefusesALootThatWouldSwapAnItemIntoIt()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var looter = await world.RegisterAsync("creature_swap_looter");
+        var looterInventory = (await world.LoadStateAsync(looter.Character.Id)).PermanentInventoryContainerId;
+        var carriedPotion = await world.GrantAsync(looter.Character.Id, "fixture.potion", 1, looterInventory, 0);
+        var equippedSword = await world.GrantAsync(looter.Character.Id, "fixture.sword", 1, looterInventory, 1);
+        await world.EquipAsync(looter.Character.Id, equippedSword, "main_hand");
+        var corpseId = await CreateCreatureCorpseAsync(
+            world,
+            looter,
+            new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", 10),
+            new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.sword", 1));
+        var general = (await world.LoadCorpseSectionsAsync(corpseId)).GeneralContainerId;
+        var corpseOre = await world.LoadItemAsync(await world.FindItemAsync(general, 0));
+        var corpseSword = await world.LoadItemAsync(await world.FindItemAsync(general, 1));
+
+        var inventorySwap = await ExecuteAsync(world, new LootCorpseItemCommand(
+            looter.Character.Id,
+            corpseId,
+            corpseOre.ItemInstanceId,
+            corpseOre.Revision,
+            looterInventory,
+            await world.LoadContainerRevisionAsync(looterInventory),
+            0,
+            carriedPotion,
+            (await world.LoadItemAsync(carriedPotion)).Revision));
+        var equipmentSwap = await ExecuteAsync(world, new LootCorpseItemToEquipmentCommand(
+            looter.Character.Id,
+            corpseId,
+            corpseSword.ItemInstanceId,
+            corpseSword.Revision,
+            "main_hand",
+            equippedSword,
+            (await world.LoadItemAsync(equippedSword)).Revision));
+
+        AssertWholeItemsOnly(inventorySwap);
+        AssertWholeItemsOnly(equipmentSwap);
+        Assert.Equal((10, general, 0), Location(await world.LoadItemAsync(corpseOre.ItemInstanceId)));
+        Assert.Equal((1, general, 1), Location(await world.LoadItemAsync(corpseSword.ItemInstanceId)));
+        Assert.Equal((1, looterInventory, 0), Location(await world.LoadItemAsync(carriedPotion)));
+        Assert.Null((await world.LoadItemAsync(equippedSword)).ContainerId);
+    }
+
+    [PostgresIntegrationFact]
     public async Task LootAllLeavesAStackOfACreatureCorpseThatDoesNotFitWhole()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -120,10 +166,21 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
     }
 
     // A durable creature corpse with one stack of ore per quantity, created as the worker does.
-    private static async Task<Guid> CreateCreatureCorpseAsync(
+    private static Task<Guid> CreateCreatureCorpseAsync(
         ItemScenarioWorld world,
         IntegrationPlayer looter,
         params int[] oreStacks)
+    {
+        return CreateCreatureCorpseAsync(
+            world,
+            looter,
+            oreStacks.Select(quantity => new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", quantity)).ToArray());
+    }
+
+    private static async Task<Guid> CreateCreatureCorpseAsync(
+        ItemScenarioWorld world,
+        IntegrationPlayer looter,
+        params MobCorpseLootEntryRequest[] loot)
     {
         // A join registers the worker runtime whose lease the corpse command checks.
         await world.JoinAsync(looter);
@@ -146,7 +203,7 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
                 1d,
                 ItemScenarioWorld.MobCorpsePresentationKey,
                 600d,
-                oreStacks.Select(quantity => new MobCorpseLootEntryRequest(Guid.NewGuid(), "fixture.ore", quantity)).ToArray()),
+                loot),
             CancellationToken.None);
         Assert.True(created.Succeeded, created.Error?.Message);
         return corpseId;
