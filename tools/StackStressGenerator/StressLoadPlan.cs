@@ -401,6 +401,9 @@ public sealed record StressLoadPlan(
         {
             gameServiceEnvironment["ConnectionStrings__Postgres"] = PostgresConnection;
             gameServiceEnvironment["ConnectionStrings__Redis"] = RedisConnection;
+            // The disposable database starts empty, and a run outside the Development
+            // environment does not migrate on its own.
+            gameServiceEnvironment["Database__RunMigrationsOnStartup"] = "true";
             gameServiceEnvironment["SIMULATION_WORKER_SERVICE_SECRET"] = FullStackWorkerSecret;
             gameServiceEnvironment["DevelopmentSimulationBots__Enabled"] = "false";
             // Covers the registration and login of every bot within one minute.

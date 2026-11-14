@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 
@@ -18,22 +19,45 @@ internal sealed class ItemCatalogSeeder(
     private const string MigrationAdvice =
         "Apply an explicit data migration, or reset a local development database.";
 
-    public async Task SeedAsync(CancellationToken cancellationToken)
+    public async Task<ItemCatalogMirror> SeedAsync(CancellationToken cancellationToken)
     {
         var catalog = await ItemCatalogRuntimeLoader.LoadAsync(
             catalogSource.RuntimeCatalogPath,
             cancellationToken);
-        await SeedAsync(catalog, cancellationToken);
+        return await SeedAsync(catalog, cancellationToken);
     }
 
-    public async Task SeedAsync(
+    // The current mirrored revision of a catalog, or null when none is mirrored or the
+    // catalog tables do not exist yet.
+    public static async Task<string?> ReadCurrentRevisionAsync(
+        NpgsqlConnection connection,
+        string catalogId,
+        CancellationToken cancellationToken)
+    {
+        if (!await PostgresCatalog.TableExistsAsync(connection, "item_catalog_revisions", cancellationToken))
+        {
+            return null;
+        }
+
+        return await connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            select revision
+            from item_catalog_revisions
+            where catalog_id = @CatalogId
+              and is_current;
+            """,
+            new { CatalogId = catalogId },
+            cancellationToken: cancellationToken));
+    }
+
+    public async Task<ItemCatalogMirror> SeedAsync(
         ItemCatalogRuntimeDocument catalog,
         CancellationToken cancellationToken)
     {
         var canonical = ItemCatalogRuntimeLoader.ValidateAndCanonicalize(catalog);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var revisionChanged = false;
+        string? previousRevision;
 
         try
         {
@@ -59,10 +83,7 @@ internal sealed class ItemCatalogSeeder(
             await mirror.MakeRevisionCurrentAsync();
 
             await transaction.CommitAsync(cancellationToken);
-            revisionChanged = !string.Equals(
-                existing.CurrentRevision,
-                canonical.Revision,
-                StringComparison.Ordinal);
+            previousRevision = existing.CurrentRevision;
         }
         catch
         {
@@ -70,7 +91,8 @@ internal sealed class ItemCatalogSeeder(
             throw;
         }
 
-        if (revisionChanged)
+        var result = new ItemCatalogMirror(canonical.CatalogId, canonical.Revision, previousRevision);
+        if (result.RevisionChanged)
         {
             logger.LogInformation(
                 "Mirrored item catalog {CatalogId} revision {CatalogRevision} with {DefinitionCount} definitions.",
@@ -78,6 +100,8 @@ internal sealed class ItemCatalogSeeder(
                 canonical.Revision,
                 canonical.Definitions.Length);
         }
+
+        return result;
     }
 
     // The ids and states that the database holds before this catalog is mirrored.
@@ -853,4 +877,10 @@ internal sealed class ItemCatalogSeeder(
         long BaseCarryCapacity,
         int InventorySlotCount,
         int BankSlotCount);
+}
+
+// The catalog revision that a seed made current, and the one that was current before it.
+internal sealed record ItemCatalogMirror(string CatalogId, string Revision, string? PreviousRevision)
+{
+    public bool RevisionChanged => !string.Equals(PreviousRevision, Revision, StringComparison.Ordinal);
 }

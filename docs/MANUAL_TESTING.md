@@ -3247,6 +3247,53 @@ Expected result: catalog `core` has exactly one row with `is_current` true, and
 catalog, GameService logs one entry when it applies the new catalog revision at
 startup. Every online worker shows `runs_mirrored_quests` as true.
 
+### The Migrate Command And A Start Without Migrations
+
+Stop GameService, keep PostgreSQL and Redis running, and plan, then apply,
+what a start would do:
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --plan
+dotnet run --project src/Server/GameService -- migrate
+$LASTEXITCODE
+```
+
+Expected result: on a database that GameService started on with the current
+code, the plan prints `Pending migrations: none`, `Pending seed changes: none`,
+and `The database is current; migrate would change nothing.`; on an older one
+it lists the missing migrations and seed changes and changes nothing. `migrate`
+prints what it applied, ends with `The database is current.`, and `$LASTEXITCODE`
+is `0`. Neither starts the web host.
+
+Then start GameService the way every environment but Development does, and make
+the database fall behind once, as [Look Into The Database](#look-into-the-database)
+describes:
+
+```powershell
+$env:Database__RunMigrationsOnStartup = "false"
+dotnet run --project src/Server/GameService
+```
+
+```text
+update quest_catalogs set revision = repeat('a', 64) where catalog_id = 'core';
+```
+
+Expected result: the first start reports ready without migrating. After the
+update, stop GameService and start it again with the variable set: it stops
+with `GameService refuses to start: Database:RunMigrationsOnStartup is false,
+and the database is not current.`, lists
+`Quest catalog core: mirror revision <revision>; the database holds aaaa...`,
+and names `Mmorpg.GameService migrate`. Run
+`dotnet run --project src/Server/GameService -- migrate`, which prints
+`Quest catalog core: mirrored revision <revision>; was aaaa...`, and the next
+start with the variable reports ready. Remove the variable with
+`Remove-Item Env:Database__RunMigrationsOnStartup` before you start GameService
+for anything else.
+
+A second start of GameService with unchanged content logs no
+`Database seed change` line: it neither recomputes the carry state nor reads the
+stored looks.
+
 ### Logs
 
 Keep GameService and a worker running for a few minutes while a client plays.

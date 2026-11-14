@@ -127,7 +127,9 @@ dotnet run --project src/Server/GameService
 Expected result: GameService listens on `http://localhost:5000`, applies
 pending database migrations, seeds the topology, the World definitions, and the
 item catalog mirror, and reports ready, as the [health checks](#health-checks)
-show.
+show. It migrates at start because the Development environment sets
+`Database:RunMigrationsOnStartup`; elsewhere the `migrate` command does it, as
+[Migrate The Database](#migrate-the-database) describes.
 
 ### Run The Default Worker
 
@@ -1649,6 +1651,39 @@ minutes.
   Then delete `C:\actions-runner` and `C:\actions-runner-hooks`.
 
 ## Operations
+
+### Migrate The Database
+
+Only the Development environment migrates the database when GameService starts.
+Everywhere else `Database:RunMigrationsOnStartup` is false: the `migrate`
+command applies the pending migrations and seed changes before the new version
+starts, and a start refuses a database that is not current, with a message that
+names the command. The command reads the same configuration as a start, from
+`.env`, the environment, and the `Config` files, and runs no web host. In a
+checkout:
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --plan
+dotnet run --project src/Server/GameService -- migrate
+$LASTEXITCODE
+```
+
+Next to a build, the same is `Mmorpg.GameService migrate --plan` and
+`Mmorpg.GameService migrate`.
+
+Expected result: on a database that the last start or `migrate` brought up to
+date, `migrate --plan` prints `Pending migrations: none`,
+`Pending seed changes: none`, and
+`The database is current; migrate would change nothing.`. On an empty database
+it lists every migration and every seed change, such as the item and quest
+catalog revisions it would mirror, and still changes nothing. `migrate` prints
+the migrations it applied and the seed changes, ends with
+`The database is current.`, and exits with code 0; a failure prints
+`migrate failed:` with the reason and exits with code 1. A migration that waits
+longer than `Database:MigrationLockTimeoutMilliseconds` for a lock that other
+sessions hold fails this way without applying anything; run `migrate` again
+when that traffic has passed. What the command does is in
+[Running Migrations](GAME_SERVICE_MODULES.md#running-migrations).
 
 ### Reset The Local Development Database
 

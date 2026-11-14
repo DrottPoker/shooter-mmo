@@ -479,8 +479,10 @@ masked. The local secrets and the connection string are the test values that
   and as many worker connections as bots, at least 100. The worker uses its
   configured Redis only for its health check.
 - Full-stack: GameService on `http://127.0.0.1:5500` with the disposable
-  PostgreSQL and Redis, the shared worker secret, no development bots, and an
-  authentication limit of 1,000 requests per minute instead of the normal five. Gameplay workloads add
+  PostgreSQL and Redis, `Database:RunMigrationsOnStartup`, so it migrates the
+  empty database also outside the Development environment, the shared worker
+  secret, no development bots, and an authentication limit of 1,000 requests
+  per minute instead of the normal five. Gameplay workloads add
   the Development environment, `StackStressFixtures:Enabled`, and the fixture
   secret to GameService, and the scenarios with a shared corpse set a
   one-second durable corpse reconciliation, so the stress corpse becomes

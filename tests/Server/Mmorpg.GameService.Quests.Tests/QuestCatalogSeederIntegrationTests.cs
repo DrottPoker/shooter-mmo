@@ -56,6 +56,7 @@ public sealed class QuestCatalogSeederIntegrationTests
         var mirrored = await MirroredQuestsAsync(context);
         var catalog = FixtureCatalog();
         Quest(catalog, "quest.fixture.wolves").StructuralFingerprint = new string('a', 64);
+        catalog.Revision = new string('b', 64);
 
         var exception = await Assert.ThrowsAsync<QuestCatalogCompatibilityException>(() => SeedAsync(context, catalog));
 
@@ -69,9 +70,11 @@ public sealed class QuestCatalogSeederIntegrationTests
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var removed = FixtureCatalog();
         removed.Quests = removed.Quests.Where(quest => quest.Id != "quest.fixture.ore_run").ToArray();
+        removed.Revision = new string('b', 64);
         var retired = FixtureCatalog();
         retired.Quests = retired.Quests.Where(quest => quest.Id != "quest.fixture.ore_run").ToArray();
         retired.RetiredQuestIds = ["quest.fixture.ore_run"];
+        retired.Revision = new string('c', 64);
 
         var missing = await Assert.ThrowsAsync<QuestCatalogCompatibilityException>(() => SeedAsync(context, removed));
         await SeedAsync(context, retired);
@@ -92,6 +95,7 @@ public sealed class QuestCatalogSeederIntegrationTests
         var retired = FixtureCatalog();
         retired.Quests = retired.Quests.Where(quest => quest.Id != "quest.fixture.ore_run").ToArray();
         retired.RetiredQuestIds = ["quest.fixture.ore_run"];
+        retired.Revision = new string('c', 64);
 
         var exception = await Assert.ThrowsAsync<QuestCatalogCompatibilityException>(() => SeedAsync(context, retired));
 
@@ -106,16 +110,33 @@ public sealed class QuestCatalogSeederIntegrationTests
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var retiredBeforeThisDatabase = FixtureCatalog();
         retiredBeforeThisDatabase.RetiredQuestIds = ["quest.fixture.legacy"];
+        retiredBeforeThisDatabase.Revision = new string('b', 64);
         var returning = FixtureCatalog();
         var legacy = Quest(FixtureCatalog(), "quest.fixture.wolves");
         legacy.Id = "quest.fixture.legacy";
         returning.Quests = [.. returning.Quests, legacy];
+        returning.Revision = new string('c', 64);
 
         await SeedAsync(context, retiredBeforeThisDatabase);
         var reused = await Assert.ThrowsAsync<QuestCatalogCompatibilityException>(() => SeedAsync(context, returning));
 
         Assert.Contains("quest.fixture.legacy - retired", await MirroredQuestsAsync(context));
         Assert.Contains("Retired quest id 'quest.fixture.legacy' cannot be reused", reused.Message, StringComparison.Ordinal);
+    }
+
+    // The revision covers every quest identity, so an unchanged one is neither checked nor
+    // written, even when the catalog in hand would be refused.
+    [PostgresIntegrationFact]
+    public async Task AnUnchangedRevisionIsNeitherCheckedNorWritten()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var mirrored = await MirroredQuestsAsync(context);
+        var removed = FixtureCatalog();
+        removed.Quests = removed.Quests.Where(quest => quest.Id != "quest.fixture.ore_run").ToArray();
+
+        await SeedAsync(context, removed);
+
+        Assert.Equal(mirrored, await MirroredQuestsAsync(context));
     }
 
     // Only new progress moves a quest on, so the start moves a quest whose step a lowered count
@@ -195,7 +216,8 @@ public sealed class QuestCatalogSeederIntegrationTests
         return catalog.Quests.Single(quest => quest.Id == questId);
     }
 
-    // The seeder trusts the loaded catalog, so a test may hand it changed hashes directly.
+    // The seeder trusts the loaded catalog, so a test may hand it changed hashes directly. A
+    // changed catalog gets another revision, because the seeder skips an unchanged revision.
     private static Task SeedAsync(PostgresIntegrationTestContext context, QuestCatalogRuntimeDocument catalog)
     {
         return new QuestCatalogSeeder(

@@ -188,9 +188,9 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         }
     }
 
-    // Migrations and startup seeds, through the same service graph and configuration as
-    // every test context. The worker heartbeat stays per test, because it records the
-    // current time.
+    // Migrations and startup seeds with the topology, through the same service graph and
+    // configuration as every test context. The worker heartbeat stays per test, because it
+    // records the current time.
     private static async Task InitializeTemplateAsync(string connectionString)
     {
         await using var context = Create(connectionString, lease: null);
@@ -200,7 +200,6 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
     public async Task InitializeDatabaseAsync()
     {
         await DatabaseInitializer.InitializeAsync(CancellationToken.None);
-        await SimulationTopologySeeder.SeedAsync(CancellationToken.None);
     }
 
     // The fixture catalog GameService mirrors in tests, which a worker heartbeat reports.

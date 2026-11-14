@@ -17,7 +17,8 @@ namespace Mmorpg.GameService.Tests.Architecture;
 // run again on existing databases. These hashes freeze the applied history.
 public sealed class MigrationHistoryTests
 {
-    // Append new migrations here when they ship. Never edit an existing line.
+    // Append new migrations here when they ship. Never edit an existing line. A migration
+    // outside a transaction carries its index after the hash, so its kind is frozen too.
     private static readonly string[] FrozenHistory =
     [
         "202607071600_auth_character_world_join d1eb62244850632328c7550c24c834736690f96569b40252a631ae554b0abc42",
@@ -64,7 +65,10 @@ public sealed class MigrationHistoryTests
         "202611141220_item_foreign_keys_and_indexes f655dc6aec6c9262957404a6d42298f25f7c868a92c40e2a6c32009f52233458",
         "202611141300_item_retention_indexes cb8587e5ddef83c8820fd1398c84a5a6be74d8c9b7048855039370468fe44f2d",
         "202611141310_placement_retention_indexes 4745c186a25c63c76ca4c96214df3a7696bdc65cb267eb525c1aa4a706bc98a4",
-        "202611141320_account_session_retention_index 707f8234ab6387214a6d6cf7a3327a53cf32204df8a8d317e25f79b09e97ef67"
+        "202611141320_account_session_retention_index 707f8234ab6387214a6d6cf7a3327a53cf32204df8a8d317e25f79b09e97ef67",
+        "202611141400_character_data_steps adc96e22961ed540b2958da7486fd408f7ea57de0b2b6c417d043d8260dcfe19",
+        "202611141410_item_data_steps daf051bd68062ff80e27e594b563f75172486e456a166fe2bf018286d85155cf",
+        "202611141420_character_item_state_backfill 1b5bb0b2dd2b19193eb302758451e00f1263318e4de9f31341feb7e504dcf78a"
     ];
 
     [Fact]
@@ -72,7 +76,7 @@ public sealed class MigrationHistoryTests
     {
         var actual = Migrations()
             .Take(FrozenHistory.Length)
-            .Select(migration => $"{migration.Id} {Sha256(migration.Sql)}")
+            .Select(Describe)
             .ToArray();
 
         Assert.Equal(
@@ -141,11 +145,30 @@ public sealed class MigrationHistoryTests
         Assert.Equal("209912310000_newer_than_history", schema.Migrations[^1].Id);
     }
 
-    private static IEnumerable<(string Id, string Sql)> Migrations()
+    [Fact]
+    public void AMigrationOutsideATransactionIsPinnedWithItsIndex()
     {
-        return GameServiceComposition.CreateSchema(TestConfiguration())
-            .Migrations
-            .Select(migration => (migration.Id, migration.Sql));
+        var inTransaction = new DatabaseMigration("209912310000_index", "create index ix_test on test(id);");
+        var outside = DatabaseMigration.CreateIndexConcurrently(
+            "209912310000_index",
+            "ix_test",
+            "create index concurrently ix_test on test(id);");
+
+        Assert.EndsWith(Sha256(inTransaction.Sql), Describe(inTransaction), StringComparison.Ordinal);
+        Assert.EndsWith(" outside-transaction ix_test", Describe(outside), StringComparison.Ordinal);
+    }
+
+    private static string Describe(DatabaseMigration migration)
+    {
+        var line = $"{migration.Id} {Sha256(migration.Sql)}";
+        return migration.RunsOutsideTransaction
+            ? $"{line} outside-transaction {migration.ConcurrentIndex}"
+            : line;
+    }
+
+    private static IReadOnlyList<DatabaseMigration> Migrations()
+    {
+        return GameServiceComposition.CreateSchema(TestConfiguration()).Migrations;
     }
 
     private static IReadOnlyList<IGameServiceModule> ProductionModules()

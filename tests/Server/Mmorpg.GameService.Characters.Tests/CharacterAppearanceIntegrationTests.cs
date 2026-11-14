@@ -190,23 +190,50 @@ public sealed class CharacterAppearanceIntegrationTests
         Assert.Equal("Human_Male", Assert.Single(looks).Value.BodyModel);
     }
 
+    // The stored looks are checked when the content they are checked against changed, here
+    // since the last check ran for other content. A refused check records nothing, so the next
+    // start checks again.
     [PostgresIntegrationFact]
     public async Task StartIsRefusedWhenTheContentNoLongerOffersAStoredLook()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync(heartbeatSeedShard: false);
         var player = await context.RegisterPlayerAsync();
+        await BreakLookAsync(context, player.Character.Id);
         await context.ExecuteAsync(
-            $$"""
-            update character_appearances
-            set choices = '[{"kind": "hair", "slot": "", "option": "Mohawk"}]'::jsonb
-            where character_id = '{{player.Character.Id}}';
-            """);
+            "update character_data_steps set revision = 'older-appearance-content' where id = 'appearance_verification';");
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => context.DatabaseInitializer.InitializeAsync(CancellationToken.None));
+        var plan = await context.DatabaseInitializer.PlanAsync(CancellationToken.None);
 
         Assert.Contains(player.Character.Id.ToString(), exception.Message);
         Assert.Contains("No body model offers hair=Mohawk.", exception.Message);
+        Assert.Contains(plan.SeedChanges, change => change.StartsWith("Character looks: check every stored look", StringComparison.Ordinal));
+    }
+
+    // A look is checked when it is stored, so with unchanged content a start reads no look; a
+    // look broken behind the service's back stays unseen until the content changes.
+    [PostgresIntegrationFact]
+    public async Task AStartWithUnchangedContentDoesNotCheckTheStoredLooks()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(heartbeatSeedShard: false);
+        var player = await context.RegisterPlayerAsync();
+        await BreakLookAsync(context, player.Character.Id);
+
+        var changes = await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+
+        Assert.Empty(changes.SeedChanges);
+        Assert.Empty((await context.DatabaseInitializer.PlanAsync(CancellationToken.None)).SeedChanges);
+    }
+
+    private static Task BreakLookAsync(PostgresIntegrationTestContext context, Guid characterId)
+    {
+        return context.ExecuteAsync(
+            $$"""
+            update character_appearances
+            set choices = '[{"kind": "hair", "slot": "", "option": "Mohawk"}]'::jsonb
+            where character_id = '{{characterId}}';
+            """);
     }
 
     private static CharacterAppearanceChoiceRequest Choice(string kind, string option, string slot = "")

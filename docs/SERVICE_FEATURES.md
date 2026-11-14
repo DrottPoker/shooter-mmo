@@ -1555,7 +1555,8 @@ module and its tables are in [GameService Modules](GAME_SERVICE_MODULES.md).
   before it accepts traffic. It refuses to start when a quest left the catalog without
   being listed as retired, a retired id returns, or a quest that characters have
   active was retired or changed its steps or objectives; such a change needs an
-  explicit data migration. When the revision changed, the same transaction moves
+  explicit data migration. An unchanged revision is neither checked nor
+  written. When the revision changed, the same transaction moves
   every active quest whose current step, not the last, the changed counts
   complete on to its next step and raises its quest log revision.
 - `GET /api/characters/{characterId}/quests` verifies exact account and
@@ -1902,7 +1903,8 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis` | from `.env` | Required. The PostgreSQL connection must name host, database, username, and password; GameService connects with the application name `Mmorpg.GameService` |
-| `Database:RunMigrationsOnStartup` | `true` | Apply the migrations, the seeds, and the topology at startup |
+| `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
+| `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a migration in a transaction waits for a lock that other sessions hold before it fails and applies nothing, 100 to 600,000 |
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
 | `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
 | `Redis:CommandTimeoutMilliseconds` | `2000` | How long the Redis client waits for a connection or a command's answer, 100 to 60,000 |
@@ -2005,17 +2007,18 @@ content fail before UDP admission.
 
 ## Persistence And Maintenance
 
-- Startup bootstraps only characters that have no item state, each in its own
-  short transaction, with the catalog's character settings: base carry
-  capacity, permanent inventory and bank slot counts, plus one unbounded
-  Recovery Storage identity. It then
-  recomputes carry state in batches of 500 rows that it locks first, so a
-  concurrent item transaction is never overwritten with a stale weight, and it
-  advances a character's item-state revision only when the weight or capacity
-  changed. Startup scales with the number of characters.
-- New character creation calls the same PostgreSQL bootstrap function before
-  committing, so a character cannot commit through the service without its
-  required item state.
+- Character creation calls the PostgreSQL bootstrap function before it commits,
+  so a character cannot commit without its item state: the catalog's character
+  settings, base carry capacity, permanent inventory and bank slot counts, plus
+  one unbounded Recovery Storage identity.
+- When the item catalog revision differs from the one the last complete carry
+  recompute ran for, the seed recomputes the carry state of every character in
+  batches of 500 rows that it locks first, so a concurrent item transaction is
+  never overwritten with a stale weight, advances a character's item-state
+  revision only when the weight or capacity changed, and then records the
+  revision. A start with an unchanged catalog does no recompute, so its work
+  does not grow with the number of characters, as
+  [Data Steps](GAME_SERVICE_MODULES.md#data-steps) describes.
 - A bounded hosted maintenance service runs every
   `Items:Operations:MaintenanceIntervalSeconds` and uses deterministic
   system-authority operations to destroy expired Recovery items with durable

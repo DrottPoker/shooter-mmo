@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
+using Mmorpg.GameService.Items.Persistence;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Platform.Database;
 using Npgsql;
@@ -10,36 +11,31 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
 {
     private const int RecomputeBatchSize = 500;
 
-    // Startup work runs in short batches, so no transaction holds locks on every character.
-    public async Task BackfillActiveCharactersAsync(CancellationToken cancellationToken)
+    // Recomputes the carry weight and capacity of every active character when the item catalog
+    // revision differs from the one the last completed recompute ran for, because the catalog
+    // decides item weights and Bag capacities. Returns how many states changed, or null when
+    // the recorded revision is current and nothing was read. Each batch is a short
+    // transaction, so no transaction holds locks on every character.
+    public async Task<int?> RecomputeCarryStateAsync(
+        string catalogRevision,
+        CancellationToken cancellationToken)
     {
-        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
+        ArgumentException.ThrowIfNullOrWhiteSpace(catalogRevision);
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var recorded = await ItemDataSteps.ReadAsync(
+            connection,
+            ItemDataSteps.CarryStateRecompute,
+            cancellationToken);
+        if (string.Equals(recorded, catalogRevision, StringComparison.Ordinal))
         {
-            var missingCharacters = (await connection.QueryAsync<Guid>(
-                new CommandDefinition(
-                    $"""
-                    select character.id
-                    from {CharactersSql.ActiveCharacters} character
-                    left join character_item_states state on state.character_id = character.id
-                    where state.character_id is null
-                    order by character.id;
-                    """,
-                    cancellationToken: cancellationToken))).ToArray();
-            foreach (var characterId in missingCharacters)
-            {
-                await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-                await BootstrapAsync(
-                    new PostgresTransactionScope(connection, transaction),
-                    characterId,
-                    cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-            }
+            return null;
         }
 
+        var changed = 0;
         var afterCharacterId = Guid.Empty;
         while (true)
         {
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             // Locking the rows first makes a concurrent item transaction wait, so the
             // recompute can never overwrite a newer weight with a stale one.
@@ -59,13 +55,20 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
             if (batch.Length == 0)
             {
                 await transaction.CommitAsync(cancellationToken);
-                return;
+                break;
             }
 
-            await RecomputeCarryStateAsync(connection, transaction, batch, cancellationToken);
+            changed += await RecomputeCarryStateAsync(connection, transaction, batch, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             afterCharacterId = batch[^1];
         }
+
+        await ItemDataSteps.RecordAsync(
+            connection,
+            ItemDataSteps.CarryStateRecompute,
+            catalogRevision,
+            cancellationToken);
+        return changed;
     }
 
     public Task BootstrapAsync(
@@ -83,7 +86,7 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
     }
 
     // Uses the same carry rule as item transactions and writes only changed states.
-    private static async Task RecomputeCarryStateAsync(
+    private static async Task<int> RecomputeCarryStateAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid[] characterIds,
@@ -95,7 +98,7 @@ internal sealed class CharacterItemStateBootstrapper(NpgsqlDataSource dataSource
             characterIds,
             cancellationToken);
         var ids = states.Keys.ToArray();
-        await connection.ExecuteAsync(new CommandDefinition(
+        return await connection.ExecuteAsync(new CommandDefinition(
             """
             update character_item_states state
             set carried_weight = recalculated.carried_weight,

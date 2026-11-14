@@ -1026,6 +1026,7 @@ transaction protocol stay authoritative for corpse contents.
 | `character_currency_ledger` | Append-only record of every currency change with source kind, source id, item operation, signed delta, and balance after |
 | `character_appearances` | One row per character with its body model, its look choices, and whether its headwear is lowered |
 | `character_simulation_states` | One row per character with its last saved World, that World's collision revision, position, yaw, health, and mana, and the simulation session and sequence that wrote it |
+| `character_data_steps`, `item_data_steps` | The content revision that each data step over every character, the look check and the carry recompute, last completed for, as [Data Steps](GAME_SERVICE_MODULES.md#data-steps) describes |
 | `world_definitions` | Shared World content identities, mirrored from the World manifests |
 | `fleets` | Regional or operational compute groups |
 | `simulation_nodes` | Machines or hosts assigned to fleets |

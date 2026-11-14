@@ -22,7 +22,20 @@ internal sealed class QuestCatalogSeeder(
     private const string MigrationAdvice =
         "Apply an explicit data migration, or reset a local development database.";
 
-    public async Task SeedAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> PlanAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var mirrored = await PostgresCatalog.TableExistsAsync(connection, "quest_catalogs", cancellationToken)
+            ? await ReadRevisionAsync(connection, null, cancellationToken)
+            : null;
+        return string.Equals(mirrored, catalog.Revision, StringComparison.Ordinal)
+            ? []
+            : [$"Quest catalog {catalog.CatalogId}: mirror revision {catalog.Revision}; the database holds {mirrored ?? "none"}."];
+    }
+
+    // The revision covers every quest id, fingerprint, and retired id, so an unchanged revision
+    // has nothing to check or write, and the start reads no quest log.
+    public async Task<IReadOnlyList<string>> SeedAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -35,6 +48,13 @@ internal sealed class QuestCatalogSeeder(
                 new { CatalogLockId },
                 transaction,
                 cancellationToken: cancellationToken));
+            previousRevision = await ReadRevisionAsync(connection, transaction, cancellationToken);
+            if (string.Equals(previousRevision, catalog.Revision, StringComparison.Ordinal))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return [];
+            }
+
             var mirrored = (await connection.QueryAsync<MirroredQuestRow>(new CommandDefinition(
                     """
                     select id as "Id",
@@ -49,18 +69,10 @@ internal sealed class QuestCatalogSeeder(
                     cancellationToken: cancellationToken)))
                 .ToArray();
             EnsureCompatible(mirrored);
-            previousRevision = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
-                "select revision from quest_catalogs where catalog_id = @CatalogId;",
-                new { catalog.CatalogId },
-                transaction,
-                cancellationToken: cancellationToken));
             await WriteAsync(connection, transaction, cancellationToken);
-            if (!string.Equals(previousRevision, catalog.Revision, StringComparison.Ordinal))
-            {
-                advanced = await AdvanceCompletedStepsAsync(
-                    new PostgresTransactionScope(connection, transaction),
-                    cancellationToken);
-            }
+            advanced = await AdvanceCompletedStepsAsync(
+                new PostgresTransactionScope(connection, transaction),
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
         }
@@ -70,15 +82,29 @@ internal sealed class QuestCatalogSeeder(
             throw;
         }
 
-        if (!string.Equals(previousRevision, catalog.Revision, StringComparison.Ordinal))
-        {
-            logger.LogInformation(
-                "Mirrored quest catalog {CatalogId} revision {CatalogRevision} with {QuestCount} quests and moved {AdvancedQuestCount} active quests past a step that it completes.",
-                catalog.CatalogId,
-                catalog.Revision,
-                catalog.Quests.Count,
-                advanced);
-        }
+        logger.LogInformation(
+            "Mirrored quest catalog {CatalogId} revision {CatalogRevision} with {QuestCount} quests and moved {AdvancedQuestCount} active quests past a step that it completes.",
+            catalog.CatalogId,
+            catalog.Revision,
+            catalog.Quests.Count,
+            advanced);
+        return
+        [
+            $"Quest catalog {catalog.CatalogId}: mirrored revision {catalog.Revision}; was {previousRevision ?? "none"}; "
+            + $"moved {advanced} active quests past a step that it completes."
+        ];
+    }
+
+    private Task<string?> ReadRevisionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        return connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "select revision from quest_catalogs where catalog_id = @CatalogId;",
+            new { catalog.CatalogId },
+            transaction,
+            cancellationToken: cancellationToken));
     }
 
     // Only new progress moves a quest to its next step, so a step that a lowered count completes

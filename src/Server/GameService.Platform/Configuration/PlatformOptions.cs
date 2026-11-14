@@ -15,6 +15,9 @@ public sealed record PlatformOptions(
     // PostgreSQL sees every GameService connection under this application name.
     public const string PostgresApplicationName = "Mmorpg.GameService";
 
+    public const string MigrationLockTimeoutKey = "Database:MigrationLockTimeoutMilliseconds";
+    public const int DefaultMigrationLockTimeoutMilliseconds = 5_000;
+
     public const string RedisCommandTimeoutKey = "Redis:CommandTimeoutMilliseconds";
     public const int DefaultRedisCommandTimeoutMilliseconds = 2_000;
 
@@ -22,6 +25,11 @@ public sealed record PlatformOptions(
     // readiness probe's timeout; a caller may wait less.
     public TimeSpan RedisCommandTimeout { get; init; } =
         TimeSpan.FromMilliseconds(DefaultRedisCommandTimeoutMilliseconds);
+
+    // How long a migration in a transaction waits for a table lock before it fails, so it never
+    // queues behind live traffic and blocks everything behind itself.
+    public TimeSpan MigrationLockTimeout { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultMigrationLockTimeoutMilliseconds);
 
     // The Retention section, which the retention host and every module's retention tasks share.
     public RetentionOptions Retention { get; init; } = RetentionOptions.Default;
@@ -41,6 +49,14 @@ public sealed record PlatformOptions(
             configuration,
             "Database:RunMigrationsOnStartup",
             errors);
+        var migrationLockTimeoutMilliseconds = configuration[MigrationLockTimeoutKey] is null
+            ? DefaultMigrationLockTimeoutMilliseconds
+            : ConfigurationValidation.ValidateIntRange(
+                configuration,
+                MigrationLockTimeoutKey,
+                100,
+                600_000,
+                errors);
         var postgresMaximumPoolSize = ConfigurationValidation.ValidatePositiveInt(
             configuration,
             "Database:MaximumPoolSize",
@@ -74,6 +90,7 @@ public sealed record PlatformOptions(
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
             runMigrationsOnStartup)
         {
+            MigrationLockTimeout = TimeSpan.FromMilliseconds(migrationLockTimeoutMilliseconds),
             RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds),
             Retention = retention
         };

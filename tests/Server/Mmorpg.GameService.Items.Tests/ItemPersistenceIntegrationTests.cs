@@ -1,8 +1,12 @@
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Characters;
+using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Items.Persistence;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 using Mmorpg.WorldData.Items;
@@ -96,12 +100,21 @@ public sealed class ItemPersistenceIntegrationTests
             await connection.ExecuteScalarAsync<int>("select count(*) from item_definition_tags;"));
     }
 
+    // A character from before the item foundation has no item state. The backfill migration
+    // creates it once, after the catalog it needs was mirrored, and a start no longer looks.
     [PostgresIntegrationFact]
-    public async Task StartupBackfillCreatesCompleteItemStateAndIsIdempotent()
+    public async Task TheBackfillMigrationCreatesCompleteItemStateOnce()
     {
-        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(initializeDatabase: false);
+        var schema = context.Services.GetRequiredService<GameServiceSchema>();
+        var runner = context.Services.GetRequiredService<DatabaseMigrationRunner>();
         var accountId = Guid.NewGuid();
         var characterId = Guid.NewGuid();
+        await runner.ApplyAsync(
+            schema.Migrations.Where(migration =>
+                string.CompareOrdinal(migration.Id, CharacterItemStateBackfillMigration.Id) < 0),
+            CancellationToken.None);
+        await context.ItemCatalogSeeder.SeedAsync(CancellationToken.None);
 
         await using (var connection = await context.DataSource.OpenConnectionAsync())
         {
@@ -128,7 +141,7 @@ public sealed class ItemPersistenceIntegrationTests
                 new { AccountId = accountId, CharacterId = characterId });
         }
 
-        await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+        var applied = await runner.ApplyAsync(schema.Migrations, CancellationToken.None);
         var first = await LoadBootstrapSnapshotAsync(context, characterId);
 
         Assert.Equal(0, first.Revision);
@@ -141,6 +154,7 @@ public sealed class ItemPersistenceIntegrationTests
         Assert.Equal(20, first.PermanentInventorySlots);
         Assert.Equal(40, first.BankSlots);
         Assert.Equal(0, first.RecoveryStorageSlots);
+        Assert.Contains(CharacterItemStateBackfillMigration.Id, applied);
 
         await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
         var second = await LoadBootstrapSnapshotAsync(context, characterId);
@@ -188,8 +202,10 @@ public sealed class ItemPersistenceIntegrationTests
                 """));
     }
 
+    // The catalog decides item weights, so the carry recompute runs only for a catalog revision
+    // that it has not completed for: a start with unchanged content leaves even a stale weight.
     [PostgresIntegrationFact]
-    public async Task StartupBackfillReconcilesLegacyEquippedWeightOnce()
+    public async Task TheCarryRecomputeRunsOnlyForANewCatalogRevisionAndRecordsIt()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
@@ -239,10 +255,24 @@ public sealed class ItemPersistenceIntegrationTests
         var stale = await LoadBootstrapSnapshotAsync(context, player.Character.Id);
         Assert.Equal(25, stale.CarriedWeight);
 
-        await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+        var unchanged = await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
+        Assert.Equal(stale, await LoadBootstrapSnapshotAsync(context, player.Character.Id));
+        Assert.Empty(unchanged.SeedChanges);
+
+        // The recompute last ran for another catalog revision, as after a catalog change.
+        await context.ExecuteAsync(
+            "update item_data_steps set revision = 'an-older-catalog-revision' where id = 'carry_state_recompute';");
+        var recomputed = await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
         var reconciled = await LoadBootstrapSnapshotAsync(context, player.Character.Id);
         Assert.Equal(0, reconciled.CarriedWeight);
         Assert.Equal(stale.Revision + 1, reconciled.Revision);
+        Assert.Equal(
+            [$"Carry state: recomputed every character for item catalog revision {PostgresIntegrationTestContext.FixtureItemCatalogRevision}; 1 changed."],
+            recomputed.SeedChanges);
+        Assert.Equal(
+            PostgresIntegrationTestContext.FixtureItemCatalogRevision,
+            await context.ExecuteScalarStringAsync(
+                "select revision from item_data_steps where id = 'carry_state_recompute';"));
 
         await context.DatabaseInitializer.InitializeAsync(CancellationToken.None);
         Assert.Equal(reconciled, await LoadBootstrapSnapshotAsync(context, player.Character.Id));

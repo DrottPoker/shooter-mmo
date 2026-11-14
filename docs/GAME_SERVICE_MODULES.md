@@ -117,20 +117,34 @@ order. Startup runs in this order:
    limiter, the in-process rate limiter, authentication, and authorization.
    Routing stays implicit, so it runs first and the endpoint is known to the
    rate limiter and the sensitive response middleware.
-5. When `Database:RunMigrationsOnStartup` is true, apply the merged migration
-   history, run every `IDatabaseSeeder` in module order, and seed the topology
-   through `PlacementModule.SeedTopologyAsync`. Characters' seeder,
-   `CharacterAppearanceVerifier`, refuses to start when
-   `content/characters/appearance.json` no longer offers what a stored look
-   names, so such a content change needs a data migration first. Items' seeder
-   has Quests check the item references of the quest catalog through
-   `IItemCatalogReferences`, which needs only the quest catalog that Quests
-   loaded at registration, then mirrors the item catalog and back-fills
-   character item state. Quests' seeder, `QuestCatalogSeeder`, then mirrors the
-   quest catalog's revision and quest ids and refuses to start when a quest left
-   the catalog without being retired, a retired id returns, or a quest that
-   characters have active was retired or changed its steps or objectives. It
-   reads only quest tables, so it needs nothing that Items' seeder mirrors.
+5. Prepare the database through `GameServiceDatabaseInitializer`. When
+   `Database:RunMigrationsOnStartup` is true, apply the merged migration
+   history and run every `IDatabaseSeeder` in module order, as the `migrate`
+   command does. When it is false, plan both and refuse to start when a
+   migration is pending, a seeder would change something, or the database
+   cannot be read, as [Running Migrations](#running-migrations) describes. A
+   start with unchanged content reads no table that grows with players. The
+   seeders, in module order:
+   - Characters' `CharacterAppearanceVerifier` refuses to start when
+     `content/characters/appearance.json` no longer offers what a stored look
+     names, so such a content change needs a data migration first. It reads
+     the looks only when what the storage rule reads changed, as a
+     [data step](#data-steps).
+   - Placement's `SimulationTopologySeeder` mirrors the World definitions and
+     ensures the configured Fleets, Nodes, and Shards, and writes only a row
+     that differs from the configuration.
+   - Items' `ItemsDatabaseSeeder` has Quests check the item references of the
+     quest catalog through `IItemCatalogReferences`, which needs only the quest
+     catalog that Quests loaded at registration, then mirrors the item catalog
+     and recomputes the carry state of every character when the catalog
+     revision changed, as a data step.
+   - Quests' `QuestCatalogSeeder` mirrors the quest catalog's revision and
+     quest ids and refuses to start when a quest left the catalog without being
+     retired, a retired id returns, or a quest that characters have active was
+     retired or changed its steps or objectives. The revision covers every
+     quest id, fingerprint, and retired id, so an unchanged revision is neither
+     checked nor written. It reads only quest tables, so it needs nothing that
+     Items' seeder mirrors.
 6. Run a `--dev-items-*` command through `ItemsCommandLine` and exit, if one is
    given. Hosted services never start in that mode.
 7. Map the health routes, then each module's routes, and run. Items' worker
@@ -154,12 +168,12 @@ inside the modules.
 | --- | --- |
 | Platform | `schema_migrations`; advisory lock `7104202607071600` |
 | Accounts | `accounts`, `account_sessions` |
-| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, and `character_simulation_states` |
+| Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, `character_simulation_states`, and `character_data_steps` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
 | Quests | `quest_catalogs`, `quest_definitions`, `character_quest_logs`, `character_active_quests`, `character_quest_progress`, and `character_completed_quests`; the quest catalog advisory lock `7104202611042200` |
 | Economy | none; the vendor profiles and tool kinds that it reads are Items' catalog tables |
 | Content | none |
-| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, and `live_mob_loot_grants`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, and the catalog advisory lock `7104202607151230` |
+| Items | every item, container, catalog, Recovery, operation, corpse, and death table, including the catalog's `item_tool_kinds`, `item_definition_tool_kinds`, `vendor_profiles`, `vendor_offers`, and `vendor_sale_categories`, `live_mob_loot_grants`, and `item_data_steps`; the `validate_character_item_state_containers` trigger function, `bootstrap_character_item_state`, and the catalog advisory lock `7104202607151230` |
 
 Foreign keys between modules follow the dependency order only: Characters to
 Accounts, Placement to Accounts and Characters, Quests to Characters
@@ -265,7 +279,7 @@ caller keeps its own check order, error codes, and messages.
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IRetentionTask` | Platform (SPI) | implemented by Accounts, Placement, and Items | Delete a batch of a module's own history rows that are past their retention window, for the retention host, as [Retention](#retention) describes |
 | `IAccountSessionReferences` | Accounts (SPI) | implemented by Placement | The SQL condition that no simulation session or join ticket names an account session, so the retention of account sessions keeps every one they name |
-| `IDatabaseSeeder` | Platform | implemented by Characters, Items, and Quests | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, Items has the quest catalog's item references checked, then mirrors the item catalog and back-fills character item state, and Quests mirrors the quest catalog |
+| `IDatabaseSeeder` | Platform | implemented by Characters, Placement, Items, and Quests | Plan or seed module data after the migrations: Characters checks the stored looks against changed appearance content, Placement mirrors the topology, Items has the quest catalog's item references checked, then mirrors the item catalog and recomputes carry state for a changed catalog, and Quests mirrors the quest catalog. `PlanAsync` names what `SeedAsync` would change and changes nothing |
 
 Every contract and every SPI except `IDatabaseSeeder`,
 `ISimulationItemOperationHandler`, and `IRetentionTask` has exactly one
@@ -372,7 +386,7 @@ source in `Transactions/Handlers/`, as
 describes.
 
 `Context/CarryStateCalculator` is the one carried-weight rule, shared with the
-startup recompute in `CharacterItemStateBootstrapper`. It finds the character's
+carry recompute in `CharacterItemStateBootstrapper`. It finds the character's
 carried containers and equipped Bag with indexed lookups, as the death
 partition does for its source items; a partial index on
 `item_instances(equipped_character_id, equipment_slot_id)` supports both.
@@ -915,9 +929,9 @@ every item transaction takes on the same character.
 
 An item mutation locks all its characters in ascending id order first, through
 `ICharacterLocks`, and then their item states in ascending order. The only
-transaction that locks item states without characters is the startup backfill,
-which never waits on a character lock, so this order cannot deadlock. Item
-states of deleted characters are never locked.
+transaction that locks item states without characters is a batch of the carry
+recompute, which never waits on a character lock, so this order cannot
+deadlock. Item states of deleted characters are never locked.
 
 Inside Items, a handler takes its locks in this order: the advisory key (the
 death event or Mob corpse key), then its characters and their item states in ascending id order, then the
@@ -986,6 +1000,9 @@ topology names.
 | 43 | `202611141300_item_retention_indexes` | Items |
 | 44 | `202611141310_placement_retention_indexes` | Placement |
 | 45 | `202611141320_account_session_retention_index` | Accounts |
+| 46 | `202611141400_character_data_steps` | Characters |
+| 47 | `202611141410_item_data_steps` | Items |
+| 48 | `202611141420_character_item_state_backfill` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -998,10 +1015,93 @@ migration must sort after the last shipped one. A new migration also appends
 its id to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
 
-A migration builds its indexes inside its transaction, which blocks writes to
-the table while the index builds. That is fine at today's table sizes. A large
-live table needs `create index concurrently`, which runs outside a transaction,
-and the migration runner cannot run such a statement yet.
+### Running Migrations
+
+`GameServiceDatabaseInitializer` applies the pending migrations and then runs
+every seeder. Two things run it: the `migrate` command and a start with
+`Database:RunMigrationsOnStartup`, which is true in the Development environment
+and false otherwise. `Mmorpg.GameService migrate`, the same executable, runs
+before the web host starts, prints the migrations it applied and what the
+seeders changed, and exits with 0, or prints the failure and exits with 1.
+`migrate --plan` prints the pending migrations and what each seeder would
+change, such as a catalog revision that differs, and applies nothing. Before
+the migrations a seeder's plan reads a missing table as empty, so on a fresh
+database it also lists rows that the baseline migrations insert, such as the
+first Fleet and Shard. A start with `Database:RunMigrationsOnStartup` false
+makes the same plan and refuses to start, with a message that names the
+command, when the plan is not empty or the database cannot be read. A deploy
+therefore runs `migrate` before the new version starts.
+[Migrate The Database](LOCAL_DEVELOPMENT.md#migrate-the-database) shows the
+command.
+
+The runner first reads the recorded ids, so a database without a pending
+migration sees one read. Each pending migration runs in its own transaction: it
+takes the transaction form of the advisory lock, then sets the transaction's
+`lock_timeout` to `Database:MigrationLockTimeoutMilliseconds`, checks that no
+other process recorded the migration meanwhile, runs its SQL, and records its
+id. Waiting for another migrating process therefore never times out, but a
+migration that waits longer for a lock that live traffic holds fails with a
+message that names it and the setting, and nothing of it is applied, instead of
+queueing behind the traffic and blocking every statement behind itself. It
+runs again with the next `migrate`.
+
+PostgreSQL builds an index concurrently only outside a transaction. A migration
+from `DatabaseMigration.CreateIndexConcurrently` is one
+`create index concurrently` statement that names its index. The runner runs it
+alone under the session form of the same advisory lock, without a lock timeout,
+because a concurrent build blocks no traffic while it waits, and records it only
+after the index is built. A failed build leaves the index invalid, so the next
+run first drops an invalid index of that name with `drop index concurrently`
+and builds it again, and keeps a valid one that a run built before it stopped.
+`MigrationHistoryTests` pins a migration outside a transaction with its index
+name.
+
+### Compatible Migrations
+
+During a deploy the version before a migration still runs against the migrated
+database until the new version replaces it, so every migration works with the
+code of the version before it. A change of the schema takes two phases:
+
+- Expand: a migration adds only what the running code ignores: new tables, new
+  nullable columns or columns with a default, and new indexes. The version that
+  uses them ships with it.
+- Contract: a later version removes what no running code reads any more, such
+  as an old column, table, or constraint, once the version that read it runs
+  nowhere.
+
+A data move over a table that grows with players, such as a recompute or a
+backfill of every character or item, is never one statement inside a schema
+migration, which would hold its locks on every row it touches until it
+commits. It is a recorded step that works in short batches and can run while
+the game runs, like the carry recompute in [Data Steps](#data-steps). The first
+move that needs more than that shape, such as resuming after its last batch,
+builds it.
+
+An index on a large live table is built with `create index concurrently`,
+outside a transaction, as above. An index built inside a transaction blocks
+every write to its table until it is built; the existing migrations do that at
+today's table sizes.
+
+### Data Steps
+
+A data step is seed work over every character that depends on content. A module
+records its steps in a table of its own, Characters in `character_data_steps`
+and Items in `item_data_steps`: one row per step with the content revision that
+its last complete run used, written only after the run completed. A crash or a
+refusal leaves the old revision, and the next seed runs the step again. A seed
+with unchanged content reads only the row.
+
+| Step | Module | Revision | What it does |
+| --- | --- | --- | --- |
+| `appearance_verification` | Characters | A hash of what `CharacterAppearanceCatalog.StorageError` reads: the body models, the kinds, every option that a body model offers per kind and slot, and a rule version that a change of the rule raises | Reads the looks in batches of 1,000 by character id and refuses to start, naming up to five characters, when the content no longer offers one. Every look is checked when it is stored, so only a content change can break one |
+| `carry_state_recompute` | Items | The mirrored item catalog revision, because the catalog decides item weights and Bag capacities | Recomputes the carried weight and carry capacity of every active character in batches of 500 by character id. Each batch is a transaction that locks its item states first and writes only the states that changed |
+
+A migration that changes what a step computes, such as one that moves items
+between containers, deletes the step's row, so the next seed runs the step
+again. Character creation bootstraps the item state in the creation
+transaction, so no character lacks one; migration
+`202611141420_character_item_state_backfill` created it once for any character
+from before the item foundation, which every start used to search for.
 
 ## Retention
 
@@ -1152,7 +1252,6 @@ the statement ids.
 | S13 | Session heartbeat, the session authority, and the look change read the revocation reason for how the account session ended | Acc R | `AccountsSql.IsActiveOrUnboundSession` and `AccountsSql.RevocationReasonOf` in `SimulationAccountSessionEndSql` |
 | S14 | Session release reads carry state | Itm R | `ISimulationCharacterStateProvider.GetAsync` |
 | S15 | World rebind counts open corpses | Itm R | `IShardWorldLocalStateProbe` |
-| S16 | Item state backfill lists active characters | Chr R | `CharactersSql.ActiveCharacters` |
 | S17 | Carry recompute batch filters active characters | Chr R | `CharactersSql.ActiveCharacters` |
 | S19 | `bootstrap_character_item_state` reads `characters` | Chr R | R4, frozen |
 | S20 | Corpse restoration checks the worker lease | Plc R | `ISimulationWorkerAuthority.GetShardLeaseAsync` |
@@ -1234,7 +1333,7 @@ boundary test checks the item command handlers of every module.
 
 | Test | What it protects |
 | --- | --- |
-| `MigrationHistoryTests` | Migration ids, order, SQL hashes, the merge rules, and the ids recorded by a fresh database |
+| `MigrationHistoryTests` | Migration ids, order, SQL hashes, which migrations run outside a transaction with their index, the merge rules, and the ids recorded by a fresh database |
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, `Mmorpg.GameService.Placement`, and `Mmorpg.GameService.Retention` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `ForeignKeyIndexTests` | In a migrated database, every foreign key has an index that leads with its columns or a reason in the allow-list, no allow-listed key is stale, and the log columns of [Foreign Keys](#foreign-keys) have no foreign key |

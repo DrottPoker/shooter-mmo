@@ -142,6 +142,7 @@ public sealed class StressLoadPlanTests
         Assert.Equal("true", plan.GameServiceEnvironment["StackStressFixtures__Enabled"]);
         Assert.Equal("1000", plan.GameServiceEnvironment["RateLimiting__Authentication__PermitLimit"]);
         Assert.Equal("false", plan.GameServiceEnvironment["DevelopmentSimulationBots__Enabled"]);
+        Assert.Equal("true", plan.GameServiceEnvironment["Database__RunMigrationsOnStartup"]);
         Assert.Equal(
             plan.GameServiceEnvironment["SIMULATION_WORKER_SERVICE_SECRET"],
             plan.WorkerEnvironment["SIMULATION_WORKER_SERVICE_SECRET"]);
