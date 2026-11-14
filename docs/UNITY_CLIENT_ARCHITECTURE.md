@@ -83,7 +83,8 @@ largest, is split by area:
 | `Editor/Art` | The import side of the art pipeline: model import rules, appearance catalogs, project materials, topology maps, manifests, and `CreaturePresentationBuilder` |
 | `Editor/Cloth` | Cloth measurement, the stress motions, and the cloth fixtures for the art pipeline's checks |
 | `Editor/Wardrobe` | The Wardrobe window and its preview |
-| `Editor/DevelopmentTools` | The Inventory Item Grants window and its process runner |
+| `Editor/Build` | The player build: `ClientPlayerBuild`, the build method of `tools/Build-Client.ps1`, `ClientBuildKindSettings`, the player settings of each build kind, and `ClientBuildFile`, which bakes the environment and the build stamp into every player build |
+| `Editor/DevelopmentTools` | The Inventory Item Grants window and its process runner, the GameService Address Override window, and the Ignore Bundled Content and Pseudo Locale switches |
 | `Editor/DevelopmentWorlds` | The development World builders; see [Development Worlds](DEVELOPMENT_WORLDS.md) |
 | `Editor/WorldBuilder` | The [World Builder](DEVELOPMENT_WORLDS.md#world-builder): `WorldBuilder`, which rebuilds and validates a scene, its window, its live rebuild, the rebuild from the saved scene after its changes are thrown away, the shapes it adds, the mesh assets it writes, the shared handles of an outline, and `TerrainCarver`, which carves the water's beds into a terrain and keeps what it changed in a hidden part of the terrain asset |
 | `Editor/Water` | `WaterAssets`, which writes the water's textures and materials, and the water of the World Builder: the builders of the lake, river, sea, and waterfall meshes, the beds the water carves, the editors of their shapes, and the water validation |
@@ -98,8 +99,8 @@ in the shared WorldData package at `src/Shared/WorldData/Editor`.
 | --- | --- |
 | `Tests/EditMode` | The EditMode assembly, with a folder per area: `Art`, `Bodies`, `Cloth`, `Combat`, `Core`, `Items`, `Movement`, `Networking`, `Protocol`, `Quests`, and `WorldActors` |
 | `Tests/EditMode/Fixtures` | Test-owned fixtures: a collision world, an item catalog, actor content, the quest catalog, and a copy of the quest content |
-| `Tests/EditMode/Shared` | Test sources that the .NET test projects compile too |
-| `Tests/PlayMode` | The PlayMode assembly |
+| `Tests/Shared` | The assembly `Mmorpg.SharedTests`: test sources that the .NET test projects compile too and that the EditMode and PlayMode tests run, the PlayMode tests also in a built player |
+| `Tests/PlayMode` | The PlayMode assembly; `Player` holds the goldens that run in a built player |
 
 [Test Architecture](#test-architecture) says where a new test goes.
 
@@ -114,6 +115,7 @@ goes there too:
 | `World Collision > Bake Open Scene`, `Bake World Scenes` | Bakes World collision | [Rebuild And Bake Workflow](DEVELOPMENT_WORLDS.md#rebuild-and-bake-workflow) |
 | `Development Worlds > Rebuild Development World 1 Environment`, `Rebuild Development World 2 Environment` | Rebuilds a development World scene | [Rebuild And Bake Workflow](DEVELOPMENT_WORLDS.md#rebuild-and-bake-workflow) |
 | `Inventory Item Grants` | Development items, currency, and corpses for offline characters | [Development Item Tools](#development-item-tools) |
+| `GameService Address Override` | Points Play Mode at another GameService than the local environment's | [Another GameService For Development](LOCAL_DEVELOPMENT.md#another-gameservice-for-development) |
 | `Item Catalog` | Edits item definitions and vendor profiles | [Unity Editor Workflow](../content/items/README.md#unity-editor-workflow) |
 | `Content > Actor Studio`, `Content > Spawn Authoring` | Edits actors and their spawns | [Unity Content Tools](../content/README.md#unity-content-tools) |
 | `Content > Quest Studio` | Edits quests and quest chains | [Quest Studio](../content/README.md#quest-studio) |
@@ -133,7 +135,7 @@ layers from the bottom up:
 |---|---|---|
 | `Mmorpg.Client.Cloth` | `ClothPose`, the cloth's target pose on plain data, `ClothSprings`, the springs that swing the cloth on it, `ClothWorld` and its Burst jobs, `ClothMath`, and the cloth's data types | none |
 | `Mmorpg.Client.Api` | `ApiClient`, HTTP contracts, `ApiError` | none |
-| `Mmorpg.Client.Core` | `ClientSession` with `IClientSession` and `ClientSettings`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
+| `Mmorpg.Client.Core` | `ClientSession` with `IClientSession` and `ClientSettings`, `ClientEnvironment`, `ClientBuildInfo` with `ClientBuildStamp`, `ClientAddressOverride`, `ClientConfig`, `ClientLog`, `SceneNames`, `ClientAddresses`, `ClientAssets`, `RuntimePrimitives`, `ClientTexts`, which reads the text tables, `ClientText`, a text that rule code names by key, and `ClientContentResolver` with its manifest, cache, and transport, which resolves the content set at start | Api |
 | `Mmorpg.Client.Worlds` | World scene catalog, `ClientSceneLoader`, collision loading and authoring, the water: `WaterBody`, `WaterSurfaces`, `WaterWaves`, `WaterShaderGlobals`, and `WaterRendererFeature`, and the World Builder's shapes: `WorldBuilderShape`, `LakeShape`, `RiverShape`, `SeaShape`, `WaterfallShape`, and `WorldBuilderTerrain` | Core |
 | `Mmorpg.Client.Networking` | `RealtimeSimulationClient` with its transport `IRealtimeTransport` and `LiteNetLibRealtimeTransport`, and its parts: `RealtimeSession` with `IRealtimeSession`, `RealtimeMessageTable`, `RealtimePresenceRegistry`, a channel per feature such as `IRealtimeCorpseChannel`, `RealtimeDiagnostics` with `IRealtimeDiagnostics`, `RealtimeSender`, and `RealtimeConnection`; `NetworkMovementSession`, `ClientSessionRecovery`, `WorldExit` | Api, Core, Worlds |
 | `Mmorpg.Client.Items` | Inventory, corpse, and vendor client state, prediction, and rules, the item catalog, presentation catalog loading | Api, Core, Networking |
@@ -235,9 +237,11 @@ post-processing Volume in the scenes and no baked lighting yet.
 
 The URP global settings reference `Assets/DefaultVolumeProfile.asset` as the
 default volume profile, with the neutral values URP creates, so a fresh Library
-creates no new profile. The shader prefiltering data in `PC_RPAsset` and the
-runtime settings list of the global settings are committed as the last Windows
-development build wrote them, so the next build has nothing to change.
+creates no new profile. A player build rewrites the shader prefiltering data in
+`PC_RPAsset` and the runtime settings list of the global settings for its own
+use; `tools/Build-Client.ps1` and `tools/Run-UnityTests.ps1` put both back
+afterwards, as [Build The Client](LOCAL_DEVELOPMENT.md#build-the-client)
+describes.
 
 ## Runtime Structure
 
@@ -245,7 +249,7 @@ development build wrote them, so the next build has nothing to change.
 ClientBootstrap (Mmorpg.Client.App, the composition root, survives scene changes)
   +-- ClientConfig, its Addressables handle held while the bootstrap lives
   +-- ClientNotices, what the next entry screen tells the player
-  +-- ClientSession with the ClientSettings from the configuration
+  +-- ClientSession with the ClientSettings of the environment, the build stamp, and the configuration
   |   +-- ClientSessionRecovery (forced sign-out) and WorldExit (every way out of a World)
   |   +-- WorldReconnect (a lost connection) with a WorldJoin on the bootstrap's ApiClient
   +-- LocalPlayerSource, which WorldSceneContext fills
@@ -384,7 +388,9 @@ The bootstrap starts in two steps, because the controllers need the content
 that the client resolves from GameService:
 
 1. `Awake` creates what does not depend on content: the configuration, the
-   `ClientSession` with the `ClientSettings` of the configuration, the materials
+   `ClientSession` with the `ClientSettings` of the environment, the build
+   stamp, and the configuration, as
+   [Environment And Build Stamp](#environment-and-build-stamp) describes, the materials
    and the arrow model, the UI theme, `ApiClient`, the body tint setting,
    `RealtimeSimulationClient`, which `Initialize` composes with those settings,
    `ClientNotices`, `ClientSessionRecovery`, `WorldExit`, and `WorldReconnect`,
@@ -528,7 +534,6 @@ endpoints.
 
 | Field | Checked-in value | Used for |
 | --- | --- | --- |
-| GameService base URL | `http://localhost:5000` | Every HTTP request |
 | Request timeout | 10 s | Every HTTP request |
 | Realtime timeout | 10 s | Realtime join and leave deadlines and the UDP disconnect timeout |
 | Session validation interval | 5 s, clamped to 2 to 60 s | The periodic account-session check |
@@ -553,8 +558,73 @@ URP draws with its pink error shader; only the Editor hides that.
 
 SimulationWorker host, runtime, and UDP port come from GameService's short-lived
 shard placement response. They are not part of the public shard list and are not
-duplicated in client configuration. Different environments should use
-build-specific configuration assets or a future build configuration pipeline.
+duplicated in client configuration. The GameService address is not part of the
+configuration either: the environment owns it.
+
+### Environment And Build Stamp
+
+An environment is a checked-in file of `src/Client/Environments`, such as
+`local.json`, with its `name` and its `gameServiceBaseUrl`, the one place that
+names where a client connects; how to add one is in
+[Environments](LOCAL_DEVELOPMENT.md#environments). `ClientEnvironment` reads
+and checks it: the name is lowercase letters, digits, and hyphens and equals
+the file name, and the address is an absolute http or https URL without user
+information, query, or fragment, kept without its trailing slash.
+
+`ClientBuildInfo.Load` gives the bootstrap the environment of the running
+client and its `ClientBuildStamp`: the kind, `Editor`, `Development`, or
+`Release`, the commit, whether the working tree had changes, and the UTC time
+of the build.
+
+- The Editor reads `Environments/local.json` of its project itself, so it
+  always runs `local` without a build step, and its stamp is the Editor's.
+- A player reads only `Config/client-build.json` of the Client Content bundle:
+  the environment and the stamp that its build baked in. `ClientBuildFile`, a
+  build processor of the Editor, writes that file into
+  `Assets/Content/Config` before the Addressables content build of every player
+  build and deletes it afterwards, so it never exists in the project
+  otherwise, and Git ignores it. `ClientPlayerBuild` names the environment and
+  the stamp that `tools/Build-Client.ps1` asks for; any other build, from
+  `File > Build Profiles` or a test player, bakes `local` with the commit of the
+  checkout, and its kind follows the build's Development flag. Nothing a player
+  does on its machine changes it short of changing the game files.
+- A client without a valid environment logs an error and runs with the
+  environment `missing`, whose address never resolves, so every request fails
+  with an error that names it.
+
+`ClientAddressOverride` decides the development override of the GameService
+address once at start: a development player takes `-gameServiceBaseUrl <url>`
+from its command line, the Editor takes the PlayerPrefs key that `MMORPG >
+Tools > GameService Address Override` sets, and a release build ignores both
+and logs that it did. An override that is no absolute http or https URL is
+ignored with a warning.
+
+`ClientSettings` carries all of it, read once: `Environment`, `Build`,
+`GameServiceOverride`, and `GameServiceBaseUrl`, the override or else the
+environment's address, which every request uses. The bootstrap logs the
+environment, the stamp, and the address at start. The login screen's footer
+shows the environment and the stamp from the `ui` texts `ui/login/build-*`, and
+a warning line with `ui/login/address-override` while an override is active,
+and logs the same lines as `Login screen shown`; the F2 Debug menu's Network
+tab shows them under Build. `ClientEnvironmentTests`, `ClientBuildInfoTests`,
+`ClientAddressOverrideTests`, and `ClientBuildKindSettingsTests` cover the
+files, the Editor's environment, the baked file, the override rule per kind,
+and the build kinds.
+
+### What A Release Build Leaves Out
+
+`ClientBuildStamp.HasDevelopmentTools` is false only in a release build. A
+release build:
+
+- creates no F3 Admin menu at all, so it also offers no `Teleport here`;
+- ignores the override of the GameService address;
+- fills in no development login, and offers neither the switch that records
+  the client measurements nor `Ignore Bundled Content`, through
+  `Debug.isDebugBuild`, which is false in exactly the release builds.
+
+The F2 Debug menu stays in every build, because Leave Shard lives in it: it is
+the only way a player leaves a World without closing the client. That is a
+known gap until a game menu takes Leave Shard over.
 
 ### Content Text
 
@@ -688,7 +758,7 @@ only through a transition with one owner:
 
 | Facts | Members | Transitions and their owners |
 | --- | --- | --- |
-| Client settings | `Settings`, a `ClientSettings` with the GameService base URL, the request and realtime timeouts, the interval of the account-session check, and the reconnect window | None: the bootstrap reads them from `ClientConfig` once |
+| Client settings | `Settings`, a `ClientSettings` with the environment, the build stamp, the GameService base URL and its override, the request and realtime timeouts, the interval of the account-session check, and the reconnect window | None: the bootstrap reads them once at start, as [Environment And Build Stamp](#environment-and-build-stamp) describes |
 | Account sign-in | `Auth`, `SessionToken`, `IsAuthenticated` | `SignIn`, by `LoginMenuPanel` after a login or registration. `SignOut`, by `CharacterSelectPanel` on Log Out and when it finds no account session, and by `ClientSessionRecovery` |
 | Selection | `SelectedCharacter`, `SelectedShard` | `Select`, by `CharacterSelectPanel` whenever its state changes, and with the shard of the join ticket |
 | World | `ActiveSimulationSession`, the simulation session of the World the client is in | `EnterWorld`, by `CharacterSelectPanel` after the worker accepted the join, and by `WorldReconnect` after a join restored a lost connection. `LeaveWorld`, by `WorldExit` |
@@ -1170,6 +1240,10 @@ asset directly. `ClientAddresses` lists every fixed address:
 | World Collision | `Packages/com.mmorpg.world-data/Generated/WorldCollision` | `WorldCollision/<WorldId>/manifest.json` and `<chunk>.bytes` | Together |
 | World Scenes | One entry per catalog World scene | The scene name | Separately, one bundle per scene |
 
+A player build also builds `Config/client-build.json` into Client Content, the
+environment and build stamp that only exist while the build runs, as
+[Environment And Build Stamp](#environment-and-build-stamp) describes.
+
 `ClientAssets` in Core loads small content synchronously: configuration,
 catalogs, icons, and collision chunks. It locates an address first, so a missing
 address becomes a structured error instead of an Addressables exception, and the
@@ -1277,7 +1351,10 @@ newer format than the build reads, the card shows the text of
 `client_update_required` below its subtitle, and the form stays usable. Below
 it the card shows the exit notice, why the client returned here, such as the
 text of `account_session_replaced`, as
-[Entry Screen Notices](#entry-screen-notices) describes.
+[Entry Screen Notices](#entry-screen-notices) describes. The footer shows the
+GameService connection, the environment and the build, and a warning while the
+GameService address is overridden, as
+[Environment And Build Stamp](#environment-and-build-stamp) describes.
 
 ### CharacterSelect
 
@@ -3598,8 +3675,9 @@ namespace rule are in [Folder Layout](#folder-layout).
   `Tests/EditMode/Fixtures` provide test-owned collision, items, and actors; see
   [World Layout Fixtures](../tests/README.md#world-layout-fixtures). Tests that
   check the development Worlds themselves name them.
-- **Shared sources.** The files in `Tests/EditMode/Shared` compile into both the
-  Unity EditMode tests and the .NET tests, so both runtimes run the same cases.
+- **Shared sources.** The files in `Tests/Shared`, the test assembly
+  `Mmorpg.SharedTests`, compile into the Unity tests and the .NET tests, so
+  every runtime runs the same cases.
   `Mmorpg.Shared.Tests` compiles all of them and `Mmorpg.Tools.Tests` the
   protocol goldens; the protocol goldens are described in
   [Realtime Protocol Goldens](../tests/README.md#realtime-protocol-goldens).
@@ -3655,6 +3733,15 @@ namespace rule are in [Folder Layout](#folder-layout).
   `(float)` cast around an intermediate result;
   `MovementDeterminismScenario.ComputeTrace()` returns the per-tick states for
   comparing the runtimes.
+- **Player goldens.** `PlayerRuntimeGoldenTests`, in the `Player` category of
+  the PlayMode assembly, runs the pinned simulation revision, movement and
+  planner fingerprints, and protocol goldens of `Mmorpg.SharedTests` in the
+  runtime that executes the PlayMode tests: Mono in the Editor, and IL2CPP in
+  the test player that
+  [Run The Unity Tests](LOCAL_DEVELOPMENT.md#run-the-unity-tests) builds with
+  the C++ settings of a release build, so the IL2CPP client is checked to
+  predict and encode as the worker does. Each
+  test writes the value it computed as a `[PLAYER]` line into the result file.
 - **Graphics.** A test that draws with a camera needs a graphics device and is
   marked `[Category("Graphics")]`. The headless run leaves that category out; see
   [Traits](../tests/README.md#traits).

@@ -15,6 +15,7 @@
     "Mmorpg.WorldData",
     "Mmorpg.GameProtocol",
     "Mmorpg.GameSimulation",
+    "Mmorpg.SharedTests",
     "LiteNetLib",
     "Unity.ResourceManager",
     "Unity.TextMeshPro"

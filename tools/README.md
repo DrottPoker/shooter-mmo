@@ -11,7 +11,9 @@ its header comment. The C# tools are projects of `Mmorpg.slnx` and run with
 | --- | --- |
 | `Test-Changes.ps1` | Runs the checks that the changes of the branch can affect; run it before every push. `-Plan` shows what it would run, `-All` runs the full gate. See [Checks For A Change](../docs/LOCAL_DEVELOPMENT.md#checks-for-a-change) |
 | `Run-UnityEditorTests.ps1` | Runs the Unity EditMode and PlayMode tests in the open Unity Editor of this checkout; `-Mode EditMode -Filter <Fixture>` runs one fixture |
-| `Run-UnityTests.ps1` | Runs both Unity suites headless when no Editor has the project open, without the `Graphics` and `LiveStack` categories; CI uses it |
+| `Run-UnityTests.ps1` | Runs both Unity suites headless when no Editor has the project open, without the `Graphics` and `LiveStack` categories; CI uses it. `-Platform StandaloneWindows64` builds an IL2CPP test player and runs the `Player` category in it. See [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) |
+| `Build-Client.ps1` | Builds the Windows IL2CPP player of one environment of `src/Client/Environments` headless, `-Development` for a development build, prints and keeps the build summary, puts back the tracked files Unity rewrote, and with `-StartCheck` starts the player once and checks its log; `-Plan` shows what it would do. See [Build The Client](../docs/LOCAL_DEVELOPMENT.md#build-the-client) |
+| `UnityCommon.ps1` | Shared helpers of `Run-UnityTests.ps1` and `Build-Client.ps1`: the pinned Editor, the project lock, process arguments, and putting back the tracked files that a Unity run rewrites |
 | `Test-LiveStack.ps1` | Starts the local stack, runs the client's live stack test against it, and stops what it started; `-Network <profile>` runs its network part through the network impairment proxy, against the bounds of `load/network-client-bounds.json`. See [Run The Live Stack Test](../docs/LOCAL_DEVELOPMENT.md#run-the-live-stack-test) |
 | `Test-Load.ps1` | Runs one load scenario of `load/scenarios` against a disposable stack, judges it against `load/quality-boundary.json`, stops what it started, and keeps the PostgreSQL and Redis logs; `-Network <profile>` puts the network impairment proxy between the bots and the worker, and `-Plan` shows what it would start. See [Run A Scenario](../docs/STACK_STRESS_TESTING.md#run-a-scenario) |
 | `LocalStackCommon.ps1` | Shared helpers of the two scripts above: hidden service processes, the `Ctrl+C` stop, readiness waits, and port checks |
@@ -90,3 +92,4 @@ in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 | --- | --- |
 | `ci/Assert-TrustedRunnerJob.ps1` | Job-started hook that refuses jobs from forks; the runner runs an installed copy |
 | `ci/Register-UnityRunnerTask.ps1` | Registers the scheduled task that keeps the runner running |
+| `ci/Test-UnityCommon.ps1` | Checks, in a temporary Git repository, that the helpers of `UnityCommon.ps1` put a working tree back after a Unity run without touching what the developer had changed or deleted; CI and `Test-Changes.ps1` run it |

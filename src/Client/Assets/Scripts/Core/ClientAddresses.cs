@@ -9,6 +9,10 @@ namespace Mmorpg.Client.Core
         public const string ContentRoot = "Assets/Content/";
         public const string ClientConfig = "Config/ClientConfig.asset";
         public const string UiTheme = "Config/UiTheme.asset";
+
+        // The environment and build stamp that a player build bakes in; it exists only while a
+        // build runs, as ClientBuildInfo describes, so the Editor never loads it.
+        public const string ClientBuild = "Config/client-build.json";
         public const string WorldSceneCatalog = "Worlds/world-scene-catalog.json";
         public const string ItemPresentationCatalog = "Items/Presentation/item-presentation-catalog.json";
         public const string WorldActorPresentationRegistry =

@@ -4,10 +4,11 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace Mmorpg.Client.Core
 {
+    // The configuration that every build shares. Where the client connects is not part of it:
+    // the environment owns the GameService address, as ClientBuildInfo describes.
     [CreateAssetMenu(fileName = "ClientConfig", menuName = "MMORPG/Client Config")]
     public sealed class ClientConfig : ScriptableObject
     {
-        [SerializeField] private string gameServiceBaseUrl = "http://localhost:5000";
         [SerializeField] private int requestTimeoutSeconds = 10;
         [SerializeField] private int realtimeTimeoutSeconds = 10;
         [SerializeField] private int sessionValidationIntervalSeconds = 5;
@@ -45,11 +46,6 @@ namespace Mmorpg.Client.Core
         // spreads on the surface and a droplet of spray.
         [SerializeField] private Material waterRingMaterial;
         [SerializeField] private Material waterSprayMaterial;
-
-        public string GameServiceBaseUrl
-        {
-            get { return NormalizeUrl(gameServiceBaseUrl, "http://localhost:5000"); }
-        }
 
         public int RequestTimeoutSeconds
         {
@@ -121,13 +117,8 @@ namespace Mmorpg.Client.Core
             }
 
             Debug.LogWarning(
-                "The client configuration is unavailable: " + error + " Using local fallback endpoints.");
+                "The client configuration is unavailable: " + error + " Using the default timeouts.");
             return CreateInstance<ClientConfig>();
-        }
-
-        private static string NormalizeUrl(string value, string fallback)
-        {
-            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().TrimEnd('/');
         }
     }
 }

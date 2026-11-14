@@ -257,6 +257,58 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.EqualTo(Summary(texts, "ui/characters/character-count-many", 0, 0, "ui/characters/shard-count-many", 0)));
         }
 
+        // The login footer names the environment and the build, and says when the GameService
+        // address was overridden at start.
+        [Test]
+        public void TheLoginFooterNamesTheEnvironmentAndTheBuild()
+        {
+            var texts = FixtureTexts.Ui();
+            var staging = new ClientEnvironment("staging", "https://staging.example.org");
+            var editor = new ClientSettings(new ClientBuildInfo(staging, ClientBuildStamp.Editor), string.Empty, 10, 10, 5);
+            Assert.That(
+                AccountEntryPresentation.BuildLine(editor, texts),
+                Is.EqualTo(texts.Format("ui/login/build-editor", MessageArgument.Text("environment", "staging"))));
+            Assert.That(AccountEntryPresentation.OverrideLine(editor, texts), Is.Empty);
+
+            var release = new ClientSettings(
+                new ClientBuildInfo(
+                    staging,
+                    new ClientBuildStamp(ClientBuildKind.Release, "0123456789abcdef", false, "2026-11-14T09:30:00Z")),
+                string.Empty,
+                10,
+                10,
+                5);
+            Assert.That(
+                AccountEntryPresentation.BuildLine(release, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/login/build-release",
+                    MessageArgument.Text("environment", "staging"),
+                    MessageArgument.Text("commit", "0123456789"),
+                    MessageArgument.Text("time", "2026-11-14 09:30"))));
+
+            var development = new ClientSettings(
+                new ClientBuildInfo(
+                    staging,
+                    new ClientBuildStamp(ClientBuildKind.Development, "0123456789abcdef", true, "2026-11-14T09:30:00Z")),
+                "http://192.168.1.20:5000",
+                10,
+                10,
+                5);
+            Assert.That(
+                AccountEntryPresentation.BuildLine(development, texts),
+                Is.EqualTo(texts.Format(
+                    "ui/login/build-development",
+                    MessageArgument.Text("environment", "staging"),
+                    MessageArgument.Text(
+                        "commit",
+                        texts.Format("ui/login/build-commit-dirty", MessageArgument.Text("commit", "0123456789"))),
+                    MessageArgument.Text("time", "2026-11-14 09:30"))));
+            Assert.That(
+                AccountEntryPresentation.OverrideLine(development, texts),
+                Is.EqualTo(texts.Format("ui/login/address-override", MessageArgument.Text("url", "https://staging.example.org"))));
+            Assert.That(AccountEntryPresentation.BuildLine(development, texts), Does.Not.Contain("["));
+        }
+
         private static string Summary(
             TextCatalog texts,
             string charactersKey,

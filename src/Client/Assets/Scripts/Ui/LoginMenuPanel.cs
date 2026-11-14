@@ -206,19 +206,51 @@ namespace Mmorpg.Client.Ui
             TemporaryEntryScreen.AddMainButton(registerPage, texts.Get("ui/login/create-account"), Submit);
 
             status = TemporaryEntryScreen.AddStatus(card);
+            BuildFooter();
+        }
 
-            var connection = TemporaryUiKit.AddText(
-                TemporaryUiKit.CreateUiObject("Connection", screen.Root),
-                AccountEntryPresentation.ConnectionLine(
-                    clientSession.Settings.GameServiceBaseUrl,
-                    clientSession.Settings.RequestTimeoutSeconds,
-                    clientSession.Settings.RealtimeTimeoutSeconds,
-                    texts),
+        // The footer: the connection, the environment and build, and, when the GameService
+        // address was overridden at start, a warning line that says so. The log gets the same
+        // lines, so a started player shows them without a screen.
+        private void BuildFooter()
+        {
+            var settings = clientSession.Settings;
+            var connectionText = AccountEntryPresentation.ConnectionLine(
+                settings.GameServiceBaseUrl,
+                settings.RequestTimeoutSeconds,
+                settings.RealtimeTimeoutSeconds,
+                texts);
+            var buildText = AccountEntryPresentation.BuildLine(settings, texts);
+            var overrideText = AccountEntryPresentation.OverrideLine(settings, texts);
+            AddFooterLine("Connection", connectionText, TemporaryUiKit.TextMuted, 16f, 32f);
+            AddFooterLine("Build", buildText, TemporaryUiKit.TextMuted, 48f, 24f);
+            if (overrideText.Length > 0)
+            {
+                AddFooterLine("AddressOverride", overrideText, TemporaryUiKit.WarningColor, 72f, 24f);
+            }
+
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "Login screen shown. " + buildText + (overrideText.Length > 0 ? " " + overrideText : string.Empty)
+                + " " + connectionText);
+        }
+
+        // A line across the bottom of the screen, from bottom up to bottom + height.
+        private void AddFooterLine(string name, string text, Color color, float bottom, float height)
+        {
+            var line = TemporaryUiKit.AddText(
+                TemporaryUiKit.CreateUiObject(name, screen.Root),
+                text,
                 13,
                 FontStyles.Normal,
                 TextAlignmentOptions.Center,
-                TemporaryUiKit.TextMuted);
-            TemporaryUiKit.Stretch(connection.rectTransform, Vector2.zero, new Vector2(1f, 0f), new Vector2(16f, 16f), new Vector2(-16f, 48f));
+                color);
+            TemporaryUiKit.Stretch(
+                line.rectTransform,
+                Vector2.zero,
+                new Vector2(1f, 0f),
+                new Vector2(16f, bottom),
+                new Vector2(-16f, bottom + height));
         }
 
         private void FocusFirstEmpty()

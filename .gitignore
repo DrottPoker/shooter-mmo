@@ -28,6 +28,9 @@ src/Client/[Mm]emoryCaptures/
 src/Client/[Rr]ecordings/
 src/Client/Assets/_Recovery/
 src/Client/Assets/_Recovery.meta
+# The environment and build stamp that a player build bakes in exist only while it runs.
+src/Client/Assets/Content/Config/client-build.json
+src/Client/Assets/Content/Config/client-build.json.meta
 src/Client/*.csproj
 src/Client/*.sln
 src/Client/*.slnx

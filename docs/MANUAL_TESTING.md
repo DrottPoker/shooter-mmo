@@ -90,15 +90,22 @@ join.
 Checks with two players run the Unity Editor as one client and a Windows player
 as the other:
 
-1. In Unity, open `File > Build Profiles`, select Windows, turn on `Development
-   Build`, and build the existing scene list, `LoginMenu` and `CharacterSelect`,
-   into the ignored `Builds` folder. Do not add or reorder scenes: World scenes
-   are Addressables, and the player build builds their content first.
-2. Run the built player next to the Editor and log in with another account.
+1. Close the Unity Editor of the checkout, build the development player of the
+   `local` environment, and open the Editor again:
 
-Expected result: the player reaches LoginMenu and joins the same shard as the
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build-Client.ps1 -Environment local -Development -StartCheck
+   ```
+
+2. Run `src\Client\Builds\local-development\MMORPG.exe` next to the Editor and
+   log in with another account.
+
+Expected result: the script ends with `Start check passed` and `Built
+local-development`, the player reaches LoginMenu with `Environment local ·
+Development build <commit>` in its footer, and it joins the same shard as the
 Editor client. Rebuild it after every change to the client, the protocol, or
-the shared simulation.
+the shared simulation. [Build The Client](LOCAL_DEVELOPMENT.md#build-the-client)
+describes the script.
 
 ### Stop Everything
 
@@ -293,9 +300,43 @@ world.
 
 Expected result: a card with the `Log In` and `Create Account` tabs shows on a
 dark screen, with the caret in `Password`. The bottom of the screen shows `Game
-Service: http://localhost:5000`, `Request Timeout: 10 seconds`, and `Realtime
-Timeout: 10 seconds`, the values of `Assets/Content/Config/ClientConfig.asset`,
-and no field changes the endpoint.
+Service: http://localhost:5000`, the address of the `local` environment, and
+`Request Timeout: 10 seconds` and `Realtime Timeout: 10 seconds`, the values of
+`Assets/Content/Config/ClientConfig.asset`, and above it `Environment local ·
+Unity Editor`. No field changes the endpoint.
+
+### A Release Build And The Address Override
+
+Close the Unity Editor of the checkout first.
+
+1. Build and start the development player with another GameService address:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build-Client.ps1 -Environment local -Development -StartCheck -OverrideAddress http://127.0.0.1:5999
+   ```
+
+   Expected result: `Start check passed`, and the printed client lines show
+   `The GameService address is overridden at start: http://127.0.0.1:5999.`
+   and a `Login screen shown` line with `Development build` and the override
+   sentence.
+2. Build and start the release player the same way, without `-Development`.
+   Expected result: `Start check passed`, the client lines show `A release
+   build ignores the GameService override http://127.0.0.1:5999.`, and the
+   `Login screen shown` line names `Release build` and `Game Service:
+   http://localhost:5000`.
+3. With the stack running, start `src\Client\Builds\local-release\MMORPG.exe`,
+   log in, enter the World, and press `F3` and `F2`. Expected result: the
+   login screen's footer shows `Environment local · Release build <commit> ·
+   Built <time> UTC`, no development login is filled in, `F3` opens nothing,
+   and `F2` opens the Debug menu, whose Network tab shows the environment and
+   the stamp under Build and says that recording is available in the Editor
+   and development builds only.
+4. In the Editor, open `MMORPG > Tools > GameService Address Override`, enter
+   `http://127.0.0.1:5999`, click `Use This Address`, and enter Play Mode from
+   `LoginMenu`. Expected result: the footer shows `Game Service:
+   http://127.0.0.1:5999` and the warning that the address was overridden at
+   start. Click `Use The Local Environment` afterwards; the next Play Mode
+   shows `http://localhost:5000` again without the warning.
 
 ### Login Keys And Errors
 

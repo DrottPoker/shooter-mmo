@@ -45,6 +45,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   art              tools/art/Verify-ArtAssets.ps1
 #   blender-python   the art pipeline's Python tests in tools/art/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
+#   unity-restore    tools/ci/Test-UnityCommon.ps1
 #   observability    tools/Verify-Observability.ps1
 #   verify-content   the item catalog, world collision, world actor, quest catalog, and text table verifiers
 #   verify-protocol  the realtime protocol verifier
@@ -85,6 +86,8 @@ $rules = @(
         Checks = @("deps"); Reason = "the dependency policy" },
     @{ Pattern = '^tools/load/'
         Checks = @("test:Mmorpg.Tools.Tests"); Reason = "load scenarios, the quality boundary, and baselines, which a tools test loads" },
+    @{ Pattern = '^tools/(UnityCommon|ci/Test-UnityCommon)\.ps1$'
+        Checks = @("unity", "unity-restore"); Reason = "the helpers that put the working tree back after a Unity run, and their check" },
     @{ Pattern = '^tools/Run-Unity(Editor)?Tests\.ps1$'
         Checks = @("unity"); Reason = "a Unity test runner" },
     @{ Pattern = '^tools/[^/]+\.ps1$'
@@ -526,6 +529,7 @@ try {
     if ($full) { Write-Host "  the full quality gate, including the test selection rules" }
     if ($full) { Write-Host "  PowerShell syntax of every script" }
     elseif ($scripts.Count -gt 0) { Write-Host "  PowerShell syntax of the changed scripts: $($scripts -join ', ')" }
+    if ($full -or $tokens.Contains("unity-restore")) { Write-Host "  Unity file restore" }
     if ($full -or $tokens.Contains("deps")) { Write-Host "  dependency policy" }
     if ($full -or $tokens.Contains("art")) { Write-Host "  art assets" }
     if ($full -or $tokens.Contains("blender-python")) { Write-Host "  art pipeline Python tests" }
@@ -574,6 +578,9 @@ try {
     }
     if ($full) {
         $null = Invoke-Check "Test selection rules" { Test-Rules $projects }
+    }
+    if ($full -or $tokens.Contains("unity-restore")) {
+        $null = Invoke-Check "Unity file restore" { (Invoke-Script "ci/Test-UnityCommon.ps1") -eq 0 }
     }
     if ($full -or $tokens.Contains("deps")) {
         $null = Invoke-Check "Dependency policy" { (Invoke-Script "Verify-DependencyPolicy.ps1") -eq 0 }

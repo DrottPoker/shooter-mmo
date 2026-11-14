@@ -29,7 +29,7 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | `Shift`, held while right-clicking a stack | Sends half of the stack where a right-click sends it |
 | `Ctrl`, held while clicking a stack | Asks how many items to take and carries them on the pointer |
 | `F2` | Opens or closes the [Debug Menu](#debug-menu-f2) |
-| `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment |
+| `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment; a release build has no Admin menu |
 
 Clicks and scrolling over a panel never reach the world. The cursor always stays
 visible and free. There is no keyboard movement, sprint, jump, or aim. Gamepad
@@ -41,7 +41,10 @@ bindings and player-configurable rebinding are not implemented.
   takes an email or a username and a password; `Create Account` takes an email,
   a username, and a password, with the rules of each below its field, and logs
   the new account in. The GameService address and the request and realtime
-  timeouts show at the bottom of the screen.
+  timeouts show at the bottom of the screen, and above them the environment the
+  client was built for and which build it is: the Unity Editor, or a
+  development or release build with its commit and build time. When the
+  GameService address was overridden at start, a warning line says so.
 - `Log In` starts with the last login name used on this computer and puts the
   caret in the password. In the Editor and in development builds, the fields
   start with the local development account `player_one` and its password.
@@ -340,7 +343,9 @@ not implemented, and running with run energy is planned in
   - **Network**: connection state, character, shard, World, worker, runtime, UDP
     endpoint and protocol, the observed server tick, round trip time, snapshot
     age and observed rate, application packets and payload in and out,
-    estimated snapshot loss, and known entities. Its `Content` section lists
+    estimated snapshot loss, and known entities. Its `Build` section shows the
+    environment with its GameService address, the address the client uses and
+    whether it was overridden at start, and the build stamp. Its `Content` section lists
     each content file the client resolved at start, by kind and id, with the
     first 8 characters of its revision and where it came from, `bundled`,
     `cache`, or `downloaded`, and whether the client fell back to its bundled
@@ -369,6 +374,7 @@ not implemented, and running with run energy is planned in
 
 ## Admin Menu (F3)
 
+- A release build has no Admin menu; F3 does nothing there.
 - F3 opens and closes the Admin menu below the player frame. Its tools work only
   against a SimulationWorker in the Development environment that allows them, as
   the local stack does; see

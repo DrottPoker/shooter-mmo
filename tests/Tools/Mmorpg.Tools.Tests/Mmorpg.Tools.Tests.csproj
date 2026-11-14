@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <!-- The realtime protocol vectors, so the bot client is tested against every message type. -->
-    <Compile Include="..\..\..\src\Client\Assets\Tests\EditMode\Shared\RealtimeProtocolGolden*.cs"
+    <Compile Include="..\..\..\src\Client\Assets\Tests\Shared\RealtimeProtocolGolden*.cs"
              Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -291,20 +291,164 @@ script compilation finish. With GameService and a worker running, open
 `Assets/Scenes/LoginMenu.unity` and enter Play Mode;
 [Manual Testing](MANUAL_TESTING.md#shared-setup) walks through the flow.
 
-- The client reads the GameService address, its timeouts, and how long it
-  tries to restore a lost connection from
-  `Assets/Content/Config/ClientConfig.asset`, which points to
-  `http://localhost:5000`. Change the asset before building a client for
-  another environment; the login panel cannot change it.
-  [Unity Client Architecture](UNITY_CLIENT_ARCHITECTURE.md#configuration)
-  describes the configuration.
+- The Editor always talks to the GameService of the `local` environment,
+  `src/Client/Environments/local.json`, which points to
+  `http://localhost:5000`; a player build talks to the environment it was built
+  for, as [Build The Client](#build-the-client) describes. The login panel
+  cannot change it. The timeouts and how long the client tries to restore a
+  lost connection come from `Assets/Content/Config/ClientConfig.asset`;
+  [Configuration](UNITY_CLIENT_ARCHITECTURE.md#configuration) describes both.
 - After a change to the realtime protocol, the shared simulation, or the
   transport, exit Play Mode, restart SimulationWorker, and rebuild every
-  standalone client, so that every process runs the same code. A worker
-  rejects a client of another protocol version at the join.
-- Standalone player builds go to the ignored `Build`, `Builds`, or
-  `ClientBuilds` folders below `src/Client` and are never committed.
+  player, so that every process runs the same code. A worker rejects a client
+  of another protocol version at the join.
+- Player builds go to the ignored `Builds` folder below `src/Client`, as
+  [Build The Client](#build-the-client) describes, and are never committed.
 - Run the Unity tests as [Run The Unity Tests](#run-the-unity-tests) describes.
+
+### Build The Client
+
+`tools/Build-Client.ps1` builds the Windows x64 player headless with IL2CPP,
+for one environment, through the Editor build method
+`Mmorpg.Client.Editor.ClientPlayerBuild.BuildFromCommandLine`. Close the
+Editor of the checkout first: Unity opens a project only once, and the script
+refuses to run while the project is open.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build-Client.ps1 -Environment local -Development -StartCheck
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build-Client.ps1 -Environment local -StartCheck
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `-Environment <name>` | The environment file `src/Client/Environments/<name>.json` that the build bakes in |
+| `-Development` | A development build; without it the build is a release build |
+| `-StartCheck` | Starts the built player once after the build, as [The Start Check](#the-start-check) describes |
+| `-OverrideAddress <url>` | With `-StartCheck`: starts the player with `-gameServiceBaseUrl <url>` and checks that a development build uses that address and a release build ignores it |
+| `-Plan` | Prints the environment, the build kind with its settings, the output, and the checks, and runs nothing |
+| `-TimeoutMinutes <n>` | Ends Unity after this long, 60 by default |
+
+The player goes to `src/Client/Builds/<environment>-<development|release>/`,
+which the script empties first, with `MMORPG.exe`. Beside that folder it
+writes `<build>.build-summary.txt`, the summary it prints: the result, the
+environment, the build kind, the commit and whether the working tree had
+changes, the build time, the scripting backend, the stripping level, the
+IL2CPP code generation and C++ compiler configuration, the time, the shipped
+size and the size of the debug data that IL2CPP and Burst write beside the
+player, and the build errors and warnings and the C++ warnings of IL2CPP by
+count. `<build>.build-report.json` and `<build>.unity-build.log` keep the
+details. Never share or print the head of the Unity log.
+
+A Unity run rewrites some tracked files of its own, such as the player
+settings that a development build changes for its duration and a hash in the
+Addressables settings. The script puts back every such file below
+`src/Client/ProjectSettings`, `Packages`, `Assets/AddressableAssetsData`, and
+`Assets/Settings` and names it, and it fails with exit code 3 when `git status`
+is not what it was before the build; it never touches any other file. A file
+there that had local changes before the run gets those changes back, and one
+that was deleted before the run stays deleted. `tools/ci/Test-UnityCommon.ps1`
+checks each of these cases in a temporary Git repository.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | The player was built and, with `-StartCheck`, passed the start check |
+| 1 | The build or the start check failed; the summary and the end of the Unity log say why |
+| 2 | The build could not run: an unknown environment, no Unity, or an open project |
+| 3 | The build left the working tree changed |
+
+Expected result: the summary with `Result: Succeeded`, `Scripting backend:
+IL2CPP`, `Build errors: 0`, and `C++ errors: 0`, then `Built <build> into
+...`, exit code 0, and `git status` as before. The first IL2CPP build of a
+Library takes the longest; the measured times and sizes are in
+[Build Kinds](#build-kinds).
+
+#### Environments
+
+An environment is a checked-in file in `src/Client/Environments`, named after
+the environment, and owns the GameService address of a client:
+
+```json
+{
+  "name": "local",
+  "gameServiceBaseUrl": "http://localhost:5000"
+}
+```
+
+`name` is lowercase letters, digits, and hyphens and equals the file name, and
+`gameServiceBaseUrl` is an absolute http or https URL. `local` is the stack of
+[Backend Services](#backend-services) on this machine. To add an environment,
+add its file and build with `-Environment <name>`; `ClientEnvironmentTests`
+checks every file. The Editor always runs `local`, without a build step; a
+player runs the one environment its build baked in, with the build stamp, as
+[Environment And Build Stamp](UNITY_CLIENT_ARCHITECTURE.md#environment-and-build-stamp)
+describes. A build that this script does not start, from `File > Build
+Profiles` or a test player, bakes `local`.
+
+#### Another GameService For Development
+
+A development player and the Editor can talk to another GameService than their
+environment's, such as one on another machine; a release build ignores every
+such override:
+
+- Development player: start it with `-gameServiceBaseUrl <url>`, for example
+  `src\Client\Builds\local-development\MMORPG.exe -gameServiceBaseUrl http://192.168.1.20:5000`.
+- Editor: `MMORPG > Tools > GameService Address Override` takes the address,
+  which Play Mode uses from its next start; `Use The Local Environment` ends
+  the override.
+
+Expected result: the login screen's footer says that the address was
+overridden at start, the connection line shows the new address, and the client
+log has the line `The GameService address is overridden at start: <url>.` A
+release build started with the argument logs `A release build ignores the
+GameService override <url>.` and keeps its environment's address.
+
+#### Build Kinds
+
+The project settings hold the release kind's values, so a build from `File >
+Build Profiles` and a test player of
+[Run The Unity Tests](#run-the-unity-tests) are compiled like a release build.
+A development build applies its own values for the build, and the script puts
+the project settings back afterwards. Why each value was chosen is in
+`ClientBuildKindSettings`.
+
+| | Development | Release |
+| --- | --- | --- |
+| Scripting backend | IL2CPP | IL2CPP |
+| Managed stripping | Low | Low |
+| IL2CPP code generation | Faster (smaller) builds, `OptimizeSize` | Faster runtime, `OptimizeSpeed` |
+| C++ compiler configuration | Release | Master |
+| Development build | Yes | No |
+| Admin menu, address override, prefilled login | Yes | No |
+| Time of a build | 5 min the first time, 1 min the second | 15 min, one build measured |
+| Shipped size | 199 MB | 160 MB |
+| IL2CPP and Burst debug data beside the player, not shipped | 484 MB | 1,071 MB |
+
+Measured on 2026-11-14 on the reference machine of
+[Measured Tiers](STACK_STRESS_TESTING.md#measured-tiers), in a Library that
+had imported the project and built the test player of
+[Run The Unity Tests](#run-the-unity-tests) once. The release build spent 10 of
+its 15 minutes in the C++ link with the whole-program optimization of the
+Master configuration. A Library
+without any IL2CPP build takes longer the first time. What a release build
+leaves out is in
+[What A Release Build Leaves Out](UNITY_CLIENT_ARCHITECTURE.md#what-a-release-build-leaves-out).
+
+#### The Start Check
+
+`-StartCheck` starts the built player once in a 1280 by 720 window with
+`-logFile <build>.start-check.log`, waits up to two minutes until the log shows
+`The content check resolved` and `Login screen shown`, closes it, and fails on
+any exception in the log. It prints the client's log lines, among them the
+environment, the build stamp, and the login footer.
+
+It proves that the player starts under IL2CPP and stripping: the bootstrap,
+Addressables with the configuration, the bundled content and the baked
+environment, the text tables through `JsonUtility`, the content check against
+the environment's GameService, and the login screen with its TextMesh Pro
+texts. It does not prove that the client can log in, join a World, or move:
+no GameService needs to run, so the content check falls back to the bundled
+content, and nothing reaches a World scene, the realtime protocol, or
+LiteNetLib. It does not judge what the screen looks like.
 
 ## Run On A Bad Network
 
@@ -575,6 +719,7 @@ repository root:
 
 ```powershell
 & .\tools\Test-Changes.ps1 -VerifyRules
+& .\tools\ci\Test-UnityCommon.ps1
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\art\Verify-ArtAssets.ps1
 python -m unittest discover -s tools/art/blender/tests
@@ -1000,7 +1145,32 @@ gate, a skipped or inconclusive test, or a suite without tests, fails the run.
 `Window > General > Test Runner` in the Editor runs the same suites by hand.
 An interrupted run ends the Unity process it started and removes the
 `InitTestScene` that Unity's PlayMode runner made in `Assets` and deletes only
-at the end of a run.
+at the end of a run. After every run the script puts back the Unity-owned
+tracked files that Unity rewrote, as [Build The Client](#build-the-client)
+describes, and names them.
+
+The `Player` category runs in a built player as well: the pinned goldens of
+the shared movement simulation and the realtime protocol, which must give the
+same results under IL2CPP as on Mono and .NET. `-Platform StandaloneWindows64`
+builds a Windows test player with the committed IL2CPP settings of a release
+build, starts it in a window, and runs the `Player` category in it:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1 -Platform StandaloneWindows64
+```
+
+The Unity CLI cannot run a player test, so this run always starts the Editor
+of `-UnityEditorPath`, `UNITY_EDITOR_PATH`, or the Unity Hub's default path.
+Expected result: `StandaloneWindows64-results.xml` below `TestResults/Unity`
+with every test of the category passed, each with a `[PLAYER] IL2CPP` line of
+the value it computed, and `Unity StandaloneWindows64 tests passed`. The test
+player's build is an IL2CPP build with the C++ configuration of a release
+build, measured on the machine of [Build Kinds](#build-kinds) at 21 minutes the
+first time and 17 minutes after a small change of the client, most of it in
+the C++ link. The test player differs from a shipped release build in what the
+Unity Test Framework adds: it is a development build with the test assemblies
+and IL2CPP's checked code variant. The Editor's PlayMode suite runs the same
+category on Mono.
 
 ### Run A Load Scenario
 
