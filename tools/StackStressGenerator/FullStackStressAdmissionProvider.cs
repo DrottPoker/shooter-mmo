@@ -37,6 +37,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private int admittedBots;
     private int loggedOutBots;
     private Guid? lootHotspotCorpseId;
+
+    // What the fixture put into the hotspot; the bots only move it, so the run must end with it.
+    private long lootHotspotQuantity;
     private StressFixtureDefinitions? fixtureDefinitions;
 
     public FullStackStressAdmissionProvider(StressGeneratorOptions options)
@@ -320,7 +323,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         await postgresSampler.VerifyGameplayInvariantsAsync(
             options.Workload,
             Volatile.Read(ref inventoryFixtureBots),
-            lootHotspotCorpseId is not null,
+            lootHotspotQuantity,
             Volatile.Read(ref fixtureDefinitions),
             cancellationToken);
         await postgresSampler.SampleAsync(cancellationToken);
@@ -513,6 +516,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 options.FixtureSecret!,
                 cancellationToken);
             lootHotspotCorpseId = fixture.CorpseId;
+            lootHotspotQuantity = (long)fixture.LootStacks * fixture.QuantityPerStack;
             Console.WriteLine(
                 $"Prepared loot hotspot corpse {fixture.CorpseId} with {fixture.LootStacks} stacks of {fixture.QuantityPerStack} items at ({options.LootHotspotX}, {options.LootHotspotY}, {options.LootHotspotZ}).");
         }
