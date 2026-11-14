@@ -151,6 +151,12 @@ public abstract class PlayingRoleBase : IPlayingRole
             || (capacity > 0 && capacity - items.CarriedWeight < capacity * MinimumFreeCarryShare);
     }
 
+    // Whether the role still lacks something that only the vendor sells, after a visit.
+    protected virtual bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return false;
+    }
+
     // Starts the trip to the town's vendor, unless the scenario has no town or a trip that
     // achieved nothing ended a short while ago.
     protected bool StartVendorTrip(IPlayingBotBody body, TimeSpan now)
@@ -247,6 +253,12 @@ public abstract class PlayingRoleBase : IPlayingRole
             else if (NeedsToSell(body))
             {
                 body.Count(PlayingCounter.VendorTripsWithoutRoom);
+                noTripUntil = now + TripCooldown;
+            }
+            else if (StillNeedsToBuy(body))
+            {
+                // The visit could not buy what the role lacks, such as arrows it cannot pay
+                // for. Without a pause the same need would send it straight back.
                 noTripUntil = now + TripCooldown;
             }
 

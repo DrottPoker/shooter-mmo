@@ -565,7 +565,9 @@ gatherer sell the same way:
 
 A trip that ends with the bot still short of room, because nothing it carries
 sells, or that found no vendor, is counted, and the next trip waits five
-minutes. A Mob that attacks the bot ends the trip, so the role can fight or
+minutes. So does the next trip after a visit that could not buy what the role
+still lacks, such as arrows a bow fighter cannot pay for: it hunts on with the
+arrows it has. A Mob that attacks the bot ends the trip, so the role can fight or
 flee, and the need starts a new trip later. A scenario with fighters,
 gatherers, or traders needs a ground of kind `town`.
 

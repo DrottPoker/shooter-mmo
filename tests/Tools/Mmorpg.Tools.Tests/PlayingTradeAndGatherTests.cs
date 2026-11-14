@@ -101,6 +101,27 @@ public sealed class PlayingTradeAndGatherTests
         Assert.Equal(100, test.Body.Counters[PlayingCounter.CurrencySpent]);
     }
 
+    // Low on arrows and without currency or loot, the visit buys nothing. The fighter then
+    // hunts with the arrows it has instead of walking to the vendor again and again.
+    [Fact]
+    public void ABowFighterThatCannotPayForArrowsHuntsOnWithWhatItHas()
+    {
+        var test = new RoleTest(BowKit, body => new FighterRole(Field, teleport: false, new Random(5), Town));
+        test.Body.View.Items.Load(Inventory(
+            4,
+            Worn("weapon.training_shortbow", "main_hand"),
+            Worn(Arrow, "ammunition", 50)) with
+        { Currency = 0 });
+        test.Body.MoveTo(-135f, -35f);
+        test.ShowVendor();
+        test.AddMob(101, -131f, -35f, "mob.grey_wolf");
+
+        test.DriveUntil(() => ((FighterRole)test.Role).Target == 101UL, answer: true);
+
+        Assert.Equal(1, test.Body.Counters[PlayingCounter.VendorTrips]);
+        Assert.DoesNotContain(PlayingOperations.VendorPurchase, test.Body.Sent);
+    }
+
     [Fact]
     public void ABowFighterWithNeitherArrowsNorCurrencyGoesOnAsAWalker()
     {

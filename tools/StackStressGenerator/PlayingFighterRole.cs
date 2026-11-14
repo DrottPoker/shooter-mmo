@@ -631,6 +631,11 @@ public sealed class FighterRole : PlayingRoleBase
             .FirstOrDefault(definitionId => body.GameData.Item(definitionId)?.Ammunition is not null);
     }
 
+    protected override bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return NeedsArrows(body);
+    }
+
     private static bool NeedsArrows(IPlayingBotBody body)
     {
         return ArrowDefinition(body) is { } arrows
