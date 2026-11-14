@@ -25,8 +25,9 @@ namespace Mmorpg.Client.Tests.PlayMode
     // with the default camera at the spawn. tools/Measure-ClientCrowd.ps1 starts the stack and
     // the bots and runs it, in a test player in a 1920 by 1080 window. Without the script's
     // variables it measures the crowd it finds, so a person can run it from the Test Runner of an
-    // open Editor while the script keeps the bots up. It asserts only that the crowd appears; no
-    // rule judges the numbers, which it writes to a result file and prints as [CROWD] lines.
+    // open Editor while the script keeps the bots up. It asserts only that the crowd appears and
+    // that the whole crowd stays shown and the client stays joined while it records; no rule
+    // judges the numbers, which it writes to a result file and prints as [CROWD] lines.
     //
     // Its category holds no other category's name, because the test runner matches a category
     // filter as a regular expression: LiveStack would select a LiveStackCrowd test.
@@ -125,13 +126,29 @@ namespace Mmorpg.Client.Tests.PlayMode
 
                 result.recording = measurements.StartRecording("crowd-" + label, 5f);
                 result.recordingStartUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
-                yield return new WaitForSecondsRealtime(seconds);
+                // The frames count for this crowd only while the whole crowd is shown, so the
+                // smallest number of shown bots is looked up once a second.
+                var fewestShown = crowd;
+                var recordingEnds = Time.realtimeSinceStartup + seconds;
+                var nextCount = Time.realtimeSinceStartup + 1f;
+                while (Time.realtimeSinceStartup < recordingEnds)
+                {
+                    if (Time.realtimeSinceStartup >= nextCount)
+                    {
+                        nextCount += 1f;
+                        fewestShown = Mathf.Min(fewestShown, ShownBots(context, out _));
+                    }
+
+                    yield return null;
+                }
+
                 result.summary = measurements.StopRecording();
                 result.recordingEndUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
                 result.screenWidth = Screen.width;
                 result.screenHeight = Screen.height;
                 result.shownBotsAtEnd = ShownBots(context, out var knownAtEnd);
                 result.knownBotsAtEnd = knownAtEnd;
+                result.fewestShownBots = Mathf.Min(fewestShown, result.shownBotsAtEnd);
                 result.ownerSnapshotsPerSecond = result.summary.durationSeconds > 0f
                     ? result.summary.ownerSnapshotFrames / result.summary.durationSeconds
                     : 0f;
@@ -142,6 +159,11 @@ namespace Mmorpg.Client.Tests.PlayMode
                 ReportResult(result);
 
                 Assert.That(hub.Session.IsJoined, Is.True, "The client stayed in the arena while it recorded.");
+                Assert.That(
+                    result.fewestShownBots,
+                    Is.GreaterThanOrEqualTo(crowd),
+                    "The crowd shrank while the client recorded: " + result.fewestShownBots + " of " + crowd
+                    + " bots were shown at the least, so the frames are not those of the whole crowd.");
             }
             finally
             {
@@ -287,8 +309,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             var summary = result.summary;
             var invariant = CultureInfo.InvariantCulture;
             Report(string.Format(invariant, "{0} {1}, {2} by {3}, {4}, {5}", result.runtime, result.platform, result.screenWidth, result.screenHeight, result.graphicsDevice, result.processor));
-            Report(string.Format(invariant, "  {0} bots shown in {1:0.0} s, {2} at the end; frames p50/p95/p99/max {3:0.0}/{4:0.0}/{5:0.0}/{6:0.0} ms over {7:0} s",
-                result.shownBots, result.crowdShownSeconds, result.shownBotsAtEnd, summary.frameMilliseconds.p50, summary.frameMilliseconds.p95, summary.frameMilliseconds.p99, summary.frameMilliseconds.maximum, summary.durationSeconds));
+            Report(string.Format(invariant, "  {0} bots shown in {1:0.0} s, {2} at the least while it recorded; frames p50/p95/p99/max {3:0.0}/{4:0.0}/{5:0.0}/{6:0.0} ms over {7:0} s",
+                result.shownBots, result.crowdShownSeconds, result.fewestShownBots, summary.frameMilliseconds.p50, summary.frameMilliseconds.p95, summary.frameMilliseconds.p99, summary.frameMilliseconds.maximum, summary.durationSeconds));
             Report(string.Format(invariant, "  owner snapshots {0:0.0} per s, lost {1:0.00} %; remote starved {2:0.00} % in {3} starvations, longest {4:0.00} s",
                 result.ownerSnapshotsPerSecond, summary.ownerSnapshotLossPercent, summary.remoteStarvedPercent, summary.remoteStarvations, summary.longestRemoteStarvationSeconds));
             Report(string.Format(invariant, "  memory allocated/reserved/managed {0:0}/{1:0}/{2:0} MB; vsync {3}, target frame rate {4}, quality {5}",
@@ -318,6 +340,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             public float crowdShownSeconds;
             public int shownBotsAtEnd;
             public int knownBotsAtEnd;
+            public int fewestShownBots;
             public int screenWidth;
             public int screenHeight;
             public string graphicsDevice;

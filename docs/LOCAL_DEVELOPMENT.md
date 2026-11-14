@@ -1365,8 +1365,9 @@ two and a half processors, the background of an ordinary desktop, and 10 % of
 the graphics card's 3D engine for thirty seconds; it samples them every few
 seconds while the test runs and repeats a measurement during whose recording
 they used more. An attempt counts only with proof: one whose test failed, for
-example because the client lost its connection while it recorded, does not
-count although it wrote a result, and neither does one whose samples leave more
+example because the client lost its connection or showed fewer bots while it
+recorded, does not count although it wrote a result, and neither does one after
+which not every bot is still joined, or one whose samples leave more
 than `-LoadSampleGapSeconds` of the recording uncovered, because nothing then
 shows that it was undisturbed. Part of the measurement are only the processes
 that the script started itself, directly or through another one (the services,

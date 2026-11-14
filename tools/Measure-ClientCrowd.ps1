@@ -519,6 +519,19 @@ try {
                 Write-Step $monitorFailure
             }
 
+            # The test fails when it shows fewer bots while it records; this is the same check
+            # from the side of the bots.
+            $joinedNow = Get-JoinedBots $count
+            if ($botProcess.HasExited -or $joinedNow -lt $count) {
+                Write-Step "Attempt ${attempt}: the bots did not stay ($joinedNow of $count joined, the bot process $(if ($botProcess.HasExited) { 'has ended' } else { 'runs' })), so the attempt does not count."
+                if ($botProcess.HasExited) {
+                    Write-LogTail (Join-Path $logRoot "bots-$count.log")
+                    break
+                }
+
+                continue
+            }
+
             $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
             $start = [DateTime]::Parse($result.recordingStartUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
             $end = [DateTime]::Parse($result.recordingEndUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
@@ -539,7 +552,7 @@ try {
         }
 
         if (-not $measured) {
-            Write-Step "The crowd of $count bots could not be measured, with a passing test and undisturbed, in $Attempts attempts."
+            Write-Step "The crowd of $count bots could not be measured, with a passing test, the whole crowd, and undisturbed, in $Attempts attempts."
             $exitCode = 1
         }
 
