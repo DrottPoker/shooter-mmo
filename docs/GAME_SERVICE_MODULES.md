@@ -252,7 +252,8 @@ caller keeps its own check order, error codes, and messages.
 | --- | --- | --- | --- |
 | `IAccountLocks` | Accounts | Characters, Placement | Lock an account `FOR UPDATE` |
 | `IAccountSessionLifecycleHandler` | Accounts (SPI) | implemented by Placement | Mark the simulation sessions and consume the join tickets of sessions that are replaced or revoked |
-| `AccountsSql` | Accounts | Placement, Items | Active account session, revocation reason, existing account id, and username fragments |
+| `AccountsSql` | Accounts | Placement, Items | The one rule of an active account session, which Accounts' own statements use too, and the revocation reason, existing account id, and username fragments |
+| `IAccountSessionActivity` | Accounts | Placement | Move the ends of the account sessions that live simulation sessions hold, as their activity, at most once an hour |
 | `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
 | `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
@@ -278,7 +279,7 @@ caller keeps its own check order, error codes, and messages.
 | `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests, also used by Content | Read the mirrored quest catalog revision that a placed worker must run and that Content must serve |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IRetentionTask` | Platform (SPI) | implemented by Accounts, Placement, and Items | Delete a batch of a module's own history rows that are past their retention window, for the retention host, as [Retention](#retention) describes |
-| `IAccountSessionReferences` | Accounts (SPI) | implemented by Placement | The SQL condition that no simulation session or join ticket names an account session, so the retention of account sessions keeps every one they name |
+| `IAccountSessionReferences` | Accounts (SPI) | implemented by Placement | The SQL condition that no simulation session or join ticket names an account session, so the retention of account sessions keeps every one they name, and the SQL condition that a live simulation session holds one, which the rule of an active account session reads |
 | `IDatabaseSeeder` | Platform | implemented by Characters, Placement, Items, and Quests | Plan or seed module data after the migrations: Characters checks the stored looks against changed appearance content, Placement mirrors the topology, Items has the quest catalog's item references checked, then mirrors the item catalog and recomputes carry state for a changed catalog, and Quests mirrors the quest catalog. `PlanAsync` names what `SeedAsync` would change and changes nothing |
 
 Every contract and every SPI except `IDatabaseSeeder`,
@@ -916,14 +917,26 @@ the character lock first.
 
 Every statement that locks several simulation sessions locks them in ascending
 id order, so none of them can deadlock with another: the session heartbeat,
-which locks the sessions it renews `FOR NO KEY UPDATE` in a locking CTE and
-renews them in the same statement, a checkpoint, which locks its sessions
-`FOR SHARE`, and the release of a worker runtime's sessions when the runtime
-goes offline or a new runtime replaces it. The heartbeat takes no other lock,
-every other statement that waits for a session locks one session at most, and
-retention skips locked sessions. A session that one of them waited for is
-checked again in its newest version, so a session released meanwhile is
-skipped.
+which locks the sessions it renews `FOR NO KEY UPDATE`, a checkpoint, which
+locks its sessions `FOR SHARE`, and the release of a worker runtime's sessions
+when the runtime goes offline or a new runtime replaces it. Every other
+statement that waits for a session locks one session at most, and retention
+skips locked sessions. A session that one of them waited for is checked again
+in its newest version, so a session released meanwhile is skipped.
+
+The session heartbeat locks its sessions in a statement of its own inside a
+short transaction and renews them in the next statement. That statement reads
+the account sessions with a snapshot taken after the lock, so it sees what a
+login or logout that the lock waited for committed and names that end. The
+transaction takes no other lock. After it committed, the heartbeat extends the
+account sessions of the renewed sessions through
+`IAccountSessionActivity.ExtendAsync` in a statement of its own, which locks
+those account sessions `FOR NO KEY UPDATE` in ascending id order and nothing
+else. A login locks the account, then its account sessions, then, through the
+lifecycle handler, its simulation sessions, so the heartbeat never holds a
+simulation session while it waits for an account session, against that order.
+The account session that a token resolve extends is the only lock of its
+statement.
 
 A session release that carries a final state and a checkpoint read the
 sessions' characters without a lock, lock those characters `FOR KEY SHARE` in
@@ -1158,7 +1171,7 @@ whether they are empty in the next statement.
 | `join_tickets` | Placement | SessionHistory | Consumed and expired join tickets | the consume, or the expiry | it is pending |
 | `simulation_sessions` | Placement | SessionHistory | Released and expired simulation sessions | the release, or the lease's expiry | it is live, or a join ticket names it |
 | `simulation_assignments` | Placement | SessionHistory | Released SimulationAssignments | `released_at` | it is active |
-| `account_sessions` | Accounts | SessionHistory | Account sessions | the token's expiry, also when the session was revoked earlier | a simulation session or a join ticket names it |
+| `account_sessions` | Accounts | SessionHistory | Account sessions | the token's stored end, also when the session was revoked earlier | a simulation session or a join ticket names it |
 
 The gold ledger, `character_currency_ledger`, is never trimmed.
 
@@ -1172,9 +1185,14 @@ cannot read Placement's tables, so `IAccountSessionReferences`, which Placement
 implements, gives it the condition that nothing names an account session.
 Without it, their foreign keys would set the name to null, and a simulation
 session without an account session counts as unbound, not ended. An account
-session counts from the expiry of its token, so a replaced token answers
-`account_session_replaced` for its whole lifetime and the window after it, and
-the session cache never holds an entry for a deleted row.
+session counts from the stored end of its token, `expires_at`, so a replaced
+token answers `account_session_replaced` for its whole lifetime and the window
+after it, and the session cache never holds an entry for a deleted row.
+Activity moves that end only while the session is active, so it never moves a
+session that is due, and an extension never revives a deleted row. A session
+that a live simulation session holds past its stored end ends later, when that
+simulation session is released, but it stays as long as the simulation session
+names it, so it is kept a window after its real end too.
 
 A retried item operation id is answered from `item_operations` while its row
 exists; once retention deleted it, the same id runs again. Players' ids are
@@ -1216,7 +1234,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds` | `PlatformOptions` |
 | `Retention:*` | `RetentionOptions` of Platform, which `PlatformOptions` carries |
-| `Auth:SessionLifetimeHours`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
+| `Auth:SessionIdleLifetimeDays`, `Auth:SessionMaximumLifetimeDays`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Quests:CatalogPath` | `QuestsModuleOptions` |
@@ -1259,8 +1277,8 @@ the statement ids.
 | S9 | Ticket consume locks the character | Chr L | `ICharacterLocks.LockForUpdateAsync` |
 | S10 | Ticket consume reads character name and account session | Chr R, Acc R | `CharactersSql` and `AccountsSql` fragments in one statement |
 | S11 | Ticket consume locks carry state | Itm L | `ISimulationCharacterStateProvider.LockForSessionStartAsync` |
-| S12 | Session heartbeat marks the sessions whose account session expired and reads the carry states of the renewed sessions | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetManyAsync` |
-| S13 | Session heartbeat, the session authority, and the look change read the revocation reason for how the account session ended | Acc R | `AccountsSql.IsActiveOrUnboundSession` and `AccountsSql.RevocationReasonOf` in `SimulationAccountSessionEndSql` |
+| S12 | Session heartbeat marks the sessions whose account session ended and reads the carry states of the renewed sessions | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetManyAsync` |
+| S13 | Session heartbeat, ticket consume, the session authority, and the look change read whether the account session is active and the revocation reason for how it ended | Acc R | `AccountsSql.IsActiveOrUnboundSession` with Placement's held condition in `SimulationAccountSessionReferences.IsActiveOrUnbound`, and `AccountsSql.RevocationReasonOf` in `SimulationAccountSessionEndSql` |
 | S14 | Session release reads carry state | Itm R | `ISimulationCharacterStateProvider.GetAsync` |
 | S15 | World rebind counts open corpses | Itm R | `IShardWorldLocalStateProbe` |
 | S17 | Carry recompute batch filters active characters | Chr R | `CharactersSql.ActiveCharacters` |
@@ -1314,6 +1332,8 @@ the statement ids.
 | S68 | A session release with a final state locks the character and saves the state in the release's transaction | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 | S69 | A checkpoint locks the characters of the worker runtime's active sessions and saves their states in one statement | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 | S70 | The retention of account sessions keeps every account session that a simulation session or join ticket names | Plc R | `IAccountSessionReferences.IsUnreferenced`, the condition that Placement's `SimulationAccountSessionReferences` gives, in Accounts' `AccountSessionRetentionTask`, because Accounts lies below Placement and cannot reference `PlacementSql` |
+| S71 | The rule of an active account session reads whether a live simulation session holds it, in the token resolve and the extension of Accounts and in every Placement statement of S13 | Plc R | `IAccountSessionReferences.IsHeld`, given to `AccountsSql.IsActiveSession` |
+| S72 | The session heartbeat extends the account sessions of the renewed sessions after its renewal committed | Acc L, W | `IAccountSessionActivity.ExtendAsync` in `SimulationSessionService` |
 
 Notes on specific statements:
 

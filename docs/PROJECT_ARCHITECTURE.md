@@ -1022,7 +1022,7 @@ transaction protocol stay authoritative for corpse contents.
 | --- | --- |
 | `schema_migrations` | Applied migration history |
 | `accounts` | Global account identity and password hash |
-| `account_sessions` | Account login sessions with their token hash, expiry, and revocation reason |
+| `account_sessions` | Account login sessions with their token hash, login time, the end that activity moves, and revocation reason |
 | `characters` | Global characters owned by accounts, with their name, level, and currency balance |
 | `character_currency_ledger` | Append-only record of every currency change with source kind, source id, item operation, signed delta, and balance after |
 | `character_appearances` | One row per character with its body model, its look choices, and whether its headwear is lowered |
@@ -1139,14 +1139,18 @@ timeout.
 
 Registration and login issue opaque account tokens. PostgreSQL stores only a
 SHA-256 hash. Protected routes use the `AccountSession` ASP.NET authentication
-scheme and policy.
+scheme and policy. A token lasts 14 days without activity and 90 days after its
+login at most, but never ends by the clock while its player is in the World;
+requests and play extend it, as
+[Account Session Lifetime](SERVICE_FEATURES.md#account-session-lifetime)
+describes. The server's `401` is the only truth about a token's end.
 
 A later login replaces the prior account session in one transaction, consumes
 its tickets, and marks its active simulation sessions instead of releasing
 them, so the character's body stays in the world its full time. Logout and
 manual revocation perform the same dependent cleanup with distinct reason
-codes, and the session heartbeat marks a session whose account session
-expired. A marked session runs only the body's own work: its death, its spent
+codes, and the session heartbeat marks a session whose account session ended
+without such a transaction. A marked session runs only the body's own work: its death, its spent
 arrows, its quest kill credits, the reads they need, checkpoints, and the
 release. GameService refuses everything a client asks for on it with `401` and
 `account_session_replaced` or `account_session_ended`, and its heartbeat names

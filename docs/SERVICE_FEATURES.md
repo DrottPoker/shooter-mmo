@@ -110,8 +110,8 @@ uses them.
   logins and registrations waits or is refused with `auth_busy` instead of
   taking every core and thread of GameService.
 - Account tokens are opaque and only their SHA-256 hashes are stored.
-- PostgreSQL enforces one unrevoked account session per account. A session
-  lives `Auth:SessionLifetimeHours`.
+- PostgreSQL enforces one unrevoked account session per account. Its lifetime
+  is described in [Account Session Lifetime](#account-session-lifetime).
 - A successful login locks the account, revokes the older session with the
   stored reason `session_replaced` and the client error code
   `account_session_replaced`, consumes its pending tickets, marks its active
@@ -129,6 +129,38 @@ with `rate_limit_exceeded` in Problem Details and a `Retry-After` that counts
 down to the end of the current window. The policy is taken from the matched
 endpoint, so a different path casing such as `/api/accounts/LOGIN` cannot skip
 the distributed limit.
+
+### Account Session Lifetime
+
+An account session ends at the earlier of its last activity plus
+`Auth:SessionIdleLifetimeDays`, 14 by default, and its login plus
+`Auth:SessionMaximumLifetimeDays`, 90 by default. `account_sessions.expires_at`
+holds that end and `created_at` the login:
+
+- A login or registration starts the session with the end of the idle lifetime,
+  and its answer's `expiresAt` is that end. Activity moves it later, so a
+  client treats it as the end at the time of the answer, not as a deadline, and
+  takes a `401` as the only sign that the session ended.
+- Two things count as activity. An authenticated request whose token is
+  resolved from PostgreSQL, which happens when the
+  [session cache](#redis-account-session-acceleration) has no entry for it,
+  about once a minute for a client in use. And a live simulation session bound
+  to the account session, through the
+  [session heartbeat](#session-heartbeat), because a player in the World makes no
+  requests of its own.
+- Activity moves the end to the idle lifetime from now, never past the maximum
+  lifetime, and writes it only when that moves it by more than an hour. The
+  condition is part of the statement that writes, so a session in use costs at
+  most one write an hour, and a check that moves nothing writes nothing.
+- A session is active while it is not revoked and either its end has not passed
+  or a live simulation session holds it: one that is neither released nor past
+  its lease, also while the character's body stays after a leave. The clock
+  therefore never ends the session of a player in the World. Once the player's
+  simulation session is released, a session past its end ended at once, and the
+  next request answers `401` `invalid_session_token`, as for any expired session.
+- A logout, a revoke, and a new login end a session at once, also while its
+  player is in the World, as [Account Session End](#account-session-end)
+  describes. A session that ended is never extended again.
 
 ### Password Hashing Lane
 
@@ -385,10 +417,14 @@ answers `sessions` in the request's order, one entry per session with its
   renewed session whose character has no item state. The others of the request
   are renewed all the same.
 
-One statement renews every valid lease and marks the ended account sessions,
-and one more reads the carry states of the renewed characters, whatever the
-number of sessions. The sessions of development bots are renewed in memory in
-the same request. A request is refused with `400` as a whole when it is
+The statements are the same for any number of sessions. A short transaction
+locks the valid sessions in one statement and, in the next, renews their leases,
+marks the sessions whose account session ended, and reads how each ended, so the
+answer names a new login that the lock waited for as `account_session_replaced`.
+After it committed, one statement moves the end of the account sessions of the
+renewed sessions, as [Account Session Lifetime](#account-session-lifetime)
+describes, and one more reads the carry states of the renewed characters. The
+sessions of development bots are renewed in memory in the same request. A request is refused with `400` as a whole when it is
 malformed: `invalid_simulation_worker_identity` for a missing runtime id,
 `invalid_simulation_session_heartbeat` for no session, more than 500, or a
 session named twice, `invalid_simulation_session_id` for an entry without a
@@ -409,17 +445,18 @@ session: a lease that is not renewed ends by the session's local deadline.
 
 ### Account Session End
 
-When an account session ends, by a logout, a manual revoke, a new login that
-replaces it, or its expiry, the simulation session of the account goes on, so
-the character's body stays in the world its full time, as
-[Lingering Bodies](#lingering-bodies) describes:
+When an account session ends, by a logout, a manual revoke, or a new login that
+replaces it, the simulation session of the account goes on, so the character's
+body stays in the world its full time, as [Lingering Bodies](#lingering-bodies)
+describes. The clock never ends the account session of a live simulation
+session, as [Account Session Lifetime](#account-session-lifetime) describes:
 
 - A logout, a revoke, and a new login mark the account's unreleased simulation
   sessions with `account_session_ended_at` in their own transaction instead of
-  releasing them, and consume the account's pending join tickets as before. An
-  account session that expired is not seen by any transaction, so the session
-  heartbeat marks it. Every check counts an expired account session as ended at
-  once, also before the heartbeat marked it.
+  releasing them, and consume the account's pending join tickets as before.
+  The session heartbeat marks a session whose account session ended without
+  such a transaction, and every check counts such an end at once, also before
+  the heartbeat marked it.
 - The session heartbeat keeps renewing a marked session's lease and answers
   `accountSessionEnded` in the session's lease: `account_session_replaced` when
   a new login replaced the account session, `account_session_ended` for any
@@ -550,8 +587,9 @@ valid, the character's entity stays in the world as a lingering body for
   and is saved as its respawn would leave it; it never respawns. The release
   waits for the spent arrows, the death, and the quest credits that the body
   still commits.
-- The end of the account session, by a logout, a new login, or its expiry,
-  does not end the simulation session, as
+- The end of the account session, by a logout or a new login, does not end the
+  simulation session, and the clock does not end the account session of a body
+  either, as
   [Account Session End](#account-session-end) describes: a connected player
   becomes a body, and a body stays its full time.
 - A body whose session ended goes at once without a release, with the
@@ -1902,10 +1940,13 @@ on the wire is in [Realtime Protocol](REALTIME_PROTOCOL.md).
 
 GameService uses Redis as a bounded cache-aside accelerator for successful
 account-session validation. Token hashes, never bearer tokens, identify cache
-entries below the `RedisAcceleration:KeyPrefix`. Every entry expires no later
-than both `SessionCacheTtlSeconds` and the durable PostgreSQL session expiry. A
-cache miss, corrupt value, tombstone, or Redis read failure falls back to
-PostgreSQL. `RedisAcceleration:SessionCacheEnabled=false` measures the
+entries below the `RedisAcceleration:KeyPrefix`. Every entry carries the end
+that the session had when it was cached and expires no later than both
+`SessionCacheTtlSeconds` and that end, so it never outlives the session's end,
+and a later end that activity wrote shows at the next resolve that reaches
+PostgreSQL. A session that is past its end but held by a live simulation
+session is never cached. A cache miss, corrupt value, tombstone, or Redis read
+failure falls back to PostgreSQL. `RedisAcceleration:SessionCacheEnabled=false` measures the
 PostgreSQL validation path without disabling the distributed rate limit, and
 `RedisAcceleration:Enabled=false` stops every Redis use except the readiness
 check.
@@ -1955,7 +1996,8 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Retention:PassBudgetPercent` | `80` | The share of the interval that one pass may use, 1 to 100 |
 | `Retention:ItemHistory` | `14.00:00:00` | How long item operations with their journal, item destructions, claimed Recovery deliveries, closed corpses with their death events, and live Mob loot grants stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment, for a soak or a test |
 | `Retention:SessionHistory` | `14.00:00:00` | How long account sessions, simulation sessions, join tickets, and released SimulationAssignments stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment |
-| `Auth:SessionLifetimeHours` | `24` | Account session lifetime, 1 to 720 hours |
+| `Auth:SessionIdleLifetimeDays` | `14` | How long an account session lasts without activity, 1 to 365 days, as [Account Session Lifetime](#account-session-lifetime) describes |
+| `Auth:SessionMaximumLifetimeDays` | `90` | How long an account session lasts after its login at most, outside the World, from the idle lifetime to 3,650 days. A start that still sets the removed `Auth:SessionLifetimeHours` fails and names these two settings |
 | `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
 | `Auth:PasswordHashing:MaxWaitSeconds` | `10` | The longest a registration or login waits for its hash before it is refused with `auth_busy`, 1 to 10 seconds: a client allows a queued login 10 seconds on top of its request timeout, so the server may not queue longer |
 | `RateLimiting:Authentication:PermitLimit`, `WindowSeconds` | `5`, `60` | Login and registration requests per remote address and window, each limited separately |

@@ -166,7 +166,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             var configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Auth:SessionLifetimeHours"] = "24",
+                    ["Auth:SessionIdleLifetimeDays"] = "14",
+                    ["Auth:SessionMaximumLifetimeDays"] = "90",
                     ["Game:MaxCharactersPerAccount"] = "5",
                     ["Simulation:JoinTicketLifetimeSeconds"] = "30",
                     ["Simulation:SessionLeaseLifetimeSeconds"] = "60",

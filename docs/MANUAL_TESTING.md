@@ -469,6 +469,26 @@ still leaves 20 seconds after the leave, when the worker logs `The body of
 character <name> (<character-id>) left shard local-shard-1: left_shard.` with
 its simulation session.
 
+### A Login Past Its End In The World
+
+Needs a character that entered `Local Shard 1`, as
+[Register, Create, And Join](#register-create-and-join) describes.
+
+1. As [Look Into The Database](#look-into-the-database) describes, put the login
+   past its idle end and its maximum lifetime: `update account_sessions set
+   created_at = now() - interval '100 days', expires_at = now() - interval '1
+   hour' where revoked_at is null and account_id = (select id from accounts
+   where username = '<your login>');`.
+2. Stay in the World for two minutes: walk, open the inventory, and talk to
+   Mira.
+3. Press F2, click `Leave Shard`, and wait at CharacterSelect for 40 seconds.
+
+Expected result: in step 2 the client stays in the World and everything works,
+because the clock never ends the login of a player in the World. In step 3
+CharacterSelect works while the body stays, and within a few seconds after the
+body left the world, about 20 seconds after the leave, the client returns to
+LoginMenu, whose card says `Your login has expired. Log in again.`
+
 ### Place And Vitals Across A Logout
 
 Needs the stack and a character that entered `Local Shard 1`, as
@@ -3076,6 +3096,26 @@ $character.id
 Expected result: the registration returns a session token and a `sessionId`,
 and the character is created. Token-bearing responses carry `Cache-Control:
 no-store` and `Pragma: no-cache`.
+
+### A Login That Lasts While It Is Used
+
+Continue with `$auth` and `$headers` of [Account And Character](#account-and-character):
+
+1. Read the session as [Look Into The Database](#look-into-the-database)
+   describes, with `select created_at, expires_at, expires_at - created_at as
+   lifetime from account_sessions where id = '<sessionId>';`.
+2. Pull its end closer, as if the client had not been used for 13 days:
+   `update account_sessions set expires_at = now() + interval '1 day' where id =
+   '<sessionId>';`.
+3. Wait 65 seconds, so the session cache has no entry for the token, call
+   `Invoke-RestMethod http://localhost:5000/api/accounts/session -Headers
+   $headers`, and read the session again.
+4. Wait 65 seconds more, call it again, and read the session again.
+
+Expected result: in step 1 the lifetime is `14 days` and `expires_at` equals
+`$auth.expiresAt`. After step 3 `expires_at` lies 14 days from now again, and
+after step 4 it is unchanged, because activity writes the end at most once an
+hour.
 
 ### Item Reads
 

@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Placement.Development;
+using Mmorpg.GameService.Placement.Integration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
@@ -768,7 +769,7 @@ internal sealed class ShardService(
               and ticket.expires_at > clock_timestamp()
               and ticket.simulation_worker_id is not null
               and ticket.worker_runtime_id is not null
-              and {AccountsSql.IsActiveOrUnboundSession("ticket.account_session_id")}
+              and {SimulationAccountSessionReferences.IsActiveOrUnbound("ticket.account_session_id")}
             for update of ticket;
             """;
 

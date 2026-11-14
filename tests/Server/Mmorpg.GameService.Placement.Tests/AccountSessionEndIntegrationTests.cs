@@ -10,11 +10,12 @@ using Mmorpg.Testing;
 
 namespace Mmorpg.GameService.Placement.Tests;
 
-// When an account session ends, by a logout, a new login, or its expiry, the account's simulation
-// session is marked instead of released, so the character's body stays in the world: its lease goes
-// on, the heartbeat names the end, and only a reconnect of the same character by the new account
-// session clears the mark. Nothing that holds only the old account session gets a ticket, another
-// character stays refused, and the session still ends by its lease or a worker release.
+// When an account session ends, by a logout or a new login, the account's simulation session is
+// marked instead of released, so the character's body stays in the world: its lease goes on, the
+// heartbeat names the end, and only a reconnect of the same character by the new account session
+// clears the mark. Nothing that holds only the old account session gets a ticket, another
+// character stays refused, and the session still ends by its lease or a worker release. The clock
+// never ends the account session of a player in the World.
 public sealed class AccountSessionEndIntegrationTests
 {
     private const string WorkerId = "local-simulation-worker-1";
@@ -130,26 +131,52 @@ public sealed class AccountSessionEndIntegrationTests
         Assert.Equal("invalid_ticket", consumed.Error!.Code);
     }
 
-    // An account session that expired ends like a logout: every check counts it at once, and the
-    // heartbeat marks the session and names the end.
+    // The clock never ends the account session of a player in the World: past its idle end and its
+    // maximum lifetime it stays active for every check while its simulation session lives, and the
+    // heartbeat neither marks it nor moves an end past the maximum. Once the session is released,
+    // it ends at once, as an expired session ended before.
     [PostgresIntegrationFact]
-    public async Task AnExpiredAccountSessionIsMarkedByTheHeartbeat()
+    public async Task AnAccountSessionPastBothEndsLastsWhileItsPlayerIsInTheWorld()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync();
         var session = await JoinAsync(context, player.Account, player.Character.Id);
         await context.ExecuteAsync(
-            $"update account_sessions set expires_at = now() - interval '1 second' where id = '{player.Account.SessionId}';");
+            $"""
+            update account_sessions
+            set created_at = now() - interval '100 days',
+                expires_at = now() - interval '1 hour'
+            where id = '{player.Account.SessionId}';
+            """);
+        var end = await AccountSessionEndAsync(context, player.Account.SessionId);
 
-        Assert.Equal("live", await StateAsync(context, session.SimulationSessionId));
         var facts = await LockAsync(context, session.SimulationSessionId);
         Assert.True(facts.IsLive);
-        Assert.Equal(SimulationAccountSessionEnd.Ended, facts.AccountSessionEnd);
-        Assert.False(facts.IsActive);
-
+        Assert.Null(facts.AccountSessionEnd);
+        Assert.True(facts.IsActive);
         var heartbeat = await RenewAsync(context, session);
-        Assert.Equal(SimulationAccountSessionEndCodes.Ended, heartbeat.AccountSessionEnded);
-        Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
+        Assert.Null(heartbeat.AccountSessionEnded);
+        Assert.Equal("live", await StateAsync(context, session.SimulationSessionId));
+        Assert.Equal(end, await AccountSessionEndAsync(context, player.Account.SessionId));
+        Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
+            player.Registration.SessionToken,
+            CancellationToken.None));
+
+        var released = await context.SimulationSessionService.ReleaseAsync(
+            session.SimulationSessionId,
+            WorkerId,
+            new SimulationSessionReleaseRequest(RuntimeId, session.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(released.Succeeded, released.Error?.Message);
+
+        Assert.Equal(
+            "invalid_session_token",
+            (await context.SessionService.ResolveTokenAsync(player.Registration.SessionToken, CancellationToken.None)).ErrorCode);
+        Assert.Equal(end, await AccountSessionEndAsync(context, player.Account.SessionId));
+        var ticket = await TicketAsync(context, player.Account, player.Character.Id);
+        Assert.True(ticket.Succeeded, ticket.Error?.Message);
+        var consumed = await ConsumeAsync(context, ticket.Value!.JoinTicket);
+        Assert.Equal(StatusCodes.Status401Unauthorized, consumed.StatusCode);
     }
 
     // Nobody renews a marked session whose worker died, so its lease expires as any lease does,
@@ -355,6 +382,13 @@ public sealed class AccountSessionEndIntegrationTests
             CancellationToken.None);
         await transaction.RollbackAsync();
         return Assert.IsType<SimulationSessionReadAuthority>(session);
+    }
+
+    // The stored end of an account session, as text.
+    private static Task<string?> AccountSessionEndAsync(PostgresIntegrationTestContext context, Guid accountSessionId)
+    {
+        return context.ExecuteScalarStringAsync(
+            $"select expires_at::text from account_sessions where id = '{accountSessionId}';");
     }
 
     // Whether the session is live or released, and whether it carries the mark.

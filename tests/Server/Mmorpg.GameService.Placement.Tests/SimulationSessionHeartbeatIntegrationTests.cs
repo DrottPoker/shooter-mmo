@@ -7,10 +7,10 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Placement.Tests;
 
-// One session heartbeat renews the leases of all the sessions of a worker runtime that it names:
-// one statement renews them and one reads their carry states. Every session is answered on its
-// own, in the request's order, so a refused session never fails the others, and the sessions are
-// locked in ascending id order, as every statement that locks several sessions locks them.
+// One session heartbeat renews the leases of all the sessions of a worker runtime that it names,
+// with the same statements for any number of sessions. Every session is answered on its own, in
+// the request's order, so a refused session never fails the others, and the sessions are locked in
+// ascending id order, as every statement that locks several sessions locks them.
 public sealed class SimulationSessionHeartbeatIntegrationTests
 {
     private const string WorkerId = "local-simulation-worker-1";
@@ -93,8 +93,11 @@ public sealed class SimulationSessionHeartbeatIntegrationTests
 
     // The whole batch costs two statements and no transaction: the update of every lease, which
     // commits on its own, and then the read of every carry state.
+    // The whole batch costs the same statements as one session: a short transaction that locks the
+    // sessions and renews them, then the extension of their account sessions and the read of their
+    // carry states, which both run after the renewal committed.
     [PostgresIntegrationFact]
-    public async Task AHeartbeatOfManySessionsRunsTwoStatements()
+    public async Task AHeartbeatOfManySessionsRunsFourStatements()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var sessions = new List<ConsumedSimulationJoinTicketResponse>();
@@ -123,10 +126,19 @@ public sealed class SimulationSessionHeartbeatIntegrationTests
 
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
         Assert.All(heartbeat.Value!.Sessions, result => Assert.NotNull(result.Lease));
-        Assert.Collection(
-            trace,
-            line => Assert.Contains("update character_simulation_sessions set last_heartbeat_at", line, StringComparison.Ordinal),
-            line => Assert.Contains("from character_item_states state where state.character_id = any(", line, StringComparison.Ordinal));
+        string[] expected =
+        [
+            "c1 begin",
+            "order by simulation_session.id for no key update of simulation_session",
+            "update character_simulation_sessions set last_heartbeat_at",
+            "c1 commit",
+            "update account_sessions account_session set expires_at",
+            "from character_item_states state where state.character_id = any("
+        ];
+        Assert.True(
+            trace.Count == expected.Length
+                && trace.Zip(expected).All(pair => pair.First.Contains(pair.Second, StringComparison.Ordinal)),
+            string.Join(Environment.NewLine, trace));
     }
 
     // The batch takes its session locks in ascending id order: while it waits for the highest
