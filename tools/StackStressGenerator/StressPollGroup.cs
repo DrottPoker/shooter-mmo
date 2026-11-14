@@ -111,8 +111,16 @@ public sealed class StressPollGroup : IDisposable
                 }
             }
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (OperationCanceledException) when (stopping || cancellationToken.IsCancellationRequested)
         {
+            // The run was cancelled or the group stops while a bot waited on something, such as
+            // an inventory refresh. The thread ends and the coordinator's cancellation path
+            // cleans up. Nothing may escape this method: an unhandled exception on a dedicated
+            // thread ends the whole process.
+        }
+        catch (Exception exception)
+        {
+            // Also a cancellation that nobody asked for.
             failure = exception;
         }
     }
