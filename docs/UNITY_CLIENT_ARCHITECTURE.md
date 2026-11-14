@@ -2921,7 +2921,9 @@ What the baseline says:
 - **The frame grows by about 3 ms per 100 dressed bodies in view**, and the
   built client holds 60 frames per second with 400 of them on this machine,
   with about 3 ms to spare at the median and none at the 95th percentile.
-- **No frame was longer than 36 ms**, also while 400 bodies came into view.
+- **No recorded frame was longer than 36 ms.** The recording starts when the
+  whole crowd is shown, so the frames while the bodies come into view are not
+  part of it and are not measured.
 - **The whole crowd is shown about 1.7 s per 100 bodies** after the World
   scene has loaded.
 - **Remote players starve at 400 in view, and not at 200.** The owner

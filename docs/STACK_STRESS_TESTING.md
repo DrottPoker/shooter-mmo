@@ -1661,7 +1661,7 @@ The same measurements also say what does not need work now:
   loopback; only the tick and the update rate fail there.
 - **The built client's frame** stays below 8 ms at the median with 200 dressed
   players in view and below 14 ms with 400, and no frame took longer than
-  36 ms.
+  36 ms once the whole crowd was shown.
 
 ## Scope Boundary
 
