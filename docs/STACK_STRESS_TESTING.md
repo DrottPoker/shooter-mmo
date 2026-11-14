@@ -1605,10 +1605,58 @@ reports.
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
    ms, was partly the generator's own lateness: with four threads it is 115 ms.
+9. **A graceful leave can end as a lost connection on a lossy line.** After
+   `LeaveAccepted` the worker disconnects the peer 250 ms later. When that
+   reliable message is lost or waits behind a lost one, the disconnect arrives
+   first: 2, 25, and 58 of 100 bots under `normal`, `poor`, and `terrible`, and
+   a Unity client's first leave after two minutes of play under `terrible`.
+   The client then shows Character Select with neither the body's countdown
+   nor a message, although the body stands. The same 250 ms follows every
+   disconnect that carries a reason.
+10. **Reliable intents get a long tail as soon as packets are lost.** Under
+    `poor` the median answer takes about one round trip, but one answer in
+    twenty takes 0.4 to 1.6 seconds, and 2 to 7 seconds under `terrible`. The
+    likely cause, not proven, is that every intent shares one reliable ordered
+    channel, so one lost packet holds back everything behind it.
+11. **An outage of the line snaps a walking character back.** The worker fills
+    at most 15 lost inputs; after a longer gap the character has stood still
+    on the worker, and the client is corrected by what it walked meanwhile,
+    about 9 m after 3 seconds.
+12. **Other players stand still when their snapshots run out**, for up to half
+    a second under `poor`, and for up to half a second right after every join
+    under `normal` and worse, because their presentation stops at the newest
+    state.
+13. **A durable Mob corpse gives part of a stack.** The rule that a Mob corpse
+    gives whole items only is enforced for live corpses on the worker and in
+    the Unity client, not by GameService for durable corpses.
+14. **The built client's crowd baseline is not recorded yet.** Every attempt on
+    2026-11-14 was disturbed by another program;
+    [Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+    describes the run.
+
+Entries 9 to 12 are measured in
+[Measured Under The Profiles](#measured-under-the-profiles) and
+[The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network).
 
 Smaller things the bots met are in
 [What A Playing Bot Sees And Sends](#what-a-playing-bot-sees-and-sends) and
 [Churn](#churn).
+
+### What Held
+
+The same measurements also say what does not need work now:
+
+- **Movement prediction** was never corrected at up to 200 ms round trip and
+  5 percent loss: every owner snapshot confirmed it.
+- **The shared simulation and the protocol** give the pinned golden results
+  inside an IL2CPP player, with the development and the release settings, and
+  the client runs the live scenario there without a `link.xml`.
+- **Place and health** survived all 714 leaves and returns of the soak.
+- **Memory** of the worker and GameService levels off within 30 minutes.
+- **Leases and sessions** never drifted: no session without a player, none
+  near its expiry.
+- **Operations** stay below 300 ms at the 95th percentile up to 500 players on
+  loopback; only the tick and the update rate fail there.
 
 ## Scope Boundary
 
