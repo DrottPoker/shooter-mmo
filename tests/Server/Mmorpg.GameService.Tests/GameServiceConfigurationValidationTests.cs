@@ -52,7 +52,7 @@ public sealed class GameServiceConfigurationValidationTests
         var acceleration = RedisAccelerationOptions.FromConfiguration(new ConfigurationBuilder().Build());
         var settings = AuthSettings(includeSecrets: true);
         settings["Redis:CommandTimeoutMilliseconds"] = "50";
-        settings["Auth:PasswordHashing:MaxWaitSeconds"] = "61";
+        settings["Auth:PasswordHashing:MaxWaitSeconds"] = "11";
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
@@ -70,7 +70,7 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Equal(TimeSpan.FromSeconds(10), defaults.Accounts.PasswordHashing.MaxWait);
         Assert.Equal(TimeSpan.FromSeconds(5), acceleration.SessionRevocationDeadline);
         Assert.Contains("Redis:CommandTimeoutMilliseconds must be an integer from 100 to 60000", exception.Message);
-        Assert.Contains("Auth:PasswordHashing:MaxWaitSeconds must be an integer from 1 to 60", exception.Message);
+        Assert.Contains("Auth:PasswordHashing:MaxWaitSeconds must be an integer from 1 to 10", exception.Message);
         Assert.Contains("SessionRevocationDeadlineMilliseconds must be between 100 and 30000", deadline.Message);
     }
 

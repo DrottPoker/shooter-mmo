@@ -10,7 +10,11 @@ public sealed record PasswordHashingOptions(int MaxConcurrency, TimeSpan MaxWait
     public const string MaxWaitSecondsKey = "Auth:PasswordHashing:MaxWaitSeconds";
     public const int MaximumConcurrencyLimit = 256;
     public const int DefaultMaxWaitSeconds = 10;
-    public const int MaximumWaitSecondsLimit = 60;
+
+    // The longest wait is part of the login contract: a client gives a login this many seconds
+    // on top of its request timeout (ApiClient.AuthenticationQueueSeconds in the Unity client),
+    // so a server must not be configured to queue longer.
+    public const int MaximumWaitSecondsLimit = 10;
 
     // Half of the logical processors, so hashing leaves the other half to everything else.
     public static int DefaultMaxConcurrency => Math.Max(1, Environment.ProcessorCount / 2);
