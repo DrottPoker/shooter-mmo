@@ -14,6 +14,28 @@ internal sealed class SimulationWorkerRegistryService(
 {
     private static readonly TimeSpan MaximumStartedAtClockSkew = TimeSpan.FromMinutes(10);
 
+    private const string WorkerHeartbeatReturningSql = """
+
+        returning id as "WorkerId",
+                  runtime_id as "RuntimeId",
+                  @FleetId as "FleetId",
+                  node_id as "NodeId",
+                  @ShardId as "ShardId",
+                  @WorldId as "WorldId",
+                  @RuleSet as "RuleSet",
+                  host as "Host",
+                  udp_port as "UdpPort",
+                  max_connections as "MaxConnections",
+                  active_connections as "ActiveConnections",
+                  protocol_version as "ProtocolVersion",
+                  simulation_revision as "SimulationRevision",
+                  collision_revision as "CollisionRevision",
+                  item_catalog_revision as "ItemCatalogRevision",
+                  quest_catalog_revision as "QuestCatalogRevision",
+                  last_heartbeat_at as "LastHeartbeatAt",
+                  last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil";
+        """;
+
     public async Task<ServiceResult<SimulationWorkerHeartbeatResponse>> HeartbeatAsync(
         string workerId,
         SimulationWorkerHeartbeatRequest request,
@@ -34,6 +56,25 @@ internal sealed class SimulationWorkerRegistryService(
         var normalizedWorldId = request.WorldId!.Trim();
         var normalizedRuntimeId = request.RuntimeId!.Trim();
 
+        var renewed = await TryRenewAsync(
+            normalizedWorkerId,
+            normalizedFleetId,
+            normalizedNodeId,
+            normalizedShardId,
+            normalizedWorldId,
+            request,
+            normalizedRuntimeId,
+            cancellationToken);
+        if (renewed is not null)
+        {
+            return ServiceResult<SimulationWorkerHeartbeatResponse>.Ok(renewed);
+        }
+
+        // The registration: a first heartbeat, a new runtime, a takeover of the Shard, or
+        // another World. It changes who owns the Shard, so it holds the Shard row, the workers
+        // it may change, and the assignment exclusively, in the lock order. It ends the sessions
+        // and tickets of a runtime it replaces after those locks; when that deadlocks with an
+        // operation of the replaced runtime, PostgreSQL ends one of them and both try again.
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -69,10 +110,11 @@ internal sealed class SimulationWorkerRegistryService(
                 "The simulation worker, node, and shard must belong to the same fleet.");
         }
 
-        var assignedWorker = await GetAssignedWorkerAsync(
+        var assignedWorker = await LockAssignedWorkerAsync(
             connection,
             transaction,
             normalizedShardId,
+            normalizedWorkerId,
             (int)options.WorkerHeartbeatTimeout.TotalSeconds,
             cancellationToken);
         var worldChanged = !string.Equals(
@@ -91,6 +133,21 @@ internal sealed class SimulationWorkerRegistryService(
             return ServiceResult<SimulationWorkerHeartbeatResponse>.Conflict(
                 "shard_assignment_conflict",
                 $"Shard {normalizedShardId} already has an active simulation worker assignment.");
+        }
+
+        if (worldChanged && topology.CurrentWorldId is not null)
+        {
+            // Another World needs the Shard without anything that refers to it. FOR UPDATE
+            // makes every foreign key insert of a row of the Shard wait, a join ticket, a
+            // session, or a corpse, so the counts of the blockers stay exact. It comes right
+            // after the assignment lock and before any other change: an item operation locks
+            // the assignment before it inserts a corpse, and a ticket redeem that holds the
+            // foreign key lock waits for nothing that this transaction holds yet.
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select 1 from shards where id = @ShardId for update;",
+                new { ShardId = normalizedShardId },
+                transaction,
+                cancellationToken: cancellationToken));
         }
 
         if (assignedWorker is not null
@@ -325,52 +382,152 @@ internal sealed class SimulationWorkerRegistryService(
                or simulation_workers.last_heartbeat_at
                     + make_interval(secs => @HeartbeatTimeoutSeconds) <= now()
                or simulation_workers.started_at < excluded.started_at
-            returning id as "WorkerId",
-                      runtime_id as "RuntimeId",
-                      @FleetId as "FleetId",
-                      node_id as "NodeId",
-                      @ShardId as "ShardId",
-                      @WorldId as "WorldId",
-                      @RuleSet as "RuleSet",
-                      host as "Host",
-                      udp_port as "UdpPort",
-                      max_connections as "MaxConnections",
-                      active_connections as "ActiveConnections",
-                      protocol_version as "ProtocolVersion",
-                      simulation_revision as "SimulationRevision",
-                      collision_revision as "CollisionRevision",
-                      item_catalog_revision as "ItemCatalogRevision",
-                      quest_catalog_revision as "QuestCatalogRevision",
-                      last_heartbeat_at as "LastHeartbeatAt",
-                      last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil";
-            """;
+            """ + WorkerHeartbeatReturningSql;
 
         return await connection.QuerySingleOrDefaultAsync<SimulationWorkerHeartbeatResponse>(
             new CommandDefinition(
                 sql,
-                new
-                {
-                    WorkerId = workerId,
-                    NodeId = nodeId,
-                    RuntimeId = runtimeId,
-                    request.StartedAt,
-                    Host = request.Host!.Trim(),
-                    request.UdpPort,
-                    request.MaxConnections,
-                    request.ActiveConnections,
-                    request.ProtocolVersion,
-                    SimulationRevision = request.SimulationRevision!.Trim(),
-                    CollisionRevision = request.CollisionRevision!.Trim(),
-                    ItemCatalogRevision = request.ItemCatalogRevision!.Trim(),
-                    QuestCatalogRevision = request.QuestCatalogRevision!.Trim(),
-                    FleetId = request.FleetId!.Trim(),
-                    ShardId = shardId,
-                    WorldId = worldId,
-                    RuleSet = ruleSet,
-                    HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
-                },
+                WorkerParameters(workerId, nodeId, shardId, worldId, ruleSet, request, runtimeId),
                 transaction,
                 cancellationToken: cancellationToken));
+    }
+
+    private object WorkerParameters(
+        string workerId,
+        string nodeId,
+        string shardId,
+        string worldId,
+        string ruleSet,
+        SimulationWorkerHeartbeatRequest request,
+        string runtimeId)
+    {
+        return new
+        {
+            WorkerId = workerId,
+            NodeId = nodeId,
+            RuntimeId = runtimeId,
+            request.StartedAt,
+            Host = request.Host!.Trim(),
+            request.UdpPort,
+            request.MaxConnections,
+            request.ActiveConnections,
+            request.ProtocolVersion,
+            SimulationRevision = request.SimulationRevision!.Trim(),
+            CollisionRevision = request.CollisionRevision!.Trim(),
+            ItemCatalogRevision = request.ItemCatalogRevision!.Trim(),
+            QuestCatalogRevision = request.QuestCatalogRevision!.Trim(),
+            FleetId = request.FleetId!.Trim(),
+            ShardId = shardId,
+            WorldId = worldId,
+            RuleSet = ruleSet,
+            HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
+        };
+    }
+
+    // The renewal of a heartbeat that changes nothing but the lease: the same runtime of the
+    // worker, on the Shard it is assigned to, with the World the Shard is bound to. It runs every
+    // few seconds beside the players' operations, so it takes only locks that they never wait
+    // for and that never wait for them: the Shard row FOR KEY SHARE, which a foreign key insert
+    // takes too, the worker row through its update, and the assignment FOR SHARE, as every
+    // item operation does. It follows the lock order, workers before assignments. Null means
+    // that something differs, and the registration below decides what.
+    private async Task<SimulationWorkerHeartbeatResponse?> TryRenewAsync(
+        string workerId,
+        string fleetId,
+        string nodeId,
+        string shardId,
+        string worldId,
+        SimulationWorkerHeartbeatRequest request,
+        string runtimeId,
+        CancellationToken cancellationToken)
+    {
+        const string topologySql = """
+            select shard.rule_set
+            from simulation_nodes node
+            cross join shards shard
+            join fleets fleet on fleet.id = shard.fleet_id and fleet.is_enabled
+            where node.id = @NodeId
+              and node.is_enabled
+              and node.fleet_id = @FleetId
+              and shard.id = @ShardId
+              and shard.is_enabled
+              and shard.fleet_id = @FleetId
+              and shard.world_id = @WorldId
+              and exists (
+                  select 1
+                  from world_definitions world
+                  where world.id = @WorldId)
+            for key share of shard;
+            """;
+
+        const string renewSql = """
+            update simulation_workers
+            set node_id = @NodeId,
+                host = @Host,
+                udp_port = @UdpPort,
+                max_connections = @MaxConnections,
+                active_connections = @ActiveConnections,
+                protocol_version = @ProtocolVersion,
+                simulation_revision = @SimulationRevision,
+                collision_revision = @CollisionRevision,
+                item_catalog_revision = @ItemCatalogRevision,
+                quest_catalog_revision = @QuestCatalogRevision,
+                last_heartbeat_at = now(),
+                updated_at = now()
+            where id = @WorkerId
+              and runtime_id = @RuntimeId
+              and is_online
+            """ + WorkerHeartbeatReturningSql;
+
+        const string assignmentSql = """
+            select assignment.id
+            from simulation_assignments assignment
+            where assignment.shard_id = @ShardId
+              and assignment.worker_id = @WorkerId
+              and assignment.released_at is null
+            for share of assignment;
+            """;
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var ruleSet = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            topologySql,
+            new { NodeId = nodeId, FleetId = fleetId, ShardId = shardId, WorldId = worldId },
+            transaction,
+            cancellationToken: cancellationToken));
+        if (ruleSet is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        var heartbeat = await connection.QuerySingleOrDefaultAsync<SimulationWorkerHeartbeatResponse>(
+            new CommandDefinition(
+                renewSql,
+                WorkerParameters(workerId, nodeId, shardId, worldId, ruleSet, request, runtimeId),
+                transaction,
+                cancellationToken: cancellationToken));
+        if (heartbeat is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        var assignmentId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            assignmentSql,
+            new { ShardId = shardId, WorkerId = workerId },
+            transaction,
+            cancellationToken: cancellationToken));
+        if (assignmentId is null)
+        {
+            // The rollback takes the renewal back; the registration writes the worker anew.
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return heartbeat;
     }
 
     private static async Task LockAssignedShardAsync(
@@ -390,7 +547,7 @@ internal sealed class SimulationWorkerRegistryService(
             join shards shard on shard.id = assignment.shard_id
             where worker.id = @WorkerId
               and worker.runtime_id = @RuntimeId
-            for update of shard;
+            for no key update of shard;
             """,
             new { WorkerId = workerId, RuntimeId = runtimeId },
             transaction,
@@ -422,7 +579,7 @@ internal sealed class SimulationWorkerRegistryService(
               and node.is_enabled
               and shard.id = @ShardId
               and shard.is_enabled
-            for update of shard;
+            for no key update of shard;
             """;
 
         return await connection.QuerySingleOrDefaultAsync<TopologyRow>(new CommandDefinition(
@@ -467,8 +624,8 @@ internal sealed class SimulationWorkerRegistryService(
             transaction,
             cancellationToken: cancellationToken));
 
-        // The caller holds the Shard row lock, which blocks new corpses for the Shard, so
-        // the separate count stays exact.
+        // The caller holds the Shard row FOR UPDATE, which blocks new corpses for the Shard,
+        // so the separate count stays exact.
         var openCorpses = await shardWorldLocalStateProbe.CountOpenDurableCorpsesAsync(
             new PostgresTransactionScope(connection, transaction),
             shardId,
@@ -499,30 +656,85 @@ internal sealed class SimulationWorkerRegistryService(
             cancellationToken: cancellationToken));
     }
 
-    private static async Task<AssignedWorkerRow?> GetAssignedWorkerAsync(
+    // Locks the worker that the Shard is assigned to and the registering worker, then the
+    // assignment, and only then reads the assigned worker's health. The caller holds the Shard
+    // row FOR NO KEY UPDATE, which every change of the Shard's assignment takes, so the
+    // assignment cannot change between the first read and its lock. Each step is a statement of
+    // its own: a statement that waits for a row lock still reads with the snapshot from before
+    // the wait, so a health read in the locking statement would miss the renewal it waited for
+    // and take over a worker that has just renewed its lease.
+    private static async Task<AssignedWorkerRow?> LockAssignedWorkerAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
+        string registeringWorkerId,
         int heartbeatTimeoutSeconds,
         CancellationToken cancellationToken)
     {
-        return await connection.QuerySingleOrDefaultAsync<AssignedWorkerRow>(new CommandDefinition(
-            """
-            select assignment.worker_id as "WorkerId",
-                   worker.runtime_id as "RuntimeId",
-                   coalesce(
-                       worker.is_online
-                       and worker.last_heartbeat_at is not null
-                       and worker.last_heartbeat_at
-                           + make_interval(secs => @HeartbeatTimeoutSeconds) > now(),
-                       false) as "IsHealthy"
+        const string assignedWorkerSql = """
+            select assignment.worker_id
             from simulation_assignments assignment
-            left join simulation_workers worker on worker.id = assignment.worker_id
             where assignment.shard_id = @ShardId
               and assignment.released_at is null
-            for update of assignment;
+            """;
+
+        var expectedWorkerId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            assignedWorkerSql + ";",
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        var workerIds = expectedWorkerId is null
+            ? new[] { registeringWorkerId }
+            : new[] { expectedWorkerId, registeringWorkerId };
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            select worker.id
+            from simulation_workers worker
+            where worker.id = any(@WorkerIds)
+            order by worker.id
+            for no key update of worker;
             """,
-            new { ShardId = shardId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+            new { WorkerIds = workerIds },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        var assignedWorkerId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            assignedWorkerSql + " for update of assignment;",
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+        if (!string.Equals(assignedWorkerId, expectedWorkerId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The assignment of Shard {shardId} changed under its Shard row lock.");
+        }
+
+        if (assignedWorkerId is null)
+        {
+            return null;
+        }
+
+        return await connection.QuerySingleAsync<AssignedWorkerRow>(new CommandDefinition(
+            """
+            select @WorkerId as "WorkerId",
+                   (
+                       select worker.runtime_id
+                       from simulation_workers worker
+                       where worker.id = @WorkerId
+                   ) as "RuntimeId",
+                   coalesce(
+                       (
+                           select worker.is_online
+                                  and worker.last_heartbeat_at is not null
+                                  and worker.last_heartbeat_at
+                                      + make_interval(secs => @HeartbeatTimeoutSeconds) > now()
+                           from simulation_workers worker
+                           where worker.id = @WorkerId
+                       ),
+                       false) as "IsHealthy";
+            """,
+            new { WorkerId = assignedWorkerId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
             transaction,
             cancellationToken: cancellationToken));
     }

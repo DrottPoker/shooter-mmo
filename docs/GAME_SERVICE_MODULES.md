@@ -819,6 +819,41 @@ accounts -> account_sessions -> characters (ascending id)
   -> Items (entitlement advisory lock -> character_item_states ascending -> containers and items)
 ```
 
+The Shard row is the one row that every join, session, corpse, and worker
+heartbeat of a Shard touches, so its lock modes are fixed:
+
+| Lock on the `shards` row | Who takes it | Waits for |
+| --- | --- | --- |
+| `FOR KEY SHARE` | A join ticket, the renewal of a worker heartbeat, and every foreign key insert of a row of the Shard: a ticket, a session, a corpse | Only a World rebind |
+| `FOR NO KEY UPDATE` | A worker registration and a worker going offline, which change who owns the Shard | Each other and a World rebind |
+| `FOR UPDATE` | Only a World rebind, so no row of the Shard can appear while it counts what blocks it | Everything above |
+
+No normal traffic takes more than `FOR KEY SHARE`, so joins, ticket redeems,
+deaths, and heartbeats of one Shard never queue on its row. A worker heartbeat
+has two paths. The renewal, every heartbeat that changes nothing but the lease,
+updates the worker row and then holds the assignment `FOR SHARE`, the lock of
+every item operation, in the lock order. The registration, a first heartbeat, a
+new runtime, a takeover, or another World, locks the worker the Shard is
+assigned to and its own worker row, then the assignment `FOR UPDATE`, and reads
+the assigned worker's health only after that, in a statement of its own, so it
+never takes over a worker whose renewal it waited for. A World rebind then
+raises its Shard lock to `FOR UPDATE` before it changes anything else. The
+registration ends the sessions and tickets of a runtime it replaces after these
+locks, against the lock order; it runs once per worker start, and when that
+deadlocks with an operation of the replaced runtime, PostgreSQL ends one of
+them and both sides try again. Every statement here that needs a current value
+after a lock reads it in the statement after the one that took the lock,
+because a statement that waits for a row lock still reads with the snapshot
+from before the wait.
+A join locks the worker row `FOR NO KEY UPDATE` in a statement of its own and
+counts the worker's capacity in the next one, because a statement that waits
+for a row lock still counts with the snapshot from before the wait. The lock
+serializes the joins of one worker until their ticket is committed and lets the
+foreign key insert of a session through. A join reads the catalog revisions
+before it, so it holds the lock, which the worker's heartbeat waits for, only
+for the count and the ticket insert. `ShardRowLockIntegrationTests` holds each of these locks
+and checks who waits.
+
 `ICharacterQuestLog` takes no lock of its own. Its writes run only in
 transactions that already hold the character's lock, and the revision upsert
 that starts every write locks the quest log row of that character, so a quest
@@ -1040,9 +1075,9 @@ Notes on specific statements:
   see an item revision that committed in between, which is newer, never older. A
   missing item state still returns `401` and the lease update still commits.
 - S15 counts open durable corpses in a second statement in the same transaction
-  as Placement's own blocker count. The transaction holds the Shard row lock,
-  which blocks the foreign key lock that a new corpse needs, so the count stays
-  exact.
+  as Placement's own blocker count. The transaction holds the Shard row
+  `FOR UPDATE`, which blocks the foreign key lock that a new corpse needs, so
+  the count stays exact.
 
 `TableOwnershipTests` scans the GameService sources for `from`, `join`, `into`,
 and `update` on owned tables and fails on any foreign table outside the frozen
