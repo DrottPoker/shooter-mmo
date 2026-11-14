@@ -1064,7 +1064,9 @@ seconds, `Retention__ItemHistory`, `Retention__SessionHistory`, and
 `Retention__IntervalSeconds` in their `gameServiceSettings`. Once the window and
 two passes went by in the steady interval, every row written before it is due,
 and the generator counts `item_operations` and `item_operation_changes` again:
-the retention sample. While retention keeps up, both tables hold about one
+the retention sample. The counts leave out the operations of deaths with their
+journal rows, which stay until their corpse is gone, the corpse's lifetime and
+a second window later. While retention keeps up, both tables hold about one
 window of operations from then on and stay level. The rule
 `retained_table_growth` of the [Quality Boundary](#quality-boundary) judges how
 much they grew from the retention sample to the end of the steady interval, and
@@ -1368,7 +1370,7 @@ worker-only mode, passes and says so.
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
 | `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
-| `retained_table_growth` | `item_operations` and `item_operation_changes` grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
+| `retained_table_growth` | `item_operations` and `item_operation_changes`, without the operations of deaths, which stay until their corpse is gone, grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
 | `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
 | `worker_heartbeat_failures` | 0 warning lines of a failed worker registry heartbeat over the run, counted once the services stopped | Two failures in a row let the worker's registration lease expire, and the worker stops itself |

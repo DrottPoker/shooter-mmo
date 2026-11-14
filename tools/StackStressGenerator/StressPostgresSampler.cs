@@ -438,9 +438,24 @@ public sealed class StressPostgresSampler : IAsyncDisposable
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
+        // The operation of a death stays until its death event leaves with its corpse, which is
+        // the corpse's lifetime and a second window later, so it and its journal rows are left
+        // out: they would grow past the sample without any retention backlog.
         command.CommandText = """
-            select (select count(*) from item_operations),
-                   (select count(*) from item_operation_changes);
+            select (
+                       select count(*)
+                       from item_operations operation
+                       where not exists (
+                           select 1
+                           from death_events event
+                           where event.operation_id = operation.operation_id)),
+                   (
+                       select count(*)
+                       from item_operation_changes change
+                       where not exists (
+                           select 1
+                           from death_events event
+                           where event.operation_id = change.operation_id));
             """;
         command.CommandTimeout = TableCountTimeoutSeconds;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
