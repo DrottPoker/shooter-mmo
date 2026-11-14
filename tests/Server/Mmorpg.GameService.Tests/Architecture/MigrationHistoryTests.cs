@@ -58,7 +58,10 @@ public sealed class MigrationHistoryTests
         "202611101200_corpse_source_character_name 8b67f89ae92aa25e07cd2f96e91a950edc69194a2dbe1f28bc5caa8b3d3ff79f",
         "202611101300_item_catalog_names_removal 3a65e429cb43ed6847328f57a5cef8c3fa3503309a38ecf75a56f0b8ab7755bb",
         "202611121200_character_simulation_states 14e62140337a4f4f0a80de1af045e1282d526f5e767d6ca35c9a1d9d095197ef",
-        "202611131200_simulation_session_account_end 45fd584b3e6100e2dcc1647942735c3984949a9343def3e37cc0e3a75a8c3fb9"
+        "202611131200_simulation_session_account_end 45fd584b3e6100e2dcc1647942735c3984949a9343def3e37cc0e3a75a8c3fb9",
+        "202611141200_character_foreign_key_indexes 7336f9e35bff0a759b8451f47c4946ce4a82e8524fc5aa31dfae6e8c2a8bd021",
+        "202611141210_placement_foreign_key_indexes 748c87c97c8cbc17b39fa5fea297dc6f16019a0395c97dd3d1d841e444129975",
+        "202611141220_item_foreign_keys_and_indexes f655dc6aec6c9262957404a6d42298f25f7c868a92c40e2a6c32009f52233458"
     ];
 
     [Fact]

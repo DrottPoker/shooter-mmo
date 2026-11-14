@@ -50,8 +50,8 @@ journal:
   operation row: expire_corpse committed
   stored payload: equals returned result
   changes:
-    0 corpse_item_expired item=none before=set after=none
-    1 corpse_item_expired item=none before=set after=none
-    2 corpse_item_expired item=none before=set after=none
-    3 corpse_item_expired item=none before=set after=none
+    0 corpse_item_expired item=set before=set after=none
+    1 corpse_item_expired item=set before=set after=none
+    2 corpse_item_expired item=set before=set after=none
+    3 corpse_item_expired item=set before=set after=none
     4 corpse_expired item=none before=set after=set

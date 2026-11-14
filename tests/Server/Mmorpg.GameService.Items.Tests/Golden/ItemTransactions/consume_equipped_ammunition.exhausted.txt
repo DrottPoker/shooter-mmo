@@ -45,4 +45,4 @@ journal:
   operation row: consume_equipped_ammunition committed
   stored payload: equals returned result
   changes:
-    0 ammunition_consumed item=none before=set after=none
+    0 ammunition_consumed item=set before=set after=none

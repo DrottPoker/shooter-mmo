@@ -36,7 +36,9 @@ public sealed class ItemChangeJournalTests
         grant.TouchContainer(null);
         grant.TouchContainer(removedItemId);
         grant.TouchContainer(removedItemId);
-        Assert.Null(grant.AuditChanges[0].ItemInstanceId);
+        // A removal still names its item; only a metadata change names none.
+        Assert.Equal(removedItemId, grant.AuditChanges[0].ItemInstanceId);
+        Assert.Null(grant.AuditChanges[1].ItemInstanceId);
         Assert.Equal("""{"value":1}""", grant.AuditChanges[1].BeforeState);
         Assert.Single(grant.TouchedContainerIds);
 

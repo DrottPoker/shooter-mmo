@@ -1084,8 +1084,9 @@ No delete path exists for accounts or characters today, but the foreign keys
 define what a future delete flow removes. Deleting a character cascades its item
 state, owned containers, contained and equipped items, policies, and recovery
 deliveries. Item operations and change audit remain, while deleted actor
-and item references become null. Such a flow must go through the owning
-modules' contracts.
+references become null; a change audit row keeps the id of its item, which has
+no foreign key, as [Foreign Keys](GAME_SERVICE_MODULES.md#foreign-keys)
+describes. Such a flow must go through the owning modules' contracts.
 
 Corpse snapshots do not contain an item-instance foreign key. Real loot exists
 only in section-container custody, while protected and insured real instances

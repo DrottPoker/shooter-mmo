@@ -55,5 +55,5 @@ journal:
   operation row: expire_recovery_delivery committed
   stored payload: equals returned result
   changes:
-    0 recovery_delivery_expired item=none before=set after=none
+    0 recovery_delivery_expired item=set before=set after=none
     1 recovery_delivery_expired item=none before=set after=none

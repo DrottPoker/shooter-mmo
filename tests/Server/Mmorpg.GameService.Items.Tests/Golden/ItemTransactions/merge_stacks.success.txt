@@ -63,4 +63,4 @@ journal:
   stored payload: equals returned result
   changes:
     0 stack_merge_target item=set before=set after=set
-    1 stack_merge_source_removed item=none before=set after=none
+    1 stack_merge_source_removed item=set before=set after=none

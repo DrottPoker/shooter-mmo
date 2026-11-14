@@ -93,10 +93,12 @@ public sealed class ItemChangeJournal
             throw new InvalidOperationException("An item audit change requires before or after state.");
         }
 
+        // The row names its item also when the change removed it: the journal's item id has no
+        // foreign key, so it outlives the item.
         changedItemIds.Add(itemInstanceId);
         auditChanges.Add(new ItemAuditChange(
             changeKind,
-            afterState is null ? null : itemInstanceId,
+            itemInstanceId,
             beforeState,
             afterState));
     }
