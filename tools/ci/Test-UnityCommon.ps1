@@ -99,6 +99,17 @@ try {
     if ($restored.Count -ne 6) {
         $failures += "Expected six restore lines, got $($restored.Count): $($restored -join ' | ')"
     }
+
+    # The player log is found by the company and product names of the player settings. The
+    # Windows player writes it below the user's LocalLow folder, so the case runs on Windows only.
+    if ($env:OS -eq "Windows_NT") {
+        Write-TestFile "player-project/ProjectSettings/ProjectSettings.asset" "PlayerSettings:`n  companyName: Test Company`n  productName: Test Product`n  productGUID: 0`n"
+        $expectedLog = Join-Path (Join-Path (Split-Path -Parent $env:LOCALAPPDATA) "LocalLow") "Test Company\Test Product\Player.log"
+        $playerLog = Get-UnityPlayerLogPath (Join-Path $root "player-project")
+        if ($playerLog -ne $expectedLog) {
+            $failures += "The player log is '$playerLog', expected '$expectedLog'."
+        }
+    }
 }
 finally {
     if (Test-Path -LiteralPath $root) {

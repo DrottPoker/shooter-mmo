@@ -39,6 +39,17 @@ function Test-UnityProjectOpen([string]$Path) {
     }
 }
 
+# The log of a player of the project: below LocalLow, in the folder of the company and product
+# names of its player settings, which the test runner keeps for its test player. The next start
+# of a player of the project replaces it.
+function Get-UnityPlayerLogPath([string]$ProjectPath) {
+    $settings = Get-Content -LiteralPath (Join-Path $ProjectPath "ProjectSettings\ProjectSettings.asset")
+    $company = (($settings | Where-Object { $_ -match '^  companyName: ' }) -replace '^  companyName: ', '').Trim()
+    $product = (($settings | Where-Object { $_ -match '^  productName: ' }) -replace '^  productName: ', '').Trim()
+    $localLow = Join-Path (Split-Path -Parent $env:LOCALAPPDATA) "LocalLow"
+    return Join-Path $localLow "$company\$product\Player.log"
+}
+
 function ConvertTo-ProcessArgument {
     param([string]$Value)
 

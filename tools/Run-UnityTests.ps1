@@ -2,8 +2,9 @@
 # passed. The CI Unity gate runs it as it is. By default it leaves out two categories: Graphics,
 # whose tests draw and need a graphics device, and LiveStack, whose tests need the local stack;
 # tools/Test-LiveStack.ps1 starts that stack and runs this script for the LiveStack tests alone.
-# -Platform StandaloneWindows64 builds a Windows test player with the committed IL2CPP settings,
-# runs it, and runs the Player category in it; the player opens a window while it runs.
+# -Platform StandaloneWindows64 builds a Windows IL2CPP test player that compiles like a player
+# build of the kind -PlayerBuild names, a release build by default, runs it, and runs the Player
+# category in it; the player opens a window while it runs.
 # Unity opens a project only once, so the script refuses to run while an Editor or another
 # Unity process has it open; tools/Run-UnityEditorTests.ps1 runs the tests in an open Editor.
 param(
@@ -15,8 +16,12 @@ param(
     [ValidateSet("EditMode", "PlayMode", "StandaloneWindows64")]
     [string[]]$Platform = @("EditMode", "PlayMode"),
     # Unity's -testCategory: categories separated by semicolons, an exclamation mark excludes one.
-    # The default is !Graphics;!LiveStack in the Editor and Player in a test player.
+    # The default is !Graphics;!LiveStack;!ClientCrowd in the Editor and Player in a test player.
     [string]$TestCategory,
+    # How a test player compiles: like a release build, the committed settings, or like a
+    # development build, whose C++ builds in minutes instead of a quarter of an hour.
+    [ValidateSet("Release", "Development")]
+    [string]$PlayerBuild = "Release",
     # Checks that Unity is installed and the project is closed, and runs no test.
     [switch]$Preflight
 )
@@ -34,7 +39,7 @@ function Get-TestCategory([string]$PlatformName) {
         return "Player"
     }
 
-    return "!Graphics;!LiveStack"
+    return "!Graphics;!LiveStack;!ClientCrowd"
 }
 
 $requiredVersion = Get-UnityRequiredVersion $ProjectPath
@@ -127,6 +132,10 @@ foreach ($platformName in $Platform) {
             "-testCategory", $category,
             "-logFile", $logFile
         )
+        if ($isPlayer) {
+            # Read by ClientTestPlayerBuild in the EditMode test assembly.
+            $arguments += @("-clientTestPlayerBuild", $PlayerBuild.ToLowerInvariant())
+        }
     }
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo

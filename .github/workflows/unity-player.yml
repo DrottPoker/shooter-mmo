@@ -1,0 +1,78 @@
+name: Unity player
+
+# Builds the Windows IL2CPP player and runs the player golden checks once a week and on manual
+# dispatch, never for a pull request: the builds take most of an hour on the self-hosted runner,
+# which the pull requests' Unity quality gate needs. The runner's job-started hook,
+# tools/ci/Assert-TrustedRunnerJob.ps1, accepts only pushes, manual runs, and pull requests from
+# the repository, so the weekly schedule starts a manual run of this workflow on development
+# from a GitHub-hosted job instead of running on the self-hosted runner itself.
+on:
+  schedule:
+    # Mondays at 03:17 UTC.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-player-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Start the weekly player build
+    if: github.event_name == 'schedule' && vars.UNITY_CI_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+
+    steps:
+      # A run that GITHUB_TOKEN dispatches starts, unlike runs from its other events.
+      - name: Start the player build on development
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run unity-player.yml --repo "${{ github.repository }}" --ref development
+
+  # Runs on the self-hosted runner described in docs/LOCAL_DEVELOPMENT.md, with the guards of the
+  # Unity quality gate in ci.yml: the repository variable and the runner's job-started hook. A
+  # fresh checkout imports the project and builds IL2CPP from nothing, so it takes long.
+  player:
+    name: Unity player build and checks
+    if: github.event_name == 'workflow_dispatch' && vars.UNITY_CI_ENABLED == 'true'
+    runs-on: [self-hosted, Windows, X64, unity-6000.6.7f1]
+    timeout-minutes: 150
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # Builds the local development player and starts it once; the player opens a window on the
+      # runner's desktop for a few seconds.
+      - name: Build the local development player
+        shell: powershell
+        env:
+          UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
+        run: ./tools/Build-Client.ps1 -Environment local -Development -StartCheck
+
+      # Builds a test player that compiles like a release build and runs the shared simulation and
+      # protocol goldens in it.
+      - name: Run the player golden checks
+        shell: powershell
+        env:
+          UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
+        run: ./tools/Run-UnityTests.ps1 -Platform StandaloneWindows64
+
+      - name: Upload the build summary and the player test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unity-player-results
+          path: |
+            src/Client/Builds/*.build-summary.txt
+            src/Client/Builds/*.build-report.json
+            src/Client/Builds/*.start-check.log
+            TestResults/Unity/StandaloneWindows64-results.xml
+          if-no-files-found: warn
+          retention-days: 14
