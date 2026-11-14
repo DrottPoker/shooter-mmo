@@ -1466,9 +1466,9 @@ the quest dialog and the quest log stand beside an open Equipment window.
    orange, and bots faintly blue, while eyes, teeth, and tongue keep their
    colors. Turn it off. Expected result: every body shows its own skin. The
    setting is off in a new installation and is kept between sessions.
-6. Open the `Network` tab, turn on `Record measurements to a file` under
-   `Measurements`, walk for half a minute, and turn it off. Expected result: the
-   status line names a file below the persistent data path,
+6. Open the `Network` tab, scroll down to `Measurements`, turn on
+   `Record measurements to a file`, walk for half a minute, and turn it off.
+   Expected result: the `File` row names a file below the persistent data path,
    `%USERPROFILE%\AppData\LocalLow\Mmorpg\MMORPG\measurements`, ending in
    `-debug-menu.jsonl`; while it records, the section shows the p95 correction
    with the hard snaps, the largest jump, the starved share of remote entities,
@@ -2694,11 +2694,13 @@ protocol, and before a playtest.
    south of the town until it dies and loot it; open Mira and sell an item; leave
    with `Leave Shard` and enter again.
 4. Stop the proxy with `Ctrl+C` and start it again with `normal`, then `poor`,
-   then `terrible`, and repeat steps 3 under each. The client keeps its World
-   while the proxy restarts, and reconnects when the restart takes longer than
-   its 10-second realtime timeout. Under `terrible`, keep walking for more than
-   a minute: the outage falls 60 seconds after the proxy first heard from the
-   client, and every join starts that count again.
+   then `terrible`, and repeat steps 3 under each. A restarted proxy forwards
+   from a new port, so the worker no longer knows the client: the client loses
+   its connection at once, with `PeerNotFound` in the Console, reconnects by
+   itself, and keeps its World and its place, as
+   [A Lost Connection](#a-lost-connection) describes. Under `terrible`, keep
+   walking for more than a minute: the outage falls 60 seconds after the proxy
+   first heard from the client, and every join starts that count again.
 
 Expected result, as far as the network part of the live stack test measured
 it in
@@ -2736,13 +2738,16 @@ it in
   120 ms under `normal`, and up to 1.7 seconds under `poor` and 2.6 seconds
   under `terrible`.
 - `Leave Shard` shows the body's countdown under `good`, `normal`, and `poor`.
-  Under `terrible` a few leaves in a hundred, 3 of 220 in the measured runs,
-  end with `Realtime operation failed: The realtime connection closed:
-  RemoteConnectionClose. [connection_lost]` in the Console and go straight to
-  Character Select: the leave finding of
+  Under `terrible` a leave can end with `Realtime operation failed: The
+  realtime connection closed: RemoteConnectionClose. [connection_lost]` in the
+  Console and go straight to Character Select, which then shows neither the
+  countdown nor a message although the body still stands and the Shard counts
+  it: the leave finding of
   [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
-  The one measured leave that met the outage took 8 seconds and ended
-  cleanly.
+  The live stack test, which leaves a second after each join, met it in 3 of
+  220 leaves; a leave after two minutes of walking met it at the first try on
+  2026-11-14, so expect it more often after real play. The one measured leave
+  that met the outage took 8 seconds and ended cleanly.
 - What to look for, and to record with the profile when it shows: a jump back
   of the character without an outage, other players or wolves jumping, an
   attack, a loot, or a trade that takes long to answer or answers twice, and a
