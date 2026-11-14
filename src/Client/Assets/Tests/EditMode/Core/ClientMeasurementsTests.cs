@@ -174,6 +174,37 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(summary.silences, Is.Zero, "A bound player is needed for a silence.");
         }
 
+        // The session's snapshot counters run from the join, so a recording that starts later
+        // counts only the frames of its own time.
+        [Test]
+        public void ARecordingCountsOnlyTheSnapshotsOfItsOwnTime()
+        {
+            var diagnostics = new FakeDiagnostics { SnapshotAge = 0.05f, SnapshotFrames = 950, MissingFrames = 50 };
+            var measurements = new ClientMeasurements(diagnostics, null, new LocalPlayerSource(), folder);
+            measurements.Frame(1f, Frame, Frame);
+            measurements.StartRecording("later", 60f);
+            measurements.Frame(1f + Frame, Frame, Frame);
+            diagnostics.SnapshotFrames = 980;
+            diagnostics.MissingFrames = 55;
+            measurements.Frame(1f + (2f * Frame), Frame, Frame);
+
+            var summary = measurements.StopRecording();
+
+            Assert.That(summary.ownerSnapshotFrames, Is.EqualTo(30));
+            Assert.That(summary.ownerSnapshotFramesMissing, Is.EqualTo(5));
+
+            // A new session starts its counters again; the recording then counts from zero.
+            measurements.StartRecording("rejoin", 60f);
+            measurements.Frame(2f, Frame, Frame);
+            diagnostics.SnapshotFrames = 12;
+            diagnostics.MissingFrames = 1;
+            measurements.Frame(2f + Frame, Frame, Frame);
+            summary = measurements.StopRecording();
+
+            Assert.That(summary.ownerSnapshotFrames, Is.EqualTo(12));
+            Assert.That(summary.ownerSnapshotFramesMissing, Is.EqualTo(1));
+        }
+
         // The Debug menu shows the recorder's numbers and computes none of its own.
         [Test]
         public void TheDebugMenuNumbersAreTheRecordersNumbers()
