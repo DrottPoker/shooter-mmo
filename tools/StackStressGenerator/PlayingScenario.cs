@@ -67,7 +67,7 @@ public sealed record PlayingScenario(
     public static PlayingScenario Parse(JsonElement element, string source)
     {
         StrictJson.RequireObject(element, source, "'playing'");
-        StrictJson.RequireOnly(element, source, "'playing'", "roles", "fighterBowPercent", "teleportToGrounds", "grounds");
+        StrictJson.RequireOnly(element, source, "'playing'", "roles", "fighterBowPercent", "teleportToGrounds", "grounds", "churn");
         if (!element.TryGetProperty("roles", out var rolesElement) || rolesElement.ValueKind != JsonValueKind.Object)
         {
             throw Invalid(source, "'playing' needs the object 'roles' with the percent of every role.");
@@ -172,8 +172,15 @@ public sealed record PlayingScenario(
             throw Invalid(source, "fighters, gatherers, and traders need a ground of kind 'town' with the vendor.");
         }
 
-        return new PlayingScenario(shares, bowPercent, teleport, grounds);
+        return new PlayingScenario(shares, bowPercent, teleport, grounds)
+        {
+            Churn = element.TryGetProperty("churn", out var churn) ? PlayingChurnSettings.Parse(churn, source) : null
+        };
     }
+
+    // The share of the bots that leaves and comes back every minute of the steady interval, or
+    // null for none.
+    public PlayingChurnSettings? Churn { get; init; }
 
     public IReadOnlyList<PlayingGround> GroundsOf(PlayingGroundKind kind)
     {

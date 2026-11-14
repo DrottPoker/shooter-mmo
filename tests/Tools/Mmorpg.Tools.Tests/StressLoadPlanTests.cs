@@ -40,7 +40,9 @@ public sealed class StressLoadPlanTests
                 "playing-100",
                 "playing-250",
                 "playing-500",
-                "hotspot-100"
+                "hotspot-100",
+                "soak-10min",
+                "soak-30min"
             });
     }
 

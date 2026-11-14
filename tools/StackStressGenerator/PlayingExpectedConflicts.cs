@@ -19,6 +19,14 @@ public static class PlayingOperations
     public const string VendorClose = "vendor_close";
     public const string ItemMove = "item_move";
 
+    // The churn: the leave, from its request to its acceptance, and the way back to a body that
+    // still stands or from the saved place, from the first request of the way back, the login or
+    // the character list, to the join's acceptance. A rejoin whose place or health check fails
+    // is an unexpected rejection with the check's code.
+    public const string Leave = "leave";
+    public const string RejoinBody = "rejoin_body";
+    public const string RejoinSaved = "rejoin_saved";
+
     public static readonly IReadOnlyList<string> All =
     [
         Equip,
@@ -35,7 +43,10 @@ public static class PlayingOperations
         VendorSale,
         VendorPurchase,
         VendorClose,
-        ItemMove
+        ItemMove,
+        Leave,
+        RejoinBody,
+        RejoinSaved
     ];
 }
 
@@ -151,7 +162,17 @@ public static class PlayingExpectedConflicts
                     "The character's item state changed between the intent and its handling, such as by a vendor trade whose change had not reached the bot yet.",
                 ["combat_character_dead"] =
                     "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations from a dead character."
-            }
+            },
+            // A bot leaves only joined, alive, out of combat, and without an intent in flight,
+            // and the worker accepts the leave of a session that already ended with no body time.
+            [PlayingOperations.Leave] = new Dictionary<string, string>(StringComparer.Ordinal),
+            // GameService never refuses the way back to the character's own session: it places
+            // the ticket on the worker that holds the body, without a capacity check, and once
+            // the body is gone it is a normal join from the saved place. A body that a Mob killed
+            // before the bot came back is no rejection either: the join enters from the saved
+            // place, and the bot judges it as such by the join's own reconnect flag.
+            [PlayingOperations.RejoinBody] = new Dictionary<string, string>(StringComparer.Ordinal),
+            [PlayingOperations.RejoinSaved] = new Dictionary<string, string>(StringComparer.Ordinal)
         };
 
     public static bool IsExpected(string operation, string? code)

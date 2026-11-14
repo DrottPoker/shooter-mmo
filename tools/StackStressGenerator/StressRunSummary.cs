@@ -70,12 +70,32 @@ public sealed record StressRunSummary(
     IReadOnlyList<StressVerdictEntry> Verdict,
     IReadOnlyDictionary<string, double?> KeyNumbers)
 {
+    // What a long run shows, small enough to read in the summary: the ten tables that grew the
+    // most, Redis, the memory of every process, the worst drift values, the deaths of every
+    // role per bot and ten minutes, the churn, and the message classes of the service logs.
+    public StressSummarySoak? Soak { get; init; }
+
+    public const int TopTables = 10;
+
     public static StressRunSummary Create(
         StressRunReport report,
         StressGeneratorOptions options,
         int exitCode,
         StressMachine machine)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        return Create(report, options.ScenarioName, options.SourceCommit, options.SourceTreeDirty, exitCode, machine);
+    }
+
+    public static StressRunSummary Create(
+        StressRunReport report,
+        string? scenario,
+        string? commit,
+        bool? treeDirty,
+        int exitCode,
+        StressMachine machine)
+    {
+        ArgumentNullException.ThrowIfNull(report);
         var numbers = new SortedDictionary<string, double?>(StringComparer.Ordinal)
         {
             ["joinP95Ms"] = report.Bots.JoinLatency?.P95Ms,
@@ -98,6 +118,22 @@ public sealed record StressRunSummary(
             numbers["routeQueueP99Ms"] = report.GeneratorTiming?.RouteQueue?.P99Ms;
             numbers["kills"] = playing.Counters.GetValueOrDefault("kills");
             numbers["botDeaths"] = playing.Counters.GetValueOrDefault("botDeaths");
+            foreach (var role in playing.DeathsPerBotPerTenMinutes ?? new Dictionary<string, double>())
+            {
+                numbers[$"deathsPerBotPer10Min.{role.Key}"] = role.Value;
+            }
+        }
+
+        foreach (var trend in report.Soak?.Memory ?? [])
+        {
+            numbers[$"workingSetSlopeMiBPerHour.{trend.Process}"] = trend.WorkingSetSlopeMiBPerHour;
+            numbers[$"workingSetGrowthMiB.{trend.Process}"] = trend.WorkingSetGrowthMiB;
+        }
+
+        if (report.Soak?.Storage is { } storage)
+        {
+            numbers["databaseBytesPerHour"] = storage.Tables.Sum(table => table.BytesPerHour);
+            numbers["redisBytesPerHour"] = storage.Redis?.UsedMemoryBytesPerHour;
         }
 
         var worker = report.WorkerPerformance;
@@ -116,9 +152,9 @@ public sealed record StressRunSummary(
         }
 
         return new StressRunSummary(
-            options.ScenarioName ?? $"{report.Configuration.Mode}-{report.Configuration.Workload}",
-            options.SourceCommit,
-            options.SourceTreeDirty,
+            scenario ?? $"{report.Configuration.Mode}-{report.Configuration.Workload}",
+            commit,
+            treeDirty,
             report.EndedAt,
             machine,
             report.Configuration.Mode,
@@ -132,8 +168,26 @@ public sealed record StressRunSummary(
                 _ => "failed"
             },
             report.Verdict?.Rules ?? [],
-            numbers);
+            numbers)
+        {
+            Soak = StressSummarySoak.Create(report)
+        };
     }
+
+    public static StressRunSummary Parse(string json)
+    {
+        return JsonSerializer.Deserialize<StressRunSummary>(json, SerializerOptions)
+            ?? throw new InvalidDataException("The summary is empty.");
+    }
+
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        DictionaryKeyPolicy = null,
+        // The baselines are checked in, so comparisons such as <= stay readable.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     public async Task WriteAsync(string path, CancellationToken cancellationToken)
     {
@@ -143,16 +197,45 @@ public sealed record StressRunSummary(
             Directory.CreateDirectory(directory);
         }
 
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            WriteIndented = true,
-            DictionaryKeyPolicy = null,
-            // The baselines are checked in, so comparisons such as <= stay readable.
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            Converters = { new JsonStringEnumConverter() }
-        };
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, this, options, cancellationToken);
+        await JsonSerializer.SerializeAsync(stream, this, SerializerOptions, cancellationToken);
         await stream.FlushAsync(cancellationToken);
+    }
+}
+
+public sealed record StressSummarySoak(
+    double? StorageHours,
+    IReadOnlyList<StressTableGrowth> TopTables,
+    StressRedisGrowth? Redis,
+    IReadOnlyList<StressMemoryTrend> Memory,
+    StressDriftSummary? Drift,
+    IReadOnlyDictionary<string, double>? DeathsPerBotPerTenMinutes,
+    IReadOnlyDictionary<string, long>? Churn,
+    IReadOnlyList<StressLogClass> LogClasses)
+{
+    // The churn's counters, by their report names.
+    private static readonly string[] ChurnCounters =
+    [
+        "churnRequests", "churnSkippedBusy", "churnSkippedUnsafe", "churnSkippedLate", "churnRetreats",
+        "leaves", "leavesFighter", "leavesGatherer", "leavesWalker", "leavesTrader", "leavesWithLogout",
+        "rejoinsBody", "rejoinsSaved", "rejoinsSavedFoundBody", "rejoinsBodyFoundGone",
+        "rejoinBodiesHit", "rejoinBodiesDied", "rejoinChecksFailed"
+    ];
+
+    public static StressSummarySoak Create(StressRunReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        var counters = report.Playing?.Counters;
+        return new StressSummarySoak(
+            report.Soak?.Storage?.Hours,
+            report.Soak?.Storage?.Tables.Take(StressRunSummary.TopTables).ToArray() ?? [],
+            report.Soak?.Storage?.Redis,
+            report.Soak?.Memory ?? [],
+            report.Soak?.Drift,
+            report.Playing?.DeathsPerBotPerTenMinutes,
+            counters is null || counters.GetValueOrDefault("churnRequests") == 0
+                ? null
+                : ChurnCounters.ToDictionary(name => name, name => counters.GetValueOrDefault(name), StringComparer.Ordinal),
+            report.ServiceLogs?.Classes ?? []);
     }
 }

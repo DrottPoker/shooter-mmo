@@ -71,6 +71,14 @@ public sealed class StressPollGroup : IDisposable
         });
     }
 
+    // Runs an action on the poll thread before the next round, with the round's timestamp, such
+    // as a request to one bot of the group.
+    public void Post(Action<long> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        commands.Enqueue(action);
+    }
+
     public void BeginSteadyMeasurement()
     {
         commands.Enqueue(_ =>

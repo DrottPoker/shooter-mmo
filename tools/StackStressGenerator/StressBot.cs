@@ -77,6 +77,8 @@ public sealed class StressBot : IStressBot, ISimulationBotRealtimeObserver
 
     public StressBotState State => (StressBotState)client.State;
 
+    public StressSessionHolding SessionHolding => StressSessionHolding.Of(State);
+
     public void Start()
     {
         client.Start();

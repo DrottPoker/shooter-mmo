@@ -3,6 +3,13 @@ name: shooter-mmo-stack-stress
 services:
   postgres:
     image: postgres:16-alpine
+    # A deadlock logs both statements by default; log_lock_waits also logs every lock wait that
+    # outlasts deadlock_timeout, one second, so the other side of a contention can be found in
+    # the log that tools/Test-Load.ps1 keeps.
+    command:
+      - postgres
+      - -c
+      - log_lock_waits=on
     environment:
       POSTGRES_DB: shooter_mmo_stack_stress_test
       POSTGRES_USER: shooter_mmo_stack_stress

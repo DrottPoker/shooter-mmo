@@ -58,6 +58,8 @@ public sealed class StressQualityBoundary
             ["expired_unreleased_sessions"] = ("count", StressRuleKind.Maximum),
             ["deadlocks"] = ("count", StressRuleKind.Maximum),
             ["item_invariant_violations"] = ("count", StressRuleKind.Maximum),
+            ["process_memory_growth"] = ("MiB", StressRuleKind.Maximum),
+            ["service_log_errors"] = ("count", StressRuleKind.Maximum),
             ["generator_poll_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum),
             ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum)
         };
@@ -69,12 +71,20 @@ public sealed class StressQualityBoundary
         "generator_route_queue_p99_ms"
     };
 
-    private StressQualityBoundary(IReadOnlyList<StressQualityRule> rules)
+    // The memory rule judges only a steady interval at least this long; a shorter one is too
+    // short for its fifths to tell growth from warm-up and garbage collection.
+    public static readonly TimeSpan MemoryRuleMinimumSteady = TimeSpan.FromMinutes(10);
+
+    private StressQualityBoundary(IReadOnlyList<StressQualityRule> rules, IReadOnlyList<StressLogAllowance> logAllowances)
     {
         Rules = rules;
+        LogAllowances = logAllowances;
     }
 
     public IReadOnlyList<StressQualityRule> Rules { get; }
+
+    // The error and critical message classes that service_log_errors accepts, each with its reason.
+    public IReadOnlyList<StressLogAllowance> LogAllowances { get; }
 
     public static StressQualityBoundary Load(string path)
     {
@@ -117,11 +127,21 @@ public sealed class StressQualityBoundary
             }
 
             var rules = new List<StressQualityRule>();
+            var allowances = new List<StressLogAllowance>();
             foreach (var element in rulesElement.EnumerateArray())
             {
                 StrictJson.RequireObject(element, source, "a rule");
-                StrictJson.RequireOnly(element, source, "a rule", "rule", "limit", "unit", "description");
                 var name = StrictJson.RequireString(element, "rule", source, "a rule");
+                if (name == "service_log_errors")
+                {
+                    StrictJson.RequireOnly(element, source, "a rule", "rule", "limit", "unit", "description", "allow");
+                    allowances.AddRange(ParseAllowances(element, source));
+                }
+                else
+                {
+                    StrictJson.RequireOnly(element, source, "a rule", "rule", "limit", "unit", "description");
+                }
+
                 if (!KnownRules.TryGetValue(name, out var known))
                 {
                     throw Invalid(source, $"the rule '{name}' is unknown.");
@@ -158,7 +178,40 @@ public sealed class StressQualityBoundary
                 throw Invalid(source, $"the rules {string.Join(", ", missing)} are missing.");
             }
 
-            return new StressQualityBoundary(rules);
+            return new StressQualityBoundary(rules, allowances);
+        }
+    }
+
+    // The allow list of service_log_errors: every entry names the service, the level, the logger
+    // category, the start of the message class, and the reason it is expected in every run.
+    private static IEnumerable<StressLogAllowance> ParseAllowances(JsonElement rule, string source)
+    {
+        if (!rule.TryGetProperty("allow", out var allow))
+        {
+            yield break;
+        }
+
+        if (allow.ValueKind != JsonValueKind.Array)
+        {
+            throw Invalid(source, "'allow' of the rule 'service_log_errors' must be an array.");
+        }
+
+        foreach (var entry in allow.EnumerateArray())
+        {
+            StrictJson.RequireObject(entry, source, "an allowed log class");
+            StrictJson.RequireOnly(entry, source, "an allowed log class", "service", "level", "category", "message", "reason");
+            var level = StrictJson.RequireString(entry, "level", source, "an allowed log class");
+            if (level is not (StressServiceLogs.Error or StressServiceLogs.Critical))
+            {
+                throw Invalid(source, $"an allowed log class has the level '{level}'; only error and critical lines are judged.");
+            }
+
+            yield return new StressLogAllowance(
+                StrictJson.RequireString(entry, "service", source, "an allowed log class"),
+                level,
+                StrictJson.RequireString(entry, "category", source, "an allowed log class"),
+                StrictJson.RequireString(entry, "message", source, "an allowed log class"),
+                StrictJson.RequireString(entry, "reason", source, "an allowed log class"));
         }
     }
 
@@ -256,8 +309,25 @@ public sealed class StressQualityBoundary
             "deadlocks" => !fullStack
                 ? Measurement.Skip("no PostgreSQL in worker-only mode")
                 : report.Postgres is { } deadlockSource
-                    ? Measurement.Of(deadlockSource.Deadlocks, null)
+                    ? Measurement.Of(
+                        deadlockSource.Deadlocks,
+                        report.PostgresLog is { } log
+                            ? Invariant($"both statements of every deadlock and every lock wait longer than the deadlock timeout are in {log.Path}, which reports {log.DeadlockReports} deadlocks and {log.LockWaitReports} lock waits")
+                            : null)
                     : Measurement.Missing("no PostgreSQL samples."),
+            "process_memory_growth" => MeasureMemoryGrowth(report),
+            "service_log_errors" => report.ServiceLogs is not { } logs
+                ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
+                : Measurement.Of(
+                    logs.UnallowedErrors,
+                    string.Join(
+                        "; ",
+                        logs.Classes
+                            .Where(entry => !entry.Allowed && entry.Level is StressServiceLogs.Error or StressServiceLogs.Critical)
+                            .Take(5)
+                            .Select(entry => Invariant($"{entry.Count} {entry.Level} {entry.Service} {entry.Category}: {entry.Message}"))) is { Length: > 0 } classes
+                        ? classes
+                        : null),
             "item_invariant_violations" => !fullStack
                 ? Measurement.Skip("no durable items in worker-only mode")
                 : report.Postgres?.ItemInvariants is { } invariants
@@ -273,6 +343,38 @@ public sealed class StressQualityBoundary
                     : Measurement.Skip("no route was planned in the steady interval"),
             _ => throw new InvalidOperationException($"The rule '{rule}' has no measurement.")
         };
+    }
+
+    // The last fifth's average working set over the second fifth's, of the worst process; only a
+    // planned steady interval of ten minutes or more is judged. The plan decides, not the measured
+    // interval, so scheduling jitter at either end cannot take the rule away from a run.
+    private static Measurement MeasureMemoryGrowth(StressRunReport report)
+    {
+        var planned = TimeSpan.FromSeconds(report.Configuration.SteadyDurationSeconds);
+        if (planned < MemoryRuleMinimumSteady)
+        {
+            return Measurement.Skip(Invariant($"a planned steady interval of {planned.TotalMinutes:0.0} minutes is shorter than the {MemoryRuleMinimumSteady.TotalMinutes:0} minutes the rule needs"));
+        }
+
+        var required = report.Configuration.Mode == "full-stack"
+            ? new[] { "worker", "gameService", "generator" }
+            : ["worker", "generator"];
+        var trends = report.Soak?.Memory ?? [];
+        var missing = required
+            .Where(process => trends.All(trend => trend.Process != process || trend.WorkingSetGrowthMiB is null))
+            .ToArray();
+        if (missing.Length > 0)
+        {
+            return Measurement.Missing($"the working set of {string.Join(", ", missing)} was not sampled in every fifth of the steady interval.");
+        }
+
+        var measured = trends.Where(trend => trend.WorkingSetGrowthMiB is not null).ToArray();
+        var worst = measured.MaxBy(trend => trend.WorkingSetGrowthMiB!.Value)!;
+        return Measurement.Of(
+            worst.WorkingSetGrowthMiB!.Value,
+            "worst " + worst.Process + "; " + string.Join(
+                ", ",
+                measured.Select(trend => Invariant($"{trend.Process} {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h"))));
     }
 
     private static Measurement MeasureGameplayP95(StressRunReport report)

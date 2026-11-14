@@ -7,10 +7,12 @@
 # difference to the checked-in baseline of the scenario.
 #
 # Everything of a run goes into artifacts/load/<yyyyMMdd-HHmmss>-<scenario>/: the generator
-# report, the service and generator logs, the worker performance file, and summary.json. It
-# always stops what it started, the processes with Ctrl+C so the worker shuts down as usual and
-# then the containers, also when the run fails or the script is interrupted with Ctrl+C. It
-# refuses to start while another process uses a port it needs.
+# report, the service and generator logs, the worker performance file, the PostgreSQL and Redis
+# container logs, and summary.json. It always stops what it started, the processes with Ctrl+C
+# so the worker shuts down as usual and then the containers, whose logs it keeps first, also
+# when the run fails or the script is interrupted with Ctrl+C. It refuses to start while another
+# process uses a port it needs. Once everything stopped, StackStressGenerator judge counts the
+# warning, error, and critical lines of the service logs and judges the run again with them.
 #
 # A scenario with a World variant gets it written into the run folder with
 # StackStressGenerator world-variant before the worker starts, and the script says whether the
@@ -181,6 +183,52 @@ function Build-Project([string]$Project, [string]$LogPath) {
     }
 }
 
+# Writes a container's log into the run folder before the container goes, with standard error,
+# where PostgreSQL logs, in the same file.
+function Save-ContainerLog([string]$Service, [string]$LogPath) {
+    $command = "docker compose -f ""$composeFile"" logs --no-color --no-log-prefix $Service > ""$LogPath"" 2>&1"
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/d", "/c", $command -WindowStyle Hidden -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        Write-Step "The log of the $Service container could not be saved."
+    }
+}
+
+function Write-Soak($Summary) {
+    $soak = $Summary.soak
+    if ($null -eq $soak) {
+        return
+    }
+
+    if ($soak.deathsPerBotPerTenMinutes) {
+        $deaths = @($soak.deathsPerBotPerTenMinutes.PSObject.Properties | ForEach-Object { "$($_.Name) $(Format-Number $_.Value)" })
+        Write-Step "Deaths per bot and ten minutes of the steady interval: $($deaths -join ', ')."
+    }
+
+    if ($soak.churn) {
+        Write-Step "Churn: $($soak.churn.leaves) leaves, $($soak.churn.rejoinsBody) back to the body, $($soak.churn.rejoinsSaved) back from the saved place, $($soak.churn.rejoinChecksFailed) failed checks; $($soak.churn.churnSkippedUnsafe) not safe in time, $($soak.churn.churnSkippedBusy) still away, $($soak.churn.churnSkippedLate) too late."
+    }
+
+    foreach ($trend in @($soak.memory)) {
+        $fifths = @($trend.workingSetFifthsMiB | ForEach-Object { Format-Number $_ }) -join " / "
+        Write-Step "Memory of the $($trend.process): working set $(Format-Number $trend.workingSetSlopeMiBPerHour) MiB/h, fifths $fifths MiB."
+    }
+
+    if (@($soak.topTables).Count -gt 0) {
+        Write-Step "Tables that grew the most per hour of the steady interval:"
+        $rows = @($soak.topTables | ForEach-Object {
+            [pscustomobject]@{
+                Table = $_.table
+                Rows = "$($_.startRows) -> $($_.endRows)"
+                KiB = "$(Format-Number ($_.startBytes / 1024)) -> $(Format-Number ($_.endBytes / 1024))"
+                "Rows/h" = Format-Number $_.rowsPerHour
+                "MiB/h" = Format-Number ($_.bytesPerHour / 1MB)
+                "KiB/player-h" = Format-Number ($_.bytesPerPlayerHour / 1024)
+            }
+        })
+        $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+    }
+}
+
 function Write-Verdict($Summary) {
     $rows = @($Summary.verdict | ForEach-Object {
         [pscustomobject]@{
@@ -225,6 +273,7 @@ if (-not (Test-Path -LiteralPath $scenarioPath)) {
 
 $total = [Diagnostics.Stopwatch]::StartNew()
 $exitCode = 2
+$generatorExit = $null
 $couldNotMeasure = $false
 $gameService = $null
 $worker = $null
@@ -379,15 +428,7 @@ try {
         $null = Write-NewOutput $generatorLog $offset
         Write-LogTail (Join-Path $runFolder "generator.err.log")
         $generatorExit = $generator.ExitCode
-        if ((Test-Path -LiteralPath $summaryPath) -and $generatorExit -in @(0, 1, 3)) {
-            $exitCode = if ($generatorExit -eq 0) { 0 } else { 1 }
-        }
-        elseif ((Test-Path -LiteralPath $summaryPath) -and $generatorExit -eq 4) {
-            # The generator fell behind, so the run measured nothing: it could not run.
-            $couldNotMeasure = $true
-            $exitCode = 2
-        }
-        else {
+        if (-not ((Test-Path -LiteralPath $summaryPath) -and $generatorExit -in @(0, 1, 3, 4))) {
             throw "The generator ended with exit code $generatorExit before it wrote a summary; its log is in '$runFolder'."
         }
     }
@@ -401,8 +442,12 @@ finally {
     Stop-StackProcess $worker "SimulationWorker"
     Stop-StackProcess $gameService "GameService"
     if ($containersStarted) {
+        # The containers' logs go with them, so they are kept first: a deadlock's other statement
+        # is only in the PostgreSQL log.
+        Save-ContainerLog "postgres" (Join-Path $runFolder "postgres.log")
+        Save-ContainerLog "redis" (Join-Path $runFolder "redis.log")
         $null = Invoke-Logged "docker" @("compose", "-f", $composeFile, "down") (Join-Path $runFolder "docker-compose-down.log")
-        Write-Step "Removed the disposable stack."
+        Write-Step "Kept the PostgreSQL and Redis logs and removed the disposable stack."
     }
 
     Pop-Location
@@ -412,8 +457,35 @@ if ($Plan) {
     exit $exitCode
 }
 
+if ($null -ne $generatorExit -and $generatorExit -in @(0, 1, 3, 4) -and (Test-Path -LiteralPath $summaryPath)) {
+    # Every process stopped, so the service logs are complete: they are judged now, and the
+    # judgement decides the result.
+    Write-Step "Judging the service logs."
+    $judge = Invoke-Captured $generatorExe @("judge", "--run-folder", $runFolder, "--quality-boundary", (Join-Path $repositoryRoot "tools\load\quality-boundary.json"))
+    foreach ($line in (($judge.Output + $judge.Error) -split "`r?`n")) {
+        if ($line) {
+            Write-Host "  | $line"
+        }
+    }
+
+    switch ($judge.ExitCode) {
+        0 { $exitCode = 0 }
+        1 { $exitCode = 1 }
+        4 {
+            # The generator fell behind, so the run measured nothing: it could not run.
+            $couldNotMeasure = $true
+            $exitCode = 2
+        }
+        default {
+            Write-Step "The run could not be judged."
+            $exitCode = 2
+        }
+    }
+}
+
 if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+    Write-Soak $summary
     Write-Step "Quality boundary of $Scenario ($($summary.bots) bots, $($summary.steadySeconds) s steady):"
     Write-Verdict $summary
     Write-BaselineDifference $summary

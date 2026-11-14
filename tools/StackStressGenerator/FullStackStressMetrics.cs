@@ -23,7 +23,13 @@ public sealed record StressFullStackSummary(
     int AdmittedBots,
     int LoggedOutBots,
     Guid? LootHotspotCorpseId,
-    IReadOnlyDictionary<string, StressHttpOperationSummary> Operations);
+    IReadOnlyDictionary<string, StressHttpOperationSummary> Operations)
+{
+    // The account logouts and logins of the churn's way back, apart from the run's own.
+    public int ChurnLogouts { get; init; }
+
+    public int ChurnLogins { get; init; }
+}
 
 public sealed class FullStackStressMetrics(int seed)
 {

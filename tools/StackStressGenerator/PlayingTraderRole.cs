@@ -62,6 +62,22 @@ public sealed class TraderRole : PlayingRoleBase
 
     public bool ContinuesAsWalker => walker is not null;
 
+    // A trader on its way back to its corpse goes on with that; a visit to the vendor ends, as
+    // the leave closed it, and the trader starts the next one.
+    protected override void ResumeRole(TimeSpan now)
+    {
+        walker?.Resume(now);
+        if (state == TraderState.Dead && recovery is not null)
+        {
+            recovery.Resume(now);
+            return;
+        }
+
+        visit = null;
+        state = TraderState.Idle;
+        idleUntil = now;
+    }
+
     protected override void OnOutcome(IPlayingBotBody body, PlayingIntentOutcome outcome, TimeSpan now)
     {
         if (outcome.Operation == PlayingOperations.Teleport)
