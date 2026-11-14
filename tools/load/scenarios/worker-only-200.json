@@ -10,6 +10,7 @@
     "ramp-interval-seconds": 5,
     "duration-seconds": 60,
     "report-interval-seconds": 10,
-    "seed": 1337
+    "seed": 1337,
+    "poll-threads": 2
   }
 }
