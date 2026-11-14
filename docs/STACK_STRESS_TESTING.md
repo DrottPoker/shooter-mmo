@@ -1629,10 +1629,12 @@ reports.
 13. **A durable Mob corpse gives part of a stack.** The rule that a Mob corpse
     gives whole items only is enforced for live corpses on the worker and in
     the Unity client, not by GameService for durable corpses.
-14. **The built client's crowd baseline is not recorded yet.** Every attempt on
-    2026-11-14 was disturbed by another program;
-    [Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
-    describes the run.
+14. **With 400 players in view, the others starve although the frame holds.**
+    The built client draws 400 dressed bots at 13.1 ms per frame at the median
+    and 20.3 ms at the 99th percentile, but its remote players have no new
+    state to show 18.7 percent of the time, for up to 0.28 seconds; with 200 in
+    view they never starve. The baseline is in
+    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
 
 Entries 9 to 12 are measured in
 [Measured Under The Profiles](#measured-under-the-profiles) and
@@ -1657,6 +1659,9 @@ The same measurements also say what does not need work now:
   near its expiry.
 - **Operations** stay below 300 ms at the 95th percentile up to 500 players on
   loopback; only the tick and the update rate fail there.
+- **The built client's frame** stays below 8 ms at the median with 200 dressed
+  players in view and below 14 ms with 400, and no frame took longer than
+  36 ms once the whole crowd was shown.
 
 ## Scope Boundary
 
