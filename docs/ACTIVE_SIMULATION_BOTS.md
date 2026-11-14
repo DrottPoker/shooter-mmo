@@ -71,7 +71,8 @@ The login bypass ends at the development ticket endpoint,
 SimulationWorker admission or UDP session validation. GameService generates an
 in-memory account id, character id, and name such as `Active Bot 1`, binds a
 short-lived one-time ticket to the exact Shard, worker, and runtime, and
-validates the in-memory session token for every worker heartbeat and release.
+validates the in-memory session token of every bot session in a worker's
+session heartbeat and of every release.
 
 The development ticket endpoint has four independent guards:
 

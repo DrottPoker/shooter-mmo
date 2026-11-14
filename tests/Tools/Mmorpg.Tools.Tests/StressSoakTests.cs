@@ -490,9 +490,9 @@ public sealed class StressSoakTests
             info: Microsoft.Hosting.Lifetime[0]
                   Application started. Press Ctrl+C to shut down.
             warn: Mmorpg.SimulationWorker.Sessions.SimulationSessionHeartbeatService[0]
-                  Invalidated simulation session 0b6f2c1e-2b1a-4c47-9c55-1f0b8b0e6c11 with code session_revoked after GameService returned 401.
+                  Invalidated simulation session 0b6f2c1e-2b1a-4c47-9c55-1f0b8b0e6c11 with code session_revoked after a refused heartbeat: invalid_simulation_session.
             warn: Mmorpg.SimulationWorker.Sessions.SimulationSessionHeartbeatService[0]
-                  Invalidated simulation session 77aa2c1e-2b1a-4c47-9c55-1f0b8b0e6c12 with code session_revoked after GameService returned 401.
+                  Invalidated simulation session 77aa2c1e-2b1a-4c47-9c55-1f0b8b0e6c12 with code session_revoked after a refused heartbeat: invalid_simulation_session.
             fail: Mmorpg.GameService.Items.ItemTransactionService[0]
                   Item transaction relocate 7aebcfdd-d296-4cbd-a064-dce065822f97 failed unexpectedly for correlation 7bd0bb285bcf9385da4662c2e49df09f.
                   System.OperationCanceledException: The operation was canceled.
@@ -521,7 +521,7 @@ public sealed class StressSoakTests
             Assert.Equal((2L, 1L, 1L), (logs.Files[0].Warnings, logs.Files[0].Errors, logs.Files[0].Critical));
             var revoked = Assert.Single(logs.Classes, entry => entry.Level == StressServiceLogs.Warning);
             Assert.Equal(2, revoked.Count);
-            Assert.Equal("Invalidated simulation session <id> with code session_revoked after GameService returned #.", revoked.Message);
+            Assert.Equal("Invalidated simulation session <id> with code session_revoked after a refused heartbeat: invalid_simulation_session.", revoked.Message);
             Assert.True(Assert.Single(logs.Classes, entry => entry.Level == StressServiceLogs.Critical).Allowed);
             Assert.Contains(logs.Classes, entry => entry.Category == StressServiceLogs.StandardErrorCategory);
             // The error line and the standard error line count; the allowed critical line does not.

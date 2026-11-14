@@ -78,6 +78,23 @@ public sealed record StressSessionCredentialRequest(
     string WorkerRuntimeId,
     string SessionToken);
 
+// Matches GameService: the heartbeat of a worker runtime's sessions, answered per session in the
+// request's order.
+public sealed record StressSessionHeartbeatRequest(
+    string RuntimeId,
+    IReadOnlyList<StressSessionHeartbeatEntry> Sessions);
+
+public sealed record StressSessionHeartbeatEntry(Guid SimulationSessionId, string SessionToken);
+
+public sealed record StressSessionHeartbeatResponse(IReadOnlyList<StressSessionHeartbeatResult> Sessions);
+
+public sealed record StressSessionHeartbeatResult(
+    Guid SimulationSessionId,
+    StressSessionLeaseResponse? Lease,
+    StressSessionHeartbeatError? Error);
+
+public sealed record StressSessionHeartbeatError(string Code, string Message);
+
 public sealed record StressSessionLeaseResponse(
     Guid SimulationSessionId,
     Guid CharacterId,
@@ -185,6 +202,7 @@ public sealed record StressAuthorityCounters(
     long TicketsConsumed,
     long TicketRejections,
     long SessionHeartbeats,
+    long SessionHeartbeatRequests,
     long SessionReleases,
     int PendingTickets,
     int ActiveSessions);

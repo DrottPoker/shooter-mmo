@@ -37,4 +37,11 @@ public interface ISimulationCharacterStateProvider
         NpgsqlConnection connection,
         Guid characterId,
         CancellationToken cancellationToken);
+
+    // Reads the current item states of several characters in one statement outside a
+    // transaction, by character id; a character without one is left out.
+    Task<IReadOnlyDictionary<Guid, SimulationCharacterItemState>> GetManyAsync(
+        NpgsqlConnection connection,
+        IReadOnlyCollection<Guid> characterIds,
+        CancellationToken cancellationToken);
 }

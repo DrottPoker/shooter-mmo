@@ -229,18 +229,45 @@ internal sealed class DevelopmentSimulationBotAuthority(
         }
     }
 
-    public bool TryHeartbeatSession(
-        Guid simulationSessionId,
+    // Renews the bot sessions among the sessions of a worker runtime's heartbeat under one lock.
+    // The answer names every entry whose id is a bot session; any other entry is not a bot's, so
+    // the database answers it.
+    public IReadOnlyDictionary<Guid, SimulationSessionHeartbeatResult> HeartbeatSessions(
         string workerId,
-        SimulationSessionCredentialRequest request,
-        out ServiceResult<SimulationSessionLeaseResponse> result)
+        string workerRuntimeId,
+        IReadOnlyList<SimulationSessionHeartbeatEntry> entries)
     {
-        return TryUpdateSession(
-            simulationSessionId,
-            workerId,
-            request,
-            release: false,
-            out result);
+        ArgumentNullException.ThrowIfNull(entries);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var results = new Dictionary<Guid, SimulationSessionHeartbeatResult>();
+        lock (gate)
+        {
+            if (sessions.Count == 0)
+            {
+                return results;
+            }
+
+            Cleanup(now);
+            foreach (var entry in entries)
+            {
+                if (!sessions.TryGetValue(entry.SimulationSessionId, out var session))
+                {
+                    continue;
+                }
+
+                var result = UpdateSessionLocked(
+                    session,
+                    workerId,
+                    new SimulationSessionCredentialRequest(workerRuntimeId, entry.SessionToken),
+                    release: false,
+                    now);
+                results[entry.SimulationSessionId] = result.Succeeded
+                    ? SimulationSessionHeartbeatResult.Renewed(result.Value!)
+                    : SimulationSessionHeartbeatResult.Refused(entry.SimulationSessionId, result.Error!);
+            }
+        }
+
+        return results;
     }
 
     public bool TryReleaseSession(
@@ -249,12 +276,20 @@ internal sealed class DevelopmentSimulationBotAuthority(
         SimulationSessionCredentialRequest request,
         out ServiceResult<SimulationSessionLeaseResponse> result)
     {
-        return TryUpdateSession(
-            simulationSessionId,
-            workerId,
-            request,
-            release: true,
-            out result);
+        ArgumentNullException.ThrowIfNull(request);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        lock (gate)
+        {
+            Cleanup(now);
+            if (!sessions.TryGetValue(simulationSessionId, out var session))
+            {
+                result = default!;
+                return false;
+            }
+
+            result = UpdateSessionLocked(session, workerId, request, release: true, now);
+            return true;
+        }
     }
 
     // Bot tickets and sessions live only in this process, so player placement reads them
@@ -299,67 +334,55 @@ internal sealed class DevelopmentSimulationBotAuthority(
         }
     }
 
-    private bool TryUpdateSession(
-        Guid simulationSessionId,
+    // Renews or releases a bot session that the caller found under the lock.
+    private ServiceResult<SimulationSessionLeaseResponse> UpdateSessionLocked(
+        BotSession session,
         string workerId,
         SimulationSessionCredentialRequest request,
         bool release,
-        out ServiceResult<SimulationSessionLeaseResponse> result)
+        DateTime now)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        lock (gate)
+        if (session.ReleasedAt is not null
+            || session.ExpiresAt <= now
+            || !string.Equals(workerId, session.WorkerId, StringComparison.Ordinal)
+            || !string.Equals(request.WorkerRuntimeId, session.WorkerRuntimeId, StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(request.SessionToken)
+            || !string.Equals(
+                TokenGenerator.HashToken(request.SessionToken.Trim()),
+                session.TokenHash,
+                StringComparison.Ordinal))
         {
-            Cleanup(now);
-            if (!sessions.TryGetValue(simulationSessionId, out var session))
-            {
-                result = default!;
-                return false;
-            }
-
-            if (session.ReleasedAt is not null
-                || session.ExpiresAt <= now
-                || !string.Equals(workerId, session.WorkerId, StringComparison.Ordinal)
-                || !string.Equals(request.WorkerRuntimeId, session.WorkerRuntimeId, StringComparison.Ordinal)
-                || string.IsNullOrWhiteSpace(request.SessionToken)
-                || !string.Equals(
-                    TokenGenerator.HashToken(request.SessionToken.Trim()),
-                    session.TokenHash,
-                    StringComparison.Ordinal))
-            {
-                result = ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
-                    "invalid_simulation_session",
-                    "The development bot simulation session is invalid, released, expired, or owned by another worker runtime.");
-                return true;
-            }
-
-            var updated = release
-                ? session with { ReleasedAt = now }
-                : session with { ExpiresAt = now.Add(options.SessionLeaseLifetime) };
-            sessions[simulationSessionId] = updated;
-            if (identities.TryGetValue(updated.BotInstanceId, out var identity))
-            {
-                identities[updated.BotInstanceId] = identity with { LastTouchedAt = now };
-            }
-            result = ServiceResult<SimulationSessionLeaseResponse>.Ok(
-                new SimulationSessionLeaseResponse(
-                    updated.Id,
-                    updated.CharacterId,
-                    updated.ShardId,
-                    updated.WorkerId,
-                    updated.WorkerRuntimeId,
-                    release ? now : updated.ExpiresAt,
-                    0,
-                    0,
-                    SyntheticBotCarryCapacity,
-                    release)
-                {
-                    LeaseDurationMilliseconds = release
-                        ? 0
-                        : (long)options.SessionLeaseLifetime.TotalMilliseconds
-                });
-            return true;
+            return ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
+                "invalid_simulation_session",
+                "The development bot simulation session is invalid, released, expired, or owned by another worker runtime.");
         }
+
+        var updated = release
+            ? session with { ReleasedAt = now }
+            : session with { ExpiresAt = now.Add(options.SessionLeaseLifetime) };
+        sessions[session.Id] = updated;
+        if (identities.TryGetValue(updated.BotInstanceId, out var identity))
+        {
+            identities[updated.BotInstanceId] = identity with { LastTouchedAt = now };
+        }
+
+        return ServiceResult<SimulationSessionLeaseResponse>.Ok(
+            new SimulationSessionLeaseResponse(
+                updated.Id,
+                updated.CharacterId,
+                updated.ShardId,
+                updated.WorkerId,
+                updated.WorkerRuntimeId,
+                release ? now : updated.ExpiresAt,
+                0,
+                0,
+                SyntheticBotCarryCapacity,
+                release)
+            {
+                LeaseDurationMilliseconds = release
+                    ? 0
+                    : (long)options.SessionLeaseLifetime.TotalMilliseconds
+            });
     }
 
     private ServiceResult<DevelopmentSimulationBotTicketResponse>? ValidateTicketRequest(

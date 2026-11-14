@@ -314,15 +314,15 @@ public sealed class SimulationItemMutationIntegrationTests
             await context.ExecuteScalarIntAsync(
                 $"select count(*) from item_operations where operation_id = '{request.OperationId}';"));
 
-        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
+        var heartbeat = (await context.HeartbeatSessionAsync(
             session.SimulationSessionId,
+            session.SimulationSessionToken,
             WorkerId,
-            Credential(session.SimulationSessionToken),
-            CancellationToken.None);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.Equal(committedCarry.Revision, heartbeat.Value!.ItemStateRevision);
-        Assert.Equal(committedCarry.CarriedWeight, heartbeat.Value.CarriedWeight);
-        Assert.Equal(committedCarry.CarryCapacity, heartbeat.Value.CarryCapacity);
+            RuntimeId)).Lease;
+        Assert.NotNull(heartbeat);
+        Assert.Equal(committedCarry.Revision, heartbeat.ItemStateRevision);
+        Assert.Equal(committedCarry.CarriedWeight, heartbeat.CarriedWeight);
+        Assert.Equal(committedCarry.CarryCapacity, heartbeat.CarryCapacity);
 
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
@@ -830,11 +830,6 @@ public sealed class SimulationItemMutationIntegrationTests
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;
-    }
-
-    private static SimulationSessionCredentialRequest Credential(string token)
-    {
-        return new SimulationSessionCredentialRequest(RuntimeId, token);
     }
 
     private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response)

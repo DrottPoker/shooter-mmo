@@ -10,7 +10,7 @@ using Mmorpg.GameService.Quests;
 using Mmorpg.GameService.Testing;
 using ServerCheckpointRequest = Mmorpg.GameService.Placement.SimulationCharacterCheckpointRequest;
 using ServerConsumeRequest = Mmorpg.GameService.Placement.ConsumeSimulationJoinTicketRequest;
-using ServerCredentialRequest = Mmorpg.GameService.Placement.SimulationSessionCredentialRequest;
+using ServerHeartbeatRequest = Mmorpg.GameService.Placement.SimulationSessionHeartbeatRequest;
 using ServerItemOperationRequest = Mmorpg.GameService.Items.SimulationItemOperationRequest;
 using ServerMobLootGrantRequest = Mmorpg.GameService.Items.SimulationMobLootGrantRequest;
 using ServerQuestDropRequest = Mmorpg.GameService.Quests.SimulationQuestDropRequest;
@@ -20,7 +20,7 @@ using ServerReleaseRequest = Mmorpg.GameService.Placement.SimulationSessionRelea
 
 namespace Mmorpg.Integration.Tests;
 
-// Serves the worker's join ticket consume, session heartbeat and release, checkpoint, item
+// Serves the worker's join ticket consume, session heartbeat, release, checkpoint, item
 // operations, quest log read, quest operations, quest drop read, and live Mob loot grants with the GameService
 // services, the routes' request types, and their HTTP result mapping, without a web host, so the
 // worker's own requests and response validation meet the real routes.
@@ -50,24 +50,25 @@ internal sealed class InProcessWorkerRoutes(PostgresIntegrationTestContext conte
         if (segments[1] == "simulation-workers")
         {
             Assert.Equal(workerId, segments[2]);
-            Assert.Equal("checkpoint", segments[3]);
-            return await RespondAsync(
-                scope,
-                (await scope.ServiceProvider.GetRequiredService<SimulationSessionService>().CheckpointAsync(
+            var sessions = scope.ServiceProvider.GetRequiredService<SimulationSessionService>();
+            return await RespondAsync(scope, segments[3] switch
+            {
+                "checkpoint" => (await sessions.CheckpointAsync(
                     workerId,
                     JsonSerializer.Deserialize<ServerCheckpointRequest>(body, WebJson)!,
-                    cancellationToken)).ToHttpResult());
+                    cancellationToken)).ToHttpResult(),
+                "session-heartbeat" => (await sessions.HeartbeatAsync(
+                    workerId,
+                    JsonSerializer.Deserialize<ServerHeartbeatRequest>(body, WebJson)!,
+                    cancellationToken)).ToHttpResult(),
+                _ => throw new InvalidOperationException("The worker flow tests call no other worker route: " + segments[3])
+            });
         }
 
         Assert.Equal("simulation-sessions", segments[1]);
         var simulationSessionId = Guid.Parse(segments[2]);
         IResult result = segments[3] switch
         {
-            "heartbeat" => (await scope.ServiceProvider.GetRequiredService<SimulationSessionService>().HeartbeatAsync(
-                simulationSessionId,
-                workerId,
-                JsonSerializer.Deserialize<ServerCredentialRequest>(body, WebJson)!,
-                cancellationToken)).ToHttpResult(),
             "release" => (await scope.ServiceProvider.GetRequiredService<SimulationSessionService>().ReleaseAsync(
                 simulationSessionId,
                 workerId,

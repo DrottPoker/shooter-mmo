@@ -123,9 +123,22 @@ public sealed record SimulationCharacterState(
     long CarryCapacity,
     IReadOnlyList<SimulationEquippedItem> Equipment);
 
-public sealed record SimulationSessionCredentialRequest(
-    string WorkerRuntimeId,
-    string SessionToken);
+// The heartbeat of this worker runtime's sessions, each with the token that proves it.
+public sealed record SimulationSessionHeartbeatRequest(
+    string RuntimeId,
+    IReadOnlyList<SimulationSessionHeartbeatEntry> Sessions);
+
+public sealed record SimulationSessionHeartbeatEntry(Guid SimulationSessionId, string SessionToken);
+
+// One answer per session of the request, in its order.
+public sealed record SimulationSessionHeartbeatResponse(IReadOnlyList<SimulationSessionHeartbeatResult> Sessions);
+
+// The renewed lease of one session, or GameService's refusal, which means its lease was not
+// renewed.
+public sealed record SimulationSessionHeartbeatResult(
+    Guid SimulationSessionId,
+    SimulationSessionLeaseResponse? Lease,
+    SimulationWorkerErrorResponse? Error);
 
 public sealed record SimulationSessionLeaseResponse(
     Guid SimulationSessionId,

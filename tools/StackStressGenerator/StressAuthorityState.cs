@@ -27,6 +27,7 @@ public sealed class StressAuthorityState
     private long ticketsConsumed;
     private long ticketRejections;
     private long sessionHeartbeats;
+    private long sessionHeartbeatRequests;
     private long sessionReleases;
 
     public StressAuthorityState(StressGeneratorOptions options)
@@ -260,30 +261,56 @@ public sealed class StressAuthorityState
         }
     }
 
-    public StressAuthorityResult<StressSessionLeaseResponse> HeartbeatSession(
-        Guid sessionId,
-        StressSessionCredentialRequest request)
+    // Renews the leases of the worker runtime's sessions; a session that is gone, expired, or
+    // proved by other credentials is refused on its own, as GameService refuses it.
+    public StressAuthorityResult<StressSessionHeartbeatResponse> HeartbeatSessions(
+        string workerId,
+        StressSessionHeartbeatRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!string.Equals(workerId, options.WorkerId, StringComparison.Ordinal)
+            || request.Sessions is null
+            || request.Sessions.Count == 0)
+        {
+            return StressAuthorityResult<StressSessionHeartbeatResponse>.Failure(
+                400,
+                "invalid_simulation_session_heartbeat",
+                "The stress session heartbeat names no session of the stress worker.");
+        }
+
         lock (gate)
         {
-            var validation = ValidateSession(sessionId, request);
-            if (!validation.Succeeded)
+            sessionHeartbeatRequests++;
+            var results = new StressSessionHeartbeatResult[request.Sessions.Count];
+            for (var index = 0; index < results.Length; index++)
             {
-                return StressAuthorityResult<StressSessionLeaseResponse>.Failure(
-                    validation.Problem!.Status,
-                    validation.Problem.Code,
-                    validation.Problem.Detail);
+                var entry = request.Sessions[index];
+                var validation = ValidateSession(
+                    entry.SimulationSessionId,
+                    new StressSessionCredentialRequest(request.RuntimeId, entry.SessionToken));
+                if (!validation.Succeeded)
+                {
+                    results[index] = new StressSessionHeartbeatResult(
+                        entry.SimulationSessionId,
+                        null,
+                        new StressSessionHeartbeatError(validation.Problem!.Code, validation.Problem.Detail));
+                    continue;
+                }
+
+                var refreshed = validation.Value! with
+                {
+                    ExpiresAt = DateTime.UtcNow.Add(SessionLeaseDuration)
+                };
+                sessions[entry.SimulationSessionId] = refreshed;
+                sessionHeartbeats++;
+                results[index] = new StressSessionHeartbeatResult(
+                    entry.SimulationSessionId,
+                    ToLeaseResponse(refreshed, false),
+                    null);
             }
 
-            var refreshed = validation.Value! with
-            {
-                ExpiresAt = DateTime.UtcNow.Add(SessionLeaseDuration)
-            };
-            sessions[sessionId] = refreshed;
-            sessionHeartbeats++;
-            return StressAuthorityResult<StressSessionLeaseResponse>.Success(
-                ToLeaseResponse(refreshed, false));
+            return StressAuthorityResult<StressSessionHeartbeatResponse>.Success(
+                new StressSessionHeartbeatResponse(results));
         }
     }
 
@@ -320,6 +347,7 @@ public sealed class StressAuthorityState
                 ticketsConsumed,
                 ticketRejections,
                 sessionHeartbeats,
+                sessionHeartbeatRequests,
                 sessionReleases,
                 pendingTickets.Count,
                 sessions.Count);

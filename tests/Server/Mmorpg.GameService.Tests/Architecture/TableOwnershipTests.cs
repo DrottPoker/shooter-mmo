@@ -150,6 +150,7 @@ public sealed partial class TableOwnershipTests
     {
         "carried_containers",
         "generate_series",
+        "locked_session",
         "pg_index",
         "recalculated",
         "refreshed_session",

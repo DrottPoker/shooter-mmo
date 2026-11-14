@@ -55,6 +55,8 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(100, config.MaxConnections);
         Assert.Equal(TimeSpan.FromSeconds(10), config.RegistryHeartbeatInterval);
         Assert.Equal(8, config.SimulationSessionHeartbeatMaxConcurrency);
+        Assert.Equal(250, config.SimulationSessionHeartbeatBatchSize);
+        Assert.Equal(TimeSpan.FromSeconds(2), config.SimulationSessionHeartbeatRetryDelay);
         Assert.Equal(128f, config.InterestManagement.EnterRadius);
         Assert.Equal(3, config.InterestManagement.RefreshIntervalSnapshots);
         Assert.Equal(
@@ -212,6 +214,8 @@ public sealed class SimulationWorkerConfigurationValidationTests
     {
         var settings = WorkerSettings();
         settings["SimulationWorker:SimulationSessionHeartbeatMaxConcurrency"] = "129";
+        settings["SimulationWorker:SimulationSessionHeartbeatBatchSize"] = "501";
+        settings["SimulationWorker:SimulationSessionHeartbeatRetryMilliseconds"] = "10000";
         settings["SimulationWorker:UdpQuotas:InboundPacketBurst"] = "20001";
         settings["SimulationWorker:UdpQuotas:AggregateSnapshotBytesPerSecond"] = "268435457";
         settings["SimulationWorker:InterestManagement:CellSize"] = "1";
@@ -224,6 +228,10 @@ public sealed class SimulationWorkerConfigurationValidationTests
             () => SimulationWorkerConfig.FromConfiguration(configuration));
 
         Assert.Contains("SimulationSessionHeartbeatMaxConcurrency must not exceed 128", exception.Message);
+        Assert.Contains("SimulationSessionHeartbeatBatchSize must not exceed 500", exception.Message);
+        Assert.Contains(
+            "SimulationSessionHeartbeatRetryMilliseconds must be shorter than SimulationSessionHeartbeatSeconds",
+            exception.Message);
         Assert.Contains("UDP quota rates or bursts exceed", exception.Message);
         Assert.Contains("aggregate snapshot quota exceeds", exception.Message);
         Assert.Contains("no more than 64 searched cells", exception.Message);

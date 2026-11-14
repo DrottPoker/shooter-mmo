@@ -266,18 +266,19 @@ public sealed class GameServiceClient(HttpClient httpClient)
             cancellationToken);
     }
 
-    public Task<GameServiceResult<SimulationSessionLeaseResponse>>
-        HeartbeatSimulationSessionAsync(
-            Guid simulationSessionId,
-            string workerRuntimeId,
-            string sessionToken,
+    // Renews the leases of one worker runtime's sessions in one request. GameService answers every
+    // session on its own, in the request's order: its renewed lease or its refusal.
+    public Task<GameServiceResult<SimulationSessionHeartbeatResponse>>
+        HeartbeatSimulationSessionsAsync(
+            string workerId,
+            SimulationSessionHeartbeatRequest request,
             CancellationToken cancellationToken)
     {
-        return PostAsync<SimulationSessionCredentialRequest, SimulationSessionLeaseResponse>(
-            "GameService.HeartbeatSimulationSession",
-            $"/api/simulation-sessions/{simulationSessionId}/heartbeat",
-            new SimulationSessionCredentialRequest(workerRuntimeId, sessionToken),
-            IsValidSimulationSessionLease,
+        return PostAsync<SimulationSessionHeartbeatRequest, SimulationSessionHeartbeatResponse>(
+            "GameService.HeartbeatSimulationSessions",
+            $"/api/simulation-workers/{Uri.EscapeDataString(workerId)}/session-heartbeat",
+            request,
+            response => IsValidSessionHeartbeat(response, workerId, request),
             cancellationToken);
     }
 
@@ -661,6 +662,47 @@ public sealed class GameServiceClient(HttpClient httpClient)
                 && !string.IsNullOrWhiteSpace(choice.Kind)
                 && choice.Slot is not null
                 && !string.IsNullOrWhiteSpace(choice.Option));
+    }
+
+    // One answer per requested session in its order, each either a renewed lease of that session
+    // on this worker runtime or a refusal with a code.
+    private static bool IsValidSessionHeartbeat(
+        SimulationSessionHeartbeatResponse response,
+        string workerId,
+        SimulationSessionHeartbeatRequest request)
+    {
+        if (response.Sessions is null || response.Sessions.Count != request.Sessions.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < request.Sessions.Count; index++)
+        {
+            var result = response.Sessions[index];
+            if (result is null
+                || result.SimulationSessionId != request.Sessions[index].SimulationSessionId
+                || (result.Lease is null) == (result.Error is null))
+            {
+                return false;
+            }
+
+            if (result.Error is not null && string.IsNullOrWhiteSpace(result.Error.Code))
+            {
+                return false;
+            }
+
+            if (result.Lease is { } lease
+                && (lease.SimulationSessionId != result.SimulationSessionId
+                    || lease.Released
+                    || !string.Equals(lease.WorkerId, workerId, StringComparison.Ordinal)
+                    || !string.Equals(lease.WorkerRuntimeId, request.RuntimeId, StringComparison.Ordinal)
+                    || !IsValidSimulationSessionLease(lease)))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsValidSimulationSessionLease(

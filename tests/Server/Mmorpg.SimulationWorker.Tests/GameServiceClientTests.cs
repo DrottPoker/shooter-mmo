@@ -56,28 +56,28 @@ public sealed class GameServiceClientTests
     {
         var simulationSessionId = Guid.NewGuid();
         var characterId = Guid.NewGuid();
-        var handler = new RecordingHttpMessageHandler(request => CreateJsonResponse(new
-        {
-            simulationSessionId,
-            characterId,
-            shardId = "local-shard-1",
-            workerId = "local-simulation-worker-1",
-            workerRuntimeId = "runtime-1",
-            expiresAt = DateTime.UtcNow.AddMinutes(1),
-            leaseDurationMilliseconds = 30_000,
-            itemStateRevision = 12,
-            carriedWeight = 210,
-            carryCapacity = 200,
-            released = request.RequestUri!.AbsolutePath.EndsWith(
-                "/release",
-                StringComparison.Ordinal)
-        }));
+        var refusedSessionId = Guid.NewGuid();
+        var handler = new RecordingHttpMessageHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/session-heartbeat", StringComparison.Ordinal)
+                ? CreateJsonResponse(new
+                {
+                    sessions = new object[]
+                    {
+                        new { simulationSessionId, lease = Lease(simulationSessionId, characterId, released: false), error = (object?)null },
+                        new { simulationSessionId = refusedSessionId, lease = (object?)null, error = new { code = "invalid_simulation_session", message = "Gone." } }
+                    }
+                })
+                : CreateJsonResponse(Lease(simulationSessionId, characterId, released: true)));
         var client = CreateClient(handler);
 
-        var heartbeat = await client.HeartbeatSimulationSessionAsync(
-            simulationSessionId,
-            "runtime-1",
-            "simulation-session-token",
+        var heartbeat = await client.HeartbeatSimulationSessionsAsync(
+            "local-simulation-worker-1",
+            new SimulationSessionHeartbeatRequest(
+                "runtime-1",
+                [
+                    new SimulationSessionHeartbeatEntry(simulationSessionId, "simulation-session-token"),
+                    new SimulationSessionHeartbeatEntry(refusedSessionId, "refused-token")
+                ]),
             CancellationToken.None);
         var release = await client.ReleaseSimulationSessionAsync(
             simulationSessionId,
@@ -86,17 +86,92 @@ public sealed class GameServiceClientTests
             CancellationToken.None);
 
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
+        Assert.False(heartbeat.Value!.Sessions[0].Lease!.Released);
+        Assert.Equal("invalid_simulation_session", heartbeat.Value.Sessions[1].Error!.Code);
         Assert.True(release.Succeeded, release.Error?.Message);
         Assert.True(release.Value!.Released);
         Assert.Collection(
             handler.Requests,
-            request => Assert.Equal(
-                $"/api/simulation-sessions/{simulationSessionId}/heartbeat",
-                request.Path),
+            request =>
+            {
+                Assert.Equal("/api/simulation-workers/local-simulation-worker-1/session-heartbeat", request.Path);
+                using var body = JsonDocument.Parse(request.Body);
+                Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
+                Assert.Equal(
+                    [simulationSessionId.ToString(), refusedSessionId.ToString()],
+                    body.RootElement.GetProperty("sessions").EnumerateArray().Select(session => session.GetProperty("simulationSessionId").GetString()));
+                Assert.Equal(
+                    "simulation-session-token",
+                    body.RootElement.GetProperty("sessions")[0].GetProperty("sessionToken").GetString());
+            },
             request => Assert.Equal(
                 $"/api/simulation-sessions/{simulationSessionId}/release",
                 request.Path));
+    }
+
+    // GameService must answer every session of a heartbeat in its order, each with exactly a lease
+    // of that session on this worker runtime or a refusal; anything else is an invalid response.
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("swapped")]
+    [InlineData("both")]
+    [InlineData("neither")]
+    [InlineData("other_runtime")]
+    [InlineData("released")]
+    [InlineData("empty_code")]
+    public async Task ASessionHeartbeatAnswerThatDoesNotMatchTheRequestIsInvalid(string variant)
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var refusal = new { code = variant == "empty_code" ? " " : "invalid_simulation_session", message = "Gone." };
+        object Renewed(Guid id) => new
+        {
+            simulationSessionId = id,
+            lease = variant switch
+            {
+                "other_runtime" => Lease(id, characterId, released: false, runtimeId: "runtime-2"),
+                "released" => Lease(id, characterId, released: true),
+                _ => Lease(id, characterId, released: false)
+            },
+            error = variant == "both" ? refusal : null
+        };
+        object Refused(Guid id) => new { simulationSessionId = id, lease = (object?)null, error = variant == "neither" ? null : refusal };
+        var sessions = variant switch
+        {
+            "missing" => new[] { Renewed(first) },
+            "swapped" => [Refused(second), Renewed(first)],
+            _ => [Renewed(first), Refused(second)]
+        };
+        var client = CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(new { sessions })));
+
+        var heartbeat = await client.HeartbeatSimulationSessionsAsync(
+            "local-simulation-worker-1",
+            new SimulationSessionHeartbeatRequest(
+                "runtime-1",
+                [new SimulationSessionHeartbeatEntry(first, "first-token"), new SimulationSessionHeartbeatEntry(second, "second-token")]),
+            CancellationToken.None);
+
+        Assert.False(heartbeat.Succeeded);
+        Assert.Equal("invalid_auth_response", heartbeat.Error!.Code);
+    }
+
+    private static object Lease(Guid simulationSessionId, Guid characterId, bool released, string runtimeId = "runtime-1")
+    {
+        return new
+        {
+            simulationSessionId,
+            characterId,
+            shardId = "local-shard-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = runtimeId,
+            expiresAt = DateTime.UtcNow.AddMinutes(1),
+            leaseDurationMilliseconds = released ? 0 : 30_000,
+            itemStateRevision = 12,
+            carriedWeight = 210,
+            carryCapacity = 200,
+            released
+        };
     }
 
     // The saved place and vitals reach the worker within the bounds GameService stores them in;

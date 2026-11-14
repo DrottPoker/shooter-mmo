@@ -739,6 +739,8 @@ internal sealed class SimulationWorkerRegistryService(
             cancellationToken: cancellationToken));
     }
 
+    // The sessions are locked in ascending id order, as every statement that locks several
+    // sessions locks them, so a session heartbeat of the runtime never deadlocks with it.
     private static async Task ReleaseWorkerRuntimeAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -757,11 +759,19 @@ internal sealed class SimulationWorkerRegistryService(
                   and worker_runtime_id = @RuntimeId
                   and consumed_at is null;
 
-                update character_simulation_sessions
+                with locked_session as materialized (
+                    select id
+                    from character_simulation_sessions
+                    where simulation_worker_id = @WorkerId
+                      and worker_runtime_id = @RuntimeId
+                      and released_at is null
+                    order by id
+                    for no key update
+                )
+                update character_simulation_sessions simulation_session
                 set released_at = now()
-                where simulation_worker_id = @WorkerId
-                  and worker_runtime_id = @RuntimeId
-                  and released_at is null;
+                from locked_session
+                where simulation_session.id = locked_session.id;
 
                 update simulation_workers
                 set is_online = false,
@@ -789,6 +799,7 @@ internal sealed class SimulationWorkerRegistryService(
         }
     }
 
+    // The sessions are locked in ascending id order, as in ReleaseWorkerRuntimeAsync.
     private static async Task ReleaseSupersededRuntimeAccessAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -804,11 +815,19 @@ internal sealed class SimulationWorkerRegistryService(
               and worker_runtime_id is distinct from @CurrentRuntimeId
               and consumed_at is null;
 
-            update character_simulation_sessions
+            with locked_session as materialized (
+                select id
+                from character_simulation_sessions
+                where simulation_worker_id = @WorkerId
+                  and worker_runtime_id is distinct from @CurrentRuntimeId
+                  and released_at is null
+                order by id
+                for no key update
+            )
+            update character_simulation_sessions simulation_session
             set released_at = now()
-            where simulation_worker_id = @WorkerId
-              and worker_runtime_id is distinct from @CurrentRuntimeId
-              and released_at is null;
+            from locked_session
+            where simulation_session.id = locked_session.id;
             """,
             new { WorkerId = workerId, CurrentRuntimeId = currentRuntimeId },
             transaction,

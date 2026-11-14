@@ -45,9 +45,9 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
+| `POST /api/simulation-workers/{workerId}/session-heartbeat` | Worker service policy | Renew the exact simulation leases of the worker runtime's sessions in one batch, and answer each session on its own: its lease with the end of its account session and its carry state, or its refusal |
 | `POST /api/simulation-workers/{workerId}/checkpoint` | Worker service policy | Save the place and vitals of the worker runtime's characters whose state changed, in one batch |
 | `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket and return the character's saved place and vitals |
-| `POST /api/simulation-sessions/{id}/heartbeat` | Worker service policy | Renew an exact simulation lease and name the end of its account session |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease, with the character's final place and vitals when the worker has them |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
@@ -332,9 +332,10 @@ the fenced item-state revision, carried weight, capacity, and equipment: every
 occupied equipment slot with its item id, definition id, quantity, and item
 revision at that item-state revision. It also carries the character's look and
 its saved place and vitals, as [Character Place And Vitals](#character-place-and-vitals)
-describes. Heartbeat updates the lease and then reads the current committed carry tuple and
-equipment, so a worker can advance active movement and combat state
-monotonically. Reconnect reads the tuple again under the admission lock.
+describes. The session heartbeat updates the leases and then reads the current
+committed carry tuple and equipment, so a worker can advance active movement and
+combat state monotonically. Reconnect reads the tuple again under the admission
+lock.
 
 Simulation session properties:
 
@@ -342,9 +343,10 @@ Simulation session properties:
 - Exact shard, worker, and worker runtime ownership.
 - Opaque token with only a stored hash.
 - Database-generated expiry after `Simulation:SessionLeaseLifetimeSeconds`.
-- A worker heartbeat every `SimulationWorker:SimulationSessionHeartbeatSeconds`,
-  at most `SimulationSessionHeartbeatMaxConcurrency` at a time, so one worker
-  cannot create an unbounded GameService request fan-out.
+- One session heartbeat per worker every
+  `SimulationWorker:SimulationSessionHeartbeatSeconds`, as
+  [Session Heartbeat](#session-heartbeat) describes, so the requests do not grow
+  with the players.
 - Idempotent exact-generation release.
 - Reconnect token rotation.
 - Safe stale-token rejection after reconnect.
@@ -366,6 +368,45 @@ capacity, or equipment. The worker updates the item state only from committed
 GameService results and heartbeats, and sends a newer carry tuple reliably
 before it affects movement.
 
+### Session Heartbeat
+
+`POST /api/simulation-workers/{workerId}/session-heartbeat` renews the leases
+of one worker runtime's sessions. It takes the worker's `runtimeId` and
+`sessions`, each with its `simulationSessionId` and its `sessionToken`, and
+answers `sessions` in the request's order, one entry per session with its
+`simulationSessionId` and either `lease` or `error`:
+
+- `lease` is the renewed lease as a release answers it: the session, character,
+  Shard, worker, and runtime, the new expiry and `leaseDurationMilliseconds`, the
+  carry tuple and equipment read after the renewal, and `accountSessionEnded`,
+  as [Account Session End](#account-session-end) describes.
+- `error` is `invalid_simulation_session` for a session that is released,
+  expired, not the worker runtime's, or proved by another token, and for a
+  renewed session whose character has no item state. The others of the request
+  are renewed all the same.
+
+One statement renews every valid lease and marks the ended account sessions,
+and one more reads the carry states of the renewed characters, whatever the
+number of sessions. The sessions of development bots are renewed in memory in
+the same request. A request is refused with `400` as a whole when it is
+malformed: `invalid_simulation_worker_identity` for a missing runtime id,
+`invalid_simulation_session_heartbeat` for no session, more than 500, or a
+session named twice, `invalid_simulation_session_id` for an entry without a
+session, and `invalid_simulation_session_token` for one without a token.
+
+SimulationWorker sends every active session once per
+`SimulationWorker:SimulationSessionHeartbeatSeconds`, in requests of at most
+`SimulationSessionHeartbeatBatchSize` sessions,
+`SimulationSessionHeartbeatMaxConcurrency` requests at a time. It applies every
+entry on its own: a lease moves the session's local deadline to the request's
+send time plus the lease duration and carries the account session end and the
+carry state, and an error ends the session as an expired lease does. A request
+that times out, cannot reach GameService, or gets a server error goes again
+after `SimulationSessionHeartbeatRetryMilliseconds` with those of its sessions
+that are still active, as long as the retry starts within the heartbeat
+interval. Any other failed request goes no more in that round. Neither ends a
+session: a lease that is not renewed ends by the session's local deadline.
+
 ### Account Session End
 
 When an account session ends, by a logout, a manual revoke, a new login that
@@ -380,10 +421,11 @@ the character's body stays in the world its full time, as
   heartbeat marks it. Every check counts an expired account session as ended at
   once, also before the heartbeat marked it.
 - The session heartbeat keeps renewing a marked session's lease and answers
-  `accountSessionEnded`: `account_session_replaced` when a new login replaced
-  the account session, `account_session_ended` for any other end, and `null`
-  while it lasts. A heartbeat is refused only for a session that is released,
-  expired, or not the worker's, with `invalid_simulation_session`.
+  `accountSessionEnded` in the session's lease: `account_session_replaced` when
+  a new login replaced the account session, `account_session_ended` for any
+  other end, and `null` while it lasts. A session's heartbeat is refused only
+  when the session is released, expired, or not the worker runtime's, with
+  `invalid_simulation_session`.
 - On a marked session GameService runs only the body's own work: player
   deaths, spent arrows, the kill credit of a quest, the quest log and quest drop
   reads that these need, checkpoints, the release, and the heartbeat. An item
@@ -1796,7 +1838,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
-| Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_request`, `invalid_character_state`, `invalid_character_checkpoint`, `invalid_appearance_change`, `development_look_disabled` |
+| Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_heartbeat`, `invalid_simulation_session_request`, `invalid_character_state`, `invalid_character_checkpoint`, `invalid_appearance_change`, `development_look_disabled` |
 | Content files | `content_not_found` |
 | Item reads and requests | `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
 | Quest reads | `character_quests_not_found` |
@@ -1965,7 +2007,9 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
 | `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
 | `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters |
-| `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval and parallel heartbeats, at most 128 |
+| `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval, and the session heartbeat requests, and the releases at shutdown, that run at once, at most 128 |
+| `SimulationSessionHeartbeatBatchSize` | `250` | Sessions that one session heartbeat request names at most, 1 to 500 |
+| `SimulationSessionHeartbeatRetryMilliseconds` | `2000` | How long a session heartbeat request that timed out, could not reach GameService, or got a server error waits before it goes again, shorter than the heartbeat interval, as [Session Heartbeat](#session-heartbeat) describes |
 | `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |

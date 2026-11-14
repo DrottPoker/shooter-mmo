@@ -610,16 +610,39 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             Problem(HttpStatusCode.NotFound, "quest_not_found", "The quest catalog holds no such quest."));
         OnQuestDrops = (_, request, _) => Task.FromResult(Json(new SimulationQuestDropResponse(request.Drops)));
         OnCheckpoint = (request, _) => Task.FromResult(Json(new SimulationCharacterCheckpointResponse(request.States.Count, 0)));
-        OnSessionHeartbeat = (sessionId, _, _) => Task.FromResult(DefaultSessionHeartbeat(sessionId));
+        OnSessionHeartbeat = DefaultSessionHeartbeat;
     }
 
-    // Answers a session heartbeat; by default GameService renews the lease of a registered
-    // character with the carry state its ticket named.
-    public Func<Guid, SimulationSessionCredentialRequest, CancellationToken, Task<HttpResponseMessage>>
-        OnSessionHeartbeat
+    // Answers a whole session heartbeat request before its sessions, such as with a failure;
+    // null lets every session of the request answer through OnSessionHeartbeat.
+    public Func<SimulationSessionHeartbeatRequest, CancellationToken, Task<HttpResponseMessage?>>?
+        OnSessionHeartbeatRequest
     { get; set; }
 
-    public HttpResponseMessage DefaultSessionHeartbeat(Guid simulationSessionId, string? accountSessionEnded = null)
+    // Answers one session of a session heartbeat; by default GameService renews the lease of a
+    // registered character with the carry state its ticket named.
+    public Func<Guid, SimulationSessionHeartbeatResult> OnSessionHeartbeat { get; set; }
+
+    // Every session heartbeat request in arrival order.
+    public List<SimulationSessionHeartbeatRequest> SessionHeartbeats
+    {
+        get
+        {
+            lock (sync)
+            {
+                return [.. sessionHeartbeats];
+            }
+        }
+    }
+
+    private readonly List<SimulationSessionHeartbeatRequest> sessionHeartbeats = [];
+
+    public SimulationSessionHeartbeatResult DefaultSessionHeartbeat(Guid simulationSessionId)
+    {
+        return DefaultSessionHeartbeat(simulationSessionId, null);
+    }
+
+    public SimulationSessionHeartbeatResult DefaultSessionHeartbeat(Guid simulationSessionId, string? accountSessionEnded)
     {
         RealtimeTestCharacter? character;
         lock (sync)
@@ -629,25 +652,36 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
 
         if (character is null)
         {
-            return Problem(HttpStatusCode.Unauthorized, "invalid_simulation_session", "The session is not active.");
+            return RefusedSessionHeartbeat(simulationSessionId);
         }
 
-        return Json(new SimulationSessionLeaseResponse(
+        return new SimulationSessionHeartbeatResult(
             simulationSessionId,
-            character.CharacterId,
-            RealtimeServerHarness.ShardId,
-            RealtimeServerHarness.WorkerId,
-            RealtimeServerHarness.RuntimeId,
-            DateTime.UtcNow.AddMilliseconds(character.SessionLeaseDurationMilliseconds),
-            character.ItemStateRevision,
-            character.CarriedWeight,
-            character.CarryCapacity,
-            false)
-        {
-            LeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
-            Equipment = character.Equipment,
-            AccountSessionEnded = accountSessionEnded
-        });
+            new SimulationSessionLeaseResponse(
+                simulationSessionId,
+                character.CharacterId,
+                RealtimeServerHarness.ShardId,
+                RealtimeServerHarness.WorkerId,
+                RealtimeServerHarness.RuntimeId,
+                DateTime.UtcNow.AddMilliseconds(character.SessionLeaseDurationMilliseconds),
+                character.ItemStateRevision,
+                character.CarriedWeight,
+                character.CarryCapacity,
+                false)
+            {
+                LeaseDurationMilliseconds = character.SessionLeaseDurationMilliseconds,
+                Equipment = character.Equipment,
+                AccountSessionEnded = accountSessionEnded
+            },
+            null);
+    }
+
+    public static SimulationSessionHeartbeatResult RefusedSessionHeartbeat(Guid simulationSessionId)
+    {
+        return new SimulationSessionHeartbeatResult(
+            simulationSessionId,
+            null,
+            new SimulationWorkerErrorResponse("invalid_simulation_session", "The session is not active."));
     }
 
     // Answers a checkpoint; by default GameService saves every state.
@@ -1090,13 +1124,6 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 return await OnRelease(simulationSessionId, release!, cancellationToken);
             }
 
-            if (segments.Length == 4 && segments[3] == "heartbeat")
-            {
-                var credential = await request.Content!
-                    .ReadFromJsonAsync<SimulationSessionCredentialRequest>(cancellationToken);
-                return await OnSessionHeartbeat(simulationSessionId, credential!, cancellationToken);
-            }
-
             if (segments.Length == 4 && segments[3] == "ammunition-consumptions")
             {
                 var consumption = await request.Content!
@@ -1218,7 +1245,7 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
     }
 
     // Registers the worker for 30 seconds, marks it offline, restores no durable corpse, and
-    // answers checkpoints.
+    // answers checkpoints and session heartbeats.
     private async Task<HttpResponseMessage> AnswerWorkerAsync(
         HttpRequestMessage request,
         string workerId,
@@ -1265,6 +1292,23 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 }
 
                 return await OnCheckpoint(checkpoint!, cancellationToken);
+            case "session-heartbeat":
+                var sessionHeartbeat = await request.Content!
+                    .ReadFromJsonAsync<SimulationSessionHeartbeatRequest>(cancellationToken);
+                lock (sync)
+                {
+                    sessionHeartbeats.Add(sessionHeartbeat!);
+                }
+
+                if (OnSessionHeartbeatRequest is { } onRequest
+                    && await onRequest(sessionHeartbeat!, cancellationToken) is { } answered)
+                {
+                    return answered;
+                }
+
+                return Json(new SimulationSessionHeartbeatResponse(sessionHeartbeat!.Sessions
+                    .Select(session => OnSessionHeartbeat(session.SimulationSessionId))
+                    .ToArray()));
             default:
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
         }

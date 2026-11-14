@@ -1,4 +1,5 @@
-using System.Net;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -10,6 +11,8 @@ using Mmorpg.SimulationWorker.Telemetry;
 
 namespace Mmorpg.SimulationWorker.Sessions;
 
+// Renews the lease of every active session once per interval, with one GameService request per
+// batch of sessions, and releases every session when the worker stops.
 public sealed class SimulationSessionHeartbeatService(
     GameServiceClient gameServiceClient,
     SimulationSessionReleaseService releaseService,
@@ -26,24 +29,15 @@ public sealed class SimulationSessionHeartbeatService(
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var sessions = sessionStore.ListActiveSessions();
-            if (sessions.Count == 0)
-            {
-                continue;
-            }
-
-            // One trace per cycle instead of one per session.
-            using var activity = SimulationWorkerTelemetry.StartOperation(
-                "simulation.session.heartbeat_cycle");
-            activity?.SetTag("mmorpg.simulation_session.count", sessions.Count);
-            await RunBoundedAsync(sessions, HeartbeatAsync, stoppingToken);
+            await HeartbeatRoundAsync(stoppingToken);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        await RunBoundedAsync(
+        await BoundedAsync.ForEachAsync(
             sessionStore.ListActiveSessions(),
+            config.SimulationSessionHeartbeatMaxConcurrency,
             async (session, token) =>
             {
                 try
@@ -73,121 +67,90 @@ public sealed class SimulationSessionHeartbeatService(
         await base.StopAsync(cancellationToken);
     }
 
-    private Task RunBoundedAsync(
-        IEnumerable<ActiveSimulationSession> sessions,
-        Func<ActiveSimulationSession, CancellationToken, Task> operation,
-        CancellationToken cancellationToken)
+    // One heartbeat round: every active session, in requests of at most the batch size, several
+    // at once. A request that failed for a passing reason, such as a timeout or a GameService that
+    // cannot be reached, goes again after the retry delay with those of its sessions that are
+    // still current, as long as the retry starts within the round's interval. So a failed request
+    // costs no lease when GameService comes back in time, and a session whose lease could not be
+    // renewed still ends by its local deadline.
+    internal async Task HeartbeatRoundAsync(CancellationToken cancellationToken)
     {
-        return BoundedAsync.ForEachAsync(
-            sessions,
-            config.SimulationSessionHeartbeatMaxConcurrency,
-            operation,
-            cancellationToken);
+        var sessions = sessionStore.ListActiveSessions();
+        if (sessions.Count == 0)
+        {
+            return;
+        }
+
+        // One trace per round instead of one per session.
+        using var activity = SimulationWorkerTelemetry.StartOperation(
+            "simulation.session.heartbeat_cycle");
+        activity?.SetTag("mmorpg.simulation_session.count", sessions.Count);
+        var roundStarted = Stopwatch.GetTimestamp();
+        IReadOnlyList<ActiveSimulationSession[]> batches = sessions
+            .GroupBy(session => session.WorkerRuntimeId, StringComparer.Ordinal)
+            .SelectMany(runtime => runtime.Chunk(config.SimulationSessionHeartbeatBatchSize))
+            .ToArray();
+        while (true)
+        {
+            var failed = new ConcurrentQueue<ActiveSimulationSession[]>();
+            await BoundedAsync.ForEachAsync(
+                batches,
+                config.SimulationSessionHeartbeatMaxConcurrency,
+                async (batch, token) =>
+                {
+                    if (await HeartbeatBatchAsync(batch, token))
+                    {
+                        failed.Enqueue(batch);
+                    }
+                },
+                cancellationToken);
+            if (failed.IsEmpty)
+            {
+                return;
+            }
+
+            if (Stopwatch.GetElapsedTime(roundStarted) + config.SimulationSessionHeartbeatRetryDelay
+                >= config.SimulationSessionHeartbeatInterval)
+            {
+                logger.LogWarning(
+                    "Could not renew the leases of {Count} simulation sessions in this heartbeat round; the next round sends them again.",
+                    failed.Sum(batch => batch.Length));
+                return;
+            }
+
+            await Task.Delay(config.SimulationSessionHeartbeatRetryDelay, cancellationToken);
+            batches = failed
+                .Select(batch => batch.Where(sessionStore.IsCurrentGeneration).ToArray())
+                .Where(batch => batch.Length > 0)
+                .ToArray();
+            if (batches.Count == 0)
+            {
+                return;
+            }
+        }
     }
 
-    private async Task HeartbeatAsync(
-        ActiveSimulationSession session,
+    // Sends the heartbeat of one batch and applies the answer of every session. True when the
+    // request failed for a reason that the same request may get past, so the round sends it again.
+    private async Task<bool> HeartbeatBatchAsync(
+        ActiveSimulationSession[] batch,
         CancellationToken cancellationToken)
     {
+        var request = new SimulationSessionHeartbeatRequest(
+            batch[0].WorkerRuntimeId,
+            batch
+                .Select(session => new SimulationSessionHeartbeatEntry(
+                    session.SimulationSessionId,
+                    session.SimulationSessionToken))
+                .ToArray());
+        GameServiceResult<SimulationSessionHeartbeatResponse> result;
+        var requestedAt = DateTime.UtcNow;
         try
         {
-            var requestedAt = DateTime.UtcNow;
-            var result = await gameServiceClient.HeartbeatSimulationSessionAsync(
-                session.SimulationSessionId,
-                session.WorkerRuntimeId,
-                session.SimulationSessionToken,
+            result = await gameServiceClient.HeartbeatSimulationSessionsAsync(
+                config.SimulationWorkerId,
+                request,
                 cancellationToken);
-
-            if (result.Succeeded)
-            {
-                var refreshed = sessionStore.Refresh(
-                    session.CharacterId,
-                    session.SimulationSessionId,
-                    session.SimulationSessionToken,
-                    requestedAt.AddMilliseconds(result.Value!.LeaseDurationMilliseconds));
-                if (!refreshed)
-                {
-                    return;
-                }
-
-                // The account session ended, but the session goes on: the realtime loop ends the
-                // connection that still plays it, and the character's body stays its full time.
-                if (result.Value.AccountSessionEnded is { } accountSessionEnd
-                    && sessionStore.MarkAccountSessionEnded(
-                        session.CharacterId,
-                        session.SimulationSessionId,
-                        session.SimulationSessionToken,
-                        accountSessionEnd))
-                {
-                    logger.LogInformation(
-                        "The account session of simulation session {SimulationSessionId} ended with {Code}; its connection ends and its body stays.",
-                        session.SimulationSessionId,
-                        accountSessionEnd);
-                }
-
-                var itemState = CharacterItemState.Create(
-                    new PlayerCarryState(
-                        result.Value.ItemStateRevision,
-                        result.Value.CarriedWeight,
-                        result.Value.CarryCapacity),
-                    result.Value.Equipment);
-                var carryResult = carryApplier.Apply(session, itemState, out _);
-                if (carryResult == ItemStateApplyResult.Conflict)
-                {
-                    var invalidated = sessionStore.Invalidate(
-                        session.CharacterId,
-                        session.SimulationSessionId,
-                        session.SimulationSessionToken,
-                        "carry_state_conflict",
-                        "GameService returned conflicting carry state for one item-state revision.");
-                    if (invalidated)
-                    {
-                        itemStateStore.Remove(
-                            session.CharacterId,
-                            session.SimulationSessionId);
-                    }
-
-                    logger.LogError(
-                        "Invalidated simulation session {SimulationSessionId} because GameService returned conflicting carry state revision {ItemStateRevision}.",
-                        session.SimulationSessionId,
-                        itemState.ItemStateRevision);
-                }
-
-                return;
-            }
-
-            if (result.StatusCode is (int)HttpStatusCode.Unauthorized
-                or (int)HttpStatusCode.NotFound
-                or (int)HttpStatusCode.Conflict)
-            {
-                // The lease was not renewed, so the session ended whatever the code says.
-                var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(result.Error!.Code);
-                var invalidated = sessionStore.Invalidate(
-                    session.CharacterId,
-                    session.SimulationSessionId,
-                    session.SimulationSessionToken,
-                    code,
-                    message);
-                if (invalidated)
-                {
-                    itemStateStore.Remove(
-                        session.CharacterId,
-                        session.SimulationSessionId);
-                }
-
-                logger.LogWarning(
-                    "Invalidated simulation session {SimulationSessionId} with code {Code} after GameService returned {StatusCode}.",
-                    session.SimulationSessionId,
-                    code,
-                    result.StatusCode);
-
-                return;
-            }
-
-            logger.LogWarning(
-                "Could not heartbeat simulation session {SimulationSessionId}: {Code}.",
-                session.SimulationSessionId,
-                result.Error!.Code);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -197,8 +160,111 @@ public sealed class SimulationSessionHeartbeatService(
         {
             logger.LogWarning(
                 exception,
-                "Could not heartbeat simulation session {SimulationSessionId}.",
-                session.SimulationSessionId);
+                "Could not heartbeat {Count} simulation sessions.",
+                batch.Length);
+            return exception is HttpRequestException or TaskCanceledException;
+        }
+
+        if (!result.Succeeded)
+        {
+            logger.LogWarning(
+                "Could not heartbeat {Count} simulation sessions: {Code}.",
+                batch.Length,
+                result.Error!.Code);
+            return GameServiceOutcome.IsTransient(result.Error.Code, result.StatusCode);
+        }
+
+        for (var index = 0; index < batch.Length; index++)
+        {
+            Apply(batch[index], result.Value!.Sessions[index], requestedAt);
+        }
+
+        return false;
+    }
+
+    // Applies GameService's answer for one session, as the heartbeat of a single session did.
+    private void Apply(
+        ActiveSimulationSession session,
+        SimulationSessionHeartbeatResult result,
+        DateTime requestedAt)
+    {
+        if (result.Lease is not { } lease)
+        {
+            // The lease was not renewed, so the session ended whatever the code says.
+            var refusal = GameServiceClient.NormalizeForwardedErrorCode(result.Error!.Code);
+            var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(refusal);
+            var invalidated = sessionStore.Invalidate(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code,
+                message);
+            if (invalidated)
+            {
+                itemStateStore.Remove(
+                    session.CharacterId,
+                    session.SimulationSessionId);
+            }
+
+            logger.LogWarning(
+                "Invalidated simulation session {SimulationSessionId} with code {Code} after a refused heartbeat: {Refusal}.",
+                session.SimulationSessionId,
+                code,
+                refusal);
+            return;
+        }
+
+        var refreshed = sessionStore.Refresh(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            requestedAt.AddMilliseconds(lease.LeaseDurationMilliseconds));
+        if (!refreshed)
+        {
+            return;
+        }
+
+        // The account session ended, but the session goes on: the realtime loop ends the
+        // connection that still plays it, and the character's body stays its full time.
+        if (lease.AccountSessionEnded is { } accountSessionEnd
+            && sessionStore.MarkAccountSessionEnded(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                accountSessionEnd))
+        {
+            logger.LogInformation(
+                "The account session of simulation session {SimulationSessionId} ended with {Code}; its connection ends and its body stays.",
+                session.SimulationSessionId,
+                accountSessionEnd);
+        }
+
+        var itemState = CharacterItemState.Create(
+            new PlayerCarryState(
+                lease.ItemStateRevision,
+                lease.CarriedWeight,
+                lease.CarryCapacity),
+            lease.Equipment);
+        var carryResult = carryApplier.Apply(session, itemState, out _);
+        if (carryResult == ItemStateApplyResult.Conflict)
+        {
+            var invalidated = sessionStore.Invalidate(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                "carry_state_conflict",
+                "GameService returned conflicting carry state for one item-state revision.");
+            if (invalidated)
+            {
+                itemStateStore.Remove(
+                    session.CharacterId,
+                    session.SimulationSessionId);
+            }
+
+            logger.LogError(
+                "Invalidated simulation session {SimulationSessionId} because GameService returned conflicting carry state revision {ItemStateRevision}.",
+                session.SimulationSessionId,
+                itemState.ItemStateRevision);
         }
     }
 
