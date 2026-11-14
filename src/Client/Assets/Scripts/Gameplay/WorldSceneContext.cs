@@ -10,7 +10,7 @@ using UnityEngine.SceneManagement;
 namespace Mmorpg.Client.Gameplay
 {
     [DisallowMultipleComponent]
-    public sealed class WorldSceneContext : MonoBehaviour
+    public sealed class WorldSceneContext : MonoBehaviour, IRemoteMotionSource
     {
         // At most this long a frame goes to putting bodies on players that came into view, the
         // nearest first and at least one a frame, so a crowd that comes into view at once, as at a
@@ -62,6 +62,18 @@ namespace Mmorpg.Client.Gameplay
         public CharacterPreview Preview
         {
             get { return preview; }
+        }
+
+        // Whether each other player in view ran out of snapshots while it moved.
+        public void CollectRemoteMotion(List<RemoteMotionSample> samples)
+        {
+            foreach (var pair in remotePlayers)
+            {
+                if (pair.Value != null)
+                {
+                    samples.Add(new RemoteMotionSample(pair.Key, pair.Value.IsMovementStarved));
+                }
+            }
         }
 
         // The presentations of the other players in view.

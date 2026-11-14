@@ -1,5 +1,6 @@
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;
@@ -120,7 +121,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void WorldDebugFrameTelemetryCalculatesFpsAndPercentiles()
         {
-            var tracker = new WorldDebugTelemetryTracker();
+            var tracker = new ClientTelemetryWindow();
 
             for (var index = 0; index < 30; index++)
             {
@@ -136,7 +137,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void WorldDebugNetworkTelemetryCalculatesObservedRates()
         {
-            var tracker = new WorldDebugTelemetryTracker();
+            var tracker = new ClientTelemetryWindow();
             tracker.SampleNetwork(10f, 100, 1024, 50, 512, 80, 40);
 
             tracker.SampleNetwork(10.5f, 110, 3072, 55, 1536, 88, 47);
@@ -152,7 +153,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [Test]
         public void WorldDebugNetworkCounterResetClearsRates()
         {
-            var tracker = new WorldDebugTelemetryTracker();
+            var tracker = new ClientTelemetryWindow();
             tracker.SampleNetwork(1f, 10, 1000, 10, 1000, 10, 10);
             tracker.SampleNetwork(1.5f, 20, 2000, 20, 2000, 20, 20);
 
@@ -167,10 +168,10 @@ namespace Mmorpg.Client.Tests.EditMode
         public void WorldDebugSnapshotLossUsesObservedAndMissingSequences()
         {
             Assert.That(
-                WorldDebugDiagnostics.EstimateSnapshotLossPercent(95, 5),
+                ClientMeasurements.EstimateSnapshotLossPercent(95, 5),
                 Is.EqualTo(5f));
             Assert.That(
-                WorldDebugDiagnostics.EstimateSnapshotLossPercent(0, 0),
+                ClientMeasurements.EstimateSnapshotLossPercent(0, 0),
                 Is.Zero);
         }
     }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using Mmorpg.Testing;
 using Mmorpg.Tools.NetworkImpairmentProxy;
 using Mmorpg.Tools.StackStressGenerator;
@@ -122,6 +123,34 @@ public sealed class NetworkImpairmentProxyTests
             "does not exist",
             Assert.Throws<NetworkImpairmentException>(() => NetworkProfile.Resolve("dial-up", Path.GetTempPath())).Message,
             StringComparison.Ordinal);
+    }
+
+    // The live stack test asserts these bounds of the client's measurements: one entry for
+    // loopback and each shipped profile, with a reason, and every bound a finite number of at
+    // least 0.
+    [Fact]
+    public void TheClientBoundsNameLoopbackAndEveryShippedProfileOnce()
+    {
+        using var bounds = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryPaths.Root, "tools", "load", "network-client-bounds.json")));
+        var root = bounds.RootElement;
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("description").GetString()));
+        var names = new List<string>();
+        foreach (var entry in root.GetProperty("profiles").EnumerateArray())
+        {
+            names.Add(entry.GetProperty("profile").GetString()!);
+            Assert.False(string.IsNullOrWhiteSpace(entry.GetProperty("reason").GetString()));
+            foreach (var bound in new[] { "hardSnapsPerMinute", "correctionP95Meters", "largestUnexplainedJumpMeters" })
+            {
+                var value = entry.GetProperty(bound).GetDouble();
+                Assert.True(double.IsFinite(value) && value >= 0, bound + " of " + names[^1] + " is " + value + ".");
+            }
+        }
+
+        var expected = Directory.EnumerateFiles(ProfileFolder, "*.json")
+            .Select(path => Path.GetFileNameWithoutExtension(path))
+            .Prepend(NetworkProfile.None)
+            .Order(StringComparer.Ordinal);
+        Assert.Equal(expected, names.Order(StringComparer.Ordinal));
     }
 
     [Fact]

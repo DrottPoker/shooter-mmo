@@ -44,6 +44,13 @@ namespace Mmorpg.Client.Gameplay
             get { return presenter.DelayTicks; }
         }
 
+        // Whether snapshots moved the actor and it ran out of them while it still moved; an
+        // actor at its rest pose is not starved.
+        public bool IsStarved
+        {
+            get { return !resting && presenter.IsStarved; }
+        }
+
         // How many times the presented pose jumped, as in a teleport or a start from the rest pose.
         public int Discontinuities
         {

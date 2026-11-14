@@ -1,0 +1,40 @@
+{
+  "description": "The bounds of the client measurements that the network part of the live stack test, LiveStackNetworkPlayModeTests, asserts for loopback and each network profile: the hard snaps of 3 m and more per minute in the World, the p95 of the corrections of the local player's prediction, and the largest movement of the drawn local player in one frame beyond its walk, which a player sees as rubber banding. docs/LOCAL_DEVELOPMENT.md under The Client On A Bad Network has the measured values.",
+  "profiles": [
+    {
+      "profile": "none",
+      "hardSnapsPerMinute": 0,
+      "correctionP95Meters": 0.05,
+      "largestUnexplainedJumpMeters": 0.25,
+      "reason": "Measured in three runs: no hard snap, a p95 correction of 0.000 m, and a largest jump of 0.005 to 0.008 m, because the prediction matches the worker. No hard snap and no jump that the measurements count as visible, 0.25 m."
+    },
+    {
+      "profile": "good",
+      "hardSnapsPerMinute": 0,
+      "correctionP95Meters": 0.05,
+      "largestUnexplainedJumpMeters": 0.25,
+      "reason": "Measured in three runs: no hard snap, a p95 correction of 0.000 m, and a largest jump of 0.002 to 0.006 m, as on loopback. No hard snap and no visible jump."
+    },
+    {
+      "profile": "normal",
+      "hardSnapsPerMinute": 0,
+      "correctionP95Meters": 0.05,
+      "largestUnexplainedJumpMeters": 0.25,
+      "reason": "Measured in three runs: no hard snap, a p95 correction of 0.000 m, and a largest jump of 0.005 to 0.006 m, as on loopback. No hard snap and no visible jump."
+    },
+    {
+      "profile": "poor",
+      "hardSnapsPerMinute": 0,
+      "correctionP95Meters": 0.05,
+      "largestUnexplainedJumpMeters": 0.25,
+      "reason": "Measured in three runs: no hard snap, a p95 correction of 0.000 m, and a largest jump of 0.003 to 0.014 m, because the inputs that the batches repeat cover every lost packet. No hard snap and no visible jump."
+    },
+    {
+      "profile": "terrible",
+      "hardSnapsPerMinute": 1.5,
+      "correctionP95Meters": 0.05,
+      "largestUnexplainedJumpMeters": 18,
+      "reason": "Measured in three runs: one hard snap in 92 to 153 s in the World, 0.39 to 0.65 per minute, a p95 correction of 0.000 m, and a largest jump of 9.0 to 9.3 m, the snap back after the 3 s outage, whose inputs never reach the worker, so it stood while the client walked on. The line goes down once a minute, so at most one snap per outage with margin, and a jump of at most the walk over the outage and a round trip, 5 m/s for 3.5 s."
+    }
+  ]
+}

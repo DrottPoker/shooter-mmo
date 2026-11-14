@@ -31,7 +31,14 @@ namespace Mmorpg.Client.Networking
         }
 
         // The encoder is a cached delegate of its channel, so a send allocates only its packet.
-        public bool TrySendIntent<TIntent>(TIntent intent, Func<TIntent, byte[]> encode, string description)
+        // The kind and the operation id time the intent to its result while a measurement asks
+        // for it.
+        public bool TrySendIntent<TIntent>(
+            TIntent intent,
+            Func<TIntent, byte[]> encode,
+            string description,
+            string kind,
+            Guid operationId)
             where TIntent : class
         {
             if (!CanSend || intent == null)
@@ -44,6 +51,7 @@ namespace Mmorpg.Client.Networking
                 var packet = encode(intent);
                 connection.Send(packet, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
                 diagnostics.RecordSentPacket(packet.Length);
+                diagnostics.RecordIntentSent(operationId, kind);
                 return true;
             }
             catch (Exception exception) when (
@@ -54,6 +62,12 @@ namespace Mmorpg.Client.Networking
                     description + " could not be encoded: " + exception.Message);
                 return false;
             }
+        }
+
+        // A channel received the result of the intent with this operation id.
+        public void RecordIntentAnswered(Guid operationId)
+        {
+            diagnostics.RecordIntentAnswered(operationId);
         }
 
         // Sends an encoded movement input batch sequenced on its channel. The transport otherwise

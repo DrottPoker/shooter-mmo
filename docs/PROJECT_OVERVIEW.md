@@ -119,7 +119,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The content tools and the World Builder | Provisional | |
 | The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |
 | The UI kit and the windows built on it | Provisional | |
-| Monitoring, stress tools, the network impairment proxy, and bots | Provisional | |
+| Monitoring, the client measurements, stress tools, the network impairment proxy, and bots | Provisional | |
 | The panels named `Temporary` | Temporary | Move onto the UI kit |
 | The development Worlds | Temporary | Test maps, replaced by the first real World |
 | Placeholder item icons | Temporary | |

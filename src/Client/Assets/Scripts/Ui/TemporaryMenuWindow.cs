@@ -225,7 +225,12 @@ namespace Mmorpg.Client.Ui
         public static TextMeshProUGUI AddValue(RectTransform page, string label)
         {
             var row = TemporaryUiKit.CreateRow(page, RowHeight, 6f);
-            row.GetComponent<LayoutElement>().minHeight = RowHeight;
+            // A wrapped label or value makes the row taller. The row's own layout element would
+            // win over the height its layout group computes from the texts, so it only keeps the
+            // minimum.
+            var rowElement = row.GetComponent<LayoutElement>();
+            rowElement.minHeight = RowHeight;
+            rowElement.preferredHeight = -1f;
             var name = TemporaryUiKit.AddText(
                 TemporaryUiKit.CreateUiObject("Label", row),
                 label,
@@ -233,6 +238,7 @@ namespace Mmorpg.Client.Ui
                 FontStyles.Normal,
                 TextAlignmentOptions.TopLeft,
                 TemporaryUiKit.TextSecondary);
+            name.textWrappingMode = TextWrappingModes.Normal;
             var nameLayout = name.gameObject.AddComponent<LayoutElement>();
             nameLayout.preferredWidth = LabelWidth;
             nameLayout.flexibleWidth = 0f;
@@ -245,11 +251,9 @@ namespace Mmorpg.Client.Ui
                 TemporaryUiKit.TextPrimary);
             value.textWrappingMode = TextWrappingModes.Normal;
             value.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-            // Wrapped values make the row taller.
             var layout = row.GetComponent<HorizontalLayoutGroup>();
             layout.childAlignment = TextAnchor.UpperLeft;
             layout.childForceExpandHeight = false;
-            row.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             return value;
         }
 

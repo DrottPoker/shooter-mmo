@@ -1544,8 +1544,12 @@ What the profiles show:
   and none before it: the worker disconnects a peer 250 ms after it sent
   `LeaveAccepted` (`RealtimePeerContext.GracefulDisconnectDelayMilliseconds`),
   and when that reliable message is lost or held back behind a lost one, the
-  disconnect arrives first. The Unity client's `RealtimeSession.Leave` reports the same
-  `connection_closed`, and the same 250 ms follow every `ServerDisconnect` and
+  disconnect arrives first. The Unity client's `RealtimeSession.Leave` fails
+  the same way but names it `connection_lost`, `The realtime connection
+  closed: RemoteConnectionClose.`, because the disconnect sets the operation's
+  error first;
+  [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
+  measures how often. The same 250 ms follow every `ServerDisconnect` and
   protocol rejection, whose reason can be lost the same way. This is a finding
   about the worker, not the bots; it is not fixed here.
 - **An outage costs the inputs it spans.** Under `terrible` the input

@@ -1,3 +1,4 @@
+using System;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
@@ -110,6 +111,10 @@ namespace Mmorpg.Client.Gameplay
         {
             get { return latestReconciliationDistance; }
         }
+
+        // Raised for every owner snapshot that corrected the prediction: how far the prediction
+        // moved and whether it was a hard snap.
+        public event Action<float, bool> PositionCorrected;
 
         // The path the player follows, or null while it stands.
         public MovementPath CurrentPath
@@ -500,7 +505,9 @@ namespace Mmorpg.Client.Gameplay
                 previous.PositionZ - corrected.PositionZ);
             latestReconciliationDistance = positionError.magnitude;
             reconciliationCount++;
-            if (latestReconciliationDistance >= HardReconciliationDistance)
+            var hard = latestReconciliationDistance >= HardReconciliationDistance;
+            PositionCorrected?.Invoke(latestReconciliationDistance, hard);
+            if (hard)
             {
                 hardReconciliationCount++;
                 movementPresentation.Reset(corrected);

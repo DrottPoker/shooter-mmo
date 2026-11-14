@@ -17,7 +17,7 @@ namespace Mmorpg.Client.WorldActors
     // Snapshot entities that name a presented Mob move its view; WorldSceneContext moves the
     // remote players of the same snapshots.
     [DisallowMultipleComponent]
-    public sealed class WorldActorPresentationController : MonoBehaviour
+    public sealed class WorldActorPresentationController : MonoBehaviour, IRemoteMotionSource
     {
         private readonly Dictionary<ulong, WorldActorView> presentations =
             new Dictionary<ulong, WorldActorView>();
@@ -70,6 +70,19 @@ namespace Mmorpg.Client.WorldActors
         public const float FallHandoverDistance = 1.5f;
 
         // The views of every presented actor, such as the Mobs whose creatures show their life state.
+        // Whether each Mob that snapshots move ran out of them while it moved. Actors that never
+        // move, such as NPCs and resource nodes, are left out.
+        public void CollectRemoteMotion(List<RemoteMotionSample> samples)
+        {
+            foreach (var pair in presentations)
+            {
+                if (pair.Value is MobView mob && mob != null && mob.Movement.IsDriven)
+                {
+                    samples.Add(new RemoteMotionSample(pair.Key, mob.Movement.IsStarved));
+                }
+            }
+        }
+
         public Dictionary<ulong, WorldActorView>.ValueCollection Views
         {
             get { return presentations.Values; }

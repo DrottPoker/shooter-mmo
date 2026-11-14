@@ -64,7 +64,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendQuestIntent(RealtimeQuestIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Quest intent");
+            return sender.TrySendIntent(intent, EncodeIntent, "Quest intent", RealtimeIntentKinds.Quest, intent?.OperationId ?? Guid.Empty);
         }
 
         private void HandleQuestIntentResult(byte[] packet)
@@ -75,6 +75,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             QuestIntentCompleted?.Invoke(result);
         }
 

@@ -459,6 +459,101 @@ profile checks the proxy again with the validity rule
 measured a lateness p99 of 0.52 to 0.54 ms at 3,000 to 3,700 packets per second
 and direction, with the proxy at about one core.
 
+### The Client On A Bad Network
+
+The network part of [the live stack test](#run-the-live-stack-test) plays the
+running client under a profile and records with the
+[client measurements](UNITY_CLIENT_ARCHITECTURE.md#client-measurements): a
+walk with a turn about every two seconds, 30 seconds long and 78 under
+`terrible`, so that it spans the first outage, then 2 seconds of standing, the
+walk back, and Mira's window opened and closed five times, while another
+player walks back and forth beside it; then the leaves, each with a join after
+it, in a recording of their own. Measured on 2026-11-14 on the reference
+machine of [Measured Tiers](STACK_STRESS_TESTING.md#measured-tiers), headless,
+with `-Leaves 20` under `good` and `normal`, `-Leaves 100` under `poor` and
+`terrible`, and the plain run's 3 on loopback; every run passed:
+
+| | Loopback | `good` | `normal` | `poor` | `terrible` |
+| --- | --- | --- | --- | --- | --- |
+| Round trip p50 / p95 | below 1 ms | 30 / 31 ms | 80 / 155 ms | 208 / 427 ms | 525 / 829 ms |
+| Owner snapshots lost | none | none | 1.2 % | 6.1 % | 20.6 % |
+| Silences of a second and more, longest | none | none | none | none | 4, 3.2 s |
+| Corrections, p95 / largest | 0.000 / 0.000 m | 0.000 / 0.000 m | 0.000 / 0.000 m | 0.000 / 0.000 m | 0.000 / 8.93 m |
+| Hard snaps | none | none | none | none | 1, 0.65 per minute |
+| Largest jump of the drawn player | 0.007 m | 0.006 m | 0.005 m | 0.003 m | 9.01 m |
+| Drawn player after 2 s of standing, from the worker's | 0.000 m | 0.000 m | 0.000 m | 0.000 m | 0.000 m |
+| The other player out of snapshots in the play: share, stalls, longest | none | none | 0.3 %, 6, 0.07 s | 2.4 %, 25, 0.53 s | 13 %, 194, 3.0 s |
+| The other player out of snapshots right after the joins: share, longest | none | none | 30 %, 0.41 s | 55 %, 0.49 s | 82 %, 7.8 s (1) |
+| Mira's open and close, p50 / p95 | 19 / 41 ms | 46 / 62 ms | 92 / 109 ms | 204 / 1,111 ms | 422 / 720 ms |
+| Leaves that ended cleanly | 3 of 3 | 20 of 20 | 20 of 20 | 100 of 100 | 100 of 100 |
+| Lost connections, exceptions | none | none | none | none | none |
+| Unity time of the run | 104 s | 99 s | 102 s | 276 s | 399 s |
+
+(1) The first leave met the second outage and took 7.9 seconds, cleanly,
+while the other player stood; the other 99 leaves took about 0.6 seconds each.
+
+What the profiles show:
+
+- **The prediction holds while the line holds.** Outside the outage every
+  owner snapshot of the play confirmed the predicted position to the
+  millimeter on every profile, but for one correction of 0.17 m in one
+  `terrible` run, so no correction moved the player visibly and the drawn
+  player stood exactly where the worker had it: the worker fills a gap of up
+  to 15 lost inputs, half a second, with the path before it
+  (`AuthoritativePlayerMovement.MaximumFilledInputGap`), which covers every
+  loss of the profiles outside an outage.
+- **An outage snaps the walking player back by the walk it missed.** Under
+  `terrible` the client walks on through the 3-second outage, but none of the
+  inputs of those seconds reach the worker, and a gap that long is not filled:
+  the worker skips ahead to the first input after it, so the character stood
+  through the outage. The first owner snapshot after the outage then corrects
+  the prediction by the distance walked, 8.9 to 9.3 m in three runs, a hard
+  snap that the drawn player shows as a jump of the same size in one frame. A
+  player sees the character jump back to about where the line went down. This
+  is a finding about how the worker treats a long gap of inputs, not fixed
+  here.
+- **Other players freeze when their snapshots run out.** The presentation
+  holds a remote entity at its newest state until the next one arrives, with a
+  render delay of about 133 ms. A burst of lost snapshots longer than that
+  stops the other player for a moment: up to 0.07 s under `normal`, 0.53 s
+  under `poor`, and about a second under `terrible` besides the 3 seconds of
+  the outage. Right after a join it stands still too until the render clock
+  has states to play, for up to half a second under `normal` and worse.
+- **Reliable intents wait for resends.** Mira's window answers about one round
+  trip after the click, but one lost packet holds it back until LiteNetLib
+  resends it, so over three runs the p95 rose to 1.0 to 1.7 seconds under
+  `poor` and 0.7 to 2.6 seconds under `terrible`, as for the bots of
+  [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
+- **The client's leave meets the leave finding only under `terrible`.** Over
+  every run of the day 60 of 60 leaves ended cleanly under `good` and
+  `normal`, 220 of 220 under `poor`, and 217 of 220 under `terrible`. The 3
+  that failed, all in one run, ended within 0.8 seconds with `Realtime
+  operation failed: The realtime connection closed: RemoteConnectionClose.
+  [connection_lost]` and went to Character Select: the worker's disconnect
+  overtook a lost `LeaveAccepted`, the finding of
+  [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles)
+  that fails 25 and 58 percent of the load bots' leaves under `poor` and
+  `terrible`. Every leave but the first came about a second after a join, with
+  the reliable channel otherwise quiet, and each join opens a new socket, so
+  the proxy's outage count starts again and only the first leave can meet an
+  outage. A leave after a longer play, with more in flight, can fail more
+  often, as the load bots show.
+- **The round trip reads above the profile under loss.** Its p95 lies 75 to
+  430 ms above the profile's round trip under `normal` and worse, more than
+  the jitter explains; these runs do not show why.
+
+The test asserts the bounds of `tools/load/network-client-bounds.json` for the
+play of each profile and loopback, with the reason of each in the file:
+
+| | Loopback, `good`, `normal`, `poor` | `terrible` |
+| --- | --- | --- |
+| Hard snaps per minute in the World | 0 | 1.5: one per outage, which comes once a minute, with margin |
+| Corrections p95 | 0.05 m | 0.05 m |
+| Largest jump of the drawn player | 0.25 m, the size the measurements count as a visible jump | 18 m: the walk over the outage and a round trip, 5 m/s for 3.5 s |
+
+A client that misses a bound under `good` or `normal` has a defect to find,
+not a bound to raise.
+
 ## Repository Quality Checks
 
 CI runs the full quality gate for every pull request, split into parallel jobs
@@ -962,11 +1057,13 @@ offline, ends a service that does not stop within 30 seconds, and stops the
 containers that it started; containers that ran before keep running.
 
 Expected result: the lines of the steps `a.` to `h.` with what each observed,
-such as the entity ids, the places, `IsReconnect`, and `BodySeconds 20`, then
-`Live stack test passed`, exit code 0, and the stack as it was before. A run
-takes about two and a half minutes: about one minute to start the containers,
-build, and start the services, and about 80 seconds of Unity, of which the
-scenario takes 30 seconds, most of them the 20 seconds that the body stays.
+such as the entity ids, the places, `IsReconnect`, and `BodySeconds 20`, the
+lines of the network part, then `Live stack test under the network profile
+none passed`, exit code 0, and the stack as it was before. A run takes about
+two and a half minutes: up to one minute to start the containers, build, and
+start the services, and about 100 seconds of Unity, of which the scenario takes
+30 seconds, most of them the 20 seconds that the body stays, and the network
+part about 50.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -974,11 +1071,37 @@ scenario takes 30 seconds, most of them the 20 seconds that the body stays.
 | 1 | The test failed; the step lines and the Unity log say where |
 | 2 | The stack or Unity could not run the test, for example without Docker, with an open Editor, or with a port in use |
 
+The run also plays the network part, `LiveStackNetworkPlayModeTests`, which
+[Live Stack Test](../tests/README.md#live-stack-test) describes, on loopback.
+`-Network <profile>` runs the network part alone on a bad network: the script
+also builds and starts the network impairment proxy with the profile of
+`tools/load/network-profiles`, as [Run On A Bad Network](#run-on-a-bad-network)
+describes, on UDP 27115 in front of the worker, which advertises that port, and
+stops it last:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-LiveStack.ps1 -Network poor -Leaves 20
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `-Network <profile>` | The profile between the client and the worker, `none` by default |
+| `-Leaves <count>` | How many times the network part leaves and comes back, 3 by default. A leave and a join take one to three seconds, so 100 give a rate of failed leaves in a few minutes |
+
+The walk lasts 30 seconds, and under a profile with outages until 15 seconds
+after the first outage ended, so the measurements see the correction after it.
+The log folder keeps the proxy's `network-proxy.json`, the network part's
+`live-network-<profile>.json`, and the path of its measurement file, and the
+script prints the `[LIVE]` lines of the network part with the proxy's counts.
+What the profiles measured is in
+[The Client On A Bad Network](#the-client-on-a-bad-network).
+
 Each run keeps its logs in a new folder below
 `%TEMP%\shooter-mmo-live-stack`, which the script prints: the build output, the
 output of both services, the Compose output, and the Unity log and result file.
-Each run also leaves one account named `live_<hex>` with one character in the
-local database. A script that is killed, instead of interrupted with `Ctrl+C`,
+Each run also leaves accounts with one character each in the local database:
+`live_<hex>` of the scenario, and `net_<hex>` and `walker_<hex>` of the network
+part. A script that is killed, instead of interrupted with `Ctrl+C`,
 cannot clean up: stop the two processes whose ids it printed, and run
 `docker compose stop` if it had started the containers.
 
