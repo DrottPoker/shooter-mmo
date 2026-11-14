@@ -15,8 +15,10 @@ public sealed record PlayingAssignment(
 public static class PlayingRoster
 {
     // The kit names of tools/StackStressGenerator and of the StackStressFixtures:Kits settings.
+    // A node field names the kit of its gatherers itself.
     public const string SwordKit = "sword";
     public const string BowKit = "bow";
+    public const string TraderKit = "trader";
 
     public static IReadOnlyList<PlayingAssignment> Assign(
         PlayingScenario scenario,
@@ -47,9 +49,13 @@ public static class PlayingRoster
             var kind = PlayingScenario.GroundKindOf(role);
             var grounds = kind is null ? [] : scenario.GroundsOf(kind.Value);
             var home = grounds.Count == 0 ? null : grounds[ordinal % grounds.Count];
-            var kit = role == PlayingRole.Fighter
-                ? bowFighters.Contains(ordinal) ? BowKit : SwordKit
-                : null;
+            var kit = role switch
+            {
+                PlayingRole.Fighter => bowFighters.Contains(ordinal) ? BowKit : SwordKit,
+                PlayingRole.Gatherer => home?.Kit,
+                PlayingRole.Trader => TraderKit,
+                _ => null
+            };
             var botIndex = botStartIndex + offset;
             assignments[offset] = new PlayingAssignment(botIndex, role, home, kit, Mix(seed, botIndex));
         }
@@ -79,11 +85,13 @@ public static class PlayingRoster
     }
 
     // The kit items with the equipment slot a player equips each into and the weapon's range,
-    // read from the item catalog as the Unity client reads it.
+    // read from the item catalog as the Unity client reads it. A fighter's kit needs a weapon;
+    // a gatherer's holds a tool and a trader's only goods to sell.
     public static PlayingKit ResolveKit(
         string? kitName,
         IEnumerable<string> kitDefinitionIds,
-        ItemCatalogRuntimeDocument catalog)
+        ItemCatalogRuntimeDocument catalog,
+        bool requireWeapon = true)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         if (kitName is null)
@@ -110,7 +118,7 @@ public static class PlayingRoster
             }
         }
 
-        if (range <= 0f)
+        if (requireWeapon && range <= 0f)
         {
             throw new InvalidOperationException($"The kit '{kitName}' holds no weapon.");
         }

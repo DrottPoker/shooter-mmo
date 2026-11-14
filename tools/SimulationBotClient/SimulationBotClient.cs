@@ -164,6 +164,11 @@ public sealed class SimulationBotClient : IDisposable
         return session.Capture();
     }
 
+    public SimulationBotProgress CaptureProgress()
+    {
+        return session.CaptureProgress();
+    }
+
     public void Dispose()
     {
         if (disposed)

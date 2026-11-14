@@ -82,6 +82,12 @@ public interface ISimulationBotRealtimeObserver
     }
 }
 
+// The counters a progress line reads while another thread polls the bot.
+public readonly record struct SimulationBotProgress(
+    SimulationBotClientState State,
+    long SnapshotsReceived,
+    long EstimatedMissingSnapshots);
+
 // BodySeconds is how long the worker keeps the bot's body in the world after a completed leave,
 // during which the bot's session stays active. RemoteCadence is set once the measurement window
 // of the remote state cadence ended.

@@ -2,6 +2,8 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Tools.SimulationBotClient;
 using Mmorpg.Tools.StackStressGenerator;
+using Mmorpg.WorldData.Actors;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Tools.Tests;
 
@@ -178,7 +180,250 @@ internal static class PlayingTestWorld
             revision,
             PermanentInventory,
             [new SimulationBotItemContainer(PermanentInventory, 1, 20)],
-            items);
+            items)
+        {
+            Currency = 100,
+            CarriedWeight = 200,
+            CarryCapacity = 2000
+        };
+    }
+
+    public const string Vendor = "vendor.test_store";
+    public const string Arrow = "ammunition.bronze_arrow";
+    public const string Pelt = "material.wolf_pelt";
+    public const string Ore = "material.iron_ore";
+    public const string Pickaxe = "tool.starter_pickaxe";
+    public const string IronVein = "resource.iron_vein";
+    public const string VendorNpc = "npc.test_services";
+
+    // A small item and actor catalog of the test's own, so content changes never break the
+    // role tests: a vendor that sells arrows at their value and buys materials at 40 percent,
+    // an iron vein that needs a pickaxe, and aggressive feral and defensive grey wolves.
+    public static PlayingGameData GameData { get; } = new(
+        new ItemCatalogRuntimeDocument
+        {
+            Definitions =
+            [
+                new ItemDefinition
+                {
+                    Id = "weapon.iron_sword",
+                    Category = "weapon",
+                    Value = 120,
+                    UnitWeight = 100,
+                    MaximumStackSize = 1,
+                    EquipmentSlots = ["main_hand"],
+                    ToolKinds = [],
+                    Weapon = new ItemWeaponEntry { Range = 2.5f }
+                },
+                new ItemDefinition
+                {
+                    Id = "weapon.training_shortbow",
+                    Category = "weapon",
+                    Value = 100,
+                    UnitWeight = 80,
+                    MaximumStackSize = 1,
+                    EquipmentSlots = ["main_hand"],
+                    ToolKinds = [],
+                    Weapon = new ItemWeaponEntry { Range = 10f }
+                },
+                new ItemDefinition
+                {
+                    Id = Arrow,
+                    Category = "ammunition",
+                    Value = 1,
+                    UnitWeight = 1,
+                    MaximumStackSize = 1000,
+                    EquipmentSlots = ["ammunition"],
+                    ToolKinds = [],
+                    Ammunition = new ItemAmmunitionEntry { AmmunitionFamily = "arrow" }
+                },
+                new ItemDefinition
+                {
+                    Id = Pelt,
+                    Category = "material",
+                    Value = 15,
+                    UnitWeight = 20,
+                    MaximumStackSize = 50,
+                    EquipmentSlots = [],
+                    ToolKinds = []
+                },
+                new ItemDefinition
+                {
+                    Id = Ore,
+                    Category = "material",
+                    Value = 10,
+                    UnitWeight = 60,
+                    MaximumStackSize = 100,
+                    EquipmentSlots = [],
+                    ToolKinds = []
+                },
+                new ItemDefinition
+                {
+                    Id = Pickaxe,
+                    Category = "tool",
+                    Value = 50,
+                    UnitWeight = 150,
+                    MaximumStackSize = 1,
+                    EquipmentSlots = ["tool"],
+                    ToolKinds = ["pickaxe"]
+                }
+            ],
+            Vendors =
+            [
+                new VendorProfileDefinition
+                {
+                    Id = Vendor,
+                    Offers = [new VendorOfferEntry { DefinitionId = Arrow }],
+                    PurchasePriceBasisPoints = 10000,
+                    SalePriceBasisPoints = 4000,
+                    SaleCategories = ["material", "ammunition"]
+                }
+            ]
+        },
+        new WorldActorCatalogRuntimeDocument
+        {
+            Actors =
+            [
+                new WorldActorDefinition
+                {
+                    Id = "mob.feral_wolf",
+                    Kind = "mob",
+                    BrainProfileId = "mob.aggressive",
+                    InteractionBounds = new WorldActorBoundsDefinition { CenterY = 0.55f, SizeX = 1.2f, SizeY = 1.1f, SizeZ = 1.8f },
+                    Capabilities = []
+                },
+                new WorldActorDefinition
+                {
+                    Id = "mob.grey_wolf",
+                    Kind = "mob",
+                    BrainProfileId = "mob.defensive",
+                    InteractionBounds = new WorldActorBoundsDefinition { CenterY = 0.55f, SizeX = 1.2f, SizeY = 1.1f, SizeZ = 1.8f },
+                    Capabilities = []
+                },
+                new WorldActorDefinition
+                {
+                    Id = IronVein,
+                    Kind = "resource_node",
+                    InteractionBounds = new WorldActorBoundsDefinition { CenterY = 0.6f, SizeX = 1.6f, SizeY = 1.2f, SizeZ = 1.6f },
+                    Capabilities =
+                    [
+                        new WorldActorCapabilityDefinition { Id = "resource.mine", Kind = "gathering", ProfileId = "resource.iron_vein" }
+                    ]
+                },
+                new WorldActorDefinition
+                {
+                    Id = VendorNpc,
+                    Kind = "npc",
+                    InteractionBounds = new WorldActorBoundsDefinition { CenterY = 1f, SizeX = 0.8f, SizeY = 2f, SizeZ = 0.8f },
+                    Capabilities =
+                    [
+                        new WorldActorCapabilityDefinition { Id = "services.vendor", Kind = "vendor", ProfileId = Vendor }
+                    ]
+                }
+            ],
+            ResourceProfiles =
+            [
+                new WorldActorResourceProfileDefinition { Id = "resource.iron_vein", RequiredToolKind = "pickaxe" }
+            ],
+            BrainProfiles =
+            [
+                new WorldActorBrainProfileDefinition { Id = "mob.aggressive", Aggression = "aggressive", DetectionRange = 8f },
+                new WorldActorBrainProfileDefinition { Id = "mob.defensive", Aggression = "defensive", DetectionRange = 0f }
+            ]
+        });
+
+    public static RealtimeWorldActorSpawn VendorAt(ulong entityId, float x, float z)
+    {
+        return new RealtimeWorldActorSpawn(
+            entityId,
+            Guid.NewGuid(),
+            VendorNpc,
+            "development_world_2.vendor",
+            RealtimeWorldActorKind.Npc,
+            "city",
+            RealtimeWorldActorDisposition.Friendly,
+            1,
+            RealtimeWorldActorAggression.None,
+            "npc.citizen",
+            1,
+            1,
+            true,
+            x,
+            0f,
+            z,
+            0f,
+            RealtimeWorldActorActivityTier.Active,
+            0f,
+            1f,
+            0f,
+            0.8f,
+            2f,
+            0.8f,
+            [new RealtimeWorldActorMenuOption("services.vendor", RealtimeWorldActorCapabilityKind.Vendor)]);
+    }
+
+    public static RealtimeWorldActorSpawn NodeAt(ulong entityId, float x, float z, bool active = true)
+    {
+        return new RealtimeWorldActorSpawn(
+            entityId,
+            Guid.NewGuid(),
+            IronVein,
+            "development_world_2.load_field.node" + entityId,
+            RealtimeWorldActorKind.ResourceNode,
+            "neutral",
+            RealtimeWorldActorDisposition.Neutral,
+            1,
+            RealtimeWorldActorAggression.None,
+            "resource.iron_vein",
+            1,
+            1,
+            active,
+            x,
+            0f,
+            z,
+            0f,
+            RealtimeWorldActorActivityTier.Active,
+            0f,
+            0.6f,
+            0f,
+            1.6f,
+            1.2f,
+            1.6f,
+            [new RealtimeWorldActorMenuOption("resource.mine", RealtimeWorldActorCapabilityKind.Gathering)]);
+    }
+
+    public static RealtimeWorldActorState ActorState(ulong entityId, long revision, float x, float z, bool active)
+    {
+        return new RealtimeWorldActorState(entityId, revision, revision, active, x, 0f, z, 0f, RealtimeWorldActorActivityTier.Active);
+    }
+
+    // The worker's answer to an Open of a vendor or a node.
+    public static RealtimeWorldInteractionOpened Opened(
+        RealtimeWorldActorSpawn target,
+        RealtimeWorldActorCapabilityKind kind,
+        string capabilityId,
+        string profileId)
+    {
+        return new RealtimeWorldInteractionOpened(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            RealtimeWorldInteractionTargetKind.WorldActor,
+            target.EntityId,
+            target.RuntimeActorId,
+            target.InteractionRevision,
+            1,
+            [new RealtimeWorldActorCapability(capabilityId, kind, profileId, true, 1)]);
+    }
+
+    public static RealtimeWorldInteractionClosed Closed(RealtimeWorldInteractionOpened opened, string code)
+    {
+        return new RealtimeWorldInteractionClosed(
+            opened.InteractionSessionId,
+            opened.TargetKind,
+            opened.TargetEntityId,
+            opened.TargetRuntimeId,
+            code,
+            "closed");
     }
 
     public static SimulationBotOwnedItem Carried(string definitionId, int slot, int quantity = 1)
@@ -193,6 +438,12 @@ internal static class PlayingTestWorld
 
     public static PlayingKit SwordKit { get; } =
         new("sword", [new PlayingKitItem("weapon.iron_sword", "main_hand")], 2.5f);
+
+    public static PlayingKit BowKit { get; } =
+        new("bow", [new PlayingKitItem("weapon.training_shortbow", "main_hand"), new PlayingKitItem(Arrow, "ammunition")], 10f);
+
+    public static PlayingKit PickaxeKit { get; } =
+        new("pickaxe", [new PlayingKitItem(Pickaxe, "tool")], 0f);
 }
 
 // A body that records the intents a role sends and lets a test answer them, with a real world
@@ -214,7 +465,18 @@ internal sealed class FakePlayingBody : IPlayingBotBody
 
     public PlayingKit Kit { get; }
 
+    public PlayingGameData GameData => PlayingTestWorld.GameData;
+
     public bool IsReady { get; set; } = true;
+
+    // Cover between every stand point and every target, when set.
+    public bool SightBlocked { get; set; }
+
+    public SimulationBotWorldActor? OpenedActor { get; private set; }
+
+    public PlayingCapabilityAction? LastAction { get; private set; }
+
+    public (SimulationBotOwnedItem Item, Guid ContainerId, int Slot)? LastMove { get; private set; }
 
     public bool HasPendingIntent => Pending is not null;
 
@@ -299,6 +561,36 @@ internal sealed class FakePlayingBody : IPlayingBotBody
     public bool LootAll(Guid corpseId, long expectedRevision) => Send(PlayingOperations.LootAll);
 
     public bool CloseCorpse(Guid corpseId, long expectedRevision) => Send(PlayingOperations.LootClose);
+
+    public bool OpenInteraction(SimulationBotWorldActor actor, string operation)
+    {
+        OpenedActor = actor;
+        return Send(operation);
+    }
+
+    public bool CapabilityAction(string operation, PlayingCapabilityAction action)
+    {
+        if (View.OpenInteraction is null)
+        {
+            return false;
+        }
+
+        LastAction = action;
+        return Send(operation);
+    }
+
+    public bool CloseInteraction(string operation)
+    {
+        return View.OpenInteraction is not null && Send(operation);
+    }
+
+    public bool MoveItem(SimulationBotOwnedItem item, Guid containerId, int slotIndex)
+    {
+        LastMove = (item, containerId, slotIndex);
+        return Send(PlayingOperations.ItemMove);
+    }
+
+    public bool HasLineOfSight(SimulationVector3 standPoint, SimulationVector3 target) => !SightBlocked;
 
     public void WalkTo(SimulationVector3 destination)
     {

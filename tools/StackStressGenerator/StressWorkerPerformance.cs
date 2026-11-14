@@ -64,7 +64,21 @@ public sealed record StressWorkerInterval(
     int Generation2Collections,
     long ManagedHeapBytes,
     long ManagedHeapFragmentedBytes,
-    long TotalManagedMemoryBytes);
+    long TotalManagedMemoryBytes)
+{
+    // The worker's Mob numbers: the living Mobs, the ones that chase, attack, or evade, the
+    // ones that moved in the last tick, and the routes waiting for the planning budget, as
+    // gauges, and the Mob routes planned in the interval. Null in a file of an older worker.
+    public long? Mobs { get; init; }
+
+    public long? EngagedMobs { get; init; }
+
+    public long? MovingMobs { get; init; }
+
+    public long? MobPathQueue { get; init; }
+
+    public long? MobPathPlans { get; init; }
+}
 
 // A duration over the folded intervals: the sample-weighted average, the worst interval
 // average, p95, and p99, and the longest single sample.
@@ -143,7 +157,8 @@ public static class StressWorkerPerformance
         ("allocatedBytes", interval => interval.AllocatedBytes),
         ("generation0Collections", interval => interval.Generation0Collections),
         ("generation1Collections", interval => interval.Generation1Collections),
-        ("generation2Collections", interval => interval.Generation2Collections)
+        ("generation2Collections", interval => interval.Generation2Collections),
+        ("mobPathPlans", interval => interval.MobPathPlans ?? 0)
     ];
 
     private static readonly (string Name, Func<StressWorkerInterval, double> Value)[] LevelFields =
@@ -158,7 +173,11 @@ public static class StressWorkerPerformance
         ("completedOperationBacklog", interval => interval.MaximumCompletedOperationBacklog),
         ("corpseMutationBacklog", interval => interval.MaximumCorpseMutationBacklog),
         ("managedHeapBytes", interval => interval.ManagedHeapBytes),
-        ("totalManagedMemoryBytes", interval => interval.TotalManagedMemoryBytes)
+        ("totalManagedMemoryBytes", interval => interval.TotalManagedMemoryBytes),
+        ("mobs", interval => interval.Mobs ?? 0),
+        ("engagedMobs", interval => interval.EngagedMobs ?? 0),
+        ("movingMobs", interval => interval.MovingMobs ?? 0),
+        ("mobPathQueue", interval => interval.MobPathQueue ?? 0)
     ];
 
     public static IReadOnlyList<StressWorkerInterval> Parse(IEnumerable<string> lines)

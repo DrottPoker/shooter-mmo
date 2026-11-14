@@ -1,31 +1,38 @@
 using System.Diagnostics;
 using Mmorpg.GameSimulation;
-using Mmorpg.Server.Common.Timing;
 using Mmorpg.Tools.SimulationBotClient;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
+// Runs one stress run: admission in ramp steps, the steady interval, the drain, and the leave.
+// The bots are polled on dedicated poll threads, StressPollGroup, and this loop only
+// coordinates; the process and PostgreSQL samplers run on their own loop, so neither can make
+// a poll round late.
 public sealed class StressRunCoordinator(
     StressGeneratorOptions options,
     IStressAdmissionProvider admissionProvider)
 {
+    // Bots poll and send due inputs this often, about the frame time of a 300 FPS client.
+    public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(3);
+
+    // The coordination loop needs no frame precision.
+    private static readonly TimeSpan CoordinationInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(1);
+
     private readonly List<IStressBot> bots = [];
+    private readonly List<StressPollGroup> groups = [];
     private readonly List<StressBotSnapshot> admissionFailures = [];
     private readonly List<PendingAdmission> pendingAdmissions = [];
     private readonly HashSet<int> admittedBotIndexes = [];
-    private readonly StressLatencyAccumulator inputAcknowledgementLatencies =
-        new(options.Seed);
+    private readonly object timingGate = new();
+    private readonly StressLatencyAccumulator inputAcknowledgementLatencies = new(options.Seed);
     private readonly StressLatencyAccumulator intervalInputAcknowledgementLatencies =
         new(unchecked(options.Seed + 1));
-    // Bots poll and send due inputs this often, about the frame time of a 300 FPS client.
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(3);
-
-    private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
     private readonly StressLatencyAccumulator pollLateness = new(unchecked(options.Seed + 2));
-    private readonly Dictionary<IStressBot, long> lastPolls = [];
-    private PreciseDelay? pollDelay;
+    private readonly StressLatencyAccumulator samplingSteps = new(unchecked(options.Seed + 3));
+    private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
+    private readonly SemaphoreSlim samplingGate = new(1, 1);
     private PlayingRunContext? playing;
-    private bool measuringSteady;
     private int launchedBots;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
@@ -42,10 +49,6 @@ public sealed class StressRunCoordinator(
             : null;
         await admissionProvider.PrepareAsync(cancellationToken);
         await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
-        // Task.Delay(1) waited a whole 15.6 ms Windows timer tick, so bots sent their inputs
-        // in bursts instead of once per tick like a real client.
-        using var precisePollDelay = new PreciseDelay("StackStressGenerator poll loop");
-        pollDelay = precisePollDelay;
         using var processSampler = target.Worker is not null
             ? StressProcessSampler.TryAttach(target.Worker.StartedAt)
             : StressProcessSampler.TryAttach("Mmorpg.SimulationWorker");
@@ -58,11 +61,17 @@ public sealed class StressRunCoordinator(
                 $"Warning: requested {options.BotCount} bots exceeds the target capacity {target.Capacity}. Rejections are expected.");
         }
 
+        using var samplingStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        for (var index = 0; index < options.PollThreads; index++)
+        {
+            groups.Add(new StressPollGroup(index, PollInterval, RecordPollLateness, cancellationToken));
+        }
+
+        var sampling = SampleLoopAsync(processSampler, generatorProcessSampler, samplingStop.Token);
         var startedAt = DateTime.UtcNow;
         var startedTimestamp = Stopwatch.GetTimestamp();
         var nextRampTimestamp = startedTimestamp;
         var nextReportTimestamp = AddDuration(startedTimestamp, options.ReportInterval);
-        var nextProcessSampleTimestamp = AddDuration(startedTimestamp, TimeSpan.FromSeconds(1));
         long? steadyDeadlineTimestamp = null;
         DateTime? steadyStartedAt = null;
         var rampComplete = false;
@@ -73,8 +82,8 @@ public sealed class StressRunCoordinator(
                 || Stopwatch.GetTimestamp() < steadyDeadlineTimestamp.Value)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                ThrowOnFailure(sampling);
                 var now = Stopwatch.GetTimestamp();
-                PollBots(now, cancellationToken);
                 await CompleteAdmissionsAsync(cancellationToken);
 
                 if (launchedBots < options.BotCount && now >= nextRampTimestamp)
@@ -94,15 +103,24 @@ public sealed class StressRunCoordinator(
                     && pendingAdmissions.Count == 0
                     && bots.All(bot => bot.State is StressBotState.Joined or StressBotState.Failed))
                 {
-                    processSampler?.MarkSteadyState();
-                    generatorProcessSampler.MarkSteadyState();
-                    admissionProvider.MarkSteadyState();
-                    steadyStartedAt = DateTime.UtcNow;
-                    measuringSteady = true;
-                    playing?.Metrics.BeginSteadyMeasurement();
-                    foreach (var bot in bots)
+                    await samplingGate.WaitAsync(cancellationToken);
+                    try
                     {
-                        bot.BeginRemoteCadenceWindow(now);
+                        processSampler?.MarkSteadyState();
+                        generatorProcessSampler.MarkSteadyState();
+                        admissionProvider.MarkSteadyState();
+                    }
+                    finally
+                    {
+                        samplingGate.Release();
+                    }
+
+                    steadyStartedAt = DateTime.UtcNow;
+                    playing?.Metrics.BeginSteadyMeasurement();
+                    foreach (var group in groups)
+                    {
+                        group.BeginSteadyMeasurement();
+                        group.ForEachBot((bot, timestamp) => bot.BeginRemoteCadenceWindow(timestamp));
                     }
 
                     var joined = bots.Count(bot => bot.State == StressBotState.Joined);
@@ -110,7 +128,7 @@ public sealed class StressRunCoordinator(
                         ? now
                         : AddDuration(now, options.SteadyDuration);
                     Console.WriteLine(
-                        $"Admission complete with {joined}/{options.BotCount} bots joined and {admissionFailures.Count} HTTP admission failures. Beginning {(joined == 0 ? 0 : options.SteadyDuration.TotalSeconds):0}-second steady interval.");
+                        $"Admission complete with {joined}/{options.BotCount} bots joined and {admissionFailures.Count} HTTP admission failures. Beginning {(joined == 0 ? 0 : options.SteadyDuration.TotalSeconds):0}-second steady interval on {groups.Count} poll thread{(groups.Count == 1 ? string.Empty : "s")}.");
                 }
 
                 if (now >= nextReportTimestamp)
@@ -119,32 +137,26 @@ public sealed class StressRunCoordinator(
                     nextReportTimestamp = AddDuration(now, options.ReportInterval);
                 }
 
-                if (now >= nextProcessSampleTimestamp)
-                {
-                    processSampler?.Sample();
-                    generatorProcessSampler.Sample();
-                    await admissionProvider.SampleAsync(cancellationToken);
-                    nextProcessSampleTimestamp = AddDuration(now, TimeSpan.FromSeconds(1));
-                }
-
-                await WaitForNextPollAsync(cancellationToken);
+                await Task.Delay(CoordinationInterval, cancellationToken);
             }
 
-            var steadyEndTimestamp = Stopwatch.GetTimestamp();
             var steadyEndedAt = DateTime.UtcNow;
-            measuringSteady = false;
             playing?.Metrics.EndSteadyMeasurement();
-            foreach (var bot in bots)
+            foreach (var group in groups)
             {
-                bot.EndRemoteCadenceWindow(steadyEndTimestamp);
+                group.EndSteadyMeasurement();
+                group.ForEachBot((bot, timestamp) => bot.EndRemoteCadenceWindow(timestamp));
             }
 
             WriteProgress();
+            await samplingStop.CancelAsync();
+            await StopSamplingAsync(sampling);
             processSampler?.Sample();
             generatorProcessSampler.Sample();
             await admissionProvider.SampleAsync(cancellationToken);
             await DrainGameplayAsync(cancellationToken);
             await LeaveAsync(cancellationToken);
+            StopPollThreads();
             await admissionProvider.CompleteAsync(
                 admittedBotIndexes.ToArray(),
                 cancellationToken);
@@ -177,10 +189,17 @@ public sealed class StressRunCoordinator(
                     pollLateness.CaptureSummary(),
                     playing?.Metrics.CaptureTiming(PlayingMetrics.RouteQueue),
                     playing is not null)
+                {
+                    PollThreads = options.PollThreads,
+                    SamplingStep = samplingSteps.CaptureSummary()
+                }
             };
         }
         finally
         {
+            await samplingStop.CancelAsync();
+            await StopSamplingAsync(sampling);
+            StopPollThreads();
             foreach (var bot in bots)
             {
                 bot.Dispose();
@@ -190,9 +209,107 @@ public sealed class StressRunCoordinator(
         }
     }
 
-    // The playing bots share one navigation on the World's collision, the item catalog they
-    // read like a client, and their assignments. Every home ground must have ground under its
-    // center, which a run checks before the first bot joins.
+    // The process samplers and the provider's PostgreSQL sample run here once a second, apart
+    // from the poll threads. How long each step took is recorded, because the steps once ran
+    // inside the poll loop and made single rounds late.
+    private async Task SampleLoopAsync(
+        StressProcessSampler? workerSampler,
+        StressProcessSampler generatorSampler,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(SampleInterval, cancellationToken);
+                await samplingGate.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                var started = Stopwatch.GetTimestamp();
+                workerSampler?.Sample();
+                generatorSampler.Sample();
+                await admissionProvider.SampleAsync(cancellationToken);
+                lock (timingGate)
+                {
+                    samplingSteps.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            finally
+            {
+                samplingGate.Release();
+            }
+        }
+    }
+
+    private static async Task StopSamplingAsync(Task sampling)
+    {
+        try
+        {
+            await sampling;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void ThrowOnFailure(Task sampling)
+    {
+        if (sampling.IsFaulted)
+        {
+            throw new InvalidOperationException(
+                "The stress samplers failed: " + sampling.Exception!.GetBaseException().Message,
+                sampling.Exception.GetBaseException());
+        }
+
+        var failed = groups.FirstOrDefault(group => group.Failure is not null);
+        if (failed is not null)
+        {
+            throw new InvalidOperationException(
+                "A poll thread failed: " + failed.Failure!.Message,
+                failed.Failure);
+        }
+    }
+
+    private void StopPollThreads()
+    {
+        foreach (var group in groups)
+        {
+            group.Dispose();
+        }
+
+        groups.Clear();
+    }
+
+    private void RecordPollLateness(double milliseconds)
+    {
+        lock (timingGate)
+        {
+            pollLateness.Record(milliseconds);
+        }
+    }
+
+    private void RecordInputAcknowledgement(double milliseconds)
+    {
+        lock (timingGate)
+        {
+            inputAcknowledgementLatencies.Record(milliseconds);
+            intervalInputAcknowledgementLatencies.Record(milliseconds);
+        }
+    }
+
+    // The playing bots share one navigation on the World's collision, the item and actor
+    // catalogs they read like a client, and their assignments. Every home ground must have
+    // ground under its center, which a run checks before the first bot joins.
     private PlayingRunContext CreatePlayingContext()
     {
         var scenario = options.Playing
@@ -249,7 +366,7 @@ public sealed class StressRunCoordinator(
         return new PlayingRunContext(
             scenario,
             assignments.ToDictionary(assignment => assignment.BotIndex),
-            PlayingRoster.LoadItemCatalog(options.ItemCatalogPath),
+            PlayingGameData.Load(options.ItemCatalogPath, options.ActorCatalogPath),
             navigation,
             metrics);
     }
@@ -314,89 +431,49 @@ public sealed class StressRunCoordinator(
                 ? new StressBot(
                     options,
                     admission,
-                    inputAcknowledgementLatencies,
-                    intervalInputAcknowledgementLatencies,
+                    RecordInputAcknowledgement,
                     gameplayMetrics,
                     refresh)
                 : new PlayingStressBot(
                     options,
                     admission,
                     playing,
-                    inputAcknowledgementLatencies,
-                    intervalInputAcknowledgementLatencies,
+                    RecordInputAcknowledgement,
                     gameplayMetrics,
                     refresh);
             bots.Add(bot);
-            bot.Start();
-        }
-    }
-
-    private Task WaitForNextPollAsync(CancellationToken cancellationToken)
-    {
-        return pollDelay!.DelayAsync(PollInterval, cancellationToken);
-    }
-
-    // During the steady interval it records how late the latest bot's poll ran against the
-    // 3 ms schedule, the time since that bot's previous poll beyond the interval. A run whose
-    // generator falls behind measures nothing, as the validity rules judge.
-    private void PollBots(long nowTimestamp, CancellationToken cancellationToken)
-    {
-        var worstLateness = 0d;
-        foreach (var bot in bots)
-        {
-            if (measuringSteady)
-            {
-                var polled = Stopwatch.GetTimestamp();
-                if (lastPolls.TryGetValue(bot, out var previous))
-                {
-                    worstLateness = Math.Max(
-                        worstLateness,
-                        Stopwatch.GetElapsedTime(previous, polled).TotalMilliseconds - PollInterval.TotalMilliseconds);
-                }
-
-                lastPolls[bot] = polled;
-            }
-
-            bot.Poll(nowTimestamp, cancellationToken);
-        }
-
-        if (measuringSteady && bots.Count > 0)
-        {
-            pollLateness.Record(Math.Max(0d, worstLateness));
+            // The poll threads share the bots evenly in admission order.
+            groups[(bots.Count - 1) % groups.Count].Add(bot);
         }
     }
 
     private async Task LeaveAsync(CancellationToken cancellationToken)
     {
         Console.WriteLine("Steady interval complete. Requesting graceful leave for joined bots.");
-        var now = Stopwatch.GetTimestamp();
-        foreach (var bot in bots)
+        foreach (var group in groups)
         {
-            bot.BeginLeave(now);
+            group.ForEachBot((bot, timestamp) => bot.BeginLeave(timestamp));
         }
 
-        var deadline = AddDuration(now, options.JoinTimeout);
+        var deadline = AddDuration(Stopwatch.GetTimestamp(), options.JoinTimeout + CoordinationInterval);
         while (Stopwatch.GetTimestamp() < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            now = Stopwatch.GetTimestamp();
-            PollBots(now, cancellationToken);
+            ThrowOnFailure(Task.CompletedTask);
             if (bots.All(bot => bot.State is StressBotState.Completed or StressBotState.Failed))
             {
                 break;
             }
 
-            await WaitForNextPollAsync(cancellationToken);
+            await Task.Delay(CoordinationInterval, cancellationToken);
         }
-
-        PollBots(Stopwatch.GetTimestamp(), cancellationToken);
     }
 
     private async Task DrainGameplayAsync(CancellationToken cancellationToken)
     {
-        foreach (var bot in bots)
+        foreach (var group in groups)
         {
-            bot.BeginGameplayDrain();
+            group.ForEachBot((bot, _) => bot.BeginGameplayDrain());
         }
 
         var drainTimeout = options.GameplayOperationTimeout > options.HttpTimeout
@@ -408,30 +485,34 @@ public sealed class StressRunCoordinator(
         while (Stopwatch.GetTimestamp() < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            PollBots(Stopwatch.GetTimestamp(), cancellationToken);
+            ThrowOnFailure(Task.CompletedTask);
             if (bots.All(bot => bot.IsGameplayIdle))
             {
                 return;
             }
 
-            await WaitForNextPollAsync(cancellationToken);
+            await Task.Delay(CoordinationInterval, cancellationToken);
         }
-
-        PollBots(Stopwatch.GetTimestamp(), cancellationToken);
     }
 
+    // Reads only counters the poll threads write, never a bot's collections.
     private void WriteProgress()
     {
-        var snapshots = bots.Select(bot => bot.Capture()).ToArray();
-        var joined = snapshots.Count(bot => bot.State == StressBotState.Joined);
-        var joining = pendingAdmissions.Count + snapshots.Count(
+        var progress = bots.Select(bot => bot.CaptureProgress()).ToArray();
+        var joined = progress.Count(bot => bot.State == StressBotState.Joined);
+        var joining = pendingAdmissions.Count + progress.Count(
             bot => bot.State is StressBotState.Connecting or StressBotState.Joining);
         var failed = admissionFailures.Count
-            + snapshots.Count(bot => bot.State == StressBotState.Failed);
-        var receivedSnapshots = snapshots.Sum(bot => bot.SnapshotsReceived);
-        var missingSnapshots = snapshots.Sum(bot => bot.EstimatedMissingSnapshots);
-        var acknowledgement = intervalInputAcknowledgementLatencies.CaptureSummary();
-        intervalInputAcknowledgementLatencies.Reset();
+            + progress.Count(bot => bot.State == StressBotState.Failed);
+        var receivedSnapshots = progress.Sum(bot => bot.SnapshotsReceived);
+        var missingSnapshots = progress.Sum(bot => bot.EstimatedMissingSnapshots);
+        StressLatencySummary? acknowledgement;
+        lock (timingGate)
+        {
+            acknowledgement = intervalInputAcknowledgementLatencies.CaptureSummary();
+            intervalInputAcknowledgementLatencies.Reset();
+        }
+
         var p95 = acknowledgement is null ? "n/a" : $"{acknowledgement.P95Ms:0.0} ms";
         Console.WriteLine(
             $"Bots joined {joined}, joining {joining}, failed {failed}; snapshots {receivedSnapshots}, estimated missing {missingSnapshots}; input ack p95 {p95}.");

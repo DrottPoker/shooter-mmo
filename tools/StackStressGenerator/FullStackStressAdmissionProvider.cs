@@ -539,6 +539,12 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
     }
 
+    // Registration and login hash the password, which costs GameService a processor each. At 32
+    // at once it took about eight processors of the reference machine and delayed the worker's
+    // registry heartbeat past its timeout, so provisioning runs at most this many accounts at
+    // once and the stack stays responsive while it is set up.
+    public const int ProvisioningConcurrency = 8;
+
     // Players have accounts and characters before they play, so the playing workload registers
     // every account, creates its character, grants its kit, and logs it in before the first bot
     // joins. The ramp then measures only the way into the game: the character list, the Shards,
@@ -556,7 +562,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             new ParallelOptions
             {
                 CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = options.HttpConcurrency
+                MaxDegreeOfParallelism = Math.Min(options.HttpConcurrency, ProvisioningConcurrency)
             },
             async (assignment, token) =>
             {
@@ -583,7 +589,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             $"{username}@stack-stress.local",
             username,
             password,
-            cancellationToken);
+            cancellationToken,
+            paceRateLimit: true);
         Interlocked.Increment(ref registeredBots);
         var character = await client.CreateCharacterAsync(
             registration.SessionToken,
@@ -605,7 +612,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
 
         await client.LogoutAsync(registration.SessionToken, cancellationToken);
-        var login = await client.LoginAsync(username, password, cancellationToken);
+        var login = await client.LoginAsync(username, password, cancellationToken, paceRateLimit: true);
         Interlocked.Increment(ref loggedInBots);
         return new ProvisionedAccount(login.AccountId, login.SessionToken, character, inventory);
     }

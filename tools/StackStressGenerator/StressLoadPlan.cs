@@ -49,7 +49,8 @@ public sealed record StressLoadScenario(
         "loot-hotspot-y",
         "loot-hotspot-z",
         "report-interval-seconds",
-        "seed"
+        "seed",
+        "poll-threads"
     };
 
     private static readonly Regex SettingName = new("^[A-Za-z][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);

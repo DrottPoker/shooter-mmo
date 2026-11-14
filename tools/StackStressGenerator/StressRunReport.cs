@@ -130,7 +130,15 @@ public sealed record StressGeneratorTimingSummary(
     double PollIntervalMs,
     StressLatencySummary? PollLateness,
     StressLatencySummary? RouteQueue,
-    bool PlansRoutes);
+    bool PlansRoutes)
+{
+    // The poll threads that shared the bots.
+    public int PollThreads { get; init; } = 1;
+
+    // How long one step of the process and PostgreSQL samplers took; they run apart from the
+    // poll threads.
+    public StressLatencySummary? SamplingStep { get; init; }
+}
 
 public sealed record StressRunConfiguration(
     string Mode,

@@ -48,6 +48,57 @@ public sealed class FullStackStressClientTests
         Assert.NotNull(operation.Latency);
     }
 
+    // Provisioning honours the authentication limit like a patient client: it waits for the
+    // Retry-After of every 429 and sends again, and the report counts the waits.
+    [Fact]
+    public async Task ProvisioningWaitsOutTheRateLimitAndCountsTheWaits()
+    {
+        var attempts = 0;
+        using var handler = new StubHttpMessageHandler(_ =>
+        {
+            attempts++;
+            if (attempts <= 2)
+            {
+                var limited = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+                {
+                    Content = JsonContent.Create(new { code = "rate_limit_exceeded", detail = "Too many attempts." })
+                };
+                limited.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.Zero);
+                return Task.FromResult(limited);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new FullStackAuthResponse(
+                    Guid.NewGuid(),
+                    "stress_run_1",
+                    Guid.NewGuid(),
+                    "session-token",
+                    DateTime.UtcNow.AddHours(1)))
+            });
+        });
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://127.0.0.1:5000")
+        };
+        var metrics = new FullStackStressMetrics(1337);
+        var client = new FullStackStressClient(httpClient, metrics);
+
+        var response = await client.LoginAsync(
+            "stress_run_1",
+            "TestPassword123!",
+            CancellationToken.None,
+            paceRateLimit: true);
+
+        Assert.Equal("session-token", response.SessionToken);
+        Assert.Equal(3, attempts);
+        var operation = metrics.Capture()["account_login"];
+        Assert.Equal(1, operation.Requests);
+        Assert.Equal(1, operation.Successes);
+        Assert.Equal(0, operation.Failures);
+        Assert.Equal(2, operation.RateLimitWaits);
+    }
+
     [Fact]
     public async Task RateLimitProblemPreservesStableFailureCode()
     {

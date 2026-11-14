@@ -91,7 +91,7 @@ public sealed class SimulationBotWorldView
             session.InitialPlayerState.PositionX,
             session.InitialPlayerState.PositionY,
             session.InitialPlayerState.PositionZ);
-        Items.ObserveServerRevision(session.CarryState.ItemStateRevision);
+        Items.ObserveCarry(session.CarryState);
     }
 
     // Only the newest owner snapshot reaches the view; the session drops reordered ones.

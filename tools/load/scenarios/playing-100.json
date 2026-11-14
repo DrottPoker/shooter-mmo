@@ -1,0 +1,382 @@
+{
+  "description": "The 100-player reference of the playing workload on Development World 2 with a variant of 296 extra wolves in 8 hunting grounds and 120 extra resource nodes in 6 node fields; 40 percent fighters with a quarter of them on bows, 20 percent gatherers, 30 percent walkers, and 10 percent traders; a gentle ramp and a 300-second steady interval.",
+  "mode": "full-stack",
+  "workload": "playing",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-2",
+  "generator": {
+    "bots": 100,
+    "ramp-step": 10,
+    "ramp-interval-seconds": 6,
+    "duration-seconds": 300,
+    "http-concurrency": 32,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  },
+  "playing": {
+    "roles": {
+      "fighter": 40,
+      "gatherer": 20,
+      "walker": 30,
+      "trader": 10
+    },
+    "fighterBowPercent": 25,
+    "teleportToGrounds": true,
+    "grounds": [
+      {
+        "name": "west-field",
+        "kind": "hunting",
+        "minimumX": -150,
+        "minimumZ": -60,
+        "maximumX": -110,
+        "maximumZ": -20
+      },
+      {
+        "name": "south-field",
+        "kind": "hunting",
+        "minimumX": -40,
+        "minimumZ": -170,
+        "maximumX": 0,
+        "maximumZ": -130
+      },
+      {
+        "name": "southwest-field",
+        "kind": "hunting",
+        "minimumX": -110,
+        "minimumZ": -180,
+        "maximumX": -70,
+        "maximumZ": -140
+      },
+      {
+        "name": "southeast-field",
+        "kind": "hunting",
+        "minimumX": 30,
+        "minimumZ": -180,
+        "maximumX": 70,
+        "maximumZ": -140
+      },
+      {
+        "name": "east-field",
+        "kind": "hunting",
+        "minimumX": 130,
+        "minimumZ": -70,
+        "maximumX": 170,
+        "maximumZ": -30
+      },
+      {
+        "name": "far-southeast-field",
+        "kind": "hunting",
+        "minimumX": 130,
+        "minimumZ": -180,
+        "maximumX": 170,
+        "maximumZ": -140
+      },
+      {
+        "name": "highland-field",
+        "kind": "hunting",
+        "minimumX": 70,
+        "minimumZ": 70,
+        "maximumX": 110,
+        "maximumZ": 110
+      },
+      {
+        "name": "northwest-field",
+        "kind": "hunting",
+        "minimumX": -180,
+        "minimumZ": 20,
+        "maximumX": -140,
+        "maximumZ": 60
+      },
+      {
+        "name": "meadow-veins",
+        "kind": "nodes",
+        "kit": "pickaxe",
+        "minimumX": 47.0,
+        "minimumZ": -50.5,
+        "maximumX": 73.0,
+        "maximumZ": -29.5
+      },
+      {
+        "name": "road-veins",
+        "kind": "nodes",
+        "kit": "pickaxe",
+        "minimumX": -113.0,
+        "minimumZ": 19.5,
+        "maximumX": -87.0,
+        "maximumZ": 40.5
+      },
+      {
+        "name": "gate-veins",
+        "kind": "nodes",
+        "kit": "pickaxe",
+        "minimumX": -23.0,
+        "minimumZ": -70.5,
+        "maximumX": 3.0,
+        "maximumZ": -49.5
+      },
+      {
+        "name": "east-veins",
+        "kind": "nodes",
+        "kit": "pickaxe",
+        "minimumX": 137.0,
+        "minimumZ": -10.5,
+        "maximumX": 163.0,
+        "maximumZ": 10.5
+      },
+      {
+        "name": "north-oaks",
+        "kind": "nodes",
+        "kit": "woodcutting-axe",
+        "minimumX": -27.0,
+        "minimumZ": 151.5,
+        "maximumX": 7.0,
+        "maximumZ": 178.5
+      },
+      {
+        "name": "east-oaks",
+        "kind": "nodes",
+        "kit": "woodcutting-axe",
+        "minimumX": 133.0,
+        "minimumZ": -113.5,
+        "maximumX": 167.0,
+        "maximumZ": -86.5
+      },
+      {
+        "name": "town",
+        "kind": "town",
+        "minimumX": -24,
+        "minimumZ": -24,
+        "maximumX": 24,
+        "maximumZ": 4
+      },
+      {
+        "name": "north-road",
+        "kind": "walking",
+        "minimumX": -10,
+        "minimumZ": 44,
+        "maximumX": 10,
+        "maximumZ": 60
+      },
+      {
+        "name": "east-road",
+        "kind": "walking",
+        "minimumX": 44,
+        "minimumZ": -10,
+        "maximumX": 60,
+        "maximumZ": 10
+      },
+      {
+        "name": "west-road",
+        "kind": "walking",
+        "minimumX": -60,
+        "minimumZ": -8,
+        "maximumX": -44,
+        "maximumZ": 8
+      }
+    ]
+  },
+  "worldVariant": {
+    "areas": [
+      {
+        "name": "west-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": -148,
+        "minimumZ": -58,
+        "maximumX": -112,
+        "maximumZ": -22,
+        "count": 28
+      },
+      {
+        "name": "west-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": -148,
+        "minimumZ": -58,
+        "maximumX": -112,
+        "maximumZ": -22,
+        "count": 9
+      },
+      {
+        "name": "south-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": -38,
+        "minimumZ": -168,
+        "maximumX": -2,
+        "maximumZ": -132,
+        "count": 28
+      },
+      {
+        "name": "south-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": -38,
+        "minimumZ": -168,
+        "maximumX": -2,
+        "maximumZ": -132,
+        "count": 9
+      },
+      {
+        "name": "southwest-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": -108,
+        "minimumZ": -178,
+        "maximumX": -72,
+        "maximumZ": -142,
+        "count": 28
+      },
+      {
+        "name": "southwest-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": -108,
+        "minimumZ": -178,
+        "maximumX": -72,
+        "maximumZ": -142,
+        "count": 9
+      },
+      {
+        "name": "southeast-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": 32,
+        "minimumZ": -178,
+        "maximumX": 68,
+        "maximumZ": -142,
+        "count": 28
+      },
+      {
+        "name": "southeast-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": 32,
+        "minimumZ": -178,
+        "maximumX": 68,
+        "maximumZ": -142,
+        "count": 9
+      },
+      {
+        "name": "east-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": 132,
+        "minimumZ": -68,
+        "maximumX": 168,
+        "maximumZ": -32,
+        "count": 28
+      },
+      {
+        "name": "east-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": 132,
+        "minimumZ": -68,
+        "maximumX": 168,
+        "maximumZ": -32,
+        "count": 9
+      },
+      {
+        "name": "far-southeast-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": 132,
+        "minimumZ": -178,
+        "maximumX": 168,
+        "maximumZ": -142,
+        "count": 28
+      },
+      {
+        "name": "far-southeast-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": 132,
+        "minimumZ": -178,
+        "maximumX": 168,
+        "maximumZ": -142,
+        "count": 9
+      },
+      {
+        "name": "highland-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": 72,
+        "minimumZ": 72,
+        "maximumX": 108,
+        "maximumZ": 108,
+        "count": 28
+      },
+      {
+        "name": "highland-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": 72,
+        "minimumZ": 72,
+        "maximumX": 108,
+        "maximumZ": 108,
+        "count": 9
+      },
+      {
+        "name": "northwest-field-grey",
+        "actorId": "mob.grey_wolf",
+        "minimumX": -178,
+        "minimumZ": 22,
+        "maximumX": -142,
+        "maximumZ": 58,
+        "count": 28
+      },
+      {
+        "name": "northwest-field-feral",
+        "actorId": "mob.feral_wolf",
+        "minimumX": -178,
+        "minimumZ": 22,
+        "maximumX": -142,
+        "maximumZ": 58,
+        "count": 9
+      }
+    ],
+    "groups": [
+      {
+        "name": "meadow-veins",
+        "actorId": "resource.iron_vein",
+        "centerX": 60,
+        "centerZ": -40,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 5
+      },
+      {
+        "name": "road-veins",
+        "actorId": "resource.iron_vein",
+        "centerX": -100,
+        "centerZ": 30,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 5
+      },
+      {
+        "name": "gate-veins",
+        "actorId": "resource.iron_vein",
+        "centerX": -10,
+        "centerZ": -60,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 5
+      },
+      {
+        "name": "east-veins",
+        "actorId": "resource.iron_vein",
+        "centerX": 150,
+        "centerZ": 0,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 5
+      },
+      {
+        "name": "north-oaks",
+        "actorId": "resource.oak_tree",
+        "centerX": -10,
+        "centerZ": 165,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 7
+      },
+      {
+        "name": "east-oaks",
+        "actorId": "resource.oak_tree",
+        "centerX": 150,
+        "centerZ": -100,
+        "rows": 4,
+        "columns": 5,
+        "spacing": 7
+      }
+    ]
+  }
+}

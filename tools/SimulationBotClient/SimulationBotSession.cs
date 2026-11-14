@@ -294,6 +294,15 @@ public sealed class SimulationBotSession
         HandleSessionMessage(messageType, packet, nowTimestamp);
     }
 
+    // Only plain counters, so another thread may read them while the session runs.
+    public SimulationBotProgress CaptureProgress()
+    {
+        return new SimulationBotProgress(
+            State,
+            Volatile.Read(ref snapshotsReceived),
+            Volatile.Read(ref estimatedMissingSnapshots));
+    }
+
     public SimulationBotClientSnapshot Capture()
     {
         return new SimulationBotClientSnapshot(
@@ -408,7 +417,7 @@ public sealed class SimulationBotSession
                 {
                     if (itemResult.CarryState is not null)
                     {
-                        world?.Items.ObserveServerRevision(itemResult.CarryState.ItemStateRevision);
+                        world?.Items.ObserveCarry(itemResult.CarryState);
                     }
 
                     realtimeObserver?.OnItemOperationResult(itemResult);
@@ -450,7 +459,7 @@ public sealed class SimulationBotSession
             case RealtimeMessageType.CarryStateChanged:
                 if (Decode<RealtimeCarryState>(packet, "invalid_carry_state", RealtimeProtocol.TryDecodeCarryStateChanged, out var carryState))
                 {
-                    world?.Items.ObserveServerRevision(carryState.ItemStateRevision);
+                    world?.Items.ObserveCarry(carryState);
                 }
 
                 break;

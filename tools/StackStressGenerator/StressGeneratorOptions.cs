@@ -87,6 +87,15 @@ public sealed record StressGeneratorOptions(
     // The compiled item catalog the bots read like a client, for equipment slots and ranges.
     public string ItemCatalogPath { get; init; } = DefaultItemCatalogPath;
 
+    // The compiled actor catalog the bots read like a client, for the tool a node needs.
+    public string ActorCatalogPath { get; init; } = DefaultActorCatalogPath;
+
+    // The threads that share the bots and poll them; every thread polls its bots every 3 ms.
+    public int PollThreads { get; init; } = 1;
+
+    public static string DefaultActorCatalogPath =>
+        Path.Combine(AppContext.BaseDirectory, "WorldData", "Actors", "core.actor-catalog.json");
+
     // The build copies the compiled World collision and item catalog below the output.
     public static string DefaultWorldDataPath => Path.Combine(AppContext.BaseDirectory, "WorldData", "Worlds");
 
@@ -285,7 +294,9 @@ public sealed record StressGeneratorOptions(
             ScenarioFilePath = scenarioFile,
             Playing = playing,
             WorldDataPath = OptionalPath(values, "world-data-path", workingDirectory) ?? DefaultWorldDataPath,
-            ItemCatalogPath = OptionalPath(values, "item-catalog-path", workingDirectory) ?? DefaultItemCatalogPath
+            ItemCatalogPath = OptionalPath(values, "item-catalog-path", workingDirectory) ?? DefaultItemCatalogPath,
+            ActorCatalogPath = OptionalPath(values, "actor-catalog-path", workingDirectory) ?? DefaultActorCatalogPath,
+            PollThreads = ParseInt(values, "poll-threads", 1, 1, 16)
         };
     }
 
@@ -368,6 +379,8 @@ public sealed record StressGeneratorOptions(
           --world-data-path <dir>           Playing: the World data folder whose collision the bots plan on.
                                             Default: the copy below the generator's output
           --item-catalog-path <path>        Playing: the compiled item catalog. Default: the copy below the output
+          --actor-catalog-path <path>       Playing: the compiled actor catalog. Default: the copy below the output
+          --poll-threads <count>            Threads that share the bots and poll them every 3 ms, 1 to 16. Default: 1
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
@@ -458,7 +471,9 @@ public sealed record StressGeneratorOptions(
             "authority-hold-seconds",
             "scenario-file",
             "world-data-path",
-            "item-catalog-path"
+            "item-catalog-path",
+            "actor-catalog-path",
+            "poll-threads"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

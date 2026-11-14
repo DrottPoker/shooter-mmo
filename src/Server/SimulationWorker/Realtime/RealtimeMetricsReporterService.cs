@@ -2,19 +2,25 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Every NetworkMetricsLogSeconds it captures one interval of the realtime metrics, writes the
 // status, network, and performance log lines from it, and, when PerformanceReportPath is set,
-// appends the same interval to the performance file.
+// appends the same interval to the performance file, with the worker's Mob numbers.
 public sealed class RealtimeMetricsReporterService(
     RealtimeNetworkMetrics metrics,
     RealtimePerformanceMetrics performanceMetrics,
     SimulationWorkerConfig config,
-    ILogger<RealtimeMetricsReporterService> logger) : BackgroundService
+    ILogger<RealtimeMetricsReporterService> logger,
+    CombatMetrics? combatMetrics = null,
+    WorldActorMetrics? worldActorMetrics = null) : BackgroundService
 {
+    private long previousMobPathPlans = combatMetrics?.CaptureMobActivity().MobPathPlans ?? 0;
+
     private readonly Stopwatch workerUptime = Stopwatch.StartNew();
     private readonly RealtimePerformanceReportWriter? reportWriter =
         RealtimePerformanceReportWriter.Create(config.PerformanceReportPath, logger);
@@ -75,7 +81,10 @@ public sealed class RealtimeMetricsReporterService(
             workingSetBytes,
             snapshot,
             RealtimeMetricsInterval.Subtract(snapshot, previousNetwork),
-            performanceMetrics.CaptureAndReset());
+            performanceMetrics.CaptureAndReset())
+        {
+            Mobs = CaptureMobs()
+        };
         previousSampleTime = sampleTime;
         previousSampleUtc = sampleUtc;
         previousProcessorTime = processorTime;
@@ -155,6 +164,24 @@ public sealed class RealtimeMetricsReporterService(
             performance.SnapshotPacketsEncoded,
             performance.SnapshotPacketsSent,
             performance.SnapshotEntityUpdatesDeferred);
+    }
+
+    private RealtimeMobActivity? CaptureMobs()
+    {
+        if (combatMetrics is null || worldActorMetrics is null)
+        {
+            return null;
+        }
+
+        var activity = combatMetrics.CaptureMobActivity();
+        var plans = Math.Max(0, activity.MobPathPlans - previousMobPathPlans);
+        previousMobPathPlans = activity.MobPathPlans;
+        return new RealtimeMobActivity(
+            worldActorMetrics.Capture().MobPopulation,
+            activity.EngagedMobs,
+            activity.MovingMobs,
+            activity.MobPathQueue,
+            plans);
     }
 
     private static TimeSpan CaptureProcessorTime()

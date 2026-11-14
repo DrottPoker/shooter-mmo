@@ -23,6 +23,10 @@
              Link="WorldData\Items\core.item-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\src\Shared\WorldData\Generated\Actors\core.actor-catalog.json"
+             Link="WorldData\Actors\core.actor-catalog.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

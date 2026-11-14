@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -90,6 +92,63 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         using var secondEntry = JsonDocument.Parse(lines[1]);
         Assert.Equal(2, secondEntry.RootElement.GetProperty("packetsIn").GetInt64());
         Assert.Equal(first.EndedAtUtc, second.StartedAtUtc);
+    }
+
+    [Fact]
+    public void TheFileCarriesTheMobGaugesAndTheMobRoutesPlannedInTheInterval()
+    {
+        var path = Path.Combine(directory, "worker-performance.jsonl");
+        using var network = new RealtimeNetworkMetrics();
+        using var performance = new RealtimePerformanceMetrics();
+        using var combat = new CombatMetrics();
+        using var worldActors = new WorldActorMetrics();
+        var config = RealtimeServerHarness.CreateConfig(27_999, new RealtimeServerHarnessOptions()) with
+        {
+            PerformanceReportPath = path
+        };
+        combat.RecordMobPathPlan("reached");
+        var reporter = new RealtimeMetricsReporterService(
+            network,
+            performance,
+            config,
+            new RecordingLogger(),
+            combat,
+            worldActors);
+        combat.SetMobActivity(engaged: 3, moving: 2, queuedPlans: 1);
+        combat.RecordMobPathPlan("reached");
+        combat.RecordMobPathPlan("no_path");
+
+        reporter.ReportInterval();
+        combat.SetMobActivity(engaged: 0, moving: 0, queuedPlans: 0);
+        reporter.ReportInterval();
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(2, lines.Length);
+        using var first = JsonDocument.Parse(lines[0]);
+        Assert.Equal(0, first.RootElement.GetProperty("mobs").GetInt64());
+        Assert.Equal(3, first.RootElement.GetProperty("engagedMobs").GetInt64());
+        Assert.Equal(2, first.RootElement.GetProperty("movingMobs").GetInt64());
+        Assert.Equal(1, first.RootElement.GetProperty("mobPathQueue").GetInt64());
+        // The plan before the reporter started belongs to no interval.
+        Assert.Equal(2, first.RootElement.GetProperty("mobPathPlans").GetInt64());
+        using var second = JsonDocument.Parse(lines[1]);
+        Assert.Equal(0, second.RootElement.GetProperty("engagedMobs").GetInt64());
+        Assert.Equal(0, second.RootElement.GetProperty("mobPathPlans").GetInt64());
+    }
+
+    [Fact]
+    public void AWorkerWithoutCombatMetricsWritesNoMobNumbers()
+    {
+        var path = Path.Combine(directory, "worker-performance.jsonl");
+        using var network = new RealtimeNetworkMetrics();
+        using var performance = new RealtimePerformanceMetrics();
+        var reporter = CreateReporter(network, performance, path, new RecordingLogger());
+
+        reporter.ReportInterval();
+
+        using var entry = JsonDocument.Parse(Assert.Single(File.ReadAllLines(path)));
+        Assert.Equal(JsonValueKind.Null, entry.RootElement.GetProperty("engagedMobs").ValueKind);
+        Assert.Equal(JsonValueKind.Null, entry.RootElement.GetProperty("mobPathPlans").ValueKind);
     }
 
     [Fact]
