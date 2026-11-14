@@ -26,7 +26,8 @@ namespace Mmorpg.Client.Api
     public sealed class ApiClient : IDisposable, IJoinTicketApi
     {
         // A login or registration may wait this long in GameService's password hashing queue
-        // before it is hashed, so it gets this much more than the request timeout.
+        // before it is hashed, so it gets this much more than the request timeout. It is the
+        // largest wait GameService accepts as a setting (Auth:PasswordHashing:MaxWaitSeconds).
         public const int AuthenticationQueueSeconds = 10;
 
         private readonly int timeoutSeconds;

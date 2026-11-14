@@ -159,8 +159,10 @@ public sealed class PasswordHashingLaneTests
     [Theory]
     [InlineData("Auth:PasswordHashing:MaxConcurrency", "0", "from 1 to 256")]
     [InlineData("Auth:PasswordHashing:MaxConcurrency", "257", "from 1 to 256")]
-    [InlineData("Auth:PasswordHashing:MaxWaitSeconds", "0", "from 1 to 60")]
-    [InlineData("Auth:PasswordHashing:MaxWaitSeconds", "ten", "from 1 to 60")]
+    [InlineData("Auth:PasswordHashing:MaxWaitSeconds", "0", "from 1 to 10")]
+    [InlineData("Auth:PasswordHashing:MaxWaitSeconds", "ten", "from 1 to 10")]
+    // More than a client waits for a queued login.
+    [InlineData("Auth:PasswordHashing:MaxWaitSeconds", "11", "from 1 to 10")]
     public void TheSettingsRejectValuesOutOfRange(string key, string value, string expected)
     {
         var errors = new List<string>();
