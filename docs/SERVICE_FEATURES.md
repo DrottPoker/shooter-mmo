@@ -105,6 +105,10 @@ uses them.
   whether an account exists. Registration still reports whether an email or
   username is taken until an email verification flow exists; its rate limit
   bounds enumeration.
+- Every password hash and check goes through the password hashing lane, as
+  [Password Hashing Lane](#password-hashing-lane) describes, so a burst of
+  logins and registrations waits or is refused with `auth_busy` instead of
+  taking every core and thread of GameService.
 - Account tokens are opaque and only their SHA-256 hashes are stored.
 - PostgreSQL enforces one unrevoked account session per account. A session
   lives `Auth:SessionLifetimeHours`.
@@ -125,6 +129,38 @@ with `rate_limit_exceeded` in Problem Details and a `Retry-After` that counts
 down to the end of the current window. The policy is taken from the matched
 endpoint, so a different path casing such as `/api/accounts/LOGIN` cannot skip
 the distributed limit.
+
+### Password Hashing Lane
+
+BCrypt costs about a quarter of a second of one core per hash at work factor
+12, so GameService runs every hash and check of a password in one lane of its
+own, apart from the threads that serve requests:
+
+- At most `Auth:PasswordHashing:MaxConcurrency` hashes run at once, half of the
+  logical processors by default, on the lane's own threads below normal
+  priority, so the rest of GameService keeps its thread pool and the other
+  cores.
+- A registration or login that finds every lane thread busy waits in a
+  first-in first-out queue. The lane measures how long a hash takes, and a
+  request that would wait longer than `Auth:PasswordHashing:MaxWaitSeconds`,
+  10 by default, behind the requests ahead of it is refused at once, so a
+  refused request never waited: the queue holds as many requests as the lane
+  threads hash within that wait. An admitted request keeps its place until it
+  is hashed or its caller gives up, so when hashes slow down after it was
+  admitted, it can wait longer than `MaxWaitSeconds`; a caller that
+  disconnects leaves the queue.
+- A refused request gets `503` with the code `auth_busy` in Problem Details and
+  a `Retry-After` in whole seconds, the time the queue ahead needs to drain,
+  at least 1 and at most `MaxWaitSeconds`. Nothing of the request is written,
+  and the client tries again after `Retry-After`, as
+  [LoginMenu](UNITY_CLIENT_ARCHITECTURE.md#loginmenu) describes.
+- A login of an unknown account goes through the same queue and the same
+  check against the fixed hash as a known one, so it costs the same and is
+  refused the same way.
+- On shutdown the queued requests are refused with `auth_busy`, and nothing
+  waits for them.
+
+The lane's meter and its warning are in [Monitoring](MONITORING.md#gameservice).
 
 ## Character Access
 
@@ -1711,7 +1747,10 @@ results and closures, and Unity adds `item_catalog_update_required`.
 
 - A malformed request body returns `400` with `invalid_request`, a transient
   PostgreSQL connection failure returns `503` with `database_unavailable`, and
-  any other unhandled failure returns `500` with `internal_server_error`. A
+  any other unhandled failure returns `500` with `internal_server_error`.
+  Registration and login return `503` with `auth_busy` and a `Retry-After`
+  when the [password hashing lane](#password-hashing-lane) is full; the caller
+  sends the same request again after `Retry-After`. A
   body that does not read as the route's request type, such as a field of the
   wrong type, gets `invalid_request` only in Development; elsewhere the route's
   JSON binding answers the bare `400`, which the status code pages complete
@@ -1742,7 +1781,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Area | Codes |
 | --- | --- |
 | Requests and platform | `invalid_request`, `internal_server_error`, `database_unavailable`, `rate_limit_exceeded`, `session_cache_invalidation_unavailable` |
-| Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced` |
+| Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced`, `auth_busy` |
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
@@ -1820,17 +1859,24 @@ check.
 
 Logout, manual revocation, and login replacement write a session-id tombstone
 before committing the PostgreSQL revocation, then delete the cached token key.
-The tombstone lives `SessionRevocationTombstoneSeconds`, at least as long as any
-token cache entry. If GameService cannot store the required tombstone, it
-returns `503 session_cache_invalidation_unavailable` and does not commit the
-durable revocation. This prevents a successfully revoked session from remaining
-usable through stale cache state.
+The tombstones of one revocation go to Redis together, in one round trip, and
+the token keys after them. A write that fails for a transient reason, a
+timeout or a lost connection, is sent once more, and both attempts together
+keep to `RedisAcceleration:SessionRevocationDeadlineMilliseconds`; a tombstone
+write is idempotent, so the second attempt is safe. The tombstone lives
+`SessionRevocationTombstoneSeconds`, at least as long as any token cache
+entry. If GameService cannot store the required tombstone, it returns
+`503 session_cache_invalidation_unavailable` and does not commit the durable
+revocation. This prevents a successfully revoked session from remaining usable
+through stale cache state.
 
 Login and registration also use a Redis fixed-window rate limit keyed by a hash
 of the remote address and policy name. The process-local ASP.NET rate limit
 remains active as a fallback if Redis is unavailable. Disconnected Redis
-commands fail fast instead of accumulating in a client backlog. The Redis
-counters and logs are in [Monitoring](MONITORING.md#gameservice).
+commands fail fast instead of accumulating in a client backlog. The Redis client
+waits `Redis:CommandTimeoutMilliseconds` for a connection or an answer, its own
+timeout apart from the readiness probe's `HealthChecks:TimeoutMilliseconds`.
+The Redis counters and logs are in [Monitoring](MONITORING.md#gameservice).
 
 ## Configuration Defaults
 
@@ -1849,12 +1895,16 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Database:RunMigrationsOnStartup` | `true` | Apply the migrations, the seeds, and the topology at startup |
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
 | `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
+| `Redis:CommandTimeoutMilliseconds` | `2000` | How long the Redis client waits for a connection or a command's answer, 100 to 60,000 |
 | `Auth:SessionLifetimeHours` | `24` | Account session lifetime, 1 to 720 hours |
+| `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
+| `Auth:PasswordHashing:MaxWaitSeconds` | `10` | The longest a registration or login waits for its hash before it is refused with `auth_busy`, 1 to 60 seconds |
 | `RateLimiting:Authentication:PermitLimit`, `WindowSeconds` | `5`, `60` | Login and registration requests per remote address and window, each limited separately |
 | `RedisAcceleration:Enabled`, `SessionCacheEnabled`, `AuthenticationRateLimitingEnabled` | `true` | Redis session cache and distributed rate limit |
 | `RedisAcceleration:KeyPrefix` | `shooter-mmo` | Prefix of every Redis key, 1 to 64 letters, digits, `-`, `_`, or `.` |
 | `RedisAcceleration:SessionCacheTtlSeconds` | `60` | Lifetime of a cached session, 1 to 300 seconds |
 | `RedisAcceleration:SessionRevocationTombstoneSeconds` | `120` | Lifetime of a revocation tombstone, at least the cache lifetime and at most 3,600 seconds |
+| `RedisAcceleration:SessionRevocationDeadlineMilliseconds` | `5000` | How long storing the tombstones of one revocation may take, a retry of a transient failure included, 100 to 30,000 |
 | `RedisAcceleration:MetricsIntervalSeconds` | `30` | Interval of the Redis counter log |
 | `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, or one secret per worker id |
 | `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |

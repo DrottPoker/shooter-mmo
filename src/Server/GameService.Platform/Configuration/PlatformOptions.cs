@@ -14,6 +14,14 @@ public sealed record PlatformOptions(
     // PostgreSQL sees every GameService connection under this application name.
     public const string PostgresApplicationName = "Mmorpg.GameService";
 
+    public const string RedisCommandTimeoutKey = "Redis:CommandTimeoutMilliseconds";
+    public const int DefaultRedisCommandTimeoutMilliseconds = 2_000;
+
+    // How long the Redis client waits for a connection or a command's answer, apart from the
+    // readiness probe's timeout; a caller may wait less.
+    public TimeSpan RedisCommandTimeout { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultRedisCommandTimeoutMilliseconds);
+
     public static PlatformOptions Read(IConfiguration configuration, ICollection<string> errors)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -43,6 +51,14 @@ public sealed record PlatformOptions(
             configuration,
             "HealthChecks:TimeoutMilliseconds",
             errors);
+        var redisCommandTimeoutMilliseconds = configuration[RedisCommandTimeoutKey] is null
+            ? DefaultRedisCommandTimeoutMilliseconds
+            : ConfigurationValidation.ValidateIntRange(
+                configuration,
+                RedisCommandTimeoutKey,
+                100,
+                60_000,
+                errors);
 
         // Invalid settings fail startup, so only a valid connection string is rewritten.
         return new PlatformOptions(
@@ -51,7 +67,10 @@ public sealed record PlatformOptions(
                 : ConfigurePostgresConnectionString(postgres, postgresMaximumPoolSize),
             redis ?? string.Empty,
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
-            runMigrationsOnStartup);
+            runMigrationsOnStartup)
+        {
+            RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds)
+        };
     }
 
     private static string ConfigurePostgresConnectionString(

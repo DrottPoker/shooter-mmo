@@ -28,12 +28,22 @@ public sealed class FullStackStressClient(
     public const int MaximumRateLimitWaits = 10;
     private static readonly TimeSpan LongestRateLimitWait = TimeSpan.FromSeconds(60);
 
+    // Every registration and login waits out GameService's 503 auth_busy for its Retry-After, at
+    // least a second and at most 30, five without one, and sends again, at most this often; a
+    // refusal is expected under a burst, not a failure.
+    public const string AuthBusyCode = "auth_busy";
+    public const int MaximumBusyWaits = 10;
+    public static readonly TimeSpan DefaultBusyWait = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan ShortestBusyWait = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan LongestBusyWait = TimeSpan.FromSeconds(30);
+
     public Task<FullStackAuthResponse> RegisterAsync(
         string email,
         string username,
         string password,
         CancellationToken cancellationToken,
-        bool paceRateLimit = false)
+        bool paceRateLimit = false,
+        Action? busyWaited = null)
     {
         return SendAsync<FullStackAuthResponse>(
             "account_register",
@@ -42,14 +52,17 @@ public sealed class FullStackStressClient(
             new FullStackRegisterRequest(email, username, password),
             null,
             cancellationToken,
-            paceRateLimit: paceRateLimit);
+            paceRateLimit: paceRateLimit,
+            retryBusy: true,
+            busyWaited: busyWaited);
     }
 
     public Task<FullStackAuthResponse> LoginAsync(
         string login,
         string password,
         CancellationToken cancellationToken,
-        bool paceRateLimit = false)
+        bool paceRateLimit = false,
+        Action? busyWaited = null)
     {
         return SendAsync<FullStackAuthResponse>(
             "account_login",
@@ -58,7 +71,21 @@ public sealed class FullStackStressClient(
             new FullStackLoginRequest(login, password),
             null,
             cancellationToken,
-            paceRateLimit: paceRateLimit);
+            paceRateLimit: paceRateLimit,
+            retryBusy: true,
+            busyWaited: busyWaited);
+    }
+
+    // How long to wait after an auth_busy answer: its Retry-After, kept between one and 30 seconds,
+    // or five seconds without a usable one.
+    public static TimeSpan BusyWait(TimeSpan? retryAfter)
+    {
+        if (retryAfter is not { } wait || wait <= TimeSpan.Zero)
+        {
+            return DefaultBusyWait;
+        }
+
+        return wait < ShortestBusyWait ? ShortestBusyWait : wait > LongestBusyWait ? LongestBusyWait : wait;
     }
 
     public Task<FullStackCharacterResponse> CreateCharacterAsync(
@@ -215,7 +242,9 @@ public sealed class FullStackStressClient(
         string? sessionToken,
         CancellationToken cancellationToken,
         string? fixtureSecret = null,
-        bool paceRateLimit = false)
+        bool paceRateLimit = false,
+        bool retryBusy = false,
+        Action? busyWaited = null)
     {
         var started = Stopwatch.GetTimestamp();
         try
@@ -224,6 +253,8 @@ public sealed class FullStackStressClient(
                 operation,
                 () => CreateRequest(method, path, body, sessionToken, fixtureSecret),
                 paceRateLimit,
+                retryBusy,
+                busyWaited,
                 timestamp => started = timestamp,
                 cancellationToken);
             var statusCode = (int)response.StatusCode;
@@ -289,30 +320,51 @@ public sealed class FullStackStressClient(
     }
 
     // Sends the request; a paced one that is answered 429 waits for Retry-After, at most a
-    // minute, and is sent again, and only the attempt that counts is timed.
+    // minute, and is sent again, one that may retry auth_busy waits for its Retry-After as
+    // BusyWait says, and only the attempt that counts is timed.
     private async Task<HttpResponseMessage> SendPacedAsync(
         string operation,
         Func<HttpRequestMessage> createRequest,
         bool paceRateLimit,
+        bool retryBusy,
+        Action? busyWaited,
         Action<long> attemptStarted,
         CancellationToken cancellationToken)
     {
-        for (var waits = 0; ; waits++)
+        var rateLimitWaits = 0;
+        var busyWaits = 0;
+        while (true)
         {
             attemptStarted(Stopwatch.GetTimestamp());
             using var request = createRequest();
             var response = await httpClient.SendAsync(request, cancellationToken);
-            if (!paceRateLimit
-                || response.StatusCode != System.Net.HttpStatusCode.TooManyRequests
-                || waits >= MaximumRateLimitWaits)
+            if (paceRateLimit
+                && response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                && rateLimitWaits < MaximumRateLimitWaits)
             {
-                return response;
+                rateLimitWaits++;
+                metrics.RecordRateLimitWait(operation);
+                var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
+                response.Dispose();
+                await Task.Delay(wait < LongestRateLimitWait ? wait : LongestRateLimitWait, cancellationToken);
+                continue;
             }
 
-            metrics.RecordRateLimitWait(operation);
-            var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
-            response.Dispose();
-            await Task.Delay(wait < LongestRateLimitWait ? wait : LongestRateLimitWait, cancellationToken);
+            if (retryBusy
+                && busyWaits < MaximumBusyWaits
+                && response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                && await IsAuthBusyAsync(response, cancellationToken))
+            {
+                busyWaits++;
+                metrics.RecordBusyWait(operation);
+                busyWaited?.Invoke();
+                var wait = BusyWait(response.Headers.RetryAfter?.Delta);
+                response.Dispose();
+                await Task.Delay(wait, cancellationToken);
+                continue;
+            }
+
+            return response;
         }
     }
 
@@ -389,6 +441,23 @@ public sealed class FullStackStressClient(
         }
 
         return request;
+    }
+
+    // Reads the buffered body as text, so the caller can still read the problem of an answer
+    // that is not auth_busy.
+    private static async Task<bool> IsAuthBusyAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return JsonSerializer.Deserialize<FullStackProblem>(body, JsonOptions)?.Code == AuthBusyCode;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task<FullStackProblem?> TryReadProblemAsync(

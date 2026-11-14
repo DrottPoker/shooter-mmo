@@ -99,6 +99,92 @@ public sealed class FullStackStressClientTests
         Assert.Equal(2, operation.RateLimitWaits);
     }
 
+    // A login refused by GameService's password hashing lane waits its Retry-After and sends
+    // again; the refusal is counted as a wait, never as a failure.
+    [Fact]
+    public async Task ALoginWaitsOutAuthBusyAndCountsTheWait()
+    {
+        var attempts = 0;
+        using var handler = new StubHttpMessageHandler(_ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                var busy = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = JsonContent.Create(new { code = "auth_busy", detail = "Busy." })
+                };
+                busy.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+                return Task.FromResult(busy);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new FullStackAuthResponse(
+                    Guid.NewGuid(),
+                    "stress_run_1",
+                    Guid.NewGuid(),
+                    "session-token",
+                    DateTime.UtcNow.AddHours(1)))
+            });
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5000") };
+        var metrics = new FullStackStressMetrics(1337);
+        var client = new FullStackStressClient(httpClient, metrics);
+        var waited = 0;
+
+        var response = await client.LoginAsync(
+            "stress_run_1",
+            "TestPassword123!",
+            CancellationToken.None,
+            busyWaited: () => waited++);
+
+        Assert.Equal("session-token", response.SessionToken);
+        Assert.Equal(2, attempts);
+        Assert.Equal(1, waited);
+        var operation = metrics.Capture()["account_login"];
+        Assert.Equal(1, operation.Requests);
+        Assert.Equal(0, operation.Failures);
+        Assert.Equal(1, operation.BusyWaits);
+    }
+
+    // Another 503, such as a session cache that could not store a tombstone, is a failure.
+    [Fact]
+    public async Task AnotherServiceUnavailableIsNotWaitedOut()
+    {
+        var attempts = 0;
+        using var handler = new StubHttpMessageHandler(_ =>
+        {
+            attempts++;
+            var unavailable = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = JsonContent.Create(new { code = "session_cache_invalidation_unavailable", detail = "Redis." })
+            };
+            unavailable.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+            return Task.FromResult(unavailable);
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5000") };
+        var metrics = new FullStackStressMetrics(1337);
+        var client = new FullStackStressClient(httpClient, metrics);
+
+        var exception = await Assert.ThrowsAsync<FullStackApiException>(() =>
+            client.LoginAsync("stress_run_1", "TestPassword123!", CancellationToken.None));
+
+        Assert.Equal("session_cache_invalidation_unavailable", exception.Code);
+        Assert.Equal(1, attempts);
+        Assert.Equal(1, metrics.Capture()["account_login"].Failures);
+    }
+
+    [Fact]
+    public void ABusyWaitKeepsRetryAfterBetweenOneAndThirtySeconds()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), FullStackStressClient.BusyWait(null));
+        Assert.Equal(TimeSpan.FromSeconds(5), FullStackStressClient.BusyWait(TimeSpan.Zero));
+        Assert.Equal(TimeSpan.FromSeconds(1), FullStackStressClient.BusyWait(TimeSpan.FromMilliseconds(200)));
+        Assert.Equal(TimeSpan.FromSeconds(7), FullStackStressClient.BusyWait(TimeSpan.FromSeconds(7)));
+        Assert.Equal(TimeSpan.FromSeconds(30), FullStackStressClient.BusyWait(TimeSpan.FromSeconds(90)));
+    }
+
     [Fact]
     public async Task RateLimitProblemPreservesStableFailureCode()
     {

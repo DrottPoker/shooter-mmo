@@ -202,6 +202,22 @@ namespace Mmorpg.Client.Ui
             return ClientMessages.Text(texts, error);
         }
 
+        // The busy line while a login or registration waits to try again, such as "The game
+        // service is busy. Trying again in 4 s (retry 1 of 5)."
+        public static string BusyRetryText(AuthBusyRetry retry, double now, TextCatalog texts)
+        {
+            if (retry == null || !retry.IsWaiting)
+            {
+                return string.Empty;
+            }
+
+            return texts.Format(
+                "ui/login/busy-retry",
+                MessageArgument.Text("seconds", retry.SecondsLeft(now).ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("retry", retry.Retries.ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("retries", AuthBusyRetry.MaximumRetries.ToString(CultureInfo.InvariantCulture)));
+        }
+
         // A refusal by the worker and a failure that the client found itself both show the
         // client's text for their code; the explanation goes to the log.
         public static string ErrorText(RealtimeClientError error, TextCatalog texts)

@@ -159,7 +159,11 @@ public sealed record StressRunConfiguration(
     double SteadyDurationSeconds,
     double InventoryOperationIntervalSeconds,
     double LootOperationIntervalSeconds,
-    int Seed);
+    int Seed)
+{
+    // The login or logout burst the run planned, or null for none.
+    public StressBurstPlan? Burst { get; init; }
+}
 
 public sealed record StressRunReport(
     DateTime StartedAt,
@@ -272,7 +276,12 @@ public sealed record StressRunReport(
                 options.SteadyDuration.TotalSeconds,
                 options.InventoryOperationInterval.TotalSeconds,
                 options.LootOperationInterval.TotalSeconds,
-                options.Seed),
+                options.Seed)
+            {
+                Burst = options.Burst is { } burst
+                    ? new StressBurstPlan(burst.KindName, burst.Accounts, burst.At.TotalSeconds, burst.Deadline.TotalSeconds)
+                    : null
+            },
             providerReport.Worker ?? target.Worker,
             workerProcess,
             providerReport.GameServiceProcess,

@@ -20,7 +20,10 @@ public sealed class RedisFailureFallbackTests
             "Host=127.0.0.1;Database=test;Username=test;Password=test",
             "127.0.0.1:1",
             TimeSpan.FromMilliseconds(100),
-            RunMigrationsOnStartup: false);
+            RunMigrationsOnStartup: false)
+        {
+            RedisCommandTimeout = TimeSpan.FromMilliseconds(100)
+        };
         var options = new RedisAccelerationOptions(
             true,
             $"shooter-mmo-failure-test-{Guid.NewGuid():N}",

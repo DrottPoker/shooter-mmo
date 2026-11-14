@@ -60,6 +60,9 @@ public sealed class StressQualityBoundary
             ["item_invariant_violations"] = ("count", StressRuleKind.Maximum),
             ["process_memory_growth"] = ("MiB", StressRuleKind.Maximum),
             ["service_log_errors"] = ("count", StressRuleKind.Maximum),
+            ["worker_heartbeat_failures"] = ("count", StressRuleKind.Maximum),
+            ["auth_service_timeouts"] = ("count", StressRuleKind.Maximum),
+            ["burst_incomplete_accounts"] = ("count", StressRuleKind.Maximum),
             ["generator_poll_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum),
             ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum),
             ["network_proxy_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum)
@@ -364,6 +367,13 @@ public sealed class StressQualityBoundary
                             .Select(entry => Invariant($"{entry.Count} {entry.Level} {entry.Service} {entry.Category}: {entry.Message}"))) is { Length: > 0 } classes
                         ? classes
                         : null),
+            "worker_heartbeat_failures" => report.ServiceLogs is not { } heartbeatLogs
+                ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
+                : Measurement.Of(heartbeatLogs.WorkerHeartbeatFailures, "warning lines of the worker's registry heartbeat over the run"),
+            "auth_service_timeouts" => report.ServiceLogs is not { } timeoutLogs
+                ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
+                : Measurement.Of(timeoutLogs.AuthServiceTimeouts, "worker log lines that name auth_service_timeout over the run"),
+            "burst_incomplete_accounts" => MeasureBurst(report),
             "item_invariant_violations" => !fullStack
                 ? Measurement.Skip("no durable items in worker-only mode")
                 : report.Postgres?.ItemInvariants is { } invariants
@@ -483,6 +493,28 @@ public sealed class StressQualityBoundary
             + (report.FullStack is null ? string.Empty : $", {notLoggedOut} not logged out")
             + (codes is null ? string.Empty : $"; {codes}");
         return Measurement.Of(notCompleted + notLoggedOut, note);
+    }
+
+    // The burst accounts that did not end logged in or out within the burst's deadline, after
+    // their waits for auth_busy; a refusal is counted, never a failure.
+    private static Measurement MeasureBurst(StressRunReport report)
+    {
+        if (report.Configuration.Burst is not { } plan)
+        {
+            return Measurement.Skip("the run has no login or logout burst");
+        }
+
+        if (report.FullStack?.Burst is not { } burst)
+        {
+            return Measurement.Missing($"the {plan.Kind} burst of {plan.Accounts} accounts did not run.");
+        }
+
+        var failures = burst.FailureCodes.Count == 0
+            ? string.Empty
+            : "; failed " + string.Join(", ", burst.FailureCodes.Select(code => $"{code.Key} {code.Value}"));
+        return Measurement.Of(
+            burst.Incomplete,
+            Invariant($"{burst.Kind} burst of {burst.Accounts} accounts, {burst.CompletedInTime} within {burst.DeadlineSeconds:0} s; {burst.Refusals} auth_busy refusals of {burst.RefusedAccounts} accounts and {burst.Retries} retries; median {burst.MedianSeconds:0.0} s, longest {burst.LongestSeconds:0.0} s; first requests within {burst.SendSpreadMilliseconds:0} ms{failures}"));
     }
 
     private static Measurement MeasureHttpFailures(StressFullStackSummary fullStack)

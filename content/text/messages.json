@@ -35,6 +35,10 @@
       "text": "The last change of the look is still being saved."
     },
     {
+      "key": "message/auth_busy",
+      "text": "The game service is busy. Try again in a moment."
+    },
+    {
       "key": "message/auth_service_timeout",
       "text": "The game service did not answer in time. Try again shortly."
     },

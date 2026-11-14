@@ -42,8 +42,31 @@ public sealed class StressLoadPlanTests
                 "playing-500",
                 "hotspot-100",
                 "soak-10min",
-                "soak-30min"
+                "soak-30min",
+                "login-burst",
+                "logout-burst"
             });
+    }
+
+    // The burst scenarios hand their burst to the generator, which a plan validates.
+    [Theory]
+    [InlineData("login-burst", StressBurstKind.Login)]
+    [InlineData("logout-burst", StressBurstKind.Logout)]
+    public void TheBurstScenariosPlanTheirBurst(string name, StressBurstKind kind)
+    {
+        var scenario = StressLoadScenario.Load(Path.Combine(LoadDirectory, "scenarios", name + ".json"));
+        var plan = StressLoadPlan.Create(
+            scenario,
+            new StressLoadPlanRequest(Path.Combine(Path.GetTempPath(), "burst-plan"), Path.Combine(LoadDirectory, "quality-boundary.json")),
+            RepositoryPaths.Root);
+        var options = StressGeneratorOptions.Parse(
+            plan.GeneratorArguments.ToArray(),
+            RepositoryPaths.Root,
+            variable => plan.GeneratorEnvironment.GetValueOrDefault(variable));
+
+        Assert.Equal(kind, options.Burst?.Kind);
+        Assert.Equal(kind == StressBurstKind.Login ? 400 : 500, options.Burst?.Accounts);
+        Assert.True(options.Burst!.At + options.Burst.Deadline <= options.SteadyDuration);
     }
 
     // Every kit a playing scenario hands out is one the GameService kit fixture grants, and the

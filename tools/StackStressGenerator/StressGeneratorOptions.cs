@@ -112,6 +112,12 @@ public sealed record StressGeneratorOptions(
 
     public Mmorpg.Tools.NetworkImpairmentProxy.NetworkProfile? Network { get; init; }
 
+    // Full-stack: the login or logout burst of the run, or null for none.
+    public StressBurstOptions? Burst { get; init; }
+
+    public const int DefaultBurstAtSeconds = 10;
+    public const int DefaultBurstDeadlineSeconds = 60;
+
     public static string DefaultActorCatalogPath =>
         Path.Combine(AppContext.BaseDirectory, "WorldData", "Actors", "core.actor-catalog.json");
 
@@ -255,6 +261,8 @@ public sealed record StressGeneratorOptions(
                 $"stack-stress-{FormatMode(mode)}-{FormatWorkload(workload)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
         var runId = ValidateRunId(Get(values, "run-id", CreateRunId()));
         var networkProfilePath = OptionalPath(values, "network-profile", workingDirectory);
+        var steadySeconds = ParseInt(values, "duration-seconds", 300, 1, 86_400);
+        var burst = ParseBurst(values, mode, steadySeconds);
 
         return new StressGeneratorOptions(
             mode,
@@ -279,7 +287,7 @@ public sealed record StressGeneratorOptions(
             botStartIndex,
             rampStep,
             TimeSpan.FromSeconds(ParseInt(values, "ramp-interval-seconds", 10, 1, 3600)),
-            TimeSpan.FromSeconds(ParseInt(values, "duration-seconds", 300, 1, 86_400)),
+            TimeSpan.FromSeconds(steadySeconds),
             TimeSpan.FromSeconds(ParseInt(values, "worker-wait-seconds", 120, 1, 3600)),
             TimeSpan.FromSeconds(ParseInt(values, "join-timeout-seconds", 10, 1, 300)),
             TimeSpan.FromSeconds(ParseInt(
@@ -331,8 +339,56 @@ public sealed record StressGeneratorOptions(
                 ? ParseInt(values, "worker-heartbeat-timeout-seconds", 0, 1, 3600)
                 : null,
             NetworkProfilePath = networkProfilePath,
-            Network = networkProfilePath is null ? null : StressNetworkProfiles.Load(networkProfilePath)
+            Network = networkProfilePath is null ? null : StressNetworkProfiles.Load(networkProfilePath),
+            Burst = burst
         };
+    }
+
+    // A login or a logout burst, never both; its start and its deadline lie inside the steady
+    // interval, so the burst is measured with the stack's steady numbers.
+    private static StressBurstOptions? ParseBurst(
+        IReadOnlyDictionary<string, string> values,
+        StressRunMode mode,
+        int steadySeconds)
+    {
+        var logins = ParseInt(values, "login-burst-accounts", 0, 0, MaximumBotCount);
+        var logouts = ParseInt(values, "logout-burst-accounts", 0, 0, MaximumBotCount);
+        if (logins == 0 && logouts == 0)
+        {
+            if (values.ContainsKey("burst-at-seconds") || values.ContainsKey("burst-deadline-seconds"))
+            {
+                throw new StressGeneratorOptionException(
+                    "--burst-at-seconds and --burst-deadline-seconds need --login-burst-accounts or --logout-burst-accounts.");
+            }
+
+            return null;
+        }
+
+        if (logins > 0 && logouts > 0)
+        {
+            throw new StressGeneratorOptionException(
+                "A run has a login burst or a logout burst, not both.");
+        }
+
+        if (mode != StressRunMode.FullStack)
+        {
+            throw new StressGeneratorOptionException(
+                "A login or logout burst needs --mode full-stack, because it goes through GameService.");
+        }
+
+        var at = ParseInt(values, "burst-at-seconds", DefaultBurstAtSeconds, 0, 86_400);
+        var deadline = ParseInt(values, "burst-deadline-seconds", DefaultBurstDeadlineSeconds, 1, 3_600);
+        if (at + deadline > steadySeconds)
+        {
+            throw new StressGeneratorOptionException(
+                $"The burst starts {at} s into the steady interval and has {deadline} s to complete, which does not fit the steady interval of {steadySeconds} s.");
+        }
+
+        return new StressBurstOptions(
+            logins > 0 ? StressBurstKind.Login : StressBurstKind.Logout,
+            Math.Max(logins, logouts),
+            TimeSpan.FromSeconds(at),
+            TimeSpan.FromSeconds(deadline));
     }
 
     private static string? OptionalPath(
@@ -423,6 +479,12 @@ public sealed record StressGeneratorOptions(
           --network-profile <file>          The network profile the bots' traffic goes through, by the impairment proxy
                                             that tools/Test-Load.ps1 starts; it names the profile in the report and
                                             applies its allowances to the verdict. Default: none, a direct connection
+          --login-burst-accounts <count>    Full-stack: accounts registered before the ramp that all log in again at once
+                                            during the steady interval. Default: 0, no burst
+          --logout-burst-accounts <count>   Full-stack: accounts registered before the ramp that all log out at once
+                                            during the steady interval. Default: 0, no burst
+          --burst-at-seconds <seconds>      How far into the steady interval the burst starts. Default: 10
+          --burst-deadline-seconds <s>      How long every burst account has to end logged in or out. Default: 60
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
@@ -524,7 +586,11 @@ public sealed record StressGeneratorOptions(
             "redis-endpoint",
             "database-pool-size",
             "worker-heartbeat-timeout-seconds",
-            "network-profile"
+            "network-profile",
+            "login-burst-accounts",
+            "logout-burst-accounts",
+            "burst-at-seconds",
+            "burst-deadline-seconds"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

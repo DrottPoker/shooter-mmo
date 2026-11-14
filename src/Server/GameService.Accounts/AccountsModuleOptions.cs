@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Platform.Configuration;
 
@@ -11,6 +12,9 @@ public sealed record AccountsModuleOptions(
 {
     // Read by its own factory after the core settings are valid.
     public RedisAccelerationOptions RedisAcceleration { get; init; } = RedisAccelerationOptions.Disabled;
+
+    // The password hashing lane; optional settings with defaults.
+    public PasswordHashingOptions PasswordHashing { get; init; } = PasswordHashingOptions.Default;
 
     public static AccountsModuleOptions ReadCore(
         IConfiguration configuration,
@@ -39,12 +43,16 @@ public sealed record AccountsModuleOptions(
             errors);
         var credentials = SimulationWorkerCredentials.FromConfiguration(configuration);
         credentials.Validate(errors);
+        var passwordHashing = PasswordHashingOptions.Read(configuration, errors);
 
         return new AccountsModuleOptions(
             TimeSpan.FromHours(sessionLifetimeHours),
             authenticationPermitLimit,
             TimeSpan.FromSeconds(authenticationWindowSeconds),
-            credentials);
+            credentials)
+        {
+            PasswordHashing = passwordHashing
+        };
     }
 }
 

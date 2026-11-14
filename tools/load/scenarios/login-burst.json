@@ -1,0 +1,20 @@
+{
+  "description": "Login burst: 400 accounts that registered before the ramp, and so are logged in, all log in again at once 10 seconds into the steady interval, each replacing its session, while 20 bots move items in their inventories in the stress arena, so the worker's heartbeats and the bots' operations are measured during the burst. The password hashing lane is expected to refuse part of the burst with auth_busy on the reference machine, and every account to end logged in within 60 seconds after it waited out its refusals.",
+  "mode": "full-stack",
+  "workload": "inventory",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 20,
+    "ramp-step": 20,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 90,
+    "http-concurrency": 32,
+    "inventory-operation-interval-seconds": 3,
+    "report-interval-seconds": 10,
+    "seed": 1337,
+    "login-burst-accounts": 400,
+    "burst-at-seconds": 10,
+    "burst-deadline-seconds": 60
+  }
+}

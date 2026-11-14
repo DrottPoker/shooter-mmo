@@ -338,7 +338,7 @@ sets is an error.
 | `worker-only-200` | worker-only `lifecycle` | 200 bots in steps of 50 five seconds apart, 60 s steady, 2 poll threads |
 | `worker-only-500` | worker-only `lifecycle` | 500 bots in steps of 100 five seconds apart, 60 s steady, 4 poll threads |
 | `mixed-100` | full-stack `mixed-gameplay` | 100 bots, 32-way admission, steps of 25 ten seconds apart, 120 s steady |
-| `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady, 2 poll threads; it does not complete at present, as [What Limits The Next Tier](#what-limits-the-next-tier) describes |
+| `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady, 2 poll threads; it completes and fails the operation time of its one shared corpse, as [What Limits The Next Tier](#what-limits-the-next-tier) describes |
 | `session-cache-on`, `session-cache-off` | full-stack `lifecycle` | The [Redis Session-cache A/B Baseline](#redis-session-cache-ab-baseline) |
 | `playing-smoke` | full-stack `playing` | 20 bots on Development World 2 in all four roles: 8 fighters, 2 of them with bows, in two hunting grounds, 4 gatherers at 8 Iron Veins, 6 walkers, and 2 traders; a variant with 10 Feral Wolves, 10 Grey Wolves, and 8 Iron Veins more; steps of 10 five seconds apart, 90 s steady; a tooling check of the playing workload |
 | `playing-100` | full-stack `playing` | 100 bots of the reference mix on the reference variant, steps of 10 six seconds apart, 300 s steady |
@@ -347,6 +347,8 @@ sets is an error.
 | `hotspot-100` | full-stack `playing` | 100 traders in the town of Development World 2 at its one vendor, steps of 20 five seconds apart, 120 s steady |
 | `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set |
 | `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
+| `login-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [login burst](#burst-scenarios) of 400 logged-in accounts 10 s into it, each with 60 s to end logged in again |
+| `logout-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [logout burst](#burst-scenarios) of 500 logged-in accounts 10 s into it, each with 60 s to end logged out |
 
 The tier scenarios use seed `1337`, three-second inventory and four-second
 corpse operations, and a ten-second metrics interval; their results are in
@@ -364,6 +366,54 @@ of 20 Oak Trees, away from the hunting grounds, the town, and the spawn. The
 gatherers share the fields in turn, so `playing-500` has 100 gatherers for 120
 nodes, at least one node per gatherer. The town ground holds Mira, the vendor;
 traders stay there, and fighters and gatherers walk there to sell.
+
+### Burst Scenarios
+
+A burst measures what many players who log in or out at the same moment do to
+GameService, without the World: the generator option `login-burst-accounts`
+or `logout-burst-accounts` names how many accounts take part,
+`burst-at-seconds` when in the steady interval the burst starts, 10 by
+default, and `burst-deadline-seconds` how long every account has to end logged
+in or out, 60 by default; the burst and its deadline must fit the steady
+interval. A run has at most one burst, and only in full-stack mode.
+
+1. Before the ramp, the generator registers the burst's accounts, eight at a
+   time like the provisioning of the playing workload, so every one of them is
+   logged in with its registration session.
+2. At its time, the burst's requests all wait at one gate and leave together;
+   the report says within how many milliseconds the first requests left. A
+   login burst logs every account in again, so each login replaces a session
+   and stores its revocation tombstone in Redis; a logout burst logs every
+   account out, each with its own tombstone.
+3. A login that GameService refuses with `auth_busy`, because its
+   [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane) is
+   full, waits for its `Retry-After` and is sent again, as every registration
+   and login of the generator does; a refusal is counted and expected, never a
+   failure. The time of an account runs from the burst's start to its success,
+   so it holds its waits.
+4. When the run ends, every burst account that still holds a session logs out,
+   and the account count of the disposable database includes the burst's
+   accounts.
+
+The bots of the scenario play meanwhile, so the worker's registry heartbeats
+and the bots' operations are measured during the burst. The rule
+`burst_incomplete_accounts` judges the burst, `worker_heartbeat_failures` and
+`auth_service_timeouts` the worker's calls to GameService, and
+`http_unexpected_failures` every request, so a `session_cache_invalidation_unavailable`
+fails the run. The report's `fullStack.burst` holds the accounts that completed
+and those within the deadline, the refusals and retries and how many accounts
+were refused, the median and longest seconds, the failure codes, and the
+accounts that logged out at the end; the summary carries it as `burst` and the
+key numbers `authBusyRefusals`, `burstRefusals`, `burstMedianSeconds`, and
+`burstLongestSeconds`.
+
+`login-burst` expects the lane to refuse part of its 400 logins: with eight
+lane threads and a hash of a quarter to half a second, the queue holds 160 to
+320 logins within its 10 seconds. It has 400 and not more accounts because
+all bots share one address, and their logins with every retry stay below the
+authentication limit of 1,000 per minute that the plan sets; with 500 accounts
+the retries passed it, and the logins that waited out the limit missed their
+deadline.
 
 ### What The Playing Scenarios Are For
 
@@ -438,11 +488,17 @@ masked. The local secrets and the connection string are the test values that
   instead of raising it further: when GameService answers 429, it waits the
   answer's `Retry-After`, five seconds without one and at most 60, and sends
   again, up to ten times, and the report counts every wait as the operation's
-  `rateLimitWaits`. The playing workload provisions at most eight accounts at
+  `rateLimitWaits`. Every registration and login of the generator waits out a
+  `503 auth_busy` of the password hashing lane the same way, the answer's
+  `Retry-After` kept between one and 30 seconds and five seconds without one,
+  up to ten times, and the report counts every wait as the operation's
+  `busyWaits`; a refusal after the last wait is a failure with the code
+  `auth_busy`. The playing workload provisions at most eight accounts at
   once, whatever `http-concurrency` says: registration and login hash the
-  password, and 32 at once took about eight processors of the reference machine
-  and once delayed the worker's registry heartbeat past its five-second timeout
-  twice, so the worker stopped itself when its registration lease expired. The generator
+  password, which GameService's
+  [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane) runs for
+  at most half the logical processors at a time, eight on the reference
+  machine, so more at once would only wait in its queue. The generator
   gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
   in `STACK_STRESS_FIXTURE_SECRET`, never as arguments. For the [Soak](#soak)
   numbers it gets `--redis-endpoint` with the disposable Redis, and
@@ -1155,7 +1211,10 @@ Full-stack reports additionally contain:
 - Registered, fixture, provisioned, logged-in, admitted, and logged-out account
   totals.
 - Per-operation HTTP request, success, failure, status-code, stable failure-code,
-  and latency summaries.
+  and latency summaries, with the 429 answers that a paced request waited out
+  as `rateLimitWaits` and the `auth_busy` answers that a registration or login
+  waited out as `busyWaits`.
+- `burst`, for a run with a [burst](#burst-scenarios): what the burst did.
 - Per-gameplay-operation request, success, expected-conflict,
   unexpected-rejection, timeout, incomplete-request, stable result-code, and
   latency summaries.
@@ -1287,6 +1346,9 @@ worker-only mode, passes and says so.
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
 | `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
+| `worker_heartbeat_failures` | 0 warning lines of a failed worker registry heartbeat over the run, counted once the services stopped | Two failures in a row let the worker's registration lease expire, and the worker stops itself |
+| `auth_service_timeouts` | 0 warning, error, or critical lines of the worker log that name `auth_service_timeout` over the run | A call of the worker that GameService did not answer within the worker's timeout refuses a join or loses a heartbeat |
+| `burst_incomplete_accounts` | 0 accounts of a [burst](#burst-scenarios) that did not end logged in or out within its deadline, after waiting out every `auth_busy`; not applicable without a burst | A busy GameService may make a player wait and try again, never fail |
 
 ### Validity
 
@@ -1330,8 +1392,11 @@ or none, the verdict entries, the result, and
 `keyNumbers`: join p95, input acknowledgement p50, p95, and p99, the remote
 update rate average and fifth percentile, the p95 of every gameplay operation
 kind, the worst steady tick p99, the worker's average single-core CPU and
-highest working set from its own intervals, the generator's average CPU, and
-the payload bytes per bot and second that the worker received and sent.
+highest working set from its own intervals, the generator's average CPU, the
+payload bytes per bot and second that the worker received and sent, in
+full-stack mode `authBusyRefusals`, every `auth_busy` answer of the run, and
+for a burst its refusals and its median and longest seconds; the summary also
+carries the burst itself as `burst`.
 
 `-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
 or under a network profile to `<scenario>.<profile>.json`, such as
@@ -1582,20 +1647,42 @@ reports.
    its one-second deadlock timeout, and the worker's retry commits it. Two in
    five minutes at 500 players, one in thirty minutes at 250; both statements
    are in each run's `postgres.log`.
-4. **A registration or login burst starves everything else in GameService.**
-   Password hashing takes seven to ten of sixteen cores while 32 to 64
-   accounts register and log in at once. In `mixed-250`, which provisions its
-   accounts 64 at a time during the ramp, the worker's calls to GameService then time out after five
-   seconds: joins are refused with `auth_service_timeout`, two registry
-   heartbeats in a row fail, the worker's registration lease expires, and the
-   worker stops itself. The scenario did not complete on the idle machine, so
-   it has no baseline. The playing scenarios provision eight accounts at a
-   time before the ramp and are not affected.
-5. **A logout burst overruns the Redis session cache.** When the 250 bots of
-   `mixed-250` logged out together, six logouts failed with
-   `session_cache_invalidation_unavailable`: GameService could not store the
-   revocation tombstones in time and, correctly, refused to commit the
-   revocation.
+4. **A registration or login burst waits in the password hashing lane.**
+   Every password hash runs in the
+   [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane), at most
+   eight at once on this machine, on threads of its own below normal priority,
+   so a burst no longer takes GameService's thread pool or more than half the
+   cores. In runs of 2026-11-14 that shared the machine with a game,
+   `mixed-250`, which registers and logs in its accounts 64 at a time during
+   the ramp, completed with 250 of 250 bots: the lane refused 36
+   registrations and logins with `auth_busy`, each went again after its
+   `Retry-After`, and no registry heartbeat and no call of the worker to
+   GameService failed. It failed only the operation time of its shared corpse,
+   entry 6, and could not measure because the generator fell behind on the
+   busy machine, so it has no baseline yet. In `login-burst` the lane refused
+   about half of 400 logins at once, and every account was logged in within 25
+   seconds. Left to measure on an idle machine: how long a hash takes while
+   eight run, which sets how many logins the queue holds; how long an admitted
+   login waits, which reached 14 seconds when hashes slowed down after it was
+   admitted, beyond the 10 seconds the lane aims at; and the baselines of
+   `mixed-250`, `login-burst`, and `logout-burst`.
+5. **A logout burst no longer overruns the Redis session cache.** The six
+   `session_cache_invalidation_unavailable` of an earlier `mixed-250` were
+   answers that Redis sent in time and GameService read too late:
+   StackExchange.Redis timed out a tombstone's `SETEX` after 1,343 ms with the
+   answer already on its socket (`qs: 0`, `in: 42`, `rs: DequeueResult`) while
+   21 thread pool workers were busy against a minimum of 16, during a
+   registration burst whose BCrypt ran on the thread pool, and the client's
+   timeout was the readiness probe's one second. The password hashing lane
+   took BCrypt off the thread pool, the Redis client has its own
+   `Redis:CommandTimeoutMilliseconds`, the tombstones of one revocation go to
+   Redis together, and a transient failure is tried once more within
+   `RedisAcceleration:SessionRevocationDeadlineMilliseconds`. `logout-burst`
+   logged 500 accounts out at once within a second, `login-burst` replaced 400
+   sessions, and `mixed-250` logged 250 accounts out, without one
+   `session_cache_invalidation_unavailable` or Redis timeout. Left to measure
+   on an idle machine: a logout burst at the Scale Target's 500 players beside
+   a full World.
 6. **One corpse is one queue.** With 250 clients on the shared corpse of
    `mixed-250`, a deposit's p95 was 4.6 seconds. That is the deliberate worst
    case of the mixed workload, not a spread of corpses.
@@ -1737,6 +1824,9 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--database-pool-size` | none | Full-stack: GameService's `Database:MaximumPoolSize`, which the drift checks compare its connections with |
 | `--worker-heartbeat-timeout-seconds` | none | Full-stack: GameService's `Simulation:WorkerHeartbeatTimeoutSeconds`, against which the drift checks give the worker's registration headroom |
 | `--network-profile` | none | The network profile file the bots' traffic goes through, by the proxy that `tools/Test-Load.ps1` starts; the report names it and the verdict applies its allowances |
+| `--login-burst-accounts`, `--logout-burst-accounts` | `0` | Full-stack: the accounts of a [login or logout burst](#burst-scenarios), registered before the ramp; at most one of the two |
+| `--burst-at-seconds` | `10` | How far into the steady interval the burst starts |
+| `--burst-deadline-seconds` | `60` | How long every burst account has to end logged in or out; the burst and its deadline fit the steady interval |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The

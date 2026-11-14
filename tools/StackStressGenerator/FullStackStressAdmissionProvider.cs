@@ -20,6 +20,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private readonly object workerGate = new();
     private readonly string password;
     private readonly System.Net.IPEndPoint? redisEndpoint;
+    private readonly FullStackStressBurst? burst;
     private StressTableSnapshot? tablesAtSteadyStart;
     private StressTableSnapshot? tablesAtSteadyEnd;
     private StressRedisSnapshot? redisAtSteadyStart;
@@ -65,6 +66,18 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         redisEndpoint = options.RedisEndpoint is null ? null : StressRedisSampler.ParseEndpoint(options.RedisEndpoint);
         concurrency = new SemaphoreSlim(options.HttpConcurrency, options.HttpConcurrency);
         password = $"StackStress_{Convert.ToHexString(RandomNumberGenerator.GetBytes(12))}!";
+        burst = options.Burst is { } burstOptions
+            ? new FullStackStressBurst(client, burstOptions, options.RunId, password, options.HttpConcurrency)
+            : null;
+    }
+
+    // Fires the run's burst, on the caller's thread pool task, and returns once every burst
+    // account ended logged in or out or gave up.
+    public Task RunBurstAsync(double startedAfterSteadySeconds, CancellationToken cancellationToken)
+    {
+        return burst is null
+            ? throw new InvalidOperationException("The run has no burst.")
+            : burst.RunAsync(startedAfterSteadySeconds, cancellationToken);
     }
 
     public async Task<StressRunTarget> WaitForReadyAsync(
@@ -300,6 +313,11 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 }
             });
 
+        if (burst is not null)
+        {
+            await burst.CleanUpAsync(cancellationToken);
+        }
+
         // An account that was provisioned but never admitted logs out too.
         foreach (var leftover in provisionedAccounts.Values)
         {
@@ -315,7 +333,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
 
         provisionedAccounts.Clear();
         await postgresSampler.VerifyAccountCountAsync(
-            Volatile.Read(ref registeredBots) + Volatile.Read(ref fixtureAccounts),
+            Volatile.Read(ref registeredBots) + Volatile.Read(ref fixtureAccounts) + (burst?.RegisteredAccounts ?? 0),
             cancellationToken);
         await postgresSampler.VerifyGameplayInvariantsAsync(
             options.Workload,
@@ -455,7 +473,17 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         return postgresSampler.ReadRejoinFactsAsync(admitted.Character.Id, session, cancellationToken);
     }
 
+    // The workload's own preparation, then the accounts of a burst, all before the ramp.
     public async Task PrepareAsync(CancellationToken cancellationToken)
+    {
+        await PrepareWorkloadAsync(cancellationToken);
+        if (burst is not null)
+        {
+            await burst.ProvisionAsync(cancellationToken);
+        }
+    }
+
+    private async Task PrepareWorkloadAsync(CancellationToken cancellationToken)
     {
         if (options.Workload == StressWorkloadProfile.Playing)
         {
@@ -577,7 +605,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 metrics.Capture())
             {
                 ChurnLogouts = Volatile.Read(ref churnLogouts),
-                ChurnLogins = Volatile.Read(ref churnLogins)
+                ChurnLogins = Volatile.Read(ref churnLogins),
+                Burst = burst?.Summary,
+                BurstAccounts = burst?.RegisteredAccounts ?? 0
             },
             gameServiceProcessSampler?.CreateSummary(),
             postgresSampler.CreateSummary())
@@ -690,10 +720,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
     }
 
-    // Registration and login hash the password, which costs GameService a processor each. At 32
-    // at once it took about eight processors of the reference machine and delayed the worker's
-    // registry heartbeat past its timeout, so provisioning runs at most this many accounts at
-    // once and the stack stays responsive while it is set up.
+    // Registration and login hash the password, which GameService's password hashing lane runs
+    // for at most half the logical processors at a time, eight on the reference machine, so
+    // provisioning runs at most this many accounts at once; more would only wait in its queue.
     public const int ProvisioningConcurrency = 8;
 
     // Players have accounts and characters before they play, so the playing workload registers

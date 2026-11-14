@@ -41,6 +41,39 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Contains("at least SessionCacheTtlSeconds", exception.Message);
     }
 
+    // The Redis client has its own command timeout, apart from the readiness probe's, and the
+    // tombstones of a revocation their own deadline.
+    [Fact]
+    public void RedisTimeoutsDefaultApartFromTheHealthCheckAndAreBounded()
+    {
+        var defaults = GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(AuthSettings(includeSecrets: true))
+            .Build());
+        var acceleration = RedisAccelerationOptions.FromConfiguration(new ConfigurationBuilder().Build());
+        var settings = AuthSettings(includeSecrets: true);
+        settings["Redis:CommandTimeoutMilliseconds"] = "50";
+        settings["Auth:PasswordHashing:MaxWaitSeconds"] = "61";
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+                .AddInMemoryCollection(settings)
+                .Build()));
+        var deadline = Assert.Throws<InvalidOperationException>(() =>
+            RedisAccelerationOptions.FromConfiguration(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["RedisAcceleration:SessionRevocationDeadlineMilliseconds"] = "50"
+                })
+                .Build()));
+
+        Assert.Equal(TimeSpan.FromSeconds(2), defaults.Platform.RedisCommandTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(10), defaults.Accounts.PasswordHashing.MaxWait);
+        Assert.Equal(TimeSpan.FromSeconds(5), acceleration.SessionRevocationDeadline);
+        Assert.Contains("Redis:CommandTimeoutMilliseconds must be an integer from 100 to 60000", exception.Message);
+        Assert.Contains("Auth:PasswordHashing:MaxWaitSeconds must be an integer from 1 to 60", exception.Message);
+        Assert.Contains("SessionRevocationDeadlineMilliseconds must be between 100 and 30000", deadline.Message);
+    }
+
     [Fact]
     public void GameServiceRejectsMissingSecretsAndConnections()
     {

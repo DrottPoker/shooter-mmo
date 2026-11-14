@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
@@ -11,6 +12,11 @@ public sealed class MeterInstrumentNamesTests
 {
     private static readonly string[] ExpectedInstruments =
     [
+        "Mmorpg.GameService.Accounts|1.0.0|Counter`1|game_service.accounts.password_hashing.refusals|",
+        "Mmorpg.GameService.Accounts|1.0.0|Histogram`1|game_service.accounts.password_hashing.duration|ms",
+        "Mmorpg.GameService.Accounts|1.0.0|Histogram`1|game_service.accounts.password_hashing.wait.duration|ms",
+        "Mmorpg.GameService.Accounts|1.0.0|ObservableGauge`1|game_service.accounts.password_hashing.in_flight|",
+        "Mmorpg.GameService.Accounts|1.0.0|ObservableGauge`1|game_service.accounts.password_hashing.queue_length|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.cleanup|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.conflicts|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.death_partitions|",
@@ -36,7 +42,8 @@ public sealed class MeterInstrumentNamesTests
         {
             InstrumentPublished = (instrument, _) =>
             {
-                if (instrument.Meter.Name is "Mmorpg.GameService.Items"
+                if (instrument.Meter.Name is "Mmorpg.GameService.Accounts"
+                    or "Mmorpg.GameService.Items"
                     or "Mmorpg.GameService.Placement"
                     or "Mmorpg.GameService.Redis")
                 {
@@ -55,6 +62,7 @@ public sealed class MeterInstrumentNamesTests
         };
         listener.Start();
 
+        using var passwordHashingMetrics = new PasswordHashingMetrics();
         using var redisMetrics = new RedisAccelerationMetrics();
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
@@ -5,6 +6,7 @@ using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -12,7 +14,10 @@ namespace Mmorpg.Client.Ui
     // The temporary LoginMenu screen: one card with a Log In and a Create Account tab, and the
     // GameService connection below it. Log In takes an email or a username; it starts with the
     // last login name of this computer and puts the caret in the password. Tab moves between the
-    // fields and Enter sends the open tab. A failed request shows its reason in the card.
+    // fields and Enter sends the open tab. A failed request shows its reason in the card. When
+    // GameService is busy, the card says so, counts down the answer's Retry-After, and sends the
+    // request again by itself, as AuthBusyRetry allows; Esc, a change to the form, or another tab
+    // stops it.
     public sealed class LoginMenuPanel : MonoBehaviour
     {
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
@@ -39,6 +44,12 @@ namespace Mmorpg.Client.Ui
         private const string DevelopmentPassword = "TestPass123!";
 
         private readonly ClientOperationState operationState = new ClientOperationState();
+        private readonly AuthBusyRetry busyRetry = new AuthBusyRetry();
+
+        // What a busy answer sends again, and the progress line it shows meanwhile.
+        private Func<IEnumerator> retryRoutine;
+        private string retryProgress = string.Empty;
+        private int shownSecondsLeft = -1;
 
         private ApiClient apiClient;
         private TemporaryEntryScreen screen;
@@ -76,10 +87,17 @@ namespace Mmorpg.Client.Ui
             get { return exitNotice; }
         }
 
+        // Whether a busy answer is waited out before the request goes again.
+        public bool IsWaitingToRetry
+        {
+            get { return busyRetry.IsWaiting; }
+        }
+
         // Shows the Create Account tab, or the Log In tab.
         public void ShowRegistration(bool registering)
         {
             IsRegistering = registering;
+            busyRetry.Reset();
             if (form == null)
             {
                 return;
@@ -93,17 +111,38 @@ namespace Mmorpg.Client.Ui
             FocusFirstEmpty();
         }
 
-        // Sends the open tab: a login, or a registration that also logs in.
+        // Sends the open tab: a login, or a registration that also logs in. A request the player
+        // sends counts its busy answers from the start.
         public void Submit()
         {
+            if (operationState.IsBusy)
+            {
+                return;
+            }
+
+            busyRetry.Reset();
             if (IsRegistering)
             {
-                BeginAuthentication(RegisterRoutine(), texts.Get("ui/login/creating-account"));
+                BeginAuthentication(RegisterRoutine, texts.Get("ui/login/creating-account"));
             }
             else
             {
-                BeginAuthentication(LoginRoutine(), texts.Get("ui/login/logging-in"));
+                BeginAuthentication(LoginRoutine, texts.Get("ui/login/logging-in"));
             }
+        }
+
+        // Stops waiting to send a busy request again, as Esc or a change to the form does.
+        public void CancelRetry()
+        {
+            if (!busyRetry.IsWaiting)
+            {
+                return;
+            }
+
+            busyRetry.Reset();
+            shownSecondsLeft = -1;
+            SetStatus(texts.Get("ui/login/busy-stopped"), TemporaryUiKit.TextSecondary);
+            ClientLog.Info(ClientLogCategory.Auth, "Stopped waiting to send the busy request again.");
         }
 
         private void Awake()
@@ -128,6 +167,42 @@ namespace Mmorpg.Client.Ui
             if (screen != null && screen.ReadKeys() && !operationState.IsBusy)
             {
                 Submit();
+                return;
+            }
+
+            UpdateBusyRetry();
+        }
+
+        // Counts down a busy answer's wait on the status line and sends the request again once
+        // it is due; Esc stops it.
+        private void UpdateBusyRetry()
+        {
+            if (!busyRetry.IsWaiting || operationState.IsBusy)
+            {
+                return;
+            }
+
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+            {
+                CancelRetry();
+                return;
+            }
+
+            var now = Time.unscaledTimeAsDouble;
+            if (busyRetry.IsDue(now))
+            {
+                busyRetry.BeginAttempt();
+                shownSecondsLeft = -1;
+                BeginAuthentication(retryRoutine, retryProgress);
+                return;
+            }
+
+            var secondsLeft = busyRetry.SecondsLeft(now);
+            if (secondsLeft != shownSecondsLeft)
+            {
+                shownSecondsLeft = secondsLeft;
+                SetStatus(AccountEntryPresentation.BusyRetryText(busyRetry, now, texts), TemporaryUiKit.WarningColor);
             }
         }
 
@@ -206,6 +281,11 @@ namespace Mmorpg.Client.Ui
             TemporaryEntryScreen.AddMainButton(registerPage, texts.Get("ui/login/create-account"), Submit);
 
             status = TemporaryEntryScreen.AddStatus(card);
+            foreach (var field in new[] { loginField, logInPasswordField, emailField, usernameField, registerPasswordField })
+            {
+                field.onValueChanged.AddListener(_ => CancelRetry());
+            }
+
             BuildFooter();
         }
 
@@ -267,16 +347,18 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void BeginAuthentication(IEnumerator routine, string progress)
+        private void BeginAuthentication(Func<IEnumerator> routine, string progress)
         {
             if (!operationState.TryBegin(ClientOperation.Authenticate))
             {
                 return;
             }
 
+            retryRoutine = routine;
+            retryProgress = progress;
             SetStatus(progress, TemporaryUiKit.TextSecondary);
             SetBusy(true);
-            StartCoroutine(RunOperation(ClientOperation.Authenticate, routine));
+            StartCoroutine(RunOperation(ClientOperation.Authenticate, routine()));
         }
 
         private IEnumerator RunOperation(ClientOperation operation, IEnumerator routine)
@@ -342,6 +424,18 @@ namespace Mmorpg.Client.Ui
 
         private void SetError(string operation, ApiError error, TMP_InputField retryField)
         {
+            var now = Time.unscaledTimeAsDouble;
+            if (busyRetry.TrySchedule(error, now))
+            {
+                shownSecondsLeft = busyRetry.SecondsLeft(now);
+                SetStatus(AccountEntryPresentation.BusyRetryText(busyRetry, now, texts), TemporaryUiKit.WarningColor);
+                ClientLog.Warning(
+                    ClientLogCategory.Auth,
+                    operation + " waits for a busy GameService, retry " + busyRetry.Retries + " of "
+                    + AuthBusyRetry.MaximumRetries + " in " + shownSecondsLeft + " s: " + error.ToDiagnostic());
+                return;
+            }
+
             SetStatus(
                 AccountEntryPresentation.ErrorText(error, clientSession.Settings.GameServiceBaseUrl, texts),
                 TemporaryUiKit.DangerColor);

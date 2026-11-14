@@ -85,13 +85,14 @@ public sealed class StressQualityVerdictTests
         Assert.True(verdict.Passed, string.Join("; ", verdict.Rules.Where(rule => !rule.Passed).Select(rule => $"{rule.Rule} {rule.Note}")));
         Assert.True(verdict.Valid);
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
-        // The memory rule judges only a steady interval of ten minutes or more, and the proxy rule
-        // only a run through a network profile.
+        // The memory rule judges only a steady interval of ten minutes or more, the proxy rule
+        // only a run through a network profile, and the burst rule only a run with a burst.
         Assert.All(
-            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "network_proxy_lateness_p99_ms")),
+            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "network_proxy_lateness_p99_ms" or "burst_incomplete_accounts")),
             rule => Assert.NotNull(rule.Measured));
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "process_memory_growth").Note, StringComparison.Ordinal);
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms").Note, StringComparison.Ordinal);
+        Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "burst_incomplete_accounts").Note, StringComparison.Ordinal);
         Assert.Equal(
             StressQualityBoundary.ValidityRules.Order(StringComparer.Ordinal),
             verdict.Rules.Where(rule => rule.Validity).Select(rule => rule.Rule).Order(StringComparer.Ordinal));
@@ -155,8 +156,59 @@ public sealed class StressQualityVerdictTests
         "deadlocks",
         "item_invariant_violations",
         "process_memory_growth",
-        "service_log_errors"
+        "service_log_errors",
+        "worker_heartbeat_failures",
+        "auth_service_timeouts",
+        "burst_incomplete_accounts"
     };
+
+    // A burst whose accounts all ended logged in within the deadline passes, however often the
+    // lane refused them; the refusals and retries are in the note, never failures.
+    [Fact]
+    public void ABurstPassesWithRefusalsAndFailsWithoutItsSummary()
+    {
+        var report = WithBurst(FullStackReport(), incomplete: 0);
+
+        var burst = Boundary().Evaluate(report).Rules.Single(rule => rule.Rule == "burst_incomplete_accounts");
+        var missing = Boundary().Evaluate(report with { FullStack = report.FullStack! with { Burst = null } })
+            .Rules.Single(rule => rule.Rule == "burst_incomplete_accounts");
+
+        Assert.True(burst.Passed);
+        Assert.Equal(0, burst.Measured);
+        Assert.Contains("180 auth_busy refusals", burst.Note, StringComparison.Ordinal);
+        Assert.False(missing.Passed);
+        Assert.Contains("did not run", missing.Note, StringComparison.Ordinal);
+    }
+
+    // The worker's heartbeat failures and its timed out calls to GameService come from its log
+    // lines, the code of a call even past the length of a message class.
+    [Fact]
+    public void TheWorkerLogCountsHeartbeatFailuresAndTimedOutCalls()
+    {
+        var log = Path.Combine(Path.GetTempPath(), $"worker-{Guid.NewGuid():N}.log");
+        File.WriteAllLines(log,
+        [
+            "warn: Mmorpg.SimulationWorker.Registry.SimulationWorkerHeartbeatService[0]",
+            "      Simulation worker registry heartbeat failed for local-simulation-worker-2 runtime 3f2c1d4e-0000-4000-8000-000000000001: auth_service_timeout.",
+            "warn: Mmorpg.SimulationWorker.Registry.SimulationWorkerHeartbeatService[0]",
+            "      Simulation worker registry heartbeat failed for local-simulation-worker-2 runtime 3f2c1d4e-0000-4000-8000-000000000001: auth_service_unavailable.",
+            "warn: Mmorpg.SimulationWorker.Realtime.RealtimeSimulationService[0]",
+            "      " + new string('x', 140) + " auth_service_timeout",
+            "info: Mmorpg.SimulationWorker.Realtime.RealtimeSimulationService[0]",
+            "      An informational line that names auth_service_timeout is not counted."
+        ]);
+        try
+        {
+            var logs = StressServiceLogs.Read([("simulation-worker", log, false)], []);
+
+            Assert.Equal(2, logs.WorkerHeartbeatFailures);
+            Assert.Equal(2, logs.AuthServiceTimeouts);
+        }
+        finally
+        {
+            File.Delete(log);
+        }
+    }
 
     [Theory]
     [MemberData(nameof(BrokenRules))]
@@ -380,10 +432,12 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst"],
                 root.EnumerateObject().Select(property => property.Name));
-            // A direct run names no network profile.
+            // A direct run names no network profile, and a run without a burst has none.
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("network").ValueKind);
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("burst").ValueKind);
+            Assert.Equal(0, root.GetProperty("keyNumbers").GetProperty("authBusyRefusals").GetDouble());
             Assert.Equal("smoke", root.GetProperty("scenario").GetString());
             Assert.Equal("abc123", root.GetProperty("commit").GetString());
             Assert.False(root.GetProperty("treeDirty").GetBoolean());
@@ -708,6 +762,20 @@ public sealed class StressQualityVerdictTests
         };
     }
 
+    private static StressRunReport WithBurst(StressRunReport report, int incomplete)
+    {
+        return report with
+        {
+            Configuration = report.Configuration with { Burst = new StressBurstPlan("login", 500, 10, 60) },
+            FullStack = report.FullStack! with
+            {
+                Burst = new StressBurstSummary(
+                    "login", 500, 500, 10.2, 60, 140, 500 - incomplete, 500 - incomplete, incomplete, 180, 180, 180, 8.5, 21.3,
+                    incomplete == 0 ? new Dictionary<string, int>() : new Dictionary<string, int> { ["auth_busy"] = incomplete })
+            }
+        };
+    }
+
     private static StressRunReport Break(StressRunReport report, string rule)
     {
         var worker = report.WorkerPerformance!;
@@ -813,6 +881,9 @@ public sealed class StressQualityVerdictTests
                     ]
                 }
             },
+            "worker_heartbeat_failures" => report with { ServiceLogs = report.ServiceLogs! with { WorkerHeartbeatFailures = 1 } },
+            "auth_service_timeouts" => report with { ServiceLogs = report.ServiceLogs! with { AuthServiceTimeouts = 1 } },
+            "burst_incomplete_accounts" => WithBurst(report, incomplete: 1),
             _ => throw new ArgumentOutOfRangeException(nameof(rule))
         };
     }

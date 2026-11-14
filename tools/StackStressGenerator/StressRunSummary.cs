@@ -79,6 +79,9 @@ public sealed record StressRunSummary(
     // connection. A baseline is per scenario and profile.
     public StressNetworkSummary? Network { get; init; }
 
+    // The login or logout burst of the run, or null for none.
+    public StressBurstSummary? Burst { get; init; }
+
     public const int TopTables = 10;
 
     public static StressRunSummary Create(
@@ -140,6 +143,20 @@ public sealed record StressRunSummary(
             numbers["redisBytesPerHour"] = storage.Redis?.UsedMemoryBytesPerHour;
         }
 
+        if (report.FullStack is { } fullStack)
+        {
+            // Every auth_busy answer of the password hashing lane: the ones a registration or
+            // login waited out and the ones left after its last wait.
+            numbers["authBusyRefusals"] = fullStack.Operations.Values.Sum(operation =>
+                operation.BusyWaits + operation.FailureCodes.GetValueOrDefault(FullStackStressClient.AuthBusyCode));
+            if (fullStack.Burst is { } burst)
+            {
+                numbers["burstLongestSeconds"] = burst.LongestSeconds;
+                numbers["burstMedianSeconds"] = burst.MedianSeconds;
+                numbers["burstRefusals"] = burst.Refusals;
+            }
+        }
+
         var worker = report.WorkerPerformance;
         if (worker is not null && worker.SteadyIntervals > 0)
         {
@@ -175,7 +192,8 @@ public sealed record StressRunSummary(
             numbers)
         {
             Soak = StressSummarySoak.Create(report),
-            Network = report.Network
+            Network = report.Network,
+            Burst = report.FullStack?.Burst
         };
     }
 

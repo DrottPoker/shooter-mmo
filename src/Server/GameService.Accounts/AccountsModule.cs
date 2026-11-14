@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Mmorpg.GameService.Accounts.Contracts;
+using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
@@ -9,14 +10,15 @@ using Mmorpg.GameService.Platform.Modules;
 namespace Mmorpg.GameService.Accounts;
 
 // Accounts: account and worker authentication, policies, login and registration rate
-// limits, and Redis session acceleration.
+// limits, the password hashing lane, and Redis session acceleration.
 public sealed class AccountsModule(AccountsModuleOptions options) : IGameServiceModule
 {
     public string Name => "Accounts";
 
     public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
 
-    public IReadOnlyList<string> MeterNames { get; } = [RedisAccelerationMetrics.MeterName];
+    public IReadOnlyList<string> MeterNames { get; } =
+        [PasswordHashingMetrics.MeterName, RedisAccelerationMetrics.MeterName];
 
     public void AddServices(IServiceCollection services)
     {
@@ -24,7 +26,11 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
 
         services.AddSingleton(options);
         services.AddSingleton(options.RedisAcceleration);
+        services.AddSingleton(options.PasswordHashing);
         services.AddSingleton(options.SimulationWorkerCredentials);
+        services.AddSingleton<PasswordHashingMetrics>();
+        services.AddSingleton<IPasswordHashAlgorithm, BCryptPasswordHashAlgorithm>();
+        services.AddSingleton<PasswordHashingLane>();
         services.AddSingleton<RedisAccelerationMetrics>();
         services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
         services.AddSingleton<RedisAuthenticationRateLimiter>();

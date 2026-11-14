@@ -1,5 +1,5 @@
-using BCrypt.Net;
 using Dapper;
+using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Platform.Http;
 using Npgsql;
 
@@ -8,12 +8,10 @@ namespace Mmorpg.GameService.Accounts;
 internal sealed class AccountService(
     NpgsqlDataSource dataSource,
     SessionService sessionService,
+    PasswordHashingLane passwordHashing,
     ILogger<AccountService> logger)
 {
-    // Verifying unknown logins against a real hash keeps their response time equal to a
-    // wrong password, so timing does not reveal whether an account exists.
-    private static readonly Lazy<string> UnknownAccountPasswordHash = new(
-        () => BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"), workFactor: 12));
+    public const string AuthBusyCode = "auth_busy";
 
     public async Task<ServiceResult<AuthResponse>> RegisterAsync(
         RegisterAccountRequest request,
@@ -43,7 +41,13 @@ internal sealed class AccountService(
         var username = request.Username!.Trim();
         var normalizedEmail = email.ToUpperInvariant();
         var normalizedUsername = username.ToUpperInvariant();
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password!, workFactor: 12);
+        var hashing = await passwordHashing.HashAsync(request.Password!, cancellationToken);
+        if (hashing.Refused)
+        {
+            return Busy<AuthResponse>(hashing.RetryAfter!.Value);
+        }
+
+        var passwordHash = hashing.Value;
         var accountId = Guid.NewGuid();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -147,11 +151,19 @@ internal sealed class AccountService(
                 new CommandDefinition(sql, new { Login = normalizedLogin }, cancellationToken: cancellationToken));
         }
 
-        // The pooled connection is released before the CPU-bound hash check.
-        var passwordMatches = BCrypt.Net.BCrypt.Verify(
+        // The pooled connection is released before the CPU-bound hash check. An unknown login
+        // is verified against the lane's unknown-account hash, so it costs the same and is
+        // refused the same way as a known one.
+        var verification = await passwordHashing.VerifyAsync(
             request.Password,
-            account?.PasswordHash ?? UnknownAccountPasswordHash.Value);
-        if (account is null || !passwordMatches)
+            account?.PasswordHash,
+            cancellationToken);
+        if (verification.Refused)
+        {
+            return Busy<AuthResponse>(verification.RetryAfter!.Value);
+        }
+
+        if (account is null || !verification.Value)
         {
             logger.LogWarning("[AUTH] Login rejected because the supplied credentials were invalid.");
             return ServiceResult<AuthResponse>.Unauthorized("invalid_credentials", "Login or password is incorrect.");
@@ -216,6 +228,15 @@ internal sealed class AccountService(
         return profile is null
             ? ServiceResult<AccountProfileResponse>.NotFound("account_not_found", "Account was not found.")
             : ServiceResult<AccountProfileResponse>.Ok(profile);
+    }
+
+    // Too many passwords are being hashed; the caller tries again after Retry-After.
+    private static ServiceResult<T> Busy<T>(TimeSpan retryAfter)
+    {
+        return ServiceResult<T>.ServiceUnavailable(
+            AuthBusyCode,
+            "Too many logins and registrations are being processed. Try again after the Retry-After interval.",
+            retryAfter);
     }
 
     private static async Task<string?> FindExistingAccountAsync(

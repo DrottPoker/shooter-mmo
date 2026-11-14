@@ -70,7 +70,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             var username = prefix.ToLowerInvariant() + "_" + suffix;
             AuthResponse account = null;
             ApiError error = null;
-            yield return api.Register(
+            yield return Register(
+                api,
                 baseUrl,
                 new RegisterAccountRequest
                 {
@@ -95,6 +96,38 @@ namespace Mmorpg.Client.Tests.PlayMode
                 value => error = value);
             ThrowOnError(error, "creating the character");
             created(account, character);
+        }
+
+        // Registers an account and waits out GameService's auth_busy as the login screen does: the
+        // answer's Retry-After, then the request again, as AuthBusyRetry allows.
+        public static IEnumerator Register(
+            ApiClient api,
+            string baseUrl,
+            RegisterAccountRequest request,
+            Action<AuthResponse> registered,
+            Action<ApiError> failed)
+        {
+            var retry = new AuthBusyRetry();
+            while (true)
+            {
+                AuthResponse account = null;
+                ApiError error = null;
+                yield return api.Register(baseUrl, request, value => account = value, value => error = value);
+                if (error == null)
+                {
+                    registered(account);
+                    yield break;
+                }
+
+                if (!retry.TrySchedule(error, Time.realtimeSinceStartupAsDouble))
+                {
+                    failed(error);
+                    yield break;
+                }
+
+                yield return new WaitForSecondsRealtime(AuthBusyRetry.DelaySeconds(error));
+                retry.BeginAttempt();
+            }
         }
 
         // Joins with a new character on the worker the script started, on directPort when it is

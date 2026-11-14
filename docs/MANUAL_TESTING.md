@@ -351,6 +351,54 @@ Close the Unity Editor of the checkout first.
    card shows `Login or password is incorrect. [invalid_credentials]`, and the
    password field takes the caret with its text selected.
 
+### A Busy GameService At Login
+
+The [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane) refuses
+logins with `auth_busy` when its queue is full. A lane of one thread and one
+second of waiting fills with a few parallel logins.
+
+1. Stop GameService, and start it again in its terminal with a lane of one
+   thread, one second of waiting, and an authentication limit that the flood
+   below does not reach:
+
+   ```powershell
+   $env:Auth__PasswordHashing__MaxConcurrency = "1"
+   $env:Auth__PasswordHashing__MaxWaitSeconds = "1"
+   $env:RateLimiting__Authentication__PermitLimit = "1000"
+   dotnet run --project src/Server/GameService
+   ```
+
+2. In another terminal, send waves of 30 wrong logins for 20 seconds, so the
+   lane stays full:
+
+   ```powershell
+   $client = [System.Net.Http.HttpClient]::new()
+   $body = '{"login":"nobody_here","password":"WrongPass123!"}'
+   $end = (Get-Date).AddSeconds(20)
+   while ((Get-Date) -lt $end) {
+       $wave = 1..30 | ForEach-Object { $client.PostAsync("http://localhost:5000/api/accounts/login", [System.Net.Http.StringContent]::new($body, [System.Text.Encoding]::UTF8, "application/json")) }
+       [System.Threading.Tasks.Task]::WaitAll($wave)
+   }
+   ```
+
+3. While it runs, enter Play Mode from `LoginMenu` and log in with an existing
+   account. Expected result: the status line under the button reads `The game
+   service is busy. Trying again in 1 s (retry 1 of 5). Esc or a change to the
+   form stops it.` in yellow, counts down, and the client sends the login again
+   by itself; once the flood ends, the login succeeds without a click and
+   CharacterSelect loads. The GameService log shows `[AUTH] Password hashing
+   refused a verify with auth_busy` at most every 30 seconds, and the Unity
+   Console a `Login waits for a busy GameService` line per retry. A login that
+   happens to find room gets in at once; log out and log in again while the
+   flood runs.
+4. Run the flood again, log in, and press `Esc` while the line counts down.
+   Expected result: the line reads `Stopped trying again. Send the form when
+   you are ready.`, and no further request leaves; typing in a field stops the
+   wait the same way.
+5. Stop GameService, clear the variables with
+   `Remove-Item Env:Auth__PasswordHashing__*, Env:RateLimiting__Authentication__PermitLimit`,
+   and start it again.
+
 ### Register, Create, And Join
 
 1. Open `Create Account`, enter a unique `Email` and `Username`, and click
@@ -2845,6 +2893,26 @@ not a fault of the tooling. The script prints `Load scenario smoke under the
 network profile normal passed`, says that there is no baseline for smoke under `normal`, keeps
 `network-proxy.json` and `network-proxy.log` in the run folder, and leaves no
 `Mmorpg.*` process. A run takes about one and a half minutes.
+
+### A Login Burst And A Logout Burst
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario login-burst
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario logout-burst
+```
+
+Expected result: before the ramp the generator prints `Registered 400 of 400
+burst accounts` and `Registered 500 of 500 burst accounts`. Ten seconds into
+the steady interval it prints `Login burst: 400 accounts at once` or `Logout
+burst: 500 accounts at once` and, after it, `The login burst ended: 400 of 400
+completed, 400 within 60 s`, with some hundred `auth_busy refusals` on the
+reference machine, or `The logout burst ended: 500 of 500 completed, 500
+within 60 s, 0 auth_busy refusals`. In the table `burst_incomplete_accounts`,
+`worker_heartbeat_failures`, `auth_service_timeouts`, and
+`http_unexpected_failures` read `pass`, the burst's note names its refusals,
+retries, and median and longest seconds, and the GameService log holds no
+`Redis session revocation tombstones could not be stored`. Each run takes about
+three minutes.
 
 ### Bots That Play
 

@@ -23,6 +23,13 @@ public sealed record StressServiceLogSummary(
     public long UnallowedErrors => Classes
         .Where(entry => !entry.Allowed && entry.Level is StressServiceLogs.Error or StressServiceLogs.Critical)
         .Sum(entry => entry.Count);
+
+    // The worker's failed registry heartbeats, by its warning line.
+    public long WorkerHeartbeatFailures { get; init; }
+
+    // The worker's warning, error, and critical lines that name auth_service_timeout: a call to
+    // GameService that did not answer within the worker's timeout.
+    public long AuthServiceTimeouts { get; init; }
 }
 
 // A message class that the rule service_log_errors accepts, with the reason it is expected in
@@ -55,6 +62,10 @@ public static class StressServiceLogs
     // A message class keeps this many characters of its normalized first line.
     public const int MessageLength = 120;
 
+    public const string WorkerService = "simulation-worker";
+    public const string WorkerHeartbeatFailureMessage = "Simulation worker registry heartbeat failed";
+    public const string AuthServiceTimeoutCode = "auth_service_timeout";
+
     private static readonly Regex Header = new(
         @"^(trce|dbug|info|warn|fail|crit): (.+?)\[\d+\]\s*$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -79,6 +90,8 @@ public static class StressServiceLogs
         ArgumentNullException.ThrowIfNull(allowances);
         var counts = new Dictionary<(string Service, string Level, string Category, string Message), long>();
         var summaries = new List<StressServiceLogFile>();
+        long heartbeatFailures = 0;
+        long authServiceTimeouts = 0;
         foreach (var (service, path, standardError) in files)
         {
             if (!File.Exists(path))
@@ -109,6 +122,11 @@ public static class StressServiceLogs
 
                 var key = (service, entry.Level, entry.Category, Classify(entry.Message));
                 counts[key] = counts.GetValueOrDefault(key) + 1;
+                if (service == WorkerService)
+                {
+                    heartbeatFailures += entry.Message.StartsWith(WorkerHeartbeatFailureMessage, StringComparison.Ordinal) ? 1 : 0;
+                    authServiceTimeouts += entry.Message.Contains(AuthServiceTimeoutCode, StringComparison.Ordinal) ? 1 : 0;
+                }
             }
 
             summaries.Add(new StressServiceLogFile(service, path, entries, warnings, errors, critical));
@@ -134,7 +152,11 @@ public static class StressServiceLogs
             .ThenBy(entry => entry.Category, StringComparer.Ordinal)
             .ThenBy(entry => entry.Message, StringComparer.Ordinal)
             .ToArray();
-        return new StressServiceLogSummary(summaries, classes);
+        return new StressServiceLogSummary(summaries, classes)
+        {
+            WorkerHeartbeatFailures = heartbeatFailures,
+            AuthServiceTimeouts = authServiceTimeouts
+        };
     }
 
     // Every log entry with its level, category, and first message line.
