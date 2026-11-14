@@ -90,6 +90,40 @@ public sealed class ShardRowLockIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task TwoJoinsThatWaitForTheWorkerNeverTakeTheSameLastPlace()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var first = await context.RegisterPlayerAsync("first@example.com", "first_joiner", "First Joiner");
+        var second = await context.RegisterPlayerAsync("second@example.com", "second_joiner", "Second Joiner");
+        await context.ExecuteScalarIntAsync(
+            "update simulation_workers set max_connections = 1 returning 1;");
+        var joinInFlight = await HeldLock.TakeAsync(
+            context,
+            "select 1 from simulation_workers where id = 'local-simulation-worker-1' for no key update;");
+        Task<ServiceResult<JoinShardResponse>>[] joins;
+        await using (joinInFlight)
+        {
+            joins =
+            [
+                JoinAsync(context, first),
+                JoinAsync(context, second)
+            ];
+
+            // Both wait for the worker row before either has counted the capacity.
+            var early = await Task.WhenAny(Task.WhenAny(joins), Task.Delay(MustStillWaitAfter));
+            Assert.False(joins[0].IsCompleted || joins[1].IsCompleted, early.ToString());
+            await joinInFlight.CommitAsync();
+        }
+
+        var results = await Task.WhenAll(joins).WaitAsync(MustFinishWithin);
+
+        Assert.Single(results, result => result.Succeeded);
+        Assert.Equal("shard_unavailable", Assert.Single(results, result => !result.Succeeded).Error!.Code);
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_join_tickets where consumed_at is null;"));
+    }
+
+    [PostgresIntegrationFact]
     public async Task ARenewalAnswersLikeTheRegistrationAndMovesTheLease()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -192,6 +226,17 @@ public sealed class ShardRowLockIntegrationTests
             Assert.True(rebound.Succeeded, rebound.Error?.Message);
             Assert.Equal("development-world-2", rebound.Value!.WorldId);
         }
+    }
+
+    private static Task<ServiceResult<JoinShardResponse>> JoinAsync(
+        PostgresIntegrationTestContext context,
+        IntegrationPlayer player)
+    {
+        return context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            ShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
     }
 
     private static Task<ServiceResult<SimulationWorkerHeartbeatResponse>> HeartbeatAsync(

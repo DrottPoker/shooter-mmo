@@ -838,10 +838,13 @@ before the workers it changes, against the lock order, and a World rebind then
 raises its Shard lock to `FOR UPDATE` before it changes anything else. A
 registration runs once per worker start; when it deadlocks with an operation of
 the runtime it replaces, PostgreSQL ends one of them and both sides try again.
-A join counts the worker's capacity under the worker row `FOR NO KEY UPDATE`,
-which serializes the joins of one worker and lets the foreign key insert of a
-session through. It reads the catalog revisions before that, so it holds the
-lock, which the worker's heartbeat waits for, only for the ticket insert. `ShardRowLockIntegrationTests` holds each of these locks
+A join locks the worker row `FOR NO KEY UPDATE` in a statement of its own and
+counts the worker's capacity in the next one, because a statement that waits
+for a row lock still counts with the snapshot from before the wait. The lock
+serializes the joins of one worker until their ticket is committed and lets the
+foreign key insert of a session through. A join reads the catalog revisions
+before it, so it holds the lock, which the worker's heartbeat waits for, only
+for the count and the ticket insert. `ShardRowLockIntegrationTests` holds each of these locks
 and checks who waits.
 
 `ICharacterQuestLog` takes no lock of its own. Its writes run only in

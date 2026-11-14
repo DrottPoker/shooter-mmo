@@ -499,8 +499,9 @@ internal sealed class ShardService(
 
     // Development bot reservations exist only in GameService memory, so they are joined
     // in as parameters and count against capacity like database sessions and tickets. The
-    // worker row lock serializes the joins of one worker while they count; FOR NO KEY UPDATE
-    // lets the foreign key insert of a redeemed session through.
+    // worker row lock serializes the joins of one worker from before they count until their
+    // ticket is committed; FOR NO KEY UPDATE lets the foreign key insert of a redeemed session
+    // through.
     private static async Task<PlacementRow?> SelectPlacementAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -509,6 +510,22 @@ internal sealed class ShardService(
         IReadOnlyList<DevelopmentSimulationBotReservation> botReservations,
         CancellationToken cancellationToken)
     {
+        // Lock first, count after. A statement counts what its snapshot shows, and waiting
+        // for a row lock does not renew that snapshot, so a join that waited inside the
+        // counting statement would count without the ticket of the join it waited for.
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            select worker.id
+            from simulation_assignments assignment
+            join simulation_workers worker on worker.id = assignment.worker_id
+            where assignment.shard_id = @ShardId
+              and assignment.released_at is null
+            for no key update of worker;
+            """,
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+
         const string sql = """
             select shard.id as "ShardId",
                    shard.display_name as "ShardDisplayName",
