@@ -13,7 +13,8 @@
     "inventory-operation-interval-seconds": 3,
     "loot-operation-interval-seconds": 4,
     "report-interval-seconds": 10,
-    "seed": 1337
+    "seed": 1337,
+    "poll-threads": 2
   },
   "workerSettings": {
     "SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds": "1"

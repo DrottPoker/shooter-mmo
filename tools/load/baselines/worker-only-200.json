@@ -1,0 +1,276 @@
+{
+  "scenario": "worker-only-200",
+  "commit": "30a35bf285b53f1ea5c3fbe310aa318f8e116529",
+  "treeDirty": false,
+  "date": "2026-11-14T03:53:36.2385915Z",
+  "machine": {
+    "cpu": "AMD Ryzen 7 5800 8-Core Processor",
+    "logicalCores": 16,
+    "memoryBytes": 34216722432,
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "dotNet": ".NET 10.0.10"
+  },
+  "mode": "worker-only",
+  "workload": "lifecycle",
+  "bots": 200,
+  "steadySeconds": 60,
+  "result": "passed",
+  "verdict": [
+    {
+      "rule": "simulation_tick_p99_ms",
+      "comparison": "<=",
+      "limit": 33.34,
+      "unit": "ms",
+      "measured": 8,
+      "passed": true,
+      "note": "worst of 5 steady worker intervals; the worker's p99 is a bucket upper bound",
+      "validity": false
+    },
+    {
+      "rule": "fixed_tick_resynchronizations",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "5 steady worker intervals",
+      "validity": false
+    },
+    {
+      "rule": "input_acknowledgement_p99_ms",
+      "comparison": "<=",
+      "limit": 150,
+      "unit": "ms",
+      "measured": 95.514,
+      "passed": true,
+      "note": "the whole run",
+      "validity": false
+    },
+    {
+      "rule": "remote_update_rate_p5_hz",
+      "comparison": ">=",
+      "limit": 10,
+      "unit": "Hz",
+      "measured": 14.995855845251048,
+      "passed": true,
+      "note": "p5 over 200 bots, average 15.0 Hz, minimum 15.0 Hz",
+      "validity": false
+    },
+    {
+      "rule": "gameplay_operation_p95_ms",
+      "comparison": "<=",
+      "limit": 1000,
+      "unit": "ms",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the lifecycle workload has no gameplay operations.",
+      "validity": false
+    },
+    {
+      "rule": "bot_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "200/200 completed",
+      "validity": false
+    },
+    {
+      "rule": "gameplay_unexpected_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "http_unexpected_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: no HTTP in worker-only mode.",
+      "validity": false
+    },
+    {
+      "rule": "quota_rejections",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "8 worker intervals of the run",
+      "validity": false
+    },
+    {
+      "rule": "snapshot_drops",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "8 worker intervals of the run",
+      "validity": false
+    },
+    {
+      "rule": "owner_snapshot_gaps",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "expired_unreleased_sessions",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: no sessions in PostgreSQL in worker-only mode.",
+      "validity": false
+    },
+    {
+      "rule": "deadlocks",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: no PostgreSQL in worker-only mode.",
+      "validity": false
+    },
+    {
+      "rule": "item_invariant_violations",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: no durable items in worker-only mode.",
+      "validity": false
+    },
+    {
+      "rule": "process_memory_growth",
+      "comparison": "<=",
+      "limit": 20,
+      "unit": "MiB",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: a planned steady interval of 1.0 minutes is shorter than the 10 minutes the rule needs.",
+      "validity": false
+    },
+    {
+      "rule": "service_log_errors",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "generator_poll_lateness_p99_ms",
+      "comparison": "<=",
+      "limit": 16.67,
+      "unit": "ms",
+      "measured": 6.9137,
+      "passed": true,
+      "note": "26837 poll rounds of the steady interval, worst 18.5 ms",
+      "validity": true
+    },
+    {
+      "rule": "generator_route_queue_p99_ms",
+      "comparison": "<=",
+      "limit": 1000,
+      "unit": "ms",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the workload plans no routes.",
+      "validity": true
+    }
+  ],
+  "keyNumbers": {
+    "bytesInPerBotPerSecond": 1020.1903353453714,
+    "bytesOutPerBotPerSecond": 128681.53659977592,
+    "generatorCpuAverageSingleCorePercent": 53.69500117657035,
+    "generatorPollLatenessP99Ms": 6.9137,
+    "inputAckP50Ms": 55.0874,
+    "inputAckP95Ms": 87.0255,
+    "inputAckP99Ms": 95.514,
+    "joinP95Ms": 286.2751,
+    "remoteUpdateRateAverageHz": 14.998121379019276,
+    "remoteUpdateRateP5Hz": 14.995855845251048,
+    "workerCpuAverageSingleCorePercent": 47.46324253370001,
+    "workerTickP99Ms": 8,
+    "workerWorkingSetMaximumBytes": 142811136,
+    "workingSetGrowthMiB.generator": -2.1256510416666714,
+    "workingSetGrowthMiB.worker": -1.4065755208333428,
+    "workingSetSlopeMiBPerHour.generator": -975.8119560233723,
+    "workingSetSlopeMiBPerHour.worker": 56.461635722958384
+  },
+  "soak": {
+    "storageHours": null,
+    "topTables": [],
+    "redis": null,
+    "memory": [
+      {
+        "process": "worker",
+        "samples": 59,
+        "workingSetSlopeMiBPerHour": 56.461635722958384,
+        "workingSetFifthsMiB": [
+          130.93684895833334,
+          133.92805989583334,
+          132.63118489583334,
+          132.23188920454547,
+          132.521484375
+        ],
+        "managedHeapSlopeMiBPerHour": 14.804321341737253,
+        "managedHeapFifthsMiB": [
+          null,
+          38.54891586303711,
+          38.64764404296875,
+          38.64604187011719,
+          38.684776306152344
+        ],
+        "generation2CollectionsPerHour": 0,
+        "allocatedBytesPerSecond": 3190139.06370377,
+        "workingSetGrowthMiB": -1.4065755208333428
+      },
+      {
+        "process": "generator",
+        "samples": 59,
+        "workingSetSlopeMiBPerHour": -975.8119560233723,
+        "workingSetFifthsMiB": [
+          107.64192708333333,
+          95.74479166666667,
+          91.68294270833333,
+          92.58842329545455,
+          93.619140625
+        ],
+        "managedHeapSlopeMiBPerHour": 120.78838559867873,
+        "managedHeapFifthsMiB": [
+          14.17924690246582,
+          14.13876724243164,
+          14.607866287231445,
+          15.162968722256748,
+          15.700819651285807
+        ],
+        "generation2CollectionsPerHour": 179.95638157237985,
+        "allocatedBytesPerSecond": 76857065.52826704,
+        "workingSetGrowthMiB": -2.1256510416666714
+      }
+    ],
+    "drift": null,
+    "deathsPerBotPerTenMinutes": null,
+    "churn": null,
+    "logClasses": []
+  }
+}
