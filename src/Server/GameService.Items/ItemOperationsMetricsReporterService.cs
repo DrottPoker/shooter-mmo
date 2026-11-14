@@ -44,7 +44,7 @@ internal sealed class ItemOperationsMetricsReporterService(
                 state.RecoveryBacklog);
             var snapshot = metrics.Capture();
             logger.LogInformation(
-                "Item operations status: transactions {Transactions}, committed {CommittedTransactions}, rejected {RejectedTransactions}, conflicts {Conflicts}, stale revisions {StaleRevisions}, timeouts {Timeouts}, lock samples {LockWaitSamples}, death partitions {DeathPartitions}, policy actions {PolicyActions}, open corpses {OpenCorpses}, closed corpses {ClosedCorpses}, Recovery backlog {RecoveryBacklog}, expired Recovery cleanup {ExpiredRecoveryDeliveries}, closed corpse cleanup {RemovedClosedCorpses}, audit cleanup {RemovedAuditOperations}.",
+                "Item operations status: transactions {Transactions}, committed {CommittedTransactions}, rejected {RejectedTransactions}, conflicts {Conflicts}, stale revisions {StaleRevisions}, timeouts {Timeouts}, lock samples {LockWaitSamples}, death partitions {DeathPartitions}, policy actions {PolicyActions}, open corpses {OpenCorpses}, closed corpses {ClosedCorpses}, Recovery backlog {RecoveryBacklog}, expired Recovery deliveries {ExpiredRecoveryDeliveries}.",
                 snapshot.Transactions,
                 snapshot.CommittedTransactions,
                 snapshot.RejectedTransactions,
@@ -57,9 +57,7 @@ internal sealed class ItemOperationsMetricsReporterService(
                 snapshot.OpenCorpses,
                 snapshot.ClosedCorpses,
                 snapshot.RecoveryBacklog,
-                snapshot.ExpiredRecoveryDeliveries,
-                snapshot.RemovedClosedCorpses,
-                snapshot.RemovedAuditOperations);
+                snapshot.ExpiredRecoveryDeliveries);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

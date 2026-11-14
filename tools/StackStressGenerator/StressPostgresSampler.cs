@@ -68,6 +68,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
     private readonly NpgsqlDataSource dataSource;
     private readonly string expectedDatabase;
     private readonly string workerId;
+    private readonly double? retentionWindowSeconds;
     private readonly StressDriftAccumulator steadyDrift;
     private readonly object driftGate = new();
     private PostgresSample? first;
@@ -88,11 +89,13 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         string expectedDatabase,
         string workerId,
         double? workerHeartbeatTimeoutSeconds,
-        int? databasePoolSize)
+        int? databasePoolSize,
+        double? retentionWindowSeconds)
     {
         this.dataSource = dataSource;
         this.expectedDatabase = expectedDatabase;
         this.workerId = workerId;
+        this.retentionWindowSeconds = retentionWindowSeconds;
         steadyDrift = new StressDriftAccumulator(LeaseExpiryThresholdSeconds, workerHeartbeatTimeoutSeconds, databasePoolSize);
     }
 
@@ -101,7 +104,8 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         string confirmedDisposableDatabase,
         string workerId = "local-simulation-worker-2",
         double? workerHeartbeatTimeoutSeconds = null,
-        int? databasePoolSize = null)
+        int? databasePoolSize = null,
+        double? retentionWindowSeconds = null)
     {
         var builder = ValidateConnectionString(
             connectionString,
@@ -112,7 +116,8 @@ public sealed class StressPostgresSampler : IAsyncDisposable
             builder.Database!,
             workerId,
             workerHeartbeatTimeoutSeconds,
-            databasePoolSize);
+            databasePoolSize,
+            retentionWindowSeconds);
     }
 
     public static NpgsqlConnectionStringBuilder ValidateConnectionString(
@@ -332,7 +337,19 @@ public sealed class StressPostgresSampler : IAsyncDisposable
                    (select coalesce(max(extract(epoch from (now() - a.state_change))), 0)::double precision
                     from pg_stat_activity a
                     where a.datname = current_database()
-                      and a.state in ('idle in transaction', 'idle in transaction (aborted)')) as oldest_idle_in_transaction_seconds;
+                      and a.state in ('idle in transaction', 'idle in transaction (aborted)')) as oldest_idle_in_transaction_seconds,
+                   -- The retention lag of item operations as GameService's task sees it: the
+                   -- completed operations past the window that no death event holds.
+                   (select coalesce(
+                               extract(epoch from (now() - min(o.completed_at))) - @RetentionWindow,
+                               0)::double precision
+                    from item_operations o
+                    where @RetentionWindow >= 0
+                      and o.completed_at < now() - make_interval(secs => @RetentionWindow)
+                      and not exists (
+                          select 1
+                          from death_events d
+                          where d.operation_id = o.operation_id)) as retention_lag_seconds;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -341,6 +358,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         command.Parameters.AddWithValue("Threshold", LeaseExpiryThresholdSeconds);
         command.Parameters.AddWithValue("WorkerId", workerId);
         command.Parameters.AddWithValue("Sampler", ApplicationName);
+        command.Parameters.AddWithValue("RetentionWindow", retentionWindowSeconds ?? -1d);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
@@ -358,7 +376,10 @@ public sealed class StressPostgresSampler : IAsyncDisposable
             reader.GetInt32(4),
             reader.GetInt32(5),
             reader.GetInt32(6),
-            reader.GetDouble(7));
+            reader.GetDouble(7))
+        {
+            RetentionLagSeconds = retentionWindowSeconds is null ? null : Math.Max(0d, reader.GetDouble(8))
+        };
         lock (driftGate)
         {
             if (steady)
@@ -410,6 +431,40 @@ public sealed class StressPostgresSampler : IAsyncDisposable
             DateTime.UtcNow,
             System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds,
             tables);
+    }
+
+    // The rows of the two operation tables, for the retention sample.
+    public async Task<(long Operations, long Changes)> CountOperationTablesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        // The operation of a death stays until its death event leaves with its corpse, which is
+        // the corpse's lifetime and a second window later, so it and its journal rows are left
+        // out: they would grow past the sample without any retention backlog.
+        command.CommandText = """
+            select (
+                       select count(*)
+                       from item_operations operation
+                       where not exists (
+                           select 1
+                           from death_events event
+                           where event.operation_id = operation.operation_id)),
+                   (
+                       select count(*)
+                       from item_operation_changes change
+                       where not exists (
+                           select 1
+                           from death_events event
+                           where event.operation_id = change.operation_id));
+            """;
+        command.CommandTimeout = TableCountTimeoutSeconds;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("PostgreSQL did not count the operation tables.");
+        }
+
+        return (reader.GetInt64(0), reader.GetInt64(1));
     }
 
     // What the database says about a body that is gone: when its session was released, the

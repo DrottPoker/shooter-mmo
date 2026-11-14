@@ -18,7 +18,12 @@ public sealed record StressDriftSample(
     int PendingItemOperations,
     int ServiceConnections,
     int ServiceConnectionsInUse,
-    double OldestIdleInTransactionSeconds);
+    double OldestIdleInTransactionSeconds)
+{
+    // How long the oldest due item operation had been due, by GameService's retention window of
+    // item history, or null when the window is unknown.
+    public double? RetentionLagSeconds { get; init; }
+}
 
 // The worst value of every drift check over the steady interval: the most active sessions above
 // the bots that may hold one, which no bot explains, and the most bots that certainly hold a
@@ -39,6 +44,10 @@ public sealed record StressDriftSummary(
     int? DatabasePoolSize,
     double MaximumIdleInTransactionSeconds)
 {
+    // The longest an item operation was seen due without being trimmed, or null when the window
+    // is unknown.
+    public double? MaximumRetentionLagSeconds { get; init; }
+
     // The least time the worker's registration had left before GameService takes it offline.
     public double? MinimumWorkerRegistrationHeadroomSeconds =>
         WorkerHeartbeatTimeoutSeconds is { } timeout && MaximumWorkerHeartbeatAgeSeconds is { } age ? timeout - age : null;
@@ -57,6 +66,7 @@ public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, d
     private int connections;
     private int connectionsInUse;
     private double idleInTransaction;
+    private double? retentionLag;
 
     public void Add(StressDriftSample sample)
     {
@@ -79,6 +89,10 @@ public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, d
         connections = Math.Max(connections, sample.ServiceConnections);
         connectionsInUse = Math.Max(connectionsInUse, sample.ServiceConnectionsInUse);
         idleInTransaction = Math.Max(idleInTransaction, sample.OldestIdleInTransactionSeconds);
+        if (sample.RetentionLagSeconds is { } lag)
+        {
+            retentionLag = Math.Max(retentionLag ?? 0d, lag);
+        }
     }
 
     public StressDriftSummary? Capture()
@@ -98,7 +112,10 @@ public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, d
                 connections,
                 connectionsInUse,
                 databasePoolSize,
-                idleInTransaction);
+                idleInTransaction)
+            {
+                MaximumRetentionLagSeconds = retentionLag
+            };
     }
 }
 
@@ -255,11 +272,57 @@ public static class StressWorkerMemory
 }
 
 // What a long run shows besides its quality rules: how the database and Redis grew, the worst
-// drift values, and the memory of every process.
+// drift values, the memory of every process, and whether retention kept up.
 public sealed record StressSoakSummary(
     StressStorageGrowthSummary? Storage,
     StressDriftSummary? Drift,
-    IReadOnlyList<StressMemoryTrend> Memory);
+    IReadOnlyList<StressMemoryTrend> Memory)
+{
+    public StressRetentionSummary? Retention { get; init; }
+}
+
+// GameService's retention window of item history and retention interval, and how far into the
+// steady interval the retention sample is taken: once the window passed and two passes ran, so
+// every row written before the steady interval is due. Null when the planned steady interval
+// leaves less than MinimumComparison after it, so the run cannot judge retention.
+public sealed record StressRetentionPlan(double ItemHistorySeconds, double IntervalSeconds, double? SampleOffsetSeconds)
+{
+    public static readonly TimeSpan MinimumComparison = TimeSpan.FromMinutes(2);
+
+    public static StressRetentionPlan? Create(int? itemHistorySeconds, int? intervalSeconds, TimeSpan steadyDuration)
+    {
+        if (itemHistorySeconds is not { } window || intervalSeconds is not { } interval)
+        {
+            return null;
+        }
+
+        var offset = TimeSpan.FromSeconds(window + (2d * interval));
+        return new StressRetentionPlan(
+            window,
+            interval,
+            offset + MinimumComparison <= steadyDuration ? offset.TotalSeconds : null);
+    }
+}
+
+// Whether retention keeps up: the rows of the two operation tables at the retention sample and at
+// the end of the steady interval, and the longest that the drift checks saw an operation due.
+public sealed record StressRetentionSummary(
+    double SampleOffsetSeconds,
+    long OperationsAtSample,
+    long OperationsAtEnd,
+    long ChangesAtSample,
+    long ChangesAtEnd,
+    double? MaximumLagSeconds)
+{
+    public double OperationGrowthPercent => GrowthPercent(OperationsAtSample, OperationsAtEnd);
+
+    public double ChangeGrowthPercent => GrowthPercent(ChangesAtSample, ChangesAtEnd);
+
+    private static double GrowthPercent(long sample, long end)
+    {
+        return sample <= 0 ? (end > 0 ? 100d : 0d) : (end - sample) * 100d / sample;
+    }
+}
 
 // A least-squares slope and the averages of five equal parts of a planned interval, from samples
 // that arrive one at a time; nothing per sample is kept.

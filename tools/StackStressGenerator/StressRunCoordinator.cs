@@ -86,6 +86,13 @@ public sealed class StressRunCoordinator(
         var nextJoinedCountTimestamp = startedTimestamp;
         DateTime? steadyStartedAt = null;
         var rampComplete = false;
+        var retentionSampleOffset = StressRetentionPlan.Create(
+            options.RetentionItemHistorySeconds,
+            options.RetentionIntervalSeconds,
+            options.SteadyDuration)?.SampleOffsetSeconds is { } offsetSeconds
+                ? TimeSpan.FromSeconds(offsetSeconds)
+                : (TimeSpan?)null;
+        var retentionSampled = false;
         nextDriftTimestamp = AddDuration(startedTimestamp, options.ReportInterval);
 
         try
@@ -156,6 +163,16 @@ public sealed class StressRunCoordinator(
                 {
                     DispatchChurn(now, steadyStartedTimestamp);
                     StartBurst(now, steadyStartedTimestamp, cancellationToken);
+
+                    // Once GameService's retention window passed in the steady interval, the
+                    // operation tables are counted for the retention rules.
+                    if (retentionSampleOffset is { } retentionOffset
+                        && !retentionSampled
+                        && now >= AddDuration(steadyStartedTimestamp, retentionOffset))
+                    {
+                        retentionSampled = true;
+                        await admissionProvider.CaptureRetentionSampleAsync(cancellationToken);
+                    }
                 }
 
                 if (now >= nextJoinedCountTimestamp)
@@ -248,7 +265,10 @@ public sealed class StressRunCoordinator(
                     providerReport.Drift,
                     new[] { workerProcess?.Memory, providerReport.GameServiceProcess?.Memory, generatorProcess?.Memory }
                         .OfType<StressMemoryTrend>()
-                        .ToArray()),
+                        .ToArray())
+                {
+                    Retention = providerReport.Retention
+                },
                 GeneratorTiming = new StressGeneratorTimingSummary(
                     PollInterval.TotalMilliseconds,
                     pollLateness.CaptureSummary(),

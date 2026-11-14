@@ -3,17 +3,19 @@ using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Development;
 using Mmorpg.GameService.Items.Integration;
 using Mmorpg.GameService.Items.Persistence;
+using Mmorpg.GameService.Items.Retention;
 using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
+using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Items;
 
-// Items: the item catalog, item state and transactions, corpses, policies, item
-// operations maintenance, the Development item tools, and the stack stress fixtures.
+// Items: the item catalog, item state and transactions, corpses, policies, Recovery expiry,
+// the retention of item history, the Development item tools, and the stack stress fixtures.
 public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 {
     public string Name => "Items";
@@ -47,6 +49,13 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddScoped<SimulationItemMutationService>();
         services.AddScoped<CorpseService>();
         services.AddScoped<ItemOperationsMaintenanceService>();
+        // Closed corpses go first in a pass: they take their death events along, which frees the
+        // operations of those deaths for the item operations task in the same pass.
+        services.AddSingleton<IRetentionTask, ClosedCorpseRetentionTask>();
+        services.AddSingleton<IRetentionTask, ItemOperationRetentionTask>();
+        services.AddSingleton<IRetentionTask, ItemDestructionRetentionTask>();
+        services.AddSingleton<IRetentionTask, ClaimedRecoveryDeliveryRetentionTask>();
+        services.AddSingleton<IRetentionTask, LiveMobLootGrantRetentionTask>();
         services.AddSingleton(options.DevelopmentItemPackages);
         services.AddScoped<DevelopmentItemPackageApplier>();
         services.AddScoped<DevelopmentItemToolService>();

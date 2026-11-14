@@ -106,6 +106,12 @@ public sealed record StressGeneratorOptions(
 
     public int? WorkerHeartbeatTimeoutSeconds { get; init; }
 
+    // Full-stack: GameService's Retention:ItemHistory window and Retention:IntervalSeconds, which
+    // the soak's retention rules judge against; null when unknown.
+    public int? RetentionItemHistorySeconds { get; init; }
+
+    public int? RetentionIntervalSeconds { get; init; }
+
     // The network profile of tools/load/network-profiles that the bots' traffic goes through, by
     // the impairment proxy that tools/Test-Load.ps1 starts, or null for a direct connection.
     public string? NetworkProfilePath { get; init; }
@@ -338,6 +344,12 @@ public sealed record StressGeneratorOptions(
             WorkerHeartbeatTimeoutSeconds = values.ContainsKey("worker-heartbeat-timeout-seconds")
                 ? ParseInt(values, "worker-heartbeat-timeout-seconds", 0, 1, 3600)
                 : null,
+            RetentionItemHistorySeconds = values.ContainsKey("retention-item-history-seconds")
+                ? ParseInt(values, "retention-item-history-seconds", 0, 60, int.MaxValue)
+                : null,
+            RetentionIntervalSeconds = values.ContainsKey("retention-interval-seconds")
+                ? ParseInt(values, "retention-interval-seconds", 0, 1, 3600)
+                : null,
             NetworkProfilePath = networkProfilePath,
             Network = networkProfilePath is null ? null : StressNetworkProfiles.Load(networkProfilePath),
             Burst = burst
@@ -476,6 +488,8 @@ public sealed record StressGeneratorOptions(
           --redis-endpoint <host:port>      Full-stack: the loopback Redis whose keys and memory the soak reads.
           --database-pool-size <count>      Full-stack: GameService's database pool, which the drift checks compare with.
           --worker-heartbeat-timeout-seconds <s> Full-stack: when GameService takes a silent worker offline, for the drift checks.
+          --retention-item-history-seconds <s> Full-stack: GameService's Retention:ItemHistory, for the retention rules.
+          --retention-interval-seconds <s>  Full-stack: GameService's Retention:IntervalSeconds, for the retention rules.
           --network-profile <file>          The network profile the bots' traffic goes through, by the impairment proxy
                                             that tools/Test-Load.ps1 starts; it names the profile in the report and
                                             applies its allowances to the verdict. Default: none, a direct connection
@@ -586,6 +600,8 @@ public sealed record StressGeneratorOptions(
             "redis-endpoint",
             "database-pool-size",
             "worker-heartbeat-timeout-seconds",
+            "retention-item-history-seconds",
+            "retention-interval-seconds",
             "network-profile",
             "login-burst-accounts",
             "logout-burst-accounts",

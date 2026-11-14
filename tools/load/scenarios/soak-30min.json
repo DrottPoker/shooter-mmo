@@ -14,6 +14,11 @@
     "seed": 1337,
     "poll-threads": 2
   },
+  "gameServiceSettings": {
+    "Retention__ItemHistory": "00:04:00",
+    "Retention__SessionHistory": "00:04:00",
+    "Retention__IntervalSeconds": "15"
+  },
   "playing": {
     "roles": {
       "fighter": 40,

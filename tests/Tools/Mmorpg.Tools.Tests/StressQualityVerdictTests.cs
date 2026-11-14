@@ -85,12 +85,15 @@ public sealed class StressQualityVerdictTests
         Assert.True(verdict.Passed, string.Join("; ", verdict.Rules.Where(rule => !rule.Passed).Select(rule => $"{rule.Rule} {rule.Note}")));
         Assert.True(verdict.Valid);
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
-        // The memory rule judges only a steady interval of ten minutes or more, the proxy rule
-        // only a run through a network profile, and the burst rule only a run with a burst.
+        // The memory rule judges only a steady interval of ten minutes or more, the retention
+        // rules only a run whose retention window passes early in it, the proxy rule only a run
+        // through a network profile, and the burst rule only a run with a burst.
         Assert.All(
-            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "network_proxy_lateness_p99_ms" or "burst_incomplete_accounts")),
+            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "retained_table_growth" or "retention_lag" or "network_proxy_lateness_p99_ms" or "burst_incomplete_accounts")),
             rule => Assert.NotNull(rule.Measured));
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "process_memory_growth").Note, StringComparison.Ordinal);
+        Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "retained_table_growth").Note, StringComparison.Ordinal);
+        Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "retention_lag").Note, StringComparison.Ordinal);
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms").Note, StringComparison.Ordinal);
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "burst_incomplete_accounts").Note, StringComparison.Ordinal);
         Assert.Equal(

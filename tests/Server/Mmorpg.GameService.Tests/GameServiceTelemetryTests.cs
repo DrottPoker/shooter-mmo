@@ -5,6 +5,7 @@ using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Retention;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Server.Telemetry;
 using Mmorpg.Testing;
@@ -17,8 +18,10 @@ public sealed class GameServiceTelemetryTests
     public void EveryMeterIsDeclaredByTheModuleThatCreatesIt()
     {
         var configuration = TestConfiguration();
+        // Platform is no module; it declares its meters in PlatformMeters.
         var declaredByAssembly = GameServiceComposition.CreateModules(configuration)
             .ToDictionary(module => module.GetType().Assembly, module => module.MeterNames);
+        declaredByAssembly[GameServiceAssemblies.Platform] = PlatformMeters.Names;
         var meterOwners = GameServiceAssemblies.All
             .SelectMany(assembly => assembly.GetTypes())
             .Where(type => type
@@ -72,6 +75,7 @@ public sealed class GameServiceTelemetryTests
         using var redisMetrics = new RedisAccelerationMetrics();
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();
+        using var retentionMetrics = new RetentionMetrics();
 
         var referenced = ObservabilityAssets.ReferencedMetricNames("game_service_");
 

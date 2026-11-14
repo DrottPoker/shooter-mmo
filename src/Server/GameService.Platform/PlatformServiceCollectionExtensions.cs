@@ -3,6 +3,7 @@ using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Redis;
+using Mmorpg.GameService.Platform.Retention;
 using Npgsql;
 
 namespace Mmorpg.GameService.Platform;
@@ -24,6 +25,10 @@ public static class PlatformServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddApiProblemDetails();
         services.AddSingleton<DatabaseMigrationRunner>();
+        services.AddSingleton(options.Retention);
+        services.AddSingleton<RetentionMetrics>();
+        services.AddSingleton<RetentionRunner>();
+        services.AddHostedService<RetentionHostedService>();
         return services;
     }
 

@@ -17,6 +17,7 @@ public sealed class ModuleCompositionTests
     private static readonly (Type Spi, string ImplementingModule)[] Spis =
     [
         (typeof(IAccountSessionLifecycleHandler), "Mmorpg.GameService.Placement"),
+        (typeof(IAccountSessionReferences), "Mmorpg.GameService.Placement"),
         (typeof(ICharacterLifecycleHandler), "Mmorpg.GameService.Items"),
         (typeof(ISimulationCharacterStateProvider), "Mmorpg.GameService.Items"),
         (typeof(IShardWorldLocalStateProbe), "Mmorpg.GameService.Items"),

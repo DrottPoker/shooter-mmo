@@ -28,6 +28,7 @@ internal static class GameServiceComposition
     private static readonly Type[] SingleImplementationSpis =
     [
         typeof(IAccountSessionLifecycleHandler),
+        typeof(IAccountSessionReferences),
         typeof(ICharacterLifecycleHandler),
         typeof(ISimulationCharacterStateProvider),
         typeof(IShardWorldLocalStateProbe),

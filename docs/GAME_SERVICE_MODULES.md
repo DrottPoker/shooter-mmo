@@ -4,8 +4,9 @@ GameService is one ASP.NET Core process and one deployable whose code is a
 compiler-enforced modular monolith: a host and eight module projects. This
 document owns the module projects, their public surface and composition, table
 ownership with the foreign key rule, the access rules, the contracts between
-modules, the items transaction kernel, the lock order, the migrations, the
-module configuration, the cross-module statements, and the guard tests.
+modules, the items transaction kernel, the lock order, the migrations,
+retention, the module configuration, the cross-module statements, and the guard
+tests.
 
 The process boundary is in
 [Project Architecture](PROJECT_ARCHITECTURE.md#gameservice), the durable data
@@ -25,11 +26,11 @@ Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Economy <-
 
 | Project | Path | References | Owns |
 | --- | --- | --- | --- |
-| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, and `IGameServiceModule`. No domain model. |
+| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, `IGameServiceModule`, and the retention host with its `IRetentionTask` contract and its settings. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
 | `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, character looks, and every character's saved place and vitals |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
-| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery, policies, item operations maintenance, the stack stress fixtures, and the Development item tools |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery with its expiry, policies, the retention tasks of item history, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, Items, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, every character's quest log with its owner and worker reads, and the quest commands with their worker routes, which run in Items' item transaction kernel |
 | `Mmorpg.GameService.Economy` | `src/Server/GameService.Economy` | Platform, Accounts, Characters, Placement, Items, Quests, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | NPC vendor purchases and sales and gathering yields: their item commands, which run in Items' item transaction kernel, and their operation kinds on Items' worker item route. It owns no table, migration, meter, route, or setting. |
 | `Mmorpg.GameService.Content` | `src/Server/GameService.Content` | Platform, Placement, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | Serving the compiled item catalog, quest catalog, and text tables by revision, exactly the files the other modules load, with the content rate limit. It owns no table and reads no text. |
@@ -262,16 +263,19 @@ caller keeps its own check order, error codes, and messages.
 | `IItemCatalogRevisionProvider` | Placement (SPI) | implemented by Items, also used by Content | Read the mirrored item catalog revision that a placed worker must run and that Content must serve |
 | `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests, also used by Content | Read the mirrored quest catalog revision that a placed worker must run and that Content must serve |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
+| `IRetentionTask` | Platform (SPI) | implemented by Accounts, Placement, and Items | Delete a batch of a module's own history rows that are past their retention window, for the retention host, as [Retention](#retention) describes |
+| `IAccountSessionReferences` | Accounts (SPI) | implemented by Placement | The SQL condition that no simulation session or join ticket names an account session, so the retention of account sessions keeps every one they name |
 | `IDatabaseSeeder` | Platform | implemented by Characters, Items, and Quests | Verify or seed module data after the migrations: Characters checks the stored looks against the appearance content, Items has the quest catalog's item references checked, then mirrors the item catalog and back-fills character item state, and Quests mirrors the quest catalog |
 
-Every contract and every SPI except `IDatabaseSeeder` and
-`ISimulationItemOperationHandler` has exactly one implementation, registered as
-a stateless singleton, from the module that owns the data. The host composition
-fails at startup when one of the single-implementation SPIs has no
-implementation or more than one, because a missing one would silently skip
-required work. `IDatabaseSeeder` has one implementation per module that
-verifies or seeds data, and `ISimulationItemOperationHandler` one per operation
-kind that a module adds to the worker item route.
+Every contract and every SPI except `IDatabaseSeeder`,
+`ISimulationItemOperationHandler`, and `IRetentionTask` has exactly one
+implementation, registered as a stateless singleton, from the module that owns
+the data. The host composition fails at startup when one of the
+single-implementation SPIs has no implementation or more than one, because a
+missing one would silently skip required work. `IDatabaseSeeder` has one
+implementation per module that verifies or seeds data,
+`ISimulationItemOperationHandler` one per operation kind that a module adds to
+the worker item route, and `IRetentionTask` one per table that a module trims.
 
 No module publishes asynchronous events. Every flow above needs synchronous
 atomicity: a revoked session must lose its simulation access in the same
@@ -979,11 +983,14 @@ topology names.
 | 40 | `202611141200_character_foreign_key_indexes` | Characters |
 | 41 | `202611141210_placement_foreign_key_indexes` | Placement |
 | 42 | `202611141220_item_foreign_keys_and_indexes` | Items |
+| 43 | `202611141300_item_retention_indexes` | Items |
+| 44 | `202611141310_placement_retention_indexes` | Placement |
+| 45 | `202611141320_account_session_retention_index` | Accounts |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
 Each module lists its own migrations in `IGameServiceModule.Migrations`, from
-its `CharactersSchemaMigrations`, `PlacementSchemaMigrations`,
+its `AccountsSchemaMigrations`, `CharactersSchemaMigrations`, `PlacementSchemaMigrations`,
 `QuestsSchemaMigrations`, or `ItemsSchemaMigrations` list. `GameServiceSchema` merges the host list with
 every module's list, sorted by ordinal id. Startup fails when an id repeats or
 when the merged list does not start with the shipped history, so every new
@@ -995,6 +1002,93 @@ A migration builds its indexes inside its transaction, which blocks writes to
 the table while the index builds. That is fine at today's table sizes. A large
 live table needs `create index concurrently`, which runs outside a transaction,
 and the migration runner cannot run such a statement yet.
+
+## Retention
+
+Rows that record what happened, not what is, stay for a window after they ended
+and are then deleted, so the database holds a bounded history at any
+population. One retention host in Platform runs the tasks of every module, and
+each module registers one `IRetentionTask` for each of its own tables, which
+deletes only that module's rows (R1). A task has a name, the `task` label of
+the [retention metrics](MONITORING.md#gameservice), and a class, `ItemHistory`
+or `SessionHistory`, whose window `Retention:ItemHistory` or
+`Retention:SessionHistory` sets, as
+[Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults) lists.
+`DeleteDueAsync` deletes up to a batch of the rows that ended longer ago than
+the window, oldest first, in the transaction that the host gives it, and
+returns how many it deleted and the age of the oldest of them.
+
+`RetentionHostedService` runs a pass at start and then every
+`Retention:IntervalSeconds`, one pass at a time: a pass that outlasts the
+interval delays the next one. A pass runs every task once, in registration
+order, then again every task whose batch was full, round after round, until no
+task deleted a full batch or the pass used its budget, `Retention:PassBudgetPercent`
+of the interval. A backlog therefore drains within a pass instead of one batch
+per interval, and no task waits behind another's backlog. Each batch is a
+transaction of its own with a 30-second statement timeout and a one-second lock
+timeout. A batch that fails is logged, as an error or, for a lock or statement
+timeout, as a warning, and its task waits for the next pass while the others go
+on. Several GameService processes may run passes at once.
+
+Every task selects its rows with `for update skip locked` in the order of their
+end, through an index in that order, so it locks only the rows it deletes and
+never waits for play; retention adds nothing to the [lock order](#lock-order).
+What a task decides on never changes once a row is due, so one statement locks
+and decides, except for closed corpses, which lock their corpses first and read
+whether they are empty in the next statement.
+
+| Task | Module | Class | Deletes | Ended at | Stays while |
+| --- | --- | --- | --- | --- | --- |
+| `closed_corpses` | Items | ItemHistory | Closed corpses with their death events, sections, snapshots, and closed section containers | `closed_at` | a section holds an item |
+| `item_operations` | Items | ItemHistory | Completed item operations with their journal rows, by cascade | `completed_at` | it is pending, or a death event names it |
+| `item_destructions` | Items | ItemHistory | Destruction records | `destroyed_at` | |
+| `claimed_recovery_deliveries` | Items | ItemHistory | Claimed Recovery deliveries | `claimed_at` | it is unclaimed; Recovery expiry ends those |
+| `live_mob_loot_grants` | Items | ItemHistory | Live Mob loot grants | `granted_at` | |
+| `join_tickets` | Placement | SessionHistory | Consumed and expired join tickets | the consume, or the expiry | it is pending |
+| `simulation_sessions` | Placement | SessionHistory | Released and expired simulation sessions | the release, or the lease's expiry | it is live, or a join ticket names it |
+| `simulation_assignments` | Placement | SessionHistory | Released SimulationAssignments | `released_at` | it is active |
+| `account_sessions` | Accounts | SessionHistory | Account sessions | the token's expiry, also when the session was revoked earlier | a simulation session or a join ticket names it |
+
+The gold ledger, `character_currency_ledger`, is never trimmed.
+
+A row that another task's rows name waits for them. Inside a module the task
+whose rows name the others runs first: closed corpses before item operations,
+whose death event the corpse takes along, and join tickets before simulation
+sessions, so both go in one pass. Across modules the tasks run in module order,
+so an account session goes in the pass after the one that deleted the last
+simulation session or join ticket naming it. Accounts lies below Placement and
+cannot read Placement's tables, so `IAccountSessionReferences`, which Placement
+implements, gives it the condition that nothing names an account session.
+Without it, their foreign keys would set the name to null, and a simulation
+session without an account session counts as unbound, not ended. An account
+session counts from the expiry of its token, so a replaced token answers
+`account_session_replaced` for its whole lifetime and the window after it, and
+the session cache never holds an entry for a deleted row.
+
+A retried item operation id is answered from `item_operations` while its row
+exists; once retention deleted it, the same id runs again. Players' ids are
+random. The deterministic ids of system operations are safe to run again or are
+refused by durable state:
+
+| Id | Why a run after its row went changes nothing |
+| --- | --- |
+| `player-death-operation` | It derives from a random death event id; the death advanced the character's revision, so a replay is refused, and the worker sends it only with the live simulation session of the death |
+| `mob-corpse-create` | It derives from a random Mob death; while the corpse exists its row refuses a second creation, and only the worker runtime that holds the Shard's lease sends it, which stops retrying once an attempt is answered or its registration lease ends |
+| `mob-corpse-expiry`, a player corpse's expiry id | The corpse stores it; expiry runs only on open corpses, a closed corpse answers a replay without a change, and a trimmed one is not found |
+| `recovery-expiry` | The expiry deleted its delivery, so a replay finds none |
+| `mob-loot-grant:<n>`, the id of a live loot grant | It derives from a random Mob death; the worker sends it only while it holds the live corpse, two minutes at most, and with the live simulation session of the looter |
+| `mob-corpse-general`, `-equipment`, `-bag`, `mob-loot-entry:<n>`, `mob-loot-item` | Container, loot entry, and item ids of a corpse that is created at most once, never operation ids |
+
+`Retention:ItemHistory` must therefore outlast every retry of a worker
+operation and every live corpse. A worker retries an uncertain operation, such
+as a quest credit whose answer was lost, for as long as its session lives, with
+no limit of its own, so outside the Development environment both windows are at
+least one day, far longer than any outage that a session survives; GameService
+refuses to start with a shorter one. The Development environment accepts
+windows down to three minutes for a soak or a test, which still outlasts a live
+corpse. A pass that runs out of its budget is followed by one that starts with
+the task that was cut off, so a task that uses the whole budget cannot keep the
+tasks behind it from running.
 
 The migrations create every object in the `public` schema, and
 `bootstrap_character_item_state` pins its `search_path` to `public`. A
@@ -1010,6 +1104,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | Keys | Owner |
 | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds` | `PlatformOptions` |
+| `Retention:*` | `RetentionOptions` of Platform, which `PlatformOptions` carries |
 | `Auth:SessionLifetimeHours`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
@@ -1108,6 +1203,7 @@ the statement ids.
 | S67 | Ticket consume reads the character's saved place and vitals | Chr R | `ICharacterSimulationStates.ReadAsync` in `ShardService` |
 | S68 | A session release with a final state locks the character and saves the state in the release's transaction | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
 | S69 | A checkpoint locks the characters of the worker runtime's active sessions and saves their states in one statement | Chr L, W | `ICharacterSimulationStates.LockForSaveAsync` and `SaveManyAsync` in `SimulationSessionService` |
+| S70 | The retention of account sessions keeps every account session that a simulation session or join ticket names | Plc R | `IAccountSessionReferences.IsUnreferenced`, the condition that Placement's `SimulationAccountSessionReferences` gives, in Accounts' `AccountSessionRetentionTask`, because Accounts lies below Placement and cannot reference `PlacementSql` |
 
 Notes on specific statements:
 
@@ -1139,7 +1235,7 @@ boundary test checks the item command handlers of every module.
 | Test | What it protects |
 | --- | --- |
 | `MigrationHistoryTests` | Migration ids, order, SQL hashes, the merge rules, and the ids recorded by a fresh database |
-| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, and `Mmorpg.GameService.Placement` meters and every `game_service.*` instrument that the dashboards and alerts read |
+| `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Accounts`, `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, `Mmorpg.GameService.Placement`, and `Mmorpg.GameService.Retention` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
 | `ForeignKeyIndexTests` | In a migrated database, every foreign key has an index that leads with its columns or a reason in the allow-list, no allow-listed key is stale, and the log columns of [Foreign Keys](#foreign-keys) have no foreign key |
 | `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |
@@ -1147,7 +1243,7 @@ boundary test checks the item command handlers of every module.
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |
 | `ModulePublicSurfaceTests` | Each module's exported types and Platform's internal middleware |
 | `ModuleCompositionTests` | Exactly one implementation of every single-implementation SPI and contract, from the module that implements it, including Items' `IQuestDropDemand` and `IItemCatalogReferences` and Quests' `IQuestGatherCredit`, all from Quests, and startup failure for a missing or duplicate SPI |
-| `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, and the dashboards and alert rules reference only published `game_service_*` metrics |
+| `GameServiceTelemetryTests` | Every class that owns a `Meter` publishes `MeterName` and is declared by its module's `MeterNames`, or by `PlatformMeters` for Platform, and the dashboards and alert rules reference only published `game_service_*` metrics |
 | `ItemTransactionKernelBoundaryTests` | The item transaction kernel boundary described in [Items Transaction Kernel](#items-transaction-kernel), with the handler rules for the item command handlers of every module |
 | `ItemAreaBoundaryTests` | The corpse area and kernel rules of [Areas](#areas), from the corpse area's file list |
 

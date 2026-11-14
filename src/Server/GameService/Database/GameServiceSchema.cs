@@ -52,7 +52,10 @@ public sealed class GameServiceSchema
         "202611131200_simulation_session_account_end",
         "202611141200_character_foreign_key_indexes",
         "202611141210_placement_foreign_key_indexes",
-        "202611141220_item_foreign_keys_and_indexes"
+        "202611141220_item_foreign_keys_and_indexes",
+        "202611141300_item_retention_indexes",
+        "202611141310_placement_retention_indexes",
+        "202611141320_account_session_retention_index"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

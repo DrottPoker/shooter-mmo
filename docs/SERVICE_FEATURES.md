@@ -1433,10 +1433,10 @@ Seen from outside:
   presentation data returns the original corpse, absolute expiry, Recovery
   deliveries, and committed character revision without repartitioning. Reusing
   the event id with different data returns `death_event_conflict`. The event row
-  is removed together with its closed corpse after the closed-corpse retention
-  period. The partition always advances the character revision, so a replay
-  that outlives the event row is rejected as a revision conflict instead of
-  partitioning twice.
+  is removed together with its closed corpse once `Retention:ItemHistory` passed
+  after the corpse closed. The partition always advances the character
+  revision, so a replay that outlives the event row is rejected as a revision
+  conflict instead of partitioning twice.
 - The database constrains a player corpse's expiry to its database creation time
   plus exactly five minutes, and its transform to a bounded position and a
   normalized quaternion. Snapshot rows contain no item-instance identity.
@@ -1906,6 +1906,11 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
 | `HealthChecks:TimeoutMilliseconds` | `1000` | Timeout of each readiness probe |
 | `Redis:CommandTimeoutMilliseconds` | `2000` | How long the Redis client waits for a connection or a command's answer, 100 to 60,000 |
+| `Retention:IntervalSeconds` | `60` | How often the retention host runs a pass, 1 to 3,600 seconds |
+| `Retention:BatchSize` | `1000` | Rows one retention batch deletes at most, 1 to 10,000 |
+| `Retention:PassBudgetPercent` | `80` | The share of the interval that one pass may use, 1 to 100 |
+| `Retention:ItemHistory` | `14.00:00:00` | How long item operations with their journal, item destructions, claimed Recovery deliveries, closed corpses with their death events, and live Mob loot grants stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment, for a soak or a test |
+| `Retention:SessionHistory` | `14.00:00:00` | How long account sessions, simulation sessions, join tickets, and released SimulationAssignments stay after they ended, a time span from one day to 3,650 days, and from three minutes in the Development environment |
 | `Auth:SessionLifetimeHours` | `24` | Account session lifetime, 1 to 720 hours |
 | `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
 | `Auth:PasswordHashing:MaxWaitSeconds` | `10` | The longest a registration or login waits for its hash before it is refused with `auth_busy`, 1 to 10 seconds: a client allows a queued login 10 seconds on top of its request timeout, so the server may not queue longer |
@@ -1934,9 +1939,8 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Items:Operations:LockTimeoutMilliseconds` | `2000` | Lock timeout of an item transaction, 10 to 120,000 and at most the transaction timeout |
 | `Items:Operations:MaximumCommandPayloadBytes` | `65536` | Largest canonical command, 1,024 to 1,048,576 |
 | `Items:Operations:MaximumHttpRequestBodyBytes` | `262144` | Kestrel request body limit, 4,096 to 4,194,304 |
-| `Items:Operations:MetricsIntervalSeconds`, `MaintenanceIntervalSeconds` | `30`, `60` | Item summary log and maintenance intervals, 1 to 3,600 seconds |
-| `Items:Operations:CleanupBatchSize` | `64` | Rows per maintenance batch, 1 to 1,000 |
-| `Items:Operations:AuditRetentionDays`, `ClosedCorpseRetentionDays` | `30`, `30` | Retention of completed operations and of closed corpses, 1 to 3,650 days; the corpse retention cannot be shorter than the audit retention |
+| `Items:Operations:MetricsIntervalSeconds`, `MaintenanceIntervalSeconds` | `30`, `60` | Item summary log and Recovery expiry intervals, 1 to 3,600 seconds |
+| `Items:Operations:CleanupBatchSize` | `64` | Recovery deliveries that one Recovery expiry run expires at most, 1 to 1,000 |
 | `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
 | `Items:Development:ItemPackagesPath` | `Content/Development/item-packages.json` in the output | The Development item packages |
 | `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, ticket and lease lifetimes of `30` seconds, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
@@ -2012,14 +2016,21 @@ content fail before UDP admission.
 - New character creation calls the same PostgreSQL bootstrap function before
   committing, so a character cannot commit through the service without its
   required item state.
-- Partial indexes support completed operation retention, closed-corpse
-  retention, and unclaimed Recovery expiry. A bounded hosted maintenance service
-  runs every `Items:Operations:MaintenanceIntervalSeconds` and uses
-  deterministic system-authority operations to destroy expired Recovery items
-  with durable audit. It removes empty closed corpses only after their
-  retention, removes claimed Recovery deliveries after the audit retention
-  period, and deletes old operation rows only when no destruction or death
-  record references them.
+- A bounded hosted maintenance service runs every
+  `Items:Operations:MaintenanceIntervalSeconds` and uses deterministic
+  system-authority operations to destroy expired Recovery items with durable
+  audit.
+- The retention host deletes history once it is older than its window:
+  `Retention:ItemHistory` for item operations with their journal, item
+  destructions, claimed Recovery deliveries, empty closed corpses with their
+  death events, and live Mob loot grants, and `Retention:SessionHistory` for
+  account sessions, simulation sessions, join tickets, and released
+  SimulationAssignments, each counted from the moment it ended. An item
+  operation goes only after the death event that names it left with its
+  corpse; a destruction no longer holds its operation. After its row went, a
+  retried operation id runs again, which every deterministic system operation
+  id survives, as [Retention](GAME_SERVICE_MODULES.md#retention) describes with
+  every rule of the tasks. The gold ledger is never trimmed.
 - Every database unit uses statement and lock limits plus `skip locked` batch
   selection where concurrent maintenance is permitted.
 - The item metrics and logs are in [Monitoring](MONITORING.md#logs).

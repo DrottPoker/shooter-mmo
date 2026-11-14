@@ -1,13 +1,14 @@
 using Mmorpg.GameService.Config;
+using Mmorpg.GameService.Platform.Retention;
 using Mmorpg.Server.Telemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
 namespace Mmorpg.GameService;
 
-// GameService telemetry: the meters every module declares, ASP.NET Core requests, and
-// Npgsql commands. Health probes are not traced, because they would bury the requests
-// that matter.
+// GameService telemetry: Platform's meters, the meters every module declares, ASP.NET Core
+// requests, and Npgsql commands. Health probes are not traced, because they would bury the
+// requests that matter.
 internal static class GameServiceTelemetry
 {
     public const string ServiceName = "game-service";
@@ -20,6 +21,7 @@ internal static class GameServiceTelemetry
         ArgumentNullException.ThrowIfNull(configuration);
         return
         [
+            .. PlatformMeters.Names,
             .. GameServiceComposition.CreateModules(configuration)
                 .SelectMany(module => module.MeterNames)
                 .Distinct(StringComparer.Ordinal),

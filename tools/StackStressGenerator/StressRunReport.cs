@@ -163,6 +163,10 @@ public sealed record StressRunConfiguration(
 {
     // The login or logout burst the run planned, or null for none.
     public StressBurstPlan? Burst { get; init; }
+
+    // GameService's retention settings and the retention sample the run planned, or null when the
+    // plan passed no retention settings.
+    public StressRetentionPlan? Retention { get; init; }
 }
 
 public sealed record StressRunReport(
@@ -307,7 +311,11 @@ public sealed record StressRunReport(
             {
                 Burst = options.Burst is { } burst
                     ? new StressBurstPlan(burst.KindName, burst.Accounts, burst.At.TotalSeconds, burst.Deadline.TotalSeconds)
-                    : null
+                    : null,
+                Retention = StressRetentionPlan.Create(
+                    options.RetentionItemHistorySeconds,
+                    options.RetentionIntervalSeconds,
+                    options.SteadyDuration)
             },
             providerReport.Worker ?? target.Worker,
             workerProcess,
