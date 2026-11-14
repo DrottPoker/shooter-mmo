@@ -205,6 +205,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(summary.ownerSnapshotFramesMissing, Is.EqualTo(1));
         }
 
+        // The Debug menu always records under one label, and a switch can be turned off and on
+        // within a second. The second recording then gets its own file and the first one stays.
+        [Test]
+        public void ASecondRecordingWithTheSameLabelNeverOverwritesTheFirst()
+        {
+            var measurements = new ClientMeasurements(new FakeDiagnostics(), null, new LocalPlayerSource(), folder);
+            var paths = new System.Collections.Generic.List<string>();
+            for (var run = 0; run < 3; run++)
+            {
+                paths.Add(measurements.StartRecording("same", 60f));
+                measurements.Frame(run + Frame, Frame, Frame);
+                measurements.StopRecording();
+            }
+
+            Assert.That(paths, Is.Unique);
+            foreach (var path in paths)
+            {
+                Assert.That(File.ReadAllLines(path), Is.Not.Empty, path);
+            }
+        }
+
         // The Debug menu shows the recorder's numbers and computes none of its own.
         [Test]
         public void TheDebugMenuNumbersAreTheRecordersNumbers()

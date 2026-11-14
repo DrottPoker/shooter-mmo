@@ -187,9 +187,17 @@ namespace Mmorpg.Client.Gameplay
 
             var name = SafeLabel(label);
             Directory.CreateDirectory(folder);
-            RecordingPath = Path.Combine(
-                folder,
-                DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + name + ".jsonl");
+            // A recording never overwrites an earlier one: a second recording with the same label
+            // within the same second gets a number.
+            var stem = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + name;
+            RecordingPath = Path.Combine(folder, stem + ".jsonl");
+            for (var number = 2; File.Exists(RecordingPath); number++)
+            {
+                RecordingPath = Path.Combine(
+                    folder,
+                    stem + "-" + number.ToString(CultureInfo.InvariantCulture) + ".jsonl");
+            }
+
             recording = new Recording(name, Mathf.Max(0.25f, intervalSeconds), clockNow, new StreamWriter(RecordingPath, false));
             if (diagnostics != null)
             {
