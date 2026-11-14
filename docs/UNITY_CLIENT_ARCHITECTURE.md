@@ -2894,7 +2894,21 @@ garment texture arrays that
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
 plans for fewer draw calls.
 
-To measure, start the bots on `local-shard-1` as in
+`tools/Measure-ClientCrowd.ps1` measures the client with 100, 200, and 400
+dressed bots in the stress arena, where every bot is in interest, in an IL2CPP
+test player that compiles like a release build: the time until the whole crowd
+is shown, frame times, owner snapshots, starvation of the remote players, and
+memory, as
+[Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes. The bots, the worker, and GameService run on the same machine as the
+client, so a large crowd measures that machine as a whole: when the worker
+falls behind its ticks or drops snapshots, which its log in the run's folder
+says, the client sees fewer owner snapshots and starves its remote players for
+reasons outside the client. The baseline of the three sizes, in the IL2CPP
+player and in the Editor's Play Mode, is not recorded yet: it needs a run on a
+machine that no other program, such as a game, shares.
+
+To look by hand, start the bots on `local-shard-1` as in
 [Visual Unity Test](ACTIVE_SIMULATION_BOTS.md#visual-unity-test), join, and read
 FPS and frame times on the Debug menu's Performance tab (F2), or record the Unity
 Profiler with Deep Profile off. `ClothChainScheduler.LateUpdate` and
@@ -3720,7 +3734,11 @@ namespace rule are in [Folder Layout](#folder-layout).
   `WorldReconnect` on that hub and lets it restore a dropped line by itself.
   The test is explicit and has the `LiveStack` category, so
   only `tools/Test-LiveStack.ps1` runs it, as
-  [Live Stack Test](../tests/README.md#live-stack-test) describes.
+  [Live Stack Test](../tests/README.md#live-stack-test) describes, in the
+  headless Editor or in an IL2CPP test player.
+  `LiveStackCrowdPlayModeTests`, explicit in the category `ClientCrowd`,
+  measures the running client with a crowd in the stress arena for
+  [Crowd Performance](#crowd-performance).
 - **Movement determinism.** `MovementDeterminismScenario` runs one movement
   scenario in both runtimes and pins `ExpectedSimulationRevision` and
   `ExpectedFingerprint`. An intended change to shared movement or collision

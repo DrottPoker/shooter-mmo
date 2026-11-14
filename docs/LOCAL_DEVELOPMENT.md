@@ -1130,12 +1130,13 @@ otherwise the script starts the Editor from the default Unity Hub path. Unity
 runs without a graphics device there, so the tests of the `Graphics` category,
 which draw, run only in the Editor. The script also leaves out the `LiveStack`
 category, which needs the local stack and runs through
-[Run The Live Stack Test](#run-the-live-stack-test); the CI Unity gate and
-`tools/Test-Changes.ps1` run this script, so they leave it out too. That test
-is also explicit, so `tools/Run-UnityEditorTests.ps1` and the Editor's Test
-Runner do not select it. `-Platform PlayMode` runs
-one suite, `-TestCategory` replaces the default category filter
-`!Graphics;!LiveStack`, and `-Preflight` only checks that Unity is installed and
+[Run The Live Stack Test](#run-the-live-stack-test), and the `ClientCrowd`
+category of [Measure The Client With A Crowd](#measure-the-client-with-a-crowd);
+the CI Unity gate and `tools/Test-Changes.ps1` run this script, so they leave
+them out too. Those tests are also explicit, so `tools/Run-UnityEditorTests.ps1`
+and the Editor's Test Runner do not select them unless they are picked by name.
+`-Platform PlayMode` runs one suite, `-TestCategory` replaces the default
+category filter `!Graphics;!LiveStack;!ClientCrowd`, and `-Preflight` only checks that Unity is installed and
 the project is free. Unity opens a project only once, so the script stops before
 it starts Unity while an Editor or another Unity process has the project open.
 
@@ -1152,12 +1153,23 @@ describes, and names them.
 The `Player` category runs in a built player as well: the pinned goldens of
 the shared movement simulation and the realtime protocol, which must give the
 same results under IL2CPP as on Mono and .NET. `-Platform StandaloneWindows64`
-builds a Windows test player with the committed IL2CPP settings of a release
-build, starts it in a window, and runs the `Player` category in it:
+builds a Windows IL2CPP test player, starts it in a window, and runs the
+`Player` category in it:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1 -Platform StandaloneWindows64
 ```
+
+`-PlayerBuild Release`, the default, makes the test player compile like a
+release build, with the committed settings; `-PlayerBuild Development` makes
+it compile like a development build, whose C++ builds in minutes. In both, the
+script passes `-clientTestPlayerBuild` to Unity, and `ClientTestPlayerBuild` in
+the EditMode test assembly applies the settings of
+[Build Kinds](#build-kinds) to the test player and compiles its C# with the
+`Release` code variant of a shipped build instead of the test runner's checked
+variant. `-TestCategory` runs another category in the player, as
+[Run The Live Stack Test](#run-the-live-stack-test) and
+[Measure The Client With A Crowd](#measure-the-client-with-a-crowd) do.
 
 The Unity CLI cannot run a player test, so this run always starts the Editor
 of `-UnityEditorPath`, `UNITY_EDITOR_PATH`, or the Unity Hub's default path.
@@ -1167,10 +1179,11 @@ the value it computed, and `Unity StandaloneWindows64 tests passed`. The test
 player's build is an IL2CPP build with the C++ configuration of a release
 build, measured on the machine of [Build Kinds](#build-kinds) at 21 minutes the
 first time and 17 minutes after a small change of the client, most of it in
-the C++ link. The test player differs from a shipped release build in what the
-Unity Test Framework adds: it is a development build with the test assemblies
-and IL2CPP's checked code variant. The Editor's PlayMode suite runs the same
-category on Mono.
+the C++ link; one that compiles like a development build took 3 minutes. The
+test player differs from a shipped build in what the Unity Test Framework needs:
+it is a development build with the test assemblies, because it reports its
+results through the player connection of a development build. The Editor's
+PlayMode suite runs the same category on Mono.
 
 ### Run A Load Scenario
 
@@ -1257,6 +1270,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-LiveStack.ps1 -Ne
 | --- | --- |
 | `-Network <profile>` | The profile between the client and the worker, `none` by default |
 | `-Leaves <count>` | How many times the network part leaves and comes back, 3 by default. A leave and a join take one to three seconds, so 100 give a rate of failed leaves in a few minutes |
+| `-Platform <Editor\|Player>` | Where the client runs: the headless Editor's Play Mode, the default, or an IL2CPP test player, as [The Live Stack Test In A Player](#the-live-stack-test-in-a-player) describes |
+| `-PlayerBuild <Development\|Release>` | With `-Platform Player`: how the test player compiles, like a development build, the default, or like a release build |
 
 The walk lasts 30 seconds, and under a profile with outages until 15 seconds
 after the first outage ended, so the measurements see the correction after it.
@@ -1266,6 +1281,36 @@ script prints the `[LIVE]` lines of the network part with the proxy's counts.
 What the profiles measured is in
 [The Client On A Bad Network](#the-client-on-a-bad-network).
 
+#### The Live Stack Test In A Player
+
+`-Platform Player` runs the same tests in a Windows IL2CPP test player instead
+of the headless Editor, through `tools/Run-UnityTests.ps1 -Platform
+StandaloneWindows64`, with or without `-Network`. It is the proof that the
+client works under IL2CPP and managed code stripping in real use: JSON through
+`JsonUtility`, the UDP sockets of LiteNetLib, Addressables with a World scene,
+and the generated protocol code. The player opens a window while it runs, and
+the script reads the `[LIVE]` lines from the player's own log, which it keeps
+as `player.log` in the log folder.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-LiveStack.ps1 -Platform Player
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-LiveStack.ps1 -Platform Player -Network normal
+```
+
+The test player compiles like a development build by default, whose C++ builds
+in about 3 minutes: both kinds strip the same code and run the same C#, so the
+proof holds for both, and `-PlayerBuild Release` builds it like a release build
+when the C++ of a release build is in question. Expected result: as on the
+Editor, with the step lines and the network part's lines, and `Unity
+StandaloneWindows64 tests passed`. Measured on 2026-11-14 on the machine of
+[Build Kinds](#build-kinds), no `link.xml` entry was needed:
+
+| Run | Result | Time |
+| --- | --- | --- |
+| `-Platform Player`, development build | Both tests passed: the steps `a.` to `h.`, and the network part on loopback with 0 corrections above 0 m, 3 clean leaves, no exception or error | 7.5 min, of it 6.5 min of Unity with the test player's build |
+| `-Platform Player -Network normal`, development build | The network part passed: round trip p50 / p95 81 / 96 ms, 0.94 % owner snapshots lost, no correction above 0 m, the other player starved 1.43 % of its seconds, 3 clean leaves, no exception or error | 6 min |
+| `-Platform Player -PlayerBuild Release`, after a release-like test player was built once | Both tests passed, as with the development build | 4 min |
+
 Each run keeps its logs in a new folder below
 `%TEMP%\shooter-mmo-live-stack`, which the script prints: the build output, the
 output of both services, the Compose output, and the Unity log and result file.
@@ -1274,6 +1319,75 @@ Each run also leaves accounts with one character each in the local database:
 part. A script that is killed, instead of interrupted with `Ctrl+C`,
 cannot clean up: stop the two processes whose ids it printed, and run
 `docker compose stop` if it had started the containers.
+
+### Measure The Client With A Crowd
+
+`tools/Measure-ClientCrowd.ps1` measures how the client copes with a crowd of
+dressed players, the baseline of
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). It starts
+PostgreSQL and Redis when they do not run, GameService with the development bot
+endpoint, and the stress arena worker, `local-shard-2` with Development World 1
+on UDP 27016, where every player stays inside one interest radius. Both
+services and the bots run from Release builds, so they take as little of the
+machine as they can. For each
+crowd size it starts that many
+[ActiveSimulationBots](ACTIVE_SIMULATION_BOTS.md), which stay online, waits
+until all have joined, and runs the PlayMode test
+`LiveStackCrowdPlayModeTests`, category `ClientCrowd`, in an IL2CPP test
+player that compiles like a release build: it enters the arena as a player
+does, waits until the client shows a body for every bot, and records the
+[client measurements](UNITY_CLIENT_ARCHITECTURE.md#client-measurements) for
+60 seconds with the default camera at the spawn. Then it stops the bots and
+waits until their bodies are gone.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `-Bots <sizes>` | The crowd sizes, `100,200,400` by default |
+| `-Seconds <n>` | How long each recording lasts, 60 by default |
+| `-PlayerBuild <Release\|Development>` | How the test player compiles, like a release build by default |
+| `-Attempts <n>` | How many attempts each size gets when one does not count, 3 by default |
+| `-QuietTimeoutMinutes <n>` | How long a measurement waits for other programs to leave the machine alone, 30 by default |
+| `-DisturbedProcessors <n>`, `-DisturbedGpuPercent <n>` | What other programs may use on average, 2.5 processors and 10 % of the 3D engine by default |
+| `-LoadSampleGapSeconds <n>` | The longest time within a recording that may pass without a sample of what other programs use, 10 by default |
+| `-Platform <Player\|Editor>` | `Editor` measures nothing itself; it keeps the stack and the bots of the first size up for `-HoldMinutes` |
+
+The player opens a 1920 by 1080 window on the desktop for a few minutes per
+size, because frame times without a window say nothing about rendering; leave
+the machine alone while it runs. Every program that is not part of the
+measurement counts against it: another Unity Editor, such as the CI runner's,
+a build, a browser, or a game. Before each measurement the script waits up to
+`-QuietTimeoutMinutes`, 30 by default, until those programs have used at most
+two and a half processors, the background of an ordinary desktop, and 10 % of
+the graphics card's 3D engine for thirty seconds; it samples them every few
+seconds while the test runs and repeats a measurement during whose recording
+they used more. An attempt counts only with proof: one whose test failed, for
+example because the client lost its connection or showed fewer bots while it
+recorded, does not count although it wrote a result, and neither does one after
+which not every bot is still joined, or one whose samples leave more
+than `-LoadSampleGapSeconds` of the recording uncovered, because nothing then
+shows that it was undisturbed. Part of the measurement are only the processes
+that the script started itself, directly or through another one (the services,
+the bots, the Unity Editor that builds the test player, and the player), the
+project's own Unity Editor, Docker, and the desktop compositor. Another .NET
+program or PowerShell script, such as a load run, counts against the
+measurement like every other program. The bots get a secret that the script
+makes for the run; it neither reads nor changes `.env`.
+Expected result: one line per attempt with what other processes used, a table
+with the frame times, the time until the crowd was shown, the snapshot rate,
+starvation, and memory per size, `Client crowd measured`, and exit code 0. Each
+run keeps its logs, the test results, the per-second load samples, and
+`crowd-summary.md` in a new folder below `%TEMP%\shooter-mmo-client-crowd`.
+
+The headless Editor draws nothing, so its frame times say nothing; the Editor's
+numbers need an open Editor. `-Platform Editor -Bots <n>` starts the stack and
+`n` bots and keeps them up; then run `LiveStackCrowdPlayModeTests` from
+`Window > General > Test Runner` in the open Editor, where it measures the
+crowd it finds, prints `[CROWD]` lines to the Console, and writes its result
+file below the Editor's temporary cache path.
 
 ## Upgrade The Unity Editor
 
@@ -1303,7 +1417,8 @@ project, the CI runner, and the documentation. Upgrade it in a focused branch:
 5. Replace the old version everywhere it is written. `git grep -n
    "<old version>"` lists `README.md`, this document,
    `docs/UNITY_CLIENT_ARCHITECTURE.md`, and the runner label in
-   `.github/workflows/ci.yml`. Add the new label to the runner as
+   `.github/workflows/ci.yml` and `.github/workflows/unity-player.yml`. Add the
+   new label to the runner as
    [Operate The Runner](#operate-the-runner) describes.
 6. After the merge, close the old Editor before pulling `development` into a
    checkout, because an old Editor that sees the new packages fails to compile
@@ -1344,6 +1459,24 @@ runs from `Actions > CI > Run workflow`. Pull requests from forks skip it.
 While the repository variable `UNITY_CI_ENABLED` is not `true`, the job shows
 as skipped. If Unity is not installed in the default Unity Hub path, the
 repository variable `UNITY_EDITOR_PATH` can name the full path to `Unity.exe`.
+
+The workflow `.github/workflows/unity-player.yml` uses the same runner once a
+week and on a manual run from `Actions > Unity player > Run workflow`, never
+for a pull request. Its job `Unity player build and checks` builds the `local`
+development player with `tools/Build-Client.ps1 -Environment local
+-Development -StartCheck` and runs the player golden checks with
+`tools/Run-UnityTests.ps1 -Platform StandaloneWindows64`, as
+[Build The Client](#build-the-client) and
+[Run The Unity Tests](#run-the-unity-tests) describe, and uploads the build
+summary, the start check's log, and the test results as
+`unity-player-results`. Both players open a window on the runner's desktop for
+a moment. The runner's job-started hook accepts no scheduled run, so the
+weekly schedule, Mondays at 03:17 UTC, starts a GitHub-hosted job that starts a
+manual run of the workflow on `development`; the schedule works from the
+workflow file of the repository's default branch. The guards are those of the
+Unity quality gate: the variable `UNITY_CI_ENABLED` and the hook. A fresh
+checkout imports the project and builds IL2CPP without any cache, so the job
+may take most of its 150 minutes.
 
 The runner checks the repository out into its own work folder,
 `C:\actions-runner\_work\shooter-mmo\shooter-mmo`. That is a separate Unity
