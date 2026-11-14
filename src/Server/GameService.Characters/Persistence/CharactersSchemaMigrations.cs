@@ -11,6 +11,7 @@ internal static class CharactersSchemaMigrations
         new(CharacterCurrencyLedgerMigration.Id, CharacterCurrencyLedgerMigration.Sql),
         new(CharacterAppearanceMigration.Id, CharacterAppearanceMigration.Sql),
         new(QuestRewardCurrencyMigration.Id, QuestRewardCurrencyMigration.Sql),
-        new(CharacterSimulationStateMigration.Id, CharacterSimulationStateMigration.Sql)
+        new(CharacterSimulationStateMigration.Id, CharacterSimulationStateMigration.Sql),
+        new(CharacterForeignKeyIndexMigration.Id, CharacterForeignKeyIndexMigration.Sql)
     ];
 }

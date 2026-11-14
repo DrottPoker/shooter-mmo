@@ -93,7 +93,7 @@ journal:
   stored payload: equals returned result
   changes:
     0 corpse_item_looted_to_equipment item=set before=set after=set
-    1 corpse_stack_loot_source_removed item=none before=set after=none
+    1 corpse_stack_loot_source_removed item=set before=set after=none
     2 corpse_stack_loot_merged item=set before=set after=set
     3 corpse_loot_revision_advanced item=none before=set after=set
     4 corpse_loot_all_committed item=none before=none after=set

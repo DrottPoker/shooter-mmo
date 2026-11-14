@@ -66,5 +66,5 @@ journal:
   operation row: vendor_sale committed
   stored payload: equals returned result
   changes:
-    0 item_sold_to_vendor item=none before=set after=none
+    0 item_sold_to_vendor item=set before=set after=none
     1 vendor_sale item=none before=set after=set

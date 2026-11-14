@@ -47,4 +47,4 @@ journal:
   operation row: abandon_quest_items committed
   stored payload: equals returned result
   changes:
-    0 quest_item_removed item=none before=set after=none
+    0 quest_item_removed item=set before=set after=none

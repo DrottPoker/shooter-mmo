@@ -3,9 +3,9 @@
 GameService is one ASP.NET Core process and one deployable whose code is a
 compiler-enforced modular monolith: a host and eight module projects. This
 document owns the module projects, their public surface and composition, table
-ownership, the access rules, the contracts between modules, the items
-transaction kernel, the lock order, the migrations, the module configuration,
-the cross-module statements, and the guard tests.
+ownership with the foreign key rule, the access rules, the contracts between
+modules, the items transaction kernel, the lock order, the migrations, the
+module configuration, the cross-module statements, and the guard tests.
 
 The process boundary is in
 [Project Architecture](PROJECT_ARCHITECTURE.md#gameservice), the durable data
@@ -168,6 +168,42 @@ Placement (`corpses.shard_id`). For the same reason
 change without a foreign key to `item_operations`. Cascading deletes therefore
 cross module boundaries, but no delete path exists for accounts or characters
 today. A future delete flow must go through the owners' contracts.
+
+### Foreign Keys
+
+Every foreign key has an index whose leading columns are the key's columns, in
+any order, so a delete or key change of a parent row finds the rows that refer
+to it through the index instead of scanning the child table. The index is not
+partial, or its only condition is that the key is not null, which every lookup
+by a value implies. One index serves both a key and the queries for active rows
+where it can: the indexes of simulation sessions and join tickets by worker and
+by Shard, and of join tickets by account, hold every row, with the released or
+consumed time right after the shared column, so the active rows still lie
+together. The unique indexes that allow one active row per worker, account, or
+character stay partial, beside a plain index for the key.
+
+A key may go without an index only when its parent rows are never deleted or
+re-keyed while the game runs: the keys to catalog content, which the seeders
+upsert and retire but never delete, the key of `simulation_workers` to its
+Node, and `item_operations.actor_account_id`. Accounts are never deleted; a
+flow that deletes them must first index that key, because the table holds every
+item operation. `ForeignKeyIndexTests` reads the keys and indexes of a migrated
+database and names every other key without an index and where its index
+belongs; each exception stands in its allow-list with its reason.
+
+Like the ledger's `item_operation_id`, two log columns name a row without a
+foreign key, because the log row outlives it or is trimmed apart from it:
+
+- `item_operation_changes.item_instance_id` keeps the id of an item that is
+  gone. The journal names the item in the row of the change that removed it
+  too, so the item's history stays readable after its row was deleted, and
+  deleting an item touches no journal row.
+- `item_destructions.source_operation_id` keeps the id of the operation that
+  destroyed the item without holding the operation's row, so the two can be
+  trimmed apart.
+
+`ForeignKeyIndexTests` also fails when one of these three columns gets a
+foreign key.
 
 ## Access Rules
 
@@ -940,6 +976,9 @@ topology names.
 | 37 | `202611101300_item_catalog_names_removal` | Items |
 | 38 | `202611121200_character_simulation_states` | Characters |
 | 39 | `202611131200_simulation_session_account_end` | Placement |
+| 40 | `202611141200_character_foreign_key_indexes` | Characters |
+| 41 | `202611141210_placement_foreign_key_indexes` | Placement |
+| 42 | `202611141220_item_foreign_keys_and_indexes` | Items |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -951,6 +990,11 @@ when the merged list does not start with the shipped history, so every new
 migration must sort after the last shipped one. A new migration also appends
 its id to `GameServiceSchema.FrozenHistory` and its id and SQL hash to
 `MigrationHistoryTests`.
+
+A migration builds its indexes inside its transaction, which blocks writes to
+the table while the index builds. That is fine at today's table sizes. A large
+live table needs `create index concurrently`, which runs outside a transaction,
+and the migration runner cannot run such a statement yet.
 
 The migrations create every object in the `public` schema, and
 `bootstrap_character_item_state` pins its `search_path` to `public`. A
@@ -1097,6 +1141,7 @@ boundary test checks the item command handlers of every module.
 | `MigrationHistoryTests` | Migration ids, order, SQL hashes, the merge rules, and the ids recorded by a fresh database |
 | `MeterInstrumentNamesTests` | The `Mmorpg.GameService.Redis`, `Mmorpg.GameService.Items`, and `Mmorpg.GameService.Placement` meters and every `game_service.*` instrument that the dashboards and alerts read |
 | `TableOwnershipTests` | Rules R1 to R4 for SQL in source files |
+| `ForeignKeyIndexTests` | In a migrated database, every foreign key has an index that leads with its columns or a reason in the allow-list, no allow-listed key is stale, and the log columns of [Foreign Keys](#foreign-keys) have no foreign key |
 | `NamespaceBoundaryTests` | A module references other modules only through lower modules' `Contracts` namespaces and Platform |
 | `RouteTableSnapshotTests` | Every route with its methods, authorization policy, rate-limit policy, and no-store metadata. ASP.NET Core matches routes by template precedence and HTTP method, never by registration order, so the snapshot is the routing contract |
 | `ModuleDependencyGraphTests` | The compiled references between the GameService assemblies and the host assembly name |

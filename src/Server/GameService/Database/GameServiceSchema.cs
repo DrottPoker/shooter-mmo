@@ -49,7 +49,10 @@ public sealed class GameServiceSchema
         "202611101200_corpse_source_character_name",
         "202611101300_item_catalog_names_removal",
         "202611121200_character_simulation_states",
-        "202611131200_simulation_session_account_end"
+        "202611131200_simulation_session_account_end",
+        "202611141200_character_foreign_key_indexes",
+        "202611141210_placement_foreign_key_indexes",
+        "202611141220_item_foreign_keys_and_indexes"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

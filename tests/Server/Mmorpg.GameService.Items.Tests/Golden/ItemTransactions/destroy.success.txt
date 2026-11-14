@@ -53,4 +53,4 @@ journal:
   operation row: destroy committed
   stored payload: equals returned result
   changes:
-    0 item_destroyed item=none before=set after=none
+    0 item_destroyed item=set before=set after=none

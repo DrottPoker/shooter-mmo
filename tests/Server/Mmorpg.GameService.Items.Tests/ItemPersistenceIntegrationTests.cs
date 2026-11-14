@@ -962,7 +962,8 @@ public sealed class ItemPersistenceIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_operation_changes where operation_id = @OperationId;",
                 new { OperationId = operationId }));
-        Assert.Null(await connection.ExecuteScalarAsync<Guid?>(
+        // The journal's item id has no foreign key, so it still names the deleted item.
+        Assert.Equal(itemId, await connection.ExecuteScalarAsync<Guid?>(
             """
             select item_instance_id
             from item_operation_changes
