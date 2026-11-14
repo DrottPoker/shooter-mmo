@@ -174,6 +174,58 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(summary.silences, Is.Zero, "A bound player is needed for a silence.");
         }
 
+        // The session's snapshot counters run from the join, so a recording that starts later
+        // counts only the frames of its own time.
+        [Test]
+        public void ARecordingCountsOnlyTheSnapshotsOfItsOwnTime()
+        {
+            var diagnostics = new FakeDiagnostics { SnapshotAge = 0.05f, SnapshotFrames = 950, MissingFrames = 50 };
+            var measurements = new ClientMeasurements(diagnostics, null, new LocalPlayerSource(), folder);
+            measurements.Frame(1f, Frame, Frame);
+            measurements.StartRecording("later", 60f);
+            measurements.Frame(1f + Frame, Frame, Frame);
+            diagnostics.SnapshotFrames = 980;
+            diagnostics.MissingFrames = 55;
+            measurements.Frame(1f + (2f * Frame), Frame, Frame);
+
+            var summary = measurements.StopRecording();
+
+            Assert.That(summary.ownerSnapshotFrames, Is.EqualTo(30));
+            Assert.That(summary.ownerSnapshotFramesMissing, Is.EqualTo(5));
+
+            // A new session starts its counters again; the recording then counts from zero.
+            measurements.StartRecording("rejoin", 60f);
+            measurements.Frame(2f, Frame, Frame);
+            diagnostics.SnapshotFrames = 12;
+            diagnostics.MissingFrames = 1;
+            measurements.Frame(2f + Frame, Frame, Frame);
+            summary = measurements.StopRecording();
+
+            Assert.That(summary.ownerSnapshotFrames, Is.EqualTo(12));
+            Assert.That(summary.ownerSnapshotFramesMissing, Is.EqualTo(1));
+        }
+
+        // The Debug menu always records under one label, and a switch can be turned off and on
+        // within a second. The second recording then gets its own file and the first one stays.
+        [Test]
+        public void ASecondRecordingWithTheSameLabelNeverOverwritesTheFirst()
+        {
+            var measurements = new ClientMeasurements(new FakeDiagnostics(), null, new LocalPlayerSource(), folder);
+            var paths = new System.Collections.Generic.List<string>();
+            for (var run = 0; run < 3; run++)
+            {
+                paths.Add(measurements.StartRecording("same", 60f));
+                measurements.Frame(run + Frame, Frame, Frame);
+                measurements.StopRecording();
+            }
+
+            Assert.That(paths, Is.Unique);
+            foreach (var path in paths)
+            {
+                Assert.That(File.ReadAllLines(path), Is.Not.Empty, path);
+            }
+        }
+
         // The Debug menu shows the recorder's numbers and computes none of its own.
         [Test]
         public void TheDebugMenuNumbersAreTheRecordersNumbers()

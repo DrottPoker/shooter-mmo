@@ -187,9 +187,17 @@ namespace Mmorpg.Client.Gameplay
 
             var name = SafeLabel(label);
             Directory.CreateDirectory(folder);
-            RecordingPath = Path.Combine(
-                folder,
-                DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + name + ".jsonl");
+            // A recording never overwrites an earlier one: a second recording with the same label
+            // within the same second gets a number.
+            var stem = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + name;
+            RecordingPath = Path.Combine(folder, stem + ".jsonl");
+            for (var number = 2; File.Exists(RecordingPath); number++)
+            {
+                RecordingPath = Path.Combine(
+                    folder,
+                    stem + "-" + number.ToString(CultureInfo.InvariantCulture) + ".jsonl");
+            }
+
             recording = new Recording(name, Mathf.Max(0.25f, intervalSeconds), clockNow, new StreamWriter(RecordingPath, false));
             if (diagnostics != null)
             {
@@ -525,7 +533,10 @@ namespace Mmorpg.Client.Gameplay
                         period.HardSnaps++;
                     }
 
-                    if (now <= afterSilenceUntil)
+                    // A correction comes from an owner snapshot, so one that arrives while the
+                    // line still counts as silent is the snapshot that ends the silence: the
+                    // network is sampled later in the frame than the snapshot is handled.
+                    if (inSilence || now <= afterSilenceUntil)
                     {
                         period.LargestCorrectionAfterSilence = Mathf.Max(period.LargestCorrectionAfterSilence, meters);
                     }
@@ -577,8 +588,9 @@ namespace Mmorpg.Client.Gameplay
                 apply(total);
             }
 
-            // The owner snapshot counters start again with every session, so a counter that went
-            // back starts a new baseline.
+            // The owner snapshot counters run for the whole session, so the recording counts from
+            // where they stood at its first sample, and they start again with every session, so a
+            // counter that went back counts from zero.
             private void SampleNetwork(IRealtimeDiagnostics diagnostics, bool bound)
             {
                 if (diagnostics == null)
@@ -594,11 +606,16 @@ namespace Mmorpg.Client.Gameplay
 
                 var frames = diagnostics.SnapshotFramesReceived;
                 var missing = diagnostics.EstimatedMissingSnapshotFrames;
-                if (!hasOwnerCounters || frames < previousOwnerFrames || missing < previousOwnerMissing)
+                if (!hasOwnerCounters)
+                {
+                    previousOwnerFrames = frames;
+                    previousOwnerMissing = missing;
+                    hasOwnerCounters = true;
+                }
+                else if (frames < previousOwnerFrames || missing < previousOwnerMissing)
                 {
                     previousOwnerFrames = 0;
                     previousOwnerMissing = 0;
-                    hasOwnerCounters = true;
                 }
 
                 var newFrames = frames - previousOwnerFrames;
