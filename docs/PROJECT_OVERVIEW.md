@@ -66,7 +66,7 @@ Accounts, characters, and items are global: a character is not bound to one regi
 | Combat and Mobs | Target-based combat with four weapon families, windups, arrows, mana, wolves with brains, death events, respawn, Mob tagging with loot rights, world bosses that give every contributor their own loot | Abilities, the combat triangle, threat, Mob abilities |
 | Quests | Quest content with steps, objectives, chains, and rewards, quest NPCs, kill, collect, deliver, talk, and gather objectives, quest drops, the quest log and tracker, and Quest Studio | Experience rewards, more objective kinds, and repeatable schedules |
 | Character visuals | Human bodies with looks, garments, hair, cloth, and carried weapons and tools, all from the art pipeline | More races and body types, final art |
-| Operations | OpenTelemetry metrics, logs, and traces, local monitoring stack, stress tools, active bots | Alert notifications, staging and production deployment |
+| Operations | OpenTelemetry metrics, logs, and traces, local monitoring stack, stress tools, a network impairment proxy with four network profiles, active bots | Alert notifications, staging and production deployment |
 
 This table is the only place that states the status of the whole project. Each design document
 states the status of its own rules, and no document states the status of another document's
@@ -119,7 +119,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The content tools and the World Builder | Provisional | |
 | The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |
 | The UI kit and the windows built on it | Provisional | |
-| Monitoring, stress tools, and bots | Provisional | |
+| Monitoring, stress tools, the network impairment proxy, and bots | Provisional | |
 | The panels named `Temporary` | Temporary | Move onto the UI kit |
 | The development Worlds | Temporary | Test maps, replaced by the first real World |
 | Placeholder item icons | Temporary | |

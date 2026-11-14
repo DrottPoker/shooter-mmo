@@ -1,0 +1,30 @@
+{
+  "description": "A normal home connection: cable or DSL over Wi-Fi to a server in the same region. 80 ms round trip with 15 ms of jitter, and 1 % of the packets lost in each direction.",
+  "clientToServer": {
+    "delayMs": 40,
+    "jitterMs": 7.5,
+    "lossPercent": 1,
+    "duplicatePercent": 0
+  },
+  "serverToClient": {
+    "delayMs": 40,
+    "jitterMs": 7.5,
+    "lossPercent": 1,
+    "duplicatePercent": 0
+  },
+  "verdict": {
+    "allowances": [
+      {
+        "rule": "input_acknowledgement_p99_ms",
+        "add": 95,
+        "reason": "the round trip of 80 ms plus the jitter of 15 ms"
+      }
+    ],
+    "notApplicable": [
+      {
+        "rule": "owner_snapshot_gaps",
+        "reason": "the profile loses 1 % of the packets, and owner snapshots travel unreliably, so some never arrive by design; snapshot_drops still judges whether the worker sent them all"
+      }
+    ]
+  }
+}

@@ -75,6 +75,10 @@ public sealed record StressRunSummary(
     // role per bot and ten minutes, the churn, and the message classes of the service logs.
     public StressSummarySoak? Soak { get; init; }
 
+    // The network profile the run went through, with the proxy's counts, or null for a direct
+    // connection. A baseline is per scenario and profile.
+    public StressNetworkSummary? Network { get; init; }
+
     public const int TopTables = 10;
 
     public static StressRunSummary Create(
@@ -170,7 +174,8 @@ public sealed record StressRunSummary(
             report.Verdict?.Rules ?? [],
             numbers)
         {
-            Soak = StressSummarySoak.Create(report)
+            Soak = StressSummarySoak.Create(report),
+            Network = report.Network
         };
     }
 

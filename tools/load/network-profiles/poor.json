@@ -1,0 +1,38 @@
+{
+  "description": "A poor connection: a congested mobile network or a server on another continent. 200 ms round trip with 40 ms of jitter, 5 % of the packets lost in each direction, a fifth of that in short bursts, and a few packets arriving twice.",
+  "clientToServer": {
+    "delayMs": 100,
+    "jitterMs": 20,
+    "lossPercent": 5,
+    "duplicatePercent": 0.5,
+    "burstLoss": {
+      "sharePercent": 20,
+      "averageLengthPackets": 4
+    }
+  },
+  "serverToClient": {
+    "delayMs": 100,
+    "jitterMs": 20,
+    "lossPercent": 5,
+    "duplicatePercent": 0.5,
+    "burstLoss": {
+      "sharePercent": 20,
+      "averageLengthPackets": 4
+    }
+  },
+  "verdict": {
+    "allowances": [
+      {
+        "rule": "input_acknowledgement_p99_ms",
+        "add": 240,
+        "reason": "the round trip of 200 ms plus the jitter of 40 ms"
+      }
+    ],
+    "notApplicable": [
+      {
+        "rule": "owner_snapshot_gaps",
+        "reason": "the profile loses 5 % of the packets, and owner snapshots travel unreliably, so some never arrive by design; snapshot_drops still judges whether the worker sent them all"
+      }
+    ]
+  }
+}

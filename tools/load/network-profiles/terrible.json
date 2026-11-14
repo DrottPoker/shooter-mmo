@@ -1,0 +1,52 @@
+{
+  "description": "A terrible connection: a weak mobile signal on the move or a satellite link. 400 ms round trip with 100 ms of jitter, 10 % of the packets lost in each direction, three tenths of that in bursts, a few packets arriving twice, and the line down for 3 s every minute, the first time a minute after the client's first packet.",
+  "clientToServer": {
+    "delayMs": 200,
+    "jitterMs": 50,
+    "lossPercent": 10,
+    "duplicatePercent": 1,
+    "burstLoss": {
+      "sharePercent": 30,
+      "averageLengthPackets": 6
+    },
+    "outages": {
+      "firstAfterSeconds": 60,
+      "everySeconds": 60,
+      "durationSeconds": 3
+    }
+  },
+  "serverToClient": {
+    "delayMs": 200,
+    "jitterMs": 50,
+    "lossPercent": 10,
+    "duplicatePercent": 1,
+    "burstLoss": {
+      "sharePercent": 30,
+      "averageLengthPackets": 6
+    },
+    "outages": {
+      "firstAfterSeconds": 60,
+      "everySeconds": 60,
+      "durationSeconds": 3
+    }
+  },
+  "verdict": {
+    "allowances": [
+      {
+        "rule": "input_acknowledgement_p99_ms",
+        "add": 500,
+        "reason": "the round trip of 400 ms plus the jitter of 100 ms"
+      }
+    ],
+    "notApplicable": [
+      {
+        "rule": "owner_snapshot_gaps",
+        "reason": "the profile loses 10 % of the packets and cuts the line for 3 s every minute, and owner snapshots travel unreliably, so some never arrive by design; snapshot_drops still judges whether the worker sent them all"
+      },
+      {
+        "rule": "remote_update_rate_p5_hz",
+        "reason": "the line is down for 3 s every minute, which the outage is there to test, so the rate measures the outage"
+      }
+    ]
+  }
+}

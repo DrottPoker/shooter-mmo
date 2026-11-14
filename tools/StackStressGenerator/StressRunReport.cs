@@ -204,6 +204,9 @@ public sealed record StressRunReport(
     // The PostgreSQL log the run kept, with its deadlock and lock wait reports.
     public StressPostgresLogSummary? PostgresLog { get; init; }
 
+    // The network profile the bots' traffic went through, or null for a direct connection.
+    public StressNetworkSummary? Network { get; init; }
+
     public static StressRunReport Create(
         DateTime startedAt,
         DateTime endedAt,
@@ -278,7 +281,10 @@ public sealed record StressRunReport(
             providerReport.FullStack,
             gameplay,
             aggregate,
-            providerReport.Authority);
+            providerReport.Authority)
+        {
+            Network = options.Network is { } profile ? StressNetworkSummary.Create(profile, options.Seed) : null
+        };
     }
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)

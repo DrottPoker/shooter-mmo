@@ -18,9 +18,14 @@
 # StackStressGenerator world-variant before the worker starts, and the script says whether the
 # variant keeps the checked-in collision revision, so a Unity client can join the run.
 #
+# Under a network profile of tools/load/network-profiles, from the scenario or -Network, the
+# script also starts tools/NetworkImpairmentProxy between the bots and the worker, which
+# advertises the proxy's port, stops it last, and keeps its counts in the run folder. The verdict
+# applies the profile's allowances, and the baseline is the one of the scenario and the profile.
+#
 # Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the boundary or the
 # generator's own checks, 2 it could not run, including a run that could not measure because the
-# generator itself fell behind.
+# generator or the network proxy itself fell behind.
 param(
     # The scenario name, the file name in tools/load/scenarios without .json.
     [Parameter(Mandatory = $true)]
@@ -29,7 +34,11 @@ param(
     [int]$Bots = 0,
     # Overrides the scenario's steady interval.
     [int]$DurationSeconds = 0,
-    # Copies the run's summary.json to tools/load/baselines/<scenario>.json.
+    # The network profile of tools/load/network-profiles that the bots' traffic goes through, or
+    # none for a direct connection; overrides the scenario's.
+    [string]$Network = "",
+    # Copies the run's summary.json to tools/load/baselines/<scenario>.json, or
+    # <scenario>.<profile>.json under a network profile.
     [switch]$UpdateBaseline,
     # Prints what the script would start and run, and runs nothing.
     [switch]$Plan,
@@ -44,15 +53,17 @@ $StackStepPrefix = "load"
 
 $composeFile = Join-Path $repositoryRoot "docker-compose.stack-stress.yml"
 $scenarioPath = Join-Path $repositoryRoot "tools\load\scenarios\$Scenario.json"
-$baselinePath = Join-Path $repositoryRoot "tools\load\baselines\$Scenario.json"
+$baselinePath = $null
 $runFolder = Join-Path $repositoryRoot ("artifacts\load\" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-$Scenario")
 $gameServiceExe = Join-Path $repositoryRoot "src\Server\GameService\bin\Release\net10.0\Mmorpg.GameService.exe"
 $workerExe = Join-Path $repositoryRoot "src\Server\SimulationWorker\bin\Release\net10.0\Mmorpg.SimulationWorker.exe"
 $generatorExe = Join-Path $repositoryRoot "tools\StackStressGenerator\bin\Release\net10.0\Mmorpg.Tools.StackStressGenerator.exe"
+$proxyExe = Join-Path $repositoryRoot "tools\NetworkImpairmentProxy\bin\Release\net10.0\Mmorpg.Tools.NetworkImpairmentProxy.exe"
 $projects = [ordered]@{
     generator = "tools\StackStressGenerator\Mmorpg.Tools.StackStressGenerator.csproj"
     worker = "src\Server\SimulationWorker\Mmorpg.SimulationWorker.csproj"
     gameService = "src\Server\GameService\Mmorpg.GameService.csproj"
+    proxy = "tools\NetworkImpairmentProxy\Mmorpg.Tools.NetworkImpairmentProxy.csproj"
 }
 
 # Runs a program and returns its exit code, standard output, and standard error.
@@ -101,6 +112,14 @@ function Write-PlanSection([string]$Title, $Environment, $Sensitive) {
 function Write-Plan($LoadPlan) {
     Write-Step "Scenario $($LoadPlan.scenario): $($LoadPlan.description)"
     Write-Host "  Mode $($LoadPlan.mode), workload $($LoadPlan.workload), shard $($LoadPlan.shardId), worker UDP $($LoadPlan.workerUdpPort)."
+    if ($LoadPlan.proxy) {
+        Write-Host "  Network profile $($LoadPlan.network): the bots join through the network impairment proxy ($proxyExe) on UDP $($LoadPlan.proxy.udpPort), which forwards to the worker on UDP $($LoadPlan.proxy.forwardUdpPort)."
+        Write-Host "    arguments: $($LoadPlan.proxy.arguments -join ' ')"
+    }
+    else {
+        Write-Host "  Network profile none: the bots reach the worker directly."
+    }
+
     if ($LoadPlan.needsContainers) {
         Write-Host "  Recreates the containers of docker-compose.stack-stress.yml on TCP $($LoadPlan.containerTcpPorts -join ', ')."
     }
@@ -242,13 +261,53 @@ function Write-Verdict($Summary) {
     $rows | Format-Table -AutoSize -Wrap | Out-String -Width 220 | Write-Host
 }
 
+# The proxy's counts of a run under a network profile, one row per direction.
+function Write-NetworkCounts($Summary) {
+    $summaryNetwork = $Summary.network
+    if ($null -eq $summaryNetwork) {
+        return
+    }
+
+    if ($null -eq $summaryNetwork.proxy) {
+        Write-Step "Network profile $($summaryNetwork.profile): the proxy's counts are missing: $($summaryNetwork.proxyNote)"
+        return
+    }
+
+    $proxyCounts = $summaryNetwork.proxy
+    Write-Step "Network profile $($summaryNetwork.profile) through the proxy, $($proxyCounts.clientsSeen) clients, at most $($proxyCounts.maximumActiveClients) at once:"
+    $rows = @(@(
+        @{ Name = "client to server"; Counts = $proxyCounts.clientToServer },
+        @{ Name = "server to client"; Counts = $proxyCounts.serverToClient }
+    ) | ForEach-Object {
+        $counts = $_.Counts
+        $dropped = [double]$counts.droppedRandom + [double]$counts.droppedBurst + [double]$counts.droppedOutage
+        [pscustomobject]@{
+            Direction = $_.Name
+            Received = $counts.packetsReceived
+            Forwarded = $counts.packetsForwarded
+            "Dropped %" = if ([double]$counts.packetsReceived -gt 0) { Format-Number ($dropped * 100 / [double]$counts.packetsReceived) } else { "0" }
+            "Random/burst/outage" = "$($counts.droppedRandom)/$($counts.droppedBurst)/$($counts.droppedOutage)"
+            Duplicated = $counts.packetsDuplicated
+            "Delay p50/p99 ms" = "$(Format-Number $counts.delayMs.p50)/$(Format-Number $counts.delayMs.p99)"
+            "Late p99/max ms" = "$(Format-Number $counts.latenessMs.p99)/$(Format-Number $counts.latenessMs.maximum)"
+        }
+    })
+    $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+}
+
 function Write-BaselineDifference($Summary) {
     if (-not (Test-Path -LiteralPath $baselinePath)) {
-        Write-Step "No checked-in baseline for $Scenario; -UpdateBaseline records this run as one."
+        Write-Step "No checked-in baseline for $Scenario under the network profile $runNetwork; -UpdateBaseline records this run as one."
         return
     }
 
     $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+    $baselineNetwork = if ($baseline.network) { $baseline.network.profile } else { "none" }
+    if ($baselineNetwork -ne $runNetwork) {
+        Write-Step "The baseline $baselinePath was measured under the network profile $baselineNetwork, not $runNetwork; no difference is shown."
+        return
+    }
+
     Write-Step "Difference to the baseline of $($baseline.date) on $($baseline.machine.cpu) at $($baseline.commit) (informative only):"
     $names = @($baseline.keyNumbers.PSObject.Properties.Name) + @($Summary.keyNumbers.PSObject.Properties.Name) | Sort-Object -Unique
     foreach ($name in $names) {
@@ -278,6 +337,9 @@ $couldNotMeasure = $false
 $gameService = $null
 $worker = $null
 $generator = $null
+$proxy = $null
+# The plan names the profile; until it ran, the one -Network asked for.
+$runNetwork = if ($Network) { $Network } else { "none" }
 $containersStarted = $false
 $summaryPath = $null
 Push-Location $repositoryRoot
@@ -314,12 +376,21 @@ try {
         $planArguments += @("--duration-seconds", "$DurationSeconds")
     }
 
+    if ($Network) {
+        $planArguments += @("--network", $Network)
+    }
+
     $planResult = Invoke-Captured $generatorExe $planArguments
     if ($planResult.ExitCode -ne 0) {
         throw "The scenario is invalid: $($planResult.Error.Trim())"
     }
 
     $loadPlan = $planResult.Output | ConvertFrom-Json
+    # A baseline belongs to its scenario and network profile, so a run under a profile never
+    # replaces or compares with the direct one.
+    $runNetwork = $loadPlan.network
+    $baselineName = if ($runNetwork -eq "none") { "$Scenario.json" } else { "$Scenario.$runNetwork.json" }
+    $baselinePath = Join-Path $repositoryRoot "tools\load\baselines\$baselineName"
     Write-Plan $loadPlan
     if ($Plan) {
         $exitCode = 0
@@ -341,10 +412,14 @@ try {
             }
         }
 
-        Write-Step "Building SimulationWorker$(if ($loadPlan.needsGameService) { ' and GameService' }) in Release."
+        Write-Step "Building SimulationWorker$(if ($loadPlan.needsGameService) { ' and GameService' })$(if ($loadPlan.proxy) { ' and the network impairment proxy' }) in Release."
         Build-Project $projects.worker (Join-Path $runFolder "build-worker.log")
         if ($loadPlan.needsGameService) {
             Build-Project $projects.gameService (Join-Path $runFolder "build-game-service.log")
+        }
+
+        if ($loadPlan.proxy) {
+            Build-Project $projects.proxy (Join-Path $runFolder "build-network-proxy.log")
         }
 
         if ($loadPlan.needsContainers) {
@@ -369,6 +444,14 @@ try {
         $workerLog = Join-Path $runFolder "simulation-worker.log"
         $generatorLog = Join-Path $runFolder "generator.log"
         $udpLine = "Realtime transport listening on UDP port $($loadPlan.workerUdpPort)"
+        if ($loadPlan.proxy) {
+            # The proxy needs nothing else, and it must listen before the first bot joins.
+            Write-Step "Starting the network impairment proxy with the profile $runNetwork."
+            $proxyLog = Join-Path $runFolder "network-proxy.log"
+            $proxy = Start-StackProcess "network-proxy" $proxyExe @($loadPlan.proxy.arguments) @{} $runFolder $repositoryRoot
+            Wait-Until { (Read-SharedText $proxyLog) -match "listening on UDP" } "The network impairment proxy" $proxy $proxyLog $ReadyTimeoutSeconds $runFolder
+        }
+
         if ($loadPlan.needsGameService) {
             Write-Step "Starting GameService."
             $gameService = Start-StackProcess "game-service" $gameServiceExe @() (ConvertTo-Hashtable $loadPlan.gameServiceEnvironment) $runFolder $repositoryRoot
@@ -421,6 +504,11 @@ try {
                 throw "GameService ended during the run; its log is in '$runFolder'."
             }
 
+            if ($null -ne $proxy -and $proxy.HasExited) {
+                Write-LogTail (Join-Path $runFolder "network-proxy.err.log")
+                throw "The network impairment proxy ended during the run; its log is in '$runFolder'."
+            }
+
             Start-Sleep -Milliseconds 500
         }
 
@@ -441,6 +529,8 @@ finally {
     Stop-StackProcess $generator "StackStressGenerator"
     Stop-StackProcess $worker "SimulationWorker"
     Stop-StackProcess $gameService "GameService"
+    # The proxy stops last, so the worker's last packets still pass, and writes its counts.
+    Stop-StackProcess $proxy "NetworkImpairmentProxy"
     if ($containersStarted) {
         # The containers' logs go with them, so they are kept first: a deadlock's other statement
         # is only in the PostgreSQL log.
@@ -472,7 +562,7 @@ if ($null -ne $generatorExit -and $generatorExit -in @(0, 1, 3, 4) -and (Test-Pa
         0 { $exitCode = 0 }
         1 { $exitCode = 1 }
         4 {
-            # The generator fell behind, so the run measured nothing: it could not run.
+            # The generator or the proxy fell behind, so the run measured nothing: it could not run.
             $couldNotMeasure = $true
             $exitCode = 2
         }
@@ -486,7 +576,8 @@ if ($null -ne $generatorExit -and $generatorExit -in @(0, 1, 3, 4) -and (Test-Pa
 if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     Write-Soak $summary
-    Write-Step "Quality boundary of $Scenario ($($summary.bots) bots, $($summary.steadySeconds) s steady):"
+    Write-NetworkCounts $summary
+    Write-Step "Quality boundary of $Scenario under the network profile $runNetwork ($($summary.bots) bots, $($summary.steadySeconds) s steady):"
     Write-Verdict $summary
     Write-BaselineDifference $summary
     if ($UpdateBaseline) {
@@ -495,6 +586,6 @@ if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     }
 }
 
-$result = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 1) { "FAILED" } elseif ($couldNotMeasure) { "could not measure: the generator fell behind" } else { "could not run" }
-Write-Step ("Load scenario $Scenario $result in {0:N0} s. Run folder: $runFolder" -f $total.Elapsed.TotalSeconds)
+$result = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 1) { "FAILED" } elseif ($couldNotMeasure) { "could not measure: the generator or the network proxy fell behind, see the validity rules" } else { "could not run" }
+Write-Step ("Load scenario $Scenario under the network profile $runNetwork $result in {0:N0} s. Run folder: $runFolder" -f $total.Elapsed.TotalSeconds)
 exit $exitCode
