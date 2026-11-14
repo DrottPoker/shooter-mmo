@@ -18,6 +18,7 @@ public sealed partial class TableOwnershipTests
             ["character_currency_ledger"] = GameServiceSourceMap.Characters,
             ["character_appearances"] = GameServiceSourceMap.Characters,
             ["character_simulation_states"] = GameServiceSourceMap.Characters,
+            ["character_data_steps"] = GameServiceSourceMap.Characters,
             ["world_definitions"] = GameServiceSourceMap.Placement,
             ["fleets"] = GameServiceSourceMap.Placement,
             ["simulation_nodes"] = GameServiceSourceMap.Placement,
@@ -60,6 +61,7 @@ public sealed partial class TableOwnershipTests
             ["vendor_offers"] = GameServiceSourceMap.Items,
             ["vendor_sale_categories"] = GameServiceSourceMap.Items,
             ["live_mob_loot_grants"] = GameServiceSourceMap.Items,
+            ["item_data_steps"] = GameServiceSourceMap.Items,
             ["quest_catalogs"] = GameServiceSourceMap.Quests,
             ["quest_definitions"] = GameServiceSourceMap.Quests,
             ["character_quest_logs"] = GameServiceSourceMap.Quests,
@@ -84,7 +86,8 @@ public sealed partial class TableOwnershipTests
         "GameService.Items/Persistence/SecureContainerRemovalMigration.cs",
         "GameService.Items/Persistence/CloakEquipmentRemovalMigration.cs",
         "GameService.Items/Persistence/PermanentInventoryExpansionMigration.cs",
-        "GameService.Items/Persistence/PermanentInventoryReductionMigration.cs"
+        "GameService.Items/Persistence/PermanentInventoryReductionMigration.cs",
+        "GameService.Items/Persistence/CharacterItemStateBackfillMigration.cs"
     };
 
     [Fact]
@@ -141,12 +144,13 @@ public sealed partial class TableOwnershipTests
             .ToHashSet(StringComparer.Ordinal);
     }
 
-    // Common table expressions and set-returning functions that follow from, join,
-    // into, or update but are not tables.
+    // Common table expressions, set-returning functions, and system catalogs that follow
+    // from, join, into, or update but are not tables of a module.
     private static readonly IReadOnlySet<string> NonTableIdentifiers = new HashSet<string>(StringComparer.Ordinal)
     {
         "carried_containers",
         "generate_series",
+        "pg_index",
         "recalculated",
         "refreshed_session",
         "released_session"

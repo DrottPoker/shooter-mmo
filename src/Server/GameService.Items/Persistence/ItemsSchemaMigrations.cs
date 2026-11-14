@@ -29,6 +29,8 @@ internal static class ItemsSchemaMigrations
         new(CorpseSourceCharacterNameMigration.Id, CorpseSourceCharacterNameMigration.Sql),
         new(ItemCatalogNamesRemovalMigration.Id, ItemCatalogNamesRemovalMigration.Sql),
         new(ItemForeignKeyIndexMigration.Id, ItemForeignKeyIndexMigration.Sql),
-        new(ItemRetentionIndexMigration.Id, ItemRetentionIndexMigration.Sql)
+        new(ItemRetentionIndexMigration.Id, ItemRetentionIndexMigration.Sql),
+        new(ItemDataStepMigration.Id, ItemDataStepMigration.Sql),
+        new(CharacterItemStateBackfillMigration.Id, CharacterItemStateBackfillMigration.Sql)
     ];
 }

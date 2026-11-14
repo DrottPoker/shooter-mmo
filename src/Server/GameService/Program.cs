@@ -2,12 +2,14 @@ using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
-using Mmorpg.GameService.Placement;
 using Mmorpg.Server.Common.Configuration;
+
+// `migrate` and `migrate --plan` run instead of the web host; the other arguments configure.
+var (databaseCommand, configurationArgs) = GameServiceDatabaseCommandLine.Parse(args);
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
-    Args = args,
+    Args = configurationArgs,
     ContentRootPath = AppContext.BaseDirectory
 });
 builder.Configuration
@@ -25,7 +27,7 @@ builder.Configuration.AddOptionalDotEnvFile(
     Directory.GetCurrentDirectory(),
     AppContext.BaseDirectory);
 builder.Configuration.AddEnvironmentVariables();
-builder.Configuration.AddCommandLine(args);
+builder.Configuration.AddCommandLine(configurationArgs);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -40,14 +42,36 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddGameService(configuration);
 
 var app = builder.Build();
+var databaseInitializer = app.Services.GetRequiredService<GameServiceDatabaseInitializer>();
+
+if (databaseCommand is { } command)
+{
+    Environment.ExitCode = await GameServiceDatabaseCommandLine.RunAsync(
+        command,
+        databaseInitializer,
+        Console.Out,
+        Console.Error,
+        CancellationToken.None);
+    // Flushes the console log before the process ends.
+    await app.DisposeAsync();
+    return;
+}
 
 app.UseGameServicePipeline();
 
+// Without migrations at startup, a separate migrate run prepares the database, and a start
+// refuses a database that it would still change.
 if (configuration.Platform.RunMigrationsOnStartup)
 {
-    var initializer = app.Services.GetRequiredService<GameServiceDatabaseInitializer>();
-    await initializer.InitializeAsync(CancellationToken.None);
-    await PlacementModule.SeedTopologyAsync(app.Services, CancellationToken.None);
+    var changes = await databaseInitializer.InitializeAsync(CancellationToken.None);
+    foreach (var change in changes.SeedChanges)
+    {
+        app.Logger.LogInformation("Database seed change: {SeedChange}", change);
+    }
+}
+else
+{
+    await databaseInitializer.EnsureCurrentAsync(CancellationToken.None);
 }
 
 var commandExitCode = await ItemsCommandLine.TryRunAsync(app.Services, args, app.Logger);
