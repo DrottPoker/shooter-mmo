@@ -143,6 +143,7 @@ databases.
 | `Category=Load` | `[Trait("Category", "Load")]` | Deterministic scalability workloads with a timing budget that is sensitive to machine load |
 | Unity `Graphics` | `[Category("Graphics")]` on a Unity test | The test draws with a camera, so it needs a graphics device |
 | Unity `LiveStack` | `[Category("LiveStack")]` and `[Explicit]` on a Unity test | The test needs the running local stack; only `tools/Test-LiveStack.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
+| Unity `ClientCrowd` | `[Category("ClientCrowd")]` and `[Explicit]` on a Unity test | The test needs the stress arena with ActiveSimulationBots; only `tools/Measure-ClientCrowd.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
 | Unity `Player` | `[Category("Player")]` on a PlayMode test | The test must also pass in the runtime of a built player: `tools/Run-UnityTests.ps1 -Platform StandaloneWindows64` builds an IL2CPP test player and runs only this category in it, as [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) describes. The Editor's PlayMode suite runs it on Mono too. It holds the shared simulation and protocol goldens; a new test belongs here only when it needs no scene, no stack, and no Editor API |
 
 Use `--filter "Category!=Integration"` for a fast loop without containers and
@@ -293,6 +294,12 @@ suite has no tests, and uploads the NUnit XML files and Unity logs as
 `unity-test-results`. The runner, its security rules, and its setup are
 described in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 
+The workflow `.github/workflows/unity-player.yml` runs once a week and on a
+manual run, never for a pull request, on the same runner: it builds the `local`
+development player with its start check and runs the `Player` category in an
+IL2CPP test player, as [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner)
+describes. No ruleset requires it.
+
 The ruleset `development CI gate` in `.github/rulesets/development-ci-gate.json`
 requires all five jobs to pass before a commit reaches `development`; a skipped
 job counts as passed. Rename a job only together with that ruleset.
@@ -361,6 +368,25 @@ The play and the leaves are recorded apart, so the moments after each join do
 not mix with the play. Everything else is measured and written to
 `live-network-<profile>.json` in the run's log folder, and the test prints it
 as `[LIVE]` lines.
+
+`tools/Test-LiveStack.ps1 -Platform Player` runs both tests in an IL2CPP test
+player instead of the headless Editor, which proves that the client works
+under IL2CPP and stripping in real use, as
+[The Live Stack Test In A Player](../docs/LOCAL_DEVELOPMENT.md#the-live-stack-test-in-a-player)
+describes.
+
+`LiveStackCrowdPlayModeTests`, in the category `ClientCrowd` only, measures
+the client with a crowd of ActiveSimulationBots in the stress arena,
+`local-shard-2`: it enters the arena, waits up to two minutes until every bot
+the client knows has a body and the client knows as many bots as
+`MMORPG_CROWD_BOTS` names, or, without it, as many as stayed the same for three
+seconds, records the client measurements for `MMORPG_CROWD_SECONDS`, and writes
+`crowd-<label>.json` below `MMORPG_CROWD_RESULTS`. In a player it first sets a
+1920 by 1080 window. It asserts only that the crowd appears and the client
+stays in the arena; no rule judges the numbers.
+`tools/Measure-ClientCrowd.ps1` runs it, as
+[Measure The Client With A Crowd](../docs/LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes.
 
 No default run selects the test;
 [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) says

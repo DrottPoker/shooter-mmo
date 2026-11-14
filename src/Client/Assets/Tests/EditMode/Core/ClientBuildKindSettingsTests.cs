@@ -21,6 +21,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(PlayerSettings.GetManagedStrippingLevel(target), Is.EqualTo(release.StrippingLevel));
             Assert.That(PlayerSettings.GetIl2CppCodeGeneration(target), Is.EqualTo(release.CodeGeneration));
             Assert.That(PlayerSettings.GetIl2CppCompilerConfiguration(target), Is.EqualTo(release.CompilerConfiguration));
+
+            // A test player of tools/Run-UnityTests.ps1 compiles its C# with this variant too.
+            Assert.That(PlayerSettings.GetManagedCodeVariant(target), Is.EqualTo(ManagedCodeVariant.Release));
         }
 
         // A development build builds faster, but strips exactly what a release build strips, so

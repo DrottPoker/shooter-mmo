@@ -12,6 +12,11 @@
 # worker's own port walks beside it as another player. Without a profile it runs the whole
 # LiveStack category, the network part included, on loopback.
 #
+# -Platform Player runs the tests in a Windows IL2CPP test player instead of the headless Editor:
+# tools/Run-UnityTests.ps1 builds the player, which compiles like a player build of the kind
+# -PlayerBuild names, starts it in a window, and the script reads the [LIVE] lines from the
+# player's own log, which it keeps in the log folder.
+#
 # It always stops the two services, with Ctrl+C so the worker saves its characters and goes
 # offline, the proxy, and the containers it started, also when the test fails or the script is
 # interrupted with Ctrl+C. It never touches containers or processes it did not start, and it
@@ -27,7 +32,14 @@ param(
     # none for loopback.
     [string]$Network = "none",
     # How many times the network part leaves the World and comes back.
-    [int]$Leaves = 3
+    [int]$Leaves = 3,
+    # Where the client runs: the headless Editor's Play Mode, or a built IL2CPP test player.
+    [ValidateSet("Editor", "Player")]
+    [string]$Platform = "Editor",
+    # How the test player compiles, with -Platform Player: like a development build, whose C++
+    # builds in minutes, or like a release build.
+    [ValidateSet("Development", "Release")]
+    [string]$PlayerBuild = "Development"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +64,7 @@ $workerDll = Join-Path $repositoryRoot "src\Server\SimulationWorker\bin\Debug\ne
 
 $StackStepPrefix = "live"
 . (Join-Path $PSScriptRoot "LocalStackCommon.ps1")
+. (Join-Path $PSScriptRoot "UnityCommon.ps1")
 
 function Start-ServiceProcess([string]$Name, [string]$Dll, [hashtable]$Environment) {
     Start-StackProcess $Name "dotnet" @("`"$Dll`"") $Environment $logRoot $repositoryRoot
@@ -186,7 +199,8 @@ try {
 
     $stage = [Diagnostics.Stopwatch]::StartNew()
     $category = if ($useProxy) { "LiveStackNetwork" } else { "LiveStack" }
-    Write-Step "Running the $category tests headless under the network profile $Network, with a walk of $walkSeconds s and $Leaves leaves."
+    $where = if ($Platform -eq "Player") { "in an IL2CPP test player that compiles like a $($PlayerBuild.ToLowerInvariant()) build" } else { "headless" }
+    Write-Step "Running the $category tests $where under the network profile $Network, with a walk of $walkSeconds s and $Leaves leaves."
     [Environment]::SetEnvironmentVariable($runtimeVariable, $runtimeId)
     [Environment]::SetEnvironmentVariable("MMORPG_LIVE_STACK_NETWORK", $Network)
     [Environment]::SetEnvironmentVariable("MMORPG_LIVE_STACK_WALK_SECONDS", "$walkSeconds")
@@ -197,7 +211,13 @@ try {
     [Environment]::SetEnvironmentVariable("MMORPG_LIVE_STACK_DIRECT_UDP_PORT", "$udpPort")
     $exitCode = 1
     try {
-        & $runUnityTests -Platform PlayMode -TestCategory $category -ResultsPath $logRoot | ForEach-Object { Write-Step $_ }
+        if ($Platform -eq "Player") {
+            & $runUnityTests -Platform StandaloneWindows64 -PlayerBuild $PlayerBuild -TestCategory $category -ResultsPath $logRoot | ForEach-Object { Write-Step $_ }
+        }
+        else {
+            & $runUnityTests -Platform PlayMode -TestCategory $category -ResultsPath $logRoot | ForEach-Object { Write-Step $_ }
+        }
+
         $exitCode = 0
     }
     catch {
@@ -211,6 +231,15 @@ try {
     }
 
     $unityLog = Join-Path $logRoot "PlayMode-unity.log"
+    if ($Platform -eq "Player") {
+        # The test player logs to its own file, which the next player start replaces.
+        $playerLog = Get-UnityPlayerLogPath (Join-Path $repositoryRoot "src\Client")
+        $unityLog = Join-Path $logRoot "player.log"
+        if (Test-Path -LiteralPath $playerLog) {
+            Copy-Item -LiteralPath $playerLog -Destination $unityLog -Force
+        }
+    }
+
     if (Test-Path -LiteralPath $unityLog) {
         Select-String -LiteralPath $unityLog -Pattern "^\[LIVE\] " | ForEach-Object { Write-Host "  $($_.Line.Substring(7))" }
     }

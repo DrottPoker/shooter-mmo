@@ -55,6 +55,11 @@ jobs:
         shell: pwsh
         run: ./tools/Test-Changes.ps1 -VerifyRules
 
+      # The helpers that put a working tree back after a Unity run touch the developer's files.
+      - name: Verify the Unity file restore
+        shell: pwsh
+        run: ./tools/ci/Test-UnityCommon.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:

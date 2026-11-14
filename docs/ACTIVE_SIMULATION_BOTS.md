@@ -284,6 +284,11 @@ first, so the frame rate does not drop while they appear. The 64 m stress arena
 keeps every client, bot, and actor within the same interest area, so it is a
 dense visual crowd test.
 
+`tools/Measure-ClientCrowd.ps1` starts the stack and fixed populations of
+bots in the stress arena by itself and measures the client with them, as
+[Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes.
+
 For a crowd spread over a large World, run the population with
 `--ActiveSimulationBots:ShardId local-shard-1` and join `Local Shard 1` in
 Development World 2. That is the crowd that
