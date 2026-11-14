@@ -190,6 +190,9 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
     private Task<PlayingRejoinTicket>? wayBack;
     private PlayingRejoinTicket? rejoinTicket;
     private Task<PlayingRejoinFacts>? lateFacts;
+
+    // What the bot found right after the join of its way back, kept while late facts are read.
+    private RejoinFound? rejoinFound;
     private string? failureCode;
     private string? failureMessage;
 
@@ -816,8 +819,15 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         }
 
         joinedTimestamp = 0;
+        rejoinFound = null;
         Enter(PlayingChurnPhase.Rejoining, now);
     }
+
+    private sealed record RejoinFound(
+        int Health,
+        int MaximumHealth,
+        RealtimeCombatLifeState LifeState,
+        DateTime ObservedAt);
 
     private void AwaitRejoin(long now, CancellationToken cancellationToken)
     {
@@ -843,7 +853,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
             joinedTimestamp = now;
         }
 
-        if (body.View.OwnCombat is not { } own || body.View.Session is not { } session)
+        if (body.View.OwnCombat is not { } latest || body.View.Session is not { } session)
         {
             if (Stopwatch.GetElapsedTime(joinedTimestamp, now) > ChurnOwnerStateWait)
             {
@@ -854,6 +864,11 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
 
             return;
         }
+
+        // The check judges what the bot found when it came back. Reading the saved state below
+        // can take longer than the health regenerates, so the first observation is kept.
+        rejoinFound ??= new RejoinFound(latest.Health, latest.MaximumHealth, latest.LifeState, DateTime.UtcNow);
+        var own = rejoinFound;
 
         // The ticket named the body, but its release came first, so the join entered from the
         // saved place: the database says what the body left behind.
@@ -900,7 +915,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
                 own.Health,
                 own.MaximumHealth,
                 own.LifeState,
-                DateTime.UtcNow),
+                own.ObservedAt),
             facts,
             context.Regeneration.HealthPerSecond);
         var metrics = context.Metrics;
