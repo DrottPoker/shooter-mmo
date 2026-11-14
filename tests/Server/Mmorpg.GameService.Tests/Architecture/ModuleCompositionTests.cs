@@ -30,6 +30,7 @@ public sealed class ModuleCompositionTests
     private static readonly (Type Contract, string ImplementingModule)[] Contracts =
     [
         (typeof(IAccountLocks), "Mmorpg.GameService.Accounts"),
+        (typeof(IAccountSessionActivity), "Mmorpg.GameService.Accounts"),
         (typeof(ICharacterLocks), "Mmorpg.GameService.Characters"),
         (typeof(ICharacterWallet), "Mmorpg.GameService.Characters"),
         (typeof(ICharacterSimulationStates), "Mmorpg.GameService.Characters"),

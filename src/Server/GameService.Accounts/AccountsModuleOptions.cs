@@ -4,12 +4,19 @@ using Mmorpg.GameService.Platform.Configuration;
 
 namespace Mmorpg.GameService.Accounts;
 
+// An account session ends at the earlier of its last activity plus SessionIdleLifetime and its
+// login plus SessionMaximumLifetime, unless a live simulation session holds it.
 public sealed record AccountsModuleOptions(
-    TimeSpan SessionLifetime,
+    TimeSpan SessionIdleLifetime,
+    TimeSpan SessionMaximumLifetime,
     int AuthenticationPermitLimit,
     TimeSpan AuthenticationRateLimitWindow,
     SimulationWorkerCredentials SimulationWorkerCredentials)
 {
+    public const string SessionIdleLifetimeDaysKey = "Auth:SessionIdleLifetimeDays";
+    public const string SessionMaximumLifetimeDaysKey = "Auth:SessionMaximumLifetimeDays";
+    public const string RemovedSessionLifetimeHoursKey = "Auth:SessionLifetimeHours";
+
     // Read by its own factory after the core settings are valid.
     public RedisAccelerationOptions RedisAcceleration { get; init; } = RedisAccelerationOptions.Disabled;
 
@@ -23,12 +30,31 @@ public sealed record AccountsModuleOptions(
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(errors);
 
-        var sessionLifetimeHours = ConfigurationValidation.ValidateIntRange(
+        var sessionIdleLifetimeDays = ConfigurationValidation.ValidateIntRange(
             configuration,
-            "Auth:SessionLifetimeHours",
+            SessionIdleLifetimeDaysKey,
             1,
-            720,
+            365,
             errors);
+        var sessionMaximumLifetimeDays = ConfigurationValidation.ValidateIntRange(
+            configuration,
+            SessionMaximumLifetimeDaysKey,
+            1,
+            3_650,
+            errors);
+        if (sessionMaximumLifetimeDays < sessionIdleLifetimeDays)
+        {
+            errors.Add($"{SessionMaximumLifetimeDaysKey} must be at least {SessionIdleLifetimeDaysKey}.");
+        }
+
+        // A removed key fails the start instead of being ignored: a deployment that still sets
+        // it would believe its logins end after that many hours.
+        if (configuration[RemovedSessionLifetimeHoursKey] is not null)
+        {
+            errors.Add(
+                $"{RemovedSessionLifetimeHoursKey} was removed; {SessionIdleLifetimeDaysKey} and {SessionMaximumLifetimeDaysKey} set how long a login lasts.");
+        }
+
         var authenticationPermitLimit = ConfigurationValidation.ValidateIntRange(
             configuration,
             "RateLimiting:Authentication:PermitLimit",
@@ -46,7 +72,8 @@ public sealed record AccountsModuleOptions(
         var passwordHashing = PasswordHashingOptions.Read(configuration, errors);
 
         return new AccountsModuleOptions(
-            TimeSpan.FromHours(sessionLifetimeHours),
+            TimeSpan.FromDays(sessionIdleLifetimeDays),
+            TimeSpan.FromDays(sessionMaximumLifetimeDays),
             authenticationPermitLimit,
             TimeSpan.FromSeconds(authenticationWindowSeconds),
             credentials)

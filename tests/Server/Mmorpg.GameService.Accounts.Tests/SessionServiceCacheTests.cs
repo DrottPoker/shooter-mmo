@@ -22,11 +22,13 @@ public sealed class SessionServiceCacheTests
         var service = new SessionService(
             dataSource,
             new AccountsModuleOptions(
-                TimeSpan.FromHours(24),
+                TimeSpan.FromDays(14),
+                TimeSpan.FromDays(90),
                 5,
                 TimeSpan.FromSeconds(60),
                 new SimulationWorkerCredentials([], null)),
             new UnusedSessionLifecycleHandler(),
+            new UnusedSessionReferences(),
             cache);
 
         var result = await service.ResolveTokenAsync(
@@ -56,6 +58,20 @@ public sealed class SessionServiceCacheTests
             CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("Token resolution must not revoke sessions.");
+        }
+    }
+
+    // A cache hit reads no table, so no condition over Placement's rows is built.
+    private sealed class UnusedSessionReferences : IAccountSessionReferences
+    {
+        public string IsUnreferenced(string accountSessionIdExpression)
+        {
+            throw new InvalidOperationException("Token resolution never asks for references.");
+        }
+
+        public string IsHeld(string accountSessionIdExpression)
+        {
+            throw new InvalidOperationException("A cache hit never asks whether a session is held.");
         }
     }
 

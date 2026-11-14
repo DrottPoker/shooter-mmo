@@ -12,12 +12,15 @@ internal sealed class SessionService(
     NpgsqlDataSource dataSource,
     AccountsModuleOptions options,
     IAccountSessionLifecycleHandler lifecycleHandler,
+    IAccountSessionReferences references,
     IAccountSessionCache? configuredSessionCache = null,
     RedisAccelerationMetrics? redisMetrics = null)
 {
     private readonly IAccountSessionCache sessionCache =
         configuredSessionCache ?? NullAccountSessionCache.Instance;
 
+    // A new session starts at its login, created_at, and ends after the idle lifetime unless
+    // activity moves its end.
     public async Task<(Guid SessionId, string Token, DateTime ExpiresAt)> CreateSessionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
@@ -26,24 +29,30 @@ internal sealed class SessionService(
     {
         var token = TokenGenerator.CreateToken();
         var tokenHash = TokenGenerator.HashToken(token);
-        var expiresAt = DateTime.UtcNow.Add(options.SessionLifetime);
-
         var sessionId = Guid.NewGuid();
 
         const string sql = """
             insert into account_sessions (id, account_id, token_hash, expires_at)
-            values (@Id, @AccountId, @TokenHash, @ExpiresAt);
+            values (
+                @Id,
+                @AccountId,
+                @TokenHash,
+                least(
+                    now() + make_interval(secs => @SessionIdleLifetimeSeconds),
+                    now() + make_interval(secs => @SessionMaximumLifetimeSeconds)))
+            returning expires_at;
             """;
 
-        await connection.ExecuteAsync(new CommandDefinition(
+        var expiresAt = await connection.QuerySingleAsync<DateTime>(new CommandDefinition(
             sql,
-            new
-            {
-                Id = sessionId,
-                AccountId = accountId,
-                TokenHash = tokenHash,
-                ExpiresAt = expiresAt
-            },
+            AccountSessionActivity.EndParameters(
+                options,
+                new
+                {
+                    Id = sessionId,
+                    AccountId = accountId,
+                    TokenHash = tokenHash
+                }),
             transaction,
             cancellationToken: cancellationToken));
 
@@ -149,6 +158,10 @@ internal sealed class SessionService(
         CancellationToken cancellationToken)
     {
         var tokenHash = TokenGenerator.HashToken(token);
+
+        // A cached session carries the end it had when it was cached and lives no longer than
+        // the cache lifetime and that end, so a later end shows at the next resolve that reaches
+        // PostgreSQL, and a revocation removes it through its tombstone.
         var cachedSession = await sessionCache.GetAsync(tokenHash, cancellationToken);
         if (cachedSession is
             {
@@ -164,12 +177,22 @@ internal sealed class SessionService(
 
         redisMetrics?.RecordSessionCacheDatabaseFallback();
 
-        const string sql = """
+        // A token that reaches PostgreSQL is activity: the same statement moves the end of an
+        // active session, at most once an hour, and answers with the new end. Whether the session
+        // is active follows AccountsSql's one rule, which reads the row as the statement found it.
+        var sql = $"""
+            with extended_session as (
+                update account_sessions account_session
+                set expires_at = {AccountSessionActivity.EndSql("account_session")}
+                where account_session.token_hash = @TokenHash
+                  and {AccountSessionActivity.ExtendsSql("account_session", references)}
+                returning account_session.expires_at
+            )
             select a.id as "AccountId",
                    a.username as "Username",
                    s.id as "SessionId",
-                   s.expires_at as "ExpiresAt",
-                   s.expires_at <= now() as "IsExpired",
+                   coalesce((select extended_session.expires_at from extended_session), s.expires_at) as "ExpiresAt",
+                   {AccountsSql.IsActiveSession("s", references.IsHeld)} as "IsActive",
                    s.revoked_at as "RevokedAt",
                    s.revocation_reason as "RevocationReason"
             from account_sessions s
@@ -179,7 +202,10 @@ internal sealed class SessionService(
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var session = await connection.QuerySingleOrDefaultAsync<AccountSessionAuthenticationRow>(
-            new CommandDefinition(sql, new { TokenHash = tokenHash }, cancellationToken: cancellationToken));
+            new CommandDefinition(
+                sql,
+                AccountSessionActivity.EndParameters(options, new { TokenHash = tokenHash }),
+                cancellationToken: cancellationToken));
 
         if (session is null)
         {
@@ -196,7 +222,7 @@ internal sealed class SessionService(
                 : AccountSessionAuthenticationResult.Invalid();
         }
 
-        if (session.IsExpired)
+        if (!session.IsActive)
         {
             return AccountSessionAuthenticationResult.Invalid();
         }
@@ -345,7 +371,7 @@ internal sealed class SessionService(
         string Username,
         Guid SessionId,
         DateTime ExpiresAt,
-        bool IsExpired,
+        bool IsActive,
         DateTime? RevokedAt,
         string? RevocationReason);
 

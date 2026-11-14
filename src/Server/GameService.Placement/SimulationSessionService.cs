@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Placement.Development;
+using Mmorpg.GameService.Placement.Integration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
@@ -16,7 +17,8 @@ internal sealed class SimulationSessionService(
     PlacementModuleOptions options,
     ISimulationCharacterStateProvider characterStateProvider,
     ICharacterSimulationStates simulationStates,
-    DevelopmentSimulationBotAuthority developmentBotAuthority)
+    DevelopmentSimulationBotAuthority developmentBotAuthority,
+    IAccountSessionActivity accountSessionActivity)
 {
     // The most sessions one heartbeat request names.
     public const int MaximumHeartbeatSessions = 500;
@@ -27,11 +29,10 @@ internal sealed class SimulationSessionService(
         "invalid_simulation_session",
         "Simulation session is invalid, released, expired, or owned by another worker runtime.");
 
-    // Renews the leases of a worker runtime's sessions: one statement renews every valid lease and
-    // marks the ended account sessions, and a second reads the carry states of the renewed
-    // characters. Each session is answered on its own, so a refused one never fails the others,
-    // and a session's answer does not depend on the other sessions of the batch. The sessions of
-    // development bots are renewed in memory.
+    // Renews the leases of a worker runtime's sessions with a fixed number of statements for the
+    // whole batch, as RenewAsync describes. Each session is answered on its own, so a refused one
+    // never fails the others, and a session's answer does not depend on the other sessions of the
+    // batch. The sessions of development bots are renewed in memory.
     public async Task<ServiceResult<SimulationSessionHeartbeatResponse>> HeartbeatAsync(
         string workerId,
         SimulationSessionHeartbeatRequest request,
@@ -79,9 +80,11 @@ internal sealed class SimulationSessionService(
         return ServiceResult<SimulationSessionHeartbeatResponse>.Ok(new SimulationSessionHeartbeatResponse(answers));
     }
 
-    // Renews the leases in one statement and reads the renewed characters' carry states in a
-    // second. A renewed session whose character has no item state is left out, so it is refused
-    // although its lease renewal committed.
+    // Renews the leases in a short transaction: one statement locks the sessions and the next
+    // renews them and reads how their account sessions ended. After the commit, the account
+    // sessions of the renewed sessions are extended and the renewed characters' carry states read.
+    // A renewed session whose character has no item state is left out, so it is refused although
+    // its lease renewal committed.
     private async Task<Dictionary<Guid, SimulationSessionLeaseResponse>> RenewAsync(
         string workerId,
         string runtimeId,
@@ -91,40 +94,42 @@ internal sealed class SimulationSessionService(
     {
         var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
-        // The first CTE locks the sessions in ascending id order, the order of every statement
-        // that locks several sessions, so two heartbeats, a checkpoint, or a worker going offline
-        // never deadlock with it. A session that it waited for is checked again in its newest
-        // version, and the update finds it as locked. The lease goes on after the account
-        // session ended, since the character's body stays in the world until the worker releases
-        // the session. An account session that expired is marked here, as a logout or a new login
-        // marks it, and the answer names the end.
-        var sql = $"""
-            with locked_session as materialized (
-                select simulation_session.id
-                from character_simulation_sessions simulation_session
-                join unnest(@SimulationSessionIds::uuid[], @SessionTokenHashes::text[])
-                    as requested(id, session_token_hash)
-                  on requested.id = simulation_session.id
-                 and requested.session_token_hash = simulation_session.session_token_hash
-                where simulation_session.simulation_worker_id = @WorkerId
-                  and simulation_session.worker_runtime_id = @WorkerRuntimeId
-                  and simulation_session.released_at is null
-                  and simulation_session.expires_at > now()
-                order by simulation_session.id
-                for no key update of simulation_session
-            ),
-            refreshed_session as (
+        // Locks the sessions in ascending id order, the order of every statement that locks
+        // several sessions, so two heartbeats, a checkpoint, or a worker going offline never
+        // deadlock with it. A session that it waited for is checked again in its newest version.
+        const string lockSql = """
+            select simulation_session.id
+            from character_simulation_sessions simulation_session
+            join unnest(@SimulationSessionIds::uuid[], @SessionTokenHashes::text[])
+                as requested(id, session_token_hash)
+              on requested.id = simulation_session.id
+             and requested.session_token_hash = simulation_session.session_token_hash
+            where simulation_session.simulation_worker_id = @WorkerId
+              and simulation_session.worker_runtime_id = @WorkerRuntimeId
+              and simulation_session.released_at is null
+              and simulation_session.expires_at > now()
+            order by simulation_session.id
+            for no key update of simulation_session;
+            """;
+
+        // Runs after the lock, so it reads what a transaction that the lock waited for committed,
+        // such as a new login that replaced the account session, and names that end. The lease
+        // goes on after the account session ended, since the character's body stays in the world
+        // until the worker releases the session. A live session holds its account session, so the
+        // clock never ends it here; an account session that ended without marking its simulation
+        // session is marked here, as a logout or a new login marks it.
+        var renewSql = $"""
+            with refreshed_session as (
                 update character_simulation_sessions
                 set last_heartbeat_at = clock_timestamp(),
                     expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds),
                     account_session_ended_at = coalesce(
                         account_session_ended_at,
                         case
-                            when {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")} then null
+                            when {SimulationAccountSessionReferences.IsActiveOrUnbound("character_simulation_sessions.account_session_id")} then null
                             else clock_timestamp()
                         end)
-                from locked_session
-                where character_simulation_sessions.id = locked_session.id
+                where character_simulation_sessions.id = any(@LockedSessionIds)
                 returning character_simulation_sessions.id,
                           character_simulation_sessions.character_id,
                           character_simulation_sessions.shard_id,
@@ -140,31 +145,57 @@ internal sealed class SimulationSessionService(
                    refreshed.simulation_worker_id as "WorkerId",
                    refreshed.worker_runtime_id as "WorkerRuntimeId",
                    refreshed.expires_at as "ExpiresAt",
-                   {SimulationAccountSessionEndSql.Of("refreshed")} as "AccountSessionEnd"
+                   {SimulationAccountSessionEndSql.Of("refreshed")} as "AccountSessionEnd",
+                   refreshed.account_session_id as "AccountSessionId"
             from refreshed_session refreshed;
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var refreshed = (await connection.QueryAsync<HeartbeatRow>(
-            new CommandDefinition(
-                sql,
+        HeartbeatRow[] refreshed;
+        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
+        {
+            var locked = (await connection.QueryAsync<Guid>(new CommandDefinition(
+                lockSql,
                 new
                 {
                     SimulationSessionIds = simulationSessionIds.ToArray(),
                     SessionTokenHashes = sessionTokenHashes.ToArray(),
                     WorkerId = workerId,
-                    WorkerRuntimeId = runtimeId,
+                    WorkerRuntimeId = runtimeId
+                },
+                transaction,
+                cancellationToken: cancellationToken))).ToArray();
+            if (locked.Length == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return [];
+            }
+
+            refreshed = (await connection.QueryAsync<HeartbeatRow>(new CommandDefinition(
+                renewSql,
+                new
+                {
+                    LockedSessionIds = locked,
                     LeaseLifetimeSeconds = leaseLifetimeSeconds
                 },
+                transaction,
                 cancellationToken: cancellationToken))).ToArray();
-        var leases = new Dictionary<Guid, SimulationSessionLeaseResponse>(refreshed.Length);
-        if (refreshed.Length == 0)
-        {
-            return leases;
+            await transaction.CommitAsync(cancellationToken);
         }
 
-        // The renewed leases commit on their own, so the carry states read afterwards are at
-        // least as new as the leases.
+        // Play in the World is activity of the account session. The extension holds no simulation
+        // session lock, so it never waits for a login while it holds what the login takes next.
+        await accountSessionActivity.ExtendAsync(
+            connection,
+            refreshed
+                .Where(row => row.AccountSessionId is not null && row.AccountSessionEnd is null)
+                .Select(row => row.AccountSessionId!.Value)
+                .ToArray(),
+            cancellationToken);
+
+        // The renewed leases committed first, so the carry states read afterwards are at least as
+        // new as the leases.
+        var leases = new Dictionary<Guid, SimulationSessionLeaseResponse>(refreshed.Length);
         var carryStates = await characterStateProvider.GetManyAsync(
             connection,
             refreshed.Select(row => row.CharacterId).ToArray(),
@@ -627,7 +658,7 @@ internal sealed class SimulationSessionService(
         }
     }
 
-    // A renewed lease with how its account session ended, if it did.
+    // A renewed lease with how its account session ended, if it did, and that account session.
     private sealed record HeartbeatRow(
         Guid SimulationSessionId,
         Guid CharacterId,
@@ -635,7 +666,8 @@ internal sealed class SimulationSessionService(
         string WorkerId,
         string WorkerRuntimeId,
         DateTime ExpiresAt,
-        SimulationAccountSessionEnd? AccountSessionEnd)
+        SimulationAccountSessionEnd? AccountSessionEnd,
+        Guid? AccountSessionId)
     {
         public SessionLeaseRow Lease => new(
             SimulationSessionId,

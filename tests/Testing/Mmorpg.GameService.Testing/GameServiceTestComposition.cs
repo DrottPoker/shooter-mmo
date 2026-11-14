@@ -95,7 +95,8 @@ internal static class GameServiceTestComposition
                 TimeSpan.FromSeconds(1),
                 RunMigrationsOnStartup: true),
             new AccountsModuleOptions(
-                TimeSpan.FromHours(24),
+                TimeSpan.FromDays(14),
+                TimeSpan.FromDays(90),
                 5,
                 TimeSpan.FromSeconds(60),
                 new SimulationWorkerCredentials([], null)),

@@ -41,6 +41,17 @@ public sealed class GameServiceConfigurationValidationTests
         Assert.Contains("at least SessionCacheTtlSeconds", exception.Message);
     }
 
+    [Fact]
+    public void AccountSessionLifetimesAreReadInDays()
+    {
+        var configuration = GameServiceCoreConfiguration.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(AuthSettings(includeSecrets: true))
+            .Build());
+
+        Assert.Equal(TimeSpan.FromDays(14), configuration.Accounts.SessionIdleLifetime);
+        Assert.Equal(TimeSpan.FromDays(90), configuration.Accounts.SessionMaximumLifetime);
+    }
+
     // The Redis client has its own command timeout, apart from the readiness probe's, and the
     // tombstones of a revocation their own deadline.
     [Fact]
@@ -159,7 +170,11 @@ public sealed class GameServiceConfigurationValidationTests
     }
 
     [Theory]
-    [InlineData("Auth:SessionLifetimeHours", "100000000", "from 1 to 720")]
+    [InlineData("Auth:SessionIdleLifetimeDays", "0", "from 1 to 365")]
+    [InlineData("Auth:SessionIdleLifetimeDays", "366", "from 1 to 365")]
+    [InlineData("Auth:SessionMaximumLifetimeDays", "3651", "from 1 to 3650")]
+    [InlineData("Auth:SessionMaximumLifetimeDays", "13", "Auth:SessionMaximumLifetimeDays must be at least Auth:SessionIdleLifetimeDays")]
+    [InlineData("Auth:SessionLifetimeHours", "24", "Auth:SessionLifetimeHours was removed")]
     [InlineData("RateLimiting:Authentication:WindowSeconds", "0", "from 1 to 3600")]
     [InlineData("RateLimiting:Authentication:PermitLimit", "1001", "from 1 to 1000")]
     public void GameServiceRejectsOutOfRangeAuthenticationLimits(
@@ -373,7 +388,8 @@ public sealed class GameServiceConfigurationValidationTests
             ["HealthChecks:TimeoutMilliseconds"] = "1000",
             ["Database:RunMigrationsOnStartup"] = "true",
             ["Database:MaximumPoolSize"] = "64",
-            ["Auth:SessionLifetimeHours"] = "24",
+            ["Auth:SessionIdleLifetimeDays"] = "14",
+            ["Auth:SessionMaximumLifetimeDays"] = "90",
             ["Game:MaxCharactersPerAccount"] = "5",
             ["Simulation:JoinTicketLifetimeSeconds"] = "30",
             ["Simulation:SessionLeaseLifetimeSeconds"] = "30",

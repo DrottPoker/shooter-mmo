@@ -63,6 +63,9 @@ bindings and player-configurable rebinding are not implemented.
   client replaces the first one: the first client is disconnected from its
   shard, clears its local account state, and returns to LoginMenu, whose card
   says `This account logged in from another client.`
+- A login lasts 14 days after the client was last used and 90 days at most, and
+  never ends while the character is in the World, also past those days: it
+  ends once the character left the World.
 - When the account session expires or is revoked, the client returns to
   LoginMenu within a few seconds, also outside a World, and the card says why,
   such as `Your login has expired. Log in again.`

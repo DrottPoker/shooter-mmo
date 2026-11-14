@@ -5,11 +5,13 @@ using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Accounts.Retention;
 
-// Account sessions, counted from the expiry of their token, also when they were revoked earlier:
-// until then a replaced token still answers account_session_replaced, and the session cache keeps
-// no entry past it. An active session is never due, and a session that a simulation session or a
-// join ticket still names waits until Placement's retention deleted those. No new row can name a
-// session whose token expired, so one statement may lock and decide.
+// Account sessions, counted from the stored end of their token, also when they were revoked
+// earlier: until then a replaced token still answers account_session_replaced, and the session
+// cache keeps no entry past it. Activity moves the end only while the session is active, so a due
+// session never moves again. A session that a live simulation session holds past its stored end
+// ends when that session is released, but a session that a simulation session or a join ticket
+// still names waits until Placement's retention deleted those, so it stays a window after its real
+// end too. No new row can name an ended session, so one statement may lock and decide.
 internal sealed class AccountSessionRetentionTask(IAccountSessionReferences references) : IRetentionTask
 {
     public string Name => "account_sessions";
