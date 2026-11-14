@@ -2904,9 +2904,45 @@ describes. The bots, the worker, and GameService run on the same machine as the
 client, so a large crowd measures that machine as a whole: when the worker
 falls behind its ticks or drops snapshots, which its log in the run's folder
 says, the client sees fewer owner snapshots and starves its remote players for
-reasons outside the client. The baseline of the three sizes, in the IL2CPP
-player and in the Editor's Play Mode, is not recorded yet: it needs a run on a
-machine that no other program, such as a game, shares.
+reasons outside the client.
+
+The baseline, measured on 2026-11-14 on an AMD Ryzen 7 5800 with an NVIDIA
+GeForce RTX 3070 (Direct3D 12), at 1920 by 1080 with the quality level `PC`,
+no VSync, and no frame rate limit, 60 seconds per size:
+
+| Bots in view | Whole crowd shown after | Frame p50 | p95 | p99 | Longest | Owner snapshots per s | Remote players starved | Allocated / reserved / managed memory | Player private memory |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
+| 100 | 1.7 s | 4.5 ms | 7.2 ms | 9.6 ms | 14.6 ms | 15.0 | never | 312 / 809 / 14 MB | 1842 MB |
+| 200 | 3.4 s | 7.9 ms | 11.0 ms | 13.9 ms | 26.4 ms | 15.0 | never | 420 / 1067 / 18 MB | 2174 MB |
+| 400 | 6.7 s | 13.1 ms | 17.3 ms | 20.3 ms | 35.7 ms | 15.0 | 18.7 % of the time, 0.28 s at the longest | 615 / 1330 / 26 MB | 2653 MB |
+
+What the baseline says:
+
+- **The frame grows by about 3 ms per 100 dressed bodies in view**, and the
+  built client holds 60 frames per second with 400 of them on this machine,
+  with about 3 ms to spare at the median and none at the 95th percentile.
+- **No frame was longer than 36 ms**, also while 400 bodies came into view.
+- **The whole crowd is shown about 1.7 s per 100 bodies** after the World
+  scene has loaded.
+- **Remote players starve at 400 in view, and not at 200.** The owner
+  snapshots kept their 15 per second, the worker held its tick (p99 at most
+  16 ms) and dropped no snapshot while the client recorded, so the starvation
+  is the worker spreading the updates of a dense crowd under its snapshot
+  budget, as
+  [Remote Update Rate](STACK_STRESS_TESTING.md#remote-update-rate) describes,
+  while the presentation of a remote player stops at its newest state. This
+  cause is the likely one, not measured per entity.
+- **Private memory grows by about 3 MB per body in view.**
+
+Every other program used 0.6 processors and none of the graphics card while
+the client recorded; the bots, the worker, and GameService on the same machine
+kept it 64 to 71 percent busy. The test runner marks its player as a
+development build (`Debug.isDebugBuild`), although it compiles with the release
+settings and the `Release` code variant; a shipped release build is not
+measured. The baseline of the Editor's Play Mode is not recorded either; it
+needs an open Editor, as
+[Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes.
 
 To look by hand, start the bots on `local-shard-1` as in
 [Visual Unity Test](ACTIVE_SIMULATION_BOTS.md#visual-unity-test), join, and read
