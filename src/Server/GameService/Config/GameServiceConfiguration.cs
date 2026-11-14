@@ -35,6 +35,13 @@ internal sealed record GameServiceConfiguration(
         ArgumentNullException.ThrowIfNull(environment);
 
         var core = GameServiceCoreConfiguration.FromConfiguration(configuration);
+        var retentionErrors = core.Platform.Retention.WindowErrors(environment.IsDevelopment());
+        if (retentionErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "GameService configuration is invalid:" + Environment.NewLine
+                + string.Join(Environment.NewLine, retentionErrors.Select(error => $"- {error}")));
+        }
 
         // Self-contained option sets report their own errors, in the original order.
         var worlds = WorldManifestCatalog.FromConfiguration(configuration);

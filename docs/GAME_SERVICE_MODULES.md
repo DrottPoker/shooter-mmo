@@ -1080,7 +1080,15 @@ refused by durable state:
 | `mob-corpse-general`, `-equipment`, `-bag`, `mob-loot-entry:<n>`, `mob-loot-item` | Container, loot entry, and item ids of a corpse that is created at most once, never operation ids |
 
 `Retention:ItemHistory` must therefore outlast every retry of a worker
-operation and every live corpse, which its lower bound of three minutes keeps.
+operation and every live corpse. A worker retries an uncertain operation, such
+as a quest credit whose answer was lost, for as long as its session lives, with
+no limit of its own, so outside the Development environment both windows are at
+least one day, far longer than any outage that a session survives; GameService
+refuses to start with a shorter one. The Development environment accepts
+windows down to three minutes for a soak or a test, which still outlasts a live
+corpse. A pass that runs out of its budget is followed by one that starts with
+the task that was cut off, so a task that uses the whole budget cannot keep the
+tasks behind it from running.
 
 The migrations create every object in the `public` schema, and
 `bootstrap_character_item_state` pins its `search_path` to `public`. A

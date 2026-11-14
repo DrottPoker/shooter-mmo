@@ -24,7 +24,9 @@ internal sealed record RetentionPass(IReadOnlyList<RetentionTaskPass> Tasks, Tim
 
 // One retention pass: every registered task in turn, each batch in a short transaction of its own,
 // and round after round for the tasks whose last batch was full, until no task has a full batch
-// left or the pass used its budget, so a backlog drains instead of waiting for the next pass.
+// left or the pass used its budget, so a backlog drains instead of waiting for the next pass. A
+// pass that ran out of budget is followed by one that starts with the task that was cut off, so
+// tasks that use the whole budget cannot keep the tasks behind them from ever running.
 internal sealed class RetentionRunner
 {
     // A batch locks only the rows it deletes, with skip locked, so it never waits for play; the
@@ -38,6 +40,10 @@ internal sealed class RetentionRunner
     private readonly RetentionMetrics metrics;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<RetentionRunner> logger;
+
+    // The task the next pass starts with: the first registered one, or the one that the budget
+    // of the last pass cut off. The host runs one pass at a time.
+    private int firstTask;
 
     public RetentionRunner(
         NpgsqlDataSource dataSource,
@@ -67,7 +73,8 @@ internal sealed class RetentionRunner
     {
         var started = timeProvider.GetTimestamp();
         var states = tasks.Select(task => new TaskState(task)).ToArray();
-        var due = states.ToList();
+        var due = states.Skip(firstTask).Concat(states.Take(firstTask)).ToList();
+        firstTask = 0;
         var outOfBudget = false;
         while (due.Count > 0 && !outOfBudget)
         {
@@ -77,6 +84,7 @@ internal sealed class RetentionRunner
                 if (timeProvider.GetElapsedTime(started) >= options.PassBudget)
                 {
                     outOfBudget = true;
+                    firstTask = Array.IndexOf(states, state);
                     break;
                 }
 
