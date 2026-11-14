@@ -291,6 +291,27 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
     }
 
+    // Sends the session heartbeat of a worker runtime that names one session, and returns
+    // GameService's answer for that session: its renewed lease or its refusal.
+    public async Task<SimulationSessionHeartbeatResult> HeartbeatSessionAsync(
+        Guid simulationSessionId,
+        string sessionToken,
+        string workerId = "local-simulation-worker-1",
+        string runtimeId = "integration-worker-runtime")
+    {
+        var heartbeat = await SimulationSessionService.HeartbeatAsync(
+            workerId,
+            new SimulationSessionHeartbeatRequest(
+                runtimeId,
+                [new SimulationSessionHeartbeatEntry(simulationSessionId, sessionToken)]),
+            CancellationToken.None);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
+        var result = Assert.Single(heartbeat.Value!.Sessions);
+        Assert.Equal(simulationSessionId, result.SimulationSessionId);
+        Assert.True((result.Lease is null) != (result.Error is null));
+        return result;
+    }
+
     public async Task<int> ExecuteScalarIntAsync(string sql)
     {
         await using var command = DataSource.CreateCommand(sql);

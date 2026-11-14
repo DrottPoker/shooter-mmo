@@ -31,7 +31,23 @@ public sealed record SimulationWorkerConfig(
     string RedisConnectionString,
     TimeSpan HealthCheckTimeout)
 {
+    // How many session heartbeat requests, and releases at shutdown, run at once.
     public int SimulationSessionHeartbeatMaxConcurrency { get; init; } = 8;
+
+    // How many sessions one session heartbeat request names at most.
+    public int SimulationSessionHeartbeatBatchSize { get; init; } = DefaultSimulationSessionHeartbeatBatchSize;
+
+    public const int DefaultSimulationSessionHeartbeatBatchSize = 250;
+
+    // GameService takes at most this many sessions in one heartbeat request.
+    public const int MaximumSimulationSessionHeartbeatBatchSize = 500;
+
+    // How long a session heartbeat request that failed for a passing reason waits before it is
+    // sent again, as long as the heartbeat interval lasts.
+    public TimeSpan SimulationSessionHeartbeatRetryDelay { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultSimulationSessionHeartbeatRetryMilliseconds);
+
+    public const int DefaultSimulationSessionHeartbeatRetryMilliseconds = 2_000;
 
     // How long a new runtime keeps retrying while a previous runtime's registry lease
     // is still live, before it concludes that another live runtime owns the worker id.
@@ -265,6 +281,20 @@ public sealed record SimulationWorkerConfig(
             section["SimulationSessionHeartbeatMaxConcurrency"],
             "SimulationWorker:SimulationSessionHeartbeatMaxConcurrency",
             errors);
+        var sessionHeartbeatBatchSize = string.IsNullOrWhiteSpace(
+                section["SimulationSessionHeartbeatBatchSize"])
+            ? DefaultSimulationSessionHeartbeatBatchSize
+            : PositiveInt(
+                section["SimulationSessionHeartbeatBatchSize"],
+                "SimulationWorker:SimulationSessionHeartbeatBatchSize",
+                errors);
+        var sessionHeartbeatRetryMilliseconds = string.IsNullOrWhiteSpace(
+                section["SimulationSessionHeartbeatRetryMilliseconds"])
+            ? DefaultSimulationSessionHeartbeatRetryMilliseconds
+            : PositiveInt(
+                section["SimulationSessionHeartbeatRetryMilliseconds"],
+                "SimulationWorker:SimulationSessionHeartbeatRetryMilliseconds",
+                errors);
         var registryHeartbeatSeconds = PositiveInt(
             First(
                 section["RegistryHeartbeatSeconds"],
@@ -438,6 +468,17 @@ public sealed record SimulationWorkerConfig(
         if (sessionHeartbeatMaxConcurrency > 128)
         {
             errors.Add("SimulationWorker:SimulationSessionHeartbeatMaxConcurrency must not exceed 128.");
+        }
+
+        if (sessionHeartbeatBatchSize > MaximumSimulationSessionHeartbeatBatchSize)
+        {
+            errors.Add("SimulationWorker:SimulationSessionHeartbeatBatchSize must not exceed 500.");
+        }
+
+        if (sessionHeartbeatRetryMilliseconds >= sessionHeartbeatSeconds * 1_000L)
+        {
+            errors.Add(
+                "SimulationWorker:SimulationSessionHeartbeatRetryMilliseconds must be shorter than SimulationSessionHeartbeatSeconds.");
         }
 
         if (registryAcquireTimeoutSeconds <= registryHeartbeatSeconds
@@ -625,6 +666,8 @@ public sealed record SimulationWorkerConfig(
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds))
         {
             SimulationSessionHeartbeatMaxConcurrency = sessionHeartbeatMaxConcurrency,
+            SimulationSessionHeartbeatBatchSize = sessionHeartbeatBatchSize,
+            SimulationSessionHeartbeatRetryDelay = TimeSpan.FromMilliseconds(sessionHeartbeatRetryMilliseconds),
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             PerformanceReportPath = performanceReportPath,

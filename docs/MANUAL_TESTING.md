@@ -2871,6 +2871,26 @@ out. Every rule of the table reads `pass`, the script prints
 and no `shooter-mmo-stack-stress` container is left. A run takes about one and
 a half minutes.
 
+### One Session Heartbeat Per Worker
+
+Run the smoke scenario with GameService's request lines in its log, then count
+the session heartbeat requests that GameService received:
+
+```powershell
+[Environment]::SetEnvironmentVariable("Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics", "Information")
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario smoke
+[Environment]::SetEnvironmentVariable("Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics", $null)
+$log = Get-ChildItem artifacts/load -Directory | Sort-Object Name | Select-Object -Last 1 |
+    ForEach-Object { Join-Path $_.FullName "game-service.log" }
+(Select-String -Path $log -Pattern "Request starting .*/session-heartbeat").Count
+(Select-String -Path $log -Pattern "Request starting .*/api/simulation-sessions/[^/]+/heartbeat").Count
+```
+
+Expected result: the run passes as [The Smoke Scenario](#the-smoke-scenario)
+describes. The first count is one request per 10 seconds while the ten bots are
+in the World, about 5, not one per bot and 10 seconds, and the second count is
+0, because that route no longer exists.
+
 ### The Smoke Scenario On A Normal Network
 
 ```powershell
@@ -3194,6 +3214,20 @@ while fresh heartbeats arrive, offline at once after the graceful stop, and
 offline after the heartbeat timeout following the ungraceful stop. The response
 shows each shard's World, fleet, region, rule set, player count, and capacity,
 but never a worker host, port, or runtime.
+
+### A Short GameService Outage
+
+1. Join with the Unity client, as
+   [Join With The Unity Client](#join-with-the-unity-client) describes.
+2. Stop GameService with Ctrl+C, and start it again at once with
+   `dotnet run --project src/Server/GameService --no-build`, so it is away for
+   about ten seconds.
+
+Expected result: while GameService is away, the worker logs `Could not heartbeat
+1 simulation sessions: auth_service_unavailable.` every 2 seconds at most, and
+no session is invalidated. Once GameService is ready, the next session heartbeat
+renews the lease without a warning, and the character stays in the World
+without a disconnect.
 
 ### Join Ticket
 

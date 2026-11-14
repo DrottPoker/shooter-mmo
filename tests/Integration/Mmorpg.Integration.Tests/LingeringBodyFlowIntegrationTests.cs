@@ -90,19 +90,14 @@ public sealed class LingeringBodyFlowIntegrationTests
         var body = entities.RegisterPlayer(first, () => Movement(first)).Entity;
 
         await LogOutAsync(context, player, cancellationToken);
-        var heartbeat = await client.HeartbeatSimulationSessionAsync(
-            first.SimulationSessionId,
-            WorkerRuntimeId,
-            first.SimulationSessionToken,
-            cancellationToken);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Code + ": " + heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
-        Assert.Equal(GameServiceOutcome.AccountSessionEndedCode, heartbeat.Value.AccountSessionEnded);
+        var heartbeat = await RenewAsync(client, first, cancellationToken);
+        Assert.False(heartbeat.Released);
+        Assert.Equal(GameServiceOutcome.AccountSessionEndedCode, heartbeat.AccountSessionEnded);
         Assert.True(sessions.MarkAccountSessionEnded(
             first.CharacterId,
             first.SimulationSessionId,
             first.SimulationSessionToken,
-            heartbeat.Value.AccountSessionEnded!));
+            heartbeat.AccountSessionEnded!));
         Assert.True(sessions.IsCurrent(first, DateTime.UtcNow));
 
         var account = await LogInAsync(context, "relogin_player", cancellationToken);
@@ -116,13 +111,8 @@ public sealed class LingeringBodyFlowIntegrationTests
         var resumed = entities.RegisterPlayer(registered!, () => throw new InvalidOperationException("A reconnect keeps its entity."));
         Assert.False(resumed.IsNewEntity);
         Assert.Same(body, resumed.Entity);
-        var renewed = await client.HeartbeatSimulationSessionAsync(
-            second.SimulationSessionId,
-            WorkerRuntimeId,
-            second.SimulationSessionToken,
-            cancellationToken);
-        Assert.True(renewed.Succeeded, renewed.Error?.Code + ": " + renewed.Error?.Message);
-        Assert.Null(renewed.Value!.AccountSessionEnded);
+        var renewed = await RenewAsync(client, second, cancellationToken);
+        Assert.Null(renewed.AccountSessionEnded);
     }
 
     // The same flow, but after the new login the account asks for another character, which stays
@@ -155,6 +145,24 @@ public sealed class LingeringBodyFlowIntegrationTests
 
         Assert.False(blocked.Succeeded);
         Assert.Equal("account_character_already_active", blocked.Error!.Code);
+    }
+
+    // The renewed lease of the session in the worker's session heartbeat, as the worker sends it.
+    private static async Task<SimulationSessionLeaseResponse> RenewAsync(
+        GameServiceClient client,
+        ActiveSimulationSession session,
+        CancellationToken cancellationToken)
+    {
+        var heartbeat = await client.HeartbeatSimulationSessionsAsync(
+            WorkerId,
+            new SimulationSessionHeartbeatRequest(
+                WorkerRuntimeId,
+                [new SimulationSessionHeartbeatEntry(session.SimulationSessionId, session.SimulationSessionToken)]),
+            cancellationToken);
+        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Code + ": " + heartbeat.Error?.Message);
+        var lease = Assert.Single(heartbeat.Value!.Sessions).Lease;
+        Assert.NotNull(lease);
+        return lease;
     }
 
     private static async Task LogOutAsync(

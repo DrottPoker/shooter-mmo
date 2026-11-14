@@ -100,6 +100,16 @@ public sealed class ActiveSimulationSessionStore
         }
     }
 
+    // Whether the session is its character's current generation, whatever its local lease says.
+    public bool IsCurrentGeneration(ActiveSimulationSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        lock (syncRoot)
+        {
+            return IsCurrentGenerationLocked(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken);
+        }
+    }
+
     // Records that the account session of the current session generation ended, with GameService's
     // code for the end. The session stays current. True only when this call recorded it: false
     // when the generation is not the current one or its end was recorded already, whose code stays.

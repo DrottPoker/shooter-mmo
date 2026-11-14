@@ -237,7 +237,8 @@ ASP.NET. LiteNetLib owns its UDP endpoint. It owns:
   headroom, and low-cardinality realtime metrics.
 - Server-side population gauges that distinguish real players, synthetic bots,
   and unauthenticated peers without extending the gameplay protocol.
-- Bounded session heartbeat fan-out.
+- One batched session heartbeat per interval that renews the leases of all its
+  sessions, with a retry within the interval.
 - Live world actors: identity, spawn lifecycle, interaction authority,
   capability dispatch, Mob brains, resource node charges, and gathering timing.
 - Server-authoritative combat: health, mana, targets, attack timing,

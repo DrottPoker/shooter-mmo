@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -215,6 +216,35 @@ internal sealed record SimulationAppearanceChangeRequest(
 internal sealed record SimulationSessionCredentialRequest(
     string? WorkerRuntimeId,
     string? SessionToken);
+
+// The heartbeat of a worker runtime's simulation sessions: each session with the token that
+// proves it, as the release proves it.
+internal sealed record SimulationSessionHeartbeatRequest(
+    string? RuntimeId,
+    SimulationSessionHeartbeatEntry[]? Sessions);
+
+internal sealed record SimulationSessionHeartbeatEntry(Guid SimulationSessionId, string? SessionToken);
+
+// One answer per session of a heartbeat, in the request's order.
+internal sealed record SimulationSessionHeartbeatResponse(SimulationSessionHeartbeatResult[] Sessions);
+
+// The renewed lease of one session, or why it was not renewed: invalid_simulation_session for a
+// session that is released, expired, not the worker runtime's, or proved by another token.
+internal sealed record SimulationSessionHeartbeatResult(
+    Guid SimulationSessionId,
+    SimulationSessionLeaseResponse? Lease,
+    ErrorResponse? Error)
+{
+    public static SimulationSessionHeartbeatResult Renewed(SimulationSessionLeaseResponse lease)
+    {
+        return new SimulationSessionHeartbeatResult(lease.SimulationSessionId, lease, null);
+    }
+
+    public static SimulationSessionHeartbeatResult Refused(Guid simulationSessionId, ErrorResponse error)
+    {
+        return new SimulationSessionHeartbeatResult(simulationSessionId, null, error);
+    }
+}
 
 internal sealed record SimulationSessionLeaseResponse(
     Guid SimulationSessionId,

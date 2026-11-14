@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Security;
@@ -14,28 +15,105 @@ internal sealed class SimulationSessionService(
     NpgsqlDataSource dataSource,
     PlacementModuleOptions options,
     ISimulationCharacterStateProvider characterStateProvider,
-    ICharacterSimulationStates simulationStates)
+    ICharacterSimulationStates simulationStates,
+    DevelopmentSimulationBotAuthority developmentBotAuthority)
 {
-    public async Task<ServiceResult<SimulationSessionLeaseResponse>> HeartbeatAsync(
-        Guid simulationSessionId,
+    // The most sessions one heartbeat request names.
+    public const int MaximumHeartbeatSessions = 500;
+
+    public const string InvalidHeartbeatCode = "invalid_simulation_session_heartbeat";
+
+    private static readonly ErrorResponse InvalidSessionError = new(
+        "invalid_simulation_session",
+        "Simulation session is invalid, released, expired, or owned by another worker runtime.");
+
+    // Renews the leases of a worker runtime's sessions: one statement renews every valid lease and
+    // marks the ended account sessions, and a second reads the carry states of the renewed
+    // characters. Each session is answered on its own, so a refused one never fails the others,
+    // and a session's answer does not depend on the other sessions of the batch. The sessions of
+    // development bots are renewed in memory.
+    public async Task<ServiceResult<SimulationSessionHeartbeatResponse>> HeartbeatAsync(
         string workerId,
-        SimulationSessionCredentialRequest request,
+        SimulationSessionHeartbeatRequest request,
         CancellationToken cancellationToken)
     {
-        var validationError = ValidateRequest(simulationSessionId, workerId, request);
+        var validationError = ValidateHeartbeat(workerId, request);
         if (validationError is not null)
         {
             return validationError;
         }
 
-        var sessionTokenHash = TokenGenerator.HashToken(request.SessionToken!.Trim());
+        var entries = request.Sessions!;
+        var trimmedWorkerId = workerId.Trim();
+        var runtimeId = request.RuntimeId!.Trim();
+        var results = new SimulationSessionHeartbeatResult?[entries.Length];
+        var bots = developmentBotAuthority.HeartbeatSessions(trimmedWorkerId, runtimeId, entries);
+        var databaseIds = new List<Guid>(entries.Length);
+        var databaseTokenHashes = new List<string>(entries.Length);
+        for (var index = 0; index < entries.Length; index++)
+        {
+            var entry = entries[index];
+            if (bots.TryGetValue(entry.SimulationSessionId, out var bot))
+            {
+                results[index] = bot;
+                continue;
+            }
+
+            databaseIds.Add(entry.SimulationSessionId);
+            databaseTokenHashes.Add(TokenGenerator.HashToken(entry.SessionToken!.Trim()));
+        }
+
+        var leases = databaseIds.Count == 0
+            ? new Dictionary<Guid, SimulationSessionLeaseResponse>()
+            : await RenewAsync(trimmedWorkerId, runtimeId, databaseIds, databaseTokenHashes, cancellationToken);
+        var answers = new SimulationSessionHeartbeatResult[entries.Length];
+        for (var index = 0; index < entries.Length; index++)
+        {
+            var simulationSessionId = entries[index].SimulationSessionId;
+            answers[index] = results[index]
+                ?? (leases.TryGetValue(simulationSessionId, out var lease)
+                    ? SimulationSessionHeartbeatResult.Renewed(lease)
+                    : SimulationSessionHeartbeatResult.Refused(simulationSessionId, InvalidSessionError));
+        }
+
+        return ServiceResult<SimulationSessionHeartbeatResponse>.Ok(new SimulationSessionHeartbeatResponse(answers));
+    }
+
+    // Renews the leases in one statement and reads the renewed characters' carry states in a
+    // second. A renewed session whose character has no item state is left out, so it is refused
+    // although its lease renewal committed.
+    private async Task<Dictionary<Guid, SimulationSessionLeaseResponse>> RenewAsync(
+        string workerId,
+        string runtimeId,
+        List<Guid> simulationSessionIds,
+        List<string> sessionTokenHashes,
+        CancellationToken cancellationToken)
+    {
         var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
 
-        // The lease goes on after the account session ended, since the character's body stays in
-        // the world until the worker releases the session. An account session that expired is
-        // marked here, as a logout or a new login marks it, and the answer names the end.
+        // The first CTE locks the sessions in ascending id order, the order of every statement
+        // that locks several sessions, so two heartbeats, a checkpoint, or a worker going offline
+        // never deadlock with it. A session that it waited for is checked again in its newest
+        // version, and the update finds it as locked. The lease goes on after the account
+        // session ended, since the character's body stays in the world until the worker releases
+        // the session. An account session that expired is marked here, as a logout or a new login
+        // marks it, and the answer names the end.
         var sql = $"""
-            with refreshed_session as (
+            with locked_session as materialized (
+                select simulation_session.id
+                from character_simulation_sessions simulation_session
+                join unnest(@SimulationSessionIds::uuid[], @SessionTokenHashes::text[])
+                    as requested(id, session_token_hash)
+                  on requested.id = simulation_session.id
+                 and requested.session_token_hash = simulation_session.session_token_hash
+                where simulation_session.simulation_worker_id = @WorkerId
+                  and simulation_session.worker_runtime_id = @WorkerRuntimeId
+                  and simulation_session.released_at is null
+                  and simulation_session.expires_at > now()
+                order by simulation_session.id
+                for no key update of simulation_session
+            ),
+            refreshed_session as (
                 update character_simulation_sessions
                 set last_heartbeat_at = clock_timestamp(),
                     expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds),
@@ -45,20 +123,16 @@ internal sealed class SimulationSessionService(
                             when {AccountsSql.IsActiveOrUnboundSession("character_simulation_sessions.account_session_id")} then null
                             else clock_timestamp()
                         end)
-                where id = @SimulationSessionId
-                  and simulation_worker_id = @WorkerId
-                  and worker_runtime_id = @WorkerRuntimeId
-                  and session_token_hash = @SessionTokenHash
-                  and released_at is null
-                  and expires_at > now()
-                returning id,
-                          character_id,
-                          shard_id,
-                          simulation_worker_id,
-                          worker_runtime_id,
-                          expires_at,
-                          account_session_id,
-                          account_session_ended_at
+                from locked_session
+                where character_simulation_sessions.id = locked_session.id
+                returning character_simulation_sessions.id,
+                          character_simulation_sessions.character_id,
+                          character_simulation_sessions.shard_id,
+                          character_simulation_sessions.simulation_worker_id,
+                          character_simulation_sessions.worker_runtime_id,
+                          character_simulation_sessions.expires_at,
+                          character_simulation_sessions.account_session_id,
+                          character_simulation_sessions.account_session_ended_at
             )
             select refreshed.id as "SimulationSessionId",
                    refreshed.character_id as "CharacterId",
@@ -71,41 +145,95 @@ internal sealed class SimulationSessionService(
             """;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var refreshed = await connection.QuerySingleOrDefaultAsync<HeartbeatRow>(
+        var refreshed = (await connection.QueryAsync<HeartbeatRow>(
             new CommandDefinition(
                 sql,
                 new
                 {
-                    SimulationSessionId = simulationSessionId,
-                    WorkerId = workerId.Trim(),
-                    WorkerRuntimeId = request.WorkerRuntimeId!.Trim(),
-                    SessionTokenHash = sessionTokenHash,
+                    SimulationSessionIds = simulationSessionIds.ToArray(),
+                    SessionTokenHashes = sessionTokenHashes.ToArray(),
+                    WorkerId = workerId,
+                    WorkerRuntimeId = runtimeId,
                     LeaseLifetimeSeconds = leaseLifetimeSeconds
                 },
-                cancellationToken: cancellationToken));
-        // The refreshed lease commits on its own, so the carry state read afterwards is
-        // at least as new as the lease.
-        var carryState = refreshed is null
-            ? null
-            : await characterStateProvider.GetAsync(
-                connection,
-                refreshed.CharacterId,
-                cancellationToken);
-        if (refreshed is not null && carryState is not null)
+                cancellationToken: cancellationToken))).ToArray();
+        var leases = new Dictionary<Guid, SimulationSessionLeaseResponse>(refreshed.Length);
+        if (refreshed.Length == 0)
         {
-            return ServiceResult<SimulationSessionLeaseResponse>.Ok(
-                refreshed.Lease.ToResponse(carryState, released: false) with
-                {
-                    LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
-                    AccountSessionEnded = refreshed.AccountSessionEnd is { } end
-                        ? SimulationAccountSessionEndCodes.Of(end)
-                        : null
-                });
+            return leases;
         }
 
-        return ServiceResult<SimulationSessionLeaseResponse>.Unauthorized(
-            "invalid_simulation_session",
-            "Simulation session is invalid, released, expired, or owned by another worker runtime.");
+        // The renewed leases commit on their own, so the carry states read afterwards are at
+        // least as new as the leases.
+        var carryStates = await characterStateProvider.GetManyAsync(
+            connection,
+            refreshed.Select(row => row.CharacterId).ToArray(),
+            cancellationToken);
+        foreach (var row in refreshed)
+        {
+            if (!carryStates.TryGetValue(row.CharacterId, out var carryState))
+            {
+                continue;
+            }
+
+            leases[row.SimulationSessionId] = row.Lease.ToResponse(carryState, released: false) with
+            {
+                LeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
+                AccountSessionEnded = row.AccountSessionEnd is { } end
+                    ? SimulationAccountSessionEndCodes.Of(end)
+                    : null
+            };
+        }
+
+        return leases;
+    }
+
+    private static ServiceResult<SimulationSessionHeartbeatResponse>? ValidateHeartbeat(
+        string workerId,
+        SimulationSessionHeartbeatRequest request)
+    {
+        if (!Identifiers.IsServiceIdentifier(workerId) || !Identifiers.IsServiceIdentifier(request.RuntimeId))
+        {
+            return ServiceResult<SimulationSessionHeartbeatResponse>.BadRequest(
+                "invalid_simulation_worker_identity",
+                "Simulation worker id and runtime id are required.");
+        }
+
+        var entries = request.Sessions;
+        if (entries is null || entries.Length is 0 or > MaximumHeartbeatSessions)
+        {
+            return ServiceResult<SimulationSessionHeartbeatResponse>.BadRequest(
+                InvalidHeartbeatCode,
+                $"A session heartbeat names 1 to {MaximumHeartbeatSessions} simulation sessions.");
+        }
+
+        var sessionIds = new HashSet<Guid>();
+        for (var index = 0; index < entries.Length; index++)
+        {
+            var entry = entries[index];
+            if (entry is null || entry.SimulationSessionId == Guid.Empty)
+            {
+                return ServiceResult<SimulationSessionHeartbeatResponse>.BadRequest(
+                    "invalid_simulation_session_id",
+                    $"Session {index + 1} of the heartbeat names no simulation session.");
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.SessionToken))
+            {
+                return ServiceResult<SimulationSessionHeartbeatResponse>.BadRequest(
+                    "invalid_simulation_session_token",
+                    $"Session {index + 1} of the heartbeat has no simulation session token.");
+            }
+
+            if (!sessionIds.Add(entry.SimulationSessionId))
+            {
+                return ServiceResult<SimulationSessionHeartbeatResponse>.BadRequest(
+                    InvalidHeartbeatCode,
+                    $"The session heartbeat names simulation session {entry.SimulationSessionId} more than once.");
+            }
+        }
+
+        return null;
     }
 
     // Releases the exact session generation, idempotently. A final state is saved in the same

@@ -72,10 +72,10 @@ public static class StressAuthorityEndpoints
             });
 
         endpoints.MapPost(
-            "/api/simulation-sessions/{sessionId:guid}/heartbeat",
+            "/api/simulation-workers/{workerId}/session-heartbeat",
             static (
-                Guid sessionId,
-                StressSessionCredentialRequest request,
+                string workerId,
+                StressSessionHeartbeatRequest request,
                 HttpContext context,
                 StressAuthorityState state) =>
             {
@@ -84,7 +84,7 @@ public static class StressAuthorityEndpoints
                     return Unauthorized();
                 }
 
-                return ToResult(state.HeartbeatSession(sessionId, request));
+                return ToResult(state.HeartbeatSessions(workerId, request));
             });
 
         endpoints.MapPost(

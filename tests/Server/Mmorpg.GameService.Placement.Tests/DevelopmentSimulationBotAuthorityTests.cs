@@ -85,13 +85,14 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         var credentials = new SimulationSessionCredentialRequest(
             "runtime-1",
             consumed.Value.SimulationSessionToken);
-        Assert.True(authority.TryHeartbeatSession(
-            consumed.Value.SimulationSessionId,
+        var heartbeat = authority.HeartbeatSessions(
             "worker-1",
-            credentials,
-            out var heartbeat));
-        Assert.True(heartbeat.Succeeded);
-        Assert.False(heartbeat.Value!.Released);
+            "runtime-1",
+            [new SimulationSessionHeartbeatEntry(consumed.Value.SimulationSessionId, consumed.Value.SimulationSessionToken)]);
+        var lease = Assert.Single(heartbeat.Values).Lease;
+        Assert.NotNull(lease);
+        Assert.False(lease.Released);
+        Assert.Equal(timeProvider.GetUtcNow().UtcDateTime.AddSeconds(30), lease.ExpiresAt);
 
         Assert.True(authority.TryReleaseSession(
             consumed.Value.SimulationSessionId,
@@ -117,6 +118,41 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal(issued.Value.AccountId, reissued.Value!.AccountId);
         Assert.Equal(issued.Value.CharacterId, reissued.Value.CharacterId);
         Assert.Equal(issued.Value.CharacterName, reissued.Value.CharacterName);
+    }
+
+    // A session heartbeat answers only its bot sessions, each on its own: the bot session with its
+    // token is renewed, one with another token is refused, and an id that is no bot session is
+    // left to the database.
+    [Fact]
+    public void ASessionHeartbeatAnswersEveryBotSessionOnItsOwnAndLeavesTheOthers()
+    {
+        var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var authority = new DevelopmentSimulationBotAuthority(CreateOptions(), timeProvider);
+        var renewed = JoinBot(authority, 1);
+        var refused = JoinBot(authority, 2);
+        var unknown = Guid.NewGuid();
+
+        var heartbeat = authority.HeartbeatSessions(
+            "worker-1",
+            "runtime-1",
+            [
+                new SimulationSessionHeartbeatEntry(unknown, "not-a-bot-token"),
+                new SimulationSessionHeartbeatEntry(renewed.SimulationSessionId, renewed.SimulationSessionToken),
+                new SimulationSessionHeartbeatEntry(refused.SimulationSessionId, "another-token")
+            ]);
+
+        Assert.Equal(2, heartbeat.Count);
+        Assert.False(heartbeat.ContainsKey(unknown));
+        Assert.NotNull(heartbeat[renewed.SimulationSessionId].Lease);
+        Assert.Null(heartbeat[renewed.SimulationSessionId].Error);
+        Assert.Null(heartbeat[refused.SimulationSessionId].Lease);
+        Assert.Equal("invalid_simulation_session", heartbeat[refused.SimulationSessionId].Error!.Code);
+
+        var otherRuntime = authority.HeartbeatSessions(
+            "worker-1",
+            "runtime-2",
+            [new SimulationSessionHeartbeatEntry(renewed.SimulationSessionId, renewed.SimulationSessionToken)]);
+        Assert.Equal("invalid_simulation_session", otherRuntime[renewed.SimulationSessionId].Error!.Code);
     }
 
     [Fact]
@@ -362,6 +398,19 @@ public sealed class DevelopmentSimulationBotAuthorityTests
 
         Assert.False(rejected.Succeeded);
         Assert.Equal("development_bot_worker_capacity_reached", rejected.Error!.Code);
+    }
+
+    private static ConsumedSimulationJoinTicketResponse JoinBot(DevelopmentSimulationBotAuthority authority, int botIndex)
+    {
+        var issued = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), botIndex, "local-shard-1"),
+            CreatePlacement());
+        Assert.True(issued.Succeeded, issued.Error?.Message);
+        Assert.True(authority.TryConsumeTicket(
+            new ConsumeSimulationJoinTicketRequest(issued.Value!.JoinTicket, "worker-1", "runtime-1", "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded, consumed.Error?.Message);
+        return consumed.Value!;
     }
 
     private static DevelopmentSimulationBotOptions CreateOptions(int reservedPlayerConnections = 0)

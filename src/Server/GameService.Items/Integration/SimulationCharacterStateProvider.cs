@@ -7,12 +7,12 @@ using Npgsql;
 namespace Mmorpg.GameService.Items.Integration;
 
 // Reads a character's carry state and equipment in one statement, so both belong to the
-// same item-state revision. Placement uses it for session start and heartbeats, and the
-// simulation item endpoints return it after every operation.
+// same item-state revision. Placement uses it for session start, heartbeats, and releases, and
+// the simulation item endpoints return it after every operation.
 internal sealed class SimulationCharacterStateProvider : ISimulationCharacterStateProvider
 {
-    private const string StateSql = """
-        select
+    // The columns of one state after "select", up to the table.
+    private const string StateColumnsSql = """
             state.revision as "ItemStateRevision",
             state.carried_weight as "CarriedWeight",
             state.carry_capacity as "CarryCapacity",
@@ -31,7 +31,16 @@ internal sealed class SimulationCharacterStateProvider : ISimulationCharacterSta
                 ),
                 '[]'::json)::text as "EquipmentJson"
         from character_item_states state
+        """;
+
+    private const string StateSql = "select\n" + StateColumnsSql + """
+
         where state.character_id = @CharacterId;
+        """;
+
+    private const string StatesSql = "select\n    state.character_id as \"CharacterId\",\n" + StateColumnsSql + """
+
+        where state.character_id = any(@CharacterIds);
         """;
 
     private static readonly JsonSerializerOptions EquipmentJsonOptions = new(JsonSerializerDefaults.Web);
@@ -63,6 +72,25 @@ internal sealed class SimulationCharacterStateProvider : ISimulationCharacterSta
         return ReadAsync(connection, null, characterId, cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, SimulationCharacterItemState>> GetManyAsync(
+        NpgsqlConnection connection,
+        IReadOnlyCollection<Guid> characterIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(characterIds);
+        if (characterIds.Count == 0)
+        {
+            return new Dictionary<Guid, SimulationCharacterItemState>();
+        }
+
+        var rows = await connection.QueryAsync<StateRow>(new CommandDefinition(
+            StatesSql,
+            new { CharacterIds = characterIds.ToArray() },
+            cancellationToken: cancellationToken));
+        return rows.ToDictionary(row => row.CharacterId, ToState);
+    }
+
     private static async Task<SimulationCharacterItemState?> ReadAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
@@ -74,19 +102,24 @@ internal sealed class SimulationCharacterStateProvider : ISimulationCharacterSta
             new { CharacterId = characterId },
             transaction,
             cancellationToken: cancellationToken));
-        return row is null
-            ? null
-            : new SimulationCharacterItemState(
-                row.ItemStateRevision,
-                row.CarriedWeight,
-                row.CarryCapacity,
-                JsonSerializer.Deserialize<SimulationEquippedItem[]>(
-                    row.EquipmentJson,
-                    EquipmentJsonOptions) ?? []);
+        return row is null ? null : ToState(row);
+    }
+
+    private static SimulationCharacterItemState ToState(StateRow row)
+    {
+        return new SimulationCharacterItemState(
+            row.ItemStateRevision,
+            row.CarriedWeight,
+            row.CarryCapacity,
+            JsonSerializer.Deserialize<SimulationEquippedItem[]>(
+                row.EquipmentJson,
+                EquipmentJsonOptions) ?? []);
     }
 
     private sealed class StateRow
     {
+        public Guid CharacterId { get; set; }
+
         public long ItemStateRevision { get; set; }
 
         public long CarriedWeight { get; set; }

@@ -53,7 +53,6 @@ public sealed class RouteTableSnapshotTests
         "POST /api/simulation-sessions/{simulationSessionId:guid}/appearance auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/item-operations auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/corpses/{corpseId:guid}/open auth=SimulationWorker rate=- sensitive=yes",
-        "POST /api/simulation-sessions/{simulationSessionId:guid}/heartbeat auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/item-operations auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants auth=SimulationWorker rate=- sensitive=yes",
         "POST /api/simulation-sessions/{simulationSessionId:guid}/mob-loot-grants/loot-all auth=SimulationWorker rate=- sensitive=yes",
@@ -65,7 +64,8 @@ public sealed class RouteTableSnapshotTests
         "POST /api/simulation-workers/{workerId}/checkpoint auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/heartbeat auth=SimulationWorker rate=- sensitive=no",
         "POST /api/simulation-workers/{workerId}/mob-corpses/durable auth=SimulationWorker rate=- sensitive=yes",
-        "POST /api/simulation-workers/{workerId}/offline auth=SimulationWorker rate=- sensitive=no"
+        "POST /api/simulation-workers/{workerId}/offline auth=SimulationWorker rate=- sensitive=no",
+        "POST /api/simulation-workers/{workerId}/session-heartbeat auth=SimulationWorker rate=- sensitive=no"
     ];
 
     [Fact]

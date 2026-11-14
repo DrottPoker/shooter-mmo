@@ -9,7 +9,7 @@ namespace Mmorpg.Integration.Tests;
 
 // Worker-only stress runs replace GameService with the tool's in-memory authority. Its
 // responses must keep passing the worker's own GameService validation, or every bot is
-// rejected with invalid_auth_response.
+// rejected with invalid_auth_response. A session heartbeat answers every session on its own.
 public sealed class StressAuthorityContractTests
 {
     private const string WorkerSecret = "stress-contract-test-worker-secret-2026";
@@ -68,13 +68,19 @@ public sealed class StressAuthorityContractTests
         var session = joined.Value!;
         Assert.True(session.SessionLeaseDurationMilliseconds > 0);
 
-        var heartbeat = await client.HeartbeatSimulationSessionAsync(
-            session.SimulationSessionId,
-            runtimeId,
-            session.SimulationSessionToken,
+        var heartbeat = await client.HeartbeatSimulationSessionsAsync(
+            options.WorkerId,
+            new SimulationSessionHeartbeatRequest(
+                runtimeId,
+                [
+                    new SimulationSessionHeartbeatEntry(session.SimulationSessionId, session.SimulationSessionToken),
+                    new SimulationSessionHeartbeatEntry(Guid.NewGuid(), "unknown-token")
+                ]),
             cancellationToken);
         Assert.True(heartbeat.Succeeded, heartbeat.Error?.Code);
-        Assert.True(heartbeat.Value!.LeaseDurationMilliseconds > 0);
+        Assert.True(heartbeat.Value!.Sessions[0].Lease!.LeaseDurationMilliseconds > 0);
+        Assert.Equal("simulation_session_not_found", heartbeat.Value.Sessions[1].Error!.Code);
+        Assert.Equal((1L, 1L), (authority.CaptureCounters().SessionHeartbeats, authority.CaptureCounters().SessionHeartbeatRequests));
 
         var release = await client.ReleaseSimulationSessionAsync(
             session.SimulationSessionId,

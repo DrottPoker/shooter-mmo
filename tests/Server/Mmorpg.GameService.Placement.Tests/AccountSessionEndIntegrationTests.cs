@@ -35,11 +35,10 @@ public sealed class AccountSessionEndIntegrationTests
         await LogOutAsync(context, player);
 
         Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
-        var heartbeat = await HeartbeatAsync(context, session);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
-        Assert.Equal(SimulationAccountSessionEndCodes.Ended, heartbeat.Value.AccountSessionEnded);
-        Assert.True(heartbeat.Value.LeaseDurationMilliseconds > 0);
+        var heartbeat = await RenewAsync(context, session);
+        Assert.False(heartbeat.Released);
+        Assert.Equal(SimulationAccountSessionEndCodes.Ended, heartbeat.AccountSessionEnded);
+        Assert.True(heartbeat.LeaseDurationMilliseconds > 0);
         Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
 
         // The pending ticket of the old account session was consumed with the logout.
@@ -58,10 +57,9 @@ public sealed class AccountSessionEndIntegrationTests
         await LogInAsync(context, player);
 
         Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
-        var heartbeat = await HeartbeatAsync(context, session);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
-        Assert.Equal(SimulationAccountSessionEndCodes.Replaced, heartbeat.Value.AccountSessionEnded);
+        var heartbeat = await RenewAsync(context, session);
+        Assert.False(heartbeat.Released);
+        Assert.Equal(SimulationAccountSessionEndCodes.Replaced, heartbeat.AccountSessionEnded);
     }
 
     // The new account session enters the same character: the existing reconnect of the same
@@ -84,11 +82,10 @@ public sealed class AccountSessionEndIntegrationTests
             account.SessionId.ToString(),
             await context.ExecuteScalarStringAsync(
                 $"select account_session_id::text from character_simulation_sessions where id = '{second.SimulationSessionId}';"));
-        var heartbeat = await HeartbeatAsync(context, second);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.Null(heartbeat.Value!.AccountSessionEnded);
+        var heartbeat = await RenewAsync(context, second);
+        Assert.Null(heartbeat.AccountSessionEnded);
         var oldGeneration = await HeartbeatAsync(context, first);
-        Assert.Equal(StatusCodes.Status401Unauthorized, oldGeneration.StatusCode);
+        Assert.Equal("invalid_simulation_session", oldGeneration.Error!.Code);
     }
 
     [PostgresIntegrationFact]
@@ -150,9 +147,8 @@ public sealed class AccountSessionEndIntegrationTests
         Assert.Equal(SimulationAccountSessionEnd.Ended, facts.AccountSessionEnd);
         Assert.False(facts.IsActive);
 
-        var heartbeat = await HeartbeatAsync(context, session);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.Equal(SimulationAccountSessionEndCodes.Ended, heartbeat.Value!.AccountSessionEnded);
+        var heartbeat = await RenewAsync(context, session);
+        Assert.Equal(SimulationAccountSessionEndCodes.Ended, heartbeat.AccountSessionEnded);
         Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
     }
 
@@ -175,7 +171,7 @@ public sealed class AccountSessionEndIntegrationTests
             $"update character_simulation_sessions set expires_at = created_at + interval '1 millisecond' where id = '{session.SimulationSessionId}';");
 
         var heartbeat = await HeartbeatAsync(context, session);
-        Assert.Equal(StatusCodes.Status401Unauthorized, heartbeat.StatusCode);
+        Assert.Null(heartbeat.Lease);
         Assert.Equal("invalid_simulation_session", heartbeat.Error!.Code);
         var entered = await JoinAsync(context, account, other.Value!.Id);
 
@@ -315,15 +311,26 @@ public sealed class AccountSessionEndIntegrationTests
         return account;
     }
 
-    private static Task<ServiceResult<SimulationSessionLeaseResponse>> HeartbeatAsync(
+    // The session's answer in a session heartbeat of its worker runtime.
+    private static Task<SimulationSessionHeartbeatResult> HeartbeatAsync(
         PostgresIntegrationTestContext context,
         ConsumedSimulationJoinTicketResponse session)
     {
-        return context.SimulationSessionService.HeartbeatAsync(
+        return context.HeartbeatSessionAsync(
             session.SimulationSessionId,
+            session.SimulationSessionToken,
             WorkerId,
-            new SimulationSessionCredentialRequest(RuntimeId, session.SimulationSessionToken),
-            CancellationToken.None);
+            RuntimeId);
+    }
+
+    // The renewed lease of the session in a session heartbeat of its worker runtime.
+    private static async Task<SimulationSessionLeaseResponse> RenewAsync(
+        PostgresIntegrationTestContext context,
+        ConsumedSimulationJoinTicketResponse session)
+    {
+        var heartbeat = await HeartbeatAsync(context, session);
+        Assert.True(heartbeat.Lease is not null, heartbeat.Error?.Code);
+        return heartbeat.Lease;
     }
 
     private static async Task<LiveSimulationSession> LockAsync(PostgresIntegrationTestContext context, Guid simulationSessionId)

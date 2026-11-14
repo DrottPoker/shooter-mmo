@@ -416,7 +416,7 @@ entries of both processes, and the trace share one id.
   or statement timeout at `Warning`, and a task that failed at `Error`.
 - SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
   messages below `Warning`. Domain failures and HTTP warnings remain visible,
-  but high-frequency bot heartbeat and release requests do not drown out worker
+  but high-frequency bot join and release requests do not drown out worker
   status, performance, lifecycle, or error logs.
 - Routine UDP connect and disconnect events and successful synthetic bot joins
   and leaves are logged at `Debug`. Successful real-player lifecycle events stay
@@ -442,7 +442,8 @@ Spans exist where a request crosses a process or reaches the database:
   carries `mmorpg.error.code` and an error status. `simulation.join` groups the
   ticket consumption and any release of a rejected join, and
   `simulation.session.heartbeat_cycle` groups one heartbeat round of all active
-  sessions.
+  sessions: its `GameService.HeartbeatSimulationSessions` calls, one per batch
+  of sessions, and their retries.
 - The fixed tick never starts a span.
 
 In Grafana, a log entry with a trace id links to the trace in Tempo, and a trace

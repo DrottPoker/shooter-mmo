@@ -93,18 +93,14 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.False(consumedAgain.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumedAgain.StatusCode);
 
-        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
-            consumed.Value.SimulationSessionId,
-            LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
-            CancellationToken.None);
+        var heartbeat = (await HeartbeatAsync(context, consumed.Value.SimulationSessionId, consumed.Value.SimulationSessionToken)).Lease;
 
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
-        Assert.True(heartbeat.Value.ExpiresAt >= consumed.Value.SessionExpiresAt);
-        Assert.Equal(consumed.Value.ItemStateRevision, heartbeat.Value.ItemStateRevision);
-        Assert.Equal(consumed.Value.CarriedWeight, heartbeat.Value.CarriedWeight);
-        Assert.Equal(consumed.Value.CarryCapacity, heartbeat.Value.CarryCapacity);
+        Assert.NotNull(heartbeat);
+        Assert.False(heartbeat.Released);
+        Assert.True(heartbeat.ExpiresAt >= consumed.Value.SessionExpiresAt);
+        Assert.Equal(consumed.Value.ItemStateRevision, heartbeat.ItemStateRevision);
+        Assert.Equal(consumed.Value.CarriedWeight, heartbeat.CarriedWeight);
+        Assert.Equal(consumed.Value.CarryCapacity, heartbeat.CarryCapacity);
 
         var firstRelease = await context.SimulationSessionService.ReleaseAsync(
             consumed.Value.SimulationSessionId,
@@ -123,14 +119,13 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(secondRelease.Value!.Released);
         Assert.Equal(0, await CountActiveSimulationSessionsAsync(context));
 
-        var heartbeatAfterRelease = await context.SimulationSessionService.HeartbeatAsync(
+        var heartbeatAfterRelease = await HeartbeatAsync(
+            context,
             consumed.Value.SimulationSessionId,
-            LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
-            CancellationToken.None);
+            consumed.Value.SimulationSessionToken);
 
-        Assert.False(heartbeatAfterRelease.Succeeded);
-        Assert.Equal(StatusCodes.Status401Unauthorized, heartbeatAfterRelease.StatusCode);
+        Assert.Null(heartbeatAfterRelease.Lease);
+        Assert.Equal("invalid_simulation_session", heartbeatAfterRelease.Error!.Code);
     }
 
     [PostgresIntegrationFact]
@@ -172,13 +167,9 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(revokeWithActiveSession.Succeeded, revokeWithActiveSession.Error?.Message);
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
-        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
-            consumed.Value!.SimulationSessionId,
-            LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
-            CancellationToken.None);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.False(heartbeat.Value!.Released);
+        var heartbeat = (await HeartbeatAsync(context, consumed.Value!.SimulationSessionId, consumed.Value.SimulationSessionToken)).Lease;
+        Assert.NotNull(heartbeat);
+        Assert.False(heartbeat.Released);
         Assert.NotNull(await context.SessionService.AuthenticateTokenAsync(
             victim.Registration.SessionToken,
             CancellationToken.None));
@@ -289,16 +280,12 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(61, committedCarry.CarriedWeight);
         Assert.Equal(250, committedCarry.CarryCapacity);
 
-        var heartbeat = await context.SimulationSessionService.HeartbeatAsync(
-            consumed.Value.SimulationSessionId,
-            LocalWorkerId,
-            Credential(consumed.Value.SimulationSessionToken),
-            CancellationToken.None);
-        Assert.True(heartbeat.Succeeded, heartbeat.Error?.Message);
-        Assert.Equal(committedCarry.Revision, heartbeat.Value!.ItemStateRevision);
-        Assert.Equal(committedCarry.CarriedWeight, heartbeat.Value.CarriedWeight);
-        Assert.Equal(committedCarry.CarryCapacity, heartbeat.Value.CarryCapacity);
-        Assert.Equal(consumed.Value.Equipment, heartbeat.Value.Equipment);
+        var heartbeat = (await HeartbeatAsync(context, consumed.Value.SimulationSessionId, consumed.Value.SimulationSessionToken)).Lease;
+        Assert.NotNull(heartbeat);
+        Assert.Equal(committedCarry.Revision, heartbeat.ItemStateRevision);
+        Assert.Equal(committedCarry.CarriedWeight, heartbeat.CarriedWeight);
+        Assert.Equal(committedCarry.CarryCapacity, heartbeat.CarryCapacity);
+        Assert.Equal(consumed.Value.Equipment, heartbeat.Equipment);
 
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
@@ -311,10 +298,10 @@ public sealed class AuthSimulationFlowIntegrationTests
             reconnectTicket.Value!.JoinTicket);
         Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
         Assert.True(reconnect.Value!.IsReconnect);
-        Assert.Equal(heartbeat.Value.ItemStateRevision, reconnect.Value.ItemStateRevision);
-        Assert.Equal(heartbeat.Value.CarriedWeight, reconnect.Value.CarriedWeight);
-        Assert.Equal(heartbeat.Value.CarryCapacity, reconnect.Value.CarryCapacity);
-        Assert.Equal(heartbeat.Value.Equipment, reconnect.Value.Equipment);
+        Assert.Equal(heartbeat.ItemStateRevision, reconnect.Value.ItemStateRevision);
+        Assert.Equal(heartbeat.CarriedWeight, reconnect.Value.CarriedWeight);
+        Assert.Equal(heartbeat.CarryCapacity, reconnect.Value.CarryCapacity);
+        Assert.Equal(heartbeat.Equipment, reconnect.Value.Equipment);
     }
 
     // The worker enforces the rule set of the Shard row, so a changed row reaches it.
@@ -794,15 +781,14 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(0, await CountActiveTicketsAsync(context));
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
-        var replacedHeartbeat = await context.SimulationSessionService.HeartbeatAsync(
+        var replacedHeartbeat = (await HeartbeatAsync(
+            context,
             firstSimulationSession.Value!.SimulationSessionId,
-            LocalWorkerId,
-            Credential(firstSimulationSession.Value.SimulationSessionToken),
-            CancellationToken.None);
-        Assert.True(replacedHeartbeat.Succeeded, replacedHeartbeat.Error?.Message);
+            firstSimulationSession.Value.SimulationSessionToken)).Lease;
+        Assert.NotNull(replacedHeartbeat);
         Assert.Equal(
             Mmorpg.GameService.Accounts.Contracts.AccountSessionErrorCode.SessionReplaced,
-            replacedHeartbeat.Value!.AccountSessionEnded);
+            replacedHeartbeat.AccountSessionEnded);
 
         var replacementAccount = await context.SessionService.AuthenticateTokenAsync(
             secondLogin.Value!.SessionToken,
@@ -1301,9 +1287,13 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
     }
 
-    private static SimulationSessionCredentialRequest Credential(string token)
+    // The session's answer in a session heartbeat of the local worker runtime.
+    private static Task<SimulationSessionHeartbeatResult> HeartbeatAsync(
+        PostgresIntegrationTestContext context,
+        Guid simulationSessionId,
+        string sessionToken)
     {
-        return new SimulationSessionCredentialRequest(LocalRuntimeId, token);
+        return context.HeartbeatSessionAsync(simulationSessionId, sessionToken, LocalWorkerId, LocalRuntimeId);
     }
 
     private static SimulationSessionReleaseRequest Release(string token)

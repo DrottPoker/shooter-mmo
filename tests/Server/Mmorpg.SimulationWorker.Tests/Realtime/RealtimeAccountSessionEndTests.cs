@@ -39,10 +39,9 @@ public sealed class RealtimeAccountSessionEndTests
         await harness.PollUntilAsync(
             () => observer.Spawns.Any(spawn => spawn.EntityId == entityId),
             "the observer to see the hero");
-        harness.GameService.OnSessionHeartbeat = (sessionId, _, _) => Task.FromResult(
-            harness.GameService.DefaultSessionHeartbeat(
-                sessionId,
-                sessionId == character.SimulationSessionId ? accountSessionEnd : null));
+        harness.GameService.OnSessionHeartbeat = sessionId => harness.GameService.DefaultSessionHeartbeat(
+            sessionId,
+            sessionId == character.SimulationSessionId ? accountSessionEnd : null);
 
         using var heartbeats = Heartbeats(harness);
         await heartbeats.StartAsync(TestContext.Current.CancellationToken);

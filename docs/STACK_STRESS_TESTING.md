@@ -65,8 +65,9 @@ Unity: not used
 
 The in-memory authority implements only the service contracts that
 SimulationWorker needs: readiness, worker heartbeat and offline registration,
-one-time ticket consumption, simulation-session heartbeat and release, and
-empty durable-corpse restoration. Its bots are synthetic, so the worker sends
+one-time ticket consumption, the session heartbeat, which it answers per
+session as GameService does, the session release, and empty durable-corpse
+restoration. Its bots are synthetic, so the worker sends
 it no character checkpoint and no final state with a release. Identities,
 tickets, and sessions exist only for the lifetime of the generator process.
 
@@ -1168,13 +1169,14 @@ names the service, level, category, start of the message, and the reason the
 class is expected in every run. The list starts empty.
 
 The warning `Invalidated simulation session ... with code session_revoked after
-GameService returned 401` is a race of a body's end with a session heartbeat
-that was already on its way: the heartbeat service lists the sessions, a body
-whose death committed releases its session meanwhile, and GameService answers
-the heartbeat of the released session with 401. The worker logs the warning
-even when the session had already left its store, so the line changes nothing
-then; it is a warning, which no rule judges, and it shows up in runs where
-bodies die, more often with churn.
+a refused heartbeat: invalid_simulation_session` is a race of a body's end with
+a session heartbeat that was already on its way: the
+heartbeat service lists the sessions, a body whose death committed releases its
+session meanwhile, and GameService refuses the released session in its entry of
+the heartbeat's answer. The worker logs the warning even when the session had
+already left its store, so the line changes nothing then; it is a warning,
+which no rule judges, and it shows up in runs where bodies die, more often with
+churn.
 
 ### Deaths Per Role
 
@@ -1231,7 +1233,9 @@ Every JSON report contains:
   planner thread, which the [validity rules](#validity) judge.
 
 Worker-only reports also contain ticket, simulation-session, heartbeat, and
-release counters from the in-memory authority.
+release counters from the in-memory authority: `sessionHeartbeats` counts the
+renewed sessions and `sessionHeartbeatRequests` the session heartbeat requests,
+one per batch of sessions.
 
 Full-stack reports additionally contain:
 

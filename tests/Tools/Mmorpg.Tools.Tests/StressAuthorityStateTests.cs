@@ -40,7 +40,7 @@ public sealed class StressAuthorityStateTests
     }
 
     [Fact]
-    public void SessionHeartbeatAndReleaseRequireExactCredentials()
+    public void SessionHeartbeatAndReleaseRequireExactCredentialsPerSession()
     {
         var (state, options, registration) = CreateRegisteredState();
         var issued = state.IssueTicket(11);
@@ -52,22 +52,25 @@ public sealed class StressAuthorityStateTests
 
         Assert.True(consumed.Succeeded);
         var session = consumed.Value!;
-        var wrongHeartbeat = state.HeartbeatSession(
-            session.SimulationSessionId,
-            new StressSessionCredentialRequest(registration.RuntimeId, "wrong-token"));
-        Assert.False(wrongHeartbeat.Succeeded);
-        Assert.Equal("simulation_session_changed", wrongHeartbeat.Problem!.Code);
-
-        var heartbeat = state.HeartbeatSession(
-            session.SimulationSessionId,
-            new StressSessionCredentialRequest(
+        var heartbeat = state.HeartbeatSessions(
+            options.WorkerId,
+            new StressSessionHeartbeatRequest(
                 registration.RuntimeId,
-                session.SimulationSessionToken));
+                [
+                    new StressSessionHeartbeatEntry(session.SimulationSessionId, "wrong-token"),
+                    new StressSessionHeartbeatEntry(session.SimulationSessionId, session.SimulationSessionToken)
+                ]));
         Assert.True(heartbeat.Succeeded);
-        Assert.False(heartbeat.Value!.Released);
-        Assert.Equal(0, heartbeat.Value.ItemStateRevision);
-        Assert.Equal(0, heartbeat.Value.CarriedWeight);
-        Assert.Equal(200, heartbeat.Value.CarryCapacity);
+        var wrongHeartbeat = heartbeat.Value!.Sessions[0];
+        Assert.Null(wrongHeartbeat.Lease);
+        Assert.Equal("simulation_session_changed", wrongHeartbeat.Error!.Code);
+        var lease = heartbeat.Value.Sessions[1].Lease;
+        Assert.NotNull(lease);
+        Assert.False(lease.Released);
+        Assert.Equal(0, lease.ItemStateRevision);
+        Assert.Equal(0, lease.CarriedWeight);
+        Assert.Equal(200, lease.CarryCapacity);
+        Assert.Equal((1L, 1L), (state.CaptureCounters().SessionHeartbeats, state.CaptureCounters().SessionHeartbeatRequests));
 
         var release = state.ReleaseSession(
             session.SimulationSessionId,

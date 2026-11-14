@@ -92,6 +92,32 @@ internal static class SimulationEndpoints
             return result.ToHttpResult();
         }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
 
+        // The leases of a worker runtime's sessions, in one batch, each session answered on its own.
+        workerGroup.MapPost("/{workerId}/session-heartbeat", async (
+            string workerId,
+            SimulationSessionHeartbeatRequest request,
+            ClaimsPrincipal principal,
+            SimulationSessionService simulationSessionService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(
+                    workerId,
+                    principal.GetSimulationWorkerId(),
+                    StringComparison.Ordinal))
+            {
+                return ServiceResult<SimulationSessionHeartbeatResponse>.Forbidden(
+                    "service_worker_mismatch",
+                    "The authenticated simulation worker cannot heartbeat the sessions of another worker identity.")
+                    .ToHttpResult();
+            }
+
+            var result = await simulationSessionService.HeartbeatAsync(
+                workerId,
+                request,
+                cancellationToken);
+            return result.ToHttpResult();
+        }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
+
         // The changed character states of a worker runtime's sessions, in one batch.
         workerGroup.MapPost("/{workerId}/checkpoint", async (
             string workerId,
@@ -147,30 +173,6 @@ internal static class SimulationEndpoints
         })
             .RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
-
-        app.MapPost("/api/simulation-sessions/{simulationSessionId:guid}/heartbeat", async (
-            Guid simulationSessionId,
-            SimulationSessionCredentialRequest request,
-            ClaimsPrincipal principal,
-            SimulationSessionService simulationSessionService,
-            DevelopmentSimulationBotAuthority developmentBotAuthority,
-            CancellationToken cancellationToken) =>
-        {
-            var workerId = principal.GetSimulationWorkerId();
-            var result = developmentBotAuthority.TryHeartbeatSession(
-                simulationSessionId,
-                workerId,
-                request,
-                out var developmentBotResult)
-                ? developmentBotResult
-                : await simulationSessionService.HeartbeatAsync(
-                    simulationSessionId,
-                    workerId,
-                    request,
-                    cancellationToken);
-
-            return result.ToHttpResult();
-        }).RequireAuthorization(AuthenticationConstants.SimulationWorkerPolicy);
 
         // A session's character lowers or raises its headwear, or in Development takes another
         // body model and look.

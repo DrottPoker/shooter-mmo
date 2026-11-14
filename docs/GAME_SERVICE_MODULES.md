@@ -265,7 +265,7 @@ caller keeps its own check order, error codes, and messages.
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
-| `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session |
+| `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session, or read those of many characters in one statement for the session heartbeat |
 | `IQuestDefinitions` | Quests | Quests' own quest commands and routes | The loaded quest catalog: its id, revision, active quest limit, and every quest definition by id |
 | `ICharacterQuestLog` | Quests | Quests' own quest commands | Read a character's quest log, or accept, progress, advance, complete, or abandon one of its quests, each raising the log revision |
 | `IItemTransactions` and the handler API | Items | Quests, Economy | Run an item command through the item transaction kernel, register commands with an `IItemCommandSource`, and change items in a handler through `ItemTransactionContext` and the item primitives, as [Public Surface](#public-surface) lists |
@@ -914,6 +914,17 @@ that starts every write locks the quest log row of that character, so a quest
 change can wait only on another transaction of the same character, which holds
 the character lock first.
 
+Every statement that locks several simulation sessions locks them in ascending
+id order, so none of them can deadlock with another: the session heartbeat,
+which locks the sessions it renews `FOR NO KEY UPDATE` in a locking CTE and
+renews them in the same statement, a checkpoint, which locks its sessions
+`FOR SHARE`, and the release of a worker runtime's sessions when the runtime
+goes offline or a new runtime replaces it. The heartbeat takes no other lock,
+every other statement that waits for a session locks one session at most, and
+retention skips locked sessions. A session that one of them waited for is
+checked again in its newest version, so a session released meanwhile is
+skipped.
+
 A session release that carries a final state and a checkpoint read the
 sessions' characters without a lock, lock those characters `FOR KEY SHARE` in
 ascending id order through `ICharacterSimulationStates.LockForSaveAsync`, and
@@ -1248,7 +1259,7 @@ the statement ids.
 | S9 | Ticket consume locks the character | Chr L | `ICharacterLocks.LockForUpdateAsync` |
 | S10 | Ticket consume reads character name and account session | Chr R, Acc R | `CharactersSql` and `AccountsSql` fragments in one statement |
 | S11 | Ticket consume locks carry state | Itm L | `ISimulationCharacterStateProvider.LockForSessionStartAsync` |
-| S12 | Session heartbeat marks a session whose account session expired and reads carry state | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetAsync` |
+| S12 | Session heartbeat marks the sessions whose account session expired and reads the carry states of the renewed sessions | Acc R, Itm R | account fragment, then `ISimulationCharacterStateProvider.GetManyAsync` |
 | S13 | Session heartbeat, the session authority, and the look change read the revocation reason for how the account session ended | Acc R | `AccountsSql.IsActiveOrUnboundSession` and `AccountsSql.RevocationReasonOf` in `SimulationAccountSessionEndSql` |
 | S14 | Session release reads carry state | Itm R | `ISimulationCharacterStateProvider.GetAsync` |
 | S15 | World rebind counts open corpses | Itm R | `IShardWorldLocalStateProbe` |
@@ -1312,7 +1323,9 @@ Notes on specific statements:
 - S12 and S14 read the carry state through `ISimulationCharacterStateProvider`
   on the same connection right after the lease update commits, so the worker may
   see an item revision that committed in between, which is newer, never older. A
-  missing item state still returns `401` and the lease update still commits.
+  missing item state still refuses the session, in S12 its own entry of the
+  answer and in S14 with `401`, and the lease update still commits. S12 reads
+  the carry states of every renewed session in one statement.
 - S15 counts open durable corpses in a second statement in the same transaction
   as Placement's own blocker count. The transaction holds the Shard row
   `FOR UPDATE`, which blocks the foreign key lock that a new corpse needs, so
