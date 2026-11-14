@@ -3,11 +3,14 @@ using System.Diagnostics;
 namespace Mmorpg.Tools.StackStressGenerator;
 
 // One drift check of a report interval: what can slowly go wrong while the population stays the
-// same. The sessions are compared with the bots the generator holds joined, and the lease and
-// the worker's registration with their limits.
+// same. The active sessions are compared with the bots: the bots that certainly hold a session,
+// joined and playing, and the bots that may hold one, which adds the bots on their way out of or
+// back into the game, whose body may still stand or whose new session may already exist. The
+// lease and the worker's registration are compared with their limits.
 public sealed record StressDriftSample(
     DateTime TakenAt,
-    int JoinedBots,
+    int BotsHoldingSession,
+    int BotsThatMayHoldSession,
     int ActiveSessions,
     int SessionsNearLeaseExpiry,
     double? MinimumSessionLeaseHeadroomSeconds,
@@ -17,11 +20,14 @@ public sealed record StressDriftSample(
     int ServiceConnectionsInUse,
     double OldestIdleInTransactionSeconds);
 
-// The worst value of every drift check over the steady interval.
+// The worst value of every drift check over the steady interval: the most active sessions above
+// the bots that may hold one, which no bot explains, and the most bots that certainly hold a
+// session without one, which a lost session explains. A bot that churns counts on neither side,
+// so both stay 0 in a healthy run.
 public sealed record StressDriftSummary(
     int Samples,
-    int MaximumSessionsAboveJoinedBots,
-    int MaximumJoinedBotsWithoutSession,
+    int MaximumSessionsWithoutBot,
+    int MaximumBotsWithoutSession,
     int MaximumSessionsNearLeaseExpiry,
     double LeaseExpiryThresholdSeconds,
     double? MinimumSessionLeaseHeadroomSeconds,
@@ -42,8 +48,8 @@ public sealed record StressDriftSummary(
 public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, double? workerHeartbeatTimeoutSeconds, int? databasePoolSize)
 {
     private int samples;
-    private int sessionsAboveJoined;
-    private int joinedWithoutSession;
+    private int sessionsWithoutBot;
+    private int botsWithoutSession;
     private int nearExpiry;
     private double? leaseHeadroom;
     private double? heartbeatAge;
@@ -56,8 +62,8 @@ public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, d
     {
         ArgumentNullException.ThrowIfNull(sample);
         samples++;
-        sessionsAboveJoined = Math.Max(sessionsAboveJoined, sample.ActiveSessions - sample.JoinedBots);
-        joinedWithoutSession = Math.Max(joinedWithoutSession, sample.JoinedBots - sample.ActiveSessions);
+        sessionsWithoutBot = Math.Max(sessionsWithoutBot, sample.ActiveSessions - sample.BotsThatMayHoldSession);
+        botsWithoutSession = Math.Max(botsWithoutSession, sample.BotsHoldingSession - sample.ActiveSessions);
         nearExpiry = Math.Max(nearExpiry, sample.SessionsNearLeaseExpiry);
         if (sample.MinimumSessionLeaseHeadroomSeconds is { } headroom)
         {
@@ -81,8 +87,8 @@ public sealed class StressDriftAccumulator(double leaseExpiryThresholdSeconds, d
             ? null
             : new StressDriftSummary(
                 samples,
-                sessionsAboveJoined,
-                joinedWithoutSession,
+                sessionsWithoutBot,
+                botsWithoutSession,
                 nearExpiry,
                 leaseExpiryThresholdSeconds,
                 leaseHeadroom,

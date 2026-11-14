@@ -37,7 +37,9 @@ public sealed class StressRunCoordinator(
     private IReadOnlyList<PlayingChurnEvent> churnSchedule = [];
     private int nextChurnEvent;
     private int launchedBots;
-    private volatile int joinedBotsForDrift;
+    private volatile int botsHoldingSession;
+    private volatile int botsThatMayHoldSession;
+    private int steadyJoinedBots;
     private volatile StressDriftSample? latestDrift;
     private long nextDriftTimestamp;
 
@@ -113,24 +115,28 @@ public sealed class StressRunCoordinator(
                     && bots.All(bot => bot.State is StressBotState.Joined or StressBotState.Failed))
                 {
                     var joined = bots.Count(bot => bot.State == StressBotState.Joined);
-                    joinedBotsForDrift = joined;
+                    steadyJoinedBots = joined;
+                    CountSessionHolders();
                     await admissionProvider.CaptureSteadyBoundaryAsync(true, joined, cancellationToken);
-                    now = Stopwatch.GetTimestamp();
                     await samplingGate.WaitAsync(cancellationToken);
                     try
                     {
-                        processSampler?.MarkSteadyState(options.SteadyDuration);
-                        generatorProcessSampler.MarkSteadyState(options.SteadyDuration);
-                        admissionProvider.MarkSteadyState(options.SteadyDuration);
+                        // The steady interval starts once the samplers are held, so its deadline,
+                        // its start time, and every sampler's mark describe the same interval; a
+                        // sample or drift query that held the gate cannot shorten it.
+                        now = Stopwatch.GetTimestamp();
+                        steadyStartedAt = DateTime.UtcNow;
+                        steadyStartedTimestamp = now;
+                        processSampler?.MarkSteadyState(now, options.SteadyDuration);
+                        generatorProcessSampler.MarkSteadyState(now, options.SteadyDuration);
+                        admissionProvider.MarkSteadyState(now, options.SteadyDuration);
                     }
                     finally
                     {
                         samplingGate.Release();
                     }
 
-                    steadyStartedAt = DateTime.UtcNow;
-                    steadyStartedTimestamp = now;
-                    playing?.Metrics.BeginSteadyMeasurement();
+                    playing?.Metrics.BeginSteadyMeasurement(now);
                     foreach (var group in groups)
                     {
                         group.BeginSteadyMeasurement();
@@ -152,7 +158,7 @@ public sealed class StressRunCoordinator(
 
                 if (now >= nextJoinedCountTimestamp)
                 {
-                    joinedBotsForDrift = bots.Count(bot => bot.State == StressBotState.Joined);
+                    CountSessionHolders();
                     nextJoinedCountTimestamp = AddDuration(now, SampleInterval);
                 }
 
@@ -165,8 +171,24 @@ public sealed class StressRunCoordinator(
                 await Task.Delay(CoordinationInterval, cancellationToken);
             }
 
-            var steadyEndedAt = DateTime.UtcNow;
-            playing?.Metrics.EndSteadyMeasurement();
+            long steadyEndedTimestamp;
+            DateTime steadyEndedAt;
+            await samplingGate.WaitAsync(cancellationToken);
+            try
+            {
+                // The steady interval ends for every sampler at once; no later sample counts for it.
+                steadyEndedTimestamp = Stopwatch.GetTimestamp();
+                steadyEndedAt = DateTime.UtcNow;
+                processSampler?.MarkSteadyEnd(steadyEndedTimestamp);
+                generatorProcessSampler.MarkSteadyEnd(steadyEndedTimestamp);
+                admissionProvider.MarkSteadyEnd(steadyEndedTimestamp);
+            }
+            finally
+            {
+                samplingGate.Release();
+            }
+
+            playing?.Metrics.EndSteadyMeasurement(steadyEndedTimestamp);
             foreach (var group in groups)
             {
                 group.EndSteadyMeasurement();
@@ -179,10 +201,7 @@ public sealed class StressRunCoordinator(
             processSampler?.Sample();
             generatorProcessSampler.Sample();
             await admissionProvider.SampleAsync(cancellationToken);
-            processSampler?.MarkSteadyEnd();
-            generatorProcessSampler.MarkSteadyEnd();
-            admissionProvider.MarkSteadyEnd();
-            await admissionProvider.CaptureSteadyBoundaryAsync(false, joinedBotsForDrift, cancellationToken);
+            await admissionProvider.CaptureSteadyBoundaryAsync(false, steadyJoinedBots, cancellationToken);
             await DrainGameplayAsync(cancellationToken);
             await LeaveAsync(cancellationToken);
             StopPollThreads();
@@ -291,7 +310,10 @@ public sealed class StressRunCoordinator(
                 if (Stopwatch.GetTimestamp() >= nextDriftTimestamp)
                 {
                     nextDriftTimestamp = AddDuration(Stopwatch.GetTimestamp(), options.ReportInterval);
-                    latestDrift = await admissionProvider.SampleDriftAsync(joinedBotsForDrift, cancellationToken) ?? latestDrift;
+                    latestDrift = await admissionProvider.SampleDriftAsync(
+                        botsHoldingSession,
+                        botsThatMayHoldSession,
+                        cancellationToken) ?? latestDrift;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -623,6 +645,24 @@ public sealed class StressRunCoordinator(
         }
     }
 
+    // The bots that certainly hold a simulation session, joined and playing, and the ones that
+    // may hold one, which adds the bots on their way out of or back into the game. Reads only
+    // what a bot publishes for other threads.
+    private void CountSessionHolders()
+    {
+        var holding = 0;
+        var mayHold = 0;
+        foreach (var bot in bots)
+        {
+            var session = bot.SessionHolding;
+            holding += session.Certainly ? 1 : 0;
+            mayHold += session.Possibly ? 1 : 0;
+        }
+
+        botsHoldingSession = holding;
+        botsThatMayHoldSession = mayHold;
+    }
+
     public static string FormatDrift(StressDriftSample drift, int? poolSize, int? heartbeatTimeoutSeconds)
     {
         var headroom = drift.MinimumSessionLeaseHeadroomSeconds is { } lease
@@ -634,7 +674,7 @@ public sealed class StressRunCoordinator(
             : "n/a";
         return string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"Drift: {drift.ActiveSessions} active sessions for {drift.JoinedBots} joined bots, {drift.SessionsNearLeaseExpiry} within {StressPostgresSampler.LeaseExpiryThresholdSeconds:0} s of lease expiry, least lease left {headroom}; worker registry heartbeat {heartbeat}; {drift.PendingItemOperations} pending item operations; GameService connections {drift.ServiceConnectionsInUse} in use of {drift.ServiceConnections}{(poolSize is { } pool ? $", pool {pool}" : string.Empty)}; oldest idle transaction {drift.OldestIdleInTransactionSeconds:0.0} s.");
+            $"Drift: {drift.ActiveSessions} active sessions for {drift.BotsHoldingSession} bots that hold one and {drift.BotsThatMayHoldSession} that may, {drift.SessionsNearLeaseExpiry} within {StressPostgresSampler.LeaseExpiryThresholdSeconds:0} s of lease expiry, least lease left {headroom}; worker registry heartbeat {heartbeat}; {drift.PendingItemOperations} pending item operations; GameService connections {drift.ServiceConnectionsInUse} in use of {drift.ServiceConnections}{(poolSize is { } pool ? $", pool {pool}" : string.Empty)}; oldest idle transaction {drift.OldestIdleInTransactionSeconds:0.0} s.");
     }
 
     private static StressBotSnapshot CreateAdmissionFailure(

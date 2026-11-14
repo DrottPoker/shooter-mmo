@@ -120,6 +120,8 @@ public sealed class StressPollGroupTests
 
         public StressBotState State => StressBotState.Joined;
 
+        public StressSessionHolding SessionHolding => StressSessionHolding.Holds;
+
         public bool IsGameplayIdle => true;
 
         public void Start()

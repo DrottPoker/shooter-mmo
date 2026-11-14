@@ -1018,19 +1018,35 @@ heap dump before the limit moves.
 ### Drift Checks
 
 Every report interval the generator checks, and the console shows: the active
-simulation sessions against the bots it holds joined, the sessions within 10
-seconds of their lease's end, one session heartbeat, the least lease left, the
-age of the worker's registry heartbeat against GameService's
+simulation sessions against the bots, the sessions within 10 seconds of their
+lease's end, one session heartbeat, the least lease left, the age of the
+worker's registry heartbeat against GameService's
 `Simulation:WorkerHeartbeatTimeoutSeconds`, the pending item operations,
 GameService's connections and the ones in use against its pool, the
 `Database:MaximumPoolSize` the plan passes, and the oldest transaction that
-waits idle. `soak.drift` keeps the worst of each over the steady interval: the
-most sessions above and the most bots without a session, the most sessions
-close to expiry, the least lease left, the least registration headroom, the
-most pending operations and connections, and the oldest idle transaction. The
-existing rules judge where one fits: `expired_unreleased_sessions` the leases,
-`deadlocks` the contention, and `item_invariant_violations` the pending
-operations at the end.
+waits idle.
+
+Every bot says whether it certainly holds a simulation session and whether it
+may hold one. A joined bot that plays, also one that waits for a safe moment to
+leave, certainly holds one. A bot on its way out of or back into the game, from
+its leave to the check after its join, may hold one but not certainly: its body
+may still stand, or its new session may already exist. A bot that failed or
+never joined holds none. The sessions are compared with both numbers:
+
+- `maximumSessionsWithoutBot`, the most active sessions above the bots that may
+  hold one, are sessions that no bot explains, such as the body of a bot that
+  failed or a session that was never released.
+- `maximumBotsWithoutSession`, the most bots that certainly hold a session above
+  the active sessions, are bots whose session was lost.
+
+A churning bot counts on neither side, so both stay 0 in a healthy run, also
+while a bot waits out its body's time before it comes back from its saved
+place. `soak.drift` keeps the worst of every check over the steady interval:
+these two, the most sessions close to expiry, the least lease left, the least
+registration headroom, the most pending operations and connections, and the
+oldest idle transaction. The existing rules judge where one fits:
+`expired_unreleased_sessions` the leases, `deadlocks` the contention, and
+`item_invariant_violations` the pending operations at the end.
 
 ### Service Log Classes
 
@@ -1242,7 +1258,7 @@ worker-only mode, passes and says so.
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
-| `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the steady interval lasts ten minutes or more; not applicable otherwise | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
+| `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
 
 ### Validity

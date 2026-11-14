@@ -2757,7 +2757,9 @@ log shows their bodies leaving with `left_shard` for the ones that come back
 after their body is gone, and the gameplay table lists `leave`, `rejoin_body`,
 and `rejoin_saved` with no unexpected rejection, both rejoin kinds at least once.
 The counters show `leaves` and `rejoinsBody` and `rejoinsSaved` above zero and
-`rejoinChecksFailed` at 0. Every report interval prints a `Drift:` line. After
+`rejoinChecksFailed` at 0. Every report interval prints a `Drift:` line, and the
+worst drift of the steady interval reads 0 sessions without a bot that may hold
+one and 0 playing bots without a session. After
 the run the script prints `GameService stopped` and `SimulationWorker stopped`
 with their seconds, never `did not stop on Ctrl+C`, also when it was started
 from Git Bash, keeps `postgres.log` and `redis.log` in the run folder, prints

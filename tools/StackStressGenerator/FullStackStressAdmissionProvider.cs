@@ -333,9 +333,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         await postgresSampler.SampleAsync(cancellationToken);
     }
 
-    public async Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken)
+    public async Task<StressDriftSample?> SampleDriftAsync(int botsHoldingSession, int botsThatMayHoldSession, CancellationToken cancellationToken)
     {
-        return await postgresSampler.SampleDriftAsync(joinedBots, cancellationToken);
+        return await postgresSampler.SampleDriftAsync(botsHoldingSession, botsThatMayHoldSession, cancellationToken);
     }
 
     // The tables and Redis at one end of the steady interval. A count that fails or times out
@@ -361,9 +361,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             + (redis is null ? "." : $"; Redis holds {redis.Keys} keys in {redis.UsedMemoryBytes / 1024d / 1024d:0.0} MiB."));
     }
 
-    public void MarkSteadyEnd()
+    public void MarkSteadyEnd(long endTimestamp)
     {
-        gameServiceProcessSampler?.MarkSteadyEnd();
+        gameServiceProcessSampler?.MarkSteadyEnd(endTimestamp);
         postgresSampler.MarkSteadyEnd();
     }
 
@@ -547,9 +547,9 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             cancellationToken);
     }
 
-    public void MarkSteadyState(TimeSpan plannedDuration)
+    public void MarkSteadyState(long startTimestamp, TimeSpan plannedDuration)
     {
-        gameServiceProcessSampler?.MarkSteadyState(plannedDuration);
+        gameServiceProcessSampler?.MarkSteadyState(startTimestamp, plannedDuration);
         postgresSampler.MarkSteadyState();
     }
 

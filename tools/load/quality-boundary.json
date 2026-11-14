@@ -89,7 +89,7 @@
       "rule": "process_memory_growth",
       "limit": 20,
       "unit": "MiB",
-      "description": "Maximum. For the worker, GameService, and the generator, how far the average working set of the last fifth of the steady interval lies above that of the second fifth; the worst process is judged. The first fifth is left out because caches, pools, and the JIT warm up in it. Only a steady interval of ten minutes or more is judged; a shorter one is not applicable."
+      "description": "Maximum. For the worker, GameService, and the generator, how far the average working set of the last fifth of the steady interval lies above that of the second fifth; the worst process is judged. The first fifth is left out because caches, pools, and the JIT warm up in it. Only a planned steady interval of ten minutes or more is judged; a shorter one is not applicable."
     },
     {
       "rule": "service_log_errors",

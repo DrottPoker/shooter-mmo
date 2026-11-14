@@ -138,25 +138,26 @@ public sealed class PlayingMetrics(int seed)
     public const int MaximumKeptMismatches = 20;
 
     // Route timings count only during the steady interval, where the validity rule judges them,
-    // and the counters of the steady interval are the difference of its ends.
-    public void BeginSteadyMeasurement()
+    // and the counters of the steady interval are the difference of its ends, whose Stopwatch
+    // timestamps are the run's own.
+    public void BeginSteadyMeasurement(long timestamp)
     {
         lock (gate)
         {
             steadyStartCounters = ReadCounters();
-            steadyStartTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            steadyStartTimestamp = timestamp;
         }
 
         steady = true;
     }
 
-    public void EndSteadyMeasurement()
+    public void EndSteadyMeasurement(long timestamp)
     {
         steady = false;
         lock (gate)
         {
             steadyEndCounters = ReadCounters();
-            steadyEndTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            steadyEndTimestamp = timestamp;
         }
     }
 

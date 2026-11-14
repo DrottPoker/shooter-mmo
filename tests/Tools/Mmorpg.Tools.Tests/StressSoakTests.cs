@@ -334,7 +334,7 @@ public sealed class StressSoakTests
         var report = SoakReport(minutes: 9, workerGrowth: limit + 10);
 
         var shortRun = Rule(boundary, report, "process_memory_growth");
-        var leak = Rule(boundary, report with { SteadyEndedAt = report.SteadyStartedAt!.Value.AddMinutes(10) }, "process_memory_growth");
+        var leak = Rule(boundary, SoakReport(minutes: 10, workerGrowth: limit + 10), "process_memory_growth");
         var clean = Rule(boundary, SoakReport(minutes: 30, workerGrowth: limit - 1), "process_memory_growth");
         var unmeasured = Rule(
             boundary,
@@ -349,6 +349,83 @@ public sealed class StressSoakTests
         Assert.True(clean.Passed);
         Assert.False(unmeasured.Passed);
         Assert.Null(unmeasured.Measured);
+    }
+
+    // A planned ten-minute interval is judged even when its measured end falls a little short.
+    [Fact]
+    public void APlannedSixHundredSecondIntervalAlwaysAppliesTheMemoryRule()
+    {
+        var boundary = StressQualityBoundary.Load(BoundaryPath);
+        var report = SoakReport(minutes: 10, workerGrowth: 1);
+        var shortened = report with { SteadyEndedAt = report.SteadyStartedAt!.Value.AddSeconds(599.98) };
+
+        var rule = Rule(boundary, shortened, "process_memory_growth");
+
+        Assert.Equal(600, shortened.Configuration.SteadyDurationSeconds);
+        Assert.True(rule.Passed);
+        Assert.NotNull(rule.Measured);
+        Assert.DoesNotContain("Not applicable", rule.Note ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    // A bot on its way out of or back into the game may hold a session but does not certainly
+    // hold one; a playing bot holds one either way; a failed bot holds none.
+    [Theory]
+    [InlineData(PlayingChurnPhase.None, StressBotState.Joined, false, true, true)]
+    [InlineData(PlayingChurnPhase.Waiting, StressBotState.Joined, false, true, true)]
+    [InlineData(PlayingChurnPhase.Retreating, StressBotState.Joined, false, true, true)]
+    [InlineData(PlayingChurnPhase.Settling, StressBotState.Joined, false, true, true)]
+    [InlineData(PlayingChurnPhase.Leaving, StressBotState.Leaving, false, false, true)]
+    [InlineData(PlayingChurnPhase.Leaving, StressBotState.Completed, false, false, true)]
+    [InlineData(PlayingChurnPhase.Away, StressBotState.Completed, false, false, true)]
+    [InlineData(PlayingChurnPhase.Rejoining, StressBotState.Connecting, false, false, true)]
+    [InlineData(PlayingChurnPhase.Rejoining, StressBotState.Joined, false, false, true)]
+    [InlineData(PlayingChurnPhase.Rejoining, StressBotState.Joined, true, false, false)]
+    [InlineData(PlayingChurnPhase.None, StressBotState.Failed, false, false, false)]
+    [InlineData(PlayingChurnPhase.None, StressBotState.Leaving, false, false, true)]
+    public void AChurningBotCountsOnTheRightSideOfTheSessionDrift(
+        PlayingChurnPhase phase,
+        StressBotState connection,
+        bool failed,
+        bool certainly,
+        bool possibly)
+    {
+        Assert.Equal(new StressSessionHolding(certainly, possibly), PlayingStressBot.SessionHoldingOf(phase, connection, failed));
+    }
+
+    // 100 bots, three of them churning: one leaving, whose body holds its session, one away after
+    // its body expired, and one rejoining, whose new session exists. Both drift numbers stay 0.
+    [Fact]
+    public void ARunWithChurnHasNoDrift()
+    {
+        var holding = Enumerable.Repeat(PlayingStressBot.SessionHoldingOf(PlayingChurnPhase.None, StressBotState.Joined, false), 97)
+            .Append(PlayingStressBot.SessionHoldingOf(PlayingChurnPhase.Leaving, StressBotState.Leaving, false))
+            .Append(PlayingStressBot.SessionHoldingOf(PlayingChurnPhase.Away, StressBotState.Completed, false))
+            .Append(PlayingStressBot.SessionHoldingOf(PlayingChurnPhase.Rejoining, StressBotState.Joined, false))
+            .ToArray();
+        var drift = new StressDriftAccumulator(10, 30, 64);
+
+        drift.Add(Drift(holding, activeSessions: 99));
+        drift.Add(Drift(holding, activeSessions: 97));
+        drift.Add(Drift(holding, activeSessions: 100));
+        var summary = drift.Capture()!;
+
+        Assert.Equal(0, summary.MaximumSessionsWithoutBot);
+        Assert.Equal(0, summary.MaximumBotsWithoutSession);
+    }
+
+    [Fact]
+    public void ASessionThatIsReallyMissingOrLeftOverStillShows()
+    {
+        var holding = Enumerable.Repeat(StressSessionHolding.Holds, 99).Append(StressSessionHolding.None).ToArray();
+        var drift = new StressDriftAccumulator(10, 30, 64);
+
+        // A playing bot lost its session, and later a failed bot's session stayed behind.
+        drift.Add(Drift(holding, activeSessions: 98));
+        drift.Add(Drift(holding, activeSessions: 100));
+        var summary = drift.Capture()!;
+
+        Assert.Equal(1, summary.MaximumBotsWithoutSession);
+        Assert.Equal(1, summary.MaximumSessionsWithoutBot);
     }
 
     [Fact]
@@ -576,6 +653,22 @@ public sealed class StressSoakTests
             LeftAt.AddSeconds(standing),
             null,
             new PlayingSavedState(new SimulationVector3(x, Spot.Y, Spot.Z), health, 100, Session));
+    }
+
+    private static StressDriftSample Drift(IReadOnlyCollection<StressSessionHolding> bots, int activeSessions)
+    {
+        return new StressDriftSample(
+            LeftAt,
+            bots.Count(bot => bot.Certainly),
+            bots.Count(bot => bot.Possibly),
+            activeSessions,
+            0,
+            25,
+            3,
+            0,
+            10,
+            1,
+            0);
     }
 
     private static StressVerdictEntry Rule(StressQualityBoundary boundary, StressRunReport report, string rule)

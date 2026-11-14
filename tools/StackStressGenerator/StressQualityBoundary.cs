@@ -346,15 +346,14 @@ public sealed class StressQualityBoundary
     }
 
     // The last fifth's average working set over the second fifth's, of the worst process; only a
-    // steady interval of ten minutes or more is judged.
+    // planned steady interval of ten minutes or more is judged. The plan decides, not the measured
+    // interval, so scheduling jitter at either end cannot take the rule away from a run.
     private static Measurement MeasureMemoryGrowth(StressRunReport report)
     {
-        var steady = report.SteadyStartedAt is { } start && report.SteadyEndedAt is { } end
-            ? end - start
-            : TimeSpan.FromSeconds(report.Configuration.SteadyDurationSeconds);
-        if (steady < MemoryRuleMinimumSteady)
+        var planned = TimeSpan.FromSeconds(report.Configuration.SteadyDurationSeconds);
+        if (planned < MemoryRuleMinimumSteady)
         {
-            return Measurement.Skip(Invariant($"a steady interval of {steady.TotalMinutes:0.0} minutes is shorter than the {MemoryRuleMinimumSteady.TotalMinutes:0} minutes the rule needs"));
+            return Measurement.Skip(Invariant($"a planned steady interval of {planned.TotalMinutes:0.0} minutes is shorter than the {MemoryRuleMinimumSteady.TotalMinutes:0} minutes the rule needs"));
         }
 
         var required = report.Configuration.Mode == "full-stack"

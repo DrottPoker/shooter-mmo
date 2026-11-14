@@ -203,20 +203,23 @@ public sealed class StressProcessSampler : IDisposable
     }
 
     // The steady interval starts; its windows are fifths of the planned duration.
-    public void MarkSteadyState(TimeSpan plannedDuration)
+    // The run's steady interval starts at this Stopwatch timestamp; its windows are fifths of the
+    // planned duration.
+    public void MarkSteadyState(long startTimestamp, TimeSpan plannedDuration)
     {
         if (steady is not null)
         {
             return;
         }
 
-        steady = new SteadyWindow(Stopwatch.GetTimestamp(), plannedDuration);
+        steady = new SteadyWindow(startTimestamp, plannedDuration);
         steadyStartGeneration2 = GC.CollectionCount(2);
         steadyStartAllocated = GC.GetTotalAllocatedBytes();
     }
 
-    // The steady interval ended; later samples count only for the whole run.
-    public void MarkSteadyEnd()
+    // The run's steady interval ended at this Stopwatch timestamp; later samples count only for
+    // the whole run.
+    public void MarkSteadyEnd(long endTimestamp)
     {
         if (steady is null || steadyEnded)
         {
@@ -226,7 +229,7 @@ public sealed class StressProcessSampler : IDisposable
         steadyEnded = true;
         steadyEndGeneration2 = GC.CollectionCount(2);
         steadyEndAllocated = GC.GetTotalAllocatedBytes();
-        steadyEndTimestamp = Stopwatch.GetTimestamp();
+        steadyEndTimestamp = endTimestamp;
     }
 
     public StressProcessSummary? CreateSummary()
@@ -323,7 +326,7 @@ public sealed class StressProcessSampler : IDisposable
         maximumPrivateMemory = Math.Max(maximumPrivateMemory, privateMemory);
         finalPrivateMemory = privateMemory;
         maximumThreads = Math.Max(maximumThreads, threads);
-        if (steady is not null && !steadyEnded)
+        if (steady is not null && !steadyEnded && timestamp >= steady.StartTimestamp)
         {
             steady.Add(timestamp, workingSet, privateMemory, managedHeap);
         }

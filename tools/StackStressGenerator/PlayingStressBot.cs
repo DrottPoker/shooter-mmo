@@ -29,6 +29,58 @@ public interface IStressBot : IDisposable
 
     // Safe to call from another thread than the one that polls the bot.
     StressBotProgress CaptureProgress();
+
+    // Whether the bot holds a simulation session now, for the drift checks. Safe to read from
+    // another thread than the one that polls the bot.
+    StressSessionHolding SessionHolding { get; }
+}
+
+// Whether a bot holds a simulation session: certainly, as a joined bot that plays does; possibly,
+// as a bot on its way into or out of the game does, whose body may still stand or whose session
+// may already exist; or not, as a bot that failed or never started.
+public readonly record struct StressSessionHolding(bool Certainly, bool Possibly)
+{
+    public static StressSessionHolding Holds { get; } = new(true, true);
+
+    public static StressSessionHolding Maybe { get; } = new(false, true);
+
+    public static StressSessionHolding None { get; } = new(false, false);
+
+    // A connection's own state: joined holds a session; connecting, joining, leaving, and a
+    // completed leave, whose body still stands, may hold one.
+    public static StressSessionHolding Of(StressBotState state)
+    {
+        return state switch
+        {
+            StressBotState.Joined => Holds,
+            StressBotState.Connecting or StressBotState.Joining or StressBotState.Leaving or StressBotState.Completed => Maybe,
+            _ => None
+        };
+    }
+}
+
+// The phases of a playing bot's churn.
+public enum PlayingChurnPhase
+{
+    None,
+
+    // The role plays on while the bot waits for a safe moment to leave.
+    Waiting,
+
+    // The bot walks away from aggressive Mobs before it leaves.
+    Retreating,
+
+    // The bot stands still before it leaves.
+    Settling,
+
+    // The leave was sent and waits for its acceptance.
+    Leaving,
+
+    // The bot is out of the game and takes the way back.
+    Away,
+
+    // The new connection joins, and the bot checks what it finds.
+    Rejoining
 }
 
 public readonly record struct StressBotProgress(
@@ -123,7 +175,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
     private SimulationBotRemoteCadenceSummary? retiredCadence;
 
     // The churn in progress.
-    private volatile ChurnPhase phase = ChurnPhase.None;
+    private volatile PlayingChurnPhase phase = PlayingChurnPhase.None;
     private PlayingChurnEvent? churn;
     private long churnRequestedTimestamp;
     private long phaseTimestamp;
@@ -198,44 +250,42 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         };
     }
 
-    private enum ChurnPhase
-    {
-        None,
-
-        // The role plays on while the bot waits for a safe moment to leave.
-        Waiting,
-
-        // The bot walks away from aggressive Mobs before it leaves.
-        Retreating,
-
-        // The bot stands still before it leaves.
-        Settling,
-
-        // The leave was sent and waits for its acceptance.
-        Leaving,
-
-        // The bot is out of the game and takes the way back.
-        Away,
-
-        // The new connection joins, and the bot checks what it finds.
-        Rejoining
-    }
 
     // A churning bot is in the game from the run's point of view until its churn failed.
     public StressBotState State => failureCode is not null
         ? StressBotState.Failed
-        : phase is ChurnPhase.Leaving or ChurnPhase.Away or ChurnPhase.Rejoining
+        : phase is PlayingChurnPhase.Leaving or PlayingChurnPhase.Away or PlayingChurnPhase.Rejoining
             ? StressBotState.Joined
             : (StressBotState)Volatile.Read(ref client).State;
 
     // A bot on its way out of or back into the game is not idle; one that only waits to leave is.
     public bool IsGameplayIdle => body.IsIdle
-        && phase is not (ChurnPhase.Leaving or ChurnPhase.Away or ChurnPhase.Rejoining);
+        && phase is not (PlayingChurnPhase.Leaving or PlayingChurnPhase.Away or PlayingChurnPhase.Rejoining);
+
+    public StressSessionHolding SessionHolding => SessionHoldingOf(
+        phase,
+        (StressBotState)Volatile.Read(ref client).State,
+        failureCode is not null);
 
     public IPlayingRole Role => role;
 
+    // A bot whose churn failed holds none; a bot on its way out of or back into the game may
+    // hold one, its standing body's or its new one; every other bot holds what its connection
+    // holds.
+    public static StressSessionHolding SessionHoldingOf(PlayingChurnPhase phase, StressBotState connection, bool failed)
+    {
+        if (failed)
+        {
+            return StressSessionHolding.None;
+        }
+
+        return phase is PlayingChurnPhase.Leaving or PlayingChurnPhase.Away or PlayingChurnPhase.Rejoining
+            ? StressSessionHolding.Maybe
+            : StressSessionHolding.Of(connection);
+    }
+
     // Whether the bot is busy with a churn, for tests and diagnostics.
-    public bool IsChurning => phase != ChurnPhase.None;
+    public bool IsChurning => phase != PlayingChurnPhase.None;
 
     public void Start()
     {
@@ -250,14 +300,14 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         }
 
         body.Update(nowTimestamp, cancellationToken);
-        if (phase != ChurnPhase.None)
+        if (phase != PlayingChurnPhase.None)
         {
             AdvanceChurn(nowTimestamp, cancellationToken);
         }
 
         if (draining
             || roleSuspended
-            || phase is not (ChurnPhase.None or ChurnPhase.Waiting)
+            || phase is not (PlayingChurnPhase.None or PlayingChurnPhase.Waiting)
             || client.State != SimulationBotClientState.Joined
             || nowTimestamp < nextThinkTimestamp)
         {
@@ -277,7 +327,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
     {
         ArgumentNullException.ThrowIfNull(churnEvent);
         context.Metrics.Count(PlayingCounter.ChurnRequests);
-        if (phase != ChurnPhase.None
+        if (phase != PlayingChurnPhase.None
             || draining
             || failureCode is not null
             || context.Rejoin is null
@@ -291,18 +341,18 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         churnRequestedTimestamp = nowTimestamp;
         nextChurnCheckTimestamp = nowTimestamp;
         retreats = 0;
-        Enter(ChurnPhase.Waiting, nowTimestamp);
+        Enter(PlayingChurnPhase.Waiting, nowTimestamp);
     }
 
     // The run's own leave at its end; a churn that has not left yet gives way to it.
     public void BeginLeave(long nowTimestamp)
     {
-        if (phase is ChurnPhase.Waiting or ChurnPhase.Retreating or ChurnPhase.Settling)
+        if (phase is PlayingChurnPhase.Waiting or PlayingChurnPhase.Retreating or PlayingChurnPhase.Settling)
         {
             Skip(PlayingCounter.ChurnSkippedLate, nowTimestamp);
         }
 
-        if (phase == ChurnPhase.None && !clientRetired)
+        if (phase == PlayingChurnPhase.None && !clientRetired)
         {
             client.BeginLeave(nowTimestamp);
         }
@@ -506,22 +556,22 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
     {
         switch (phase)
         {
-            case ChurnPhase.Waiting:
+            case PlayingChurnPhase.Waiting:
                 Wait(now);
                 break;
-            case ChurnPhase.Retreating:
+            case PlayingChurnPhase.Retreating:
                 Retreat(now);
                 break;
-            case ChurnPhase.Settling:
+            case PlayingChurnPhase.Settling:
                 Settle(now);
                 break;
-            case ChurnPhase.Leaving:
+            case PlayingChurnPhase.Leaving:
                 AwaitLeave(now, cancellationToken);
                 break;
-            case ChurnPhase.Away:
+            case PlayingChurnPhase.Away:
                 AwaitWayBack(now);
                 break;
-            case ChurnPhase.Rejoining:
+            case PlayingChurnPhase.Rejoining:
                 AwaitRejoin(now, cancellationToken);
                 break;
         }
@@ -558,7 +608,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
                 roleSuspended = true;
                 body.Stand();
                 settledSinceTimestamp = 0;
-                Enter(ChurnPhase.Settling, now);
+                Enter(PlayingChurnPhase.Settling, now);
                 break;
             case PlayingLeaveReadiness.TooCloseToMobs
                 when retreats < MaximumRetreats && PlayingLeaveSafety.RetreatPoint(body) is { } point:
@@ -566,7 +616,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
                 roleSuspended = true;
                 context.Metrics.Count(PlayingCounter.ChurnRetreats);
                 body.WalkTo(point);
-                Enter(ChurnPhase.Retreating, now);
+                Enter(PlayingChurnPhase.Retreating, now);
                 break;
         }
     }
@@ -590,7 +640,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         {
             // Something found the bot on its way: the role deals with it.
             ResumeRole(now);
-            Enter(ChurnPhase.Waiting, now);
+            Enter(PlayingChurnPhase.Waiting, now);
             return;
         }
 
@@ -604,12 +654,12 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         {
             body.Stand();
             settledSinceTimestamp = 0;
-            Enter(ChurnPhase.Settling, now);
+            Enter(PlayingChurnPhase.Settling, now);
             return;
         }
 
         ResumeRole(now);
-        Enter(ChurnPhase.Waiting, now);
+        Enter(PlayingChurnPhase.Waiting, now);
     }
 
     private void Settle(long now)
@@ -635,7 +685,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         if (PlayingLeaveSafety.Evaluate(body, role.IsSetUp) != PlayingLeaveReadiness.Ready)
         {
             ResumeRole(now);
-            Enter(ChurnPhase.Waiting, now);
+            Enter(PlayingChurnPhase.Waiting, now);
             return;
         }
 
@@ -669,7 +719,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         gameplayMetrics.RecordRequest(PlayingOperations.Leave);
         leaveSentTimestamp = now;
         client.BeginLeave(now);
-        Enter(ChurnPhase.Leaving, now);
+        Enter(PlayingChurnPhase.Leaving, now);
     }
 
     private void AwaitLeave(long now, CancellationToken cancellationToken)
@@ -723,7 +773,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
             wayBack = Task.FromException<PlayingRejoinTicket>(exception);
         }
 
-        Enter(ChurnPhase.Away, now);
+        Enter(PlayingChurnPhase.Away, now);
     }
 
     private void AwaitWayBack(long now)
@@ -766,7 +816,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         }
 
         joinedTimestamp = 0;
-        Enter(ChurnPhase.Rejoining, now);
+        Enter(PlayingChurnPhase.Rejoining, now);
     }
 
     private void AwaitRejoin(long now, CancellationToken cancellationToken)
@@ -892,7 +942,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         rejoinPlan = null;
         rejoinTicket = null;
         ResumeRole(now);
-        Enter(ChurnPhase.None, now);
+        Enter(PlayingChurnPhase.None, now);
     }
 
     private void Skip(PlayingCounter reason, long now)
@@ -905,7 +955,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
             ResumeRole(now);
         }
 
-        Enter(ChurnPhase.None, now);
+        Enter(PlayingChurnPhase.None, now);
     }
 
     private void ResumeRole(long now)
@@ -920,7 +970,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         failureCode = code;
         failureMessage = message;
         roleSuspended = false;
-        Enter(ChurnPhase.None, 0);
+        Enter(PlayingChurnPhase.None, 0);
     }
 
     // The connection that left: its numbers stay with the bot, and its socket closes.
@@ -948,7 +998,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         client.Dispose();
     }
 
-    private void Enter(ChurnPhase next, long now)
+    private void Enter(PlayingChurnPhase next, long now)
     {
         phase = next;
         phaseTimestamp = now;

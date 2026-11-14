@@ -292,11 +292,11 @@ public sealed class StressPostgresSampler : IAsyncDisposable
             reader.GetInt64(19)));
     }
 
-    // The drift checks: the sessions against the bots the generator holds joined, the sessions
+    // The drift checks: the sessions against the bots that hold or may hold one, the sessions
     // close to the end of their lease, the age of the worker's registry heartbeat, the pending
     // item operations, the connections GameService holds and uses, and the oldest open
     // transaction that waits idle. Within the steady interval the worst of each is kept.
-    public async Task<StressDriftSample> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken)
+    public async Task<StressDriftSample> SampleDriftAsync(int botsHoldingSession, int botsThatMayHoldSession, CancellationToken cancellationToken)
     {
         const string sql = """
             select (select count(*)::integer
@@ -349,7 +349,8 @@ public sealed class StressPostgresSampler : IAsyncDisposable
 
         var sample = new StressDriftSample(
             DateTime.UtcNow,
-            joinedBots,
+            botsHoldingSession,
+            botsThatMayHoldSession,
             reader.GetInt32(0),
             reader.GetInt32(1),
             reader.IsDBNull(2) ? null : reader.GetDouble(2),

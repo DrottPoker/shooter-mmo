@@ -18,16 +18,19 @@ public interface IStressAdmissionProvider : IAsyncDisposable
 
     Task SampleAsync(CancellationToken cancellationToken);
 
-    // The drift checks of one report interval, or null when the mode has no database.
-    Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken);
+    // The drift checks of one report interval, against the bots that certainly hold a session and
+    // the bots that may hold one, or null when the mode has no database.
+    Task<StressDriftSample?> SampleDriftAsync(int botsHoldingSession, int botsThatMayHoldSession, CancellationToken cancellationToken);
 
     Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
         int botIndex,
         CancellationToken cancellationToken);
 
-    void MarkSteadyState(TimeSpan plannedDuration);
+    // The steady interval starts and ends at these Stopwatch timestamps, the ones of the run's own
+    // steady interval.
+    void MarkSteadyState(long startTimestamp, TimeSpan plannedDuration);
 
-    void MarkSteadyEnd();
+    void MarkSteadyEnd(long endTimestamp);
 
     // Counts the database's tables and reads Redis at one end of the steady interval.
     Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken);
@@ -104,7 +107,7 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.CompletedTask;
     }
 
-    public Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken)
+    public Task<StressDriftSample?> SampleDriftAsync(int botsHoldingSession, int botsThatMayHoldSession, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<StressDriftSample?>(null);
@@ -116,7 +119,7 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.CompletedTask;
     }
 
-    public void MarkSteadyEnd()
+    public void MarkSteadyEnd(long endTimestamp)
     {
     }
 
@@ -128,7 +131,7 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.FromResult<FullStackCharacterInventoryResponse?>(null);
     }
 
-    public void MarkSteadyState(TimeSpan plannedDuration)
+    public void MarkSteadyState(long startTimestamp, TimeSpan plannedDuration)
     {
     }
 

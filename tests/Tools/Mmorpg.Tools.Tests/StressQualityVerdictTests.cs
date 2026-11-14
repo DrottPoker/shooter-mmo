@@ -628,6 +628,7 @@ public sealed class StressQualityVerdictTests
             },
             "process_memory_growth" => report with
             {
+                Configuration = report.Configuration with { SteadyDurationSeconds = 660 },
                 SteadyEndedAt = SteadyStart.AddMinutes(11),
                 Soak = new StressSoakSummary(
                     null,
