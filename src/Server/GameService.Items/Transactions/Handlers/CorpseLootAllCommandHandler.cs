@@ -69,7 +69,7 @@ internal sealed class CorpseLootAllCommandHandler(CorpseQuestDrops questDrops) :
                 looter.PermanentInventory,
                 looter.BagContents,
                 planned,
-                false)),
+                corpse.IsCreatureCorpse)),
             cancellationToken);
         if (plan.Steps.Count == 0)
         {

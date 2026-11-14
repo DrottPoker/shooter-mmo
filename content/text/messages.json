@@ -147,6 +147,10 @@
       "text": "Open the corpse first."
     },
     {
+      "key": "message/corpse_whole_items_only",
+      "text": "A creature's corpse gives whole items only."
+    },
+    {
       "key": "message/currency_insufficient",
       "text": "You do not have enough Gold."
     },

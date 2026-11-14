@@ -20,7 +20,7 @@ does after joining:
 | --- | --- | :---: | --- | --- |
 | `lifecycle` | `worker-only`, `full-stack` | No | Square walking loop | Preserve the comparable admission and realtime baseline |
 | `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory slots |
-| `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
+| `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one player's corpse with deposit and partial loot |
 | `mixed-gameplay` | `full-stack` | Yes | Step back and forth beside the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
 | `playing` | `full-stack` | Yes | Planned walks over the World, like players | Play like players in roles: fight Mobs, loot them, die and recover, gather resource nodes, trade at the vendor, and walk, as [Playing Workload](#playing-workload) describes |
 
@@ -400,10 +400,13 @@ traders stay there, and fighters and gatherers walk there to sell.
   request from a bot that drifted past the 3 m interaction radius, for up to
   about one percent of corpse requests. The stationary `loot-hotspot` bots
   never leave the radius, so there it stays unexpected.
-- The shared corpse of the loot workloads is a durable Mob corpse, and the bots
-  loot part of its stacks. The Unity client offers only whole items from a Mob
-  corpse, but no server refuses a part of a durable Mob corpse's stack, so the
-  workload's partial loot does not follow the client rule.
+- The shared corpse of the loot workloads is a player's corpse: the fixture's
+  own character receives as many stacks of five loot items as it can carry and
+  dies through the death transaction of every player. A creature's corpse would
+  refuse the bots' deposits and partial loot. Each bot deposits its one item
+  before it loots one, so the corpse stays filled. A player's corpse lasts five
+  minutes, so the fixture refuses a run whose ramp and steady interval, plus a
+  minute for the bots' accounts, need the corpse longer.
 
 ### What The Script Sets
 
@@ -1626,9 +1629,10 @@ reports.
     a second under `poor`, and for up to half a second right after every join
     under `normal` and worse, because their presentation stops at the newest
     state.
-13. **A durable Mob corpse gives part of a stack.** The rule that a Mob corpse
-    gives whole items only is enforced for live corpses on the worker and in
-    the Unity client, not by GameService for durable corpses.
+13. **A durable Mob corpse gave part of a stack.** Fixed: GameService now
+    refuses everything but a whole-item loot for a durable creature corpse, as
+    the worker does for the live ones, and the shared corpse of the loot
+    workloads became a player's corpse.
 14. **With 400 players in view, the others starve although the frame holds.**
     The built client draws 400 dressed bots at 13.1 ms per frame at the median
     and 20.3 ms at the 99th percentile, but its remote players have no new

@@ -1,53 +1,57 @@
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameService.Items.StackStress;
-using Mmorpg.GameService.Placement.Contracts;
+
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
 namespace Mmorpg.GameService.Items.Tests;
 
-// The loot hotspot of the stack stress workloads goes through the same durable Mob corpse
-// validation as a Mob's death, so the fixture cannot drift from that validation unnoticed.
+// The loot hotspot of the stack stress workloads is the corpse of the fixture's own character,
+// made by the death transaction of every player, so the bots may deposit into it, move inside
+// it, and take parts of its stacks, which a creature's corpse refuses.
 public sealed class StackStressFixtureIntegrationTests
 {
     [PostgresIntegrationFact]
-    public async Task TheLootHotspotFixtureCreatesADurableMobCorpseWithItsLoot()
+    public async Task TheLootHotspotFixtureCreatesAPlayerCorpseWithItsLootAndRefusesALongerRun()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var world = new ItemScenarioWorld(context);
-        // A join registers the worker runtime whose lease the corpse command checks.
-        await world.JoinAsync(await world.RegisterAsync("stress_hotspot"));
-        var service = new StackStressFixtureService(
-            context.ItemQueryService,
-            context.ItemTransactionService,
-            context.Services.GetRequiredService<SimulationWorkerLeasePolicy>(),
-            new StackStressFixtureOptions(true, "stack-stress-test-fixture-secret-0000")
-            {
-                InventoryDefinitionId = "fixture.potion",
-                LootDefinitionId = "fixture.ore"
-            });
+        var fixture = await world.RegisterAsync("stress_hotspot");
+        var service = KitService(context);
 
         var result = await service.CreateLootHotspotAsync(
+            fixture.Registration.AccountId,
             new StackStressLootHotspotRequest(
                 "hotspot1",
-                ItemScenarioWorld.WorkerId,
-                ItemScenarioWorld.WorkerRuntimeId,
+                fixture.Character.Id,
                 ItemScenarioWorld.ShardId,
                 0d,
                 0d,
                 0d,
-                120d),
+                240d),
+            CancellationToken.None);
+        var tooLong = await service.CreateLootHotspotAsync(
+            fixture.Registration.AccountId,
+            new StackStressLootHotspotRequest("hotspot1", fixture.Character.Id, ItemScenarioWorld.ShardId, 0d, 0d, 0d, 301d),
             CancellationToken.None);
 
+        Assert.False(tooLong.Succeeded);
+        Assert.Contains("lasts 300 seconds", tooLong.Error!.Message, StringComparison.Ordinal);
         Assert.True(result.Succeeded, result.Error?.Message);
         var hotspot = result.Value!;
         Assert.Equal("fixture.ore", hotspot.LootDefinitionId);
+        Assert.True(hotspot.LootStacks > 0);
         await using var connection = await context.DataSource.OpenConnectionAsync();
-        var presentationKey = await connection.QuerySingleAsync<string>(
-            "select presentation_key from corpses where id = @CorpseId;",
+        var corpse = await connection.QuerySingleAsync<(string SourceType, string PresentationKey, double LifetimeSeconds)>(
+            """
+            select source_type, presentation_key, extract(epoch from expires_at - now())::double precision
+            from corpses
+            where id = @CorpseId;
+            """,
             new { hotspot.CorpseId });
-        Assert.Equal(ItemScenarioWorld.MobCorpsePresentationKey, presentationKey);
+        Assert.Equal(("player", ItemScenarioWorld.CorpsePresentationKey), (corpse.SourceType, corpse.PresentationKey));
+        Assert.InRange(corpse.LifetimeSeconds, 280d, 300d);
         var lootQuantity = await connection.QuerySingleAsync<long>(
             """
             select coalesce(sum(item.quantity), 0)::bigint
@@ -125,7 +129,7 @@ public sealed class StackStressFixtureIntegrationTests
         return new StackStressFixtureService(
             context.ItemQueryService,
             context.ItemTransactionService,
-            context.Services.GetRequiredService<SimulationWorkerLeasePolicy>(),
+            context.CorpseService,
             new StackStressFixtureOptions(true, "stack-stress-test-fixture-secret-0000")
             {
                 InventoryDefinitionId = "fixture.potion",
