@@ -1437,6 +1437,14 @@ Seen from outside:
   `corpse_not_lootable`, which closes the view, first by the worker and again
   by GameService when it opens a durable corpse and when it locks the corpse in
   any corpse transaction; only expiry, as the system, empties an owned corpse.
+- A creature's corpse gives whole items only. The worker refuses everything but
+  a whole-item loot for the live corpses it keeps, with
+  `live_mob_corpse_operation_unsupported`. GameService refuses the same for a
+  durable creature corpse, one whose `source_type` is `persistent_npc`, with
+  `corpse_whole_items_only`: a part of a stack, to the inventory or to an
+  equipment slot, a deposit, a move inside the corpse, and a Bag swap. `Loot
+  all` leaves a stack of such a corpse that does not fit whole, as the client
+  predicts it.
 - Corpse reads use short read-only snapshots. Full and partial transfers,
   internal corpse moves, ordinary occupied-slot swaps, and atomic Bag aggregate
   swaps reuse the kernel with targeted item, container, and Bag-root revisions.
@@ -1756,7 +1764,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Vendors and acquisition | `vendor_access_required`, `vendor_unavailable`, `vendor_offer_unavailable`, `vendor_price_changed`, `vendor_will_not_buy`, `inventory_full` |
 | Gathering | `gathering_tool_required`, `gathering_yield_invalid` |
 | Bank and Recovery | `bank_access_required`, `recovery_access_required`, `recovery_delivery_not_found`, `recovery_delivery_not_expired` |
-| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_corpse_empty`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `corpse_not_lootable`, `item_already_looted` |
+| Death and corpses | `death_event_conflict`, `mob_corpse_invalid`, `mob_corpse_empty`, `mob_loot_grant_invalid`, `corpse_not_found`, `corpse_not_expired`, `corpse_state_changed`, `corpse_expired`, `corpse_invalidated`, `corpse_not_lootable`, `corpse_whole_items_only`, `item_already_looted` |
 | Development tools | `development_simulation_bots_disabled`, `development_bot_loopback_required`, `invalid_development_bot_authority`, `invalid_development_bot_index`, `invalid_development_bot_instance_id`, `development_bot_already_active`, `development_bot_identity_changed`, `development_bot_placement_unavailable`, `development_bot_worker_capacity_reached`, `invalid_shard_id`, `invalid_join_ticket`, `invalid_stack_stress_fixture_authority`, `stack_stress_fixture_loopback_required`, `stack_stress_fixture_invalid`, `stack_stress_fixture_not_empty` |
 
 ### Realtime Codes

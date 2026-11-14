@@ -495,20 +495,21 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
 
             var rampSteps = Math.Max(0, (int)Math.Ceiling(
                 options.BotCount / (double)options.RampStep) - 1);
+            // The hotspot is a player's corpse, which lasts five minutes: the fixture refuses a
+            // run whose ramp and steady interval, with a minute for the bots' accounts, need more.
             var requestedLifetime = options.SteadyDuration
                 + TimeSpan.FromTicks(options.RampInterval.Ticks * rampSteps)
-                + TimeSpan.FromMinutes(5);
+                + TimeSpan.FromMinutes(1);
             var fixture = await client.CreateLootHotspotAsync(
                 registration.SessionToken,
                 new FullStackStackStressLootHotspotRequest(
                     options.RunId,
-                    join.Endpoint.WorkerId,
-                    join.Endpoint.RuntimeId,
+                    character.Id,
                     join.Shard.Id,
                     options.LootHotspotX,
                     options.LootHotspotY,
                     options.LootHotspotZ,
-                    Math.Clamp(requestedLifetime.TotalSeconds, 60d, 86_400d)),
+                    requestedLifetime.TotalSeconds),
                 options.FixtureSecret!,
                 cancellationToken);
             lootHotspotCorpseId = fixture.CorpseId;

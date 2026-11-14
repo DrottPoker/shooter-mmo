@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "92207db421e7ae9c6ec3e2661599a16de818ff77d7697189f08e7694d6ad4aa2",
+  "revision": "903a7f1b69a54a67a97609f104a055b4dd585e86366f38a45a25816d683b8db8",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -147,6 +147,10 @@
     {
       "key": "message/corpse_view_not_open",
       "text": "Open the corpse first."
+    },
+    {
+      "key": "message/corpse_whole_items_only",
+      "text": "A creature\u0027s corpse gives whole items only."
     },
     {
       "key": "message/currency_insufficient",

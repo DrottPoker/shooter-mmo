@@ -64,6 +64,7 @@ public sealed class SimulationItemRejectionsTests
         ["corpse_expired"] = 422,
         ["corpse_invalidated"] = 422,
         ["corpse_not_lootable"] = 422,
+        ["corpse_whole_items_only"] = 422,
         ["item_already_looted"] = 422,
         ["item_simulation_operation_invalid"] = 422
     };

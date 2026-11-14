@@ -608,8 +608,10 @@ complete state has arrived, and `Close` and `Loot All` below them.
   carried items back into compatible corpse slots. `Shift` drags half a stack
   and `Ctrl`+click carries a chosen quantity, in either direction, also straight
   into the `Ammunition` slot. A creature's corpse gives whole items only, so its
-  stacks always move whole, and `Shift`+right-click on them does what
-  right-click does.
+  stacks always move whole, `Shift`+right-click on them does what right-click
+  does, and nothing is put into it or moved inside it. The server refuses
+  anything else with "A creature's corpse gives whole items only.", for the
+  corpse of a common creature and of a boss alike.
 - Items can be dragged between empty or occupied slots in any corpse section.
   Compatible stacks with room merge. A whole item that cannot merge swaps with
   the item on the occupied slot only when both slots accept the other item and

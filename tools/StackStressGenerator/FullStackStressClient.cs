@@ -543,8 +543,7 @@ public sealed record FullStackStackStressKitResponse(
 
 public sealed record FullStackStackStressLootHotspotRequest(
     string RunId,
-    string WorkerId,
-    string WorkerRuntimeId,
+    Guid CharacterId,
     string ShardId,
     double PositionX,
     double PositionY,
