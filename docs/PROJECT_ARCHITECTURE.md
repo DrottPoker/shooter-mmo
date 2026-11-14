@@ -1564,8 +1564,9 @@ The worker simulates the Shard on its one loop thread, so the snapshot
 encoding, the transport's send path, the work of every tick, and the
 GameService traffic per player set the limit. A tier is claimed only after
 stress workloads with combat, Mobs, and players spread over the World measured
-it; the workloads that exist are listed under
-[Scope Boundary](STACK_STRESS_TESTING.md#scope-boundary).
+it: [Measured Tiers](STACK_STRESS_TESTING.md#measured-tiers) holds the results,
+and [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier)
+says what stands between the measured tiers and the target.
 
 ## Future Scaling Contract
 

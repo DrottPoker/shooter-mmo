@@ -324,10 +324,10 @@ sets is an error.
 | Scenario | Mode and workload | Shape |
 | --- | --- | --- |
 | `smoke` | full-stack `mixed-gameplay` | 10 bots in one step, 40 s steady; a tooling check |
-| `worker-only-200` | worker-only `lifecycle` | 200 bots in steps of 50 five seconds apart, 60 s steady |
-| `worker-only-500` | worker-only `lifecycle` | 500 bots in steps of 100 five seconds apart, 60 s steady |
+| `worker-only-200` | worker-only `lifecycle` | 200 bots in steps of 50 five seconds apart, 60 s steady, 2 poll threads |
+| `worker-only-500` | worker-only `lifecycle` | 500 bots in steps of 100 five seconds apart, 60 s steady, 4 poll threads |
 | `mixed-100` | full-stack `mixed-gameplay` | 100 bots, 32-way admission, steps of 25 ten seconds apart, 120 s steady |
-| `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady |
+| `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady, 2 poll threads; it does not complete at present, as [What Limits The Next Tier](#what-limits-the-next-tier) describes |
 | `session-cache-on`, `session-cache-off` | full-stack `lifecycle` | The [Redis Session-cache A/B Baseline](#redis-session-cache-ab-baseline) |
 | `playing-smoke` | full-stack `playing` | 20 bots on Development World 2 in all four roles: 8 fighters, 2 of them with bows, in two hunting grounds, 4 gatherers at 8 Iron Veins, 6 walkers, and 2 traders; a variant with 10 Feral Wolves, 10 Grey Wolves, and 8 Iron Veins more; steps of 10 five seconds apart, 90 s steady; a tooling check of the playing workload |
 | `playing-100` | full-stack `playing` | 100 bots of the reference mix on the reference variant, steps of 10 six seconds apart, 300 s steady |
@@ -337,11 +337,11 @@ sets is an error.
 | `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set |
 | `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
 
-The tier scenarios use the arguments of the
-[Current Worker-only Baseline](#current-worker-only-baseline) and the
-[Current Full-stack Baseline](#current-full-stack-baseline), with seed `1337`,
-three-second inventory and four-second corpse operations, and a ten-second
-metrics interval. All of them keep the product's defaults otherwise, including
+The tier scenarios use seed `1337`, three-second inventory and four-second
+corpse operations, and a ten-second metrics interval; their results are in
+[Measured Tiers](#measured-tiers). Scenarios with 200 bots or more name their
+poll threads, because one thread cannot drive them, as
+[Validity](#validity) describes. All of them keep the product's defaults otherwise, including
 the 20-second lingering body.
 
 The reference mix of the playing scenarios is 40 percent fighters, a quarter of
@@ -928,7 +928,8 @@ but that ceiling is not a supported capacity claim. Do not change a production
 default based on a single local machine. The tiers work toward the
 [Scale Target](PROJECT_ARCHITECTURE.md#scale-target). A run counts toward it
 only when it passes the [Quality Boundary](#quality-boundary) with the
-workloads that the target names, which no run has done yet.
+workloads that the target names. [Measured Tiers](#measured-tiers) says which
+tiers do.
 
 Use worker-only mode first to establish the realtime boundary. Repeat accepted
 tiers in full-stack mode to identify when GameService, HTTP admission, or
@@ -1308,110 +1309,141 @@ which is checked in. Without it, the script prints the difference of every key
 number to the checked-in baseline. The difference is informative and never
 part of the exit code, because machines and their load differ. Record a
 baseline only from a run on an idle machine, and name what else ran in the
-pull request that checks it in. The tables below were recorded by hand before
-the baseline files existed.
+pull request that checks it in. [Measured Tiers](#measured-tiers) lists the
+baselines that are checked in.
 
-## Current Worker-only Baseline
+## Measured Tiers
 
-These are the latest accepted worker-only numbers. They were measured on an AMD
-Ryzen 7 5800 with 8 cores, 16 logical processors, and 31.9 GiB of memory under
-Windows, with the generator, the worker, and the Unity Editor on one machine.
-The worker ran 30 simulation ticks and 15 snapshots per second, every bot stayed
-inside one interest radius, and the runs used seed `1337`, ramp steps of 50 or
-100 bots five seconds apart, and a 60-second steady interval. They measured the
-current realtime loop, with its high-resolution tick timer, staggered interest
-refresh, and budget-sized packet pool, as
-[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) and
-[Interest Management](SERVICE_FEATURES.md#interest-management) describe, and
-bots that send one input per tick.
+These are the checked-in baselines in `tools/load/baselines`, recorded on
+2026-11-14 on an AMD Ryzen 7 5800 with 16 logical processors and 31.9 GiB of
+memory under Windows, with the generator, the worker, GameService, PostgreSQL,
+and Redis on that one machine. The machine was otherwise idle except for about
+twenty containers of another project that used about 15 percent of one core.
+The worker ran 30 simulation ticks and 15 snapshots per second. Each baseline
+file names its commit.
 
-| Bots | Tick lag avg / max | Simulation tick avg | Interest avg | Snapshot broadcast avg | Allocated per 10 s | Gen0 / gen1 per 10 s | Input ack p50 / p95 / p99 | Worker average single-core CPU |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 200 | 0.3 / 1.2 ms | 1.2 ms | 0.3 ms | 1.2 ms | 29 MiB | 1 / 0 | 57.9 / 90.4 / 105.2 ms | 44.1% |
-| 500 | 0.5 / 2.0 ms | 4.3 ms | 1.9 ms | 4.7 ms | 70 MiB | 4 / 0 | 78.6 / 119.7 / 140.3 ms | 87.8% |
+| Scenario | Result | Tick p99 | Input ack p50 / p99 | Updates per second seen, p5 | Slowest operation p95 | Worker CPU, one core | Sent per player |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `smoke` | passed | 4 ms | 38 / 79 ms | 15.0 | partial loot 430 ms | 21% | 10 KiB/s |
+| `worker-only-200` | passed | 8 ms | 55 / 96 ms | 15.0 | none | 47% | 126 KiB/s |
+| `worker-only-500` | failed | 16 ms | 63 / 115 ms | **3.5** | none | 87% | 74 KiB/s |
+| `mixed-100` | passed | 4 ms | 45 / 82 ms | 15.0 | corpse deposit 416 ms | 28% | 67 KiB/s |
+| `hotspot-100` | passed | 4 ms | 42 / 79 ms | 15.0 | vendor sale 95 ms | 20% | 62 KiB/s |
+| `playing-100` | passed | 8 ms | 45 / 98 ms | 15.0 | equip 222 ms | 21% | 27 KiB/s |
+| `playing-250` | passed | 24 ms | 56 / 111 ms | 15.0 | equip 218 ms | 66% | 64 KiB/s |
+| `playing-500` | failed | **50 ms** | 72 / 133 ms | **6.6** | equip 266 ms | 144% | 77 KiB/s |
+| `soak-30min` | failed | 24 ms | 54 / 110 ms | 15.0 | rejoin 470 ms | 64% | 60 KiB/s |
 
-Every run joined and left every bot cleanly with zero owner snapshot gaps and
-drops. The timing and allocation columns come from the worker's interval log of
-one steady interval, and the latencies and CPU from the generator's run summary.
+The tick p99 is a bucket upper bound, and bold numbers fail their rule.
+`playing-500` also had two PostgreSQL deadlocks and `soak-30min` one, which is
+its only failed rule. `mixed-250` has no baseline: see
+[What Limits The Next Tier](#what-limits-the-next-tier).
 
-What the numbers mean:
+What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target):
 
-- Ticks start within a few milliseconds of their schedule and stay far inside
-  the tick budget, and almost no garbage survives into generation 1.
-- Most of the remaining input acknowledgement latency is structural: an input
-  waits for the next tick, and its acknowledgement for the next owner snapshot,
-  which goes out every second tick.
-- At 500 bots most of the worker CPU is LiteNetLib's update thread, which sends
-  about 45,000 packets per second. LiteNetLib's experimental `UseNativeSockets`
-  option raised the worker to 96 percent of a core in the same run, so it stays
-  off. Fewer and smaller remote records, through quantization or larger chunks,
-  are the next lever and need a protocol change.
-- Full 15 Hz replication of 400 mutually visible players would need about
-  100 MB/s before transport overhead, against the 38 MiB/s aggregate snapshot
-  budget, so remote cadence drops in a dense crowd while owner state stays at
-  15 Hz. The budget arithmetic gives about 5.6 Hz at 400 mutually visible
-  players; `worker-only-500` measures the real rate, as
-  [Remote Update Rate](#remote-update-rate) describes. Raising the budget is not the default fix: larger Worlds
-  should reduce the visible set, and future protocol work may add measured
-  quantization or delta compression.
-- Single runs on a shared machine vary; one 200-bot run measured an input
-  acknowledgement p99 of 188 ms. All of these are short runs, and a 30 to 60
-  minute soak is still required before a tier counts as supported.
+- **250 playing players pass a five-minute run** on this machine with every
+  rule, at two thirds of a core for the worker. 100 players in one place pass
+  too.
+- **No tier has passed a 30-minute soak yet.** At 250 players with churn the
+  soak holds every rule for the tick, the update rate, the operations, the
+  memory, and the logs, and fails on one deadlock that the worker's retry
+  recovered.
+- **500 playing players fail** the tick budget and the update rate, and the
+  worker needs more than one core, which its one loop thread does not have.
 
-## Current Full-stack Baseline
+In `playing-100` to `playing-500` every gameplay operation succeeded: no
+unexpected rejection and no timeout in 280, 718, and 1,626 kills, their loots,
+the gathering, and the vendor trades, and 0.5 to 0.75 deaths per fighter and
+ten minutes.
 
-These are the latest accepted full-stack numbers, from the `mixed-gameplay`
-workload on development `1eeebca` on the same machine. The full-stack
-`loot-hotspot` and `mixed-gameplay` workloads could not run from `6ed319a1`
-(2026-10-21) until the stack stress fixture created its corpse with the Mob
-corpse presentation key that durable Mob corpses require, so no later
-full-stack loot baseline exists from that time. They used the normal
-account and placement APIs, real PostgreSQL, worker ticket consumption and
-session leases, one shared durable corpse, UDP item and corpse commands,
-GameService transactions, and the final database invariant checks, with
-three-second inventory and four-second corpse operations. The 100-client run
-used 32-way HTTP admission, four 25-client ramp steps ten seconds apart, and a
-120-second steady interval. The 250-client run used 64-way admission, five
-50-client ramp steps five seconds apart, and a 60-second steady interval.
+### The 30 Minute Soak
 
-The local development stack ran beside the disposable stack with 300
-ActiveSimulationBots, about one of the 16 logical processors. Because two
-GameService and two SimulationWorker processes ran, the generator could not
-attribute process metrics: the worker CPU below comes from the stress worker's
-interval log, and the GameService process metrics are missing.
+`soak-30min` ran 250 playing bots for 1,800 seconds with ten percent of them
+leaving and returning per minute.
 
-| Clients | Complete lifecycle | Join failures | Input ack p50 / p95 / p99 | Login p50 / p95 | Join ticket p50 / p95 | PostgreSQL max connections / active waits | Rollbacks | Expired unreleased sessions | Corpse refresh p95 | Worker average single-core CPU |
-| ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 100/100 | 0 | 47.2 / 78.2 / 85.2 ms | 0.57 / 0.84 s | 0.28 / 0.58 s | 67 / 12 | 0 | 0 | 50 ms | about 30% |
-| 250 | 250/250 | 0 | 73.2 / 114.4 / 139.2 ms | 1.03 / 1.38 s | 2.23 / 4.15 s | 66 / 60 | 0 | 0 | 115 ms | about 90% |
+- **Churn**: 714 leaves, half of them with an account logout, 360 returns to a
+  standing body and 354 from the saved place. Every return kept its place and
+  health; five bodies died while their players were away and came back at the
+  spawn, as designed.
+- **Memory**: the working set levels off. Between the second and the last fifth
+  of the run the worker grew 0.8 MiB, to 173 MiB, and GameService 3.3 MiB, to
+  247 MiB. The worker's managed heap stayed at 64 MiB with 34 generation 2
+  collections per hour and 32 MiB allocated per second. The generator itself
+  grew 13 MiB.
+- **Drift**: no session without a bot, no playing bot without a session, no
+  session within ten seconds of its lease expiry, no pending item operation,
+  at most 6 of 64 pooled connections in use.
+- **Storage**: the database grew 184 MiB per hour, about 750 KiB per player
+  and hour.
 
-Both runs had zero deadlocks, zero unexpected gameplay rejections, zero
-operation timeouts, and exact item quantity, slot, custody, and operation
-invariants. The 100-client run completed 4,369 inventory relocations, 541
-corpse deposits, and 497 partial loots with a deposit p95 of 352 ms; the
-250-client run completed 3,729 relocations and 1,679 corpse refreshes.
+| Table | Rows per hour | Growth per hour | Per player and hour |
+| --- | ---: | ---: | ---: |
+| `item_operation_changes` | 102,000 | 65 MiB | 267 KiB |
+| `item_operations` | 47,000 | 107 MiB | 439 KiB |
+| `item_container_slots` | 17,000 | 3.2 MiB | 13 KiB |
+| `live_mob_loot_grants` | 10,000 | 2.2 MiB | 9 KiB |
+| `character_currency_ledger` | 7,300 | 1.9 MiB | 8 KiB |
 
-What the numbers mean:
+The two operation tables are 94 percent of the growth. `playing-500` grew 326
+MiB per hour, which is about 8 GiB per day and Shard at the Scale Target.
 
-- PostgreSQL connections stay at about 66, GameService's pool of 64 plus a few
-  other clients such as the generator's sampler, so pool saturation queues work
-  instead of failing it.
-- Admission is the slow phase. At 250 clients join tickets wait seconds while
-  password hashing, character creation, login, placement, and ticket creation
-  queue for the pool; the `lifecycle` workload at 250 clients and 64-way
-  admission showed registration and login p95 of about 5.5 seconds for the same
-  reason. That is bounded admission backpressure, not a steady-state gameplay
-  delay.
-- The shared corpse is deliberately pathological. One corpse is one serialized
-  custody aggregate, so with 250 clients almost every deposit and loot is a
-  stale-revision conflict, the queue in front of the corpse, up to 142 waiting
-  mutations, sets the latency, and deposit p95 reached 8.5 seconds. That is
-  bounded backpressure instead of database pool exhaustion. A workload with
-  several separate corpse hotspots is still needed to show that the per-corpse
-  coordinator keeps parallel throughput.
-- No full-stack run at 400 clients exists with the current snapshot scheduler.
-  Run one before claiming a 400-client full-stack tier.
-- These are short stability runs, not a production capacity declaration.
+- **Logs**: no error or critical line. The warnings were ten
+  `session_revoked` lines of the session heartbeat, which a heartbeat on its
+  way logs when it meets the release of the same session and which change
+  nothing, and the one death that the deadlock delayed.
+
+## What Limits The Next Tier
+
+Each entry is a measured limit or defect with its evidence. None of them is
+tuned away in the load tooling; the run folders of 2026-11-14 hold the
+reports.
+
+1. **The worker's one loop thread.** At 500 playing players the worker uses 144
+   percent of a core (LiteNetLib's threads included), its tick p99 leaves the
+   33.34 ms budget, and the update rate of the players who see the least falls
+   to 6.6 per second, although the players are spread over eight hunting
+   grounds, six node fields, and a town. At 250 it uses 66 percent and holds
+   15 updates per second.
+2. **Bandwidth per player.** The worker sends 60 to 77 KiB per second to each
+   of 250 to 500 spread players, about half a megabit, and 126 KiB per second
+   when 200 stand in one place. With 500 in one place the aggregate snapshot
+   budget of 38 MiB per second caps the rate at 3.5 updates per second
+   (`worker-only-500`). Entity state is sent unquantized and in full.
+3. **A deadlock between a player death and the worker's registry heartbeat.**
+   The death's transaction holds the Shard's row in `simulation_assignments`
+   and inserts into `corpses`, whose foreign key needs a key-share lock on the
+   Shard's row in `shards`. The registry heartbeat holds that row and then asks
+   for the assignment row with `for update`. PostgreSQL aborts the death after
+   its one-second deadlock timeout, and the worker's retry commits it. Two in
+   five minutes at 500 players, one in thirty minutes at 250; both statements
+   are in each run's `postgres.log`.
+4. **A registration or login burst starves everything else in GameService.**
+   Password hashing takes seven to ten of sixteen cores while 32 to 64
+   accounts register and log in at once. In `mixed-250`, which provisions its
+   accounts 64 at a time during the ramp, the worker's calls to GameService then time out after five
+   seconds: joins are refused with `auth_service_timeout`, two registry
+   heartbeats in a row fail, the worker's registration lease expires, and the
+   worker stops itself. The scenario did not complete on the idle machine, so
+   it has no baseline. The playing scenarios provision eight accounts at a
+   time before the ramp and are not affected.
+5. **A logout burst overruns the Redis session cache.** When the 250 bots of
+   `mixed-250` logged out together, six logouts failed with
+   `session_cache_invalidation_unavailable`: GameService could not store the
+   revocation tombstones in time and, correctly, refused to commit the
+   revocation.
+6. **One corpse is one queue.** With 250 clients on the shared corpse of
+   `mixed-250`, a deposit's p95 was 4.6 seconds. That is the deliberate worst
+   case of the mixed workload, not a spread of corpses.
+7. **Storage growth**, as [The 30 Minute Soak](#the-30-minute-soak) shows: the
+   two operation tables are never trimmed.
+8. **The generator needs several poll threads** for 200 and more bots. With one
+   thread `worker-only-500` and `mixed-250` could not be measured, and the
+   input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
+   ms, was partly the generator's own lateness: with four threads it is 115 ms.
+
+Smaller things the bots met are in
+[What A Playing Bot Sees And Sends](#what-a-playing-bot-sees-and-sends) and
+[Churn](#churn).
 
 ## Scope Boundary
 
