@@ -222,8 +222,11 @@ public sealed class DatabaseMigrationRunner(
                 "Dropping the invalid index {IndexName} that an earlier run of database migration {MigrationId} left behind.",
                 indexName,
                 migration.Id);
+            // Like the build, the drop waits for the transactions that use the table and
+            // blocks none of them, so it gets no command timeout either.
             await connection.ExecuteAsync(new CommandDefinition(
                 $"drop index concurrently if exists {indexName};",
+                commandTimeout: 0,
                 cancellationToken: cancellationToken));
         }
 
