@@ -200,6 +200,15 @@ internal sealed class ShardService(
             transaction,
             cancellationToken: cancellationToken));
 
+        // Read before the placement locks the worker row, which every join of the Shard and
+        // the worker's heartbeat wait for, so that lock is held for the ticket insert only.
+        var itemCatalogRevision = await itemCatalogRevisionProvider.GetCurrentRevisionAsync(
+            new PostgresTransactionScope(connection, transaction),
+            cancellationToken);
+        var questCatalogRevision = await questCatalogRevisionProvider.GetCurrentRevisionAsync(
+            new PostgresTransactionScope(connection, transaction),
+            cancellationToken);
+
         var placement = activeSession is null
             ? await SelectPlacementAsync(
                 connection,
@@ -229,9 +238,6 @@ internal sealed class ShardService(
 
         // Combat data and loot come from the worker's catalog and custody from GameService's,
         // so a character only plays on a worker that runs the mirrored catalog.
-        var itemCatalogRevision = await itemCatalogRevisionProvider.GetCurrentRevisionAsync(
-            new PostgresTransactionScope(connection, transaction),
-            cancellationToken);
         if (!string.Equals(placement.ItemCatalogRevision, itemCatalogRevision, StringComparison.Ordinal))
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -242,9 +248,6 @@ internal sealed class ShardService(
 
         // Quest progress is counted by the worker and committed by GameService, so both run the
         // same quests.
-        var questCatalogRevision = await questCatalogRevisionProvider.GetCurrentRevisionAsync(
-            new PostgresTransactionScope(connection, transaction),
-            cancellationToken);
         if (!string.Equals(placement.QuestCatalogRevision, questCatalogRevision, StringComparison.Ordinal))
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -674,6 +677,9 @@ internal sealed class ShardService(
             cancellationToken: cancellationToken));
     }
 
+    // Holds the enabled Shard FOR KEY SHARE, the lock that the ticket's foreign key takes
+    // anyway: it lets other joins, ticket redeems, corpses, and the worker's heartbeat through
+    // and waits only for a World rebind, which holds the row FOR UPDATE.
     private static async Task<bool> LockEnabledShardAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -690,7 +696,7 @@ internal sealed class ShardService(
                   and shard.is_enabled
                   and shard.world_id is not null
                   and fleet.is_enabled
-                for update of shard;
+                for key share of shard;
                 """,
                 new { ShardId = shardId },
                 transaction,
