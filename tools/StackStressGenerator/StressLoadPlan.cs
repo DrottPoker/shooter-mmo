@@ -416,6 +416,15 @@ public sealed record StressLoadPlan(
             {
                 arguments.AddRange(["--world-data-path", StressWorldVariant.WorkerWorldsPath(worldVariantPath)]);
             }
+
+            // The soak reads Redis and compares the drift checks with GameService's own limits.
+            var (poolSize, heartbeatTimeout) = GameServiceLimits(scenario, workingDirectory);
+            arguments.AddRange(
+            [
+                "--redis-endpoint", RedisConnection,
+                "--database-pool-size", poolSize.ToString(CultureInfo.InvariantCulture),
+                "--worker-heartbeat-timeout-seconds", heartbeatTimeout.ToString(CultureInfo.InvariantCulture)
+            ]);
         }
         else
         {
@@ -531,6 +540,36 @@ public sealed record StressLoadPlan(
                 WriteIndented = true,
                 DictionaryKeyPolicy = null
             });
+    }
+
+    // GameService's database pool and the time after which it takes a silent worker offline:
+    // its checked-in configuration, unless the scenario sets them for GameService.
+    private static (int PoolSize, int HeartbeatTimeoutSeconds) GameServiceLimits(
+        StressLoadScenario scenario,
+        string workingDirectory)
+    {
+        var path = Path.Combine(
+            Mmorpg.WorldData.Content.ContentLayout.FindRepositoryRoot(workingDirectory),
+            "src",
+            "Server",
+            "GameService",
+            "Config",
+            "appsettings.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        var root = document.RootElement;
+        var pool = Setting(scenario, "Database__MaximumPoolSize")
+            ?? root.GetProperty("Database").GetProperty("MaximumPoolSize").GetInt32();
+        var timeout = Setting(scenario, "Simulation__WorkerHeartbeatTimeoutSeconds")
+            ?? root.GetProperty("Simulation").GetProperty("WorkerHeartbeatTimeoutSeconds").GetInt32();
+        return (pool, timeout);
+    }
+
+    private static int? Setting(StressLoadScenario scenario, string name)
+    {
+        return scenario.GameServiceSettings.TryGetValue(name, out var value)
+            && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
+                ? number
+                : null;
     }
 
     // A scenario adds settings; it never replaces one that the plan owns, except the metrics

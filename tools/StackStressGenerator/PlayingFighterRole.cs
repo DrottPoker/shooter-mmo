@@ -106,6 +106,31 @@ public sealed class FighterRole : PlayingRoleBase
 
     public ulong Target => target;
 
+    // A fighter on its way back to its corpse goes on with that; any other fight, flight, rest,
+    // or loot ends, and it seeks its next Mob. The Mobs it gave up stay given up.
+    protected override void ResumeRole(TimeSpan now)
+    {
+        walker?.Resume(now);
+        var recovering = state is FighterState.Dead or FighterState.Recover || lootingOwnCorpse;
+        target = 0;
+        corpse = Guid.Empty;
+        corpseOpened = false;
+        corpseLooted = false;
+        lootingOwnCorpse = false;
+        approachPlanned = false;
+        approachLegs = 0;
+        sightBlockedSince = null;
+        atDeathSpotSince = null;
+        if (recovering)
+        {
+            // The bot leaves only alive, so a fighter still waiting for its respawn has respawned.
+            state = FighterState.Recover;
+            return;
+        }
+
+        Enter(FighterState.Seek, now);
+    }
+
     protected override void OnOutcome(IPlayingBotBody body, PlayingIntentOutcome outcome, TimeSpan now)
     {
         switch (outcome.Operation)
@@ -629,6 +654,11 @@ public sealed class FighterRole : PlayingRoleBase
         return body.Kit.Items
             .Select(kitItem => kitItem.DefinitionId)
             .FirstOrDefault(definitionId => body.GameData.Item(definitionId)?.Ammunition is not null);
+    }
+
+    protected override bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return NeedsArrows(body);
     }
 
     private static bool NeedsArrows(IPlayingBotBody body)

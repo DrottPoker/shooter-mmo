@@ -86,6 +86,19 @@
       "description": "Maximum. Exact item quantities, unique occupied slots, valid custody, and no pending item operation after a full-stack run."
     },
     {
+      "rule": "process_memory_growth",
+      "limit": 20,
+      "unit": "MiB",
+      "description": "Maximum. For the worker, GameService, and the generator, how far the average working set of the last fifth of the steady interval lies above that of the second fifth; the worst process is judged. The first fifth is left out because caches, pools, and the JIT warm up in it. Only a steady interval of ten minutes or more is judged; a shorter one is not applicable."
+    },
+    {
+      "rule": "service_log_errors",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Error and critical lines of the GameService and worker logs and of their standard error, counted once the services stopped, except the message classes of the allow list, each of which names why it is expected in every run.",
+      "allow": []
+    },
+    {
       "rule": "generator_poll_lateness_p99_ms",
       "limit": 16.67,
       "unit": "ms",

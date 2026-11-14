@@ -14,6 +14,11 @@ public static class Program
             return WriteWorldVariant(args[1..]);
         }
 
+        if (args.Length > 0 && args[0] == "judge")
+        {
+            return await JudgeAsync(args[1..]);
+        }
+
         if (StressGeneratorOptions.IsHelpRequested(args))
         {
             Console.WriteLine(StressGeneratorOptions.HelpText);
@@ -93,7 +98,7 @@ public static class Program
         WriteFinalSummary(report, options.OutputPath);
         var exitCode = report.Verdict is { Valid: false }
             ? CouldNotMeasureExitCode
-            : !PassedOwnChecks(report, options)
+            : !PassedOwnChecks(report)
                 ? 1
                 : report.Verdict is { Passed: false }
                     ? 3
@@ -112,11 +117,12 @@ public static class Program
     public const int CouldNotMeasureExitCode = 4;
 
     // The generator's own checks, which decide exit code 1 as before the quality boundary.
-    internal static bool PassedOwnChecks(StressRunReport report, StressGeneratorOptions options)
+    internal static bool PassedOwnChecks(StressRunReport report)
     {
+        var bots = report.Configuration.BotCount;
         return report.Bots.FailedBots == 0
-            && report.Bots.JoinedBots == options.BotCount
-            && report.Bots.CompletedBots == options.BotCount
+            && report.Bots.JoinedBots == bots
+            && report.Bots.CompletedBots == bots
             && (report.FullStack is null
                 || report.FullStack.LoggedOutBots == report.FullStack.AdmittedBots)
             && report.Gameplay.UnexpectedFailures == 0
@@ -210,8 +216,121 @@ public static class Program
                 report.StartedAt,
                 report.EndedAt,
                 report.SteadyStartedAt,
-                report.SteadyEndedAt)
+                report.SteadyEndedAt),
+            Soak = AddWorkerMemory(
+                report.Soak,
+                StressWorkerMemory.Create(intervals, report.SteadyStartedAt, report.SteadyEndedAt))
         };
+    }
+
+    // The worker's own file adds its managed heap, its generation 2 collections, and its
+    // allocation to the working set that the process sampler measured once a second; without
+    // the sampler, the file's working set stands in.
+    internal static StressSoakSummary? AddWorkerMemory(StressSoakSummary? soak, StressMemoryTrend? fromFile)
+    {
+        if (fromFile is null)
+        {
+            return soak;
+        }
+
+        soak ??= new StressSoakSummary(null, null, []);
+        var sampled = soak.Memory.FirstOrDefault(trend => trend.Process == fromFile.Process);
+        var merged = sampled is null
+            ? fromFile
+            : sampled with
+            {
+                ManagedHeapSlopeMiBPerHour = fromFile.ManagedHeapSlopeMiBPerHour,
+                ManagedHeapFifthsMiB = fromFile.ManagedHeapFifthsMiB,
+                Generation2CollectionsPerHour = fromFile.Generation2CollectionsPerHour,
+                AllocatedBytesPerSecond = fromFile.AllocatedBytesPerSecond
+            };
+        return soak with
+        {
+            Memory = [merged, .. soak.Memory.Where(trend => trend.Process != fromFile.Process)]
+        };
+    }
+
+    // StackStressGenerator judge --run-folder <dir> [--quality-boundary <file>]: once the
+    // services stopped, counts the warning, error, and critical lines of their logs by message
+    // class, notes the PostgreSQL log the run kept, judges the report again, and rewrites the
+    // report and the summary. Exit codes: 0 passed, 1 failed, 4 could not measure, 2 when the
+    // report cannot be judged.
+    private static async Task<int> JudgeAsync(string[] args)
+    {
+        try
+        {
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (var index = 0; index + 1 < args.Length; index += 2)
+            {
+                if (args[index] is not ("--run-folder" or "--quality-boundary") || !values.TryAdd(args[index], args[index + 1]))
+                {
+                    throw new StressGeneratorOptionException($"The judge argument '{args[index]}' is unknown or given twice.");
+                }
+            }
+
+            if (args.Length % 2 != 0 || !values.TryGetValue("--run-folder", out var folder))
+            {
+                throw new StressGeneratorOptionException(
+                    "Usage: StackStressGenerator judge --run-folder <dir> [--quality-boundary <file>]");
+            }
+
+            var workingDirectory = Directory.GetCurrentDirectory();
+            var runFolder = Path.GetFullPath(folder, workingDirectory);
+            var boundary = StressQualityBoundary.Load(Path.GetFullPath(
+                values.GetValueOrDefault("--quality-boundary", StressLoadPlanRequest.DefaultQualityBoundaryPath),
+                workingDirectory));
+            var reportPath = Path.Combine(runFolder, "generator-report.json");
+            var summaryPath = Path.Combine(runFolder, "summary.json");
+            var report = await StressRunReport.ReadAsync(reportPath, CancellationToken.None);
+            var summary = StressRunSummary.Parse(await File.ReadAllTextAsync(summaryPath));
+            report = StressRunJudge.AddLogs(report, runFolder, boundary.LogAllowances);
+            report = report with { Verdict = boundary.Evaluate(report) };
+            var exitCode = report.Verdict is { Valid: false }
+                ? CouldNotMeasureExitCode
+                : !PassedOwnChecks(report) || !report.Verdict.Passed
+                    ? 1
+                    : 0;
+            await report.WriteAsync(reportPath, CancellationToken.None);
+            await (StressRunSummary.Create(report, summary.Scenario, summary.Commit, summary.TreeDirty, exitCode, summary.Machine) with
+            {
+                Date = summary.Date
+            }).WriteAsync(summaryPath, CancellationToken.None);
+            WriteServiceLogs(report.ServiceLogs!);
+            if (report.PostgresLog is { } log)
+            {
+                Console.WriteLine(
+                    $"PostgreSQL log {log.Path}: {log.DeadlockReports} deadlock reports, {log.LockWaitReports} lock waits longer than the deadlock timeout.");
+            }
+
+            var logRule = report.Verdict.Rules.Single(rule => rule.Rule == "service_log_errors");
+            Console.WriteLine(
+                $"Quality rule service_log_errors: {(logRule.Passed ? "passed" : "FAILED")}, measured {logRule.Measured?.ToString("0", System.Globalization.CultureInfo.InvariantCulture) ?? "n/a"} {logRule.Unit}, limit {logRule.Comparison} {logRule.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture)}{(logRule.Note is null ? string.Empty : $" ({logRule.Note})")}.");
+            return exitCode;
+        }
+        catch (Exception exception) when (exception is StressGeneratorOptionException
+            or IOException
+            or UnauthorizedAccessException
+            or InvalidDataException
+            or System.Text.Json.JsonException)
+        {
+            Console.Error.WriteLine($"The run cannot be judged: {exception.Message}");
+            return 2;
+        }
+    }
+
+    private static void WriteServiceLogs(StressServiceLogSummary logs)
+    {
+        foreach (var file in logs.Files)
+        {
+            Console.WriteLine(
+                $"Service log {file.Service} ({Path.GetFileName(file.Path)}): {file.Entries} entries, {file.Warnings} warnings, {file.Errors} errors, {file.Critical} critical.");
+        }
+
+        foreach (var entry in logs.Classes)
+        {
+            Console.WriteLine(
+                $"  {entry.Count,6} {entry.Level,-8} {entry.Service} {entry.Category}: {entry.Message}{(entry.Allowed ? $" (allowed: {entry.AllowReason})" : string.Empty)}");
+        }
     }
 
     private static async Task<int> RunWorkerOnlyAsync(
@@ -345,6 +464,8 @@ public static class Program
                 $"Item invariants: loot {invariants.ActualLootQuantity}/{invariants.ExpectedLootQuantity}, inventory item {invariants.ActualInventoryItemQuantity}/{invariants.ExpectedInventoryItemQuantity}, duplicate slots {invariants.DuplicateContainerSlots}, invalid custody {invariants.InvalidItemCustodyRows}, pending operations {invariants.PendingItemOperations}.");
         }
 
+        WriteSoakSummary(report);
+
         if (report.Bots.RemoteCadence is { } cadence)
         {
             Console.WriteLine(
@@ -365,6 +486,64 @@ public static class Program
         }
 
         Console.WriteLine($"JSON report: {outputPath}");
+    }
+
+    private static void WriteSoakSummary(StressRunReport report)
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        if (report.Playing?.DeathsPerBotPerTenMinutes is { Count: > 0 } deaths)
+        {
+            Console.WriteLine(
+                "Deaths per bot and ten minutes of the steady interval: "
+                + string.Join(", ", deaths.Select(role => string.Create(invariant, $"{role.Key} {role.Value:0.00}")))
+                + ".");
+        }
+
+        if (report.Soak is not { } soak)
+        {
+            return;
+        }
+
+        foreach (var trend in soak.Memory)
+        {
+            Console.WriteLine(string.Create(
+                invariant,
+                $"Memory of the {trend.Process} over the steady interval: working set {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h, fifths {FormatFifths(trend.WorkingSetFifthsMiB)} MiB{(trend.ManagedHeapFifthsMiB is { } heap ? $"; managed heap {trend.ManagedHeapSlopeMiBPerHour:+0.0;-0.0} MiB/h, fifths {FormatFifths(heap)} MiB" : string.Empty)}{(trend.Generation2CollectionsPerHour is { } gen2 ? $"; {gen2:0} generation 2 collections per hour" : string.Empty)}{(trend.AllocatedBytesPerSecond is { } allocated ? $"; {allocated / 1024d / 1024d:0.0} MiB allocated per second" : string.Empty)}."));
+        }
+
+        if (soak.Drift is { } drift)
+        {
+            Console.WriteLine(string.Create(
+                invariant,
+                $"Worst drift of the steady interval: {drift.MaximumSessionsAboveJoinedBots} sessions above and {drift.MaximumJoinedBotsWithoutSession} bots without a session, {drift.MaximumSessionsNearLeaseExpiry} sessions within {drift.LeaseExpiryThresholdSeconds:0} s of lease expiry, least lease left {(drift.MinimumSessionLeaseHeadroomSeconds is { } lease ? lease.ToString("0.0", invariant) + " s" : "n/a")}, worker registration headroom {(drift.MinimumWorkerRegistrationHeadroomSeconds is { } headroom ? headroom.ToString("0.0", invariant) + " s" : "n/a")}, {drift.MaximumPendingItemOperations} pending item operations, {drift.MaximumServiceConnectionsInUse} of {drift.MaximumServiceConnections} GameService connections in use{(drift.DatabasePoolSize is { } pool ? $" (pool {pool})" : string.Empty)}, oldest idle transaction {drift.MaximumIdleInTransactionSeconds:0.0} s."));
+        }
+
+        if (soak.Storage is { } storage)
+        {
+            Console.WriteLine(string.Create(
+                invariant,
+                $"Storage growth over {storage.Hours * 60d:0.0} minutes and {storage.Players} players, by bytes per hour ({storage.CountMethod}, {storage.StartCountMilliseconds:0} and {storage.EndCountMilliseconds:0} ms):"));
+            foreach (var table in storage.Tables.Take(StressRunSummary.TopTables))
+            {
+                Console.WriteLine(string.Create(
+                    invariant,
+                    $"  {table.Table}: rows {table.StartRows} -> {table.EndRows}, {table.StartBytes / 1024d:0} -> {table.EndBytes / 1024d:0} KiB; {table.RowsPerHour:0} rows/h, {table.BytesPerHour / 1024d / 1024d:0.00} MiB/h, {table.RowsPerPlayerHour:0.0} rows and {table.BytesPerPlayerHour / 1024d:0.0} KiB per player hour"));
+            }
+
+            if (storage.Redis is { } redis)
+            {
+                Console.WriteLine(string.Create(
+                    invariant,
+                    $"  Redis: keys {redis.Start.Keys} -> {redis.End.Keys}, used memory {redis.Start.UsedMemoryBytes / 1024d / 1024d:0.0} -> {redis.End.UsedMemoryBytes / 1024d / 1024d:0.0} MiB; {redis.KeysPerHour:0} keys/h"));
+            }
+        }
+    }
+
+    private static string FormatFifths(IReadOnlyList<double?> fifths)
+    {
+        return string.Join(
+            " / ",
+            fifths.Select(value => value is { } number ? number.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) : "n/a"));
     }
 
     private static void WriteProcessSummary(

@@ -38,6 +38,10 @@ public sealed class SimulationBotWorldView
 
     public SimulationBotPosition OwnPosition { get; private set; }
 
+    // The bot's newest authoritative movement state, with its velocity and whether it stands on
+    // ground, from the join or the latest owner snapshot.
+    public RealtimePlayerState? OwnState { get; private set; }
+
     public RealtimeMovementPathProgress? OwnPathProgress { get; private set; }
 
     public uint LatestServerTick { get; private set; }
@@ -91,6 +95,7 @@ public sealed class SimulationBotWorldView
             session.InitialPlayerState.PositionX,
             session.InitialPlayerState.PositionY,
             session.InitialPlayerState.PositionZ);
+        OwnState = session.InitialPlayerState;
         Items.ObserveCarry(session.CarryState);
     }
 
@@ -103,6 +108,7 @@ public sealed class SimulationBotWorldView
             snapshot.State.PositionX,
             snapshot.State.PositionY,
             snapshot.State.PositionZ);
+        OwnState = snapshot.State;
         OwnPathProgress = snapshot.PathProgress;
     }
 

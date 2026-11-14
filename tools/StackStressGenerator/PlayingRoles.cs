@@ -14,7 +14,15 @@ public interface IPlayingRole
     // The current state, for diagnostics and tests.
     string State { get; }
 
+    // The bot wears its kit and stands on its home ground, so it plays its role.
+    bool IsSetUp { get; }
+
     void Think(IPlayingBotBody body, TimeSpan now);
+
+    // The bot stopped playing its role for a while, such as to leave the game and come back,
+    // and its world view may be a new one: the role ends what it was in the middle of, like an
+    // attack ends a trip to the vendor, keeps what it learned, and decides again.
+    void Resume(TimeSpan now);
 }
 
 // What every playing role shares: equipping its kit, the one teleport to its home ground after
@@ -85,6 +93,22 @@ public abstract class PlayingRoleBase : IPlayingRole
     // The state of the trip, or null, for diagnostics and tests.
     public string? VendorTripState => visit?.State ?? (returning ? "returning" : null);
 
+    public bool IsSetUp => equipped && (!teleport || teleported);
+
+    public void Resume(TimeSpan now)
+    {
+        visit = null;
+        returning = false;
+        ForgetTravel();
+        PauseUntil = now;
+        // The kit is checked again; a worn kit needs no intent.
+        equipped = false;
+        ResumeRole(now);
+    }
+
+    // What the role itself ends and keeps when the bot comes back to it.
+    protected abstract void ResumeRole(TimeSpan now);
+
     public void Think(IPlayingBotBody body, TimeSpan now)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -149,6 +173,12 @@ public abstract class PlayingRoleBase : IPlayingRole
         var capacity = items.CarryCapacity;
         return items.CountFreeSlots() < MinimumFreeSlots
             || (capacity > 0 && capacity - items.CarriedWeight < capacity * MinimumFreeCarryShare);
+    }
+
+    // Whether the role still lacks something that only the vendor sells, after a visit.
+    protected virtual bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return false;
     }
 
     // Starts the trip to the town's vendor, unless the scenario has no town or a trip that
@@ -247,6 +277,12 @@ public abstract class PlayingRoleBase : IPlayingRole
             else if (NeedsToSell(body))
             {
                 body.Count(PlayingCounter.VendorTripsWithoutRoom);
+                noTripUntil = now + TripCooldown;
+            }
+            else if (StillNeedsToBuy(body))
+            {
+                // The visit could not buy what the role lacks, such as arrows it cannot pay
+                // for. Without a pause the same need would send it straight back.
                 noTripUntil = now + TripCooldown;
             }
 
@@ -487,6 +523,12 @@ public sealed class WalkerRole : PlayingRoleBase
     public override PlayingRole Role => PlayingRole.Walker;
 
     public override string State => walking ? "walking" : "pausing";
+
+    protected override void ResumeRole(TimeSpan now)
+    {
+        walking = false;
+        behaviorEnd = now;
+    }
 
     protected override void OnOutcome(IPlayingBotBody body, PlayingIntentOutcome outcome, TimeSpan now)
     {

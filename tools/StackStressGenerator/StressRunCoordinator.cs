@@ -32,8 +32,14 @@ public sealed class StressRunCoordinator(
     private readonly StressLatencyAccumulator samplingSteps = new(unchecked(options.Seed + 3));
     private readonly StressGameplayMetrics gameplayMetrics = new(options.Seed);
     private readonly SemaphoreSlim samplingGate = new(1, 1);
+    private readonly Dictionary<int, (PlayingStressBot Bot, StressPollGroup Group)> playingBots = [];
     private PlayingRunContext? playing;
+    private IReadOnlyList<PlayingChurnEvent> churnSchedule = [];
+    private int nextChurnEvent;
     private int launchedBots;
+    private volatile int joinedBotsForDrift;
+    private volatile StressDriftSample? latestDrift;
+    private long nextDriftTimestamp;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
     {
@@ -73,8 +79,11 @@ public sealed class StressRunCoordinator(
         var nextRampTimestamp = startedTimestamp;
         var nextReportTimestamp = AddDuration(startedTimestamp, options.ReportInterval);
         long? steadyDeadlineTimestamp = null;
+        var steadyStartedTimestamp = 0L;
+        var nextJoinedCountTimestamp = startedTimestamp;
         DateTime? steadyStartedAt = null;
         var rampComplete = false;
+        nextDriftTimestamp = AddDuration(startedTimestamp, options.ReportInterval);
 
         try
         {
@@ -103,12 +112,16 @@ public sealed class StressRunCoordinator(
                     && pendingAdmissions.Count == 0
                     && bots.All(bot => bot.State is StressBotState.Joined or StressBotState.Failed))
                 {
+                    var joined = bots.Count(bot => bot.State == StressBotState.Joined);
+                    joinedBotsForDrift = joined;
+                    await admissionProvider.CaptureSteadyBoundaryAsync(true, joined, cancellationToken);
+                    now = Stopwatch.GetTimestamp();
                     await samplingGate.WaitAsync(cancellationToken);
                     try
                     {
-                        processSampler?.MarkSteadyState();
-                        generatorProcessSampler.MarkSteadyState();
-                        admissionProvider.MarkSteadyState();
+                        processSampler?.MarkSteadyState(options.SteadyDuration);
+                        generatorProcessSampler.MarkSteadyState(options.SteadyDuration);
+                        admissionProvider.MarkSteadyState(options.SteadyDuration);
                     }
                     finally
                     {
@@ -116,6 +129,7 @@ public sealed class StressRunCoordinator(
                     }
 
                     steadyStartedAt = DateTime.UtcNow;
+                    steadyStartedTimestamp = now;
                     playing?.Metrics.BeginSteadyMeasurement();
                     foreach (var group in groups)
                     {
@@ -123,12 +137,23 @@ public sealed class StressRunCoordinator(
                         group.ForEachBot((bot, timestamp) => bot.BeginRemoteCadenceWindow(timestamp));
                     }
 
-                    var joined = bots.Count(bot => bot.State == StressBotState.Joined);
                     steadyDeadlineTimestamp = joined == 0
                         ? now
                         : AddDuration(now, options.SteadyDuration);
+                    ScheduleChurn();
                     Console.WriteLine(
                         $"Admission complete with {joined}/{options.BotCount} bots joined and {admissionFailures.Count} HTTP admission failures. Beginning {(joined == 0 ? 0 : options.SteadyDuration.TotalSeconds):0}-second steady interval on {groups.Count} poll thread{(groups.Count == 1 ? string.Empty : "s")}.");
+                }
+
+                if (steadyDeadlineTimestamp.HasValue)
+                {
+                    DispatchChurn(now, steadyStartedTimestamp);
+                }
+
+                if (now >= nextJoinedCountTimestamp)
+                {
+                    joinedBotsForDrift = bots.Count(bot => bot.State == StressBotState.Joined);
+                    nextJoinedCountTimestamp = AddDuration(now, SampleInterval);
                 }
 
                 if (now >= nextReportTimestamp)
@@ -154,6 +179,10 @@ public sealed class StressRunCoordinator(
             processSampler?.Sample();
             generatorProcessSampler.Sample();
             await admissionProvider.SampleAsync(cancellationToken);
+            processSampler?.MarkSteadyEnd();
+            generatorProcessSampler.MarkSteadyEnd();
+            admissionProvider.MarkSteadyEnd();
+            await admissionProvider.CaptureSteadyBoundaryAsync(false, joinedBotsForDrift, cancellationToken);
             await DrainGameplayAsync(cancellationToken);
             await LeaveAsync(cancellationToken);
             StopPollThreads();
@@ -167,14 +196,16 @@ public sealed class StressRunCoordinator(
                 .OrderBy(bot => bot.BotIndex)
                 .ToArray();
             var providerReport = admissionProvider.CaptureReport();
+            var workerProcess = processSampler?.CreateSummary();
+            var generatorProcess = generatorProcessSampler.CreateSummary();
             return StressRunReport.Create(
                 startedAt,
                 endedAt,
                 options,
                 target,
                 providerReport,
-                processSampler?.CreateSummary(),
-                generatorProcessSampler.CreateSummary(),
+                workerProcess,
+                generatorProcess,
                 snapshots,
                 inputAcknowledgementLatencies.CaptureSummary(),
                 gameplayMetrics.Capture(
@@ -184,6 +215,12 @@ public sealed class StressRunCoordinator(
                 SteadyStartedAt = steadyStartedAt,
                 SteadyEndedAt = steadyEndedAt,
                 Playing = playing?.Metrics.Capture(),
+                Soak = new StressSoakSummary(
+                    providerReport.Storage,
+                    providerReport.Drift,
+                    new[] { workerProcess?.Memory, providerReport.GameServiceProcess?.Memory, generatorProcess?.Memory }
+                        .OfType<StressMemoryTrend>()
+                        .ToArray()),
                 GeneratorTiming = new StressGeneratorTimingSummary(
                     PollInterval.TotalMilliseconds,
                     pollLateness.CaptureSummary(),
@@ -197,15 +234,24 @@ public sealed class StressRunCoordinator(
         }
         finally
         {
-            await samplingStop.CancelAsync();
-            await StopSamplingAsync(sampling);
-            StopPollThreads();
-            foreach (var bot in bots)
+            try
             {
-                bot.Dispose();
+                await samplingStop.CancelAsync();
+                await StopSamplingAsync(sampling);
             }
+            finally
+            {
+                // A sampler that failed, for example on a dropped database connection, rethrows
+                // above. The poll threads run on the run's own token, so without this they
+                // would keep polling bots and sending traffic until the process ends.
+                StopPollThreads();
+                foreach (var bot in bots)
+                {
+                    bot.Dispose();
+                }
 
-            playing?.Navigation?.Dispose();
+                playing?.Navigation?.Dispose();
+            }
         }
     }
 
@@ -238,6 +284,14 @@ public sealed class StressRunCoordinator(
                 lock (timingGate)
                 {
                     samplingSteps.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                }
+
+                // The drift checks run once a report interval, apart from the step that the
+                // sampling timing measures.
+                if (Stopwatch.GetTimestamp() >= nextDriftTimestamp)
+                {
+                    nextDriftTimestamp = AddDuration(Stopwatch.GetTimestamp(), options.ReportInterval);
+                    latestDrift = await admissionProvider.SampleDriftAsync(joinedBotsForDrift, cancellationToken) ?? latestDrift;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -363,12 +417,54 @@ public sealed class StressRunCoordinator(
             + string.Join(", ", PlayingRoster.RoleCounts(scenario, options.BotCount)
                 .Where(pair => pair.Value > 0)
                 .Select(pair => $"{pair.Value} {PlayingScenario.FormatRole(pair.Key)}")) + ".");
+
+        // The churn takes the real way back through GameService, which only the full stack has.
+        var rejoin = scenario.Churn is not null ? admissionProvider as FullStackStressAdmissionProvider : null;
         return new PlayingRunContext(
             scenario,
             assignments.ToDictionary(assignment => assignment.BotIndex),
             PlayingGameData.Load(options.ItemCatalogPath, options.ActorCatalogPath),
             navigation,
-            metrics);
+            metrics)
+        {
+            // The way back starts on a pool thread, so nothing of it runs on a poll thread.
+            Rejoin = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.RejoinAsync(plan, token), token),
+            ReadRejoinFacts = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.ReadRejoinFactsAsync(plan, token), token),
+            Regeneration = rejoin is null ? new PlayingRegeneration(1, 1) : PlayingRegeneration.Load(options.CombatRulesPath)
+        };
+    }
+
+    // The churn's events of the steady interval, for the bots that joined.
+    private void ScheduleChurn()
+    {
+        if (playing?.Scenario.Churn is not { } churn || playing.Rejoin is null)
+        {
+            return;
+        }
+
+        var joined = playingBots
+            .Where(pair => pair.Value.Bot.State == StressBotState.Joined)
+            .Select(pair => pair.Key)
+            .ToArray();
+        churnSchedule = PlayingChurnSchedule.Create(churn, joined, options.SteadyDuration, options.Seed);
+        nextChurnEvent = 0;
+        Console.WriteLine(
+            $"Churn: {churn.PercentPerMinute} percent of the bots leave and come back every minute, {churnSchedule.Count} leaves in the first {Math.Max(0d, (options.SteadyDuration - PlayingChurnSchedule.QuietTail).TotalSeconds):0} s of the steady interval, half to their standing body and half to their saved place.");
+    }
+
+    // Hands every due churn event to its bot's poll thread.
+    private void DispatchChurn(long now, long steadyStartedTimestamp)
+    {
+        while (nextChurnEvent < churnSchedule.Count
+            && now >= AddDuration(steadyStartedTimestamp, churnSchedule[nextChurnEvent].Offset))
+        {
+            var churnEvent = churnSchedule[nextChurnEvent++];
+            if (playingBots.TryGetValue(churnEvent.BotIndex, out var entry))
+            {
+                var bot = entry.Bot;
+                entry.Group.Post(timestamp => bot.RequestChurn(churnEvent, timestamp));
+            }
+        }
     }
 
     private void LaunchRampStep(CancellationToken cancellationToken)
@@ -443,7 +539,12 @@ public sealed class StressRunCoordinator(
                     refresh);
             bots.Add(bot);
             // The poll threads share the bots evenly in admission order.
-            groups[(bots.Count - 1) % groups.Count].Add(bot);
+            var group = groups[(bots.Count - 1) % groups.Count];
+            group.Add(bot);
+            if (bot is PlayingStressBot playingBot)
+            {
+                playingBots[admission.BotIndex] = (playingBot, group);
+            }
         }
     }
 
@@ -516,6 +617,24 @@ public sealed class StressRunCoordinator(
         var p95 = acknowledgement is null ? "n/a" : $"{acknowledgement.P95Ms:0.0} ms";
         Console.WriteLine(
             $"Bots joined {joined}, joining {joining}, failed {failed}; snapshots {receivedSnapshots}, estimated missing {missingSnapshots}; input ack p95 {p95}.");
+        if (latestDrift is { } drift)
+        {
+            Console.WriteLine(FormatDrift(drift, options.DatabasePoolSize, options.WorkerHeartbeatTimeoutSeconds));
+        }
+    }
+
+    public static string FormatDrift(StressDriftSample drift, int? poolSize, int? heartbeatTimeoutSeconds)
+    {
+        var headroom = drift.MinimumSessionLeaseHeadroomSeconds is { } lease
+            ? lease.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s"
+            : "n/a";
+        var heartbeat = drift.WorkerHeartbeatAgeSeconds is { } age
+            ? age.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s ago"
+                + (heartbeatTimeoutSeconds is { } timeout ? $" of {timeout} s" : string.Empty)
+            : "n/a";
+        return string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"Drift: {drift.ActiveSessions} active sessions for {drift.JoinedBots} joined bots, {drift.SessionsNearLeaseExpiry} within {StressPostgresSampler.LeaseExpiryThresholdSeconds:0} s of lease expiry, least lease left {headroom}; worker registry heartbeat {heartbeat}; {drift.PendingItemOperations} pending item operations; GameService connections {drift.ServiceConnectionsInUse} in use of {drift.ServiceConnections}{(poolSize is { } pool ? $", pool {pool}" : string.Empty)}; oldest idle transaction {drift.OldestIdleInTransactionSeconds:0.0} s.");
     }
 
     private static StressBotSnapshot CreateAdmissionFailure(

@@ -54,9 +54,30 @@ function Write-LogTail([string]$Path) {
     }
 }
 
+# Lets this script's process, and so every process it starts from now on, handle Ctrl+C. A
+# process inherits whether it ignores Ctrl+C from the process that starts it, and a script started
+# from Git Bash or from a host that starts it in a new process group ignores Ctrl+C. Its services
+# would then ignore the Ctrl+C that Stop-StackProcess sends, wait the full 30 seconds, and be
+# ended without their shutdown.
+function Enable-ControlC {
+    if (-not ("StackConsoleInput" -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class StackConsoleInput
+{
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+}
+'@
+    }
+
+    [void][StackConsoleInput]::SetConsoleCtrlHandler([IntPtr]::Zero, $false)
+}
+
 # Starts a process in its own hidden console, so it can get Ctrl+C on its own, with its output
 # in <LogRoot>/<Name>.log and <Name>.err.log and the given environment variables set for it only.
 function Start-StackProcess([string]$Name, [string]$FilePath, [string[]]$ArgumentList, [hashtable]$Environment, [string]$LogRoot, [string]$WorkingDirectory) {
+    Enable-ControlC
     $previous = @{}
     foreach ($key in $Environment.Keys) {
         $previous[$key] = [Environment]::GetEnvironmentVariable($key)
@@ -121,13 +142,18 @@ function Stop-StackProcess($Process, [string]$Name) {
         return
     }
 
-    $signalled = Send-ControlC $Process.Id
-    if ($signalled -and $Process.WaitForExit(30000)) {
-        Write-Step "$Name stopped."
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    if (-not (Send-ControlC $Process.Id)) {
+        Write-Step "Ctrl+C could not be sent to $Name; ending the process."
+    }
+    elseif ($Process.WaitForExit(30000)) {
+        Write-Step ("$Name stopped in {0:N1} s." -f $watch.Elapsed.TotalSeconds)
         return
     }
+    else {
+        Write-Step "$Name did not stop on Ctrl+C within 30 seconds; ending the process."
+    }
 
-    Write-Step "$Name did not stop on Ctrl+C within 30 seconds; ending the process."
     Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
     $null = $Process.WaitForExit(10000)
 }

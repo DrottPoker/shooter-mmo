@@ -93,8 +93,24 @@ public sealed record StressGeneratorOptions(
     // The threads that share the bots and poll them; every thread polls its bots every 3 ms.
     public int PollThreads { get; init; } = 1;
 
+    // The combat rules the worker loads, for how fast a churning bot's body regenerates.
+    public string CombatRulesPath { get; init; } = DefaultCombatRulesPath;
+
+    // Full-stack: the disposable Redis, whose keys and memory the soak reads at both ends of the
+    // steady interval, or null for none.
+    public string? RedisEndpoint { get; init; }
+
+    // Full-stack: GameService's database pool and the time after which it takes a silent worker
+    // offline, which the drift checks compare with; null when unknown.
+    public int? DatabasePoolSize { get; init; }
+
+    public int? WorkerHeartbeatTimeoutSeconds { get; init; }
+
     public static string DefaultActorCatalogPath =>
         Path.Combine(AppContext.BaseDirectory, "WorldData", "Actors", "core.actor-catalog.json");
+
+    public static string DefaultCombatRulesPath =>
+        Path.Combine(AppContext.BaseDirectory, "WorldData", "Combat", "combat-rules.json");
 
     // The build copies the compiled World collision and item catalog below the output.
     public static string DefaultWorldDataPath => Path.Combine(AppContext.BaseDirectory, "WorldData", "Worlds");
@@ -296,7 +312,17 @@ public sealed record StressGeneratorOptions(
             WorldDataPath = OptionalPath(values, "world-data-path", workingDirectory) ?? DefaultWorldDataPath,
             ItemCatalogPath = OptionalPath(values, "item-catalog-path", workingDirectory) ?? DefaultItemCatalogPath,
             ActorCatalogPath = OptionalPath(values, "actor-catalog-path", workingDirectory) ?? DefaultActorCatalogPath,
-            PollThreads = ParseInt(values, "poll-threads", 1, 1, 16)
+            PollThreads = ParseInt(values, "poll-threads", 1, 1, 16),
+            CombatRulesPath = OptionalPath(values, "combat-rules-path", workingDirectory) ?? DefaultCombatRulesPath,
+            RedisEndpoint = GetOptional(values, "redis-endpoint") is { } redis
+                ? StressRedisSampler.ParseEndpoint(redis.Trim()).ToString()
+                : null,
+            DatabasePoolSize = values.ContainsKey("database-pool-size")
+                ? ParseInt(values, "database-pool-size", 0, 1, 10_000)
+                : null,
+            WorkerHeartbeatTimeoutSeconds = values.ContainsKey("worker-heartbeat-timeout-seconds")
+                ? ParseInt(values, "worker-heartbeat-timeout-seconds", 0, 1, 3600)
+                : null
         };
     }
 
@@ -381,6 +407,10 @@ public sealed record StressGeneratorOptions(
           --item-catalog-path <path>        Playing: the compiled item catalog. Default: the copy below the output
           --actor-catalog-path <path>       Playing: the compiled actor catalog. Default: the copy below the output
           --poll-threads <count>            Threads that share the bots and poll them every 3 ms, 1 to 16. Default: 1
+          --combat-rules-path <path>        Playing: the combat rules, for the churn's rejoin check. Default: the copy below the output
+          --redis-endpoint <host:port>      Full-stack: the loopback Redis whose keys and memory the soak reads.
+          --database-pool-size <count>      Full-stack: GameService's database pool, which the drift checks compare with.
+          --worker-heartbeat-timeout-seconds <s> Full-stack: when GameService takes a silent worker offline, for the drift checks.
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
@@ -393,6 +423,10 @@ public sealed record StressGeneratorOptions(
         StackStressGenerator world-variant --scenario <file> --run-folder <dir>
           Writes the scenario's load variant of its World into the run folder with the content
           compilers and checks that every added actor stands on walkable ground.
+
+        StackStressGenerator judge --run-folder <dir> [--quality-boundary <file>]
+          Once the services of a run stopped, counts their log lines by message class, notes the
+          kept PostgreSQL log, judges the run again, and rewrites its report and summary.
         """;
 
     private static Dictionary<string, string> ParseValues(string[] args)
@@ -473,7 +507,11 @@ public sealed record StressGeneratorOptions(
             "world-data-path",
             "item-catalog-path",
             "actor-catalog-path",
-            "poll-threads"
+            "poll-threads",
+            "combat-rules-path",
+            "redis-endpoint",
+            "database-pool-size",
+            "worker-heartbeat-timeout-seconds"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

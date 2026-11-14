@@ -16,8 +16,17 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private readonly ConcurrentDictionary<int, ActiveAccountSession> activeAccountSessions = [];
     private readonly ConcurrentDictionary<int, ProvisionedAccount> provisionedAccounts = [];
     private readonly ConcurrentDictionary<int, string> provisioningFailures = [];
+    private readonly ConcurrentDictionary<int, AdmittedCharacter> admittedCharacters = [];
     private readonly object workerGate = new();
     private readonly string password;
+    private readonly System.Net.IPEndPoint? redisEndpoint;
+    private StressTableSnapshot? tablesAtSteadyStart;
+    private StressTableSnapshot? tablesAtSteadyEnd;
+    private StressRedisSnapshot? redisAtSteadyStart;
+    private StressRedisSnapshot? redisAtSteadyEnd;
+    private int steadyPlayers;
+    private int churnLogouts;
+    private int churnLogins;
     private StressProcessSampler? gameServiceProcessSampler;
     private StressWorkerRegistration? worker;
     private int registeredBots;
@@ -49,7 +58,11 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         client = new FullStackStressClient(httpClient, metrics);
         postgresSampler = StressPostgresSampler.Create(
             options.PostgresConnectionString!,
-            options.ConfirmedDisposableDatabase!);
+            options.ConfirmedDisposableDatabase!,
+            options.WorkerId,
+            options.WorkerHeartbeatTimeoutSeconds,
+            options.DatabasePoolSize);
+        redisEndpoint = options.RedisEndpoint is null ? null : StressRedisSampler.ParseEndpoint(options.RedisEndpoint);
         concurrency = new SemaphoreSlim(options.HttpConcurrency, options.HttpConcurrency);
         password = $"StackStress_{Convert.ToHexString(RandomNumberGenerator.GetBytes(12))}!";
     }
@@ -320,6 +333,128 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         await postgresSampler.SampleAsync(cancellationToken);
     }
 
+    public async Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken)
+    {
+        return await postgresSampler.SampleDriftAsync(joinedBots, cancellationToken);
+    }
+
+    // The tables and Redis at one end of the steady interval. A count that fails or times out
+    // fails the run with its reason.
+    public async Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken)
+    {
+        var tables = await postgresSampler.CountTablesAsync(cancellationToken);
+        var redis = redisEndpoint is null ? null : await StressRedisSampler.ReadAsync(redisEndpoint, cancellationToken);
+        if (start)
+        {
+            tablesAtSteadyStart = tables;
+            redisAtSteadyStart = redis;
+            steadyPlayers = players;
+        }
+        else
+        {
+            tablesAtSteadyEnd = tables;
+            redisAtSteadyEnd = redis;
+        }
+
+        Console.WriteLine(
+            $"Counted {tables.Tables.Count} tables with {tables.Tables.Sum(table => table.Rows)} rows and {tables.Tables.Sum(table => table.Bytes) / 1024d / 1024d:0.0} MiB in {tables.Milliseconds:0} ms at the {(start ? "start" : "end")} of the steady interval"
+            + (redis is null ? "." : $"; Redis holds {redis.Keys} keys in {redis.UsedMemoryBytes / 1024d / 1024d:0.0} MiB."));
+    }
+
+    public void MarkSteadyEnd()
+    {
+        gameServiceProcessSampler?.MarkSteadyEnd();
+        postgresSampler.MarkSteadyEnd();
+    }
+
+    // The way back of a churning bot, as a player takes it: the account logout right after the
+    // leave when the churn says so, the wait, the login after a logout, the character list, the
+    // Shards, and the join ticket, which GameService places on the worker that holds the body
+    // while it stands. For a body that is gone, the database's facts about it come along.
+    public async Task<PlayingRejoinTicket> RejoinAsync(PlayingRejoinPlan plan, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!admittedCharacters.TryGetValue(plan.BotIndex, out var admitted)
+            || !activeAccountSessions.TryGetValue(plan.BotIndex, out var session))
+        {
+            throw new InvalidOperationException($"Bot {plan.BotIndex} has no account session to come back with.");
+        }
+
+        if (plan.Logout)
+        {
+            await client.LogoutAsync(session.SessionToken, cancellationToken);
+            activeAccountSessions.TryRemove(plan.BotIndex, out _);
+            Interlocked.Increment(ref churnLogouts);
+        }
+
+        var wait = (plan.RejoinAtTimestamp - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency;
+        if (wait > 0d)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(wait), cancellationToken);
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var token = session.SessionToken;
+        if (plan.Logout)
+        {
+            var login = await client.LoginAsync(Username(plan.BotIndex), password, cancellationToken, paceRateLimit: true);
+            token = login.SessionToken;
+            activeAccountSessions[plan.BotIndex] = new ActiveAccountSession(token, admitted.Character.Id);
+            Interlocked.Increment(ref churnLogins);
+        }
+
+        var characters = await client.ListCharactersAsync(token, cancellationToken);
+        if (!characters.Any(candidate => candidate.Id == admitted.Character.Id))
+        {
+            throw new FullStackApiException(
+                "character_missing_after_login",
+                $"Character {admitted.Character.Id} was not returned on the way back.",
+                0);
+        }
+
+        var shards = await client.ListShardsAsync(cancellationToken);
+        if (!shards.Any(candidate =>
+                string.Equals(candidate.Id, options.ShardId, StringComparison.Ordinal) && candidate.IsOnline))
+        {
+            throw new FullStackApiException(
+                "stress_shard_unavailable",
+                $"Shard '{options.ShardId}' was not online on the way back.",
+                0);
+        }
+
+        var join = await client.JoinShardAsync(token, options.ShardId, admitted.Character.Id, cancellationToken);
+        ValidateJoin(admitted.Character, join);
+        CaptureWorker(join);
+        var facts = join.IsReconnect ? null : await ReadRejoinFactsAsync(plan, cancellationToken);
+        return new PlayingRejoinTicket(
+            new StressBotAdmission(
+                plan.BotIndex,
+                admitted.AccountId,
+                admitted.Character.Id,
+                admitted.Character.Name,
+                join.JoinTicket,
+                join.ExpiresAt,
+                join.Endpoint.Host,
+                join.Endpoint.UdpPort,
+                join.Shard.Id,
+                join.Shard.WorldId),
+            join.IsReconnect,
+            started,
+            facts);
+    }
+
+    public Task<PlayingRejoinFacts> ReadRejoinFactsAsync(PlayingRejoinPlan plan, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!admittedCharacters.TryGetValue(plan.BotIndex, out var admitted)
+            || !Guid.TryParse(plan.SimulationSessionId, out var session))
+        {
+            throw new InvalidOperationException($"Bot {plan.BotIndex} has no character or session to read the facts of.");
+        }
+
+        return postgresSampler.ReadRejoinFactsAsync(admitted.Character.Id, session, cancellationToken);
+    }
+
     public async Task PrepareAsync(CancellationToken cancellationToken)
     {
         if (options.Workload == StressWorkloadProfile.Playing)
@@ -412,9 +547,10 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             cancellationToken);
     }
 
-    public void MarkSteadyState()
+    public void MarkSteadyState(TimeSpan plannedDuration)
     {
-        gameServiceProcessSampler?.MarkSteadyState();
+        gameServiceProcessSampler?.MarkSteadyState(plannedDuration);
+        postgresSampler.MarkSteadyState();
     }
 
     public StressProviderReport CaptureReport()
@@ -438,9 +574,24 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 Volatile.Read(ref admittedBots),
                 Volatile.Read(ref loggedOutBots),
                 lootHotspotCorpseId,
-                metrics.Capture()),
+                metrics.Capture())
+            {
+                ChurnLogouts = Volatile.Read(ref churnLogouts),
+                ChurnLogins = Volatile.Read(ref churnLogins)
+            },
             gameServiceProcessSampler?.CreateSummary(),
-            postgresSampler.CreateSummary());
+            postgresSampler.CreateSummary())
+        {
+            Storage = tablesAtSteadyStart is not null && tablesAtSteadyEnd is not null
+                ? StressStorageGrowthSummary.Create(
+                    tablesAtSteadyStart,
+                    tablesAtSteadyEnd,
+                    redisAtSteadyStart,
+                    redisAtSteadyEnd,
+                    steadyPlayers)
+                : null,
+            Drift = postgresSampler.CaptureDrift()
+        };
     }
 
     public async ValueTask DisposeAsync()
@@ -584,7 +735,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         PlayingAssignment assignment,
         CancellationToken cancellationToken)
     {
-        var username = $"stress_{options.RunId}_{assignment.BotIndex}";
+        var username = Username(assignment.BotIndex);
         var registration = await client.RegisterAsync(
             $"{username}@stack-stress.local",
             username,
@@ -658,6 +809,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             ValidateJoin(account.Character, join);
             CaptureWorker(join);
             activeAccountSessions[botIndex] = new ActiveAccountSession(account.SessionToken, account.Character.Id);
+            admittedCharacters[botIndex] = new AdmittedCharacter(account.AccountId, account.Character);
             Interlocked.Increment(ref admittedBots);
             return StressAdmissionResult.Success(new StressBotAdmission(
                 botIndex,
@@ -683,7 +835,14 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
         }
     }
 
+    private string Username(int botIndex)
+    {
+        return $"stress_{options.RunId}_{botIndex}";
+    }
+
     private sealed record ActiveAccountSession(string SessionToken, Guid CharacterId);
+
+    private sealed record AdmittedCharacter(Guid AccountId, FullStackCharacterResponse Character);
 
     private sealed record ProvisionedAccount(
         Guid AccountId,

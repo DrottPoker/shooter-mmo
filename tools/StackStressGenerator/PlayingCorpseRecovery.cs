@@ -48,6 +48,22 @@ public sealed class PlayingCorpseRecovery
         return operation is PlayingOperations.LootOpen or PlayingOperations.LootAll or PlayingOperations.LootClose;
     }
 
+    // The bot left the game and came back alive: an open corpse view ended with the leave, so the
+    // recovery walks to the corpse and opens it again, unless it looted it already.
+    public void Resume(TimeSpan now)
+    {
+        awaiting = false;
+        closeSent = false;
+        atDeathSpotSince = null;
+        if (state == RecoveryState.AwaitRespawn)
+        {
+            respawnedAt = now;
+        }
+
+        state = looted ? RecoveryState.Closing : RecoveryState.Travel;
+        corpse = looted ? Guid.Empty : corpse;
+    }
+
     public void OnOutcome(IPlayingBotBody body, PlayingIntentOutcome outcome, TimeSpan now)
     {
         ArgumentNullException.ThrowIfNull(body);

@@ -68,6 +68,40 @@ public sealed class StressPollGroupTests
         Assert.IsType<InvalidOperationException>(group.Failure);
     }
 
+    // A bot can throw the cancellation of the run from inside a poll, for example while it
+    // completes an inventory refresh. On a dedicated thread an exception that escapes ends the
+    // process, so the thread ends quietly and reports no failure.
+    [Fact]
+    public void ACancelledRunEndsThePollThreadWithoutAFailure()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var group = new StressPollGroup(2, TimeSpan.FromMilliseconds(3), _ => { }, cancellation.Token);
+        var bot = new RecordingBot { ThrowCancellationWhenCancelled = true };
+        group.Add(bot);
+        Assert.True(bot.Polled.Wait(Wait, TestContext.Current.CancellationToken));
+
+        cancellation.Cancel();
+        group.Dispose();
+
+        Assert.Null(group.Failure);
+    }
+
+    [Fact]
+    public void ACancellationThatNobodyAskedForIsReportedAsAFailure()
+    {
+        using var group = new StressPollGroup(3, TimeSpan.FromMilliseconds(3), _ => { }, CancellationToken.None);
+        var bot = new RecordingBot { ThrowCancellation = true };
+
+        group.Add(bot);
+        var deadline = DateTime.UtcNow + Wait;
+        while (group.Failure is null && DateTime.UtcNow < deadline)
+        {
+            Thread.Yield();
+        }
+
+        Assert.IsType<OperationCanceledException>(group.Failure);
+    }
+
     private sealed class RecordingBot : IStressBot
     {
         private int polls;
@@ -75,6 +109,10 @@ public sealed class StressPollGroupTests
         public ManualResetEventSlim Polled { get; } = new();
 
         public bool Throw { get; init; }
+
+        public bool ThrowCancellation { get; init; }
+
+        public bool ThrowCancellationWhenCancelled { get; init; }
 
         public string? StartThread { get; private set; }
 
@@ -96,9 +134,18 @@ public sealed class StressPollGroupTests
                 throw new InvalidOperationException("broken bot");
             }
 
+            if (ThrowCancellation)
+            {
+                throw new OperationCanceledException("unexpected");
+            }
+
             PollThread = Thread.CurrentThread.Name;
             Interlocked.Increment(ref polls);
             Polled.Set();
+            if (ThrowCancellationWhenCancelled)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
         }
 
         public void ResetPolls()

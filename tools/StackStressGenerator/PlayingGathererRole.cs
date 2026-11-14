@@ -77,6 +77,22 @@ public sealed class GathererRole : PlayingRoleBase
 
     public ulong Node => node;
 
+    // A gatherer on its way back to its corpse goes on with that; the node it worked or walked
+    // to is let go, since the leave closed its interaction, and it picks a node again.
+    protected override void ResumeRole(TimeSpan now)
+    {
+        walker?.Resume(now);
+        fleeAfterClose = false;
+        if (state == GathererState.Dead && recovery is not null)
+        {
+            recovery.Resume(now);
+            return;
+        }
+
+        node = 0;
+        Enter(GathererState.Seek, now);
+    }
+
     protected override void OnOutcome(IPlayingBotBody body, PlayingIntentOutcome outcome, TimeSpan now)
     {
         if (recovery is not null && PlayingCorpseRecovery.Owns(outcome.Operation))

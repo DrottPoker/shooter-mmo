@@ -193,6 +193,17 @@ public sealed record StressRunReport(
     // How far the generator itself kept up, which the validity rules judge.
     public StressGeneratorTimingSummary? GeneratorTiming { get; init; }
 
+    // What a long run shows: the growth of the database and Redis, the worst drift values, and
+    // the memory of every process over the steady interval.
+    public StressSoakSummary? Soak { get; init; }
+
+    // The warning, error, and critical lines of the service logs, which StackStressGenerator
+    // judge adds once the services stopped.
+    public StressServiceLogSummary? ServiceLogs { get; init; }
+
+    // The PostgreSQL log the run kept, with its deadlock and lock wait reports.
+    public StressPostgresLogSummary? PostgresLog { get; init; }
+
     public static StressRunReport Create(
         DateTime startedAt,
         DateTime endedAt,
@@ -270,6 +281,12 @@ public sealed record StressRunReport(
             providerReport.Authority);
     }
 
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     public async Task WriteAsync(string path, CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(path);
@@ -278,13 +295,27 @@ public sealed record StressRunReport(
             Directory.CreateDirectory(directory);
         }
 
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            WriteIndented = true,
-            Converters = { new JsonStringEnumConverter() }
-        };
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, this, options, cancellationToken);
+        await JsonSerializer.SerializeAsync(stream, this, SerializerOptions, cancellationToken);
         await stream.FlushAsync(cancellationToken);
+    }
+
+    // Reads a report that WriteAsync wrote, so StackStressGenerator judge can add to it.
+    public static async Task<StressRunReport> ReadAsync(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        return await JsonSerializer.DeserializeAsync<StressRunReport>(stream, SerializerOptions, cancellationToken)
+            ?? throw new InvalidDataException($"The report '{path}' is empty.");
+    }
+
+    public static StressRunReport Parse(string json)
+    {
+        return JsonSerializer.Deserialize<StressRunReport>(json, SerializerOptions)
+            ?? throw new InvalidDataException("The report is empty.");
+    }
+
+    public string ToJson()
+    {
+        return JsonSerializer.Serialize(this, SerializerOptions);
     }
 }

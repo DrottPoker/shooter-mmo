@@ -31,25 +31,60 @@ public sealed record StressProcessSummary(
     long SteadyStateFirstWindowAveragePrivateMemoryBytes,
     long SteadyStateLastWindowAveragePrivateMemoryBytes,
     double SteadyStatePrivateMemoryTrendBytesPerMinute,
-    int MaximumThreadCount);
+    int MaximumThreadCount)
+{
+    // The working set, and for the generator its own managed heap, over the steady interval.
+    public StressMemoryTrend? Memory { get; init; }
+}
 
+// Samples one process once a second. It keeps sums, extremes, and the steady interval's trend
+// accumulators instead of the samples, so a long run does not grow the generator's memory with
+// its own measurements. The steady windows are the first and the last fifth of the planned
+// steady interval.
 public sealed class StressProcessSampler : IDisposable
 {
+    private const double Mebibyte = 1024d * 1024d;
+
     private readonly Process process;
-    private readonly List<ProcessSample> samples = [];
+    private readonly bool current;
+    private readonly string label;
     private TimeSpan previousProcessorTime;
     private long previousTimestamp;
     private bool hasBaseline;
-    private int? steadyStateStartIndex;
+    private int samples;
+    private double singleCoreCpuSum;
+    private double singleCoreCpuMaximum;
+    private double machineCpuSum;
+    private double machineCpuMaximum;
+    private long initialWorkingSet;
+    private double workingSetSum;
+    private long maximumWorkingSet;
+    private long finalWorkingSet;
+    private long initialPrivateMemory;
+    private double privateMemorySum;
+    private long maximumPrivateMemory;
+    private long finalPrivateMemory;
+    private int maximumThreads;
+    private SteadyWindow? steady;
+    private bool steadyEnded;
 
-    private StressProcessSampler(Process process)
+    // The generator's own collections and allocation over the steady interval.
+    private int steadyStartGeneration2;
+    private long steadyStartAllocated;
+    private int steadyEndGeneration2;
+    private long steadyEndAllocated;
+    private long steadyEndTimestamp;
+
+    private StressProcessSampler(Process process, bool current, string label)
     {
         this.process = process;
+        this.current = current;
+        this.label = label;
     }
 
     public static StressProcessSampler AttachCurrent()
     {
-        return new StressProcessSampler(Process.GetCurrentProcess());
+        return new StressProcessSampler(Process.GetCurrentProcess(), true, "generator");
     }
 
     public static StressProcessSampler? TryAttach(DateTime workerStartedAt)
@@ -101,7 +136,15 @@ public sealed class StressProcessSampler : IDisposable
         }
 
         Console.WriteLine($"Monitoring {processName} process {selected.Id}.");
-        return new StressProcessSampler(selected);
+        return new StressProcessSampler(
+            selected,
+            false,
+            processName switch
+            {
+                "Mmorpg.SimulationWorker" => "worker",
+                "Mmorpg.GameService" => "gameService",
+                _ => processName
+            });
     }
 
     private static TimeSpan GetStartDistance(Process process, DateTime workerStartedAt)
@@ -140,13 +183,14 @@ public sealed class StressProcessSampler : IDisposable
                 var singleCoreCpuPercent = elapsedSeconds <= 0d
                     ? 0d
                     : Math.Max(0d, processorSeconds / elapsedSeconds * 100d);
-                samples.Add(new ProcessSample(
+                Add(
                     now,
                     singleCoreCpuPercent,
                     machineCpuPercent,
                     process.WorkingSet64,
                     process.PrivateMemorySize64,
-                    process.Threads.Count));
+                    process.Threads.Count,
+                    current ? GC.GetGCMemoryInfo().HeapSizeBytes : null);
             }
 
             previousTimestamp = now;
@@ -158,104 +202,93 @@ public sealed class StressProcessSampler : IDisposable
         }
     }
 
-    public void MarkSteadyState()
+    // The steady interval starts; its windows are fifths of the planned duration.
+    public void MarkSteadyState(TimeSpan plannedDuration)
     {
-        steadyStateStartIndex ??= samples.Count;
+        if (steady is not null)
+        {
+            return;
+        }
+
+        steady = new SteadyWindow(Stopwatch.GetTimestamp(), plannedDuration);
+        steadyStartGeneration2 = GC.CollectionCount(2);
+        steadyStartAllocated = GC.GetTotalAllocatedBytes();
+    }
+
+    // The steady interval ended; later samples count only for the whole run.
+    public void MarkSteadyEnd()
+    {
+        if (steady is null || steadyEnded)
+        {
+            return;
+        }
+
+        steadyEnded = true;
+        steadyEndGeneration2 = GC.CollectionCount(2);
+        steadyEndAllocated = GC.GetTotalAllocatedBytes();
+        steadyEndTimestamp = Stopwatch.GetTimestamp();
     }
 
     public StressProcessSummary? CreateSummary()
     {
-        if (samples.Count == 0)
+        if (samples == 0)
         {
             return null;
         }
 
-        var steadyStateSamples = samples
-            .Skip(Math.Min(steadyStateStartIndex ?? 0, samples.Count - 1))
-            .ToArray();
-        var steadyWindowSize = Math.Clamp(steadyStateSamples.Length / 5, 1, 30);
-        var firstSteadyWindow = steadyStateSamples.AsSpan(0, steadyWindowSize);
-        var lastSteadyWindow = steadyStateSamples.AsSpan(
-            steadyStateSamples.Length - steadyWindowSize,
-            steadyWindowSize);
-
+        var window = steady is { WorkingSet.Samples: > 0 } ? steady : null;
         return new StressProcessSummary(
             process.Id,
             process.ProcessName,
-            samples.Count,
-            samples.Average(sample => sample.SingleCoreCpuPercent),
-            samples.Max(sample => sample.SingleCoreCpuPercent),
-            samples.Average(sample => sample.MachineCpuPercent),
-            samples.Max(sample => sample.MachineCpuPercent),
-            samples[0].WorkingSetBytes,
-            (long)samples.Average(sample => sample.WorkingSetBytes),
-            samples.Max(sample => sample.WorkingSetBytes),
-            samples[^1].WorkingSetBytes,
-            samples[0].PrivateMemoryBytes,
-            (long)samples.Average(sample => sample.PrivateMemoryBytes),
-            samples.Max(sample => sample.PrivateMemoryBytes),
-            samples[^1].PrivateMemoryBytes,
-            steadyStateSamples.Length,
-            steadyStateSamples[0].WorkingSetBytes,
-            steadyStateSamples[^1].WorkingSetBytes,
-            steadyStateSamples.Max(sample => sample.WorkingSetBytes),
-            (long)Average(firstSteadyWindow, static sample => sample.WorkingSetBytes),
-            (long)Average(lastSteadyWindow, static sample => sample.WorkingSetBytes),
-            CalculateTrendPerMinute(
-                steadyStateSamples,
-                static sample => sample.WorkingSetBytes),
-            steadyStateSamples[0].PrivateMemoryBytes,
-            steadyStateSamples[^1].PrivateMemoryBytes,
-            steadyStateSamples.Max(sample => sample.PrivateMemoryBytes),
-            (long)Average(firstSteadyWindow, static sample => sample.PrivateMemoryBytes),
-            (long)Average(lastSteadyWindow, static sample => sample.PrivateMemoryBytes),
-            CalculateTrendPerMinute(
-                steadyStateSamples,
-                static sample => sample.PrivateMemoryBytes),
-            samples.Max(sample => sample.ThreadCount));
+            samples,
+            singleCoreCpuSum / samples,
+            singleCoreCpuMaximum,
+            machineCpuSum / samples,
+            machineCpuMaximum,
+            initialWorkingSet,
+            (long)(workingSetSum / samples),
+            maximumWorkingSet,
+            finalWorkingSet,
+            initialPrivateMemory,
+            (long)(privateMemorySum / samples),
+            maximumPrivateMemory,
+            finalPrivateMemory,
+            window?.WorkingSet.Samples ?? 0,
+            window?.InitialWorkingSet ?? 0,
+            window?.FinalWorkingSet ?? 0,
+            window?.MaximumWorkingSet ?? 0,
+            (long)(window?.WorkingSet.FirstFifth() ?? 0d),
+            (long)(window?.WorkingSet.LastFifth() ?? 0d),
+            (window?.WorkingSet.SlopePerHour() ?? 0d) / 60d,
+            window?.InitialPrivateMemory ?? 0,
+            window?.FinalPrivateMemory ?? 0,
+            window?.MaximumPrivateMemory ?? 0,
+            (long)(window?.PrivateMemory.FirstFifth() ?? 0d),
+            (long)(window?.PrivateMemory.LastFifth() ?? 0d),
+            (window?.PrivateMemory.SlopePerHour() ?? 0d) / 60d,
+            maximumThreads)
+        {
+            Memory = window is null
+                ? null
+                : new StressMemoryTrend(
+                    label,
+                    window.WorkingSet.Samples,
+                    window.WorkingSet.SlopePerHour() / Mebibyte,
+                    window.WorkingSet.Fifths(1d / Mebibyte),
+                    window.ManagedHeap?.SlopePerHour() / Mebibyte,
+                    window.ManagedHeap?.Fifths(1d / Mebibyte),
+                    SteadySeconds() is { } seconds ? (steadyEndGeneration2 - steadyStartGeneration2) / seconds * 3600d : null,
+                    SteadySeconds() is { } allocationSeconds ? (steadyEndAllocated - steadyStartAllocated) / allocationSeconds : null)
+        };
     }
 
-    private static double Average(
-        ReadOnlySpan<ProcessSample> source,
-        Func<ProcessSample, long> selector)
+    // The length of the steady interval for the generator's own counters, or null for another
+    // process or before the interval ended.
+    private double? SteadySeconds()
     {
-        double total = 0d;
-        foreach (var sample in source)
-        {
-            total += selector(sample);
-        }
-
-        return total / source.Length;
-    }
-
-    private static double CalculateTrendPerMinute(
-        IReadOnlyList<ProcessSample> source,
-        Func<ProcessSample, long> selector)
-    {
-        if (source.Count < 2)
-        {
-            return 0d;
-        }
-
-        var origin = source[0].Timestamp;
-        double sumX = 0d;
-        double sumY = 0d;
-        double sumXX = 0d;
-        double sumXY = 0d;
-        for (var index = 0; index < source.Count; index++)
-        {
-            var x = (source[index].Timestamp - origin) / (double)Stopwatch.Frequency;
-            var y = selector(source[index]);
-            sumX += x;
-            sumY += y;
-            sumXX += x * x;
-            sumXY += x * y;
-        }
-
-        var denominator = (source.Count * sumXX) - (sumX * sumX);
-        return denominator <= 0d
-            ? 0d
-            : (((source.Count * sumXY) - (sumX * sumY)) / denominator) * 60d;
+        return current && steadyEnded && steady is not null && steadyEndTimestamp > steady.StartTimestamp
+            ? (steadyEndTimestamp - steady.StartTimestamp) / (double)Stopwatch.Frequency
+            : null;
     }
 
     public void Dispose()
@@ -263,11 +296,80 @@ public sealed class StressProcessSampler : IDisposable
         process.Dispose();
     }
 
-    private sealed record ProcessSample(
-        long Timestamp,
-        double SingleCoreCpuPercent,
-        double MachineCpuPercent,
-        long WorkingSetBytes,
-        long PrivateMemoryBytes,
-        int ThreadCount);
+    private void Add(
+        long timestamp,
+        double singleCoreCpuPercent,
+        double machineCpuPercent,
+        long workingSet,
+        long privateMemory,
+        int threads,
+        long? managedHeap)
+    {
+        if (samples == 0)
+        {
+            initialWorkingSet = workingSet;
+            initialPrivateMemory = privateMemory;
+        }
+
+        samples++;
+        singleCoreCpuSum += singleCoreCpuPercent;
+        singleCoreCpuMaximum = Math.Max(singleCoreCpuMaximum, singleCoreCpuPercent);
+        machineCpuSum += machineCpuPercent;
+        machineCpuMaximum = Math.Max(machineCpuMaximum, machineCpuPercent);
+        workingSetSum += workingSet;
+        maximumWorkingSet = Math.Max(maximumWorkingSet, workingSet);
+        finalWorkingSet = workingSet;
+        privateMemorySum += privateMemory;
+        maximumPrivateMemory = Math.Max(maximumPrivateMemory, privateMemory);
+        finalPrivateMemory = privateMemory;
+        maximumThreads = Math.Max(maximumThreads, threads);
+        if (steady is not null && !steadyEnded)
+        {
+            steady.Add(timestamp, workingSet, privateMemory, managedHeap);
+        }
+    }
+
+    private sealed class SteadyWindow(long startTimestamp, TimeSpan plannedDuration)
+    {
+        public long StartTimestamp { get; } = startTimestamp;
+
+        public StressTrendAccumulator WorkingSet { get; } = new(startTimestamp, plannedDuration);
+
+        public StressTrendAccumulator PrivateMemory { get; } = new(startTimestamp, plannedDuration);
+
+        public StressTrendAccumulator? ManagedHeap { get; private set; }
+
+        public long InitialWorkingSet { get; private set; }
+
+        public long FinalWorkingSet { get; private set; }
+
+        public long MaximumWorkingSet { get; private set; }
+
+        public long InitialPrivateMemory { get; private set; }
+
+        public long FinalPrivateMemory { get; private set; }
+
+        public long MaximumPrivateMemory { get; private set; }
+
+        public void Add(long timestamp, long workingSet, long privateMemory, long? managedHeap)
+        {
+            if (WorkingSet.Samples == 0)
+            {
+                InitialWorkingSet = workingSet;
+                InitialPrivateMemory = privateMemory;
+            }
+
+            WorkingSet.Add(timestamp, workingSet);
+            PrivateMemory.Add(timestamp, privateMemory);
+            FinalWorkingSet = workingSet;
+            FinalPrivateMemory = privateMemory;
+            MaximumWorkingSet = Math.Max(MaximumWorkingSet, workingSet);
+            MaximumPrivateMemory = Math.Max(MaximumPrivateMemory, privateMemory);
+            if (managedHeap is { } heap)
+            {
+                ManagedHeap ??= new StressTrendAccumulator(StartTimestamp, plannedDuration);
+                ManagedHeap.Add(timestamp, heap);
+            }
+        }
+    }
 }

@@ -84,7 +84,9 @@ public sealed class StressQualityVerdictTests
         Assert.True(verdict.Passed, string.Join("; ", verdict.Rules.Where(rule => !rule.Passed).Select(rule => $"{rule.Rule} {rule.Note}")));
         Assert.True(verdict.Valid);
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
-        Assert.All(verdict.Rules, rule => Assert.NotNull(rule.Measured));
+        // The memory rule judges only a steady interval of ten minutes or more.
+        Assert.All(verdict.Rules.Where(rule => rule.Rule != "process_memory_growth"), rule => Assert.NotNull(rule.Measured));
+        Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "process_memory_growth").Note, StringComparison.Ordinal);
         Assert.Equal(
             StressQualityBoundary.ValidityRules.Order(StringComparer.Ordinal),
             verdict.Rules.Where(rule => rule.Validity).Select(rule => rule.Rule).Order(StringComparer.Ordinal));
@@ -146,7 +148,9 @@ public sealed class StressQualityVerdictTests
         "owner_snapshot_gaps",
         "expired_unreleased_sessions",
         "deadlocks",
-        "item_invariant_violations"
+        "item_invariant_violations",
+        "process_memory_growth",
+        "service_log_errors"
     };
 
     [Theory]
@@ -371,7 +375,7 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak"],
                 root.EnumerateObject().Select(property => property.Name));
             Assert.Equal("smoke", root.GetProperty("scenario").GetString());
             Assert.Equal("abc123", root.GetProperty("commit").GetString());
@@ -529,6 +533,9 @@ public sealed class StressQualityVerdictTests
         {
             SteadyStartedAt = SteadyStart,
             SteadyEndedAt = SteadyEnd,
+            ServiceLogs = new StressServiceLogSummary(
+                [new StressServiceLogFile("simulation-worker", "simulation-worker.log", 100, 1, 0, 0)],
+                [new StressLogClass("simulation-worker", StressServiceLogs.Warning, "SimulationWorker", "Development admin tools are enabled", 1, false, null)]),
             WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd),
             GeneratorTiming = new StressGeneratorTimingSummary(
                 3,
@@ -617,6 +624,29 @@ public sealed class StressQualityVerdictTests
                 Postgres = report.Postgres! with
                 {
                     ItemInvariants = report.Postgres.ItemInvariants! with { PendingItemOperations = 1 }
+                }
+            },
+            "process_memory_growth" => report with
+            {
+                SteadyEndedAt = SteadyStart.AddMinutes(11),
+                Soak = new StressSoakSummary(
+                    null,
+                    null,
+                    [
+                        new StressMemoryTrend("worker", 660, 200, [100, 100, 110, 120, 140]),
+                        new StressMemoryTrend("gameService", 660, 0, [200, 200, 200, 200, 200]),
+                        new StressMemoryTrend("generator", 660, 0, [300, 300, 300, 300, 300])
+                    ])
+            },
+            "service_log_errors" => report with
+            {
+                ServiceLogs = report.ServiceLogs! with
+                {
+                    Classes =
+                    [
+                        .. report.ServiceLogs.Classes,
+                        new StressLogClass("game-service", StressServiceLogs.Error, "Mmorpg.GameService.Items.ItemTransactionService", "Item transaction relocate <id> failed unexpectedly", 1, false, null)
+                    ]
                 }
             },
             _ => throw new ArgumentOutOfRangeException(nameof(rule))

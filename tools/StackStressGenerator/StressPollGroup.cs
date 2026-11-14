@@ -71,6 +71,14 @@ public sealed class StressPollGroup : IDisposable
         });
     }
 
+    // Runs an action on the poll thread before the next round, with the round's timestamp, such
+    // as a request to one bot of the group.
+    public void Post(Action<long> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        commands.Enqueue(action);
+    }
+
     public void BeginSteadyMeasurement()
     {
         commands.Enqueue(_ =>
@@ -111,8 +119,16 @@ public sealed class StressPollGroup : IDisposable
                 }
             }
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (OperationCanceledException) when (stopping || cancellationToken.IsCancellationRequested)
         {
+            // The run was cancelled or the group stops while a bot waited on something, such as
+            // an inventory refresh. The thread ends and the coordinator's cancellation path
+            // cleans up. Nothing may escape this method: an unhandled exception on a dedicated
+            // thread ends the whole process.
+        }
+        catch (Exception exception)
+        {
+            // Also a cancellation that nobody asked for.
             failure = exception;
         }
     }

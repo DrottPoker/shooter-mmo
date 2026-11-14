@@ -18,11 +18,19 @@ public interface IStressAdmissionProvider : IAsyncDisposable
 
     Task SampleAsync(CancellationToken cancellationToken);
 
+    // The drift checks of one report interval, or null when the mode has no database.
+    Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken);
+
     Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
         int botIndex,
         CancellationToken cancellationToken);
 
-    void MarkSteadyState();
+    void MarkSteadyState(TimeSpan plannedDuration);
+
+    void MarkSteadyEnd();
+
+    // Counts the database's tables and reads Redis at one end of the steady interval.
+    Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken);
 
     StressProviderReport CaptureReport();
 }
@@ -32,7 +40,13 @@ public sealed record StressProviderReport(
     StressAuthorityCounters? Authority,
     StressFullStackSummary? FullStack,
     StressProcessSummary? GameServiceProcess,
-    StressPostgresSummary? Postgres);
+    StressPostgresSummary? Postgres)
+{
+    // How the database and Redis grew over the steady interval, and the worst drift values.
+    public StressStorageGrowthSummary? Storage { get; init; }
+
+    public StressDriftSummary? Drift { get; init; }
+}
 
 public sealed class WorkerOnlyStressAdmissionProvider(
     StressGeneratorOptions options,
@@ -90,6 +104,22 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.CompletedTask;
     }
 
+    public Task<StressDriftSample?> SampleDriftAsync(int joinedBots, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<StressDriftSample?>(null);
+    }
+
+    public Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public void MarkSteadyEnd()
+    {
+    }
+
     public Task<FullStackCharacterInventoryResponse?> RefreshInventoryAsync(
         int botIndex,
         CancellationToken cancellationToken)
@@ -98,7 +128,7 @@ public sealed class WorkerOnlyStressAdmissionProvider(
         return Task.FromResult<FullStackCharacterInventoryResponse?>(null);
     }
 
-    public void MarkSteadyState()
+    public void MarkSteadyState(TimeSpan plannedDuration)
     {
     }
 

@@ -234,14 +234,29 @@ The script:
 6. Always stops what it started, also when the run fails or the script is
    interrupted with `Ctrl+C`: the generator, the worker, and GameService with
    `Ctrl+C`, so the worker saves its characters, releases their sessions, and
-   goes offline as on a normal shutdown, and then the containers with
+   goes offline as on a normal shutdown, then keeps the logs of the PostgreSQL
+   and Redis containers in the run folder, and then removes the containers with
    `docker compose ... down`. In worker-only mode the generator keeps its
    in-memory authority up after it wrote the summary, and the script stops the
    worker first and the generator after it, so the worker's shutdown reaches
-   its authority.
-7. Prints a table of every rule with its limit, the measured value, and pass or
-   fail, the difference to the scenario's checked-in baseline when there is
-   one, and the result line.
+   its authority. A process that does not stop within 30 seconds of its
+   `Ctrl+C` is ended, and the script says which.
+7. Once everything stopped, runs `StackStressGenerator judge`, which counts the
+   lines of the service logs, as [Service Log Classes](#service-log-classes)
+   describes, judges the run again with them, and rewrites the report and the
+   summary; the judgement decides the exit code.
+8. Prints what the soak measures, as [Soak](#soak) describes, a table of every
+   rule with its limit, the measured value, and pass or fail, the difference to
+   the scenario's checked-in baseline when there is one, and the result line.
+
+A process inherits whether it ignores `Ctrl+C` from the process that starts
+it, and a script started from Git Bash, or by a host that starts it in a new
+process group, ignores `Ctrl+C`. Its services then ignored the `Ctrl+C` that
+the script sent, so every stop waited its 30 seconds and ended the process
+without its shutdown, after a passed run as after a failed one. The script
+therefore turns `Ctrl+C` handling on for itself before it starts a process, in
+`Start-StackProcess` of `tools/LocalStackCommon.ps1`, which
+`tools/Test-LiveStack.ps1` shares.
 
 It starts the apphost executables, such as `Mmorpg.SimulationWorker.exe`, so
 the generator's process sampler finds the worker and GameService by name.
@@ -272,6 +287,7 @@ ignores:
 | `summary.json` | The small summary described in [Baselines](#baselines) |
 | `worker-performance.jsonl` | The worker's performance file, one JSON object per metrics interval |
 | `generator.log`, `game-service.log`, `simulation-worker.log` | The output of each process, with `.err.log` files for standard error |
+| `postgres.log`, `redis.log` | The logs of the PostgreSQL and Redis containers, kept before the containers are removed; `postgres.log` holds both statements of every deadlock and every lock wait longer than the deadlock timeout of one second, because the compose file starts PostgreSQL with `log_lock_waits=on` |
 | `build-*.log`, `docker-compose-*.log` | The build and container output |
 | `world-variant/`, `world-variant.log` | The scenario's [World Variant](#world-variant) and the output of the content compilers that wrote it |
 
@@ -302,7 +318,7 @@ sets is an error.
 | `generator` | Generator options without their dashes and their integer values: `bots` and `duration-seconds` are required, and `ramp-step`, `ramp-interval-seconds`, `http-concurrency`, `session-validation-requests-per-bot`, the operation intervals and timeouts, `report-interval-seconds`, `seed`, and the other shape options of the [Command Reference](#command-reference) are allowed |
 | `workerSettings` | Extra worker environment variables, such as `SimulationWorker__ItemInteraction__DurableCorpseRefreshSeconds` |
 | `gameServiceSettings` | Extra GameService environment variables, full-stack only |
-| `playing` | The roles and home grounds of the `playing` workload, which needs it, as [Playing Scenarios](#playing-scenarios) describes |
+| `playing` | The roles, home grounds, and churn of the `playing` workload, which needs it, as [Playing Scenarios](#playing-scenarios) describes |
 | `worldVariant` | Extra Mob areas and node groups of a [World Variant](#world-variant), full-stack only |
 
 | Scenario | Mode and workload | Shape |
@@ -318,6 +334,8 @@ sets is an error.
 | `playing-250` | full-stack `playing` | 250 bots of the reference mix on the reference variant, steps of 25 six seconds apart, 300 s steady, 2 poll threads |
 | `playing-500` | full-stack `playing` | 500 bots of the reference mix on the reference variant, steps of 25 five seconds apart, 300 s steady, 4 poll threads; the Scale Target |
 | `hotspot-100` | full-stack `playing` | 100 traders in the town of Development World 2 at its one vendor, steps of 20 five seconds apart, 120 s steady |
+| `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set |
+| `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
 
 The tier scenarios use the arguments of the
 [Current Worker-only Baseline](#current-worker-only-baseline) and the
@@ -345,6 +363,8 @@ traders stay there, and fighters and gatherers walk there to sell.
 | `playing-250` | The middle tier, which shows how the stack scales between 100 and 500 and which component grows first | A tier on the way at 250 players |
 | `playing-500` | The Scale Target itself: 500 players of the reference mix on one Shard, spread over the World | A pass on the reference machine is the claim that the Shard holds the target with the workloads it names, for that machine and commit; a 30-minute soak at the same tier must pass too before the claim is recorded |
 | `hotspot-100` | Local density: 100 players in one interest radius, all trading at one NPC, which loads the vendor's interactions, the Economy and Items commits behind them, and the snapshots of a crowd at once | None for the population; it checks the dense case the target sets apart, where the remote cadence may fall by design, and that the vendor path holds a crowd |
+| `soak-10min` | The rehearsal of the soak, and with `-Bots 20 -DurationSeconds 180` the tooling check of the churn | None; it sets the memory rule's limit and shows that the soak's numbers are complete |
+| `soak-30min` | What slowly goes wrong at 250 players with players coming and going: memory, table growth, drift, and log errors over 30 minutes | A tier holds only when its 30-minute soak passes too; its table growth orders the database work of phase 5 |
 
 ### What The Bots Check
 
@@ -413,7 +433,13 @@ masked. The local secrets and the connection string are the test values that
   and once delayed the worker's registry heartbeat past its five-second timeout
   twice, so the worker stopped itself when its registration lease expired. The generator
   gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
-  in `STACK_STRESS_FIXTURE_SECRET`, never as arguments.
+  in `STACK_STRESS_FIXTURE_SECRET`, never as arguments. For the [Soak](#soak)
+  numbers it gets `--redis-endpoint` with the disposable Redis, and
+  `--database-pool-size` and `--worker-heartbeat-timeout-seconds` with
+  GameService's `Database:MaximumPoolSize` and
+  `Simulation:WorkerHeartbeatTimeoutSeconds`, read from its checked-in
+  `Config/appsettings.json` unless the scenario's `gameServiceSettings` set
+  them.
 - A `playing` scenario with `teleportToGrounds`: the worker gets
   `DOTNET_ENVIRONMENT=Development`, `DevelopmentAdmin__Enabled=true`, and
   `DevelopmentItemInteractions__GlobalBankAndRecoveryAccess=false`, as
@@ -565,7 +591,9 @@ gatherer sell the same way:
 
 A trip that ends with the bot still short of room, because nothing it carries
 sells, or that found no vendor, is counted, and the next trip waits five
-minutes. A Mob that attacks the bot ends the trip, so the role can fight or
+minutes. So does the next trip after a visit that could not buy what the role
+still lacks, such as arrows a bow fighter cannot pay for: it hunts on with the
+arrows it has. A Mob that attacks the bot ends the trip, so the role can fight or
 flee, and the need starts a new trip later. A scenario with fighters,
 gatherers, or traders needs a ground of kind `town`.
 
@@ -678,10 +706,21 @@ the generator holds this table, and the report repeats it:
 | `gather_close` | `world_actor_unavailable`, `world_interaction_target_changed`, `world_interaction_session_invalid` | The node depleted before the close arrived, and the worker closes that interaction itself |
 | `vendor_sale`, `vendor_purchase` | `item_state_conflict` | Spent arrows of a bow fighter commit in batches without an intent, between the trade and its handling |
 | `item_move` | `item_state_conflict` | The item state changed between the move and its handling, such as by a trade whose change had not reached the bot yet |
+| `equip`, `item_move`, `gather_open`, `gather_start`, `vendor_open`, `vendor_sale`, `vendor_purchase` | `combat_character_dead` | A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations and every world interaction but a close from a dead character |
 
-`teleport`, `vendor_open`, and `vendor_close` have no expected conflict, and
+`teleport` and `vendor_close` have no expected conflict, and
 `inventory_full` on `loot_all` should stay near zero, because a fighter makes
 the trip to the vendor before its room runs out.
+
+The [churn](#churn)'s `leave`, `rejoin_body`, and `rejoin_saved` have none
+either. A bot leaves only joined, alive, out of combat, and without an intent
+in flight, and the worker accepts the leave of a session that already ended,
+with no body time. GameService never refuses the way back to the character's
+own session: it places the ticket on the worker that holds the body, without a
+capacity check, and once the body is gone it is a normal join from the saved
+place. A body that a Mob killed just before the bot came back is no rejection
+either: the join enters from the saved place, and the bot judges it as such by
+the join's own reconnect flag, which wins over the ticket's.
 
 ### Playing Scenarios
 
@@ -693,12 +732,90 @@ The `playing` section of a scenario:
 | `fighterBowPercent` | The percent of the fighters that carry a bow, 0 by default |
 | `teleportToGrounds` | Whether every bot is teleported to its home ground once after its join |
 | `grounds` | The home grounds: a `name`, a `kind` of `hunting`, `nodes`, `town`, or `walking`, and a rectangle of `minimumX`, `minimumZ`, `maximumX`, and `maximumZ`. A ground of kind `nodes` also names the `kit` its gatherers work its nodes with, and only it does. Fighters need a hunting ground, gatherers a node field, and fighters, gatherers, and traders a town |
+| `churn` | Optional: `percentPerMinute`, 1 to 50, the share of the bots that leaves and comes back every minute of the steady interval, as [Churn](#churn) describes |
 
 A run fails before the first bot joins when a ground has no ground under its
 center, and a bot fails its teleport when the worker finds no walkable ground
 there. A test checks that every kit a shipped scenario hands out is one the
 GameService kit fixture grants and that its node fields hold a node for every
 gatherer.
+
+### Churn
+
+Real populations change: players log out and come back. With `churn`, a share
+of the bots leaves the game every minute of the steady interval and comes back
+through the paths a player takes, half of them while their body still stands,
+which they take over, and half after it is gone, so they enter from their
+saved place.
+
+The schedule comes from the seed alone, by `PlayingChurnSchedule`: the leaves
+are spread evenly over the steady interval with a seeded jitter, the bots take
+turns in a seeded order, so a bot leaves again only after every other bot did,
+the kind alternates, and the account logout alternates per pair of leaves, so
+any four aligned leaves hold every combination of kind and logout. No leave is
+due in the last 75 seconds of the steady interval, so every bot is back before
+it ends; a bot that is still away from its last leave skips the next one, and
+the report counts it.
+
+A leave is the leave a player makes:
+
+1. The bot plays its role until it may leave safely: alive, out of combat, no
+   Mob after it, no intent in flight, its kit worn and its teleport done, and no
+   living aggressive Mob within 12 m, so its body is not attacked in the first
+   seconds, in which the check could not tell a hit from lost health. A bot
+   that is calm but too close to aggressive Mobs first walks away from the
+   nearest one, to a point 32 m from it, at most twice. A bot that finds no
+   safe moment within 30 seconds skips the leave, and the report counts it.
+2. It stands until its owner state shows no speed on the ground for 0.4
+   seconds, records where it stands and its vitals, and sends the leave. The
+   operation `leave` measures the leave until its acceptance, which names the
+   body's time.
+3. Its way back runs apart from the poll threads: the account logout right
+   after the leave or none, by the schedule; the wait, 2 to 8 seconds for the
+   body kind and the body's time and 4 to 10 seconds more for the saved kind;
+   the login after a logout; the character list; the Shards; and the join
+   ticket. A new connection with a new world view joins with it, like a client
+   that starts again from character select, and reads the full item state.
+4. The bot checks what it finds, measures the way back from its first request
+   to the join's acceptance as `rejoin_body` or `rejoin_saved`, by the join's
+   own reconnect flag, and plays its role on: the role ends what it was in the
+   middle of, such as a trip to the vendor, a fight, a loot, or a node, and
+   decides again; a bot on its way back to its corpse goes on with that.
+
+The check is what a player would notice, by `PlayingRejoinCheck`:
+
+- A body that the bot takes over stands where it left it, since a body never
+  moves, within 5 cm, and has at most the health it can have regenerated since,
+  by the combat rules. It may have been hit while it stood, which the bot cannot
+  see, so its health has no lower bound.
+- A character that enters from its saved place stands where it left within
+  5 cm and has the health it had, plus what its body regenerated until it was
+  gone. Once the join ticket showed that the body's session ended, the
+  generator reads from the disposable database when the session was released,
+  the character's latest death, and the saved state. A body that died brings
+  the character back at the World spawn with full health. Every hit keeps a
+  body its full time after the hit, so a body released more than 1.5 seconds
+  after its time was hit, and then only the place and the most health it can
+  have regenerated count. The join must also give the bot exactly the saved
+  state, and that state must be the one the body's own session wrote.
+- The 5 cm cover the rounding of a float and a standing character's ground
+  contact; the bot stands still before it leaves, and both the body and the
+  saved state keep the simulation's floats.
+
+A mismatch is an unexpected rejection of its operation with the code
+`rejoin_place_mismatch`, `rejoin_health_mismatch`, `rejoin_restore_mismatch`,
+or `rejoin_state_not_saved`, so `gameplay_unexpected_failures` fails the run,
+and the report keeps the evidence of the first 20 under
+`playing.rejoinMismatches`. A failed way back, such as a refused ticket or a
+join that does not complete, fails the bot.
+
+The counters `churnRequests`, `churnSkippedBusy`, `churnSkippedUnsafe`,
+`churnSkippedLate`, `churnRetreats`, `leaves` and the leaves of every role,
+`leavesWithLogout`, `rejoinsBody`, `rejoinsSaved`, `rejoinsSavedFoundBody`
+for a saved-kind return whose body hits still kept, `rejoinsBodyFoundGone` for
+a body-kind return whose body died, `rejoinBodiesHit`, `rejoinBodiesDied`, and
+`rejoinChecksFailed` show what the churn did, and the full-stack summary counts
+the churn's logouts and logins apart from the run's own.
 
 ## World Variant
 
@@ -817,12 +934,142 @@ Use worker-only mode first to establish the realtime boundary. Repeat accepted
 tiers in full-stack mode to identify when GameService, HTTP admission, or
 PostgreSQL becomes the limiting component. Run the highest clean tier for 30 to
 60 minutes to detect memory growth, GC pressure, session-heartbeat instability,
-database contention, and late disconnects.
+database contention, and late disconnects: `soak-30min` does that for the
+playing workload at 250 players, with players who come and go, as [Soak](#soak)
+describes; change its bot count to the tier.
 
 The generator and services share one machine, so each result includes local
 process contention. Use the separate process metrics to reject a run where the
 generator becomes the limiting process. Distributed load generation is outside
 the current security boundary.
+
+## Soak
+
+A short run shows whether the stack keeps up; a long one shows what slowly goes
+wrong: memory that grows, tables that grow without bound, sessions and leases
+that drift, and errors that appear after twenty minutes. `soak-30min` is the
+soak, `soak-10min` its rehearsal, and both play the reference workload with
+[churn](#churn). Every full-stack run reports the numbers below, and a
+worker-only run its memory and log classes; the generator keeps sums, extremes,
+and histograms for them, never one entry per sample, so a long run does not
+grow its own memory with its measurements. The remote update rate, too, adds up
+the visits of one remote player instead of keeping one entry per visit.
+
+### Storage Growth
+
+At both ends of the steady interval the generator counts every user table of
+the disposable database with an exact `count(*)` and takes its total size with
+`pg_total_relation_size`, which holds the table, its indexes, and its TOAST
+data; the database of a run holds at most a few hundred thousand rows per
+table, so the count stays cheap, and the report says how many milliseconds it
+took. It reads the key count and the used memory of Redis with `DBSIZE` and
+`INFO memory` at the same moments. `soak.storage` of the report lists every
+table with its rows and bytes at both ends and its growth per hour and per
+player hour, sorted by bytes per hour, and the summary carries the top ten.
+
+Read the list from the top: a table that grows by bytes per player hour grows
+with play and needs a retention or archiving rule; a table whose growth stays
+near zero at a steady population, such as `accounts` or `characters`, grows
+only with new players. Rows per player hour show which operation writes it, and
+bytes per row show whether the payloads or the indexes dominate. A player hour
+is one bot playing for an hour; the players are the bots joined when the steady
+interval began. No rule judges growth yet: phase 5 of the hardening plan, the
+database's retention and indexes, decides what is acceptable from these lists.
+
+### Memory And GC Trend
+
+For the worker, GameService, and the generator, `soak.memory` holds the
+least-squares slope of the working set over the steady interval in MiB per
+hour and the average of each fifth of the interval. For the worker it adds,
+from its own performance file, the slope and fifths of its managed heap, its
+generation 2 collections per hour, and its allocation per second, and for the
+generator its own managed heap. The rule `process_memory_growth` of the
+[Quality Boundary](#quality-boundary) judges the last fifth against the second.
+
+### Memory Limit
+
+`process_memory_growth` compares the last fifth with the second, because caches,
+pools, and the JIT warm up in the first. Its limit of 20 MiB comes from two
+`soak-10min` rehearsals on the reference machine, 100 bots and 600 s with
+churn, on 2026-11-14:
+
+| Process | Fifths of the working set, first and second rehearsal | Second to last fifth | Slope |
+| --- | --- | ---: | ---: |
+| Worker | 147.4, 148.1, 148.2, 149.8, 152.9 MiB; 148.4, 148.5, 147.7, 148.6, 151.1 MiB | +4.8 and +2.6 MiB | +40 and +18 MiB/h |
+| GameService | 207.6, 215.5, 224.0, 234.2, 243.3 MiB; 207.5, 215.9, 226.3, 232.9, 238.6 MiB | +27.8 and +22.8 MiB | +270 and +240 MiB/h |
+| Generator | 136.8, 133.0, 140.6, 140.6, 144.8 MiB; 135.5, 132.8, 141.0, 140.6, 142.1 MiB | +11.7 and +9.3 MiB | +68 and +60 MiB/h |
+
+The worker and the generator settle: the generator's managed heap steps up once
+in the middle fifth and stays, with 24 generation 2 collections an hour, and a
+fifth's average moved by up to 4 MiB in either direction from garbage
+collection alone, such as the generator's first to second fifth. GameService
+rose through every fifth in both rehearsals. The limit leaves the settled
+processes two such moves of room above the generator's 11.7 MiB and flags a
+climb like GameService's, so the rule errs on the side of a false alarm over a
+missed leak: a ten-minute run that fails it is a reason for the 30-minute soak,
+whose fifths lie 18 minutes apart instead of six, to show whether the growth
+levels off. In a 30-minute soak the limit catches a steady growth of about 67
+MiB per hour, in a ten-minute run of about 200 MiB per hour. GameService runs
+the server garbage collector, whose heaps grow with the load they see, and the
+soak cannot see its managed heap, so a climb that goes on through a 30-minute
+soak is the reason to look at GameService's heap with `dotnet-counters` or a
+heap dump before the limit moves.
+
+### Drift Checks
+
+Every report interval the generator checks, and the console shows: the active
+simulation sessions against the bots it holds joined, the sessions within 10
+seconds of their lease's end, one session heartbeat, the least lease left, the
+age of the worker's registry heartbeat against GameService's
+`Simulation:WorkerHeartbeatTimeoutSeconds`, the pending item operations,
+GameService's connections and the ones in use against its pool, the
+`Database:MaximumPoolSize` the plan passes, and the oldest transaction that
+waits idle. `soak.drift` keeps the worst of each over the steady interval: the
+most sessions above and the most bots without a session, the most sessions
+close to expiry, the least lease left, the least registration headroom, the
+most pending operations and connections, and the oldest idle transaction. The
+existing rules judge where one fits: `expired_unreleased_sessions` the leases,
+`deadlocks` the contention, and `item_invariant_violations` the pending
+operations at the end.
+
+### Service Log Classes
+
+Once every process stopped, `StackStressGenerator judge` counts the warning,
+error, and critical lines of `game-service.log` and `simulation-worker.log`,
+and every first line of their `.err.log` files as an error, by message class:
+the service, the level, the logger category, and the message's first line with
+ids, long hexadecimal values, and numbers replaced, cut to 120 characters. The
+report keeps the classes under `serviceLogs` and the summary under
+`soak.logClasses`. The rule `service_log_errors` fails on every error or
+critical line whose class is not on the allow list of the boundary file, which
+names the service, level, category, start of the message, and the reason the
+class is expected in every run. The list starts empty.
+
+The warning `Invalidated simulation session ... with code session_revoked after
+GameService returned 401` is a race of a body's end with a session heartbeat
+that was already on its way: the heartbeat service lists the sessions, a body
+whose death committed releases its session meanwhile, and GameService answers
+the heartbeat of the released session with 401. The worker logs the warning
+even when the session had already left its store, so the line changes nothing
+then; it is a warning, which no rule judges, and it shows up in runs where
+bodies die, more often with churn.
+
+### Deaths Per Role
+
+The report's `playing.deathsPerBotPerTenMinutes` and the summary give the
+deaths of every role per bot of the role and ten minutes of the steady
+interval, the number the scenarios are tuned to, from the counters of the
+steady interval, `playing.steadyCounters`.
+
+### Where To Look For A Deadlock
+
+The `deadlocks` rule names `postgres.log` of the run folder, which the script
+keeps before it removes the containers. PostgreSQL reports a deadlock as
+`ERROR:  deadlock detected` with both processes and their statements in the
+`DETAIL` lines, and the compose file's `log_lock_waits=on` adds a `still waiting
+for` line for every lock wait longer than the one-second deadlock timeout, so
+the other transaction of a contention shows by its process id even when it
+committed. The judge counts both kinds of lines.
 
 ## Measurements
 
@@ -842,7 +1089,14 @@ Every JSON report contains:
 - The steady interval's start and end.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
-  summaries, including steady-state memory trend windows.
+  summaries, including steady-state memory trend windows, the first and the
+  last fifth of the planned steady interval.
+- `soak`: the growth of every table and of Redis over the steady interval, the
+  worst drift values, and the memory trend of every process, as [Soak](#soak)
+  describes.
+- After `StackStressGenerator judge`: `serviceLogs`, the service log lines by
+  message class, and `postgresLog`, the kept PostgreSQL log with its deadlock
+  and lock wait reports.
 - `generatorTiming`: how late the latest bot's poll ran against the 3 ms poll
   schedule in every poll round of every poll thread in the steady interval, the
   number of poll threads, how long one step of the process and PostgreSQL
@@ -887,8 +1141,9 @@ Full-stack reports additionally contain:
   time the worker announced a yield reached the gatherer, which holds the
   GameService commit of the yield, and `route_plan` and `route_queue` of the
   steady interval; and the table of [Expected Conflicts](#expected-conflicts).
-  The deaths per fighter and ten minutes are `fighterDeaths` divided by the
-  fighters and by the run's minutes over ten.
+  `steadyCounters` holds the same counters over the steady interval alone, and
+  `deathsPerBotPerTenMinutes` the deaths of every role per bot of the role and
+  ten minutes of the steady interval, which the summary carries too.
   Its gameplay operations are `equip`, `teleport`, `attack`, `attack_clear`,
   `loot_open`, `loot_all`, `loot_close`, `gather_open`, `gather_start`,
   `gather_close`, `vendor_open`, `vendor_sale`, `vendor_purchase`,
@@ -987,6 +1242,8 @@ worker-only mode, passes and says so.
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
+| `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the steady interval lasts ten minutes or more; not applicable otherwise | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
+| `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
 
 ### Validity
 
@@ -1209,6 +1466,10 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--item-catalog-path` | `WorldData/Items/core.item-catalog.json` below the output | `playing`: the compiled item catalog the bots read like a client |
 | `--actor-catalog-path` | `WorldData/Actors/core.actor-catalog.json` below the output | `playing`: the compiled actor catalog the bots read like a client |
 | `--poll-threads` | `1` | The threads that share the bots and poll each of them every 3 ms, 1 to 16; a scenario may set it |
+| `--combat-rules-path` | `WorldData/Combat/combat-rules.json` below the output | `playing`: the combat rules the worker loads, whose regeneration the churn's rejoin check uses; the build copies `content/combat/combat-rules.json` there |
+| `--redis-endpoint` | none | Full-stack: the loopback `host:port` of the disposable Redis, whose keys and used memory the soak reads |
+| `--database-pool-size` | none | Full-stack: GameService's `Database:MaximumPoolSize`, which the drift checks compare its connections with |
+| `--worker-heartbeat-timeout-seconds` | none | Full-stack: GameService's `Simulation:WorkerHeartbeatTimeoutSeconds`, against which the drift checks give the worker's registration headroom |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The
@@ -1229,6 +1490,13 @@ plan of a scenario as JSON for `tools/Test-Load.ps1` and runs nothing. It takes
 `--source-tree-dirty`, validates the scenario, the generator arguments it
 results in, and the quality boundary file, and exits with 2 and the reason when
 one is invalid.
+
+`StackStressGenerator judge --run-folder <folder> [--quality-boundary <file>]`
+reads `generator-report.json` and `summary.json` of a run whose services
+stopped, adds the [service log classes](#service-log-classes) and the kept
+`postgres.log`, judges the run again, and rewrites both files. It exits with 0
+when the run passed, 1 when it failed, 4 when it could not measure, and 2 when
+the run cannot be judged; `tools/Test-Load.ps1` runs it after every run.
 
 `StackStressGenerator world-variant --scenario <file> --run-folder <folder>`
 writes the scenario's [World Variant](#world-variant) into

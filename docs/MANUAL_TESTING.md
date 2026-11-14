@@ -2744,6 +2744,49 @@ rate may fall below 15 Hz there by design, and the verdict shows whether it
 stays above the boundary. Both validity rules read `pass`. A run takes about
 four minutes.
 
+### Players Who Come And Go
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-10min -Bots 20 -DurationSeconds 180
+```
+
+Expected result: the generator prints `Churn: 10 percent of the bots leave and
+come back every minute, 3 leaves in the first 105 s of the steady interval`.
+During the steady interval bots stand still, leave, and come back, the worker
+log shows their bodies leaving with `left_shard` for the ones that come back
+after their body is gone, and the gameplay table lists `leave`, `rejoin_body`,
+and `rejoin_saved` with no unexpected rejection, both rejoin kinds at least once.
+The counters show `leaves` and `rejoinsBody` and `rejoinsSaved` above zero and
+`rejoinChecksFailed` at 0. Every report interval prints a `Drift:` line. After
+the run the script prints `GameService stopped` and `SimulationWorker stopped`
+with their seconds, never `did not stop on Ctrl+C`, also when it was started
+from Git Bash, keeps `postgres.log` and `redis.log` in the run folder, prints
+the service log classes, the deaths per bot and ten minutes of every role, the
+memory of the worker, GameService, and the generator, and the ten tables that
+grew the most, and the verdict is `passed` with `process_memory_growth` not
+applicable. A run takes about four minutes.
+
+### The Soak
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-10min
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-30min
+```
+
+Expected result: `soak-10min` takes about 15 minutes and `soak-30min` about 40,
+on an otherwise idle machine. Both churn their bots as above, `process_memory_growth`
+is judged, and the verdict lists the growth of every process in its note. The
+summary in the run folder carries the ten tables that grew the most, Redis, the
+worst drift values, the memory of every process, the deaths per role, the churn
+counters, and the service log classes; [Soak](STACK_STRESS_TESTING.md#soak)
+says how to read them. A `failed` verdict with numbers is a finding about the
+stack to record, not a failure of the check; a `could not measure` result means
+the generator fell behind. Both `soak-10min` rehearsals of 2026-11-14 failed
+`process_memory_growth` on GameService alone, whose working set rose 23 to 28
+MiB from the second to the last fifth, as
+[Memory Limit](STACK_STRESS_TESTING.md#memory-limit) records; every other rule
+passed, with 87 and 88 leaves and no failed rejoin check.
+
 No manual Unity Editor steps are required for these checks.
 
 ## Backend API Smoke Test
