@@ -10,10 +10,12 @@
 # build, in a 1920 by 1080 window on the desktop, as tools/Run-UnityTests.ps1 builds it. Before
 # each run it waits until other programs, such as another Unity Editor, a build, or a game, have
 # used at most two and a half processors and 10 % of the graphics card's 3D engine for thirty
-# seconds, samples them about every two seconds during the run, and repeats a run whose recorded
-# seconds they disturbed. -Platform Editor starts the stack and the bots of the first size and
-# keeps them for -HoldMinutes, for a person who runs the test in an open Editor, whose Play Mode
-# needs its window for honest frame times; the headless Editor draws nothing.
+# seconds, samples them every few seconds during the run, and repeats a run whose recorded
+# seconds they disturbed, whose test failed, or whose samples do not cover the recorded seconds,
+# so no result stands without proof that nothing else used the machine. -Platform Editor starts
+# the stack and the bots of the first size and keeps them for -HoldMinutes, for a person who runs
+# the test in an open Editor, whose Play Mode needs its window for honest frame times; the
+# headless Editor draws nothing.
 #
 # GameService gets the development bot endpoint with a secret that the script makes for this run
 # and passes to GameService and the bots only, so the .env file is not read or changed. The script
@@ -45,6 +47,9 @@ param(
     # the background of an ordinary desktop.
     [double]$DisturbedProcessors = 2.5,
     [double]$DisturbedGpuPercent = 10.0,
+    # The longest time within the recorded seconds that may pass without a sample of what other
+    # programs use. A sample comes about every three seconds, up to seven on a busy machine.
+    [double]$LoadSampleGapSeconds = 10.0,
     # How long GameService, the worker, and the bots may take to become ready.
     [int]$ReadyTimeoutSeconds = 180
 )
@@ -212,23 +217,72 @@ function Start-LoadMonitor([string]$Path) {
     }
 }
 
+# Stops the load monitor and says why it had stopped by itself, or nothing when it still ran.
+function Stop-LoadMonitor($Job) {
+    $failure = $null
+    if ($Job.State -ne "Running") {
+        $child = $Job.ChildJobs[0]
+        $reasons = @(@($child.JobStateInfo.Reason) + @($child.Error) | Where-Object { $null -ne $_ } | ForEach-Object { "$_" })
+        $failure = "The load monitor had stopped ($($Job.State))" + $(if ($reasons.Count -gt 0) { ": " + $reasons[0] } else { "." })
+    }
+
+    Stop-Job $Job
+    Remove-Job $Job -Force
+    $failure
+}
+
 # What other processes used on average within the recorded seconds of a run, the average
-# processor use of the machine, and the test player's largest memory.
+# processor use of the machine, and the test player's largest memory. LargestGapSeconds is the
+# longest time within the recorded seconds without a sample, the whole recording when it has
+# none; without a sample the averages are missing, not zero.
 function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End) {
-    $rows = @(Import-Csv -LiteralPath $Path | Where-Object {
-        $time = [DateTime]::Parse($_.utc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
-        $time -ge $Start -and $time -le $End.AddSeconds(2)
-    })
+    $invariant = [Globalization.CultureInfo]::InvariantCulture
+    $rows = @()
+    if (Test-Path -LiteralPath $Path) {
+        foreach ($row in @(Import-Csv -LiteralPath $Path)) {
+            # A row that the monitor could not complete is no sample.
+            $time = [DateTime]::MinValue
+            $processors = 0.0
+            $gpu = 0.0
+            if (-not [DateTime]::TryParse($row.utc, $invariant, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$time) -or
+                -not [double]::TryParse($row.foreignProcessors, [Globalization.NumberStyles]::Float, $invariant, [ref]$processors) -or
+                -not [double]::TryParse($row.foreignGpuPercent, [Globalization.NumberStyles]::Float, $invariant, [ref]$gpu)) {
+                continue
+            }
+
+            if ($time -ge $Start -and $time -le $End.AddSeconds(2)) {
+                $rows += [pscustomobject]@{
+                    Time = $time
+                    foreignProcessors = $processors
+                    foreignGpuPercent = $gpu
+                    processorPercent = $row.processorPercent
+                    playerPrivateMegabytes = $row.playerPrivateMegabytes
+                    playerWorkingSetMegabytes = $row.playerWorkingSetMegabytes
+                    foreign = $row.foreign
+                }
+            }
+        }
+    }
+
+    $largestGap = 0.0
+    $last = $Start
+    foreach ($row in $rows) {
+        $largestGap = [Math]::Max($largestGap, ($row.Time - $last).TotalSeconds)
+        $last = $row.Time
+    }
+
+    $largestGap = [Math]::Max($largestGap, ($End - $last).TotalSeconds)
     $processors = ($rows | Measure-Object -Property foreignProcessors -Average).Average
     $gpu = ($rows | Measure-Object -Property foreignGpuPercent -Average).Average
-    $processor = ($rows | Measure-Object -Property processorPercent -Average).Average
+    $processor = ($rows | Where-Object { $_.processorPercent } | Measure-Object -Property processorPercent -Average).Average
     $private = ($rows | Where-Object { $_.playerPrivateMegabytes } | Measure-Object -Property playerPrivateMegabytes -Maximum).Maximum
     $working = ($rows | Where-Object { $_.playerWorkingSetMegabytes } | Measure-Object -Property playerWorkingSetMegabytes -Maximum).Maximum
     $names = @($rows | ForEach-Object { $_.foreign -split ' ' } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 5 | ForEach-Object { $_.Name })
     [pscustomobject]@{
         Samples = $rows.Count
-        ForeignProcessors = if ($null -eq $processors) { 0.0 } else { $processors }
-        ForeignGpuPercent = if ($null -eq $gpu) { 0.0 } else { $gpu }
+        LargestGapSeconds = $largestGap
+        ForeignProcessors = $processors
+        ForeignGpuPercent = $gpu
         ForeignNames = $names
         ProcessorPercent = if ($null -eq $processor) { 0.0 } else { $processor }
         PlayerPrivateMegabytes = $private
@@ -373,8 +427,11 @@ try {
             [Environment]::SetEnvironmentVariable("MMORPG_CROWD_RESULTS", $runFolder)
             [Environment]::SetEnvironmentVariable("MMORPG_CROWD_LABEL", $label)
             Write-Step "Measuring $count bots in an IL2CPP test player that compiles like a $($PlayerBuild.ToLowerInvariant()) build, attempt $attempt."
+            $testPassed = $false
+            $monitorFailure = $null
             try {
                 & $runUnityTests -Platform StandaloneWindows64 -PlayerBuild $PlayerBuild -TestCategory $category -ResultsPath $runFolder | ForEach-Object { Write-Step $_ }
+                $testPassed = $true
             }
             catch {
                 Write-Step "The crowd run failed: $($_.Exception.Message)"
@@ -384,9 +441,9 @@ try {
                     [Environment]::SetEnvironmentVariable($name, $null)
                 }
 
-                Stop-Job $monitor
-                Remove-Job $monitor -Force
+                $stopping = $monitor
                 $monitor = $null
+                $monitorFailure = Stop-LoadMonitor $stopping
             }
 
             # The test player logs to its own file, which the next player start replaces.
@@ -395,16 +452,31 @@ try {
                 Copy-Item -LiteralPath $playerLog -Destination (Join-Path $runFolder "player.log") -Force
             }
 
+            # The test writes its result before its last checks, so a result alone proves nothing.
+            if (-not $testPassed) {
+                Write-Step "The crowd test did not pass, so the attempt does not count; its logs are in '$runFolder'."
+                continue
+            }
+
             $resultPath = Join-Path $runFolder "crowd-$label.json"
             if (-not (Test-Path -LiteralPath $resultPath)) {
                 Write-Step "The run wrote no result; its logs are in '$runFolder'."
                 continue
             }
 
+            if ($null -ne $monitorFailure) {
+                Write-Step $monitorFailure
+            }
+
             $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
             $start = [DateTime]::Parse($result.recordingStartUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
             $end = [DateTime]::Parse($result.recordingEndUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
             $load = Measure-Load $loadPath $start $end
+            if ($load.Samples -eq 0 -or $load.LargestGapSeconds -gt $LoadSampleGapSeconds) {
+                Write-Step ("Attempt {0}: the samples of what other programs used do not cover the recording ({1} samples, {2:N0} s without one), so nothing shows that it was undisturbed; repeating it." -f $attempt, $load.Samples, $load.LargestGapSeconds)
+                continue
+            }
+
             Write-Step ("Attempt {0}: other processes used {1:N2} processors and {2:N1} % of the graphics card on average while it recorded ({3}); the machine was {4:N0} % busy." -f $attempt, $load.ForeignProcessors, $load.ForeignGpuPercent, ($(if ($load.ForeignNames.Count -gt 0) { $load.ForeignNames -join ", " } else { "none" })), $load.ProcessorPercent)
             if ($load.ForeignProcessors -gt $DisturbedProcessors -or $load.ForeignGpuPercent -gt $DisturbedGpuPercent) {
                 Write-Step "Another process disturbed the measurement; repeating it."
@@ -416,7 +488,7 @@ try {
         }
 
         if (-not $measured) {
-            Write-Step "The crowd of $count bots could not be measured undisturbed in $Attempts attempts."
+            Write-Step "The crowd of $count bots could not be measured, with a passing test and undisturbed, in $Attempts attempts."
             $exitCode = 1
         }
 
@@ -432,8 +504,7 @@ catch {
 }
 finally {
     if ($null -ne $monitor) {
-        Stop-Job $monitor
-        Remove-Job $monitor -Force
+        $null = Stop-LoadMonitor $monitor
     }
 
     foreach ($name in $crowdVariables) {

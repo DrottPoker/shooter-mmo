@@ -1349,9 +1349,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps
 | `-Bots <sizes>` | The crowd sizes, `100,200,400` by default |
 | `-Seconds <n>` | How long each recording lasts, 60 by default |
 | `-PlayerBuild <Release\|Development>` | How the test player compiles, like a release build by default |
-| `-Attempts <n>` | How often a disturbed measurement is repeated, 3 by default |
+| `-Attempts <n>` | How many attempts each size gets when one does not count, 3 by default |
 | `-QuietTimeoutMinutes <n>` | How long a measurement waits for other programs to leave the machine alone, 30 by default |
 | `-DisturbedProcessors <n>`, `-DisturbedGpuPercent <n>` | What other programs may use on average, 2.5 processors and 10 % of the 3D engine by default |
+| `-LoadSampleGapSeconds <n>` | The longest time within a recording that may pass without a sample of what other programs use, 10 by default |
 | `-Platform <Player\|Editor>` | `Editor` measures nothing itself; it keeps the stack and the bots of the first size up for `-HoldMinutes` |
 
 The player opens a 1920 by 1080 window on the desktop for a few minutes per
@@ -1361,9 +1362,13 @@ measurement counts against it: another Unity Editor, such as the CI runner's,
 a build, a browser, or a game. Before each measurement the script waits up to
 `-QuietTimeoutMinutes`, 30 by default, until those programs have used at most
 two and a half processors, the background of an ordinary desktop, and 10 % of
-the graphics card's 3D engine for thirty seconds; it samples them about every
-two seconds while the test runs and repeats a measurement during whose
-recording they used more. Part of the measurement are the test player, the
+the graphics card's 3D engine for thirty seconds; it samples them every few
+seconds while the test runs and repeats a measurement during whose recording
+they used more. An attempt counts only with proof: one whose test failed, for
+example because the client lost its connection while it recorded, does not
+count although it wrote a result, and neither does one whose samples leave more
+than `-LoadSampleGapSeconds` of the recording uncovered, because nothing then
+shows that it was undisturbed. Part of the measurement are the test player, the
 project's Unity Editor, the services and bots, Docker, and the desktop
 compositor. The bots get a secret that the script makes for the run; it neither
 reads nor changes `.env`.
