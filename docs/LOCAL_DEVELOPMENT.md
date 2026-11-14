@@ -1368,10 +1368,13 @@ they used more. An attempt counts only with proof: one whose test failed, for
 example because the client lost its connection while it recorded, does not
 count although it wrote a result, and neither does one whose samples leave more
 than `-LoadSampleGapSeconds` of the recording uncovered, because nothing then
-shows that it was undisturbed. Part of the measurement are the test player, the
-project's Unity Editor, the services and bots, Docker, and the desktop
-compositor. The bots get a secret that the script makes for the run; it neither
-reads nor changes `.env`.
+shows that it was undisturbed. Part of the measurement are only the processes
+that the script started itself, directly or through another one (the services,
+the bots, the Unity Editor that builds the test player, and the player), the
+project's own Unity Editor, Docker, and the desktop compositor. Another .NET
+program or PowerShell script, such as a load run, counts against the
+measurement like every other program. The bots get a secret that the script
+makes for the run; it neither reads nor changes `.env`.
 Expected result: one line per attempt with what other processes used, a table
 with the frame times, the time until the crowd was shown, the snapshot rate,
 starvation, and memory per size, `Client crowd measured`, and exit code 0. Each

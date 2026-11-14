@@ -76,34 +76,77 @@ $StackStepPrefix = "crowd"
 . (Join-Path $PSScriptRoot "LocalStackCommon.ps1")
 . (Join-Path $PSScriptRoot "UnityCommon.ps1")
 
-# What one sample of the machine's load says about everything that is not the measurement: the
-# processor seconds of every other process since the last sample, and the 3D engine use of the
-# graphics card by every other process, with the busiest of each. Part of the measurement are the
-# test player, this project's Unity Editor, the services and bots on .NET, Docker with the
-# containers, the PowerShell of this script, the desktop compositor that shows the player's
-# window, and the system itself; another Unity Editor, such as the CI runner's, MSBuild, and
-# every other program, such as a game, are not. Command lines are only compared, never printed:
-# an Editor's holds an access token.
-function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous) {
-    $measurement = @("PlayerWithTests", "dotnet", "vmmem", "VmmemWSL", "com.docker.backend", "com.docker.build",
-        "Docker Desktop", "powershell", "pwsh", "conhost", "dwm", "System", "Idle", "Registry",
-        "Memory Compression", "csrss", "smss", "wininit", "services", "lsass", "WmiPrvSE", "audiodg")
-    # The Editor names the project with backslashes, its asset import workers with slashes.
-    $ownUnity = @{}
+# The ids of the processes that are part of the measurement by where they come from: the
+# processes that the script with the process id $RootProcessId started, directly or through
+# another one (the services, the bots, the Unity Editor that builds and starts the test player,
+# the player, and the load monitor), a test player below the project, and this project's Unity
+# Editor with its import workers. Command lines are only compared, never printed: an Editor's
+# holds an access token.
+function Get-MeasurementProcessIds([string]$OwnProjectPath, [int]$RootProcessId) {
     $ownPath = $OwnProjectPath.Replace('/', '\').TrimEnd('\')
+    $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name, ExecutablePath)
+    $byId = @{}
+    foreach ($process in $all) {
+        $byId[[int]$process.ProcessId] = $process
+    }
+
+    $children = @{}
+    foreach ($process in $all) {
+        # A parent that started after its child is another process that got the number of the
+        # real parent, which has ended.
+        $parent = $byId[[int]$process.ParentProcessId]
+        if ($null -ne $parent -and $null -ne $parent.CreationDate -and $null -ne $process.CreationDate -and
+            $parent.CreationDate -le $process.CreationDate -and $parent.ProcessId -ne $process.ProcessId) {
+            $children[[int]$parent.ProcessId] = @($children[[int]$parent.ProcessId]) + [int]$process.ProcessId
+        }
+    }
+
+    $owned = @{}
+    $queue = [Collections.Generic.Queue[int]]::new()
+    $queue.Enqueue($RootProcessId)
+    while ($queue.Count -gt 0) {
+        $id = $queue.Dequeue()
+        if ($owned.ContainsKey($id)) {
+            continue
+        }
+
+        $owned[$id] = $true
+        foreach ($child in @($children[$id])) {
+            if ($null -ne $child) {
+                $queue.Enqueue($child)
+            }
+        }
+    }
+
+    foreach ($process in $all) {
+        if ($process.Name -eq "PlayerWithTests.exe" -and
+            ([string]$process.ExecutablePath).StartsWith($ownPath + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            $owned[[int]$process.ProcessId] = $true
+        }
+    }
+
+    # The Editor names the project with backslashes, its asset import workers with slashes.
     foreach ($unity in @(Get-CimInstance Win32_Process -Filter "Name='Unity.exe'")) {
         if (([string]$unity.CommandLine).Replace('/', '\').IndexOf($ownPath, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            $ownUnity[[int]$unity.ProcessId] = $true
+            $owned[[int]$unity.ProcessId] = $true
         }
     }
 
-    $msBuild = @{}
-    foreach ($dotnet in @(Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'")) {
-        if (([string]$dotnet.CommandLine).IndexOf("MSBuild.dll", [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            $msBuild[[int]$dotnet.ProcessId] = $true
-        }
-    }
+    $owned
+}
 
+# What one sample of the machine's load says about everything that is not the measurement: the
+# processor seconds of every other process since the last sample, and the 3D engine use of the
+# graphics card by every other process, with the busiest of each. Part of the measurement are
+# the processes of Get-MeasurementProcessIds and, by name, Docker with the containers, the
+# desktop compositor that shows the player's window, and the system itself. Everything else is
+# not, also when it has the name of a process of the measurement: another .NET program or
+# PowerShell script, another Unity Editor, such as the CI runner's, a build, or a game.
+function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous, [int]$RootProcessId) {
+    $measurement = @("vmmem", "VmmemWSL", "com.docker.backend", "com.docker.build", "Docker Desktop",
+        "dwm", "System", "Idle", "Registry", "Memory Compression", "csrss", "smss", "wininit",
+        "services", "lsass", "WmiPrvSE", "audiodg")
+    $owned = Get-MeasurementProcessIds $OwnProjectPath $RootProcessId
     $seconds = 0.0
     $byName = @{}
     $names = @{}
@@ -117,8 +160,7 @@ function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous) {
         $key = [string]$process.Id
         $delta = if ($Previous.ContainsKey($key)) { [Math]::Max(0.0, $cpu - $Previous[$key]) } else { 0.0 }
         $Previous[$key] = $cpu
-        $own = $ownUnity.ContainsKey($process.Id) -or
-            (($measurement -contains $process.ProcessName) -and -not $msBuild.ContainsKey($process.Id))
+        $own = $owned.ContainsKey($process.Id) -or ($measurement -contains $process.ProcessName)
         if (-not $own -and $delta -gt 0) {
             $seconds += $delta
             $byName[$process.ProcessName] = [double]$byName[$process.ProcessName] + $delta
@@ -136,7 +178,7 @@ function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous) {
 
             $processId = [int]$Matches[1]
             $name = [string]$names[$processId]
-            if ($ownUnity.ContainsKey($processId) -or $name -eq "PlayerWithTests" -or $name -eq "dwm") {
+            if ($owned.ContainsKey($processId) -or $name -eq "dwm") {
                 continue
             }
 
@@ -156,14 +198,14 @@ function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous) {
 # Waits until other processes stay below both limits for thirty seconds.
 function Wait-QuietMachine {
     $previous = @{}
-    $null = Get-ForeignLoadSample $projectPath $previous
+    $null = Get-ForeignLoadSample $projectPath $previous $PID
     $last = Get-Date
     $quiet = 0
     $busy = 0
     $deadline = (Get-Date).AddMinutes($QuietTimeoutMinutes)
     while ($quiet -lt 15) {
         Start-Sleep -Seconds 2
-        $sample = Get-ForeignLoadSample $projectPath $previous
+        $sample = Get-ForeignLoadSample $projectPath $previous $PID
         $now = Get-Date
         $processors = $sample.Seconds / [Math]::Max(0.5, ($now - $last).TotalSeconds)
         $last = $now
@@ -190,19 +232,19 @@ function Wait-QuietMachine {
 # Samples the load of other processes, the whole processor, and the test player's memory into a
 # file about every two seconds while a run lasts.
 function Start-LoadMonitor([string]$Path) {
-    $definitions = "function Get-ForeignLoadSample { ${function:Get-ForeignLoadSample} }"
-    Start-Job -ArgumentList $projectPath, $Path, $definitions -ScriptBlock {
-        param($OwnProjectPath, $OutputPath, $Definitions)
+    $definitions = "function Get-MeasurementProcessIds { ${function:Get-MeasurementProcessIds} }`nfunction Get-ForeignLoadSample { ${function:Get-ForeignLoadSample} }"
+    Start-Job -ArgumentList $projectPath, $Path, $definitions, $PID -ScriptBlock {
+        param($OwnProjectPath, $OutputPath, $Definitions, $RootProcessId)
         . ([scriptblock]::Create($Definitions))
         # The invariant culture, so no decimal comma splits a column.
         $invariant = [Globalization.CultureInfo]::InvariantCulture
         $previous = @{}
-        $null = Get-ForeignLoadSample $OwnProjectPath $previous
+        $null = Get-ForeignLoadSample $OwnProjectPath $previous $RootProcessId
         $last = [DateTime]::UtcNow
         "utc,foreignProcessors,foreignGpuPercent,processorPercent,playerPrivateMegabytes,playerWorkingSetMegabytes,foreign" | Set-Content -LiteralPath $OutputPath
         while ($true) {
             Start-Sleep -Seconds 2
-            $sample = Get-ForeignLoadSample $OwnProjectPath $previous
+            $sample = Get-ForeignLoadSample $OwnProjectPath $previous $RootProcessId
             $now = [DateTime]::UtcNow
             $processors = $sample.Seconds / [Math]::Max(0.5, ($now - $last).TotalSeconds)
             $last = $now
