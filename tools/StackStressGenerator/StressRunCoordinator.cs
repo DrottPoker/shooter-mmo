@@ -197,15 +197,24 @@ public sealed class StressRunCoordinator(
         }
         finally
         {
-            await samplingStop.CancelAsync();
-            await StopSamplingAsync(sampling);
-            StopPollThreads();
-            foreach (var bot in bots)
+            try
             {
-                bot.Dispose();
+                await samplingStop.CancelAsync();
+                await StopSamplingAsync(sampling);
             }
+            finally
+            {
+                // A sampler that failed, for example on a dropped database connection, rethrows
+                // above. The poll threads run on the run's own token, so without this they
+                // would keep polling bots and sending traffic until the process ends.
+                StopPollThreads();
+                foreach (var bot in bots)
+                {
+                    bot.Dispose();
+                }
 
-            playing?.Navigation?.Dispose();
+                playing?.Navigation?.Dispose();
+            }
         }
     }
 
