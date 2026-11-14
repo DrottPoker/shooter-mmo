@@ -120,6 +120,7 @@ redesigned goes back to Provisional in the pull request that starts the redesign
 | The client's realtime hub, session state, and scene flow | Provisional | The reconnect window mirrors the worker's 20 s body time in the client's configuration instead of coming from the worker |
 | The UI kit and the windows built on it | Provisional | |
 | Monitoring, the client measurements, stress tools, the network impairment proxy, and bots | Provisional | |
+| The client's player build, its environments, and the build stamp | Provisional | One target, Windows x64 with IL2CPP; one GameService address per environment file; no signing, installer, or update channel; the F2 Debug menu with Leave Shard stays in a release build until a game menu exists |
 | The panels named `Temporary` | Temporary | Move onto the UI kit |
 | The development Worlds | Temporary | Test maps, replaced by the first real World |
 | Placeholder item icons | Temporary | |

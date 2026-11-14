@@ -1,0 +1,21 @@
+{
+  "name": "Mmorpg.SharedTests",
+  "rootNamespace": "Mmorpg.SharedTests",
+  "references": [
+    "Mmorpg.GameProtocol",
+    "Mmorpg.GameSimulation",
+    "Mmorpg.WorldData"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": true,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

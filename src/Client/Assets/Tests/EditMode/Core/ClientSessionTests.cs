@@ -16,27 +16,32 @@ namespace Mmorpg.Client.Tests.EditMode
     {
         private static readonly ClientSettings Settings = new ClientSettings("http://127.0.0.1:9", 10, 10, 5);
 
+        // The environment gives the address and the configuration the timeouts.
         [Test]
-        public void TheSettingsComeFromTheConfiguration()
+        public void TheSettingsComeFromTheEnvironmentAndTheConfiguration()
         {
             var config = ScriptableObject.CreateInstance<ClientConfig>();
+            var build = new ClientBuildInfo(
+                new ClientEnvironment("staging", " http://game.test:5000/ "),
+                ClientBuildStamp.Editor);
             try
             {
                 // The reconnect window mirrors the worker's 20 s body time by default.
-                Assert.That(ClientSettings.From(config).ReconnectWindowSeconds, Is.EqualTo(20));
+                Assert.That(ClientSettings.From(config, build, string.Empty).ReconnectWindowSeconds, Is.EqualTo(20));
 
                 JsonUtility.FromJsonOverwrite(
-                    "{\"gameServiceBaseUrl\":\" http://game.test:5000/ \",\"requestTimeoutSeconds\":7,"
+                    "{\"requestTimeoutSeconds\":7,"
                     + "\"realtimeTimeoutSeconds\":500,\"sessionValidationIntervalSeconds\":1,\"reconnectWindowSeconds\":0}",
                     config);
 
-                var settings = ClientSettings.From(config);
+                var settings = ClientSettings.From(config, build, string.Empty);
 
-                // The configuration trims the URL and clamps the values.
+                // The environment trims the URL and the configuration clamps the values.
                 Assert.That(
                     (settings.GameServiceBaseUrl, settings.RequestTimeoutSeconds, settings.RealtimeTimeoutSeconds,
                         settings.SessionValidationIntervalSeconds, settings.ReconnectWindowSeconds),
                     Is.EqualTo(("http://game.test:5000", 7, 120, 2, 1)));
+                Assert.That(settings.Environment.Name, Is.EqualTo("staging"));
                 Assert.That(
                     settings.WithGameServiceBaseUrl("http://127.0.0.1:9").GameServiceBaseUrl,
                     Is.EqualTo("http://127.0.0.1:9"));

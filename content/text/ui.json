@@ -1227,6 +1227,26 @@
       "text": "The item weight is invalid."
     },
     {
+      "key": "ui/login/address-override",
+      "text": "The GameService address was overridden at start. The environment's address is {url}."
+    },
+    {
+      "key": "ui/login/build-commit-dirty",
+      "text": "{commit} with uncommitted changes"
+    },
+    {
+      "key": "ui/login/build-development",
+      "text": "Environment {environment}  ·  Development build {commit}  ·  Built {time} UTC"
+    },
+    {
+      "key": "ui/login/build-editor",
+      "text": "Environment {environment}  ·  Unity Editor"
+    },
+    {
+      "key": "ui/login/build-release",
+      "text": "Environment {environment}  ·  Release build {commit}  ·  Built {time} UTC"
+    },
+    {
       "key": "ui/login/checking-content",
       "text": "Checking for updated game content..."
     },

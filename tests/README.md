@@ -143,6 +143,7 @@ databases.
 | `Category=Load` | `[Trait("Category", "Load")]` | Deterministic scalability workloads with a timing budget that is sensitive to machine load |
 | Unity `Graphics` | `[Category("Graphics")]` on a Unity test | The test draws with a camera, so it needs a graphics device |
 | Unity `LiveStack` | `[Category("LiveStack")]` and `[Explicit]` on a Unity test | The test needs the running local stack; only `tools/Test-LiveStack.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
+| Unity `Player` | `[Category("Player")]` on a PlayMode test | The test must also pass in the runtime of a built player: `tools/Run-UnityTests.ps1 -Platform StandaloneWindows64` builds an IL2CPP test player and runs only this category in it, as [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) describes. The Editor's PlayMode suite runs it on Mono too. It holds the shared simulation and protocol goldens; a new test belongs here only when it needs no scene, no stack, and no Editor API |
 
 Use `--filter "Category!=Integration"` for a fast loop without containers and
 `--filter "Category=Integration"` for only the infrastructure tests. The
@@ -449,9 +450,11 @@ and review every golden diff before committing it.
 ### Realtime Protocol Goldens
 
 The realtime protocol golden cases live in
-`src/Client/Assets/Tests/EditMode/Shared/RealtimeProtocolGolden*.cs`. Like the
+`src/Client/Assets/Tests/Shared/RealtimeProtocolGolden*.cs`. Like the
 movement scenario, they compile into both `Mmorpg.Shared.Tests` and the Unity
-EditMode tests, so .NET and Unity must produce and accept the same bytes. They
+test assembly `Mmorpg.SharedTests`, which the EditMode tests and the `Player`
+category of the PlayMode tests run, so .NET, Mono, and IL2CPP must produce and
+accept the same bytes. They
 cover four groups:
 
 - Vectors: every message type and variant encodes to the payload pinned in
@@ -500,7 +503,7 @@ change are described under Movement determinism in
 check that the hashes of every compiled document cover all its serialized
 fields, and pin the structural field sets of items and quests. Their rule is in
 [Changing A Content Format](../content/README.md#changing-a-content-format).
-Both use `HashCoverage` in `src/Client/Assets/Tests/EditMode/Shared`, which
+Both use `HashCoverage` in `src/Client/Assets/Tests/Shared`, which
 `Mmorpg.Shared.Tests` links like the movement scenario.
 
 ## Internal Access

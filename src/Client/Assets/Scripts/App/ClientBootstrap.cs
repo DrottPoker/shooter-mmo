@@ -132,7 +132,7 @@ namespace Mmorpg.Client.App
         private void Awake()
         {
             config = ClientConfig.Load(out configHandle);
-            clientSession = new ClientSession(ClientSettings.From(config));
+            clientSession = new ClientSession(LoadSettings(config));
             runtimePrimitiveMaterial = config.RuntimePrimitiveMaterial;
             debugLineMaterial = config.DebugLineMaterial;
             if (runtimePrimitiveMaterial == null)
@@ -192,6 +192,32 @@ namespace Mmorpg.Client.App
                 Path.Combine(Application.persistentDataPath, ClientMeasurements.FolderName));
             GetOrAddComponent<ClientMeasurementDriver>().Initialize(measurements);
             previousSceneName = SceneManager.GetActiveScene().name;
+        }
+
+        // The environment and stamp of this client, with the development override of the
+        // GameService address that a development player takes from its command line and the
+        // Editor from its switch; a release build ignores both.
+        private static ClientSettings LoadSettings(ClientConfig configuration)
+        {
+            var build = ClientBuildInfo.Load();
+            var gameServiceOverride = ClientAddressOverride.Resolve(
+                build.Stamp.Kind,
+                Environment.GetCommandLineArgs(),
+                Application.isEditor
+                    ? PlayerPrefs.GetString(ClientAddressOverride.EditorPreference, string.Empty)
+                    : string.Empty,
+                out var overrideDiagnostic);
+            var settings = ClientSettings.From(configuration, build, gameServiceOverride);
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "Environment " + settings.Environment.Name + " at " + settings.Environment.GameServiceBaseUrl
+                + ", " + settings.Build.Describe() + "; requests go to " + settings.GameServiceBaseUrl + ".");
+            if (overrideDiagnostic.Length > 0)
+            {
+                ClientLog.Warning(ClientLogCategory.Client, overrideDiagnostic);
+            }
+
+            return settings;
         }
 
         // The reconnect ends its window and starts its attempts on the frame.
@@ -284,6 +310,11 @@ namespace Mmorpg.Client.App
                     ClientLogCategory.Client,
                     "The client runs with its bundled content [" + report.FallbackCode + "]: " + report.FallbackDiagnostic);
             }
+
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "The content check resolved " + report.Files.Count + " files"
+                + (report.FellBackToBundled ? ", all bundled." : "."));
         }
 
         private void CreateControllers(ClientContentReport report)
@@ -586,17 +617,24 @@ namespace Mmorpg.Client.App
                 marker => marker.Initialize(localPlayer, runtimePrimitiveMaterial));
             var worldMenu = AddSceneComponentIfMissing<WorldMenuController>(
                 menu => menu.Initialize(worldActorController, localPlayer, gameMessages, texts));
-            AddSceneComponentIfMissing<TemporaryAdminMenu>(
-                menu => menu.Initialize(
-                    realtime.Admin,
-                    realtime.Session,
-                    realtime.Movement,
-                    localPlayer,
-                    bodyLook,
-                    worldMenu,
-                    combatController,
-                    inventoryWindowRequests,
-                    questController));
+
+            // A release build has no Admin menu at all; the worker refuses its commands outside
+            // the Development environment anyway.
+            if (clientSession.Settings.Build.HasDevelopmentTools)
+            {
+                AddSceneComponentIfMissing<TemporaryAdminMenu>(
+                    menu => menu.Initialize(
+                        realtime.Admin,
+                        realtime.Session,
+                        realtime.Movement,
+                        localPlayer,
+                        bodyLook,
+                        worldMenu,
+                        combatController,
+                        inventoryWindowRequests,
+                        questController));
+            }
+
             var inventoryWindows = AddSceneComponentIfMissing<InventoryWindows>(
                 windows => windows.Initialize(
                     uiTheme,

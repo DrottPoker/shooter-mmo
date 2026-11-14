@@ -1,0 +1,4 @@
+{
+  "name": "local",
+  "gameServiceBaseUrl": "http://localhost:5000"
+}

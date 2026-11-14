@@ -227,6 +227,37 @@ namespace Mmorpg.Client.Ui
                 MessageArgument.Text("realtime", realtimeTimeoutSeconds.ToString(CultureInfo.InvariantCulture)));
         }
 
+        // The login screen's footer line of the environment and the build that runs: the Editor,
+        // or a development or release build with its commit, whether the working tree had
+        // changes, and when it was built.
+        public static string BuildLine(ClientSettings settings, TextCatalog texts)
+        {
+            var environment = MessageArgument.Text("environment", settings.Environment.Name);
+            var stamp = settings.Build;
+            if (stamp.Kind == ClientBuildKind.Editor)
+            {
+                return texts.Format("ui/login/build-editor", environment);
+            }
+
+            var commit = stamp.Dirty
+                ? texts.Format("ui/login/build-commit-dirty", MessageArgument.Text("commit", stamp.ShortCommit))
+                : stamp.ShortCommit;
+            return texts.Format(
+                stamp.Kind == ClientBuildKind.Release ? "ui/login/build-release" : "ui/login/build-development",
+                environment,
+                MessageArgument.Text("commit", commit),
+                MessageArgument.Text("time", stamp.BuiltAtDisplay));
+        }
+
+        // Says that the GameService address was overridden at start, with the environment's own
+        // address, or is empty without an override.
+        public static string OverrideLine(ClientSettings settings, TextCatalog texts)
+        {
+            return settings.IsGameServiceOverridden
+                ? texts.Format("ui/login/address-override", MessageArgument.Text("url", settings.Environment.GameServiceBaseUrl))
+                : string.Empty;
+        }
+
         // A count with the text that fits it, such as "1 character" or "2 characters".
         private static string Count(TextCatalog texts, string key, int count)
         {

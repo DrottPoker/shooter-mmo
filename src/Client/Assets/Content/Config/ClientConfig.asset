@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 005d614eb14c474491dc566fe36487a9, type: 3}
   m_Name: ClientConfig
   m_EditorClassIdentifier: 
-  gameServiceBaseUrl: http://localhost:5000
   requestTimeoutSeconds: 10
   realtimeTimeoutSeconds: 10
   sessionValidationIntervalSeconds: 5

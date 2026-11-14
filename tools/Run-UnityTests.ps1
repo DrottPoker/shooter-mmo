@@ -2,6 +2,8 @@
 # passed. The CI Unity gate runs it as it is. By default it leaves out two categories: Graphics,
 # whose tests draw and need a graphics device, and LiveStack, whose tests need the local stack;
 # tools/Test-LiveStack.ps1 starts that stack and runs this script for the LiveStack tests alone.
+# -Platform StandaloneWindows64 builds a Windows test player with the committed IL2CPP settings,
+# runs it, and runs the Player category in it; the player opens a window while it runs.
 # Unity opens a project only once, so the script refuses to run while an Editor or another
 # Unity process has it open; tools/Run-UnityEditorTests.ps1 runs the tests in an open Editor.
 param(
@@ -10,17 +12,32 @@ param(
     [string]$ProjectPath = (Join-Path $PSScriptRoot "..\src\Client"),
     [string]$ResultsPath = (Join-Path $PSScriptRoot "..\TestResults\Unity"),
     # The test platforms to run, in this order.
-    [ValidateSet("EditMode", "PlayMode")]
+    [ValidateSet("EditMode", "PlayMode", "StandaloneWindows64")]
     [string[]]$Platform = @("EditMode", "PlayMode"),
     # Unity's -testCategory: categories separated by semicolons, an exclamation mark excludes one.
-    [string]$TestCategory = "!Graphics;!LiveStack",
+    # The default is !Graphics;!LiveStack in the Editor and Player in a test player.
+    [string]$TestCategory,
     # Checks that Unity is installed and the project is closed, and runs no test.
     [switch]$Preflight
 )
 
 $ErrorActionPreference = "Stop"
-$requiredVersion = ((Get-Content (Join-Path $ProjectPath "ProjectSettings\ProjectVersion.txt")) |
-    Where-Object { $_ -match '^m_EditorVersion: ' }) -replace '^m_EditorVersion: ', ''
+. (Join-Path $PSScriptRoot "UnityCommon.ps1")
+
+# The Player category holds the checks that must pass in the runtime of a built player.
+function Get-TestCategory([string]$PlatformName) {
+    if (-not [string]::IsNullOrWhiteSpace($TestCategory)) {
+        return $TestCategory
+    }
+
+    if ($PlatformName -eq "StandaloneWindows64") {
+        return "Player"
+    }
+
+    return "!Graphics;!LiveStack"
+}
+
+$requiredVersion = Get-UnityRequiredVersion $ProjectPath
 
 # An explicitly configured Editor path always wins. The Unity CLI is only picked
 # automatically when neither an Editor path nor a CLI path was given.
@@ -36,11 +53,7 @@ if ($explicitEditorPath -and -not $explicitCliPath) {
     $UnityCliPath = $null
 }
 
-if ([string]::IsNullOrWhiteSpace($UnityEditorPath)) {
-    if ($IsWindows -or $env:OS -eq "Windows_NT") {
-        $UnityEditorPath = "C:\Program Files\Unity\Hub\Editor\$requiredVersion\Editor\Unity.exe"
-    }
-}
+$UnityEditorPath = Get-UnityEditorPath $UnityEditorPath $requiredVersion
 
 $useUnityCli = -not [string]::IsNullOrWhiteSpace($UnityCliPath) -and
     (Test-Path -LiteralPath $UnityCliPath)
@@ -51,24 +64,6 @@ if (-not $useUnityCli -and
 }
 
 $resolvedProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
-
-# Unity holds Temp/UnityLockfile open without sharing while it has the project open, in the
-# Editor and headless alike.
-function Test-UnityProjectOpen([string]$Path) {
-    $lockFile = Join-Path $Path "Temp\UnityLockfile"
-    if (-not (Test-Path -LiteralPath $lockFile)) {
-        return $false
-    }
-
-    try {
-        $stream = [IO.File]::Open($lockFile, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-        $stream.Dispose()
-        return $false
-    }
-    catch [IO.IOException] {
-        return $true
-    }
-}
 
 if (Test-UnityProjectOpen $resolvedProjectPath) {
     throw "A Unity Editor or another Unity process has '$resolvedProjectPath' open. Close it, or run the tests in that Editor with tools/Run-UnityEditorTests.ps1."
@@ -81,27 +76,32 @@ if ($Preflight) {
 
 New-Item -ItemType Directory -Force -Path $ResultsPath | Out-Null
 
-function ConvertTo-ProcessArgument {
-    param([string]$Value)
-
-    if ($Value.Contains('"')) {
-        throw "Process arguments cannot contain double quotes."
-    }
-
-    if ($Value -match '\s') {
-        return '"' + $Value + '"'
-    }
-
-    return $Value
+# Unity rewrites some tracked files of its own during a run; each run puts them back.
+$repositoryRoot = (& git -C $resolvedProjectPath rev-parse --show-toplevel)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryRoot)) {
+    throw "'$resolvedProjectPath' is not inside a Git working tree."
 }
+
+$repositoryRoot = (Resolve-Path -LiteralPath $repositoryRoot).Path
+$workingTree = Get-WorkingTreeState $repositoryRoot
 
 foreach ($platformName in $Platform) {
     $resultFile = Join-Path $ResultsPath "$platformName-results.xml"
     $logFile = Join-Path $ResultsPath "$platformName-unity.log"
     $cliLogFile = Join-Path $ResultsPath "$platformName-cli.log"
+    $category = Get-TestCategory $platformName
+    $isPlayer = $platformName -eq "StandaloneWindows64"
     Remove-Item -LiteralPath $resultFile, $logFile, $cliLogFile `
         -Force -ErrorAction SilentlyContinue
-    if ($useUnityCli) {
+    # The CLI's test command runs only EditMode and PlayMode and its run command quits before a
+    # test run ends, so a player run always starts the Editor itself.
+    $useCliForPlatform = $useUnityCli -and -not $isPlayer
+    if ($isPlayer -and
+        ([string]::IsNullOrWhiteSpace($UnityEditorPath) -or -not (Test-Path -LiteralPath $UnityEditorPath))) {
+        throw "Unity Editor $requiredVersion was not found for the player run. Set UNITY_EDITOR_PATH to the Unity executable."
+    }
+
+    if ($useCliForPlatform) {
         $arguments = @(
             "--non-interactive",
             "--no-banner",
@@ -112,7 +112,7 @@ foreach ($platformName in $Platform) {
             "--timeout", "900",
             "--",
             "-nographics",
-            "-testCategory", $TestCategory,
+            "-testCategory", $category,
             "-logFile", $logFile
         )
     }
@@ -124,18 +124,18 @@ foreach ($platformName in $Platform) {
             "-runTests",
             "-testPlatform", $platformName,
             "-testResults", $resultFile,
-            "-testCategory", $TestCategory,
+            "-testCategory", $category,
             "-logFile", $logFile
         )
     }
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = if ($useUnityCli) { $UnityCliPath } else { $UnityEditorPath }
+    $startInfo.FileName = if ($useCliForPlatform) { $UnityCliPath } else { $UnityEditorPath }
     $startInfo.Arguments = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join ' '
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $useUnityCli
-    $startInfo.RedirectStandardError = $useUnityCli
+    $startInfo.RedirectStandardOutput = $useCliForPlatform
+    $startInfo.RedirectStandardError = $useCliForPlatform
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
     $started = $false
@@ -146,7 +146,7 @@ foreach ($platformName in $Platform) {
         }
 
         $started = $true
-        if ($useUnityCli) {
+        if ($useCliForPlatform) {
             $standardOutput = $process.StandardOutput.ReadToEndAsync()
             $standardError = $process.StandardError.ReadToEndAsync()
         }
@@ -156,7 +156,7 @@ foreach ($platformName in $Platform) {
         }
 
         $exitCode = $process.ExitCode
-        if ($useUnityCli) {
+        if ($useCliForPlatform) {
             $cliLog = $standardOutput.GetAwaiter().GetResult() +
                 $standardError.GetAwaiter().GetResult()
             [System.IO.File]::WriteAllText($cliLogFile, $cliLog)
@@ -174,6 +174,9 @@ foreach ($platformName in $Platform) {
         }
 
         $process.Dispose()
+        foreach ($line in @(Restore-UnityOwnedFiles $workingTree $repositoryRoot)) {
+            Write-Output $line
+        }
     }
 
     if ($exitCode -ne 0) {
@@ -181,7 +184,7 @@ foreach ($platformName in $Platform) {
             Get-Content -LiteralPath $logFile -Tail 100
         }
 
-        $cliHint = if ($useUnityCli) { " Inspect '$cliLogFile' locally." } else { "" }
+        $cliHint = if ($useCliForPlatform) { " Inspect '$cliLogFile' locally." } else { "" }
         throw "Unity $platformName tests failed with exit code $exitCode.$cliHint"
     }
 
@@ -221,5 +224,5 @@ foreach ($platformName in $Platform) {
     }
 }
 
-$runner = if ($useUnityCli) { "the licensed Unity CLI" } else { "the Unity Editor" }
+$runner = if ($useUnityCli -and $Platform -notcontains "StandaloneWindows64") { "the licensed Unity CLI" } else { "the Unity Editor" }
 Write-Output "Unity $($Platform -join ' and ') tests passed with Unity $requiredVersion through $runner."

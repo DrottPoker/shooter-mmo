@@ -88,7 +88,7 @@ checks for a change and the pull request workflow, and the test projects are des
 | `src/Shared/GameSimulation` | Movement and collision code shared by the server and client prediction, as a Unity package |
 | `src/Shared/WorldData` | Shared domain rules, content compilers, Unity content tools, and the data generated from `content`, as a Unity package |
 | `src/Shared/DotNet` | .NET projects that compile the shared packages for the server |
-| `src/Client` | The Unity project and its tests. See [Unity Client Architecture](docs/UNITY_CLIENT_ARCHITECTURE.md) |
+| `src/Client` | The Unity project, its tests, and in `Environments` the GameService address of each player build. See [Unity Client Architecture](docs/UNITY_CLIENT_ARCHITECTURE.md) and [Build The Client](docs/LOCAL_DEVELOPMENT.md#build-the-client) |
 | `content` | Authored game content: items, actors, Worlds, combat rules. See [Game Content](content/README.md) |
 | `art` | Blender sources of the 3D models with their review records. See [Art Pipeline](docs/ART_PIPELINE.md) |
 | `tests` | Backend tests. See [Backend Tests](tests/README.md) |

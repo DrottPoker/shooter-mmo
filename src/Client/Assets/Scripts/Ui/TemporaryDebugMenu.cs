@@ -347,7 +347,27 @@ namespace Mmorpg.Client.Ui
             networkWindow = TemporaryMenuWindow.AddValue(page, "Rate sample window");
 
             BuildMeasurementSection(page);
+            BuildBuildSection(page);
             BuildContentSection(page);
+        }
+
+        // The environment and build of this client and where its requests go.
+        private void BuildBuildSection(RectTransform page)
+        {
+            TemporaryMenuWindow.AddSection(page, "Build");
+            if (clientSession == null)
+            {
+                TemporaryMenuWindow.AddNote(page, "The build of this client is unknown.");
+                return;
+            }
+
+            var settings = clientSession.Settings;
+            TemporaryMenuWindow.AddValue(page, "Environment").text =
+                settings.Environment.Name + "  " + settings.Environment.GameServiceBaseUrl;
+            TemporaryMenuWindow.AddValue(page, "GameService").text = settings.IsGameServiceOverridden
+                ? settings.GameServiceBaseUrl + ", overridden at start"
+                : settings.GameServiceBaseUrl;
+            TemporaryMenuWindow.AddValue(page, "Stamp").text = settings.Build.Describe();
         }
 
         // A recording of the client measurements to a file, a switch of development builds and the

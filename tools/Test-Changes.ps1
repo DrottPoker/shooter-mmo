@@ -85,7 +85,7 @@ $rules = @(
         Checks = @("deps"); Reason = "the dependency policy" },
     @{ Pattern = '^tools/load/'
         Checks = @("test:Mmorpg.Tools.Tests"); Reason = "load scenarios, the quality boundary, and baselines, which a tools test loads" },
-    @{ Pattern = '^tools/Run-Unity(Editor)?Tests\.ps1$'
+    @{ Pattern = '^tools/(Run-Unity(Editor)?Tests|UnityCommon)\.ps1$'
         Checks = @("unity"); Reason = "a Unity test runner" },
     @{ Pattern = '^tools/[^/]+\.ps1$'
         Checks = @("none"); Reason = "a tool script" },
