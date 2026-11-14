@@ -9,6 +9,8 @@
     <ProjectReference Include="..\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />
     <ProjectReference Include="..\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />
     <ProjectReference Include="..\WorldCollisionCompiler\Mmorpg.Tools.WorldCollisionCompiler.csproj" />
+    <!-- The network profiles and the proxy's counts of a run through the impairment proxy. -->
+    <ProjectReference Include="..\NetworkImpairmentProxy\Mmorpg.Tools.NetworkImpairmentProxy.csproj" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 

@@ -95,7 +95,7 @@
       "rule": "service_log_errors",
       "limit": 0,
       "unit": "count",
-      "description": "Maximum. Error and critical lines of the GameService and worker logs and of their standard error, counted once the services stopped, except the message classes of the allow list, each of which names why it is expected in every run.",
+      "description": "Maximum. Error and critical lines of the GameService and worker logs, of their standard error, and of the standard error of the network impairment proxy under a network profile, counted once the services stopped, except the message classes of the allow list, each of which names why it is expected in every run.",
       "allow": []
     },
     {
@@ -109,6 +109,12 @@
       "limit": 1000,
       "unit": "ms",
       "description": "Validity. How long a route plan of the steady interval waited for a planner thread; the p99 stays within a second, so the bots walk when they decide to instead of standing. Not applicable to a workload that plans no routes."
+    },
+    {
+      "rule": "network_proxy_lateness_p99_ms",
+      "limit": 2,
+      "unit": "ms",
+      "description": "Validity. Under a network profile, how much later than its due time the network impairment proxy sent the packets of the whole run; the p99 of the worse direction stays within the 2 ms that the proxy's self-test proves, so the run measures the profile and not the proxy. A proxy that fell so far behind that it dropped packets could not measure either. Not applicable to a run without a network profile."
     }
   ]
 }

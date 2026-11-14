@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\..\tools\StackStressGenerator\Mmorpg.Tools.StackStressGenerator.csproj" />
     <ProjectReference Include="..\..\..\tools\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />
     <ProjectReference Include="..\..\..\tools\ItemCatalogCompiler\Mmorpg.Tools.ItemCatalogCompiler.csproj" />
+    <ProjectReference Include="..\..\..\tools\NetworkImpairmentProxy\Mmorpg.Tools.NetworkImpairmentProxy.csproj" />
     <ProjectReference Include="..\..\..\tools\ProtocolGenerator\Mmorpg.Tools.ProtocolGenerator.csproj" />
     <ProjectReference Include="..\..\..\tools\QuestCatalogCompiler\Mmorpg.Tools.QuestCatalogCompiler.csproj" />
     <ProjectReference Include="..\..\..\tools\WorldActorCompiler\Mmorpg.Tools.WorldActorCompiler.csproj" />

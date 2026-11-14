@@ -284,6 +284,7 @@ public static class Program
             var report = await StressRunReport.ReadAsync(reportPath, CancellationToken.None);
             var summary = StressRunSummary.Parse(await File.ReadAllTextAsync(summaryPath));
             report = StressRunJudge.AddLogs(report, runFolder, boundary.LogAllowances);
+            report = StressNetworkProfiles.AddProxyCounts(report, runFolder);
             report = report with { Verdict = boundary.Evaluate(report) };
             var exitCode = report.Verdict is { Valid: false }
                 ? CouldNotMeasureExitCode
@@ -296,6 +297,22 @@ public static class Program
                 Date = summary.Date
             }).WriteAsync(summaryPath, CancellationToken.None);
             WriteServiceLogs(report.ServiceLogs!);
+            if (report.Network is { } network)
+            {
+                if (network.Proxy is { } proxy)
+                {
+                    proxy.Write(Console.Out);
+                }
+                else
+                {
+                    Console.WriteLine($"Network profile {network.Profile}: {network.ProxyNote}");
+                }
+
+                var proxyRule = report.Verdict.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms");
+                Console.WriteLine(
+                    $"Validity rule network_proxy_lateness_p99_ms: {(proxyRule.Passed ? "passed" : "FAILED")}, measured {proxyRule.Measured?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "n/a"} {proxyRule.Unit}, limit {proxyRule.Comparison} {proxyRule.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture)}{(proxyRule.Note is null ? string.Empty : $" ({proxyRule.Note})")}.");
+            }
+
             if (report.PostgresLog is { } log)
             {
                 Console.WriteLine(
@@ -414,6 +431,11 @@ public static class Program
         var ack = report.Bots.InputAcknowledgementLatency;
         Console.WriteLine(
             $"Stack stress run complete: {report.Bots.JoinedBots}/{report.Bots.RequestedBots} joined, {report.Bots.CompletedBots} left cleanly, {report.Bots.FailedBots} failed.");
+        if (report.Network is { } network)
+        {
+            Console.WriteLine(
+                $"Network profile {network.Profile} (seed {network.Seed}) between the bots and the worker: {network.Description}");
+        }
         Console.WriteLine(
             $"Traffic: {report.Bots.PacketsSent} packets and {report.Bots.BytesSent} bytes sent, {report.Bots.PacketsReceived} packets and {report.Bots.BytesReceived} bytes received.");
         if (ack is not null)

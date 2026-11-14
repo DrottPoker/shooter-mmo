@@ -306,6 +306,159 @@ script compilation finish. With GameService and a worker running, open
   `ClientBuilds` folders below `src/Client` and are never committed.
 - Run the Unity tests as [Run The Unity Tests](#run-the-unity-tests) describes.
 
+## Run On A Bad Network
+
+Everything else runs on loopback, without delay, loss, or jitter.
+`tools/NetworkImpairmentProxy` puts a bad network between the clients and a
+worker: a UDP proxy that listens on a port of its own, opens one upstream
+socket per client address, so the worker still sees every client apart, and
+forwards both directions after the delay of a network profile, or drops or
+duplicates a packet. It never reads or changes a payload, so neither the client
+nor the worker knows about it: the worker advertises the proxy's port with
+`SimulationWorker:AdvertisedUdpPort` and keeps listening on its own, and every
+join ticket sends the client to the proxy. The load runner starts it with
+`-Network`, as
+[Load Runs Under A Network Profile](STACK_STRESS_TESTING.md#load-runs-under-a-network-profile)
+describes, and [Play On A Bad Network](MANUAL_TESTING.md#play-on-a-bad-network)
+uses it by hand.
+
+### Network Profiles
+
+A profile is a file `tools/load/network-profiles/<name>.json`. The four profiles
+split their round trip and its jitter evenly over both directions:
+
+| Profile | Round trip | Jitter | Loss per direction | Duplicated | Line down | Stands for |
+| --- | ---: | ---: | --- | ---: | --- | --- |
+| `good` | 30 ms | 5 ms | none | none | never | Wired fibre or cable to a server in the same country |
+| `normal` | 80 ms | 15 ms | 1 % | none | never | Cable or DSL over Wi-Fi to a server in the same region |
+| `poor` | 200 ms | 40 ms | 5 %, a fifth of it in bursts of 4 packets on average | 0.5 % | never | A congested mobile network or a server on another continent |
+| `terrible` | 400 ms | 100 ms | 10 %, three tenths of it in bursts of 6 packets on average | 1 % | 3 s every 60 s, the first time 60 s after the client's first packet | A weak mobile signal on the move or a satellite link |
+
+`none` means no proxy, and no profile file may take that name. A profile has a
+`description` of the connection it stands for, the objects `clientToServer` and
+`serverToClient`, and the `verdict` section that
+[Load Runs Under A Network Profile](STACK_STRESS_TESTING.md#load-runs-under-a-network-profile)
+describes. The proxy and the load runner read it strictly: an unknown property,
+a missing value, or a value out of its range is an error. Each direction has:
+
+| Property | Meaning |
+| --- | --- |
+| `delayMs` | The one-way delay of every packet, 0 to 10,000 |
+| `jitterMs` | Every packet waits the delay plus a jitter drawn evenly from minus to plus this, at most the delay. Packets that are closer together than the jitter's range can overtake each other, and the proxy lets them |
+| `lossPercent` | The share of all packets of the direction that is lost, 0 to 99 |
+| `duplicatePercent` | The share of the forwarded packets that are sent twice, each copy with its own jitter |
+| `burstLoss` | Optional: `sharePercent` of the loss comes in bursts of `averageLengthPackets` on average, the rest falls on single packets |
+| `outages` | Optional: everything is dropped for `durationSeconds` every `everySeconds`, the first time `firstAfterSeconds` after the client's first packet |
+
+A burst starts on a packet outside a burst with the probability that makes
+bursts drop their share of all packets, and it ends after each of its packets
+with the probability one over its average length; the rest of the loss falls on
+the packets outside bursts at random. An outage counts from each client's own
+first packet, so a client that reconnects with a new socket starts its schedule
+again, and in a load run the outages of the bots fall at different times. The
+proxy is deterministic for a seed as far as the arrival order allows: each
+direction of each client draws from its own random stream, seeded by the seed,
+the client's number in the order the proxy first heard from it, and the
+direction, and every packet draws the same six numbers whatever its fate, so
+the fate of the n-th packet depends only on the seed and n, and on its arrival
+time only for an outage.
+
+### Start The Proxy By Hand
+
+Start the stack as [Backend Services](#backend-services) describes, but start
+the default worker with the proxy's port as its advertised port:
+
+```powershell
+dotnet run --project src/Server/SimulationWorker -- --SimulationWorker:AdvertisedUdpPort=27115
+```
+
+Then start the proxy in front of it in another terminal, with a profile name or
+the path of a profile file:
+
+```powershell
+dotnet run --project tools/NetworkImpairmentProxy --configuration Release -- --profile poor --listen 127.0.0.1:27115 --forward 127.0.0.1:27015
+```
+
+Expected result: the proxy prints `Network impairment proxy listening on UDP
+127.0.0.1:27115, forwarding to 127.0.0.1:27015 with profile poor (seed 1)` with
+the profile's description and what it does to each direction, then a progress
+line every 10 seconds. `Ctrl+C` stops it and prints its counts. To change the
+profile, stop the proxy and start it again with another one; the worker keeps
+running, and a client that loses its line for longer than its 10-second realtime
+timeout reconnects. Without the proxy, a client of a worker that advertises
+27115 cannot join.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--profile <name or file>` | required | A profile of `tools/load/network-profiles`, which the build copies below the proxy, or a profile file |
+| `--listen <ip:port>` | required | Where the clients send to |
+| `--forward <ip:port>` | required | The worker's own UDP endpoint |
+| `--seed <number>` | `1` | The seed of every random decision |
+| `--counts <file>` | none | Writes the counts as JSON when the proxy stops |
+| `--idle-timeout-seconds <s>` | `30` | Forgets a client that sent and got nothing for this long and closes its upstream socket, so the worker sees it no more |
+| `--report-interval-seconds <s>` | `10` | How often the progress line is printed; 0 never |
+| `--max-clients <count>` | `2048` | Refuses more clients at once |
+| `--allow-non-loopback` | off | Allows a listen or forward address off this machine |
+
+Like the load generator, the proxy refuses a listen or forward address that is
+not a loopback address unless `--allow-non-loopback` is given, and it takes IP
+addresses only, with `localhost` for `127.0.0.1`. Exit codes: 0 after `Ctrl+C`
+or a passed self-test, 1 a failure, 2 invalid options or an invalid profile.
+
+### What The Proxy Counts
+
+For each direction the proxy counts the packets and bytes it received and
+forwarded, the duplicated packets, the packets it dropped at random, in bursts,
+in outages, and because it fell behind, its send failures, the packets it
+discarded when it stopped, the delay it applied, from a packet's arrival to its
+send, and its lateness against each packet's due time; and the clients it saw,
+at most at once, timed out, and refused, and the processor time it used. It prints them when it stops and
+writes them as JSON with `--counts`. A direction keeps at most 200,000 waiting
+packets and drops beyond them as overflow, which only a proxy that fell far
+behind reaches.
+
+### Delay Accuracy
+
+A proxy that adds its own timer noise measures itself instead of the profile:
+an ordinary wait on Windows rounds up to the 15.6 ms system timer tick. Each
+direction has its own scheduler thread at the highest thread priority, which
+sleeps on a high-resolution waitable timer, the approach of the worker's loop,
+until 0.3 ms before the next due time and spins the rest; a new packet wakes it,
+because jitter can make it due before the packet it waits for. A spin of 1 ms
+gave no better p99 and cost a core more at 6,000 packets per second and
+direction, because the thread then spun through the gaps between the packets;
+`self-test --spin-ms` measures another spin. Packets due at
+the same time leave in the order they arrived. The self-test proves the
+accuracy:
+
+```powershell
+dotnet run --project tools/NetworkImpairmentProxy --configuration Release -- self-test
+```
+
+It runs the proxy in its own process with a constant delay of 40 ms each way
+and no jitter or loss in front of an echo server, sends timestamped packets
+from 8 client sockets at 100 packets per second each for 20 seconds, and
+measures with one clock how much later than the delay each packet arrived at
+the server and back at the client. `--delay-ms`, `--seconds`, `--clients`,
+`--rate`, `--size`, and `--output <file>` change it. It passes when every packet
+arrived and the p99 of the error stays below 2 ms in both directions, and
+exits with 0, else with 1. Measured on the reference machine of
+[Measured Tiers](STACK_STRESS_TESTING.md#measured-tiers):
+
+| Run | Packets per second and direction | Error p50 / p99 / max, client to server | Error p50 / p99 / max, server to client | Proxy lateness p99 |
+| --- | ---: | --- | --- | --- |
+| Default, 8 clients at 100 per second | 800 | 0.13 / 0.75 / 7.7 ms | 0.10 / 0.69 / 4.8 ms | 0.66 and 0.58 ms |
+| `--clients 100 --rate 60` | 6,000 | 0.12 / 0.56 / 6.7 ms | 0.09 / 0.67 / 14.6 ms | 0.32 and 0.31 ms |
+
+The error includes the two loopback socket hops and the test's own receive
+threads; a single packet can still be late by several milliseconds when Windows
+schedules another thread, which the p99 stays clear of. Every load run under a
+profile checks the proxy again with the validity rule
+`network_proxy_lateness_p99_ms`; the `playing-100` runs of
+[Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles)
+measured a lateness p99 of 0.52 to 0.54 ms at 3,000 to 3,700 packets per second
+and direction, with the proxy at about one core.
+
 ## Repository Quality Checks
 
 CI runs the full quality gate for every pull request, split into parallel jobs

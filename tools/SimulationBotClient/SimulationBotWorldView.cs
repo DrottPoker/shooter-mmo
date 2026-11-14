@@ -112,7 +112,9 @@ public sealed class SimulationBotWorldView
         OwnPathProgress = snapshot.PathProgress;
     }
 
-    // A remote snapshot moves the players and the moving Mobs it carries.
+    // A remote snapshot moves the players and the moving Mobs it carries. Snapshots travel
+    // unreliably, so on a real network one can arrive twice or after a newer one; an entity
+    // keeps the position of the newest snapshot that carried it.
     public void ApplySnapshot(RealtimeSimulationSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -120,11 +122,11 @@ public sealed class SimulationBotWorldView
         {
             if (actors.TryGetValue(entity.EntityId, out var actor))
             {
-                actor.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ);
+                actor.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ, snapshot.SnapshotSequence);
             }
             else if (players.TryGetValue(entity.EntityId, out var player))
             {
-                player.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ);
+                player.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ, snapshot.SnapshotSequence);
             }
         }
     }
@@ -369,6 +371,9 @@ public sealed class SimulationBotWorldView
 // A world actor in interest: its identity and kind from its spawn, and its newest position.
 public sealed class SimulationBotWorldActor
 {
+    private uint lastSnapshotSequence;
+    private bool hasSnapshotSequence;
+
     public SimulationBotWorldActor(RealtimeWorldActorSpawn spawn)
     {
         ArgumentNullException.ThrowIfNull(spawn);
@@ -426,8 +431,15 @@ public sealed class SimulationBotWorldActor
         Position = new SimulationBotPosition(state.PositionX, state.PositionY, state.PositionZ);
     }
 
-    internal void MoveTo(float x, float y, float z)
+    internal void MoveTo(float x, float y, float z, uint snapshotSequence)
     {
+        if (hasSnapshotSequence && snapshotSequence <= lastSnapshotSequence)
+        {
+            return;
+        }
+
+        hasSnapshotSequence = true;
+        lastSnapshotSequence = snapshotSequence;
         Position = new SimulationBotPosition(x, y, z);
     }
 }
@@ -435,14 +447,24 @@ public sealed class SimulationBotWorldActor
 // A remote player in interest and its newest known position.
 public sealed class SimulationBotPlayer(ulong entityId, string displayName, float x, float y, float z)
 {
+    private uint lastSnapshotSequence;
+    private bool hasSnapshotSequence;
+
     public ulong EntityId { get; } = entityId;
 
     public string DisplayName { get; } = displayName;
 
     public SimulationBotPosition Position { get; private set; } = new(x, y, z);
 
-    internal void MoveTo(float positionX, float positionY, float positionZ)
+    internal void MoveTo(float positionX, float positionY, float positionZ, uint snapshotSequence)
     {
+        if (hasSnapshotSequence && snapshotSequence <= lastSnapshotSequence)
+        {
+            return;
+        }
+
+        hasSnapshotSequence = true;
+        lastSnapshotSequence = snapshotSequence;
         Position = new SimulationBotPosition(positionX, positionY, positionZ);
     }
 }

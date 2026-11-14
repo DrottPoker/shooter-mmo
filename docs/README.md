@@ -8,8 +8,8 @@ documents link to it instead of repeating it, so nothing drifts apart. Start wit
 
 - [Project Overview](PROJECT_OVERVIEW.md): what the game is today, how the parts fit together,
   and the status of every area.
-- [Local Development](LOCAL_DEVELOPMENT.md): set up, run the stack, run the checks, and carry a
-  change through a pull request.
+- [Local Development](LOCAL_DEVELOPMENT.md): set up, run the stack, run it on a bad network,
+  run the checks, and carry a change through a pull request.
 - [Manual Testing](MANUAL_TESTING.md): try every feature by hand in the running game.
 
 ## Product Design

@@ -106,6 +106,12 @@ public sealed record StressGeneratorOptions(
 
     public int? WorkerHeartbeatTimeoutSeconds { get; init; }
 
+    // The network profile of tools/load/network-profiles that the bots' traffic goes through, by
+    // the impairment proxy that tools/Test-Load.ps1 starts, or null for a direct connection.
+    public string? NetworkProfilePath { get; init; }
+
+    public Mmorpg.Tools.NetworkImpairmentProxy.NetworkProfile? Network { get; init; }
+
     public static string DefaultActorCatalogPath =>
         Path.Combine(AppContext.BaseDirectory, "WorldData", "Actors", "core.actor-catalog.json");
 
@@ -248,6 +254,7 @@ public sealed record StressGeneratorOptions(
                 "stress",
                 $"stack-stress-{FormatMode(mode)}-{FormatWorkload(workload)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json"));
         var runId = ValidateRunId(Get(values, "run-id", CreateRunId()));
+        var networkProfilePath = OptionalPath(values, "network-profile", workingDirectory);
 
         return new StressGeneratorOptions(
             mode,
@@ -322,7 +329,9 @@ public sealed record StressGeneratorOptions(
                 : null,
             WorkerHeartbeatTimeoutSeconds = values.ContainsKey("worker-heartbeat-timeout-seconds")
                 ? ParseInt(values, "worker-heartbeat-timeout-seconds", 0, 1, 3600)
-                : null
+                : null,
+            NetworkProfilePath = networkProfilePath,
+            Network = networkProfilePath is null ? null : StressNetworkProfiles.Load(networkProfilePath)
         };
     }
 
@@ -411,6 +420,9 @@ public sealed record StressGeneratorOptions(
           --redis-endpoint <host:port>      Full-stack: the loopback Redis whose keys and memory the soak reads.
           --database-pool-size <count>      Full-stack: GameService's database pool, which the drift checks compare with.
           --worker-heartbeat-timeout-seconds <s> Full-stack: when GameService takes a silent worker offline, for the drift checks.
+          --network-profile <file>          The network profile the bots' traffic goes through, by the impairment proxy
+                                            that tools/Test-Load.ps1 starts; it names the profile in the report and
+                                            applies its allowances to the verdict. Default: none, a direct connection
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
@@ -511,7 +523,8 @@ public sealed record StressGeneratorOptions(
             "combat-rules-path",
             "redis-endpoint",
             "database-pool-size",
-            "worker-heartbeat-timeout-seconds"
+            "worker-heartbeat-timeout-seconds",
+            "network-profile"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

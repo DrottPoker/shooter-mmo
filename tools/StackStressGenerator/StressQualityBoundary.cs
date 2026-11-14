@@ -61,14 +61,17 @@ public sealed class StressQualityBoundary
             ["process_memory_growth"] = ("MiB", StressRuleKind.Maximum),
             ["service_log_errors"] = ("count", StressRuleKind.Maximum),
             ["generator_poll_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum),
-            ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum)
+            ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum),
+            ["network_proxy_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum)
         };
 
-    // The rules that judge whether the generator kept up, so that the run measured anything.
+    // The rules that judge whether the generator and the network proxy kept up, so that the run
+    // measured anything.
     public static readonly IReadOnlySet<string> ValidityRules = new HashSet<string>(StringComparer.Ordinal)
     {
         "generator_poll_lateness_p99_ms",
-        "generator_route_queue_p99_ms"
+        "generator_route_queue_p99_ms",
+        "network_proxy_lateness_p99_ms"
     };
 
     // The memory rule judges only a steady interval at least this long; a shorter one is too
@@ -217,8 +220,9 @@ public sealed class StressQualityBoundary
 
     public StressVerdict Evaluate(StressRunReport report)
     {
+        ArgumentNullException.ThrowIfNull(report);
         var entries = Rules
-            .Select(rule => Judge(rule, Measure(rule.Rule, report)) with
+            .Select(rule => JudgeUnderNetwork(rule, Measure(rule.Rule, report), report.Network) with
             {
                 Validity = ValidityRules.Contains(rule.Rule)
             })
@@ -229,6 +233,38 @@ public sealed class StressQualityBoundary
         {
             Valid = entries.Where(entry => entry.Validity).All(entry => entry.Passed)
         };
+    }
+
+    // A network profile moves a rule's limit by its allowance, or takes a rule out that its
+    // impairment decides by itself; the note says which, and a rule taken out keeps its measured
+    // value in the note.
+    private static StressVerdictEntry JudgeUnderNetwork(
+        StressQualityRule rule,
+        Measurement measurement,
+        StressNetworkSummary? network)
+    {
+        if (network?.NotApplicable.FirstOrDefault(entry => entry.Rule == rule.Rule) is { } notApplicable)
+        {
+            var measured = measurement.NotApplicable || measurement.Value is not { } value
+                ? string.Empty
+                : Invariant($" Measured {value:0.##} {rule.Unit}{(measurement.Note is null ? string.Empty : "; " + measurement.Note.TrimEnd('.'))}.");
+            return Judge(rule, new Measurement(
+                null,
+                $"Not applicable under the network profile {network.Profile}: {notApplicable.Reason}.{measured}",
+                true));
+        }
+
+        if (network?.Allowances.FirstOrDefault(entry => entry.Rule == rule.Rule) is { } allowance)
+        {
+            var entry = Judge(rule with { Limit = rule.Limit + allowance.Add }, measurement);
+            var reason = Invariant($"the limit of {rule.Limit:0.##} {rule.Unit} plus {allowance.Add:0.##} {rule.Unit} under the network profile {network.Profile}, {allowance.Reason}");
+            return entry with
+            {
+                Note = entry.Note is null ? char.ToUpperInvariant(reason[0]) + reason[1..] : entry.Note + "; " + reason
+            };
+        }
+
+        return Judge(rule, measurement);
     }
 
     private static StressVerdictEntry Judge(StressQualityRule rule, Measurement measurement)
@@ -341,6 +377,13 @@ public sealed class StressQualityBoundary
                 : report.GeneratorTiming.RouteQueue is { } queue
                     ? Measurement.Of(queue.P99Ms, Invariant($"{queue.Samples} route plans of the steady interval, worst {queue.MaximumMs:0.0} ms"))
                     : Measurement.Skip("no route was planned in the steady interval"),
+            "network_proxy_lateness_p99_ms" => report.Network is not { } network
+                ? Measurement.Skip("the run went through no network proxy")
+                : network.Proxy is { } proxy
+                    ? MeasureProxyLateness(proxy)
+                    : network.ProxyNote is { } missing
+                        ? Measurement.Missing(missing)
+                        : Measurement.Skip("the proxy's counts are read once it stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs"),
             _ => throw new InvalidOperationException($"The rule '{rule}' has no measurement.")
         };
     }
@@ -375,6 +418,26 @@ public sealed class StressQualityBoundary
             "worst " + worst.Process + "; " + string.Join(
                 ", ",
                 measured.Select(trend => Invariant($"{trend.Process} {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h"))));
+    }
+
+    // The worse direction's lateness against the due time; a proxy that dropped packets because
+    // it fell behind measured itself, whatever its lateness.
+    private static Measurement MeasureProxyLateness(Mmorpg.Tools.NetworkImpairmentProxy.ProxyCountsReport proxy)
+    {
+        var overflow = proxy.ClientToServer.DroppedOverflow + proxy.ServerToClient.DroppedOverflow;
+        if (overflow > 0)
+        {
+            return Measurement.Missing(Invariant($"the proxy fell behind and dropped {overflow} packets that its profile would have forwarded."));
+        }
+
+        if (proxy.ClientToServer.LatenessMs is not { } up || proxy.ServerToClient.LatenessMs is not { } down)
+        {
+            return Measurement.Missing("the proxy forwarded no packet in one direction.");
+        }
+
+        return Measurement.Of(
+            Math.Max(up.P99, down.P99),
+            Invariant($"client to server p99 {up.P99:0.000} ms, worst {up.Maximum:0.0} ms; server to client p99 {down.P99:0.000} ms, worst {down.Maximum:0.0} ms; the profile dropped {proxy.ClientToServer.DroppedPercent:0.00} % and {proxy.ServerToClient.DroppedPercent:0.00} %"));
     }
 
     private static Measurement MeasureGameplayP95(StressRunReport report)

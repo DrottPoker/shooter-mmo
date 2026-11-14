@@ -48,6 +48,43 @@ public sealed class SimulationBotWorldViewTests
         Assert.Empty(view.Combatants);
     }
 
+    // On a real network a remote snapshot can arrive twice or after a newer one; the view keeps
+    // the position of the newest snapshot that carried each entity.
+    [Fact]
+    public void AReorderedOrDuplicatedRemoteSnapshotNeverMovesAnEntityBack()
+    {
+        var view = new SimulationBotWorldView(CharacterName);
+        view.ApplyWorldActorSpawn(Mob(100, -130f, -35f));
+        view.ApplyEntitySpawn(new RealtimeEntitySpawn(
+            200,
+            RealtimeEntityKind.Player,
+            Guid.NewGuid().ToString(),
+            "Other",
+            "Human_Male",
+            1,
+            new RealtimePlayerState(0f, 0.5f, -33f, 0f, 0f, 0f, 0f, true),
+            new RealtimeCharacterAppearance("Human_Male", [], [], false, null)));
+
+        view.ApplySnapshot(Remote(5, (100, -120f), (200, 10f)));
+        view.ApplySnapshot(Remote(4, (100, -125f), (200, 5f)));
+        view.ApplySnapshot(Remote(5, (100, -125f), (200, 5f)));
+        // A later frame that defers one entity still moves the other.
+        view.ApplySnapshot(Remote(6, (200, 12f)));
+
+        Assert.Equal(-120f, view.Actors[100].Position.X);
+        Assert.Equal(12f, view.Players[200].Position.X);
+    }
+
+    private static RealtimeSimulationSnapshot Remote(uint sequence, params (ulong Entity, float X)[] entities)
+    {
+        return new RealtimeSimulationSnapshot(
+            sequence,
+            sequence * 2,
+            0,
+            1,
+            [.. entities.Select(entity => new RealtimeEntitySnapshot(entity.Entity, 0, new RealtimePlayerState(entity.X, 0.5f, -33f, 0f, 0f, 0f, 0f, true)))]);
+    }
+
     [Fact]
     public void AnOlderCombatStateNeverReplacesANewerOne()
     {

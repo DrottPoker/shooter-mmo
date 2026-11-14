@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Mmorpg.Tools.NetworkImpairmentProxy;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -27,6 +28,10 @@ public sealed record StressLoadScenario(
 
     // The extra Mobs and nodes of a load variant of the World, or null for the checked-in World.
     public WorldVariantScenario? WorldVariant { get; init; }
+
+    // The network profile of tools/load/network-profiles the bots' traffic goes through, or null
+    // for a direct connection; -Network of tools/Test-Load.ps1 overrides it.
+    public string? Network { get; init; }
 
     // The generator options a scenario may set. Endpoints, identities, secrets, and output paths
     // belong to the plan.
@@ -99,7 +104,8 @@ public sealed record StressLoadScenario(
                 "workerSettings",
                 "gameServiceSettings",
                 "playing",
-                "worldVariant");
+                "worldVariant",
+                "network");
             var mode = StrictJson.RequireString(root, "mode", source, "the scenario") switch
             {
                 "worker-only" => StressRunMode.WorkerOnly,
@@ -148,6 +154,17 @@ public sealed record StressLoadScenario(
                     $"'{source}': worker-only mode runs only the lifecycle workload.");
             }
 
+            string? network = null;
+            if (root.TryGetProperty("network", out var networkElement))
+            {
+                network = networkElement.ValueKind == JsonValueKind.String ? networkElement.GetString() : null;
+                if (network is null || (network != NetworkProfile.None && !NetworkProfile.IsValidName(network)))
+                {
+                    throw new StressGeneratorOptionException(
+                        $"'{source}': 'network' must name a profile of tools/load/network-profiles or be '{NetworkProfile.None}'.");
+                }
+            }
+
             var generator = ReadGenerator(root, source);
             var workerSettings = ReadSettings(root, "workerSettings", source);
             var gameServiceSettings = ReadSettings(root, "gameServiceSettings", source);
@@ -169,7 +186,8 @@ public sealed record StressLoadScenario(
                 gameServiceSettings)
             {
                 Playing = playing,
-                WorldVariant = worldVariant
+                WorldVariant = worldVariant,
+                Network = network
             };
         }
     }
@@ -274,6 +292,14 @@ public sealed record StressLoadPlan(
     // StackStressGenerator world-variant before the worker starts, or null for none.
     public string? WorldVariantPath { get; init; }
 
+    // The network profile of the run, 'none' for a direct connection, and the proxy that
+    // tools/Test-Load.ps1 starts between the bots and the worker for any other.
+    public string Network { get; init; } = NetworkProfile.None;
+
+    public string? NetworkProfilePath { get; init; }
+
+    public StressNetworkProxyPlan? Proxy { get; init; }
+
     public const string FullStackGameServiceUrl = "http://127.0.0.1:5500";
     public const int FullStackGameServicePort = 5500;
     public const int FullStackWorkerUdpPort = 27025;
@@ -349,11 +375,24 @@ public sealed record StressLoadPlan(
             ? null
             : Path.Combine(runFolder, WorldVariantFolderName);
 
+        // A network profile puts the proxy on the port the worker advertises, so every bot joins
+        // through it, and the worker keeps listening on its own port behind it.
+        var networkName = request.Network ?? scenario.Network ?? NetworkProfile.None;
+        string? networkProfilePath = null;
+        NetworkProfile? networkProfile = null;
+        if (networkName != NetworkProfile.None)
+        {
+            var repositoryRoot = Mmorpg.WorldData.Content.ContentLayout.FindRepositoryRoot(workingDirectory);
+            networkProfile = StressNetworkProfiles.LoadNamed(networkName, repositoryRoot);
+            networkProfilePath = Path.Combine(StressNetworkProfiles.FolderPath(repositoryRoot), networkName + ".json");
+        }
+
         var gameServiceEnvironment = new Dictionary<string, string>(StringComparer.Ordinal);
         var workerEnvironment = new Dictionary<string, string>(StringComparer.Ordinal);
         var generatorEnvironment = new Dictionary<string, string>(StringComparer.Ordinal);
         var arguments = new List<string>();
         var udpPort = fullStack ? FullStackWorkerUdpPort : WorkerOnlyUdpPort;
+        var advertisedPort = networkProfile is null ? udpPort : udpPort + StressNetworkProfiles.ProxyPortOffset;
         if (fullStack)
         {
             gameServiceEnvironment["ConnectionStrings__Postgres"] = PostgresConnection;
@@ -444,7 +483,7 @@ public sealed record StressLoadPlan(
                 "--workload", "lifecycle",
                 "--authority-url", WorkerOnlyAuthorityUrl,
                 "--worker-host", "127.0.0.1",
-                "--worker-udp-port", udpPort.ToString(CultureInfo.InvariantCulture),
+                "--worker-udp-port", advertisedPort.ToString(CultureInfo.InvariantCulture),
                 "--fleet-id", "local-fleet",
                 "--node-id", "local-node-1",
                 "--worker-secret", workerSecret,
@@ -454,7 +493,7 @@ public sealed record StressLoadPlan(
 
         workerEnvironment["SIMULATION_WORKER_UDP_PORT"] = udpPort.ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SIMULATION_WORKER_ADVERTISED_HOST"] = "127.0.0.1";
-        workerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"] = udpPort.ToString(CultureInfo.InvariantCulture);
+        workerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"] = advertisedPort.ToString(CultureInfo.InvariantCulture);
         workerEnvironment[MetricsIntervalSetting] =
             MetricsIntervalSeconds(generator["duration-seconds"]).ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SimulationWorker__PerformanceReportPath"] = performancePath;
@@ -496,6 +535,25 @@ public sealed record StressLoadPlan(
             arguments.AddRange(["--source-tree-dirty", dirty ? "true" : "false"]);
         }
 
+        StressNetworkProxyPlan? proxy = null;
+        if (networkProfilePath is not null)
+        {
+            arguments.AddRange(["--network-profile", networkProfilePath]);
+            var countsPath = Path.Combine(runFolder, StressNetworkProfiles.CountsFileName);
+            proxy = new StressNetworkProxyPlan(
+                advertisedPort,
+                udpPort,
+                [
+                    "--profile", networkProfilePath,
+                    "--listen", "127.0.0.1:" + advertisedPort.ToString(CultureInfo.InvariantCulture),
+                    "--forward", "127.0.0.1:" + udpPort.ToString(CultureInfo.InvariantCulture),
+                    "--seed", generator.GetValueOrDefault("seed", StressNetworkProxyPlan.DefaultSeed).ToString(CultureInfo.InvariantCulture),
+                    "--counts", countsPath,
+                    "--report-interval-seconds", "10"
+                ],
+                countsPath);
+        }
+
         // The generator validates its arguments exactly as it will when the run starts; the World
         // variant does not exist yet, so its path is checked when the run starts.
         StressGeneratorOptions.Parse(
@@ -517,7 +575,7 @@ public sealed record StressLoadPlan(
             udpPort,
             fullStack ? [FullStackGameServicePort] : [WorkerOnlyAuthorityPort],
             fullStack ? [PostgresPort, RedisPort] : [],
-            [udpPort],
+            proxy is null ? [udpPort] : [udpPort, proxy.UdpPort],
             gameServiceEnvironment,
             workerEnvironment,
             generatorEnvironment,
@@ -527,7 +585,10 @@ public sealed record StressLoadPlan(
             summaryPath,
             performancePath)
         {
-            WorldVariantPath = worldVariantPath
+            WorldVariantPath = worldVariantPath,
+            Network = networkProfile?.Name ?? NetworkProfile.None,
+            NetworkProfilePath = networkProfilePath,
+            Proxy = proxy
         };
     }
 
@@ -612,19 +673,33 @@ public sealed record StressLoadPlan(
     }
 }
 
+// The network impairment proxy of a run under a network profile: it listens on UdpPort, which
+// the worker advertises, forwards to the worker's own ForwardUdpPort, and writes its counts to
+// CountsPath when it stops.
+public sealed record StressNetworkProxyPlan(
+    int UdpPort,
+    int ForwardUdpPort,
+    IReadOnlyList<string> Arguments,
+    string CountsPath)
+{
+    // The generator's seed when the scenario names none, which the proxy then uses too.
+    public const int DefaultSeed = 1337;
+}
+
 public sealed record StressLoadPlanRequest(
     string RunFolder,
     string QualityBoundaryPath,
     int? Bots = null,
     int? DurationSeconds = null,
     string? SourceCommit = null,
-    bool? SourceTreeDirty = null)
+    bool? SourceTreeDirty = null,
+    string? Network = null)
 {
     public const string DefaultQualityBoundaryPath = "tools/load/quality-boundary.json";
 
     // StackStressGenerator plan --scenario <file> --run-folder <dir> [--bots <n>]
     // [--duration-seconds <n>] [--quality-boundary <file>] [--source-commit <sha>]
-    // [--source-tree-dirty true|false]
+    // [--source-tree-dirty true|false] [--network <profile|none>]
     public static (string ScenarioPath, StressLoadPlanRequest Request) Parse(IReadOnlyList<string> args)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -637,7 +712,7 @@ public sealed record StressLoadPlanRequest(
             }
 
             if (key is not ("--scenario" or "--run-folder" or "--bots" or "--duration-seconds"
-                or "--quality-boundary" or "--source-commit" or "--source-tree-dirty"))
+                or "--quality-boundary" or "--source-commit" or "--source-tree-dirty" or "--network"))
             {
                 throw new StressGeneratorOptionException($"The plan argument '{key}' is unknown.");
             }
@@ -663,7 +738,8 @@ public sealed record StressLoadPlanRequest(
                 ? bool.TryParse(dirty, out var parsed)
                     ? parsed
                     : throw new StressGeneratorOptionException("--source-tree-dirty must be true or false.")
-                : null));
+                : null,
+            values.GetValueOrDefault("--network")));
     }
 
     private static int? OptionalInt(Dictionary<string, string> values, string key)

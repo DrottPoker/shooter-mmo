@@ -220,12 +220,16 @@ The script:
    quality boundary file and returns every setting below.
 2. Refuses to start when another process uses a port the run needs: TCP 5500
    and UDP 27025 in full-stack mode, TCP 5099 and UDP 27016 in worker-only
-   mode, so it never meets a stack it did not start.
-3. Builds SimulationWorker, and GameService in full-stack mode, in Release.
+   mode, and under a [network profile](#load-runs-under-a-network-profile) the
+   proxy's UDP 27035 or 27026, so it never meets a stack it did not start.
+3. Builds SimulationWorker, GameService in full-stack mode, and the network
+   impairment proxy under a network profile, in Release.
 4. In full-stack mode, recreates the disposable stack with
    `docker compose -f docker-compose.stack-stress.yml down` and
-   `up -d --wait`, starts GameService and waits for `/health/ready`, then
-   starts the worker and waits until it listens on UDP and its Shard is online.
+   `up -d --wait`. Under a network profile it starts the proxy next and waits
+   until it listens. In full-stack mode it starts GameService and waits for
+   `/health/ready`, then starts the worker and waits until it listens on UDP
+   and its Shard is online.
    In worker-only mode it starts the generator first, because the generator is
    the worker's authority, and then the worker; no container and no
    GameService run.
@@ -234,20 +238,23 @@ The script:
 6. Always stops what it started, also when the run fails or the script is
    interrupted with `Ctrl+C`: the generator, the worker, and GameService with
    `Ctrl+C`, so the worker saves its characters, releases their sessions, and
-   goes offline as on a normal shutdown, then keeps the logs of the PostgreSQL
-   and Redis containers in the run folder, and then removes the containers with
-   `docker compose ... down`. In worker-only mode the generator keeps its
+   goes offline as on a normal shutdown, then the proxy, so the worker's last
+   packets still pass and the proxy writes its counts, then keeps the logs of
+   the PostgreSQL and Redis containers in the run folder, and then removes the
+   containers with `docker compose ... down`. In worker-only mode the generator keeps its
    in-memory authority up after it wrote the summary, and the script stops the
    worker first and the generator after it, so the worker's shutdown reaches
    its authority. A process that does not stop within 30 seconds of its
    `Ctrl+C` is ended, and the script says which.
 7. Once everything stopped, runs `StackStressGenerator judge`, which counts the
    lines of the service logs, as [Service Log Classes](#service-log-classes)
-   describes, judges the run again with them, and rewrites the report and the
-   summary; the judgement decides the exit code.
-8. Prints what the soak measures, as [Soak](#soak) describes, a table of every
-   rule with its limit, the measured value, and pass or fail, the difference to
-   the scenario's checked-in baseline when there is one, and the result line.
+   describes, adds the proxy's counts under a network profile, judges the run
+   again with them, and rewrites the report and the summary; the judgement
+   decides the exit code.
+8. Prints what the soak measures, as [Soak](#soak) describes, the proxy's
+   counts under a network profile, a table of every rule with its limit, the
+   measured value, and pass or fail, the difference to the checked-in baseline
+   of the scenario and the profile when there is one, and the result line.
 
 A process inherits whether it ignores `Ctrl+C` from the process that starts
 it, and a script started from Git Bash, or by a host that starts it in a new
@@ -266,7 +273,8 @@ the generator's process sampler finds the worker and GameService by name.
 | `-Scenario <name>` | The file `tools/load/scenarios/<name>.json` |
 | `-Bots <count>` | Overrides the scenario's bot count; the ramp step shrinks to it when it is larger |
 | `-DurationSeconds <seconds>` | Overrides the scenario's steady interval |
-| `-UpdateBaseline` | Copies the run's `summary.json` to `tools/load/baselines/<scenario>.json` |
+| `-Network <profile>` | Runs the scenario through the network impairment proxy with a profile of `tools/load/network-profiles`, or with `none` directly; overrides the scenario's `network` |
+| `-UpdateBaseline` | Copies the run's `summary.json` to `tools/load/baselines/<scenario>.json`, or `<scenario>.<profile>.json` under a network profile |
 | `-Plan` | Prints the services, their settings, and the generator arguments, and runs nothing |
 | `-ReadyTimeoutSeconds <seconds>` | How long the services may take to become ready, 180 by default |
 
@@ -274,9 +282,10 @@ Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the
 boundary or the generator's own checks, 2 it could not run, for example
 because of a busy port, an invalid scenario, a failed build, a World variant
 whose area has no walkable ground, or a service that ended. A run in which the
-generator itself fell behind, which the
+generator or the network proxy itself fell behind, which the
 [validity rules](#validity) judge, measured nothing: the script prints
-`could not measure: the generator fell behind` and also exits with 2.
+`could not measure: the generator or the network proxy fell behind` and also
+exits with 2.
 
 Every run writes `artifacts/load/<yyyyMMdd-HHmmss>-<scenario>/`, which Git
 ignores:
@@ -287,6 +296,7 @@ ignores:
 | `summary.json` | The small summary described in [Baselines](#baselines) |
 | `worker-performance.jsonl` | The worker's performance file, one JSON object per metrics interval |
 | `generator.log`, `game-service.log`, `simulation-worker.log` | The output of each process, with `.err.log` files for standard error |
+| `network-proxy.json`, `network-proxy.log` | Under a network profile: the proxy's counts, which it writes when it stops, and its output with a progress line every 10 seconds |
 | `postgres.log`, `redis.log` | The logs of the PostgreSQL and Redis containers, kept before the containers are removed; `postgres.log` holds both statements of every deadlock and every lock wait longer than the deadlock timeout of one second, because the compose file starts PostgreSQL with `log_lock_waits=on` |
 | `build-*.log`, `docker-compose-*.log` | The build and container output |
 | `world-variant/`, `world-variant.log` | The scenario's [World Variant](#world-variant) and the output of the content compilers that wrote it |
@@ -320,6 +330,7 @@ sets is an error.
 | `gameServiceSettings` | Extra GameService environment variables, full-stack only |
 | `playing` | The roles, home grounds, and churn of the `playing` workload, which needs it, as [Playing Scenarios](#playing-scenarios) describes |
 | `worldVariant` | Extra Mob areas and node groups of a [World Variant](#world-variant), full-stack only |
+| `network` | The [network profile](#load-runs-under-a-network-profile) the bots' traffic goes through, `none` by default; `-Network` overrides it |
 
 | Scenario | Mode and workload | Shape |
 | --- | --- | --- |
@@ -445,6 +456,12 @@ masked. The local secrets and the connection string are the test values that
   `DevelopmentItemInteractions__GlobalBankAndRecoveryAccess=false`, as
   [The Teleport To The Home Ground](#the-teleport-to-the-home-ground)
   explains, and the generator gets `--scenario-file` with the scenario.
+- A run under a network profile: the proxy listens on the worker's port plus
+  10, UDP 27035 in full-stack and 27026 in worker-only mode, and forwards to the
+  worker's own port; the worker advertises the proxy's port, the generator gets
+  `--network-profile` with the profile file and, in worker-only mode, the
+  proxy's port as `--worker-udp-port`, and the proxy gets the generator's seed
+  and `--counts` in the run folder.
 - A scenario with a `worldVariant`: before the worker starts, the script runs
   `StackStressGenerator world-variant` and prints whether the variant keeps
   the checked-in collision revision; the worker gets
@@ -615,6 +632,10 @@ messages it decodes anyway, and the session decides nothing:
   committed change reached the bot only as a newer carry state, such as a
   death, or a result reports a revision its items do not have, the bot reads
   the full item state over HTTP, as the Unity client does; it never polls.
+
+A remote snapshot travels unreliably, so on a real network it can arrive twice
+or after a newer one; the view keeps every remote player and Mob at the
+position of the newest snapshot that carried it.
 
 It sends only what a Unity client can send: movement inputs with planned paths,
 `ItemOperationIntent` equip and relocate, `CombatIntent`,
@@ -1053,7 +1074,8 @@ oldest idle transaction. The existing rules judge where one fits:
 
 Once every process stopped, `StackStressGenerator judge` counts the warning,
 error, and critical lines of `game-service.log` and `simulation-worker.log`,
-and every first line of their `.err.log` files as an error, by message class:
+and every first line of their `.err.log` files and of the network proxy's
+`network-proxy.err.log` as an error, by message class:
 the service, the level, the logger category, and the message's first line with
 ids, long hexadecimal values, and numbers replaced, cut to 120 characters. The
 report keeps the classes under `serviceLogs` and the summary under
@@ -1114,6 +1136,10 @@ Every JSON report contains:
 - After `StackStressGenerator judge`: `serviceLogs`, the service log lines by
   message class, and `postgresLog`, the kept PostgreSQL log with its deadlock
   and lock wait reports.
+- `network`, under a network profile: the profile, its description, the seed,
+  its round trip and jitter, the allowances and the rules it takes out, and
+  after the judge, `proxy`, the proxy's counts of
+  [What The Proxy Counts](LOCAL_DEVELOPMENT.md#what-the-proxy-counts).
 - `generatorTiming`: how late the latest bot's poll ran against the 3 ms poll
   schedule in every poll round of every poll thread in the steady interval, the
   number of poll threads, how long one step of the process and PostgreSQL
@@ -1265,13 +1291,15 @@ worker-only mode, passes and says so.
 ### Validity
 
 A run in which the generator itself fell behind measures nothing: its bots sent
-inputs late and stood when they meant to walk, whatever the stack did. Two
-validity rules judge the generator, not the stack:
+inputs late and stood when they meant to walk, whatever the stack did. Nor does
+a run whose network proxy sent its packets late. The validity rules judge these
+tools, not the stack:
 
 | Rule | Limit | Why |
 | --- | --- | --- |
 | `generator_poll_lateness_p99_ms` | p99 <= 16.67 ms over the poll rounds of every poll thread in the steady interval | Within half a 30 Hz tick, every bot sends its input in the tick it is due. `playing-smoke` runs on the reference machine measured a p99 between 2.8 and 4.6 ms. Their single rounds of up to about 100 ms came from the process and PostgreSQL samplers, whose step takes 25 to 100 ms and then ran on the poll loop; apart from it, the worst round fell to 14 ms. One poll thread held `playing-100` at a p99 of 6 ms, but 500 playing bots took 86 percent of its core and a p99 of 101 ms, so `playing-500` shares its bots over four poll threads, which measured 13.7 ms |
 | `generator_route_queue_p99_ms` | p99 <= 1,000 ms over the route plans of the steady interval | A bot that waits longer than a second for its route stands instead of walking. `playing-smoke` runs measured a p99 below 0.5 ms with 4 planner threads, and `playing-500` 0.3 ms; a workload without routes skips it |
+| `network_proxy_lateness_p99_ms` | p99 <= 2 ms over the packets of the whole run in the worse direction, and no packet dropped because the proxy fell behind | Under a network profile, a proxy that sends late measures itself instead of the profile; 2 ms is what its [self-test](LOCAL_DEVELOPMENT.md#delay-accuracy) proves. The judge reads the proxy's counts once it stopped, so the generator's own verdict leaves the rule to it; a run without a profile skips it |
 
 A failed validity rule makes the verdict invalid: the generator exits with 4,
 the summary's result is `could not measure`, and `tools/Test-Load.ps1` exits
@@ -1297,7 +1325,8 @@ GameService round trips with a full-stack run.
 Every run writes a small `summary.json` beside its full report: the scenario,
 the commit and whether the tree had changes, the date, the machine (CPU model,
 logical processors, memory, operating system, and .NET version), the mode,
-workload, bots, and steady seconds, the verdict entries, the result, and
+workload, bots, and steady seconds, the network profile with the proxy's counts
+or none, the verdict entries, the result, and
 `keyNumbers`: join p95, input acknowledgement p50, p95, and p99, the remote
 update rate average and fifth percentile, the p95 of every gameplay operation
 kind, the worst steady tick p99, the worker's average single-core CPU and
@@ -1305,8 +1334,11 @@ highest working set from its own intervals, the generator's average CPU, and
 the payload bytes per bot and second that the worker received and sent.
 
 `-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
-which is checked in. Without it, the script prints the difference of every key
-number to the checked-in baseline. The difference is informative and never
+or under a network profile to `<scenario>.<profile>.json`, such as
+`playing-100.normal.json`, which is checked in. A run under a profile never
+replaces or compares with the baseline of the direct connection, and the other
+way round. Without it, the script prints the difference of every key number to
+the checked-in baseline of the scenario and the profile. The difference is informative and never
 part of the exit code, because machines and their load differ. Record a
 baseline only from a run on an idle machine, and name what else ran in the
 pull request that checks it in. [Measured Tiers](#measured-tiers) lists the
@@ -1391,6 +1423,135 @@ MiB per hour, which is about 8 GiB per day and Shard at the Scale Target.
   `session_revoked` lines of the session heartbeat, which a heartbeat on its
   way logs when it meets the release of the same session and which change
   nothing, and the one death that the deadlock delayed.
+
+## Load Runs Under A Network Profile
+
+Every tier above ran on loopback. The game is played over the internet, so any
+scenario also runs through the network impairment proxy with a network profile,
+which delays, jitters, drops, duplicates, and cuts off the packets between the
+bots and the worker, as
+[Run On A Bad Network](LOCAL_DEVELOPMENT.md#run-on-a-bad-network) describes:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario playing-100 -DurationSeconds 180 -Network poor
+```
+
+A scenario may name its profile with `network`, and `-Network` overrides it,
+`none` included. No scenario file exists per profile: `playing-100` under each
+profile is the measurement. The run folder keeps the proxy's counts, the report
+and the summary name the profile and carry the counts, and the script prints
+them as a table with one row per direction. A baseline is per scenario and
+profile, as [Baselines](#baselines) describes.
+
+### What A Profile Changes In The Verdict
+
+The quality boundary was decided for loopback. A profile's `verdict` section,
+data like the boundary, says what changes under it; every rule it does not name
+stays as it is, and its notes say what changed:
+
+- An allowance raises a maximum rule's limit. Every profile raises
+  `input_acknowledgement_p99_ms` by its round trip plus its jitter, 35, 95, 240,
+  and 500 ms, since an input and its owner snapshot each cross the network once.
+- A rule that the profile's impairment decides by itself passes as not
+  applicable, with the reason and the measured value in its note. Every profile
+  that loses packets takes out `owner_snapshot_gaps`: owner snapshots travel
+  unreliably, so a lost one is a gap by design, and `snapshot_drops` still
+  judges whether the worker sent them all. `terrible` also takes out
+  `remote_update_rate_p5_hz`, because its outages are the test.
+- The validity rules judge the tools and stay; a profile may not name them.
+  `network_proxy_lateness_p99_ms` adds the proxy, as [Validity](#validity)
+  describes.
+
+The load runner refuses a profile whose verdict names an unknown rule or a
+validity rule, or gives a minimum rule an allowance.
+
+### What The Bots Tolerate
+
+- **A reliable message that arrives late.** A bot keeps one intent in flight
+  and waits for its result up to the gameplay operation timeout of 30 seconds,
+  far longer than any profile delays a message, an outage and its resends
+  included, so a late result only lengthens the operation's latency. The
+  roles' own waits, such as 6 seconds for a corpse to show or 5 seconds for a
+  gathering to start, end in a decision, such as giving the corpse up, which
+  their counters show, never in a failure.
+- **A duplicate.** LiteNetLib drops a duplicated reliable or sequenced packet,
+  but an unreliable snapshot can arrive twice, or after a newer one when the
+  jitter is wider than the 66 ms between two snapshots, as under `terrible`.
+  The session takes an owner snapshot only when its sequence is newer, the
+  remote update rate counts every frame once, and the world view keeps each
+  remote player and Mob at the position of the newest snapshot that carried
+  it.
+- **An outage of 3 seconds.** The bots' and the worker's LiteNetLib connections
+  time a silent peer out after 10 seconds, so the connection stays. The inputs
+  of the outage stay unacknowledged, about 90 of the 256 the session tracks,
+  and each batch repeats only the newest four, so the worker steps three ticks
+  ahead, pauses the character, and skips the gap when the inputs come back. The
+  acknowledgement of those inputs measures the outage, and a walk whose
+  deadline, twice its walking time plus 3 seconds, runs out counts in
+  `walksFailed` before the role decides again.
+
+Under every profile the bots met no unexpected rejection and no operation
+timeout; the expected conflicts rose a little with the delay.
+
+### Measured Under The Profiles
+
+`playing-100` with `-DurationSeconds 180` on 2026-11-14 on the reference
+machine of [Measured Tiers](#measured-tiers), directly and under each profile;
+the CI runner of the same machine may have run jobs at the same time. The
+proxy used about one core in every run. A first `normal` run, with a spin of
+1 ms that kept two cores busy, passed every rule with the same latencies and a
+tick p99 of 16 ms.
+
+| | Direct | `normal` | `poor` | `terrible` |
+| --- | --- | --- | --- | --- |
+| Result | passed | failed | failed | failed |
+| Failed rules | none | `bot_failures` | `gameplay_operation_p95_ms`, `bot_failures`, `deadlocks` | `input_acknowledgement_p99_ms`, `gameplay_operation_p95_ms`, `bot_failures` |
+| Input acknowledgement p50 / p99 | 46 / 101 ms | 128 / 181 ms | 249 / 377 ms | 457 / 3,029 ms |
+| Operations: p50 range; slowest p95 | 14 to 84 ms; equip 248 ms | 93 to 169 ms; loot close 425 ms | 204 to 301 ms; loot close 1,609 ms | 462 to 1,299 ms; item move 7,379 ms |
+| Remote updates per second, p5 | 15.0 | 14.8 | 14.1 | 11.9 |
+| Bots that failed | none | 2 `connection_closed` | 25 `connection_closed` | 58 `connection_closed` |
+| Join p95 | 293 ms | 468 ms | 947 ms | 1,361 ms |
+| First hit after an attack, p95 | 1.1 s | 1.2 s | 1.7 s | 3.1 s |
+| Kills, bot deaths | 171, 24 | 174, 18 | 140, 24 | 102, 38 |
+| Worker tick p99, CPU of one core | 8 ms, 22 % | 8 ms, 25 % | 16 ms, 25 % | 16 ms, 26 % |
+| Worker payload in / out per player | 0.89 / 28.8 KiB/s | 1.62 / 28.2 KiB/s | 1.58 / 29.8 KiB/s | 1.12 / 32.5 KiB/s |
+| Dropped by the proxy, to the worker / to the bots | none | 1.0 / 1.0 % | 5.0 / 5.0 % | 12.9 / 13.8 % |
+| Proxy lateness p99, its CPU of one core | none | 0.54 ms, 98 % | 0.52 ms, 99 % | 0.52 ms, 99 % |
+
+What the profiles show:
+
+- **`normal` holds every rule but the leave.** Every reliable operation answers
+  about one round trip later than directly, with its p95 below 430 ms, and the
+  input acknowledgement p99 rises by 80 ms, within its allowance of 95 ms; one
+  of the two runs lost 2 leaves, as the last point but one describes.
+- **The worker receives about 80 percent more payload per player under
+  `normal` and `poor`.** A movement batch repeats every unacknowledged input up
+  to four, and with a longer round trip more of them are unacknowledged when a
+  batch leaves. It sends up to 13 percent more payload under `terrible`, which
+  these runs do not explain.
+- **Reliable operations slow down with loss far beyond the round trip.** Under
+  `poor` the operations' p50 is about one round trip, 220 to 300 ms, but their
+  p95 is 0.4 to 1.6 seconds, so `gameplay_operation_p95_ms` fails; under
+  `terrible` the p50 is about 1.1 seconds and the p95 2 to 7 seconds. The
+  likely cause, not yet proven: every control message shares the one reliable
+  ordered channel, so one lost packet holds back every later message until
+  LiteNetLib resends it, and under `terrible` only the operations at the start
+  of a session, the equip and the teleport, before combat traffic fills the
+  channel, keep a p50 near one round trip.
+- **A graceful leave fails as a lost connection on a lossy network.** 2 of 100
+  bots in one of two `normal` runs, 25 under `poor`, and 58 under `terrible`
+  failed with `connection_closed` at their leave after the steady interval,
+  and none before it: the worker disconnects a peer 250 ms after it sent
+  `LeaveAccepted` (`RealtimePeerContext.GracefulDisconnectDelayMilliseconds`),
+  and when that reliable message is lost or held back behind a lost one, the
+  disconnect arrives first. The Unity client's `RealtimeSession.Leave` reports the same
+  `connection_closed`, and the same 250 ms follow every `ServerDisconnect` and
+  protocol rejection, whose reason can be lost the same way. This is a finding
+  about the worker, not the bots; it is not fixed here.
+- **An outage costs the inputs it spans.** Under `terrible` the input
+  acknowledgement p99 is 3 seconds, the outage itself, so the rule fails as
+  the profile predicts; the remote update rate, which the profile takes out,
+  stays at 11.9 per second at the fifth percentile.
 
 ## What Limits The Next Tier
 
@@ -1518,6 +1679,7 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--redis-endpoint` | none | Full-stack: the loopback `host:port` of the disposable Redis, whose keys and used memory the soak reads |
 | `--database-pool-size` | none | Full-stack: GameService's `Database:MaximumPoolSize`, which the drift checks compare its connections with |
 | `--worker-heartbeat-timeout-seconds` | none | Full-stack: GameService's `Simulation:WorkerHeartbeatTimeoutSeconds`, against which the drift checks give the worker's registration headroom |
+| `--network-profile` | none | The network profile file the bots' traffic goes through, by the proxy that `tools/Test-Load.ps1` starts; the report names it and the verdict applies its allowances |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The
@@ -1534,15 +1696,16 @@ other checks say; 130 when the run was cancelled with Ctrl+C.
 
 `StackStressGenerator plan --scenario <file> --run-folder <folder>` prints the
 plan of a scenario as JSON for `tools/Test-Load.ps1` and runs nothing. It takes
-`--bots`, `--duration-seconds`, `--quality-boundary`, `--source-commit`, and
-`--source-tree-dirty`, validates the scenario, the generator arguments it
+`--bots`, `--duration-seconds`, `--quality-boundary`, `--source-commit`,
+`--source-tree-dirty`, and `--network <profile or none>`, validates the scenario, the generator arguments it
 results in, and the quality boundary file, and exits with 2 and the reason when
 one is invalid.
 
 `StackStressGenerator judge --run-folder <folder> [--quality-boundary <file>]`
 reads `generator-report.json` and `summary.json` of a run whose services
-stopped, adds the [service log classes](#service-log-classes) and the kept
-`postgres.log`, judges the run again, and rewrites both files. It exits with 0
+stopped, adds the [service log classes](#service-log-classes), the kept
+`postgres.log`, and under a network profile the proxy's `network-proxy.json`,
+judges the run again, and rewrites both files. It exits with 0
 when the run passed, 1 when it failed, 4 when it could not measure, and 2 when
 the run cannot be judged; `tools/Test-Load.ps1` runs it after every run.
 

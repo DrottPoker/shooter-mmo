@@ -295,6 +295,108 @@ public sealed class StressLoadPlanTests
         Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", withGameplay, "bad.json"));
     }
 
+    // Under a network profile the worker advertises the proxy's port, so every bot joins through
+    // the proxy, which forwards to the worker's own port with the run's seed.
+    [Fact]
+    public void AFullStackPlanUnderAProfilePutsTheProxyOnTheAdvertisedPort()
+    {
+        var plan = Plan(LoadShipped("smoke"), network: "normal");
+
+        Assert.Equal("normal", plan.Network);
+        Assert.Equal(Path.Combine(LoadDirectory, "network-profiles", "normal.json"), plan.NetworkProfilePath);
+        Assert.Equal([27025, 27035], plan.UdpPorts);
+        Assert.Equal(27025, plan.WorkerUdpPort);
+        Assert.Equal("27025", plan.WorkerEnvironment["SIMULATION_WORKER_UDP_PORT"]);
+        Assert.Equal("27035", plan.WorkerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"]);
+        var proxy = plan.Proxy!;
+        Assert.Equal(27035, proxy.UdpPort);
+        Assert.Equal(27025, proxy.ForwardUdpPort);
+        Assert.Equal(Path.Combine(RunFolder(), StressNetworkProfiles.CountsFileName), proxy.CountsPath);
+        var proxyArguments = proxy.Arguments.ToList();
+        Assert.Equal(plan.NetworkProfilePath, proxyArguments[proxyArguments.IndexOf("--profile") + 1]);
+        Assert.Equal("127.0.0.1:27035", proxyArguments[proxyArguments.IndexOf("--listen") + 1]);
+        Assert.Equal("127.0.0.1:27025", proxyArguments[proxyArguments.IndexOf("--forward") + 1]);
+        Assert.Equal("1337", proxyArguments[proxyArguments.IndexOf("--seed") + 1]);
+        Assert.Equal(proxy.CountsPath, proxyArguments[proxyArguments.IndexOf("--counts") + 1]);
+        var arguments = plan.GeneratorArguments.ToList();
+        Assert.Equal(plan.NetworkProfilePath, arguments[arguments.IndexOf("--network-profile") + 1]);
+    }
+
+    [Fact]
+    public void AWorkerOnlyPlanUnderAProfileSendsTheBotsToTheProxy()
+    {
+        var plan = Plan(LoadShipped("worker-only-200"), network: "terrible");
+
+        Assert.Equal([27016, 27026], plan.UdpPorts);
+        Assert.Equal("27016", plan.WorkerEnvironment["SIMULATION_WORKER_UDP_PORT"]);
+        Assert.Equal("27026", plan.WorkerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"]);
+        var arguments = plan.GeneratorArguments.ToList();
+        Assert.Equal("27026", arguments[arguments.IndexOf("--worker-udp-port") + 1]);
+        Assert.Equal("127.0.0.1:27016", plan.Proxy!.Arguments[plan.Proxy.Arguments.ToList().IndexOf("--forward") + 1]);
+    }
+
+    // A scenario may name a profile, -Network overrides it, and none means no proxy at all.
+    [Fact]
+    public void AScenarioNamesAProfileAndTheRequestOverridesIt()
+    {
+        var scenario = StressLoadScenario.Parse(
+            "networked",
+            Scenario("\"mode\": \"full-stack\",", "\"bots\": 5, \"duration-seconds\": 40", "\"network\": \"poor\","),
+            "networked.json");
+
+        Assert.Equal("poor", scenario.Network);
+        Assert.Equal("poor", Plan(scenario).Network);
+        Assert.Equal("good", Plan(scenario, network: "good").Network);
+        var direct = Plan(scenario, network: "none");
+        Assert.Equal("none", direct.Network);
+        Assert.Null(direct.Proxy);
+        Assert.Null(direct.NetworkProfilePath);
+        Assert.Equal([27025], direct.UdpPorts);
+        Assert.DoesNotContain("--network-profile", direct.GeneratorArguments);
+        Assert.Equal("27025", direct.WorkerEnvironment["SIMULATION_WORKER_ADVERTISED_UDP_PORT"]);
+        Assert.Equal("none", Plan(LoadShipped("smoke")).Network);
+    }
+
+    [Theory]
+    [InlineData("\"network\": \"Bad Name\",", "'network' must name a profile")]
+    [InlineData("\"network\": 3,", "'network' must name a profile")]
+    public void AScenarioWithABadNetworkNameIsRejected(string network, string expected)
+    {
+        var json = Scenario("\"mode\": \"full-stack\",", "\"bots\": 5, \"duration-seconds\": 40", network);
+
+        var exception = Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", json, "bad.json"));
+
+        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APlanUnderAnUnknownProfileFails()
+    {
+        var exception = Assert.Throws<StressGeneratorOptionException>(() => Plan(LoadShipped("smoke"), network: "dial-up"));
+
+        Assert.Contains("'dial-up' does not exist", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("normal", exception.Message, StringComparison.Ordinal);
+    }
+
+    // The measurement of the step: playing-100 runs under every profile, and the generator reads
+    // the profile it is given.
+    [Theory]
+    [InlineData("good")]
+    [InlineData("normal")]
+    [InlineData("poor")]
+    [InlineData("terrible")]
+    public void PlayingOneHundredPlansUnderEveryProfile(string network)
+    {
+        var plan = Plan(LoadShipped("playing-100"), network: network);
+
+        var options = StressGeneratorOptions.Parse(
+            plan.GeneratorArguments.ToArray(),
+            RepositoryPaths.Root,
+            name => plan.GeneratorEnvironment.GetValueOrDefault(name));
+        Assert.Equal(network, options.Network!.Name);
+        Assert.Equal(plan.NetworkProfilePath, options.NetworkProfilePath);
+    }
+
     private static string BoundaryPath => Path.Combine(LoadDirectory, "quality-boundary.json");
 
     private static string RunFolder() => Path.Combine(Path.GetTempPath(), "load-plan-test");
@@ -304,11 +406,11 @@ public sealed class StressLoadPlanTests
         return StressLoadScenario.Load(Path.Combine(LoadDirectory, "scenarios", name + ".json"));
     }
 
-    private static StressLoadPlan Plan(StressLoadScenario scenario)
+    private static StressLoadPlan Plan(StressLoadScenario scenario, string? network = null)
     {
         return StressLoadPlan.Create(
             scenario,
-            new StressLoadPlanRequest(RunFolder(), BoundaryPath, SourceCommit: "abc", SourceTreeDirty: false),
+            new StressLoadPlanRequest(RunFolder(), BoundaryPath, SourceCommit: "abc", SourceTreeDirty: false, Network: network),
             RepositoryPaths.Root);
     }
 

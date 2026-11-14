@@ -2659,9 +2659,64 @@ The other two-client checks sit with their features:
 [looting one corpse together](#two-clients-at-one-corpse), and
 [looks, garments, and corpses](#other-players-bots-and-corpses).
 
+## Play On A Bad Network
+
+Every other check runs on loopback. This one puts the network impairment proxy
+between the Editor and the default worker, as
+[Run On A Bad Network](LOCAL_DEVELOPMENT.md#run-on-a-bad-network) describes,
+so prediction, corrections, other players, combat, and the reconnect meet late,
+lost, and duplicated packets. Run it after a change to the client's network
+layer, movement prediction, remote players, the reconnect, or the realtime
+protocol, and before a playtest.
+
+1. Start PostgreSQL, Redis, and GameService as in [Start The Stack](#start-the-stack),
+   then the default worker with the proxy's port as its advertised port, and the
+   proxy with the `good` profile, each in its own terminal:
+
+   ```powershell
+   dotnet run --project src/Server/SimulationWorker -- --SimulationWorker:AdvertisedUdpPort=27115
+   dotnet run --project tools/NetworkImpairmentProxy --configuration Release -- --profile good --listen 127.0.0.1:27115 --forward 127.0.0.1:27015
+   ```
+
+2. Join `Local Shard 1` with the Editor and press F2.
+3. Click a far point of the ground, then a point behind you, and walk a route
+   with turns for half a minute; stand still; attack a Grey Wolf in the meadow
+   south of the town until it dies and loot it; open Mira and sell an item; leave
+   with `Leave Shard` and enter again.
+4. Stop the proxy with `Ctrl+C` and start it again with `normal`, then `poor`,
+   then `terrible`, and repeat steps 3 under each. The client keeps its World
+   while the proxy restarts, and reconnects when the restart takes longer than
+   its 10-second realtime timeout.
+
+Expected result:
+
+- The proxy prints its profile with what it does to each direction, a progress
+  line every 10 seconds with one client, and when it stops, its counts: the
+  share it dropped in each direction near the profile's loss, an applied delay
+  near half the round trip, and a lateness p99 well below 1 ms.
+- The F2 round trip reads about 30 ms under `good`, 80 ms under `normal`, 200 ms
+  under `poor`, and 400 ms under `terrible`, moving with the jitter.
+- Under every profile the character starts to walk at the click, because the
+  client predicts it, and stops where it stood when it stands still; the
+  Console shows no error, and the client never leaves the World by itself under
+  `good`, `normal`, and `poor`.
+- Under `terrible` the line is down for 3 seconds every minute: the other
+  players and the Mobs stand still, the character walks on and is corrected
+  when the line comes back, and no `CONNECTION LOST` notice appears, because 3
+  seconds stay below the 10-second realtime timeout.
+- What to look for, and to record with the profile when it shows: the
+  character jumping back when a correction arrives (F2's hard snaps and latest
+  correction), other players or wolves stuttering or jumping, an attack, a loot,
+  or a trade that takes long to answer or answers twice, and a reconnect that
+  does not come back. Under `poor` and `terrible` a `Leave Shard` can end with
+  `The realtime connection closed before leave completed.` in the Console
+  instead of the body's countdown: the leave finding of
+  [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
+
 ## Load Tooling
 
-Needs Docker Desktop running and no local stack on TCP 5500 and UDP 27025.
+Needs Docker Desktop running and no local stack on TCP 5500 and UDP 27025, and
+UDP 27035 for a run under a network profile.
 [Stack Stress Testing](STACK_STRESS_TESTING.md#run-a-scenario) describes the
 command, the scenarios, and the rules of the table it prints. Run the smoke and
 playing smoke checks after a change to `tools/Test-Load.ps1`,
@@ -2684,6 +2739,31 @@ out. Every rule of the table reads `pass`, the script prints
 and no `shooter-mmo-stack-stress` container is left. A run takes about one and
 a half minutes.
 
+### The Smoke Scenario On A Normal Network
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario smoke -Network normal
+```
+
+Expected result: the plan reads `Network profile normal: the bots join through
+the network impairment proxy ... on UDP 27035, which forwards to the worker on
+UDP 27025`, and the worker advertises 27035. The script starts the proxy before
+the services and stops it last, with `NetworkImpairmentProxy stopped`.
+After the judge's service log classes it prints the proxy's counts: 10 clients,
+about 1 % dropped at random in each direction and none in bursts or outages, an
+applied delay with a p50 near 40 ms and a p99 below 47.5 ms, and a lateness
+p99 well below 1 ms. In the table `input_acknowledgement_p99_ms` reads `<= 245
+ms` with the note that names the profile's allowance of 95 ms,
+`owner_snapshot_gaps` passes as not applicable with the measured gaps in its
+note, `network_proxy_lateness_p99_ms` passes, and every other rule reads
+`pass`. A `bot_failures` of one or two `connection_closed` is the known leave
+finding of
+[Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles),
+not a fault of the tooling. The script prints `Load scenario smoke under the
+network profile normal passed`, says that there is no baseline for smoke under `normal`, keeps
+`network-proxy.json` and `network-proxy.log` in the run folder, and leaves no
+`Mmorpg.*` process. A run takes about one and a half minutes.
+
 ### Bots That Play
 
 ```powershell
@@ -2702,7 +2782,7 @@ traders sell pelts, buy arrows, and move items at Mira, and the walkers walk.
 Then every bot leaves and logs out. The generator prints the role mix and
 counters such as `kills`, `gatherYields`, and `vendorSales` above zero, the
 gameplay table lists the `gather_*`, `vendor_*`, and `item_move` operations
-without an unexpected rejection, every rule reads `pass`, the two validity rules
+without an unexpected rejection, every rule reads `pass`, the validity rules
 included, and the script prints `Load scenario playing-smoke passed` in about
 three and a half minutes.
 
@@ -2718,13 +2798,13 @@ The generator provisions 100 accounts without a failure and prints
 `rateLimitWaits` of 0 or more for registration and login, and the bots join as
 40 fighters, 10 of them with bows, 20 gatherers, 30 walkers, and 10 traders.
 After the steady interval the report shows `vendorTrips`, `gatherYields`, and
-`kills` above zero, `loot_all` with no or almost no `inventory_full`, and both
+`kills` above zero, `loot_all` with no or almost no `inventory_full`, and the
 validity rules read `pass`. The verdict is `passed`, or `failed` with the
 failing quality rules and their numbers, which is a finding about the stack at
 100 players to record, not a failure of the check. A run takes about six
 minutes. `playing-250` and `playing-500` run the same way and, without
 `-DurationSeconds`, for their 300-second steady interval; `playing-500` needs
-an otherwise idle machine and takes about ten minutes. Its two validity rules
+an otherwise idle machine and takes about ten minutes. Its validity rules
 must pass, or the run could not measure: the script then prints
 `could not measure` and exits with code 2.
 
@@ -2741,7 +2821,7 @@ and trade there in visits of two to five trades: the gameplay table lists
 the counters show `vendorSales`, `vendorPurchases`, and `traderItemMoves`
 above zero. All 100 players stand in one interest radius; the remote update
 rate may fall below 15 Hz there by design, and the verdict shows whether it
-stays above the boundary. Both validity rules read `pass`. A run takes about
+stays above the boundary. The validity rules read `pass`. A run takes about
 four minutes.
 
 ### Players Who Come And Go

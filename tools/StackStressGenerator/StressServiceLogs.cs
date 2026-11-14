@@ -226,7 +226,10 @@ public static class StressRunJudge
         ("game-service", "game-service.log", false),
         ("game-service", "game-service.err.log", true),
         ("simulation-worker", "simulation-worker.log", false),
-        ("simulation-worker", "simulation-worker.err.log", true)
+        ("simulation-worker", "simulation-worker.err.log", true),
+        // The network impairment proxy of a run under a network profile writes only its counts to
+        // its output; anything on its standard error is an error.
+        ("network-proxy", "network-proxy.err.log", true)
     ];
 
     public static StressRunReport AddLogs(

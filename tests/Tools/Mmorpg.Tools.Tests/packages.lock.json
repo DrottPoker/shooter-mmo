@@ -229,6 +229,9 @@
           "Mmorpg.WorldData": "[1.0.0, )"
         }
       },
+      "mmorpg.tools.networkimpairmentproxy": {
+        "type": "Project"
+      },
       "mmorpg.tools.protocolgenerator": {
         "type": "Project"
       },
@@ -255,6 +258,7 @@
           "Mmorpg.GameSimulation": "[1.0.0, )",
           "Mmorpg.Server.Common": "[1.0.0, )",
           "Mmorpg.Tools.ContentPipeline": "[1.0.0, )",
+          "Mmorpg.Tools.NetworkImpairmentProxy": "[1.0.0, )",
           "Mmorpg.Tools.SimulationBotClient": "[1.0.0, )",
           "Mmorpg.Tools.WorldActorCompiler": "[1.0.0, )",
           "Mmorpg.Tools.WorldCollisionCompiler": "[1.0.0, )",

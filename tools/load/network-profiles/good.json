@@ -1,0 +1,25 @@
+{
+  "description": "A good connection: wired fibre or cable to a server in the same country. 30 ms round trip with 5 ms of jitter and no loss.",
+  "clientToServer": {
+    "delayMs": 15,
+    "jitterMs": 2.5,
+    "lossPercent": 0,
+    "duplicatePercent": 0
+  },
+  "serverToClient": {
+    "delayMs": 15,
+    "jitterMs": 2.5,
+    "lossPercent": 0,
+    "duplicatePercent": 0
+  },
+  "verdict": {
+    "allowances": [
+      {
+        "rule": "input_acknowledgement_p99_ms",
+        "add": 35,
+        "reason": "the round trip of 30 ms plus the jitter of 5 ms"
+      }
+    ],
+    "notApplicable": []
+  }
+}

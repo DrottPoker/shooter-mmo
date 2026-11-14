@@ -1,4 +1,5 @@
 using Mmorpg.Testing;
+using Mmorpg.Tools.NetworkImpairmentProxy;
 using Mmorpg.Tools.SimulationBotClient;
 using Mmorpg.Tools.StackStressGenerator;
 
@@ -84,9 +85,13 @@ public sealed class StressQualityVerdictTests
         Assert.True(verdict.Passed, string.Join("; ", verdict.Rules.Where(rule => !rule.Passed).Select(rule => $"{rule.Rule} {rule.Note}")));
         Assert.True(verdict.Valid);
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
-        // The memory rule judges only a steady interval of ten minutes or more.
-        Assert.All(verdict.Rules.Where(rule => rule.Rule != "process_memory_growth"), rule => Assert.NotNull(rule.Measured));
+        // The memory rule judges only a steady interval of ten minutes or more, and the proxy rule
+        // only a run through a network profile.
+        Assert.All(
+            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "network_proxy_lateness_p99_ms")),
+            rule => Assert.NotNull(rule.Measured));
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "process_memory_growth").Note, StringComparison.Ordinal);
+        Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms").Note, StringComparison.Ordinal);
         Assert.Equal(
             StressQualityBoundary.ValidityRules.Order(StringComparer.Ordinal),
             verdict.Rules.Where(rule => rule.Validity).Select(rule => rule.Rule).Order(StringComparer.Ordinal));
@@ -375,8 +380,10 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network"],
                 root.EnumerateObject().Select(property => property.Name));
+            // A direct run names no network profile.
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("network").ValueKind);
             Assert.Equal("smoke", root.GetProperty("scenario").GetString());
             Assert.Equal("abc123", root.GetProperty("commit").GetString());
             Assert.False(root.GetProperty("treeDirty").GetBoolean());
@@ -403,6 +410,32 @@ public sealed class StressQualityVerdictTests
         }
     }
 
+    // The summary of a run under a profile names the profile and carries the proxy's counts, and
+    // they come back when the judge reads the summary again.
+    [Fact]
+    public async Task TheSummaryOfARunUnderAProfileCarriesTheProfileAndTheProxyCounts()
+    {
+        var report = UnderProfile(FullStackReport(), "poor", Counts(0.2, 0.3));
+        report = report with { Verdict = Boundary().Evaluate(report) };
+        var path = Path.Combine(Path.GetTempPath(), "stress-summary-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            await StressRunSummary.Create(report, "playing-100", "abc", false, 0, new StressMachine("cpu", 16, 1024, "os", ".NET"))
+                .WriteAsync(path, TestContext.Current.CancellationToken);
+
+            var parsed = StressRunSummary.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+
+            Assert.Equal("poor", parsed.Network!.Profile);
+            Assert.Equal(200, parsed.Network.RoundTripMs);
+            Assert.Equal(1000, parsed.Network.Proxy!.ClientToServer.PacketsReceived);
+            Assert.Equal("input_acknowledgement_p99_ms", Assert.Single(parsed.Network.Allowances).Rule);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void TheRemoteCadenceIsJudgedOnTheBotsThatSeeTheLeast()
     {
@@ -416,6 +449,136 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(6, cadence.P5Hz, 3);
         Assert.Equal(6, cadence.MinimumHz, 3);
         Assert.Equal((6 + (19 * 15)) / 20d, cadence.AverageHz, 3);
+    }
+
+    // Under a network profile the input acknowledgement limit grows by the profile's allowance,
+    // and the notes say why.
+    [Fact]
+    public void AProfileAddsItsAllowanceToTheLimitAndSaysSo()
+    {
+        var report = UnderProfile(FullStackReport(), "normal", Counts(0.2, 0.3));
+        report = report with
+        {
+            Bots = report.Bots with { InputAcknowledgementLatency = report.Bots.InputAcknowledgementLatency! with { P99Ms = 240 } }
+        };
+
+        var verdict = Boundary().Evaluate(report);
+
+        var ack = verdict.Rules.Single(rule => rule.Rule == "input_acknowledgement_p99_ms");
+        Assert.True(ack.Passed);
+        Assert.Equal(245, ack.Limit);
+        Assert.Contains("plus 95 ms under the network profile normal, the round trip of 80 ms plus the jitter of 15 ms", ack.Note, StringComparison.Ordinal);
+        Assert.True(verdict.Passed);
+        Assert.True(verdict.Valid);
+
+        var over = Boundary().Evaluate(report with
+        {
+            Bots = report.Bots with { InputAcknowledgementLatency = report.Bots.InputAcknowledgementLatency! with { P99Ms = 246 } }
+        });
+        Assert.False(over.Rules.Single(rule => rule.Rule == "input_acknowledgement_p99_ms").Passed);
+    }
+
+    // The rules a profile decides by itself pass as not applicable and keep the measured value in
+    // the note; every other rule stays as it is.
+    [Fact]
+    public void AProfileTakesOutTheRulesItDecidesAndKeepsWhatWasMeasured()
+    {
+        var report = UnderProfile(FullStackReport(), "terrible", Counts(0.2, 0.3));
+        report = report with
+        {
+            Bots = report.Bots with
+            {
+                EstimatedMissingSnapshots = 87,
+                RemoteCadence = StressRemoteCadenceSummary.Create(Enumerable.Range(0, 10).Select(_ => Cadence(7)))
+            }
+        };
+
+        var verdict = Boundary().Evaluate(report);
+
+        var gaps = verdict.Rules.Single(rule => rule.Rule == "owner_snapshot_gaps");
+        Assert.True(gaps.Passed);
+        Assert.Null(gaps.Measured);
+        Assert.StartsWith("Not applicable under the network profile terrible:", gaps.Note, StringComparison.Ordinal);
+        Assert.EndsWith("Measured 87 count.", gaps.Note, StringComparison.Ordinal);
+        var rate = verdict.Rules.Single(rule => rule.Rule == "remote_update_rate_p5_hz");
+        Assert.True(rate.Passed);
+        Assert.Contains("Measured 7 Hz", rate.Note, StringComparison.Ordinal);
+        Assert.True(verdict.Passed);
+        Assert.False(Boundary().Evaluate(Break(report, "snapshot_drops")).Passed);
+    }
+
+    [Fact]
+    public void TheProxyRuleWaitsForTheCountsAndJudgesTheWorseDirection()
+    {
+        var waiting = UnderProfile(FullStackReport(), "normal", null);
+        var waitingRule = Boundary().Evaluate(waiting).Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms");
+        Assert.True(waitingRule.Passed);
+        Assert.Contains("StackStressGenerator judge", waitingRule.Note, StringComparison.Ordinal);
+
+        var missing = waiting with { Network = waiting.Network! with { ProxyNote = "the proxy wrote no counts" } };
+        var missingVerdict = Boundary().Evaluate(missing);
+        Assert.False(missingVerdict.Valid);
+        Assert.True(missingVerdict.Passed);
+
+        var late = Boundary().Evaluate(UnderProfile(FullStackReport(), "normal", Counts(0.3, 2.5)));
+        var lateRule = late.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms");
+        Assert.Equal(2.5, lateRule.Measured);
+        Assert.False(late.Valid);
+
+        var counts = Counts(0.2, 0.2);
+        var overflow = Boundary().Evaluate(UnderProfile(FullStackReport(), "normal", counts with
+        {
+            ServerToClient = counts.ServerToClient with { DroppedOverflow = 3 }
+        }));
+        Assert.False(overflow.Valid);
+        Assert.Contains("fell behind", overflow.Rules.Single(rule => rule.Rule == "network_proxy_lateness_p99_ms").Note, StringComparison.Ordinal);
+
+        Assert.True(Boundary().Evaluate(UnderProfile(FullStackReport(), "normal", Counts(0.2, 1.9))).Valid);
+    }
+
+    // The judge reads the counts the proxy wrote into the run folder, and says so when there are
+    // none, which leaves the run unable to measure.
+    [Fact]
+    public void TheJudgeAddsTheProxyCountsFromTheRunFolder()
+    {
+        var folder = Directory.CreateTempSubdirectory("proxy-counts").FullName;
+        try
+        {
+            var report = UnderProfile(FullStackReport(), "normal", null);
+            var without = StressNetworkProfiles.AddProxyCounts(report, folder);
+            Assert.Null(without.Network!.Proxy);
+            Assert.Contains("wrote no counts", without.Network.ProxyNote, StringComparison.Ordinal);
+
+            File.WriteAllText(Path.Combine(folder, StressNetworkProfiles.CountsFileName), Counts(0.1, 0.2).ToJson());
+            var with = StressNetworkProfiles.AddProxyCounts(without, folder);
+            Assert.Equal(0.2, with.Network!.Proxy!.ServerToClient.LatenessMs!.P99);
+            Assert.Null(with.Network.ProxyNote);
+            Assert.Same(FullStackReportWithoutNetwork, StressNetworkProfiles.AddProxyCounts(FullStackReportWithoutNetwork, folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private static readonly StressRunReport FullStackReportWithoutNetwork = FullStackReport();
+
+    private static StressRunReport UnderProfile(StressRunReport report, string profile, ProxyCountsReport? counts)
+    {
+        var loaded = StressNetworkProfiles.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "network-profiles", profile + ".json"));
+        return report with { Network = StressNetworkSummary.Create(loaded, 1337) with { Proxy = counts } };
+    }
+
+    private static ProxyCountsReport Counts(double clientToServerLatenessP99, double serverToClientLatenessP99)
+    {
+        static ProxyDirectionCounts Direction(double latenessP99) => new(
+            1000, 50_000, 990, 49_500, 0, 10, 0, 0, 0, 0, 0,
+            new ProxyMillisecondSummary(990, 32.5, 40, 46, 47, 47.5, 40),
+            new ProxyMillisecondSummary(990, 0, 0.05, 0.1, latenessP99, latenessP99 + 1, 0.06));
+        return new ProxyCountsReport(
+            "normal", 1337, RunStart, RunEnd, 70, "127.0.0.1:27035", "127.0.0.1:27025", 10, 0, 0, 10,
+            Direction(clientToServerLatenessP99),
+            Direction(serverToClientLatenessP99));
     }
 
     private static StressQualityBoundary Boundary() => StressQualityBoundary.Load(BoundaryPath);
