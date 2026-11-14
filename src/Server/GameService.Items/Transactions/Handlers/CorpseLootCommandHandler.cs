@@ -73,6 +73,11 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
         }
 
         var partial = moved < source.Quantity;
+        if (partial)
+        {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no part of a stack is taken from it");
+        }
+
         if (partial && (source.IsBag || definition.RuntimeDefinition.MaximumStackSize <= 1))
         {
             ItemTransactionContext.Reject(
@@ -465,6 +470,11 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
             definition.RuntimeDefinition,
             ItemPolicyStates.ToPolicyStates(sourcePolicies));
         var isPartial = command.Quantity is not null;
+        if (isPartial)
+        {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no part of a stack is taken from it");
+        }
+
         var movedQuantity = isPartial ? command.Quantity!.Value : source.Quantity;
         if (!sourceCapabilities.CanChangeOwningCharacter)
         {

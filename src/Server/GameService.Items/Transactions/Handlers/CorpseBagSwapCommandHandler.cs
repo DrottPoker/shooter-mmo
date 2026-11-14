@@ -22,6 +22,7 @@ internal sealed class CorpseBagSwapCommandHandler
             context,
             command.CorpseId,
             cancellationToken);
+        CorpseCustody.RequireWholeItemLoot(corpse, "no Bag is swapped with it");
         await context.Locks.LockMutationScopeAsync(
             [command.CorpseBagItemInstanceId, command.PlayerBagItemInstanceId],
             [command.CorpseBagContentsContainerId, command.PlayerBagContentsContainerId],

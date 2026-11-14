@@ -23,6 +23,7 @@ internal static class CorpseCustody
                     closed_at as "ClosedAt",
                     close_reason as "CloseReason",
                     owner_character_id as "OwnerCharacterId",
+                    source_type = 'persistent_npc' as "IsCreatureCorpse",
                     expires_at <= now() as "IsExpired"
                 from corpses
                 where id = @CorpseId
@@ -76,6 +77,19 @@ internal static class CorpseCustody
         }
 
         return corpse;
+    }
+
+    // A creature's corpse gives whole items only: nothing is put into it, nothing is moved
+    // inside it, and no part of a stack is taken from it. The worker enforces the same rule for
+    // the live corpses it keeps itself; this is the rule for the durable ones.
+    public static void RequireWholeItemLoot(LockedCorpseRow corpse, string refusedAction)
+    {
+        if (corpse.IsCreatureCorpse)
+        {
+            ItemTransactionContext.Reject(
+                ItemTransactionErrorCodes.CorpseWholeItemsOnly,
+                $"A creature's corpse gives whole items only, so {refusedAction}.");
+        }
     }
 
     public static Task<bool> OwnsCorpseBagSectionAsync(
@@ -171,6 +185,8 @@ internal sealed class LockedCorpseRow
     public DateTime? ClosedAt { get; set; }
 
     public string? CloseReason { get; set; }
+
+    public bool IsCreatureCorpse { get; set; }
 
     public Guid? OwnerCharacterId { get; set; }
 

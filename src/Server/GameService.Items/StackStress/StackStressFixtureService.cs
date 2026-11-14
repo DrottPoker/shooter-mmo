@@ -1,5 +1,6 @@
 using Mmorpg.GameService.Items.Contracts;
-using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Items.Transactions.Domain;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.Server.Common.Identity;
 
@@ -23,8 +24,7 @@ internal sealed record StackStressKitResponse(
 
 internal sealed record StackStressLootHotspotRequest(
     string RunId,
-    string WorkerId,
-    string WorkerRuntimeId,
+    Guid CharacterId,
     string ShardId,
     double PositionX,
     double PositionY,
@@ -41,12 +41,14 @@ internal sealed record StackStressLootHotspotResponse(
 internal sealed class StackStressFixtureService(
     ItemQueryService itemQueryService,
     ItemTransactionService transactionService,
-    SimulationWorkerLeasePolicy workerLeasePolicy,
+    CorpseService corpseService,
     StackStressFixtureOptions options)
 {
-    private const string MobDefinitionId = "mob.stack_stress_fixture";
     private const int HotspotLootStacks = 24;
-    private const int HotspotQuantityPerStack = 50;
+
+    // More than one, so a bot takes a part of a stack, and far below a full stack, so a deposit
+    // finds room.
+    private const int HotspotQuantityPerStack = 5;
 
     public async Task<ServiceResult<StackStressInventoryFixtureResponse>>
         SeedInventoryAsync(
@@ -209,71 +211,120 @@ internal sealed class StackStressFixtureService(
             new StackStressKitResponse(request.Kit, finalSnapshot.Value!));
     }
 
+    // The hotspot is the corpse of the fixture's own character: a player's corpse takes
+    // deposits, moves, and parts of stacks, which a creature's corpse does not. The character
+    // receives the loot and dies through the death transaction of every player, so the corpse
+    // lasts as long as every player's, and a run that needs it longer is refused.
     public async Task<ServiceResult<StackStressLootHotspotResponse>>
         CreateLootHotspotAsync(
+            Guid accountId,
             StackStressLootHotspotRequest request,
             CancellationToken cancellationToken)
     {
         if (!IsRunId(request.RunId)
-            || !Identifiers.IsServiceIdentifier(request.WorkerId)
-            || !Identifiers.IsServiceIdentifier(request.WorkerRuntimeId)
+            || request.CharacterId == Guid.Empty
             || !Identifiers.IsServiceIdentifier(request.ShardId)
             || !IsFinitePosition(request.PositionX)
             || !IsFinitePosition(request.PositionY)
             || !IsFinitePosition(request.PositionZ)
             || !double.IsFinite(request.LifetimeSeconds)
-            || request.LifetimeSeconds is < 60 or > 86_400)
+            || request.LifetimeSeconds < 1)
         {
             return ServiceResult<StackStressLootHotspotResponse>.BadRequest(
                 "stack_stress_fixture_invalid",
                 "The stack stress loot-hotspot fixture request is invalid.");
         }
 
-        var corpseId = Guid.NewGuid();
-        var loot = Enumerable.Range(0, HotspotLootStacks)
-            .Select(_ => new MobCorpseLootEntryRequest(
-                Guid.NewGuid(),
-                options.LootDefinitionId,
-                HotspotQuantityPerStack))
-            .ToArray();
-        var result = await transactionService.ExecuteAsync(
-            new ItemTransactionRequest<CreatePersistentMobCorpseCommand>(
-                Guid.NewGuid(),
-                ItemTransactionActor.ForSystem(),
-                new CreatePersistentMobCorpseCommand(
-                    corpseId,
-                    request.WorkerId,
-                    request.WorkerRuntimeId,
-                    request.ShardId,
-                    MobDefinitionId,
-                    request.PositionX,
-                    request.PositionY,
-                    request.PositionZ,
-                    0,
-                    0,
-                    0,
-                    1,
-                    // A durable Mob corpse must carry a Mob corpse key.
-                    Mmorpg.WorldData.Actors.WorldActorCorpseRules.MobCorpsePresentationKey,
-                    request.LifetimeSeconds,
-                    checked((int)workerLeasePolicy.HeartbeatTimeout.TotalSeconds),
-                    loot)),
-            cancellationToken);
-        if (!result.Succeeded)
+        if (request.LifetimeSeconds > CorpseTransformRules.PlayerCorpseLifetime.TotalSeconds)
         {
-            return ServiceResult<StackStressLootHotspotResponse>.Conflict(
-                result.Error!.Code,
-                result.Error.Message);
+            return ServiceResult<StackStressLootHotspotResponse>.BadRequest(
+                "stack_stress_fixture_invalid",
+                $"The loot hotspot is a player's corpse, which lasts {CorpseTransformRules.PlayerCorpseLifetime.TotalSeconds:0} seconds; the run needs it for {request.LifetimeSeconds:0}.");
         }
 
-        var now = DateTime.UtcNow;
+        var snapshotResult = await itemQueryService.GetCharacterInventoryAsync(
+            accountId,
+            request.CharacterId,
+            cancellationToken);
+        if (!snapshotResult.Succeeded)
+        {
+            return ForwardError<CharacterInventorySnapshotResponse,
+                StackStressLootHotspotResponse>(snapshotResult);
+        }
+
+        var snapshot = snapshotResult.Value!;
+        if (HasItems(snapshot))
+        {
+            return ServiceResult<StackStressLootHotspotResponse>.Conflict(
+                "stack_stress_fixture_not_empty",
+                "The stack stress loot-hotspot fixture requires a new character with no items or Recovery deliveries.");
+        }
+
+        // As many stacks as the character can carry: it is a player, so its carry weight
+        // bounds the stock. The bots deposit before they loot, which keeps the corpse filled.
+        var lootStacks = 0;
+        var expectedRevision = snapshot.ItemStateRevision;
+        var slots = Math.Min(HotspotLootStacks, snapshot.PermanentInventory.Slots.Count);
+        for (var slotIndex = 0; slotIndex < slots; slotIndex++)
+        {
+            var granted = await transactionService.ExecuteAsync(
+                new ItemTransactionRequest<GrantItemCommand>(
+                    Guid.NewGuid(),
+                    ItemTransactionActor.ForSystem(),
+                    new GrantItemCommand(
+                        request.CharacterId,
+                        expectedRevision,
+                        options.LootDefinitionId,
+                        HotspotQuantityPerStack,
+                        snapshot.PermanentInventory.ContainerId,
+                        slotIndex)),
+                cancellationToken);
+            if (!granted.Succeeded
+                && lootStacks > 0
+                && granted.Error!.Code == ItemTransactionErrorCodes.CarryWeightLimitExceeded)
+            {
+                break;
+            }
+
+            if (!granted.Succeeded)
+            {
+                return ServiceResult<StackStressLootHotspotResponse>.Conflict(
+                    granted.Error!.Code,
+                    granted.Error.Message);
+            }
+
+            expectedRevision = granted.CharacterRevisions.Single().Revision;
+            lootStacks++;
+        }
+
+        var death = await corpseService.ProcessSystemDeathAsync(
+            Guid.NewGuid(),
+            new ProcessPlayerDeathCommand(
+                Guid.NewGuid(),
+                request.CharacterId,
+                expectedRevision,
+                request.ShardId,
+                request.PositionX,
+                request.PositionY,
+                request.PositionZ,
+                0,
+                0,
+                0,
+                1,
+                ItemTransactionService.DefaultPlayerCorpsePresentationKey),
+            cancellationToken);
+        if (!death.Succeeded)
+        {
+            return ForwardError<PlayerDeathPartitionResponse, StackStressLootHotspotResponse>(death);
+        }
+
         return ServiceResult<StackStressLootHotspotResponse>.Ok(
             new StackStressLootHotspotResponse(
-                corpseId,
+                death.Value!.Corpse.CorpseId,
                 options.LootDefinitionId,
-                HotspotLootStacks,
+                lootStacks,
                 HotspotQuantityPerStack,
-                now.AddSeconds(request.LifetimeSeconds)));
+                death.Value.Corpse.ExpiresAt));
     }
 
     private static bool HasItems(CharacterInventorySnapshotResponse snapshot)

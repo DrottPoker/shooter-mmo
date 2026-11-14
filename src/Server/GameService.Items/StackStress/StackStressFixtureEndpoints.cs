@@ -87,6 +87,7 @@ internal static class StackStressFixtureEndpoints
                     }
 
                     var result = await fixtureService.CreateLootHotspotAsync(
+                        httpContext.User.GetAccountId(),
                         request,
                         cancellationToken);
                     return result.ToHttpResult();
