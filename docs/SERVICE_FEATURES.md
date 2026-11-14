@@ -205,8 +205,12 @@ Each SimulationWorker has:
 - A process start timestamp.
 
 GameService validates identifiers, topology consistency, endpoint metadata,
-capacity, revisions, and service identity. The heartbeat transaction locks the
-target shard and applies the rules in
+capacity, revisions, and service identity. A heartbeat of the runtime that
+already owns the Shard, with the World the Shard is bound to, only renews the
+lease and waits for no player operation, join, or corpse; the locks of both
+paths are in [Lock Order](GAME_SERVICE_MODULES.md#lock-order). Every other
+heartbeat is a registration, which locks the target shard and applies the rules
+in
 [Runtime Identity](PROJECT_ARCHITECTURE.md#runtime-identity-and-assignment-safety):
 
 - A different healthy assigned worker causes `shard_assignment_conflict`.
