@@ -90,6 +90,76 @@ public sealed class ShardRowLockIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task TwoJoinsThatWaitForTheWorkerNeverTakeTheSameLastPlace()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var first = await context.RegisterPlayerAsync("first@example.com", "first_joiner", "First Joiner");
+        var second = await context.RegisterPlayerAsync("second@example.com", "second_joiner", "Second Joiner");
+        await context.ExecuteScalarIntAsync(
+            "update simulation_workers set max_connections = 1 returning 1;");
+        var joinInFlight = await HeldLock.TakeAsync(
+            context,
+            "select 1 from simulation_workers where id = 'local-simulation-worker-1' for no key update;");
+        Task<ServiceResult<JoinShardResponse>>[] joins;
+        await using (joinInFlight)
+        {
+            joins =
+            [
+                JoinAsync(context, first),
+                JoinAsync(context, second)
+            ];
+
+            // Both wait for the worker row before either has counted the capacity.
+            var early = await Task.WhenAny(Task.WhenAny(joins), Task.Delay(MustStillWaitAfter));
+            Assert.False(joins[0].IsCompleted || joins[1].IsCompleted, early.ToString());
+            await joinInFlight.CommitAsync();
+        }
+
+        var results = await Task.WhenAll(joins).WaitAsync(MustFinishWithin);
+
+        Assert.Single(results, result => result.Succeeded);
+        Assert.Equal("shard_unavailable", Assert.Single(results, result => !result.Succeeded).Error!.Code);
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_join_tickets where consumed_at is null;"));
+    }
+
+    [PostgresIntegrationFact]
+    public async Task ATakeoverNeverMissesTheRenewalItWaitedFor()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        // The worker's lease has run out, and its renewal is in flight: it has written the
+        // worker row and holds the assignment, as TryRenewAsync does, but has not committed.
+        await context.ExecuteScalarIntAsync(
+            "update simulation_workers set last_heartbeat_at = now() - interval '10 minutes' returning 1;");
+        var renewalInFlight = await HeldLock.TakeAsync(
+            context,
+            "update simulation_workers set last_heartbeat_at = now() where id = 'local-simulation-worker-1' returning 1;");
+        Task<ServiceResult<SimulationWorkerHeartbeatResponse>> takeover;
+        await using (renewalInFlight)
+        {
+            await renewalInFlight.ExecuteAsync(
+                "select id from simulation_assignments where shard_id = @ShardId and released_at is null for share;");
+            takeover = context.SimulationWorkerRegistryService.HeartbeatAsync(
+                "another-simulation-worker",
+                PostgresIntegrationTestContext.CreateHeartbeatRequest("another-worker-runtime"),
+                CancellationToken.None);
+
+            var first = await Task.WhenAny(takeover, Task.Delay(MustStillWaitAfter));
+            Assert.NotSame(takeover, first);
+            await renewalInFlight.CommitAsync();
+        }
+
+        var refused = await takeover.WaitAsync(MustFinishWithin);
+
+        Assert.False(refused.Succeeded);
+        Assert.Equal("shard_assignment_conflict", refused.Error!.Code);
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_workers where id = 'local-simulation-worker-1' and is_online;"));
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_assignments where released_at is null and worker_id = 'local-simulation-worker-1';"));
+    }
+
+    [PostgresIntegrationFact]
     public async Task ARenewalAnswersLikeTheRegistrationAndMovesTheLease()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
@@ -192,6 +262,17 @@ public sealed class ShardRowLockIntegrationTests
             Assert.True(rebound.Succeeded, rebound.Error?.Message);
             Assert.Equal("development-world-2", rebound.Value!.WorldId);
         }
+    }
+
+    private static Task<ServiceResult<JoinShardResponse>> JoinAsync(
+        PostgresIntegrationTestContext context,
+        IntegrationPlayer player)
+    {
+        return context.ShardService.CreateJoinTicketAsync(
+            player.Account,
+            ShardId,
+            new JoinShardRequest(player.Character.Id),
+            CancellationToken.None);
     }
 
     private static Task<ServiceResult<SimulationWorkerHeartbeatResponse>> HeartbeatAsync(
