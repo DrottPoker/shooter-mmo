@@ -479,7 +479,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
     public async Task VerifyGameplayInvariantsAsync(
         StressWorkloadProfile workload,
         int inventoryFixtureBots,
-        bool hasLootHotspot,
+        long lootHotspotQuantity,
         StressFixtureDefinitions? fixtureDefinitions,
         CancellationToken cancellationToken)
     {
@@ -532,7 +532,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
 
         var expectedLoot = workload is StressWorkloadProfile.LootHotspot
             or StressWorkloadProfile.MixedGameplay
-                ? inventoryFixtureBots + (hasLootHotspot ? 24L * 50L : 0L)
+                ? inventoryFixtureBots + lootHotspotQuantity
                 : 0L;
         var expectedInventoryItem = workload is StressWorkloadProfile.Inventory
             or StressWorkloadProfile.MixedGameplay

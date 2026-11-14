@@ -50,6 +50,7 @@ public static class ItemTransactionErrorCodes
     public const string CorpseExpired = "corpse_expired";
     public const string CorpseInvalidated = "corpse_invalidated";
     public const string CorpseNotLootable = "corpse_not_lootable";
+    public const string CorpseWholeItemsOnly = "corpse_whole_items_only";
     public const string ItemAlreadyLooted = "item_already_looted";
     public const string ItemQuantityChanged = "item_quantity_changed";
     public const string WrongSimulationWorker = "wrong_simulation_worker";

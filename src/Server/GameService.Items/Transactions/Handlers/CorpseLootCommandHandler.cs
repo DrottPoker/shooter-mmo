@@ -73,6 +73,11 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
         }
 
         var partial = moved < source.Quantity;
+        if (partial)
+        {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no part of a stack is taken from it");
+        }
+
         if (partial && (source.IsBag || definition.RuntimeDefinition.MaximumStackSize <= 1))
         {
             ItemTransactionContext.Reject(
@@ -169,6 +174,7 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
         }
         else
         {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no equipped item is swapped into it");
             await EnsureOccupantCanEnterCorpseSlotAsync(context, source, occupant, cancellationToken);
             await CorpseCustodyWrites.SwapCorpseItemWithEquipmentAsync(
                 context,
@@ -465,6 +471,11 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
             definition.RuntimeDefinition,
             ItemPolicyStates.ToPolicyStates(sourcePolicies));
         var isPartial = command.Quantity is not null;
+        if (isPartial)
+        {
+            CorpseCustody.RequireWholeItemLoot(corpse, "no part of a stack is taken from it");
+        }
+
         var movedQuantity = isPartial ? command.Quantity!.Value : source.Quantity;
         if (!sourceCapabilities.CanChangeOwningCharacter)
         {
@@ -548,6 +559,8 @@ internal sealed class CorpseLootCommandHandler(CorpseQuestDrops questDrops)
                     CorpseItemTransfers.RejectCorpseStackMerge(stackDisposition);
                 }
 
+                // The loot would swap with the item in its destination slot.
+                CorpseCustody.RequireWholeItemLoot(corpse, "no carried item is swapped into it");
                 var targetDefinition = await context.State.LoadDefinitionAsync(
                     target.DefinitionId,
                     cancellationToken);

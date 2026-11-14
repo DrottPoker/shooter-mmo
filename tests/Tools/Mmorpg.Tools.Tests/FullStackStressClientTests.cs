@@ -276,8 +276,7 @@ public sealed class FullStackStressClientTests
             "account-session",
             new FullStackStackStressLootHotspotRequest(
                 "run123",
-                "worker-1",
-                "runtime-1",
+                Guid.NewGuid(),
                 "shard-1",
                 0,
                 0,

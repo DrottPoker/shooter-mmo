@@ -61,6 +61,7 @@ internal sealed class CorpseInternalMoveCommandHandler
             command.CharacterId,
             cancellationToken);
         var corpse = await CorpseCustody.LockOpenCorpseAsync(context, command.CorpseId, cancellationToken);
+        CorpseCustody.RequireWholeItemLoot(corpse, "nothing is moved inside it");
 
         var itemIds = command.TargetItemInstanceId is null
             ? new[] { command.ItemInstanceId }

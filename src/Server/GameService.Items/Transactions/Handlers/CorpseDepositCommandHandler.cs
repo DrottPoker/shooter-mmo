@@ -62,6 +62,7 @@ internal sealed class CorpseDepositCommandHandler
             command.CharacterId,
             cancellationToken);
         var corpse = await CorpseCustody.LockOpenCorpseAsync(context, command.CorpseId, cancellationToken);
+        CorpseCustody.RequireWholeItemLoot(corpse, "nothing is put into it");
 
         var itemIds = command.TargetItemInstanceId is null
             ? new[] { command.ItemInstanceId }
