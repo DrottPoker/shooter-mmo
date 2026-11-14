@@ -355,6 +355,27 @@ public sealed class PlayingRoleTests
             PlayingRoster.Assign(scenario, 20, 1, 7).Select(assignment => assignment.Role));
     }
 
+    // The worker refuses item operations, combat intents, corpse interactions, and every world
+    // interaction but a close from a dead character, so a death that races any of them is an
+    // expected conflict, not a failed run.
+    [Theory]
+    [InlineData(PlayingOperations.Equip)]
+    [InlineData(PlayingOperations.ItemMove)]
+    [InlineData(PlayingOperations.Attack)]
+    [InlineData(PlayingOperations.ClearTarget)]
+    [InlineData(PlayingOperations.LootOpen)]
+    [InlineData(PlayingOperations.LootAll)]
+    [InlineData(PlayingOperations.LootClose)]
+    [InlineData(PlayingOperations.GatherOpen)]
+    [InlineData(PlayingOperations.GatherStart)]
+    [InlineData(PlayingOperations.VendorOpen)]
+    [InlineData(PlayingOperations.VendorSale)]
+    [InlineData(PlayingOperations.VendorPurchase)]
+    public void ADeathThatRacesAnIntentIsAnExpectedConflict(string operation)
+    {
+        Assert.True(PlayingExpectedConflicts.IsExpected(operation, "combat_character_dead"));
+    }
+
     [Fact]
     public void EveryExpectedConflictHasAReasonAndBelongsToAKnownOperation()
     {

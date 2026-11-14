@@ -680,8 +680,9 @@ the generator holds this table, and the report repeats it:
 | `gather_close` | `world_actor_unavailable`, `world_interaction_target_changed`, `world_interaction_session_invalid` | The node depleted before the close arrived, and the worker closes that interaction itself |
 | `vendor_sale`, `vendor_purchase` | `item_state_conflict` | Spent arrows of a bow fighter commit in batches without an intent, between the trade and its handling |
 | `item_move` | `item_state_conflict` | The item state changed between the move and its handling, such as by a trade whose change had not reached the bot yet |
+| `equip`, `item_move`, `gather_open`, `gather_start`, `vendor_open`, `vendor_sale`, `vendor_purchase` | `combat_character_dead` | A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations and every world interaction but a close from a dead character |
 
-`teleport`, `vendor_open`, and `vendor_close` have no expected conflict, and
+`teleport` and `vendor_close` have no expected conflict, and
 `inventory_full` on `loot_all` should stay near zero, because a fighter makes
 the trip to the vendor before its room runs out.
 
