@@ -368,16 +368,19 @@ second of waiting fills with a few parallel logins.
    dotnet run --project src/Server/GameService
    ```
 
-2. In another terminal, send waves of 30 wrong logins for 20 seconds, so the
-   lane stays full:
+2. In another terminal, send one wrong login every 25 milliseconds for 15
+   seconds without waiting for the answers, so the lane is refilled the moment
+   a place frees. The loop stays below the 1,000 requests of the limit; wait a
+   minute before a second flood, because the client shares that limit:
 
    ```powershell
+   Add-Type -AssemblyName System.Net.Http
    $client = [System.Net.Http.HttpClient]::new()
    $body = '{"login":"nobody_here","password":"WrongPass123!"}'
-   $end = (Get-Date).AddSeconds(20)
+   $end = (Get-Date).AddSeconds(15)
    while ((Get-Date) -lt $end) {
-       $wave = 1..30 | ForEach-Object { $client.PostAsync("http://localhost:5000/api/accounts/login", [System.Net.Http.StringContent]::new($body, [System.Text.Encoding]::UTF8, "application/json")) }
-       [System.Threading.Tasks.Task]::WaitAll($wave)
+       $null = $client.PostAsync("http://localhost:5000/api/accounts/login", [System.Net.Http.StringContent]::new($body, [System.Text.Encoding]::UTF8, "application/json"))
+       Start-Sleep -Milliseconds 25
    }
    ```
 
@@ -388,9 +391,8 @@ second of waiting fills with a few parallel logins.
    by itself; once the flood ends, the login succeeds without a click and
    CharacterSelect loads. The GameService log shows `[AUTH] Password hashing
    refused a verify with auth_busy` at most every 30 seconds, and the Unity
-   Console a `Login waits for a busy GameService` line per retry. A login that
-   happens to find room gets in at once; log out and log in again while the
-   flood runs.
+   Console a `Login waits for a busy GameService` line per retry. After five
+   retries the client stops and shows the busy text; press Log In again.
 4. Run the flood again, log in, and press `Esc` while the line counts down.
    Expected result: the line reads `Stopped trying again. Send the form when
    you are ready.`, and no further request leaves; typing in a field stops the
