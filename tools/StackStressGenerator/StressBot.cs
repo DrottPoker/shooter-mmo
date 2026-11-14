@@ -40,15 +40,13 @@ public sealed class StressBot : IStressBot, ISimulationBotRealtimeObserver
     public StressBot(
         StressGeneratorOptions options,
         StressBotAdmission admission,
-        StressLatencyAccumulator inputAcknowledgementLatencies,
-        StressLatencyAccumulator intervalInputAcknowledgementLatencies,
+        Action<double> recordInputAcknowledgement,
         StressGameplayMetrics gameplayMetrics,
         Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refreshInventory)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(admission);
-        ArgumentNullException.ThrowIfNull(inputAcknowledgementLatencies);
-        ArgumentNullException.ThrowIfNull(intervalInputAcknowledgementLatencies);
+        ArgumentNullException.ThrowIfNull(recordInputAcknowledgement);
         ArgumentNullException.ThrowIfNull(gameplayMetrics);
         ArgumentNullException.ThrowIfNull(refreshInventory);
 
@@ -73,11 +71,7 @@ public sealed class StressBot : IStressBot, ISimulationBotRealtimeObserver
                 admission.ShardId,
                 admission.WorldId),
             new StressBotInputSource(admission.BotIndex, options.Seed, options.Workload),
-            latencyMilliseconds =>
-            {
-                inputAcknowledgementLatencies.Record(latencyMilliseconds);
-                intervalInputAcknowledgementLatencies.Record(latencyMilliseconds);
-            },
+            recordInputAcknowledgement,
             this);
     }
 
@@ -198,6 +192,11 @@ public sealed class StressBot : IStressBot, ISimulationBotRealtimeObserver
             snapshot.FailureCode,
             snapshot.FailureMessage,
             snapshot.RemoteCadence);
+    }
+
+    public StressBotProgress CaptureProgress()
+    {
+        return StressBotProgress.From(client.CaptureProgress());
     }
 
     public void BeginRemoteCadenceWindow(long nowTimestamp)

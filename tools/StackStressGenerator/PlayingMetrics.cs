@@ -8,8 +8,12 @@ public enum PlayingCounter
     // Damage that Mobs dealt the bots.
     MobDamageTaken,
 
-    // Deaths of the bots.
+    // Deaths of the bots, and of the bots of every role.
     BotDeaths,
+    FighterDeaths,
+    GathererDeaths,
+    WalkerDeaths,
+    TraderDeaths,
 
     // Bots that walked back to their own corpse and looted it back.
     CorpsesRecovered,
@@ -17,8 +21,47 @@ public enum PlayingCounter
     // Bots whose corpse was gone or out of reach, and which went on as walkers.
     CorpsesLost,
 
-    // Resource nodes a gatherer found without charges.
+    // Nodes a gatherer chose and walked to, the ones it found depleted when it arrived or
+    // opened them, and the times it found no node with charges in its whole field.
+    GatherAttempts,
     NodesFoundEmpty,
+    NodeFieldsEmpty,
+
+    // Yields that reached a gatherer, and how its gathering stopped.
+    GatherYields,
+    GatherStopsDepleted,
+    GatherStopsOther,
+
+    // Nodes a gatherer gave up because cover blocked its line of sight to them.
+    NodesBlockedFromSight,
+
+    // Trips to the vendor, the stacks the bots sold and bought there, and the currency that
+    // changed hands. A trip that left the bot without room counts once more.
+    VendorTrips,
+    VendorSales,
+    VendorPurchases,
+    CurrencyEarned,
+    CurrencySpent,
+    VendorTripsWithoutRoom,
+
+    // Trips that found no vendor, or no place in reach of it.
+    VendorTripsFailed,
+
+    // Arrows bow fighters bought at the vendor, and bow fighters that had neither arrows nor
+    // the currency for more and went on as walkers.
+    ArrowsBought,
+    ArrowsRanOut,
+
+    // Times a fighter fled from a fight, and Mobs it passed over because other aggressive
+    // Mobs stood within reach of them.
+    FighterFlees,
+    CrowdedMobsSkipped,
+
+    // Times a gatherer or trader fled from a Mob that attacked it.
+    NonFighterFlees,
+
+    // Item moves of the traders between their own slots.
+    TraderItemMoves,
 
     // Mob corpses a fighter did not loot because another player's attack owned them.
     LootRefusedOwned,

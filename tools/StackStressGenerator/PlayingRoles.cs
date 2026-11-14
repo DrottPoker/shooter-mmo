@@ -1,6 +1,7 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Tools.SimulationBotClient;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -17,12 +18,29 @@ public interface IPlayingRole
 }
 
 // What every playing role shares: equipping its kit, the one teleport to its home ground after
-// the join, pauses after a rejected intent, and walking toward a far point in legs.
+// the join, pauses after a rejected intent, walking toward a far point in legs, and the trip to
+// the town's vendor to sell what it carries and buy what it needs, and back home.
 public abstract class PlayingRoleBase : IPlayingRole
 {
     // A rejected intent is followed by a pause of this long, so no bot retries in a loop.
     public static readonly TimeSpan MinimumRejectionPause = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan MaximumRejectionPause = TimeSpan.FromSeconds(4);
+
+    // A bot walks to the vendor once its free slots, or the carry capacity it has left, fall
+    // below these.
+    public const int MinimumFreeSlots = 3;
+    public const double MinimumFreeCarryShare = 0.15;
+
+    // A trip that left the bot without room, because nothing it carries sells, or that found
+    // no vendor waits this long before the next.
+    public static readonly TimeSpan TripCooldown = TimeSpan.FromMinutes(5);
+
+    // The time between two trades at the vendor.
+    public static readonly TimeSpan MinimumTradeSpacing = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaximumTradeSpacing = TimeSpan.FromSeconds(2.5);
+
+    // The bot is home again this close to its ground's center.
+    private const float HomeArrival = 8f;
 
     // A point this close counts as reached.
     protected const float ArrivalDistance = 1.5f;
@@ -31,7 +49,11 @@ public abstract class PlayingRoleBase : IPlayingRole
     private const int MaximumStalledLegs = 3;
 
     private readonly PlayingGround? home;
+    private readonly PlayingGround? town;
     private readonly bool teleport;
+    private PlayingVendorVisit? visit;
+    private bool returning;
+    private TimeSpan noTripUntil;
     private bool equipped;
     private bool teleported;
     private int teleportAttempts;
@@ -39,9 +61,10 @@ public abstract class PlayingRoleBase : IPlayingRole
     private float travelBestDistance;
     private int travelStalledLegs;
 
-    protected PlayingRoleBase(PlayingGround? home, bool teleport, Random random)
+    protected PlayingRoleBase(PlayingGround? home, bool teleport, Random random, PlayingGround? town = null)
     {
         this.home = home;
+        this.town = town;
         this.teleport = teleport && home is not null;
         Random = random ?? throw new ArgumentNullException(nameof(random));
     }
@@ -55,6 +78,12 @@ public abstract class PlayingRoleBase : IPlayingRole
     protected PlayingGround? Home => home;
 
     protected TimeSpan PauseUntil { get; set; }
+
+    // Set while the bot walks to the vendor, trades there, or walks home again.
+    public bool OnVendorTrip => visit is not null || returning;
+
+    // The state of the trip, or null, for diagnostics and tests.
+    public string? VendorTripState => visit?.State ?? (returning ? "returning" : null);
 
     public void Think(IPlayingBotBody body, TimeSpan now)
     {
@@ -72,7 +101,14 @@ public abstract class PlayingRoleBase : IPlayingRole
                 body.Count(PlayingCounter.RejectionPauses);
             }
 
-            OnOutcome(body, outcome, now);
+            if (visit is not null && PlayingVendorVisit.Owns(outcome.Operation))
+            {
+                visit.OnOutcome(body, outcome, now);
+            }
+            else
+            {
+                OnOutcome(body, outcome, now);
+            }
         }
 
         if (now < PauseUntil || body.HasPendingIntent)
@@ -92,7 +128,183 @@ public abstract class PlayingRoleBase : IPlayingRole
             return;
         }
 
+        if (OnVendorTrip && !ContinueVendorTrip(body, now))
+        {
+            return;
+        }
+
         Act(body, now);
+    }
+
+    // Whether the bot carries so much that it should sell at the vendor before it goes on.
+    public static bool NeedsToSell(IPlayingBotBody body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        var items = body.View.Items;
+        if (!items.HasState)
+        {
+            return false;
+        }
+
+        var capacity = items.CarryCapacity;
+        return items.CountFreeSlots() < MinimumFreeSlots
+            || (capacity > 0 && capacity - items.CarriedWeight < capacity * MinimumFreeCarryShare);
+    }
+
+    // Whether the role still lacks something that only the vendor sells, after a visit.
+    protected virtual bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return false;
+    }
+
+    // Starts the trip to the town's vendor, unless the scenario has no town or a trip that
+    // achieved nothing ended a short while ago.
+    protected bool StartVendorTrip(IPlayingBotBody body, TimeSpan now)
+    {
+        if (town is null || now < noTripUntil)
+        {
+            return false;
+        }
+
+        body.Stand();
+        ForgetTravel();
+        visit = new PlayingVendorVisit(
+            town.Area,
+            PlanTripTrade,
+            Random,
+            MinimumTradeSpacing,
+            MaximumTradeSpacing,
+            countsAmmunition: Role == PlayingRole.Fighter);
+        returning = false;
+        body.Count(PlayingCounter.VendorTrips);
+        return true;
+    }
+
+    // A trip keeps the kit, a bow fighter's arrows included, and sells everything else.
+    private static bool KeepsItem(IPlayingBotBody body, SimulationBotOwnedItem item)
+    {
+        return body.Kit.Items.Any(kitItem => kitItem.DefinitionId == item.DefinitionId);
+    }
+
+    // What a role buys on its trip once it sold everything, one purchase at a time.
+    protected virtual PlayingPurchase? PlanPurchase(
+        IPlayingBotBody body,
+        VendorProfileDefinition vendor,
+        PlayingVendorVisit visit)
+    {
+        return null;
+    }
+
+
+    // The nearest living Mob that attacks the bot.
+    protected static SimulationBotWorldActor? FindAttacker(IPlayingBotBody body)
+    {
+        var own = body.View.OwnEntityId;
+        SimulationBotWorldActor? nearest = null;
+        var nearestDistance = float.MaxValue;
+        foreach (var combatant in body.View.Combatants.Values)
+        {
+            if (combatant.TargetEntityId != own
+                || combatant.LifeState != RealtimeCombatLifeState.Alive
+                || !body.View.Actors.TryGetValue(combatant.EntityId, out var actor)
+                || actor.Kind != RealtimeWorldActorKind.Mob)
+            {
+                continue;
+            }
+
+            var distance = PlanarDistance(body.Position, ToVector(actor.Position));
+            if (distance < nearestDistance)
+            {
+                nearest = actor;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    // True once the trip ended this think, so the role acts again.
+    private bool ContinueVendorTrip(IPlayingBotBody body, TimeSpan now)
+    {
+        // A Mob that attacks the bot ends its trip, so the role can fight or flee.
+        if (IsDead(body) || FindAttacker(body) is not null)
+        {
+            visit = null;
+            returning = false;
+            ForgetTravel();
+            return true;
+        }
+
+        if (visit is not null)
+        {
+            var status = visit.Think(body, now, (goal, arrival) => TravelTo(body, goal, arrival));
+            if (status == PlayingVisitStatus.Running)
+            {
+                return false;
+            }
+
+            visit = null;
+            ForgetTravel();
+            if (status == PlayingVisitStatus.Failed)
+            {
+                body.Count(PlayingCounter.VendorTripsFailed);
+                noTripUntil = now + TripCooldown;
+            }
+            else if (NeedsToSell(body))
+            {
+                body.Count(PlayingCounter.VendorTripsWithoutRoom);
+                noTripUntil = now + TripCooldown;
+            }
+            else if (StillNeedsToBuy(body))
+            {
+                // The visit could not buy what the role lacks, such as arrows it cannot pay
+                // for. Without a pause the same need would send it straight back.
+                noTripUntil = now + TripCooldown;
+            }
+
+            returning = home is not null;
+            if (!returning)
+            {
+                return true;
+            }
+        }
+
+        var area = home!.Area;
+        var center = body.TryFindGround(area.CenterX, area.CenterZ, out var ground)
+            ? ground
+            : new SimulationVector3(area.CenterX, body.Position.Y, area.CenterZ);
+        if (!area.Contains(body.Position.X, body.Position.Z) && TravelTo(body, center, HomeArrival) == false)
+        {
+            return false;
+        }
+
+        returning = false;
+        ForgetTravel();
+        body.Stand();
+        return true;
+    }
+
+    // Sells every carried stack the bot does not keep and the vendor buys, then lets the role
+    // buy what it needs.
+    private PlayingTrade? PlanTripTrade(IPlayingBotBody body, VendorProfileDefinition vendor, PlayingVendorVisit current)
+    {
+        foreach (var item in body.View.Items.Items
+                     .Where(item => !item.IsEquipped)
+                     .OrderBy(item => item.ContainerId == body.View.Items.PermanentInventoryId ? 0 : 1)
+                     .ThenBy(item => item.SlotIndex))
+        {
+            if (KeepsItem(body, item) || current.HasFailed(item))
+            {
+                continue;
+            }
+
+            if (PlayingVendorVisit.SaleOf(body, vendor, item, item.Quantity) is { } sale)
+            {
+                return sale;
+            }
+        }
+
+        return PlanPurchase(body, vendor, current);
     }
 
     // Reacts to the outcome of the role's own intent.

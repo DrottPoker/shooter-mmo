@@ -262,6 +262,9 @@ public sealed class StressQualityVerdictTests
 
         var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
 
+        // An older worker writes no Mob numbers, which fold as none.
+        Assert.Equal(0, fold.Levels["engagedMobs"].Worst);
+        Assert.Equal(0, fold.Counters["mobPathPlans"].Total);
         Assert.Equal(9, fold.IntervalsRead);
         Assert.Equal(4, fold.SteadyIntervals);
         Assert.Equal(SteadyStart, fold.FirstSteadyIntervalStart);
@@ -421,6 +424,44 @@ public sealed class StressQualityVerdictTests
             40 * 9,
             0,
             Enumerable.Range(0, 9).Select(_ => new SimulationBotEntityCadence((long)(hz * 40), 40)).ToArray());
+    }
+
+    // The worker's Mob numbers fold like the other levels and counters of the steady interval.
+    [Fact]
+    public void TheMobNumbersOfTheWorkerFoldAsLevelsAndCounters()
+    {
+        StressWorkerInterval[] intervals =
+        [
+            Interval(RunStart.AddSeconds(20), tickP99: 4) with { Mobs = 300, EngagedMobs = 20, MovingMobs = 30, MobPathQueue = 0, MobPathPlans = 50 },
+            Interval(RunStart.AddSeconds(30), tickP99: 4) with { Mobs = 296, EngagedMobs = 40, MovingMobs = 50, MobPathQueue = 2, MobPathPlans = 70 },
+            Interval(RunStart.AddSeconds(40), tickP99: 4) with { Mobs = 300, EngagedMobs = 30, MovingMobs = 40, MobPathQueue = 0, MobPathPlans = 60 },
+            Interval(RunStart.AddSeconds(50), tickP99: 4) with { Mobs = 300, EngagedMobs = 30, MovingMobs = 40, MobPathQueue = 0, MobPathPlans = 20 }
+        ];
+
+        var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
+
+        Assert.Equal(299, fold.Levels["mobs"].Average);
+        Assert.Equal(40, fold.Levels["engagedMobs"].Worst);
+        Assert.Equal(30, fold.Levels["engagedMobs"].Average);
+        Assert.Equal(50, fold.Levels["movingMobs"].Worst);
+        Assert.Equal(2, fold.Levels["mobPathQueue"].Worst);
+        Assert.Equal(200, fold.Counters["mobPathPlans"].Total);
+        Assert.Equal(70, fold.Counters["mobPathPlans"].WorstInterval);
+    }
+
+    // A line of the worker's performance file carries the Mob numbers by their JSON names.
+    [Fact]
+    public void AWorkerLineWithMobNumbersParses()
+    {
+        var line = System.Text.Json.JsonSerializer.Serialize(
+            Interval(RunStart, tickP99: 4) with { Mobs = 12, EngagedMobs = 3, MovingMobs = 4, MobPathQueue = 1, MobPathPlans = 9 },
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        var interval = Assert.Single(StressWorkerPerformance.Parse([line]));
+
+        Assert.Contains("\"engagedMobs\":3", line, StringComparison.Ordinal);
+        Assert.Equal(12, interval.Mobs);
+        Assert.Equal(9, interval.MobPathPlans);
     }
 
     private static StressWorkerInterval Interval(

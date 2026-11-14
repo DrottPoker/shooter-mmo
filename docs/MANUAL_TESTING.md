@@ -2663,9 +2663,13 @@ The other two-client checks sit with their features:
 
 Needs Docker Desktop running and no local stack on TCP 5500 and UDP 27025.
 [Stack Stress Testing](STACK_STRESS_TESTING.md#run-a-scenario) describes the
-command, the scenarios, and the rules of the table it prints. Run both checks
-after a change to `tools/Test-Load.ps1`, `tools/StackStressGenerator`,
-`tools/SimulationBotClient`, or the stress fixture routes.
+command, the scenarios, and the rules of the table it prints. Run the smoke and
+playing smoke checks after a change to `tools/Test-Load.ps1`,
+`tools/StackStressGenerator`, `tools/SimulationBotClient`, or the stress fixture
+routes, and the reference and hotspot checks after a change that the
+[playing scenarios](STACK_STRESS_TESTING.md#what-the-playing-scenarios-are-for)
+are for. Close games, browsers with video, and other heavy programs first: the
+services and the generator share the machine.
 
 ### The Smoke Scenario
 
@@ -2686,17 +2690,61 @@ a half minutes.
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario playing-smoke
 ```
 
-Expected result: the script writes the World variant and says that it keeps
-the checked-in collision revision. The generator registers, equips, and logs in
-20 accounts, the bots join Development World 2, the fighters equip their kits,
-and everyone is teleported to a home ground. For 90 seconds the fighters hunt
-and loot wolves, some die and walk back to their corpses, and the walkers walk.
-Then every bot leaves and logs out, the generator prints the role mix and
-counters such as `kills` and `botDeaths` above zero, every rule reads `pass`,
-and the script prints `Load scenario playing-smoke passed` in about two and a
-half minutes.
+Expected result: the script writes the World variant and says that its
+collision revision differs from the checked-in one, because the variant adds 8
+Iron Veins, so a Unity client cannot join this run. The generator registers,
+equips, and logs in 20 accounts, and the bots join Development World 2 as 8
+fighters, 2 of them with bows, 4 gatherers, 6 walkers, and 2 traders, equip
+their kits, and are teleported to their home grounds. For 90 seconds the
+fighters hunt and loot wolves, some die and walk back to their corpses, the
+gatherers open the veins and gather Iron Ore until each vein depletes, the
+traders sell pelts, buy arrows, and move items at Mira, and the walkers walk.
+Then every bot leaves and logs out. The generator prints the role mix and
+counters such as `kills`, `gatherYields`, and `vendorSales` above zero, the
+gameplay table lists the `gather_*`, `vendor_*`, and `item_move` operations
+without an unexpected rejection, every rule reads `pass`, the two validity rules
+included, and the script prints `Load scenario playing-smoke passed` in about
+three and a half minutes.
 
-No manual Unity Editor steps are required for either check.
+### The Reference Scenarios
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario playing-100 -DurationSeconds 180
+```
+
+Expected result: the script writes the reference variant with 416 added actors,
+296 wolves and 120 resource nodes, and says that a Unity client cannot join.
+The generator provisions 100 accounts without a failure and prints
+`rateLimitWaits` of 0 or more for registration and login, and the bots join as
+40 fighters, 10 of them with bows, 20 gatherers, 30 walkers, and 10 traders.
+After the steady interval the report shows `vendorTrips`, `gatherYields`, and
+`kills` above zero, `loot_all` with no or almost no `inventory_full`, and both
+validity rules read `pass`. The verdict is `passed`, or `failed` with the
+failing quality rules and their numbers, which is a finding about the stack at
+100 players to record, not a failure of the check. A run takes about six
+minutes. `playing-250` and `playing-500` run the same way and, without
+`-DurationSeconds`, for their 300-second steady interval; `playing-500` needs
+an otherwise idle machine and takes about ten minutes. Its two validity rules
+must pass, or the run could not measure: the script then prints
+`could not measure` and exits with code 2.
+
+### A Crowded Vendor
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario hotspot-100
+```
+
+Expected result: 100 traders are teleported into the town, walk up to Mira,
+and trade there in visits of two to five trades: the gameplay table lists
+`vendor_open`, `vendor_sale`, `vendor_purchase`, `vendor_close`, and
+`item_move`, each with hundreds of requests and no unexpected rejection, and
+the counters show `vendorSales`, `vendorPurchases`, and `traderItemMoves`
+above zero. All 100 players stand in one interest radius; the remote update
+rate may fall below 15 Hz there by design, and the verdict shows whether it
+stays above the boundary. Both validity rules read `pass`. A run takes about
+four minutes.
+
+No manual Unity Editor steps are required for these checks.
 
 ## Backend API Smoke Test
 

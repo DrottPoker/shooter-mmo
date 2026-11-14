@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Mmorpg.Testing;
 using Mmorpg.Tools.StackStressGenerator;
 
@@ -26,7 +27,56 @@ public sealed class StressLoadPlanTests
 
         Assert.Subset(
             new HashSet<string>(names),
-            new HashSet<string> { "smoke", "worker-only-200", "worker-only-500", "mixed-100", "mixed-250", "session-cache-on", "session-cache-off", "playing-smoke" });
+            new HashSet<string>
+            {
+                "smoke",
+                "worker-only-200",
+                "worker-only-500",
+                "mixed-100",
+                "mixed-250",
+                "session-cache-on",
+                "session-cache-off",
+                "playing-smoke",
+                "playing-100",
+                "playing-250",
+                "playing-500",
+                "hotspot-100"
+            });
+    }
+
+    // Every kit a playing scenario hands out is one the GameService kit fixture grants, and the
+    // node fields hold at least one node for every gatherer.
+    [Theory]
+    [MemberData(nameof(Scenarios))]
+    public void EveryPlayingScenarioHandsOutGrantedKitsAndANodePerGatherer(string name)
+    {
+        var scenario = StressLoadScenario.Load(Path.Combine(LoadDirectory, "scenarios", name + ".json"));
+        if (scenario.Playing is not { } playing)
+        {
+            return;
+        }
+
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            RepositoryPaths.Root,
+            "src",
+            "Server",
+            "GameService",
+            "Config",
+            "appsettings.Development.json")));
+        var kits = settings.RootElement
+            .GetProperty("StackStressFixtures")
+            .GetProperty("Kits")
+            .EnumerateObject()
+            .Select(kit => kit.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var assignments = PlayingRoster.Assign(playing, scenario.Generator["bots"], 1, scenario.Generator.GetValueOrDefault("seed", 1337));
+
+        Assert.All(
+            assignments.Where(assignment => assignment.Kit is not null),
+            assignment => Assert.Contains(assignment.Kit!, kits));
+        var gatherers = assignments.Count(assignment => assignment.Role == PlayingRole.Gatherer);
+        var nodes = scenario.WorldVariant?.Groups.Sum(group => group.Rows * group.Columns) ?? 0;
+        Assert.True(nodes >= gatherers, $"{nodes} nodes for {gatherers} gatherers");
     }
 
     [Theory]
@@ -104,9 +154,12 @@ public sealed class StressLoadPlanTests
 
     [Theory]
     [InlineData("\"roles\": { \"fighter\": 50, \"walker\": 40 }", "add up to 100")]
-    [InlineData("\"roles\": { \"fighter\": 50, \"gatherer\": 50 }", "'gatherer' is not implemented yet")]
     [InlineData("\"roles\": { \"walker\": 100 }, \"color\": 1", "unknown property 'color'")]
     [InlineData("\"roles\": { \"fighter\": 100 }", "at least one ground of kind 'hunting'")]
+    [InlineData("\"roles\": { \"gatherer\": 100 }, \"grounds\": [ { \"name\": \"t\", \"kind\": \"town\", \"minimumX\": 0, \"minimumZ\": 0, \"maximumX\": 4, \"maximumZ\": 4 } ]", "at least one ground of kind 'nodes'")]
+    [InlineData("\"roles\": { \"fighter\": 100 }, \"grounds\": [ { \"name\": \"h\", \"kind\": \"hunting\", \"minimumX\": 0, \"minimumZ\": 0, \"maximumX\": 4, \"maximumZ\": 4 } ]", "need a ground of kind 'town'")]
+    [InlineData("\"roles\": { \"walker\": 100 }, \"grounds\": [ { \"name\": \"n\", \"kind\": \"nodes\", \"minimumX\": 0, \"minimumZ\": 0, \"maximumX\": 4, \"maximumZ\": 4 } ]", "needs the 'kit'")]
+    [InlineData("\"roles\": { \"walker\": 100 }, \"grounds\": [ { \"name\": \"w\", \"kind\": \"walking\", \"kit\": \"sword\", \"minimumX\": 0, \"minimumZ\": 0, \"maximumX\": 4, \"maximumZ\": 4 } ]", "only a ground of kind 'nodes' names a kit")]
     public void APlayingSectionIsValidatedStrictly(string playing, string expected)
     {
         var json = Scenario(

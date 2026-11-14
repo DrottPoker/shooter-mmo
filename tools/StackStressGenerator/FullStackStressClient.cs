@@ -23,11 +23,17 @@ public sealed class FullStackStressClient(
             cancellationToken);
     }
 
+    // A paced registration or login waits out a 429 for its Retry-After and sends again, as the
+    // provisioning before a measured run does to stay inside the authentication limit.
+    public const int MaximumRateLimitWaits = 10;
+    private static readonly TimeSpan LongestRateLimitWait = TimeSpan.FromSeconds(60);
+
     public Task<FullStackAuthResponse> RegisterAsync(
         string email,
         string username,
         string password,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool paceRateLimit = false)
     {
         return SendAsync<FullStackAuthResponse>(
             "account_register",
@@ -35,13 +41,15 @@ public sealed class FullStackStressClient(
             "/api/accounts/register",
             new FullStackRegisterRequest(email, username, password),
             null,
-            cancellationToken);
+            cancellationToken,
+            paceRateLimit: paceRateLimit);
     }
 
     public Task<FullStackAuthResponse> LoginAsync(
         string login,
         string password,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool paceRateLimit = false)
     {
         return SendAsync<FullStackAuthResponse>(
             "account_login",
@@ -49,7 +57,8 @@ public sealed class FullStackStressClient(
             "/api/accounts/login",
             new FullStackLoginRequest(login, password),
             null,
-            cancellationToken);
+            cancellationToken,
+            paceRateLimit: paceRateLimit);
     }
 
     public Task<FullStackCharacterResponse> CreateCharacterAsync(
@@ -205,18 +214,18 @@ public sealed class FullStackStressClient(
         object? body,
         string? sessionToken,
         CancellationToken cancellationToken,
-        string? fixtureSecret = null)
+        string? fixtureSecret = null,
+        bool paceRateLimit = false)
     {
         var started = Stopwatch.GetTimestamp();
         try
         {
-            using var request = CreateRequest(
-                method,
-                path,
-                body,
-                sessionToken,
-                fixtureSecret);
-            using var response = await httpClient.SendAsync(request, cancellationToken);
+            using var response = await SendPacedAsync(
+                operation,
+                () => CreateRequest(method, path, body, sessionToken, fixtureSecret),
+                paceRateLimit,
+                timestamp => started = timestamp,
+                cancellationToken);
             var statusCode = (int)response.StatusCode;
             if (!response.IsSuccessStatusCode)
             {
@@ -276,6 +285,34 @@ public sealed class FullStackStressClient(
         {
             metrics.Record(operation, ElapsedMilliseconds(started), 0, "http_unavailable");
             throw new FullStackApiException("http_unavailable", exception.Message, 0);
+        }
+    }
+
+    // Sends the request; a paced one that is answered 429 waits for Retry-After, at most a
+    // minute, and is sent again, and only the attempt that counts is timed.
+    private async Task<HttpResponseMessage> SendPacedAsync(
+        string operation,
+        Func<HttpRequestMessage> createRequest,
+        bool paceRateLimit,
+        Action<long> attemptStarted,
+        CancellationToken cancellationToken)
+    {
+        for (var waits = 0; ; waits++)
+        {
+            attemptStarted(Stopwatch.GetTimestamp());
+            using var request = createRequest();
+            var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!paceRateLimit
+                || response.StatusCode != System.Net.HttpStatusCode.TooManyRequests
+                || waits >= MaximumRateLimitWaits)
+            {
+                return response;
+            }
+
+            metrics.RecordRateLimitWait(operation);
+            var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
+            response.Dispose();
+            await Task.Delay(wait < LongestRateLimitWait ? wait : LongestRateLimitWait, cancellationToken);
         }
     }
 
@@ -483,7 +520,10 @@ public sealed record FullStackCharacterInventoryResponse(
     long CarriedWeight,
     long CarryCapacity,
     int LoadRatioBasisPoints,
-    int MovementMultiplierBasisPoints);
+    int MovementMultiplierBasisPoints)
+{
+    public long Currency { get; init; }
+}
 
 public sealed record FullStackStackStressInventoryFixtureRequest(
     string Workload,

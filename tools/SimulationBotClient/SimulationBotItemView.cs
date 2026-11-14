@@ -24,7 +24,15 @@ public sealed record SimulationBotItemSnapshot(
     long ItemStateRevision,
     Guid PermanentInventoryId,
     IReadOnlyList<SimulationBotItemContainer> Containers,
-    IReadOnlyList<SimulationBotOwnedItem> Items);
+    IReadOnlyList<SimulationBotOwnedItem> Items)
+{
+    public long Currency { get; init; }
+
+    // The unitless carried weight and carry capacity at the snapshot's revision.
+    public long CarriedWeight { get; init; }
+
+    public long CarryCapacity { get; init; }
+}
 
 // The bot's own items, patched from the owner item messages as the Unity client patches its
 // inventory. A committed change that no message describes, such as a death, reaches the bot
@@ -34,6 +42,7 @@ public sealed class SimulationBotItemView
 {
     private readonly Dictionary<Guid, SimulationBotOwnedItem> items = [];
     private readonly Dictionary<Guid, SimulationBotItemContainer> containers = [];
+    private long carryRevision = -1;
 
     public bool HasState { get; private set; }
 
@@ -46,6 +55,12 @@ public sealed class SimulationBotItemView
     public Guid PermanentInventoryId { get; private set; }
 
     public long Currency { get; private set; }
+
+    // The newest carried weight and carry capacity the worker announced, unitless like the
+    // item catalog's unit weights.
+    public long CarriedWeight { get; private set; }
+
+    public long CarryCapacity { get; private set; }
 
     public long FullStateLoads { get; private set; }
 
@@ -81,6 +96,14 @@ public sealed class SimulationBotItemView
         PermanentInventoryId = snapshot.PermanentInventoryId;
         Revision = snapshot.ItemStateRevision;
         ServerRevision = Math.Max(ServerRevision, Revision);
+        Currency = snapshot.Currency;
+        if (snapshot.CarryCapacity > 0 && snapshot.ItemStateRevision >= carryRevision)
+        {
+            carryRevision = snapshot.ItemStateRevision;
+            CarriedWeight = snapshot.CarriedWeight;
+            CarryCapacity = snapshot.CarryCapacity;
+        }
+
         HasState = true;
         FullStateLoads++;
         return true;
@@ -91,12 +114,25 @@ public sealed class SimulationBotItemView
         ServerRevision = Math.Max(ServerRevision, itemStateRevision);
     }
 
+    // A carry state announces the newest revision and the weight the character carries then.
+    public void ObserveCarry(RealtimeCarryState carry)
+    {
+        ArgumentNullException.ThrowIfNull(carry);
+        ObserveServerRevision(carry.ItemStateRevision);
+        if (carry.ItemStateRevision >= carryRevision)
+        {
+            carryRevision = carry.ItemStateRevision;
+            CarriedWeight = carry.CarriedWeight;
+            CarryCapacity = carry.CarryCapacity;
+        }
+    }
+
     // Patches one committed transaction that follows the known revision; any other change
     // leaves the items as they are and only announces the newer revision.
     public bool Apply(RealtimeOwnerItemStateChanged change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        ObserveServerRevision(change.CarryState.ItemStateRevision);
+        ObserveCarry(change.CarryState);
         Currency = change.Currency;
         if (!HasState || change.PreviousItemStateRevision != Revision)
         {
@@ -150,7 +186,7 @@ public sealed class SimulationBotItemView
     public bool Apply(RealtimeOwnerItemQuantityChanged change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        ObserveServerRevision(change.CarryState.ItemStateRevision);
+        ObserveCarry(change.CarryState);
         if (!HasState
             || change.PreviousItemStateRevision != Revision
             || !items.TryGetValue(change.ItemInstanceId, out var item))
@@ -191,6 +227,43 @@ public sealed class SimulationBotItemView
             .OrderBy(item => item.ContainerId == PermanentInventoryId ? 0 : 1)
             .ThenBy(item => item.SlotIndex)
             .FirstOrDefault();
+    }
+
+    // The free slots of every carried container: the permanent inventory and an equipped Bag.
+    public int CountFreeSlots()
+    {
+        return containers.Keys.Sum(CountFreeSlots);
+    }
+
+    // The quantity of a definition the character carries and wears.
+    public int CountOwned(string definitionId)
+    {
+        return items.Values
+            .Where(item => string.Equals(item.DefinitionId, definitionId, StringComparison.Ordinal))
+            .Sum(item => item.Quantity);
+    }
+
+    // The lowest free slot of a carried container, or -1.
+    public int FindFreeSlot(Guid containerId)
+    {
+        if (!containers.TryGetValue(containerId, out var container))
+        {
+            return -1;
+        }
+
+        var used = items.Values
+            .Where(item => item.ContainerId == containerId)
+            .Select(item => item.SlotIndex)
+            .ToHashSet();
+        for (var slot = 0; slot < container.SlotCapacity; slot++)
+        {
+            if (!used.Contains(slot))
+            {
+                return slot;
+            }
+        }
+
+        return -1;
     }
 
     public int CountFreeSlots(Guid containerId)

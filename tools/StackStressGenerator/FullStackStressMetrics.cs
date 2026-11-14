@@ -6,7 +6,12 @@ public sealed record StressHttpOperationSummary(
     long Failures,
     StressLatencySummary? Latency,
     IReadOnlyDictionary<int, long> StatusCodes,
-    IReadOnlyDictionary<string, long> FailureCodes);
+    IReadOnlyDictionary<string, long> FailureCodes)
+{
+    // Rate-limited answers that a paced request waited out and sent again; they are neither
+    // requests nor failures.
+    public long RateLimitWaits { get; init; }
+}
 
 public sealed record StressFullStackSummary(
     string RunId,
@@ -63,6 +68,23 @@ public sealed class FullStackStressMetrics(int seed)
         }
     }
 
+    // A paced request was answered 429 and waits for the window before it is sent again.
+    public void RecordRateLimitWait(string operation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        lock (gate)
+        {
+            if (!operations.TryGetValue(operation, out var metrics))
+            {
+                metrics = new OperationMetrics(
+                    new StressLatencyAccumulator(unchecked(seed + operations.Count + 100)));
+                operations.Add(operation, metrics);
+            }
+
+            metrics.RateLimitWaits++;
+        }
+    }
+
     public IReadOnlyDictionary<string, StressHttpOperationSummary> Capture()
     {
         lock (gate)
@@ -79,7 +101,10 @@ public sealed class FullStackStressMetrics(int seed)
                         new SortedDictionary<int, long>(pair.Value.StatusCodes),
                         new SortedDictionary<string, long>(
                             pair.Value.FailureCodes,
-                            StringComparer.Ordinal)),
+                            StringComparer.Ordinal))
+                    {
+                        RateLimitWaits = pair.Value.RateLimitWaits
+                    },
                     StringComparer.Ordinal);
         }
     }
@@ -91,6 +116,8 @@ public sealed class FullStackStressMetrics(int seed)
         public long Successes { get; set; }
 
         public long Failures { get; set; }
+
+        public long RateLimitWaits { get; set; }
 
         public Dictionary<int, long> StatusCodes { get; } = [];
 

@@ -382,8 +382,11 @@ entries of both processes, and the trace share one id.
   and every timed phase with samples, average, p95 and p99 bucket bounds, and
   maximum; tick overruns and resynchronizations; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
-  snapshot bytes, joins, spawns, and despawns; and allocation, GC collections
-  per generation, and the managed heap. A failed write is logged as a warning
+  snapshot bytes, joins, spawns, and despawns; allocation, GC collections
+  per generation, and the managed heap; and the Mob numbers of the combat and
+  world actor meters, the living Mobs, `engagedMobs`, `movingMobs`, and
+  `mobPathQueue` as their current gauges and `mobPathPlans`, the Mob routes
+  planned in the interval. A failed write is logged as a warning
   and never stops the worker; without the setting nothing is written. The file
   is diagnostics for the load tooling, as
   [Stack Stress Testing](STACK_STRESS_TESTING.md#measurements) describes, not a

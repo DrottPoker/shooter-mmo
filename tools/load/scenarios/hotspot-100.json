@@ -1,0 +1,32 @@
+{
+  "description": "A crowded town: 100 full-stack traders on Development World 2 who all trade at the one vendor, Mira, for 120 seconds, so the vendor's interactions, the Economy and Items commits, and the interest and snapshots of 100 players in one place load at once.",
+  "mode": "full-stack",
+  "workload": "playing",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-2",
+  "generator": {
+    "bots": 100,
+    "ramp-step": 20,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 120,
+    "http-concurrency": 32,
+    "report-interval-seconds": 10,
+    "seed": 1337
+  },
+  "playing": {
+    "roles": {
+      "trader": 100
+    },
+    "teleportToGrounds": true,
+    "grounds": [
+      {
+        "name": "town",
+        "kind": "town",
+        "minimumX": -24,
+        "minimumZ": -24,
+        "maximumX": 24,
+        "maximumZ": 4
+      }
+    ]
+  }
+}

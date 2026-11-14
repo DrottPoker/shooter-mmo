@@ -44,8 +44,8 @@ public readonly record struct PlayingRectangle(float MinimumX, float MinimumZ, f
 }
 
 // A home ground of the playing workload: the rectangle a bot of the ground's kind is
-// teleported into and works in.
-public sealed record PlayingGround(string Name, PlayingGroundKind Kind, PlayingRectangle Area);
+// teleported into and works in. A node field names the kit its gatherers need for its nodes.
+public sealed record PlayingGround(string Name, PlayingGroundKind Kind, PlayingRectangle Area, string? Kit = null);
 
 // The playing section of a load scenario: the share of every role in percent, the share of
 // fighters that carry a bow, whether every bot is teleported to its home ground once after it
@@ -58,7 +58,9 @@ public sealed record PlayingScenario(
 {
     // The roles a bot can play today; the others are refused until they exist.
     public static readonly IReadOnlySet<PlayingRole> ImplementedRoles =
-        new HashSet<PlayingRole> { PlayingRole.Fighter, PlayingRole.Walker };
+        new HashSet<PlayingRole> { PlayingRole.Fighter, PlayingRole.Gatherer, PlayingRole.Walker, PlayingRole.Trader };
+
+    private static readonly Regex KitName = new("^[a-z][a-z0-9-]{0,47}$", RegexOptions.CultureInvariant);
 
     private static readonly Regex Name = new("^[a-z][a-z0-9-]{0,47}$", RegexOptions.CultureInvariant);
 
@@ -110,7 +112,7 @@ public sealed record PlayingScenario(
             foreach (var ground in groundsElement.EnumerateArray())
             {
                 StrictJson.RequireObject(ground, source, "a ground");
-                StrictJson.RequireOnly(ground, source, "a ground", "name", "kind", "minimumX", "minimumZ", "maximumX", "maximumZ");
+                StrictJson.RequireOnly(ground, source, "a ground", "name", "kind", "minimumX", "minimumZ", "maximumX", "maximumZ", "kit");
                 var name = RequireName(ground, source, "a ground");
                 if (grounds.Any(existing => existing.Name == name))
                 {
@@ -125,7 +127,26 @@ public sealed record PlayingScenario(
                     "walking" => PlayingGroundKind.Walking,
                     var other => throw Invalid(source, $"the ground '{name}' has the unknown kind '{other}'.")
                 };
-                grounds.Add(new PlayingGround(name, kind, ReadRectangle(ground, source, $"the ground '{name}'")));
+                string? kit = null;
+                if (ground.TryGetProperty("kit", out _))
+                {
+                    if (kind != PlayingGroundKind.Nodes)
+                    {
+                        throw Invalid(source, $"only a ground of kind 'nodes' names a kit, not the ground '{name}'.");
+                    }
+
+                    kit = StrictJson.RequireString(ground, "kit", source, $"the ground '{name}'");
+                    if (!KitName.IsMatch(kit))
+                    {
+                        throw Invalid(source, $"the kit '{kit}' of the ground '{name}' must be lowercase letters, digits, and dashes.");
+                    }
+                }
+                else if (kind == PlayingGroundKind.Nodes)
+                {
+                    throw Invalid(source, $"the node field '{name}' needs the 'kit' its gatherers work its nodes with.");
+                }
+
+                grounds.Add(new PlayingGround(name, kind, ReadRectangle(ground, source, $"the ground '{name}'"), kit));
             }
         }
 
@@ -133,6 +154,22 @@ public sealed record PlayingScenario(
             && grounds.All(ground => ground.Kind != PlayingGroundKind.Hunting))
         {
             throw Invalid(source, "fighters need at least one ground of kind 'hunting'.");
+        }
+
+        if (shares.GetValueOrDefault(PlayingRole.Gatherer) > 0
+            && grounds.All(ground => ground.Kind != PlayingGroundKind.Nodes))
+        {
+            throw Invalid(source, "gatherers need at least one ground of kind 'nodes'.");
+        }
+
+        // Fighters and gatherers sell what they carry at the town's vendor, and traders stay
+        // there.
+        if ((shares.GetValueOrDefault(PlayingRole.Fighter) > 0
+                || shares.GetValueOrDefault(PlayingRole.Gatherer) > 0
+                || shares.GetValueOrDefault(PlayingRole.Trader) > 0)
+            && grounds.All(ground => ground.Kind != PlayingGroundKind.Town))
+        {
+            throw Invalid(source, "fighters, gatherers, and traders need a ground of kind 'town' with the vendor.");
         }
 
         return new PlayingScenario(shares, bowPercent, teleport, grounds);

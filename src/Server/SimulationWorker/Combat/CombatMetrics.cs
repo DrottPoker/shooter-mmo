@@ -3,6 +3,12 @@ using Mmorpg.SimulationWorker.Realtime;
 
 namespace Mmorpg.SimulationWorker.Combat;
 
+public sealed record CombatMobActivitySnapshot(
+    long EngagedMobs,
+    long MovingMobs,
+    long MobPathQueue,
+    long MobPathPlans);
+
 // Combat instruments. Labels are low-cardinality kinds and outcomes, never an identity.
 public sealed class CombatMetrics : IDisposable
 {
@@ -23,6 +29,7 @@ public sealed class CombatMetrics : IDisposable
     private long engagedMobs;
     private long movingMobs;
     private long mobPathQueue;
+    private long mobPathPlanTotal;
 
     public CombatMetrics()
     {
@@ -112,6 +119,7 @@ public sealed class CombatMetrics : IDisposable
     public void RecordMobPathPlan(string outcome)
     {
         mobPathPlans.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
+        Interlocked.Increment(ref mobPathPlanTotal);
     }
 
     // Mobs that chase, attack, or evade; Mobs whose pose changed this tick; and routes
@@ -121,6 +129,17 @@ public sealed class CombatMetrics : IDisposable
         Interlocked.Exchange(ref engagedMobs, engaged);
         Interlocked.Exchange(ref movingMobs, moving);
         Interlocked.Exchange(ref mobPathQueue, queuedPlans);
+    }
+
+    // The Mob gauges as they stand and the Mob routes planned since the worker started, for the
+    // performance file.
+    public CombatMobActivitySnapshot CaptureMobActivity()
+    {
+        return new CombatMobActivitySnapshot(
+            Volatile.Read(ref engagedMobs),
+            Volatile.Read(ref movingMobs),
+            Volatile.Read(ref mobPathQueue),
+            Volatile.Read(ref mobPathPlanTotal));
     }
 
     public void Dispose()

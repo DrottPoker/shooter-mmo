@@ -1,23 +1,38 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Tools.SimulationBotClient;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
-// Hunts the Mobs of its hunting ground: it equips its weapon, picks the nearest living Mob that
-// no other player's attack owns, walks into range, stands and attacks until the Mob dies or it
-// must flee, loots the Mob's corpse when it may, and rests while its health is low. A Mob that
-// attacks it is fought first. After a death it waits for the respawn, walks back to its own
-// corpse, loots it back, equips again, and hunts on; when the corpse is gone or out of reach it
-// goes on as a walker, and the report counts it.
+// Hunts the Mobs of its hunting ground like a careful player: it equips its weapon, pulls one
+// Mob at a time, preferring a Mob with no other aggressive Mob within reach of it, walks into
+// range, stands and attacks until the Mob dies or it must flee, loots the Mob's corpse when it
+// may, and rests before the next pull. A Mob that attacks it is fought first. When its slots or
+// carry capacity run low it walks to the town's vendor, sells its loot, and walks back; a bow
+// fighter buys arrows there too, and goes on as a walker when it has neither arrows nor the
+// currency for more. After a death it waits for the respawn, walks back to its own corpse,
+// loots it back, equips again, and hunts on; when the corpse is gone or out of reach it goes on
+// as a walker, and the report counts it.
 public sealed class FighterRole : PlayingRoleBase
 {
-    // Below this share of health the fighter stops attacking and walks away.
-    public const double FleeHealthShare = 0.3;
+    // Below this share of health the fighter stops attacking and walks away, and below the
+    // second one already when more than one Mob attacks it.
+    public const double FleeHealthShare = 0.35;
+    public const double CrowdFleeHealthShare = 0.6;
 
     // Below this share it rests before it picks the next Mob, until RestUntilShare.
-    public const double RestHealthShare = 0.6;
-    public const double RestUntilShare = 0.9;
+    public const double RestHealthShare = 0.85;
+    public const double RestUntilShare = 0.95;
+
+    // A bow fighter buys arrows below the first count, up to the second.
+    public const int ArrowRestockThreshold = 100;
+    public const int ArrowTarget = 500;
+
+    // Every other aggressive Mob within its detection range and this margin of a Mob makes the
+    // Mob as unattractive as a Mob this much farther away.
+    public const float CrowdMargin = 4f;
+    public const float CrowdPenalty = 25f;
 
     // A Mob counts for the ground this far outside its rectangle, because Mobs chase and walk.
     public const float GroundMargin = 12f;
@@ -27,8 +42,8 @@ public sealed class FighterRole : PlayingRoleBase
 
     public static readonly TimeSpan CorpseWait = TimeSpan.FromSeconds(6);
     public static readonly TimeSpan RecoveryLimit = TimeSpan.FromMinutes(4);
-    public static readonly TimeSpan MaximumRest = TimeSpan.FromSeconds(40);
-    public static readonly TimeSpan MaximumFlee = TimeSpan.FromSeconds(12);
+    public static readonly TimeSpan MaximumRest = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan MaximumFlee = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan IgnoreTarget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReplanInterval = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan TargetSettle = TimeSpan.FromSeconds(1.5);
@@ -38,7 +53,7 @@ public sealed class FighterRole : PlayingRoleBase
     public static readonly TimeSpan LineOfSightPatience = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OwnCorpseSearch = TimeSpan.FromSeconds(5);
     private const int MaximumApproachLegs = 6;
-    private const float FleeDistance = 25f;
+    private const float FleeDistance = 30f;
     private const float CorpseReach = 2f;
     private const float CorpseSearchRadius = 5f;
     private const float DeathSpotReach = 4f;
@@ -62,9 +77,11 @@ public sealed class FighterRole : PlayingRoleBase
     private SimulationVector3 deathPosition;
     private uint deathLifeSequence;
     private TimeSpan? atDeathSpotSince;
+    private bool lootRefusedFull;
+    private bool restockTried;
 
-    public FighterRole(PlayingGround home, bool teleport, Random random)
-        : base(home ?? throw new ArgumentNullException(nameof(home)), teleport, random)
+    public FighterRole(PlayingGround home, bool teleport, Random random, PlayingGround? town = null)
+        : base(home ?? throw new ArgumentNullException(nameof(home)), teleport, random, town)
     {
     }
 
@@ -113,6 +130,10 @@ public sealed class FighterRole : PlayingRoleBase
             case PlayingOperations.LootAll when outcome.Succeeded && lootingOwnCorpse:
                 body.Count(PlayingCounter.CorpsesRecovered);
                 lootingOwnCorpse = false;
+                break;
+            case PlayingOperations.LootAll when outcome.Code == "inventory_full":
+                // Nothing more fits: the next pull waits for a trip to the vendor.
+                lootRefusedFull = true;
                 break;
             case PlayingOperations.LootClose:
                 corpseOpened = false;
@@ -177,9 +198,19 @@ public sealed class FighterRole : PlayingRoleBase
             {
                 RequireEquip();
             }
+            else if (ArrowDefinition(body) is not null && !restockTried && StartVendorTrip(body, now))
+            {
+                // The arrows are gone: a bow fighter buys more before it gives up.
+                restockTried = true;
+            }
             else
             {
                 // The weapon or its arrows are gone, so the fighter cannot fight any more.
+                if (ArrowDefinition(body) is not null)
+                {
+                    body.Count(PlayingCounter.ArrowsRanOut);
+                }
+
                 body.Stand();
                 walker = new WalkerRole(null, teleport: false, Random);
             }
@@ -187,11 +218,20 @@ public sealed class FighterRole : PlayingRoleBase
             return;
         }
 
-        var attacker = Attacker(body);
+        restockTried = false;
+        var attacker = FindAttacker(body);
         if (attacker is null && HealthShare(body) < RestHealthShare)
         {
             body.Stand();
             Enter(FighterState.Rest, now);
+            return;
+        }
+
+        if (attacker is null
+            && (lootRefusedFull || NeedsToSell(body) || NeedsArrows(body))
+            && StartVendorTrip(body, now))
+        {
+            lootRefusedFull = false;
             return;
         }
 
@@ -286,10 +326,12 @@ public sealed class FighterRole : PlayingRoleBase
         }
 
         targetPosition = ToVector(actor.Position);
-        if (HealthShare(body) < FleeHealthShare)
+        var health = HealthShare(body);
+        if (health < FleeHealthShare || (health < CrowdFleeHealthShare && CountAttackers(body) > 1))
         {
             if (body.ClearTarget())
             {
+                body.Count(PlayingCounter.FighterFlees);
                 Enter(FighterState.Flee, now);
             }
 
@@ -346,7 +388,7 @@ public sealed class FighterRole : PlayingRoleBase
 
     private void Rest(IPlayingBotBody body, TimeSpan now)
     {
-        if (Attacker(body) is { } attacker && HealthShare(body) >= FleeHealthShare)
+        if (FindAttacker(body) is { } attacker && HealthShare(body) >= FleeHealthShare)
         {
             Choose(attacker, now);
             return;
@@ -566,41 +608,89 @@ public sealed class FighterRole : PlayingRoleBase
             && combatant.LifeState == RealtimeCombatLifeState.Alive;
     }
 
-    // The nearest living Mob that attacks the fighter, which it defends itself against first.
-    private static SimulationBotWorldActor? Attacker(IPlayingBotBody body)
+    protected override PlayingPurchase? PlanPurchase(
+        IPlayingBotBody body,
+        VendorProfileDefinition vendor,
+        PlayingVendorVisit visit)
+    {
+        if (ArrowDefinition(body) is not { } arrows || visit.HasFailed(arrows))
+        {
+            return null;
+        }
+
+        var wanted = ArrowTarget - body.View.Items.CountOwned(arrows);
+        var quantity = PlayingVendorVisit.AffordableQuantity(body, vendor, arrows, wanted);
+        return PlayingVendorVisit.PurchaseOf(body, vendor, arrows, quantity);
+    }
+
+    // The arrows of a bow fighter's kit, or null for a fighter without a bow.
+    private static string? ArrowDefinition(IPlayingBotBody body)
+    {
+        return body.Kit.Items
+            .Select(kitItem => kitItem.DefinitionId)
+            .FirstOrDefault(definitionId => body.GameData.Item(definitionId)?.Ammunition is not null);
+    }
+
+    protected override bool StillNeedsToBuy(IPlayingBotBody body)
+    {
+        return NeedsArrows(body);
+    }
+
+    private static bool NeedsArrows(IPlayingBotBody body)
+    {
+        return ArrowDefinition(body) is { } arrows
+            && body.View.Items.CountOwned(arrows) < ArrowRestockThreshold;
+    }
+
+    private static int CountAttackers(IPlayingBotBody body)
     {
         var own = body.View.OwnEntityId;
-        SimulationBotWorldActor? nearest = null;
-        var nearestDistance = float.MaxValue;
-        foreach (var combatant in body.View.Combatants.Values)
+        return body.View.Combatants.Values.Count(combatant =>
+            combatant.TargetEntityId == own
+            && combatant.LifeState == RealtimeCombatLifeState.Alive
+            && body.View.Actors.TryGetValue(combatant.EntityId, out var actor)
+            && actor.Kind == RealtimeWorldActorKind.Mob);
+    }
+
+    // The other living aggressive Mobs that would join a fight with this Mob, because they
+    // stand within their detection range and a margin of it.
+    private static int CountAggressiveNeighbors(IPlayingBotBody body, SimulationBotWorldActor mob)
+    {
+        var count = 0;
+        foreach (var other in body.View.Actors.Values)
         {
-            if (combatant.TargetEntityId != own
-                || combatant.LifeState != RealtimeCombatLifeState.Alive
-                || !body.View.Actors.TryGetValue(combatant.EntityId, out var actor)
-                || actor.Kind != RealtimeWorldActorKind.Mob)
+            if (other.EntityId == mob.EntityId || other.Kind != RealtimeWorldActorKind.Mob)
             {
                 continue;
             }
 
-            var distance = PlanarDistance(body.Position, ToVector(actor.Position));
-            if (distance < nearestDistance)
+            var reach = body.GameData.AggroRange(other.ActorDefinitionId);
+            if (reach <= 0f
+                || !body.View.Combatants.TryGetValue(other.EntityId, out var combatant)
+                || combatant.LifeState != RealtimeCombatLifeState.Alive)
             {
-                nearest = actor;
-                nearestDistance = distance;
+                continue;
+            }
+
+            if (PlanarDistance(ToVector(other.Position), ToVector(mob.Position)) <= reach + CrowdMargin)
+            {
+                count++;
             }
         }
 
-        return nearest;
+        return count;
     }
 
-    // The nearest living Mob of the ground that neither another player's attack owns nor
-    // another player busies.
+    // The living Mob of the ground that neither another player's attack owns nor another
+    // player busies, nearest after a penalty for every aggressive Mob that would join the fight.
     private SimulationBotWorldActor? NearestHuntableMob(IPlayingBotBody body, TimeSpan now)
     {
         var own = body.View.OwnEntityId;
         var area = Home!.Area;
         SimulationBotWorldActor? nearest = null;
-        var nearestDistance = float.MaxValue;
+        SimulationBotWorldActor? closest = null;
+        var nearestScore = float.MaxValue;
+        var closestDistance = float.MaxValue;
         foreach (var actor in body.View.Actors.Values)
         {
             if (actor.Kind != RealtimeWorldActorKind.Mob
@@ -615,11 +705,23 @@ public sealed class FighterRole : PlayingRoleBase
             }
 
             var distance = PlanarDistance(body.Position, ToVector(actor.Position));
-            if (distance < nearestDistance)
+            var score = distance + (CountAggressiveNeighbors(body, actor) * CrowdPenalty);
+            if (score < nearestScore)
             {
                 nearest = actor;
-                nearestDistance = distance;
+                nearestScore = score;
             }
+
+            if (distance < closestDistance)
+            {
+                closest = actor;
+                closestDistance = distance;
+            }
+        }
+
+        if (nearest is not null && closest is not null && nearest.EntityId != closest.EntityId)
+        {
+            body.Count(PlayingCounter.CrowdedMobsSkipped);
         }
 
         return nearest;

@@ -15,6 +15,9 @@ internal sealed record RealtimeMetricsInterval(
     RealtimeNetworkMetricsSnapshot Delta,
     RealtimePerformanceMetricsSnapshot Performance)
 {
+    // The Mob numbers of the interval, when the worker's combat and world actor metrics exist.
+    public RealtimeMobActivity? Mobs { get; init; }
+
     // The counters of current minus previous, never negative, with the gauges of current.
     public static RealtimeNetworkMetricsSnapshot Subtract(
         RealtimeNetworkMetricsSnapshot current,
@@ -45,3 +48,13 @@ internal sealed record RealtimeMetricsInterval(
         return Math.Max(0, current - previous);
     }
 }
+
+// The living Mobs of the worker, the ones that chase, attack, or evade, the ones that moved in
+// the last tick, the routes that wait for the planning budget, and the Mob routes planned in
+// the interval.
+internal sealed record RealtimeMobActivity(
+    long Mobs,
+    long EngagedMobs,
+    long MovingMobs,
+    long MobPathQueue,
+    long MobPathPlans);

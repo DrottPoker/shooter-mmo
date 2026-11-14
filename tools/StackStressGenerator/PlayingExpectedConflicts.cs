@@ -10,6 +10,14 @@ public static class PlayingOperations
     public const string LootOpen = "loot_open";
     public const string LootAll = "loot_all";
     public const string LootClose = "loot_close";
+    public const string GatherOpen = "gather_open";
+    public const string GatherStart = "gather_start";
+    public const string GatherClose = "gather_close";
+    public const string VendorOpen = "vendor_open";
+    public const string VendorSale = "vendor_sale";
+    public const string VendorPurchase = "vendor_purchase";
+    public const string VendorClose = "vendor_close";
+    public const string ItemMove = "item_move";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -19,7 +27,15 @@ public static class PlayingOperations
         ClearTarget,
         LootOpen,
         LootAll,
-        LootClose
+        LootClose,
+        GatherOpen,
+        GatherStart,
+        GatherClose,
+        VendorOpen,
+        VendorSale,
+        VendorPurchase,
+        VendorClose,
+        ItemMove
     ];
 }
 
@@ -34,7 +50,9 @@ public static class PlayingExpectedConflicts
             [PlayingOperations.Equip] = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["item_state_conflict"] =
-                    "The character's item state changed between the intent and its handling: spent arrows commit in batches without an intent, and a death or a loot moves items too."
+                    "The character's item state changed between the intent and its handling: spent arrows commit in batches without an intent, and a death or a loot moves items too.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations from a dead character."
             },
             [PlayingOperations.Teleport] = new Dictionary<string, string>(StringComparer.Ordinal),
             [PlayingOperations.Attack] = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -75,6 +93,64 @@ public static class PlayingExpectedConflicts
                     "The looted corpse was emptied and removed, or decayed, before the close arrived.",
                 ["combat_character_dead"] =
                     "A Mob killed the bot while it closed the corpse; a death closes every view."
+            },
+            [PlayingOperations.GatherOpen] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["world_actor_unavailable"] =
+                    "Another gatherer took the node's last charge after the bot chose it, and the depleted node waits for its respawn.",
+                ["world_interaction_target_changed"] =
+                    "The node depleted or respawned, which changes its interaction revision, after the bot saw it and before the intent arrived.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses every world interaction but a close from a dead character."
+            },
+            [PlayingOperations.GatherStart] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["resource_node_depleted"] =
+                    "Other gatherers took the node's last charges between the bot's open and its start.",
+                ["world_actor_unavailable"] =
+                    "The node depleted between the bot's open and its start.",
+                ["world_interaction_target_changed"] =
+                    "The node depleted between the bot's open and its start, which changes its interaction revision.",
+                ["world_interaction_session_invalid"] =
+                    "The worker closed the interaction, as it does once the node depletes, before the start arrived.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses every world interaction but a close from a dead character."
+            },
+            [PlayingOperations.GatherClose] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["world_actor_unavailable"] =
+                    "The node depleted before the close arrived; the worker closes that interaction itself.",
+                ["world_interaction_target_changed"] =
+                    "The node depleted before the close arrived, which changes its interaction revision; the worker closes that interaction itself.",
+                ["world_interaction_session_invalid"] =
+                    "The worker closed the interaction, as it does once the node depletes, before the close arrived."
+            },
+            [PlayingOperations.VendorOpen] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses every world interaction but a close from a dead character."
+            },
+            [PlayingOperations.VendorSale] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["item_state_conflict"] =
+                    "The character's item state changed between the intent and its handling: spent arrows of a bow fighter commit in batches without an intent.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses every world interaction but a close from a dead character."
+            },
+            [PlayingOperations.VendorPurchase] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["item_state_conflict"] =
+                    "The character's item state changed between the intent and its handling: spent arrows of a bow fighter commit in batches without an intent.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses every world interaction but a close from a dead character."
+            },
+            [PlayingOperations.VendorClose] = new Dictionary<string, string>(StringComparer.Ordinal),
+            [PlayingOperations.ItemMove] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["item_state_conflict"] =
+                    "The character's item state changed between the intent and its handling, such as by a vendor trade whose change had not reached the bot yet.",
+                ["combat_character_dead"] =
+                    "A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations from a dead character."
             }
         };
 

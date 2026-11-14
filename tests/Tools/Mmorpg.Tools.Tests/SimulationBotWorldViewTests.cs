@@ -154,6 +154,37 @@ public sealed class SimulationBotWorldViewTests
     // The worker drops the inputs of a dead character until it respawns, so the inputs sent
     // while dead, and the ones still waiting when the death arrived, measure the death and not
     // the input path.
+    // A bot knows its currency and how much it carries, as the Unity client's carry meter does,
+    // so it can tell when to sell.
+    [Fact]
+    public void TheItemViewKnowsTheCurrencyTheCarriedWeightAndTheFreeSlots()
+    {
+        var items = new SimulationBotItemView();
+        items.ObserveCarry(new RealtimeCarryState(3, 100, 3000));
+        Assert.Equal(3000, items.CarryCapacity);
+
+        var snapshot = PlayingTestWorld.Inventory(
+            4,
+            PlayingTestWorld.Carried("material.wolf_pelt", 0, 10),
+            PlayingTestWorld.Carried("material.wolf_pelt", 3, 5),
+            PlayingTestWorld.Worn("weapon.iron_sword", "main_hand"));
+        items.Load(snapshot with { Currency = 42, CarriedWeight = 400, CarryCapacity = 2000 });
+
+        Assert.Equal(42, items.Currency);
+        Assert.Equal(400, items.CarriedWeight);
+        Assert.Equal(2000, items.CarryCapacity);
+        Assert.Equal(18, items.CountFreeSlots());
+        Assert.Equal(1, items.FindFreeSlot(PlayingTestWorld.PermanentInventory));
+        Assert.Equal(15, items.CountOwned("material.wolf_pelt"));
+
+        // An older carry state never replaces a newer one.
+        items.ObserveCarry(new RealtimeCarryState(3, 999, 999));
+        Assert.Equal(400, items.CarriedWeight);
+        items.ObserveCarry(new RealtimeCarryState(5, 460, 2000));
+        Assert.Equal(460, items.CarriedWeight);
+        Assert.True(items.IsBehindServer);
+    }
+
     [Fact]
     public void InputsOfADeadCharacterAreNotMeasuredAsAcknowledgementLatency()
     {

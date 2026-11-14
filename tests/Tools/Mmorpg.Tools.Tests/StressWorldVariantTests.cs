@@ -18,8 +18,9 @@ public sealed class StressWorldVariantTests
         {
             var result = StressWorldVariant.Write(scenario, Path.Combine(folder, "world-variant"), RepositoryPaths.Root, TextWriter.Null);
 
-            Assert.Equal(20, result.AddedInstances);
-            Assert.True(result.KeepsCollisionRevision);
+            Assert.Equal(28, result.AddedInstances);
+            // The node field's veins block movement, so the collision changes.
+            Assert.False(result.KeepsCollisionRevision);
             var spawns = WorldActorJson.DeserializeSpawnRuntime(File.ReadAllText(Path.Combine(
                 result.WorkerWorldDataPath,
                 "development-world-2",
@@ -34,6 +35,11 @@ public sealed class StressWorldVariantTests
                 spawns.SpawnInstances.Count(instance =>
                     instance.SpawnDefinitionId == "development_world_2.load_south_field_wolves"
                     && instance.ActorId == "mob.grey_wolf"));
+            Assert.Equal(
+                8,
+                spawns.SpawnInstances.Count(instance =>
+                    instance.SpawnDefinitionId.StartsWith("development_world_2.load_meadow_veins.node", StringComparison.Ordinal)
+                    && instance.ActorId == "resource.iron_vein"));
             Assert.True(File.Exists(Path.Combine(result.WorkerWorldDataPath, "development-world-2", "Collision", "manifest.json")));
             Assert.True(File.Exists(Path.Combine(result.WorkerWorldDataPath, "development-world-2", "world.json")));
         }

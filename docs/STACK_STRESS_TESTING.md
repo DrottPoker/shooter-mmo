@@ -22,7 +22,7 @@ does after joining:
 | `inventory` | `full-stack` | Yes | Square walking loop | Relocate one item between Permanent Inventory slots |
 | `loot-hotspot` | `full-stack` | Yes | Stand at the shared corpse | Contend on one durable Mob corpse with deposit and partial loot |
 | `mixed-gameplay` | `full-stack` | Yes | Step back and forth beside the corpse | Combine movement, inventory relocation, corpse deposit, and corpse loot |
-| `playing` | `full-stack` | Yes | Planned walks over the World, like players | Play like players in roles: fight Mobs, loot them, die and recover, and walk, as [Playing Workload](#playing-workload) describes |
+| `playing` | `full-stack` | Yes | Planned walks over the World, like players | Play like players in roles: fight Mobs, loot them, die and recover, gather resource nodes, trade at the vendor, and walk, as [Playing Workload](#playing-workload) describes |
 
 Both modes run independent headless LiteNetLib clients through the real join,
 movement, snapshot, entity lifecycle, simulation-session, and graceful-leave
@@ -30,8 +30,11 @@ paths. Each bot owns an independent UDP endpoint, and the clients use LiteNetLib
 manual polling, so the harness does not create one transport thread per bot.
 The generator polls every bot every 3 ms with a high-resolution timer and sends
 a due input in the same poll, so inputs reach the worker once per tick like a
-Unity client's instead of in bursts. A square loop has legs of two seconds of
-walking.
+Unity client's instead of in bursts. The bots are shared over one or more poll
+threads, `--poll-threads`, and nothing else runs on a poll thread: admissions,
+reports, the process and PostgreSQL samplers, and the bots' HTTP calls run
+elsewhere, and whatever touches a bot from outside is posted to its thread. A
+square loop has legs of two seconds of walking.
 
 Runs target `local-shard-2` and Development World 1, the 64 m stress arena, by
 default, and every bot starts on the World spawn, so all bots stay inside the
@@ -310,7 +313,11 @@ sets is an error.
 | `mixed-100` | full-stack `mixed-gameplay` | 100 bots, 32-way admission, steps of 25 ten seconds apart, 120 s steady |
 | `mixed-250` | full-stack `mixed-gameplay` | 250 bots, 64-way admission, steps of 50 five seconds apart, 60 s steady |
 | `session-cache-on`, `session-cache-off` | full-stack `lifecycle` | The [Redis Session-cache A/B Baseline](#redis-session-cache-ab-baseline) |
-| `playing-smoke` | full-stack `playing` | 20 bots on Development World 2, 12 fighters, a quarter of them with bows, in two hunting grounds and 8 walkers; a variant with 10 Feral Wolves and 10 Grey Wolves more; steps of 10 five seconds apart, 90 s steady; a tooling check of the playing workload |
+| `playing-smoke` | full-stack `playing` | 20 bots on Development World 2 in all four roles: 8 fighters, 2 of them with bows, in two hunting grounds, 4 gatherers at 8 Iron Veins, 6 walkers, and 2 traders; a variant with 10 Feral Wolves, 10 Grey Wolves, and 8 Iron Veins more; steps of 10 five seconds apart, 90 s steady; a tooling check of the playing workload |
+| `playing-100` | full-stack `playing` | 100 bots of the reference mix on the reference variant, steps of 10 six seconds apart, 300 s steady |
+| `playing-250` | full-stack `playing` | 250 bots of the reference mix on the reference variant, steps of 25 six seconds apart, 300 s steady, 2 poll threads |
+| `playing-500` | full-stack `playing` | 500 bots of the reference mix on the reference variant, steps of 25 five seconds apart, 300 s steady, 4 poll threads; the Scale Target |
+| `hotspot-100` | full-stack `playing` | 100 traders in the town of Development World 2 at its one vendor, steps of 20 five seconds apart, 120 s steady |
 
 The tier scenarios use the arguments of the
 [Current Worker-only Baseline](#current-worker-only-baseline) and the
@@ -318,6 +325,26 @@ The tier scenarios use the arguments of the
 three-second inventory and four-second corpse operations, and a ten-second
 metrics interval. All of them keep the product's defaults otherwise, including
 the 20-second lingering body.
+
+The reference mix of the playing scenarios is 40 percent fighters, a quarter of
+them with bows, 20 percent gatherers, 30 percent walkers, and 10 percent
+traders. The reference variant adds 296 wolves to Development World 2, 28 Grey
+Wolves and 9 Feral Wolves in each of eight 40 by 40 m hunting grounds spread
+over its open land, and 120 resource nodes, four fields of 20 Iron Veins and two
+of 20 Oak Trees, away from the hunting grounds, the town, and the spawn. The
+gatherers share the fields in turn, so `playing-500` has 100 gatherers for 120
+nodes, at least one node per gatherer. The town ground holds Mira, the vendor;
+traders stay there, and fighters and gatherers walk there to sell.
+
+### What The Playing Scenarios Are For
+
+| Scenario | What it is for | What a pass means for the Scale Target |
+| --- | --- | --- |
+| `playing-smoke` | A tooling check after a change to the generator, the bot client, or the fixtures: every role plays, every operation of the workload runs once or more, and the report is complete | Nothing; 20 bots say nothing about capacity |
+| `playing-100` | The first tier of the reference workload, which a change to combat, Mobs, interest, items, or the economy runs to see whether 100 players spread over a World still meet the boundary | A tier on the way: the workload that the target names passes at 100 players |
+| `playing-250` | The middle tier, which shows how the stack scales between 100 and 500 and which component grows first | A tier on the way at 250 players |
+| `playing-500` | The Scale Target itself: 500 players of the reference mix on one Shard, spread over the World | A pass on the reference machine is the claim that the Shard holds the target with the workloads it names, for that machine and commit; a 30-minute soak at the same tier must pass too before the claim is recorded |
+| `hotspot-100` | Local density: 100 players in one interest radius, all trading at one NPC, which loads the vendor's interactions, the Economy and Items commits behind them, and the snapshots of a crowd at once | None for the population; it checks the dense case the target sets apart, where the remote cadence may fall by design, and that the vendor path holds a crowd |
 
 ### What The Bots Check
 
@@ -369,12 +396,22 @@ masked. The local secrets and the connection string are the test values that
   configured Redis only for its health check.
 - Full-stack: GameService on `http://127.0.0.1:5500` with the disposable
   PostgreSQL and Redis, the shared worker secret, no development bots, and an
-  authentication limit of 1,000 requests per minute instead of the normal five,
-  which covers the registration and login of every bot. Gameplay workloads add
+  authentication limit of 1,000 requests per minute instead of the normal five. Gameplay workloads add
   the Development environment, `StackStressFixtures:Enabled`, and the fixture
   secret to GameService, and the scenarios with a shared corpse set a
   one-second durable corpse reconciliation, so the stress corpse becomes
-  visible quickly. The generator
+  visible quickly. GameService counts registration and login against two
+  separate limits per remote address, `register` and `login`, both with the
+  `RateLimiting:Authentication` permit limit, so a run may register 1,000 bots
+  and log in 1,000 bots in a minute. The generator provisions inside the limit
+  instead of raising it further: when GameService answers 429, it waits the
+  answer's `Retry-After`, five seconds without one and at most 60, and sends
+  again, up to ten times, and the report counts every wait as the operation's
+  `rateLimitWaits`. The playing workload provisions at most eight accounts at
+  once, whatever `http-concurrency` says: registration and login hash the
+  password, and 32 at once took about eight processors of the reference machine
+  and once delayed the worker's registry heartbeat past its five-second timeout
+  twice, so the worker stopped itself when its registration lease expired. The generator
   gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
   in `STACK_STRESS_FIXTURE_SECRET`, never as arguments.
 - A `playing` scenario with `teleportToGrounds`: the worker gets
@@ -412,10 +449,9 @@ no decision draws on the wall clock.
 | Role | Ground kind | Kit | What it does |
 | --- | --- | --- | --- |
 | Fighter | `hunting` | `sword`, or `bow` | Hunts the Mobs of its ground, as [Fighter](#fighter) describes |
+| Gatherer | `nodes` | The ground's `kit`, such as `pickaxe` or `woodcutting-axe` | Gathers the resource nodes of its field, as [Gatherer](#gatherer) describes |
 | Walker | `walking` | None | Starts on its ground, then walks to random reachable destinations over the whole World with pauses, as the [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) do |
-
-The gatherer and the trader of the reference scenario follow in a later step;
-a scenario that gives them a share is refused until they exist.
+| Trader | `town` | `trader` | Trades at the town's vendor, as [Trader](#trader) describes |
 
 A role is a small state machine that thinks at human speed: between two
 decisions it waits 250 to 650 ms, drawn per bot from the seed, and it sends at
@@ -427,26 +463,113 @@ fake body and a fake clock.
 
 ### Fighter
 
-A fighter picks the nearest living Mob of its ground, up to 12 m outside the
-rectangle, that no other player's attack owns or busies, as the combatant state
-tells it, walks into range of its weapon, stands, and attacks. A Mob that
-attacks the fighter is fought first. It attacks until the Mob dies, walks back
-into range when the Mob moved away, and below 30 percent health stops attacking,
-walks 25 m away, and rests. When it stands in range and the worker reports that
-cover blocks its line of sight, it waits three seconds for the Mob to move and
-then gives that Mob up for 30 seconds and takes another one, because walking
-into range again would leave it standing where it is. When the Mob died and its
-corpse is lootable for the fighter, it walks to the corpse, opens it, loots all,
-and closes it; a corpse that another player's attack owns is left and counted.
-Below 60 percent health it rests until 90 percent, at most 40 seconds.
+A fighter pulls one Mob at a time, like a careful player. It picks among the
+living Mobs of its ground, up to 12 m outside the rectangle, that no other
+player's attack owns or busies, as the combatant state tells it: the nearest
+one, after a penalty of 25 m for every other living aggressive Mob within that
+Mob's detection range and 4 m of it, which would join the fight. It still fights
+a crowded Mob when nothing better is in reach, so deaths still happen, and the
+report counts every Mob it passed over for a less crowded one. It walks into
+range of its weapon, stands, and attacks. A Mob that attacks the fighter is
+fought first. It attacks until the Mob dies and walks back into range when the
+Mob moved away. Below 35 percent health, or below 60 percent while more than one
+Mob attacks it, it stops attacking, walks 30 m away, at most 15 seconds, and
+rests. When it stands in range and the worker reports that cover blocks its line
+of sight, it waits three seconds for the Mob to move and then gives that Mob up
+for 30 seconds and takes another one, because walking into range again would
+leave it standing where it is. When the Mob died and its corpse is lootable for
+the fighter, it walks to the corpse, opens it, loots all, and closes it; a
+corpse that another player's attack owns is left and counted. Before the next
+pull it rests below 85 percent health until 95 percent, at most 60 seconds.
+
+When its slots or carry capacity run low, or a loot all was refused with
+`inventory_full`, the fighter makes [the trip to the vendor](#the-trip-to-the-vendor)
+before the next pull. A bow fighter makes it too when it owns fewer than 100
+arrows, and buys arrows up to 500, as many as its currency pays for; the vendor
+sells them at their value of 1. When its arrows are gone and it carries no more
+to equip, it makes the trip once to buy arrows, and it goes on as a walker when
+it then still has none, because it had neither arrows nor the currency for
+them; the report counts it as `arrowsRanOut`.
 
 After a death the fighter waits for the respawn at the World spawn, walks back
 to its death spot in legs of at most one planned route, opens its own corpse,
 loots it all, which puts the kit back into the equipment, and hunts on. When
 the corpse is not there within five seconds of arriving, the walk makes no
 progress, or four minutes pass, the bot goes on as a walker, and the report
-counts the lost corpse. A fighter whose weapon or arrows are gone goes on as a
-walker too.
+counts the lost corpse. A fighter whose weapon is gone goes on as a walker too.
+
+### Gatherer
+
+A gatherer equips the tool of its kit and works the resource nodes of its node
+field, up to 4 m outside the rectangle, whose gathering capability needs a tool
+kind its tool has, as the compiled actor catalog tells it. It picks the nearest
+node with charges, finds a spot with walkable ground from which a character
+reaches the node's interaction box and sees its center, walks there, opens the
+node, starts gathering, and stands still while the yields arrive; moving would
+stop the gathering. When the node depletes, the worker stops the gathering and
+closes the interaction, and the gatherer picks the next node. It checks the
+line of sight before it walks, with the worker's rule: a ray through the combat
+query layer of the same collision from the eye, 1.6 m above the stand point, to
+the center of the node's interaction box.
+
+- A node that depleted while the gatherer walked to it, or that the worker
+  reports as depleted at the open or the start, counts as found empty and is
+  passed over for 10 seconds.
+- A node without a spot in reach and in sight, or one the worker reports out of
+  sight or reach, is given up for 60 seconds and counted, so the gatherer never
+  stands still in front of cover.
+- When no node of the field has charges, the gatherer waits for their respawn
+  and the report counts the empty field once per wait.
+- When its slots or carry capacity run low, it closes the node and makes
+  [the trip to the vendor](#the-trip-to-the-vendor), which sells its yields
+  and keeps its tool.
+- A Mob that attacks it makes it close the node and walk 30 m away, at most 15
+  seconds, before it looks for a node again.
+- After a death it waits for the respawn, walks to its corpse, loots it back,
+  equips its tool again, and gathers on; a lost corpse makes it a walker, as
+  for a fighter.
+
+The share of node choices that found the node empty, `nodesFoundEmpty` of
+`gatherAttempts`, shows whether the fields hold enough nodes for their
+gatherers.
+
+### Trader
+
+A trader stays in the town. It walks up to the vendor, opens it, makes two to
+five trades 1.5 to 4 seconds apart, closes it, and then idles 8 to 25 seconds,
+standing or strolling to a random point of the town, before the next visit. A
+trade is one of these, drawn per trade: a purchase of a few arrows or another
+cheap supply that leaves the trader at least 20 currency, a sale of one to
+three of a stack it carries, such as the 50 Wolf Pelts of its kit or what it
+bought before, or the move of a carried item to a free slot of its inventory.
+When the drawn trade is impossible, it makes another kind. A trader whose slots
+or carry capacity run low sells first. After a death it recovers its corpse
+like a gatherer.
+
+### The Trip To The Vendor
+
+The role base makes the trip for every role that needs it, so a fighter and a
+gatherer sell the same way:
+
+1. The bot walks toward the center of the scenario's town ground until the
+   vendor, the NPC whose menu offers the vendor capability, is in its view.
+2. It picks a spot with walkable ground within 0.8 to 2.2 m of the vendor's
+   interaction box, inside the worker's start range of 3 m, from which it sees
+   the box's center, walks there, and opens the vendor.
+3. One trade every one to 2.5 seconds, it sells every carried stack that is not
+   part of its kit and that the vendor buys for more than nothing, and then
+   buys what its role needs, such as a bow fighter's arrows. It prices every
+   trade with the catalog's `VendorPricing`, as the Unity client does, and
+   sends the price it expects.
+4. It closes the vendor and walks back to the center of its home ground.
+
+A trip that ends with the bot still short of room, because nothing it carries
+sells, or that found no vendor, is counted, and the next trip waits five
+minutes. So does the next trip after a visit that could not buy what the role
+still lacks, such as arrows a bow fighter cannot pay for: it hunts on with the
+arrows it has. A Mob that attacks the bot ends the trip, so the role can fight or
+flee, and the need starts a new trip later. A scenario with fighters,
+gatherers, or traders needs a ground of kind `town`.
 
 ### What A Playing Bot Sees And Sends
 
@@ -461,14 +584,19 @@ messages it decodes anyway, and the session decides nothing:
   the revision of the open corpse view.
 - World interaction and gathering state, and the admin state.
 - Its own items, from the kit or a full read, patched by
-  `OwnerItemStateChanged` and `OwnerItemQuantityChanged`. When a committed
-  change reached the bot only as a newer carry state, such as a death, or a
-  result reports a revision its items do not have, the bot reads the full item
-  state over HTTP, as the Unity client does; it never polls.
+  `OwnerItemStateChanged` and `OwnerItemQuantityChanged`, with its currency
+  and, from every carry state, its carried weight and carry capacity. When a
+  committed change reached the bot only as a newer carry state, such as a
+  death, or a result reports a revision its items do not have, the bot reads
+  the full item state over HTTP, as the Unity client does; it never polls.
 
 It sends only what a Unity client can send: movement inputs with planned paths,
-`ItemOperationIntent` equip, `CombatIntent`, `CorpseInteractionIntent`, and the
-one `AdminIntent` teleport. Routes come from the same planner and collision as
+`ItemOperationIntent` equip and relocate, `CombatIntent`,
+`CorpseInteractionIntent`, `WorldInteractionIntent` open, capability action,
+and close, and the one `AdminIntent` teleport. It reads what a client reads:
+the compiled item catalog for equipment slots, weapon ranges, tool kinds, and
+vendor prices, and the compiled actor catalog for the tool a node needs, the
+interaction box of an actor, and how far an aggressive Mob detects a player. Routes come from the same planner and collision as
 the Unity client's clicks, through `SimulationBotNavigation` in
 `tools/SimulationBotClient`, which the active simulation bots share. The worker
 drops the movement inputs of a dead character until it respawns, so their
@@ -491,11 +619,13 @@ from `StackStressFixtures:Kits`:
 | `bow` | `weapon.training_shortbow` and 500 `ammunition.bronze_arrow` |
 | `pickaxe` | `tool.starter_pickaxe` |
 | `woodcutting-axe` | `tool.woodcutting_axe` |
+| `trader` | 50 `material.wolf_pelt`, goods that the vendor buys |
 
 The bot reads the equipment slot of every kit item and the range of its weapon
 from the compiled item catalog, as the client does, and equips the items itself.
-Wolves drop arrows, and a loot all tops up the equipped stack, so archers keep
-shooting in long runs.
+Wolves drop arrows, which a bow fighter equips when its stack runs out, and the
+vendor sells more, so archers keep shooting in long runs. Every character also
+starts with the economy's starting balance of 100.
 
 ### The Teleport To The Home Ground
 
@@ -543,8 +673,18 @@ the generator holds this table, and the report repeats it:
 | `loot_all` | `corpse_not_found` | The corpse decayed between the open and the loot |
 | `loot_all` | `inventory_full` | The fighter's slots or carry capacity are used up by what it looted; a player meets the same answer until it sells or drops something |
 | `loot_close` | `corpse_not_found` | The looted corpse was emptied and removed, or decayed, before the close arrived |
+| `gather_open` | `world_actor_unavailable` | Another gatherer took the node's last charge after the bot chose it, and the depleted node waits for its respawn |
+| `gather_open` | `world_interaction_target_changed` | The node depleted or respawned, which changes its interaction revision, after the bot saw it |
+| `gather_start` | `resource_node_depleted`, `world_actor_unavailable`, `world_interaction_target_changed` | Other gatherers took the node's last charges between the open and the start |
+| `gather_start` | `world_interaction_session_invalid` | The worker closed the interaction, as it does once the node depletes, before the start arrived |
+| `gather_close` | `world_actor_unavailable`, `world_interaction_target_changed`, `world_interaction_session_invalid` | The node depleted before the close arrived, and the worker closes that interaction itself |
+| `vendor_sale`, `vendor_purchase` | `item_state_conflict` | Spent arrows of a bow fighter commit in batches without an intent, between the trade and its handling |
+| `item_move` | `item_state_conflict` | The item state changed between the move and its handling, such as by a trade whose change had not reached the bot yet |
+| `equip`, `item_move`, `gather_open`, `gather_start`, `vendor_open`, `vendor_sale`, `vendor_purchase` | `combat_character_dead` | A Mob killed the bot after it sent the intent and before the worker handled it; the worker refuses item operations and every world interaction but a close from a dead character |
 
-`teleport` has no expected conflict.
+`teleport` and `vendor_close` have no expected conflict, and
+`inventory_full` on `loot_all` should stay near zero, because a fighter makes
+the trip to the vendor before its room runs out.
 
 ### Playing Scenarios
 
@@ -555,11 +695,13 @@ The `playing` section of a scenario:
 | `roles` | The percent of every role, `fighter`, `gatherer`, `walker`, and `trader`, adding up to 100 |
 | `fighterBowPercent` | The percent of the fighters that carry a bow, 0 by default |
 | `teleportToGrounds` | Whether every bot is teleported to its home ground once after its join |
-| `grounds` | The home grounds: a `name`, a `kind` of `hunting`, `nodes`, `town`, or `walking`, and a rectangle of `minimumX`, `minimumZ`, `maximumX`, and `maximumZ`. Fighters need a hunting ground |
+| `grounds` | The home grounds: a `name`, a `kind` of `hunting`, `nodes`, `town`, or `walking`, and a rectangle of `minimumX`, `minimumZ`, `maximumX`, and `maximumZ`. A ground of kind `nodes` also names the `kit` its gatherers work its nodes with, and only it does. Fighters need a hunting ground, gatherers a node field, and fighters, gatherers, and traders a town |
 
 A run fails before the first bot joins when a ground has no ground under its
 center, and a bot fails its teleport when the worker finds no walkable ground
-there.
+there. A test checks that every kit a shipped scenario hands out is one the
+GameService kit fixture grants and that its node fields hold a node for every
+gatherer.
 
 ## World Variant
 
@@ -705,7 +847,9 @@ Every JSON report contains:
 - SimulationWorker and generator CPU, working set, private memory, and thread
   summaries, including steady-state memory trend windows.
 - `generatorTiming`: how late the latest bot's poll ran against the 3 ms poll
-  schedule in every poll round of the steady interval, and, for the `playing`
+  schedule in every poll round of every poll thread in the steady interval, the
+  number of poll threads, how long one step of the process and PostgreSQL
+  samplers took, which run apart from the poll threads, and, for the `playing`
   workload, how long its route plans of the steady interval waited for a
   planner thread, which the [validity rules](#validity) judge.
 
@@ -732,15 +876,27 @@ Full-stack reports additionally contain:
   no fixed quantity to expect, because Mobs drop loot and arrows are spent, so
   only the slot, custody, and pending-operation invariants judge it.
 - `playing`, for the `playing` workload: the role and kit counts; the counters
-  `kills`, `mobDamageTaken`, `botDeaths`, `corpsesRecovered`, `corpsesLost`,
-  `lootRefusedOwned`, `nodesFoundEmpty`, `routePlans`, `routePlansBusy`,
-  `routePlansWithoutPath`, `walksFailed`, `itemStateReloads`, and
-  `rejectionPauses`; the timings `attack_first_hit`, from an attack intent to
-  the bot's first hit on its target, and `route_plan` and `route_queue` of the
+  `kills`, `mobDamageTaken`, `botDeaths` and the deaths of every role,
+  `corpsesRecovered`, `corpsesLost`, `lootRefusedOwned`, `gatherAttempts`,
+  `nodesFoundEmpty`, `nodeFieldsEmpty`, `gatherYields`, the gathering stops by
+  depletion and otherwise, `nodesBlockedFromSight`, `vendorTrips`,
+  `vendorSales`, `vendorPurchases`, `currencyEarned`, `currencySpent`,
+  `vendorTripsWithoutRoom`, `vendorTripsFailed`, `arrowsBought`,
+  `arrowsRanOut`, `fighterFlees`, `crowdedMobsSkipped`, `nonFighterFlees`,
+  `traderItemMoves`, `routePlans`, `routePlansBusy`, `routePlansWithoutPath`,
+  `walksFailed`, `itemStateReloads`, and `rejectionPauses`, all over the whole
+  run; the timings `attack_first_hit`, from an attack intent to the bot's first
+  hit on its target, `gather_yield_lateness`, how much later than the cycle
+  time the worker announced a yield reached the gatherer, which holds the
+  GameService commit of the yield, and `route_plan` and `route_queue` of the
   steady interval; and the table of [Expected Conflicts](#expected-conflicts).
+  The deaths per fighter and ten minutes are `fighterDeaths` divided by the
+  fighters and by the run's minutes over ten.
   Its gameplay operations are `equip`, `teleport`, `attack`, `attack_clear`,
-  `loot_open`, `loot_all`, and `loot_close`, each with its latency from intent
-  to result and its result codes.
+  `loot_open`, `loot_all`, `loot_close`, `gather_open`, `gather_start`,
+  `gather_close`, `vendor_open`, `vendor_sale`, `vendor_purchase`,
+  `vendor_close`, and `item_move`, each with its latency from intent to result
+  and its result codes.
 
 SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
@@ -766,8 +922,12 @@ seconds, and adds a `workerPerformance` section to the report:
 - `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
   resynchronizations, allocation, and GC collections, each as its total and its
   largest interval.
-- `levels`: players, peers, entities, CPU, working set, backlogs, and the
-  managed heap, each as its average and highest value.
+- `levels`: players, peers, entities, CPU, working set, backlogs, the managed
+  heap, and the worker's Mob numbers, `mobs`, `engagedMobs` that chase,
+  attack, or evade, `movingMobs` that moved in the interval's last tick, and
+  `mobPathQueue`, the Mob routes waiting for the planning budget, each as its
+  average and highest value. The Mob routes planned, `mobPathPlans`, are a
+  counter.
 - `runIntervals`, `runSnapshotDrops`, and `runQuotaRejections`: the intervals
   that overlap the whole run, ramp and leave included, and their drops and
   quota rejections.
@@ -839,8 +999,8 @@ validity rules judge the generator, not the stack:
 
 | Rule | Limit | Why |
 | --- | --- | --- |
-| `generator_poll_lateness_p99_ms` | p99 <= 16.67 ms over the poll rounds of the steady interval | Within half a 30 Hz tick, every bot sends its input in the tick it is due. Four `playing-smoke` runs on the reference machine measured a p99 between 3.1 and 4.6 ms, with single rounds of up to about 100 ms |
-| `generator_route_queue_p99_ms` | p99 <= 1,000 ms over the route plans of the steady interval | A bot that waits longer than a second for its route stands instead of walking. Four `playing-smoke` runs measured a p99 below 0.5 ms with 4 planner threads; a workload without routes skips it |
+| `generator_poll_lateness_p99_ms` | p99 <= 16.67 ms over the poll rounds of every poll thread in the steady interval | Within half a 30 Hz tick, every bot sends its input in the tick it is due. `playing-smoke` runs on the reference machine measured a p99 between 2.8 and 4.6 ms. Their single rounds of up to about 100 ms came from the process and PostgreSQL samplers, whose step takes 25 to 100 ms and then ran on the poll loop; apart from it, the worst round fell to 14 ms. One poll thread held `playing-100` at a p99 of 6 ms, but 500 playing bots took 86 percent of its core and a p99 of 101 ms, so `playing-500` shares its bots over four poll threads, which measured 13.7 ms |
+| `generator_route_queue_p99_ms` | p99 <= 1,000 ms over the route plans of the steady interval | A bot that waits longer than a second for its route stands instead of walking. `playing-smoke` runs measured a p99 below 0.5 ms with 4 planner threads, and `playing-500` 0.3 ms; a workload without routes skips it |
 
 A failed validity rule makes the verdict invalid: the generator exits with 4,
 the summary's result is `could not measure`, and `tools/Test-Load.ps1` exits
@@ -992,10 +1152,11 @@ relocation and shared corpse deposit and loot through the real worker and
 GameService transaction path.
 
 The `playing` workload adds combat with Mobs, Mob loot, deaths and corpse
-recovery, equipment, the admin teleport, and walks over a World. Gathering,
-trading, insurance claims, quest item policies, Bank, Recovery Storage, and Bag
-nesting are not generated yet. Add those as explicit workload profiles or roles
-so the stable lifecycle baseline does not silently change.
+recovery, equipment, the admin teleport, walks over a World, gathering at
+resource nodes, and vendor sales and purchases with item moves. Insurance
+claims, quests and their item policies, Bank, Recovery Storage, and Bag nesting
+are not generated yet. Add those as explicit workload profiles or roles so the
+stable lifecycle baseline does not silently change.
 
 Distributed load generation and remote service targets are not implemented:
 every URL and the PostgreSQL host must be loopback.
@@ -1049,6 +1210,8 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--scenario-file` | none | `playing`: the load scenario whose `playing` section the bots play; the workload needs it |
 | `--world-data-path` | `WorldData/Worlds` below the generator's output | `playing`: the World data folder, laid out as the worker's, whose collision the bots plan on; the build copies the checked-in collision there |
 | `--item-catalog-path` | `WorldData/Items/core.item-catalog.json` below the output | `playing`: the compiled item catalog the bots read like a client |
+| `--actor-catalog-path` | `WorldData/Actors/core.actor-catalog.json` below the output | `playing`: the compiled actor catalog the bots read like a client |
+| `--poll-threads` | `1` | The threads that share the bots and poll each of them every 3 ms, 1 to 16; a scenario may set it |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The
