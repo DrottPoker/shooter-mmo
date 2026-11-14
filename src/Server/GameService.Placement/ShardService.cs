@@ -498,7 +498,9 @@ internal sealed class ShardService(
     }
 
     // Development bot reservations exist only in GameService memory, so they are joined
-    // in as parameters and count against capacity like database sessions and tickets.
+    // in as parameters and count against capacity like database sessions and tickets. The
+    // worker row lock serializes the joins of one worker while they count; FOR NO KEY UPDATE
+    // lets the foreign key insert of a redeemed session through.
     private static async Task<PlacementRow?> SelectPlacementAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -580,7 +582,7 @@ internal sealed class ShardService(
                 worker.active_connections::numeric
                 / greatest(worker.max_connections, 1)) asc,
                 worker.id asc
-            for update of worker
+            for no key update of worker
             limit 1;
             """;
 
@@ -661,7 +663,7 @@ internal sealed class ShardService(
              and assignment.released_at is null
             where shard.id = @ShardId
               and shard.is_enabled
-            for update of worker;
+            for no key update of worker;
             """;
 
         return await connection.QuerySingleOrDefaultAsync<PlacementRow>(new CommandDefinition(

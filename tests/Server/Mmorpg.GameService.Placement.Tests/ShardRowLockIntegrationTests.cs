@@ -70,6 +70,26 @@ public sealed class ShardRowLockIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task AJoinTicketDoesNotWaitForASessionOfTheWorkerInFlight()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+        // The foreign key lock that the session of a ticket redeem takes on the worker row.
+        await using var foreignKeyInsert = await HeldLock.TakeAsync(
+            context,
+            "select 1 from simulation_workers where id = 'local-simulation-worker-1' for key share;");
+
+        var join = await context.ShardService.CreateJoinTicketAsync(
+                player.Account,
+                ShardId,
+                new JoinShardRequest(player.Character.Id),
+                CancellationToken.None)
+            .WaitAsync(MustFinishWithin);
+
+        Assert.True(join.Succeeded, join.Error?.Message);
+    }
+
+    [PostgresIntegrationFact]
     public async Task ARenewalAnswersLikeTheRegistrationAndMovesTheLease()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
