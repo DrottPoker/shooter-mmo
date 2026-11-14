@@ -167,10 +167,13 @@ function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous, [i
         }
     }
 
-    $gpu = 0.0
+    # Without an answer of the counters the use of the graphics card is unknown, not zero. An
+    # engine that ended between the listing and the reading only costs its own value.
+    $gpu = $null
     $gpuByName = @{}
     $counters = Get-Counter '\GPU Engine(*engtype_3D)\Utilization Percentage' -ErrorAction SilentlyContinue
-    if ($counters) {
+    if ($counters -and @($counters.CounterSamples).Count -gt 0) {
+        $gpu = 0.0
         foreach ($counter in $counters.CounterSamples) {
             if ($counter.InstanceName -notmatch 'pid_(\d+)_') {
                 continue
@@ -195,7 +198,8 @@ function Get-ForeignLoadSample([string]$OwnProjectPath, [hashtable]$Previous, [i
     }
 }
 
-# Waits until other processes stay below both limits for thirty seconds.
+# Waits until other processes stay below both limits for thirty seconds. A sample without the
+# graphics card's use is not quiet.
 function Wait-QuietMachine {
     $previous = @{}
     $null = Get-ForeignLoadSample $projectPath $previous $PID
@@ -209,12 +213,16 @@ function Wait-QuietMachine {
         $now = Get-Date
         $processors = $sample.Seconds / [Math]::Max(0.5, ($now - $last).TotalSeconds)
         $last = $now
-        if ($processors -le $DisturbedProcessors -and $sample.GpuPercent -le $DisturbedGpuPercent) {
+        if ($processors -le $DisturbedProcessors -and $null -ne $sample.GpuPercent -and $sample.GpuPercent -le $DisturbedGpuPercent) {
             $quiet++
         }
         else {
             # One line when the wait starts and one about every minute after.
-            if ($busy % 25 -eq 0) {
+            if ($busy % 25 -eq 0 -and $null -eq $sample.GpuPercent) {
+                Write-Step ("Waiting: the use of the graphics card cannot be read from the counter 'GPU Engine'; other processes use {0:N1} processors ({1})." -f
+                    $processors, ($sample.Names -join ", "))
+            }
+            elseif ($busy % 25 -eq 0) {
                 Write-Step ("Waiting: other processes use {0:N1} processors ({1}) and {2:N0} % of the graphics card ({3})." -f
                     $processors, ($sample.Names -join ", "), $sample.GpuPercent, ($sample.GpuNames -join ", "))
             }
@@ -224,7 +232,7 @@ function Wait-QuietMachine {
         }
 
         if ($now -gt $deadline) {
-            throw "Other programs kept the processor or the graphics card busy for $QuietTimeoutMinutes minutes."
+            throw "Other programs kept the processor or the graphics card busy for $QuietTimeoutMinutes minutes, or the use of the graphics card could not be read."
         }
     }
 }
@@ -282,7 +290,8 @@ function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End) {
     $rows = @()
     if (Test-Path -LiteralPath $Path) {
         foreach ($row in @(Import-Csv -LiteralPath $Path)) {
-            # A row that the monitor could not complete is no sample.
+            # A row that the monitor could not complete, also one without the graphics card's
+            # use, is no sample.
             $time = [DateTime]::MinValue
             $processors = 0.0
             $gpu = 0.0
