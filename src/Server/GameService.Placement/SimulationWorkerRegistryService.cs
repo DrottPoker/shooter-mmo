@@ -71,10 +71,10 @@ internal sealed class SimulationWorkerRegistryService(
         }
 
         // The registration: a first heartbeat, a new runtime, a takeover of the Shard, or
-        // another World. It changes who owns the Shard, so it holds the Shard row and the
-        // assignment exclusively. It locks the assignment before the workers it changes, against
-        // the lock order; it runs once per worker start, and when it deadlocks with an operation
-        // of the runtime it replaces, PostgreSQL ends one of them and both sides try again.
+        // another World. It changes who owns the Shard, so it holds the Shard row, the workers
+        // it may change, and the assignment exclusively, in the lock order. It ends the sessions
+        // and tickets of a runtime it replaces after those locks; when that deadlocks with an
+        // operation of the replaced runtime, PostgreSQL ends one of them and both try again.
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -110,10 +110,11 @@ internal sealed class SimulationWorkerRegistryService(
                 "The simulation worker, node, and shard must belong to the same fleet.");
         }
 
-        var assignedWorker = await GetAssignedWorkerAsync(
+        var assignedWorker = await LockAssignedWorkerAsync(
             connection,
             transaction,
             normalizedShardId,
+            normalizedWorkerId,
             (int)options.WorkerHeartbeatTimeout.TotalSeconds,
             cancellationToken);
         var worldChanged = !string.Equals(
@@ -655,30 +656,85 @@ internal sealed class SimulationWorkerRegistryService(
             cancellationToken: cancellationToken));
     }
 
-    private static async Task<AssignedWorkerRow?> GetAssignedWorkerAsync(
+    // Locks the worker that the Shard is assigned to and the registering worker, then the
+    // assignment, and only then reads the assigned worker's health. The caller holds the Shard
+    // row FOR NO KEY UPDATE, which every change of the Shard's assignment takes, so the
+    // assignment cannot change between the first read and its lock. Each step is a statement of
+    // its own: a statement that waits for a row lock still reads with the snapshot from before
+    // the wait, so a health read in the locking statement would miss the renewal it waited for
+    // and take over a worker that has just renewed its lease.
+    private static async Task<AssignedWorkerRow?> LockAssignedWorkerAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string shardId,
+        string registeringWorkerId,
         int heartbeatTimeoutSeconds,
         CancellationToken cancellationToken)
     {
-        return await connection.QuerySingleOrDefaultAsync<AssignedWorkerRow>(new CommandDefinition(
-            """
-            select assignment.worker_id as "WorkerId",
-                   worker.runtime_id as "RuntimeId",
-                   coalesce(
-                       worker.is_online
-                       and worker.last_heartbeat_at is not null
-                       and worker.last_heartbeat_at
-                           + make_interval(secs => @HeartbeatTimeoutSeconds) > now(),
-                       false) as "IsHealthy"
+        const string assignedWorkerSql = """
+            select assignment.worker_id
             from simulation_assignments assignment
-            left join simulation_workers worker on worker.id = assignment.worker_id
             where assignment.shard_id = @ShardId
               and assignment.released_at is null
-            for update of assignment;
+            """;
+
+        var expectedWorkerId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            assignedWorkerSql + ";",
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        var workerIds = expectedWorkerId is null
+            ? new[] { registeringWorkerId }
+            : new[] { expectedWorkerId, registeringWorkerId };
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            select worker.id
+            from simulation_workers worker
+            where worker.id = any(@WorkerIds)
+            order by worker.id
+            for no key update of worker;
             """,
-            new { ShardId = shardId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
+            new { WorkerIds = workerIds },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        var assignedWorkerId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            assignedWorkerSql + " for update of assignment;",
+            new { ShardId = shardId },
+            transaction,
+            cancellationToken: cancellationToken));
+        if (!string.Equals(assignedWorkerId, expectedWorkerId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The assignment of Shard {shardId} changed under its Shard row lock.");
+        }
+
+        if (assignedWorkerId is null)
+        {
+            return null;
+        }
+
+        return await connection.QuerySingleAsync<AssignedWorkerRow>(new CommandDefinition(
+            """
+            select @WorkerId as "WorkerId",
+                   (
+                       select worker.runtime_id
+                       from simulation_workers worker
+                       where worker.id = @WorkerId
+                   ) as "RuntimeId",
+                   coalesce(
+                       (
+                           select worker.is_online
+                                  and worker.last_heartbeat_at is not null
+                                  and worker.last_heartbeat_at
+                                      + make_interval(secs => @HeartbeatTimeoutSeconds) > now()
+                           from simulation_workers worker
+                           where worker.id = @WorkerId
+                       ),
+                       false) as "IsHealthy";
+            """,
+            new { WorkerId = assignedWorkerId, HeartbeatTimeoutSeconds = heartbeatTimeoutSeconds },
             transaction,
             cancellationToken: cancellationToken));
     }

@@ -124,6 +124,42 @@ public sealed class ShardRowLockIntegrationTests
     }
 
     [PostgresIntegrationFact]
+    public async Task ATakeoverNeverMissesTheRenewalItWaitedFor()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        // The worker's lease has run out, and its renewal is in flight: it has written the
+        // worker row and holds the assignment, as TryRenewAsync does, but has not committed.
+        await context.ExecuteScalarIntAsync(
+            "update simulation_workers set last_heartbeat_at = now() - interval '10 minutes' returning 1;");
+        var renewalInFlight = await HeldLock.TakeAsync(
+            context,
+            "update simulation_workers set last_heartbeat_at = now() where id = 'local-simulation-worker-1' returning 1;");
+        Task<ServiceResult<SimulationWorkerHeartbeatResponse>> takeover;
+        await using (renewalInFlight)
+        {
+            await renewalInFlight.ExecuteAsync(
+                "select id from simulation_assignments where shard_id = @ShardId and released_at is null for share;");
+            takeover = context.SimulationWorkerRegistryService.HeartbeatAsync(
+                "another-simulation-worker",
+                PostgresIntegrationTestContext.CreateHeartbeatRequest("another-worker-runtime"),
+                CancellationToken.None);
+
+            var first = await Task.WhenAny(takeover, Task.Delay(MustStillWaitAfter));
+            Assert.NotSame(takeover, first);
+            await renewalInFlight.CommitAsync();
+        }
+
+        var refused = await takeover.WaitAsync(MustFinishWithin);
+
+        Assert.False(refused.Succeeded);
+        Assert.Equal("shard_assignment_conflict", refused.Error!.Code);
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_workers where id = 'local-simulation-worker-1' and is_online;"));
+        Assert.Equal(1, await context.ExecuteScalarIntAsync(
+            "select count(*) from simulation_assignments where released_at is null and worker_id = 'local-simulation-worker-1';"));
+    }
+
+    [PostgresIntegrationFact]
     public async Task ARenewalAnswersLikeTheRegistrationAndMovesTheLease()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();

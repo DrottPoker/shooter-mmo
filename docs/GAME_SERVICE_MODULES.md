@@ -833,11 +833,18 @@ deaths, and heartbeats of one Shard never queue on its row. A worker heartbeat
 has two paths. The renewal, every heartbeat that changes nothing but the lease,
 updates the worker row and then holds the assignment `FOR SHARE`, the lock of
 every item operation, in the lock order. The registration, a first heartbeat, a
-new runtime, a takeover, or another World, locks the assignment `FOR UPDATE`
-before the workers it changes, against the lock order, and a World rebind then
-raises its Shard lock to `FOR UPDATE` before it changes anything else. A
-registration runs once per worker start; when it deadlocks with an operation of
-the runtime it replaces, PostgreSQL ends one of them and both sides try again.
+new runtime, a takeover, or another World, locks the worker the Shard is
+assigned to and its own worker row, then the assignment `FOR UPDATE`, and reads
+the assigned worker's health only after that, in a statement of its own, so it
+never takes over a worker whose renewal it waited for. A World rebind then
+raises its Shard lock to `FOR UPDATE` before it changes anything else. The
+registration ends the sessions and tickets of a runtime it replaces after these
+locks, against the lock order; it runs once per worker start, and when that
+deadlocks with an operation of the replaced runtime, PostgreSQL ends one of
+them and both sides try again. Every statement here that needs a current value
+after a lock reads it in the statement after the one that took the lock,
+because a statement that waits for a row lock still reads with the snapshot
+from before the wait.
 A join locks the worker row `FOR NO KEY UPDATE` in a statement of its own and
 counts the worker's capacity in the next one, because a statement that waits
 for a row lock still counts with the snapshot from before the wait. The lock
