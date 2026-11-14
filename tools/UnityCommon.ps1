@@ -86,16 +86,21 @@ function Get-GitLines([string]$RepositoryRoot, [string[]]$Arguments) {
     return @($output | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
-# The state of the working tree before a Unity run: git status, and the contents of the
-# Unity-owned files that already differ from the index, so a run that changes them further can
-# be put back to exactly this.
+# The state of the working tree before a Unity run: git status, the contents of the
+# Unity-owned files that already differ from the index, and the Unity-owned files that the
+# developer deleted without staging it, so a run that changes them further can be put back to
+# exactly this.
 function Get-WorkingTreeState([string]$RepositoryRoot) {
     $snapshots = @{}
+    $deleted = @()
     foreach ($path in Get-GitLines $RepositoryRoot @("diff", "--name-only")) {
         if (Test-UnityOwnedPath $path) {
             $fullPath = Join-Path $RepositoryRoot $path
             if (Test-Path -LiteralPath $fullPath) {
                 $snapshots[$path] = [IO.File]::ReadAllBytes($fullPath)
+            }
+            else {
+                $deleted += $path
             }
         }
     }
@@ -104,6 +109,7 @@ function Get-WorkingTreeState([string]$RepositoryRoot) {
         Status = @(Get-GitLines $RepositoryRoot @("status", "--porcelain", "--untracked-files=all"))
         Untracked = @(Get-GitLines $RepositoryRoot @("ls-files", "--others", "--exclude-standard"))
         Snapshots = $snapshots
+        Deleted = $deleted
     }
 }
 
@@ -128,7 +134,8 @@ function Invoke-FileOperation([scriptblock]$Operation, [string]$What) {
 
 # Puts back every Unity-owned file that the run changed and returns one line per file it put
 # back. A file that matched the index before is checked out from the index; one that had
-# changes gets the content it had; a new untracked file is removed.
+# changes gets the content it had; one that the developer had deleted stays deleted, and is
+# removed again when Unity wrote it anew; a new untracked file is removed.
 function Restore-UnityOwnedFiles($Before, [string]$RepositoryRoot) {
     $restored = @()
     foreach ($path in Get-GitLines $RepositoryRoot @("ls-files", "--others", "--exclude-standard")) {
@@ -139,14 +146,22 @@ function Restore-UnityOwnedFiles($Before, [string]$RepositoryRoot) {
         }
     }
 
-    $changed = @(Get-GitLines $RepositoryRoot @("diff", "--name-only")) + @($Before.Snapshots.Keys)
+    $changed = @(Get-GitLines $RepositoryRoot @("diff", "--name-only")) + @($Before.Snapshots.Keys) + @($Before.Deleted)
     foreach ($path in ($changed | Sort-Object -Unique)) {
         if (-not (Test-UnityOwnedPath $path)) {
             continue
         }
 
         $fullPath = Join-Path $RepositoryRoot $path
-        if ($Before.Snapshots.ContainsKey($path)) {
+        if ($Before.Deleted -contains $path) {
+            # Never check a file out that was deleted before the run: that would undo the
+            # developer's deletion.
+            if (Test-Path -LiteralPath $fullPath) {
+                Invoke-FileOperation { [IO.File]::Delete($fullPath) } "Removing $path"
+                $restored += "Removed $path, which was deleted before the run and Unity wrote again."
+            }
+        }
+        elseif ($Before.Snapshots.ContainsKey($path)) {
             $current = if (Test-Path -LiteralPath $fullPath) { [IO.File]::ReadAllBytes($fullPath) } else { $null }
             $previous = $Before.Snapshots[$path]
             if ($null -eq $current -or [Convert]::ToBase64String($current) -ne [Convert]::ToBase64String($previous)) {

@@ -92,3 +92,4 @@ in [Unity CI Runner](../docs/LOCAL_DEVELOPMENT.md#unity-ci-runner).
 | --- | --- |
 | `ci/Assert-TrustedRunnerJob.ps1` | Job-started hook that refuses jobs from forks; the runner runs an installed copy |
 | `ci/Register-UnityRunnerTask.ps1` | Registers the scheduled task that keeps the runner running |
+| `ci/Test-UnityCommon.ps1` | Checks, in a temporary Git repository, that the helpers of `UnityCommon.ps1` put a working tree back after a Unity run without touching what the developer had changed or deleted; CI and `Test-Changes.ps1` run it |

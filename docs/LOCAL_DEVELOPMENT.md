@@ -344,7 +344,10 @@ settings that a development build changes for its duration and a hash in the
 Addressables settings. The script puts back every such file below
 `src/Client/ProjectSettings`, `Packages`, `Assets/AddressableAssetsData`, and
 `Assets/Settings` and names it, and it fails with exit code 3 when `git status`
-is not what it was before the build; it never touches any other file.
+is not what it was before the build; it never touches any other file. A file
+there that had local changes before the run gets those changes back, and one
+that was deleted before the run stays deleted. `tools/ci/Test-UnityCommon.ps1`
+checks each of these cases in a temporary Git repository.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -716,6 +719,7 @@ repository root:
 
 ```powershell
 & .\tools\Test-Changes.ps1 -VerifyRules
+& .\tools\ci\Test-UnityCommon.ps1
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\art\Verify-ArtAssets.ps1
 python -m unittest discover -s tools/art/blender/tests
