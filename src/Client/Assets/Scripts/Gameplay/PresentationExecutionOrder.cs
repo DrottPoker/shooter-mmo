@@ -21,5 +21,8 @@ namespace Mmorpg.Client.Gameplay
         public const int Cloth = 110;
 
         public const int ScreenAnchoredInterface = 200;
+
+        // The client measurements read what every presentation drew this frame.
+        public const int Measurements = 300;
     }
 }

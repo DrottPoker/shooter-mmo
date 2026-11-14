@@ -78,7 +78,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendCombatIntent(RealtimeCombatIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Combat intent");
+            return sender.TrySendIntent(intent, EncodeIntent, "Combat intent", RealtimeIntentKinds.Combat, intent?.OperationId ?? Guid.Empty);
         }
 
         private void HandleCombatIntentResult(byte[] packet)
@@ -92,6 +92,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             CombatIntentCompleted?.Invoke(result);
         }
 

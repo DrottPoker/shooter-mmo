@@ -19,8 +19,9 @@ namespace Mmorpg.Client.Ui
     // the player and the pointer are, a quick check of the frame and the connection, and what the
     // world draws for debugging, such as the collision; Performance, Network, and Movement show the
     // details. It is closed when a World scene loads, and refreshes its values four times a
-    // second, the pace the frame telemetry changes at. It also runs the World scene's session
-    // check and Leave Shard, through the World exit.
+    // second, the pace the frame telemetry changes at. Every frame, network, and correction number
+    // comes from the client measurements, which also record to a file on request. It also runs
+    // the World scene's session check and Leave Shard, through the World exit.
     public sealed class TemporaryDebugMenu : MonoBehaviour
     {
         public const string WindowName = "DebugMenu";
@@ -29,12 +30,11 @@ namespace Mmorpg.Client.Ui
         private const float TargetFrameBudgetMilliseconds = 1000f / 60f;
 
         private readonly ClientOperationState operationState = new ClientOperationState();
-        private readonly WorldDebugTelemetryTracker telemetry = new WorldDebugTelemetryTracker();
         private readonly CollisionQueryBuffer waterBuffer = new CollisionQueryBuffer();
         private IClientSession clientSession;
         private WorldExit worldExit;
         private IRealtimeSession realtimeSession;
-        private IRealtimeDiagnostics realtimeDiagnostics;
+        private ClientMeasurements measurements;
         private IRealtimeMovementChannel realtimeMovement;
         private IRealtimePlayerChannel realtimePlayers;
         private PlayerBodyTintSetting bodyTint;
@@ -91,6 +91,12 @@ namespace Mmorpg.Client.Ui
         private TextMeshProUGUI networkTotals;
         private TextMeshProUGUI networkEntities;
         private TextMeshProUGUI networkWindow;
+        private Toggle recordToggle;
+        private TextMeshProUGUI recordFile;
+        private TextMeshProUGUI recordCorrections;
+        private TextMeshProUGUI recordJumps;
+        private TextMeshProUGUI recordRemote;
+        private TextMeshProUGUI recordIntents;
 
         private TextMeshProUGUI movementAuthority;
         private TextMeshProUGUI movementRates;
@@ -125,7 +131,7 @@ namespace Mmorpg.Client.Ui
             IClientSession accountSession,
             WorldExit exit,
             IRealtimeSession session,
-            IRealtimeDiagnostics diagnostics,
+            ClientMeasurements clientMeasurements,
             IRealtimeMovementChannel movement,
             IRealtimePlayerChannel players,
             LocalPlayerSource localPlayerSource,
@@ -138,7 +144,7 @@ namespace Mmorpg.Client.Ui
             clientSession = accountSession;
             worldExit = exit;
             realtimeSession = session;
-            realtimeDiagnostics = diagnostics;
+            measurements = clientMeasurements;
             realtimeMovement = movement;
             realtimePlayers = players;
             localPlayers = localPlayerSource;
@@ -211,7 +217,6 @@ namespace Mmorpg.Client.Ui
 
         private void Update()
         {
-            telemetry.RecordFrame(Time.unscaledDeltaTime);
             ReadLocalPlayer();
 
             if (localPlayerInput != null && localPlayerInput.ToggleDebugMenuPressedThisFrame)
@@ -219,7 +224,6 @@ namespace Mmorpg.Client.Ui
                 SetOpen(!IsOpen);
             }
 
-            SampleNetwork();
             if (IsOpen)
             {
                 TrackPointer();
@@ -342,7 +346,50 @@ namespace Mmorpg.Client.Ui
             networkEntities = TemporaryMenuWindow.AddValue(page, "Known / remote entities");
             networkWindow = TemporaryMenuWindow.AddValue(page, "Rate sample window");
 
+            BuildMeasurementSection(page);
             BuildContentSection(page);
+        }
+
+        // A recording of the client measurements to a file, a switch of development builds and the
+        // Editor only, with what the running recording measured so far.
+        private void BuildMeasurementSection(RectTransform page)
+        {
+            TemporaryMenuWindow.AddSection(page, "Measurements");
+            if (!Debug.isDebugBuild || measurements == null)
+            {
+                TemporaryMenuWindow.AddNote(page, "Recording is available in the Editor and development builds.");
+                return;
+            }
+
+            recordToggle = TemporaryMenuWindow.AddToggle(
+                page,
+                "Record measurements to a file",
+                measurements.IsRecording,
+                SetRecording);
+            recordFile = TemporaryMenuWindow.AddValue(page, "File");
+            recordCorrections = TemporaryMenuWindow.AddValue(page, "Corrections p95 / hard snaps");
+            recordJumps = TemporaryMenuWindow.AddValue(page, "Largest jump / jumps");
+            recordRemote = TemporaryMenuWindow.AddValue(page, "Remote starved / longest");
+            recordIntents = TemporaryMenuWindow.AddValue(page, "Intents answered / p95");
+        }
+
+        private void SetRecording(bool record)
+        {
+            if (measurements == null)
+            {
+                return;
+            }
+
+            if (record)
+            {
+                var path = measurements.StartRecording("debug-menu");
+                SetStatus("Recording measurements to " + path, TemporaryUiKit.SuccessColor);
+            }
+            else
+            {
+                measurements.StopRecording();
+                SetStatus("Wrote measurements to " + measurements.RecordingPath, TemporaryUiKit.SuccessColor);
+            }
         }
 
         // The content files this client resolved at start: revision prefix and where each came from.
@@ -434,25 +481,6 @@ namespace Mmorpg.Client.Ui
             overlay.ShowPath = IsOpen && viewSettings != null && viewSettings.ShowPath;
         }
 
-        private void SampleNetwork()
-        {
-            var diagnostics = realtimeDiagnostics;
-            if (diagnostics == null)
-            {
-                telemetry.ResetNetwork();
-                return;
-            }
-
-            telemetry.SampleNetwork(
-                Time.realtimeSinceStartup,
-                diagnostics.RealtimePacketsReceived,
-                diagnostics.RealtimeBytesReceived,
-                diagnostics.RealtimePacketsSent,
-                diagnostics.RealtimeBytesSent,
-                diagnostics.SnapshotPacketsReceived,
-                diagnostics.SnapshotFramesReceived);
-        }
-
         // The ground under the pointer, kept while the pointer is over the menu so it can be copied.
         private void TrackPointer()
         {
@@ -472,6 +500,7 @@ namespace Mmorpg.Client.Ui
             RefreshRendering();
             RefreshConnection();
             RefreshNetwork();
+            RefreshMeasurements();
             RefreshMovement();
             window.SetStatus(operationState.IsBusy ? "Working..." : status, statusColor);
         }
@@ -524,10 +553,19 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshGlance()
         {
+            if (measurements == null)
+            {
+                Set(glanceFrame, "-", WorldDebugHealth.Unavailable);
+                Set(glancePing, "-", WorldDebugHealth.Unavailable);
+                Set(glanceSnapshots, "-", WorldDebugHealth.Unavailable);
+                Set(glanceConnection, "No measurements", WorldDebugHealth.Unavailable);
+                return;
+            }
+
+            var telemetry = measurements.Telemetry;
             Set(
                 glanceFrame,
-                WorldDebugDiagnostics.Rate(telemetry.FramesPerSecond, "FPS") + ", P95 "
-                + WorldDebugDiagnostics.Milliseconds(telemetry.P95FrameMilliseconds),
+                DebugMenuReadout.FrameGlance(measurements),
                 WorldDebugDiagnostics.EvaluateFrame(telemetry.P95FrameMilliseconds, TargetFrameBudgetMilliseconds));
             var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
             if (realtimeSession == null || movementSession == null)
@@ -543,13 +581,13 @@ namespace Mmorpg.Client.Ui
 
             Set(
                 glancePing,
-                realtimeDiagnostics.RoundTripTimeMilliseconds + " ms",
-                WorldDebugDiagnostics.EvaluatePing(realtimeDiagnostics.RoundTripTimeMilliseconds));
+                DebugMenuReadout.RoundTrip(measurements),
+                WorldDebugDiagnostics.EvaluatePing(measurements.RoundTripMilliseconds));
             Set(
                 glanceSnapshots,
-                WorldDebugDiagnostics.Age(realtimeDiagnostics.LatestSnapshotAgeSeconds) + " ago",
+                DebugMenuReadout.SnapshotAge(measurements) + " ago",
                 WorldDebugDiagnostics.EvaluateSnapshotAge(
-                    realtimeDiagnostics.LatestSnapshotAgeSeconds,
+                    measurements.LatestSnapshotAgeSeconds,
                     movementSession.SnapshotRateHz));
             Set(
                 glanceConnection,
@@ -559,16 +597,18 @@ namespace Mmorpg.Client.Ui
 
         private void RefreshRendering()
         {
+            if (measurements == null)
+            {
+                return;
+            }
+
+            var telemetry = measurements.Telemetry;
             Set(
                 renderingFps,
                 WorldDebugDiagnostics.Rate(telemetry.FramesPerSecond, "FPS")
                 + " / " + WorldDebugDiagnostics.Milliseconds(TargetFrameBudgetMilliseconds),
                 WorldDebugDiagnostics.EvaluateFrame(telemetry.P95FrameMilliseconds, TargetFrameBudgetMilliseconds));
-            Set(
-                renderingFrame,
-                WorldDebugDiagnostics.Milliseconds(telemetry.AverageFrameMilliseconds)
-                + " / " + WorldDebugDiagnostics.Milliseconds(telemetry.P95FrameMilliseconds)
-                + " / " + WorldDebugDiagnostics.Milliseconds(telemetry.MaximumFrameMilliseconds));
+            Set(renderingFrame, DebugMenuReadout.FrameTimes(measurements));
             Set(renderingResolution, Screen.width + "x" + Screen.height + " / " + CurrentQualityName());
             Set(renderingVsync, QualitySettings.vSyncCount + " / " + Application.targetFrameRate);
             Set(
@@ -581,7 +621,7 @@ namespace Mmorpg.Client.Ui
         private void RefreshConnection()
         {
             var session = clientSession != null ? clientSession.ActiveSimulationSession : null;
-            if (session == null || realtimeSession == null)
+            if (session == null || realtimeSession == null || measurements == null)
             {
                 Set(connectionState, "No local simulation session", WorldDebugHealth.Unavailable);
                 Set(connectionCharacter, "-", WorldDebugHealth.Unavailable);
@@ -603,15 +643,15 @@ namespace Mmorpg.Client.Ui
                 session.workerId + " / " + WorldDebugDiagnostics.ShortIdentifier(session.workerRuntimeId));
             Set(
                 connectionEndpoint,
-                realtimeDiagnostics.ConnectedHost + ":" + realtimeDiagnostics.ConnectedPort
+                measurements.ConnectedHost + ":" + measurements.ConnectedPort
                 + " / v" + RealtimeProtocol.Version);
-            Set(connectionTick, realtimeDiagnostics.LatestServerTick.ToString(CultureInfo.InvariantCulture));
+            Set(connectionTick, measurements.LatestServerTick.ToString(CultureInfo.InvariantCulture));
         }
 
         private void RefreshNetwork()
         {
             var movementSession = realtimeMovement != null ? realtimeMovement.MovementSession : null;
-            if (realtimeDiagnostics == null || movementSession == null)
+            if (measurements == null || movementSession == null)
             {
                 foreach (var text in new[]
                 {
@@ -625,15 +665,16 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            var telemetry = measurements.Telemetry;
             Set(
                 networkPing,
-                realtimeDiagnostics.RoundTripTimeMilliseconds + " ms",
-                WorldDebugDiagnostics.EvaluatePing(realtimeDiagnostics.RoundTripTimeMilliseconds));
+                DebugMenuReadout.RoundTrip(measurements),
+                WorldDebugDiagnostics.EvaluatePing(measurements.RoundTripMilliseconds));
             Set(
                 networkSnapshotAge,
-                WorldDebugDiagnostics.Age(realtimeDiagnostics.LatestSnapshotAgeSeconds),
+                DebugMenuReadout.SnapshotAge(measurements),
                 WorldDebugDiagnostics.EvaluateSnapshotAge(
-                    realtimeDiagnostics.LatestSnapshotAgeSeconds,
+                    measurements.LatestSnapshotAgeSeconds,
                     movementSession.SnapshotRateHz));
             Set(
                 networkSnapshotRate,
@@ -651,16 +692,13 @@ namespace Mmorpg.Client.Ui
                 networkPayload,
                 WorldDebugDiagnostics.Rate(telemetry.ReceivedKibibytesPerSecond, "KiB/s")
                 + " / " + WorldDebugDiagnostics.Rate(telemetry.SentKibibytesPerSecond, "KiB/s"));
-            var estimatedLoss = WorldDebugDiagnostics.EstimateSnapshotLossPercent(
-                realtimeDiagnostics.SnapshotFramesReceived,
-                realtimeDiagnostics.EstimatedMissingSnapshotFrames);
             Set(
                 networkLoss,
-                WorldDebugDiagnostics.Percent(estimatedLoss) + " (" + realtimeDiagnostics.EstimatedMissingSnapshotFrames + " missing)",
-                WorldDebugDiagnostics.EvaluateLoss(estimatedLoss));
+                DebugMenuReadout.SnapshotLoss(measurements),
+                WorldDebugDiagnostics.EvaluateLoss(measurements.EstimatedSnapshotLossPercent));
             Set(
                 networkTotals,
-                realtimeDiagnostics.SnapshotFramesReceived + " / " + realtimeDiagnostics.SnapshotPacketsReceived);
+                measurements.SnapshotFramesReceived + " / " + measurements.SnapshotPacketsReceived);
             var knownEntities = realtimePlayers.SpawnedEntityCount;
             Set(networkEntities, knownEntities + " / " + Math.Max(0, knownEntities - 1));
             Set(networkWindow, WorldDebugDiagnostics.Age(telemetry.NetworkSampleSeconds));
@@ -704,13 +742,14 @@ namespace Mmorpg.Client.Ui
                 movementPending,
                 localPlayerController.PendingPredictedInputCount.ToString(CultureInfo.InvariantCulture),
                 WorldDebugDiagnostics.EvaluatePendingInputs(localPlayerController.PendingPredictedInputCount));
-            Set(
-                movementReconciliations,
-                localPlayerController.ReconciliationCount + " / " + localPlayerController.HardReconciliationCount,
-                localPlayerController.HardReconciliationCount == 0 ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
-            Set(
-                movementCorrection,
-                localPlayerController.LatestReconciliationDistance.ToString("0.000", CultureInfo.InvariantCulture) + " m");
+            if (measurements != null)
+            {
+                Set(
+                    movementReconciliations,
+                    DebugMenuReadout.Reconciliations(measurements),
+                    measurements.HardSnaps == 0 ? WorldDebugHealth.Healthy : WorldDebugHealth.Warning);
+                Set(movementCorrection, DebugMenuReadout.LatestCorrection(measurements));
+            }
             var path = localPlayerController.CurrentPath;
             var progress = localPlayerController.PredictedState.PathProgress;
             Set(
@@ -726,6 +765,35 @@ namespace Mmorpg.Client.Ui
                 localPlayerController.LatestPlanMilliseconds <= TargetFrameBudgetMilliseconds
                     ? WorldDebugHealth.Healthy
                     : WorldDebugHealth.Warning);
+        }
+
+        private void RefreshMeasurements()
+        {
+            if (recordToggle == null || measurements == null)
+            {
+                return;
+            }
+
+            recordToggle.SetIsOnWithoutNotify(measurements.IsRecording);
+            var summary = measurements.LatestSummary;
+            Set(
+                recordFile,
+                measurements.RecordingPath.Length > 0 ? measurements.RecordingPath : "Not recorded",
+                measurements.IsRecording ? WorldDebugHealth.Healthy : WorldDebugHealth.Unavailable);
+            if (summary == null)
+            {
+                foreach (var text in new[] { recordCorrections, recordJumps, recordRemote, recordIntents })
+                {
+                    Set(text, "-", WorldDebugHealth.Unavailable);
+                }
+
+                return;
+            }
+
+            Set(recordCorrections, DebugMenuReadout.RecordedCorrections(summary));
+            Set(recordJumps, DebugMenuReadout.RecordedJumps(summary));
+            Set(recordRemote, DebugMenuReadout.RecordedRemote(summary));
+            Set(recordIntents, DebugMenuReadout.RecordedIntents(summary));
         }
 
         private void CopyPlayerPosition()

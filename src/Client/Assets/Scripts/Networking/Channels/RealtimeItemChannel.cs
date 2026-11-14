@@ -79,7 +79,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendItemOperation(RealtimeItemOperationIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Item operation");
+            return sender.TrySendIntent(intent, EncodeIntent, "Item operation", RealtimeIntentKinds.Item, intent?.OperationId ?? Guid.Empty);
         }
 
         private void HandleItemOperationResult(byte[] packet)
@@ -94,6 +94,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             ItemOperationCompleted?.Invoke(result);
         }
 

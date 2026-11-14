@@ -59,7 +59,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendAdminIntent(RealtimeAdminIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Admin intent");
+            return sender.TrySendIntent(intent, EncodeIntent, "Admin intent", RealtimeIntentKinds.Admin, intent?.OperationId ?? Guid.Empty);
         }
 
         public void ClearSessionState()
@@ -75,6 +75,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             AdminIntentCompleted?.Invoke(result);
         }
 

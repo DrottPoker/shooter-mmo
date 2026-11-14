@@ -30,6 +30,10 @@ namespace Mmorpg.Client.App
         // Below Application.persistentDataPath.
         private const string ContentCacheFolder = "content";
 
+        // The client measurements, which the Debug menu reads and which record to files below
+        // the persistent data path on request.
+        private ClientMeasurements measurements;
+
         private string previousSceneName;
         private ClientSession clientSession;
         private ClientNotices notices;
@@ -113,6 +117,18 @@ namespace Mmorpg.Client.App
             get { return clientSession; }
         }
 
+        // The client measurements, for the live stack test that records what the client measured.
+        public ClientMeasurements Measurements
+        {
+            get { return measurements; }
+        }
+
+        // The World exit of the running client, for the live stack test that leaves as a player.
+        public WorldExit WorldExit
+        {
+            get { return worldExit; }
+        }
+
         private void Awake()
         {
             config = ClientConfig.Load(out configHandle);
@@ -169,6 +185,12 @@ namespace Mmorpg.Client.App
                 () => Time.realtimeSinceStartup,
                 IsWorldSceneShown,
                 routine => StartCoroutine(routine));
+            measurements = new ClientMeasurements(
+                simulationClient.Diagnostics,
+                simulationClient.Movement,
+                localPlayer,
+                Path.Combine(Application.persistentDataPath, ClientMeasurements.FolderName));
+            GetOrAddComponent<ClientMeasurementDriver>().Initialize(measurements);
             previousSceneName = SceneManager.GetActiveScene().name;
         }
 
@@ -364,6 +386,7 @@ namespace Mmorpg.Client.App
 
         private void OnDestroy()
         {
+            measurements?.Dispose();
             reconnect?.Dispose();
             reconnect = null;
             worldExit = null;
@@ -550,7 +573,7 @@ namespace Mmorpg.Client.App
                     clientSession,
                     worldExit,
                     realtime.Session,
-                    realtime.Diagnostics,
+                    measurements,
                     realtime.Movement,
                     realtime.Players,
                     localPlayer,
@@ -605,6 +628,7 @@ namespace Mmorpg.Client.App
                     worldActorController,
                     realtime.Movement,
                     runtimePrimitiveMaterial));
+            measurements.SetRemoteSources(sceneContext, actorPresentation);
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(
                     corpseController,

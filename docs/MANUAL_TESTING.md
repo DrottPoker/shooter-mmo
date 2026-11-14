@@ -1466,6 +1466,16 @@ the quest dialog and the quest log stand beside an open Equipment window.
    orange, and bots faintly blue, while eyes, teeth, and tongue keep their
    colors. Turn it off. Expected result: every body shows its own skin. The
    setting is off in a new installation and is kept between sessions.
+6. Open the `Network` tab, turn on `Record measurements to a file` under
+   `Measurements`, walk for half a minute, and turn it off. Expected result: the
+   status line names a file below the persistent data path,
+   `%USERPROFILE%\AppData\LocalLow\Mmorpg\MMORPG\measurements`, ending in
+   `-debug-menu.jsonl`; while it records, the section shows the p95 correction
+   with the hard snaps, the largest jump, the starved share of remote entities,
+   and the intents answered with their p95. The file holds one JSON line per
+   five seconds and a last line with `"kind":"summary"`. The round trip, the
+   snapshot age and loss, and the reconciliations of the other tabs are the
+   same numbers with and without the recording.
 
 ## Admin Menu (F3)
 
@@ -2686,32 +2696,58 @@ protocol, and before a playtest.
 4. Stop the proxy with `Ctrl+C` and start it again with `normal`, then `poor`,
    then `terrible`, and repeat steps 3 under each. The client keeps its World
    while the proxy restarts, and reconnects when the restart takes longer than
-   its 10-second realtime timeout.
+   its 10-second realtime timeout. Under `terrible`, keep walking for more than
+   a minute: the outage falls 60 seconds after the proxy first heard from the
+   client, and every join starts that count again.
 
-Expected result:
+Expected result, as far as the network part of the live stack test measured
+it in
+[The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network):
 
 - The proxy prints its profile with what it does to each direction, a progress
   line every 10 seconds with one client, and when it stops, its counts: the
   share it dropped in each direction near the profile's loss, an applied delay
   near half the round trip, and a lateness p99 well below 1 ms.
-- The F2 round trip reads about 30 ms under `good`, 80 ms under `normal`, 200 ms
-  under `poor`, and 400 ms under `terrible`, moving with the jitter.
+- The F2 round trip reads about 30 ms under `good` and 80 ms under `normal`,
+  where a lost packet can lift it to about 250 ms for a moment. Under `poor` and
+  `terrible` it reads about 200 and 450 to 550 ms and jumps with lost packets,
+  up to about 470 and 870 ms.
 - Under every profile the character starts to walk at the click, because the
-  client predicts it, and stops where it stood when it stands still; the
-  Console shows no error, and the client never leaves the World by itself under
-  `good`, `normal`, and `poor`.
-- Under `terrible` the line is down for 3 seconds every minute: the other
-  players and the Mobs stand still, the character walks on and is corrected
-  when the line comes back, and no `CONNECTION LOST` notice appears, because 3
-  seconds stay below the 10-second realtime timeout.
-- What to look for, and to record with the profile when it shows: the
-  character jumping back when a correction arrives (F2's hard snaps and latest
-  correction), other players or wolves stuttering or jumping, an attack, a loot,
-  or a trade that takes long to answer or answers twice, and a reconnect that
-  does not come back. Under `poor` and `terrible` a `Leave Shard` can end with
-  `The realtime connection closed before leave completed.` in the Console
-  instead of the body's countdown: the leave finding of
+  client predicts it. While the line holds, F2's latest correction stays at
+  0.000 m and its hard snaps at 0, because every owner snapshot confirms the
+  prediction, and a character that stands still stands where the worker has it.
+  The client never leaves the World by itself, under `terrible` neither, and
+  the Console shows no error but the one of a failed leave below.
+- Under `terrible` the line is down for 3 seconds once a minute. The other
+  players and the Mobs freeze where their last snapshot left them, the
+  character walks on, and when the line comes back the character jumps back by
+  about the distance it walked during the outage, about 9 m, which F2 counts as
+  one hard snap with a latest correction of that size; then it walks on. No
+  `CONNECTION LOST` notice appears, because 3 seconds stay below the 10-second
+  realtime timeout.
+- Another player who walks moves smoothly under `good`. Under `normal` it stops
+  for up to a tenth of a second now and then, under `poor` for up to about half
+  a second, and under `terrible` for up to about a second besides the outage,
+  where its last snapshot stops it until the next one arrives. Right after you
+  enter the World under `normal` and worse, it stands still for up to half a
+  second before it starts to move.
+- Mira's window opens about one round trip after the click, but a lost packet
+  holds it back: in the measured runs at most about 70 ms under `good` and
+  120 ms under `normal`, and up to 1.7 seconds under `poor` and 2.6 seconds
+  under `terrible`.
+- `Leave Shard` shows the body's countdown under `good`, `normal`, and `poor`.
+  Under `terrible` a few leaves in a hundred, 3 of 220 in the measured runs,
+  end with `Realtime operation failed: The realtime connection closed:
+  RemoteConnectionClose. [connection_lost]` in the Console and go straight to
+  Character Select: the leave finding of
   [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
+  The one measured leave that met the outage took 8 seconds and ended
+  cleanly.
+- What to look for, and to record with the profile when it shows: a jump back
+  of the character without an outage, other players or wolves jumping, an
+  attack, a loot, or a trade that takes long to answer or answers twice, and a
+  reconnect that does not come back. The live stack test plays no attack, loot,
+  or trade, so only this check covers them.
 
 ## Load Tooling
 

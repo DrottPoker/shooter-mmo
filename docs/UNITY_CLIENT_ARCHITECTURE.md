@@ -863,6 +863,54 @@ simulation-session tokens must never be passed to `ClientLog`. Stable account,
 character, shard, World, worker, runtime, and public simulation-session
 identifiers may be logged for local diagnosis.
 
+### Client Measurements
+
+`ClientMeasurements`, in `Gameplay/Diagnostics`, is the one recorder of what the
+client measures about itself. The composition root creates it in `Awake` with
+the hub's `IRealtimeDiagnostics` and movement channel and the
+`LocalPlayerSource`, adds `ClientMeasurementDriver`, which hands it every frame
+in `LateUpdate` at `PresentationExecutionOrder.Measurements`, after every
+presentation moved, and gives it the remote presentations of each World scene
+it composes, `WorldSceneContext` for the other players and
+`WorldActorPresentationController` for the Mobs, through `IRemoteMotionSource`.
+Nothing searches the scene for it.
+
+It always keeps the numbers that the Debug menu shows, and the menu reads them
+through `DebugMenuReadout` and computes none of its own: the frame times of
+`ClientTelemetryWindow`, the round trip, the age, rate, and estimated loss of
+the owner snapshots, the packet and byte rates, and the local player's
+corrections, their count, the hard snaps of 3 m and more, and the latest
+distance.
+
+On request it records what a network test needs, and nothing of it is measured
+or costs time without a recording:
+
+| Value | How |
+| --- | --- |
+| Frame times and the round trip | Every frame as distributions, the round trip only while the local player is in the World |
+| Time in the World | The seconds the local player was in the World, which the rates per minute count, so time at the entry screens dilutes none |
+| Owner snapshots | The frames received and missing, the largest age, and the silences: a newest snapshot older than 1 s that a new one ends, with their longest |
+| Corrections | Every correction of the prediction, which `LocalPlayerController.PositionCorrected` reports, as a distribution of meters, and the hard snaps per minute |
+| Rubber banding | `RenderedMotionTracker` reads where the local player is drawn, its transform after the presentation, and counts the part of a frame's horizontal movement that the walk speed does not explain; a frame without a bound player or with another player starts over, so a join or a reconnect counts no jump. The largest jump, the frames with a jump of 0.25 m or more, and the total |
+| After a silence | The largest correction and jump in the 2 s after a silence ended, such as an outage of the line |
+| Remote entities | Every frame each source reports, for the other players and the Mobs that snapshots move, whether `RemoteMovementPresenter.IsStarved`: the render clock reached the newest state while that state still moves, so the entity stands where the next snapshot should have moved it on. The entity-seconds seen and starved, the starvations, and the longest |
+| Reliable intents | The intents sent and the seconds to their results, over all and per kind of `RealtimeIntentKinds`. A recording turns `IRealtimeDiagnostics.IntentTimingEnabled` on, the channels report each intent's operation id through `RealtimeSender` when it leaves and when its result arrives, and the timing is off again when the recording ends |
+
+`StartRecording(label)` opens
+`<persistentDataPath>/measurements/<yyyyMMdd-HHmmss>-<label>.jsonl`, and
+`StopRecording()` writes the last interval and the summary and returns the
+summary. The file holds one `ClientMeasurementRecord` as JSON per interval of
+five seconds, `kind` `interval`, and the summary of the whole recording, `kind`
+`summary`, as its last line. Tests call the methods; in the Editor and
+development builds the Debug menu's Network tab has the switch `Record
+measurements to a file`, which shows the file and what the running recording
+measured so far. `ClientMeasurementsTests` covers the statistics, the jump
+detector on constructed tracks, a recording that writes only on request, and the
+Debug menu's numbers. The network part of the live stack test shows on the real
+client that the detector reads what is drawn: a development teleport of 8.5 m,
+which the presentation shows as a hard snap, must come out as a jump of the
+same size in one frame.
+
 ## Realtime Networking Layer
 
 `RealtimeSimulationClient` is the client's one network entry point: a
@@ -893,7 +941,7 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 | `RealtimeMessageTable` | One entry per server message type: its handler, the states it runs in, the states it is dropped in, and the failure code of every other state | The hub only |
 | `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
 | A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
-| `RealtimeDiagnostics` | The packet and byte counters, the owner snapshot sequence and its loss estimate, the newest server tick, the snapshot age, the round trip time, and the endpoint | `IRealtimeDiagnostics`, which the Debug menu and `CombatServerClock` read |
+| `RealtimeDiagnostics` | The packet and byte counters, the owner snapshot sequence and its loss estimate, the newest server tick, the snapshot age, the round trip time, the endpoint, and, while a measurement asks for it, the timing of reliable intents to their results | `IRealtimeDiagnostics`, which the [client measurements](#client-measurements) and `CombatServerClock` read |
 | `RealtimeSender` | The one send path: a joined session with a connected server, the intent's cached encoder, and reliable ordered delivery on the control channel; movement input has its own channel and wakes the transport | The channels |
 | `RealtimeConnection` | The transport and what is known of its one connection: whether it runs, whether the server connected, and the endpoint | The session, the sender, and the diagnostics |
 

@@ -77,7 +77,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendCorpseInteraction(RealtimeCorpseInteractionIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Corpse interaction");
+            return sender.TrySendIntent(intent, EncodeIntent, "Corpse interaction", RealtimeIntentKinds.Corpse, intent?.OperationId ?? Guid.Empty);
         }
 
         private void HandleCorpsePresenceChunk(byte[] packet)
@@ -106,6 +106,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             CorpseInteractionCompleted?.Invoke(result);
         }
 

@@ -72,7 +72,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendWorldInteraction(RealtimeWorldInteractionIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "World interaction");
+            return sender.TrySendIntent(intent, EncodeIntent, "World interaction", RealtimeIntentKinds.WorldInteraction, intent?.OperationId ?? Guid.Empty);
         }
 
         private void HandleWorldInteractionOpened(byte[] packet)
@@ -86,6 +86,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(opened.OperationId);
             WorldInteractionOpened?.Invoke(opened);
         }
 
@@ -100,6 +101,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             WorldInteractionCompleted?.Invoke(result);
         }
 

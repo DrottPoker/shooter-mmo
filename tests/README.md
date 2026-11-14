@@ -328,6 +328,39 @@ describes. Its one scenario asserts, step by step:
    entity at the saved place, with the saved health and mana.
 8. A last leave is answered like the first.
 
+`LiveStackNetworkPlayModeTests` in the same folder is the network part, in the
+categories `LiveStack` and `LiveStackNetwork`. It plays the running client
+itself: the bootstrap's hub, the World scene of Development World 2 with its
+local player and presentation, `WorldExit`, and the client measurements, which
+it records with. It walks a route with turns around the spawn for at least 30
+seconds, stops, stands 2 seconds, walks back, opens and closes Mira five times
+through `WorldInteractionClientController`, and leaves through `WorldExit` and
+comes back `MMORPG_LIVE_STACK_LEAVES` times. Meanwhile `LiveStackWalker`, a
+second hub with its own account and character, joins on the worker's own port,
+`MMORPG_LIVE_STACK_DIRECT_UDP_PORT`, past the proxy, and walks back and forth
+over ten meters beside the spawn, so the client always watches a remote player
+that moves. It asserts only what must hold on any network:
+
+1. The client throws no exception, and the other player walks until the end.
+2. After standing still for 2 seconds the drawn player stands within 0.5 m of
+   the worker's position.
+3. Under `good`, `normal`, `poor`, and on loopback the client never loses its
+   World by itself; under `terrible` a lost line is restored within the
+   reconnect window.
+4. Every leave ends at CharacterSelect or LoginMenu without the World, cleanly
+   or not; how many ended cleanly is measured.
+5. The hard snaps per minute, the p95 correction, and the largest unexplained
+   jump of the play stay within the bounds of
+   `tools/load/network-client-bounds.json` for the profile.
+6. Before the main recording, a recording of its own sees a development
+   teleport of 8.5 m, which the presentation shows as a snap, as a jump of at
+   least 8 m in one frame, so the jump detector reads what is drawn.
+
+The play and the leaves are recorded apart, so the moments after each join do
+not mix with the play. Everything else is measured and written to
+`live-network-<profile>.json` in the run's log folder, and the test prints it
+as `[LIVE]` lines.
+
 No default run selects the test;
 [Run The Unity Tests](../docs/LOCAL_DEVELOPMENT.md#run-the-unity-tests) says
 how each runner leaves it out. CI does not run it because the self-hosted runner

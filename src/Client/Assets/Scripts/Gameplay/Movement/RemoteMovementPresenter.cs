@@ -14,6 +14,9 @@ namespace Mmorpg.Client.Gameplay
         public const float MinimumInterpolationDelaySeconds = 0.1f;
         private const int MinimumInterpolationDelayTicks = 2;
 
+        // A newest state slower than 0.1 m/s counts as standing.
+        private const float StarvedSpeedSquared = 0.01f;
+
         // One snapshot interval covers the wait for the next snapshot, and the second absorbs
         // a snapshot that arrives up to one interval late.
         private const int InterpolationDelaySnapshotIntervals = 2;
@@ -62,6 +65,23 @@ namespace Mmorpg.Client.Gameplay
             {
                 return IsPlayedOut
                     && groundedVerticalPresentation.CurrentHeight == presentedTargetHeight;
+            }
+        }
+
+        // Whether the entity ran out of states to interpolate while it moved: the render clock
+        // reached the newest state and that state still has speed, so the presented pose stands
+        // where the next snapshot should have taken it on. An entity that stopped is not starved.
+        public bool IsStarved
+        {
+            get
+            {
+                if (!IsPlayedOut || !interpolation.TryGetNewest(out var newest))
+                {
+                    return false;
+                }
+
+                return (newest.VelocityX * newest.VelocityX) + (newest.VelocityZ * newest.VelocityZ)
+                    > StarvedSpeedSquared;
             }
         }
 

@@ -21,6 +21,12 @@ namespace Mmorpg.Client.Gameplay
 
         public ulong NetworkEntityId { get; private set; }
 
+        // Whether the presented pose ran out of snapshots while this player moved.
+        public bool IsMovementStarved
+        {
+            get { return movement.IsStarved; }
+        }
+
         // The animated body of the player, or null without one. A body that left the player, as
         // when its body slot shows another model, is looked up again.
         public CharacterLocomotionAnimator Body

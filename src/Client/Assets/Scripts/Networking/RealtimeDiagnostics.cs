@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Mmorpg.GameSimulation;
 using UnityEngine;
 
@@ -36,6 +37,30 @@ namespace Mmorpg.Client.Networking
         long RealtimePacketsSent { get; }
 
         long RealtimeBytesSent { get; }
+
+        // Whether reliable intents are timed to their results. It is off unless a measurement
+        // turns it on, so a client that measures nothing keeps no record of its intents.
+        bool IntentTimingEnabled { get; set; }
+
+        // Raised for every reliable intent sent while the timing is on, with its kind of
+        // RealtimeIntentKinds.
+        event Action<string> IntentSent;
+
+        // Raised when the result of a timed intent arrives: its kind and the seconds since it was
+        // sent. The result of an intent sent before the timing started raises nothing.
+        event Action<string, float> IntentAnswered;
+    }
+
+    // The kinds of reliable intents, one per channel that sends them.
+    public static class RealtimeIntentKinds
+    {
+        public const string Item = "item";
+        public const string Corpse = "corpse";
+        public const string WorldInteraction = "world_interaction";
+        public const string Combat = "combat";
+        public const string Quest = "quest";
+        public const string Admin = "admin";
+        public const string Appearance = "appearance";
     }
 
     // The counters, the owner snapshot sequence and its loss estimate, the newest server tick,
@@ -44,6 +69,8 @@ namespace Mmorpg.Client.Networking
     {
         private readonly RealtimeConnection connection;
         private readonly Func<float> realtimeClock;
+        private readonly Dictionary<Guid, PendingIntent> pendingIntents = new Dictionary<Guid, PendingIntent>();
+        private bool intentTimingEnabled;
         private bool hasSnapshotSequence;
         private uint latestSnapshotSequence;
         private float latestSnapshotReceivedAt = -1f;
@@ -95,6 +122,45 @@ namespace Mmorpg.Client.Networking
         public long RealtimePacketsSent { get; private set; }
 
         public long RealtimeBytesSent { get; private set; }
+
+        public bool IntentTimingEnabled
+        {
+            get { return intentTimingEnabled; }
+            set
+            {
+                intentTimingEnabled = value;
+                if (!value)
+                {
+                    pendingIntents.Clear();
+                }
+            }
+        }
+
+        public event Action<string> IntentSent;
+
+        public event Action<string, float> IntentAnswered;
+
+        public void RecordIntentSent(Guid operationId, string kind)
+        {
+            if (!intentTimingEnabled)
+            {
+                return;
+            }
+
+            pendingIntents[operationId] = new PendingIntent(kind, realtimeClock());
+            IntentSent?.Invoke(kind);
+        }
+
+        public void RecordIntentAnswered(Guid operationId)
+        {
+            if (!intentTimingEnabled || !pendingIntents.TryGetValue(operationId, out var pending))
+            {
+                return;
+            }
+
+            pendingIntents.Remove(operationId);
+            IntentAnswered?.Invoke(pending.Kind, Mathf.Max(0f, realtimeClock() - pending.SentAt));
+        }
 
         public void RecordReceivedPacket(int byteCount)
         {
@@ -167,6 +233,22 @@ namespace Mmorpg.Client.Networking
             hasSnapshotSequence = false;
             latestSnapshotSequence = 0;
             latestSnapshotReceivedAt = -1f;
+
+            // An intent of an ended session gets no result.
+            pendingIntents.Clear();
+        }
+
+        private readonly struct PendingIntent
+        {
+            public PendingIntent(string kind, float sentAt)
+            {
+                Kind = kind;
+                SentAt = sentAt;
+            }
+
+            public string Kind { get; }
+
+            public float SentAt { get; }
         }
     }
 }

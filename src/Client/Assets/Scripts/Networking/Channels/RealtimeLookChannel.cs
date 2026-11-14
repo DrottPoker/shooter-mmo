@@ -64,7 +64,7 @@ namespace Mmorpg.Client.Networking
 
         public bool TrySendAppearanceIntent(RealtimeAppearanceIntent intent)
         {
-            return sender.TrySendIntent(intent, EncodeIntent, "Appearance intent");
+            return sender.TrySendIntent(intent, EncodeIntent, "Appearance intent", RealtimeIntentKinds.Appearance, intent?.OperationId ?? Guid.Empty);
         }
 
         // A look for a player the client does not see, as one that despawned while the change
@@ -95,6 +95,7 @@ namespace Mmorpg.Client.Networking
                 return;
             }
 
+            sender.RecordIntentAnswered(result.OperationId);
             AppearanceIntentCompleted?.Invoke(result);
         }
     }
