@@ -159,7 +159,11 @@ public sealed record StressRunConfiguration(
     double SteadyDurationSeconds,
     double InventoryOperationIntervalSeconds,
     double LootOperationIntervalSeconds,
-    int Seed);
+    int Seed)
+{
+    // The login or logout burst the run planned, or null for none.
+    public StressBurstPlan? Burst { get; init; }
+}
 
 public sealed record StressRunReport(
     DateTime StartedAt,
@@ -176,6 +180,33 @@ public sealed record StressRunReport(
     StressBotAggregate Bots,
     StressAuthorityCounters? Authority)
 {
+    // The generator's own checks, which decide exit code 1 as before the quality boundary.
+    public bool PassedOwnChecks()
+    {
+        var bots = Configuration.BotCount;
+        return Bots.FailedBots == 0
+            && Bots.JoinedBots == bots
+            && Bots.CompletedBots == bots
+            && (FullStack is null || FullStack.LoggedOutBots == FullStack.AdmittedBots)
+            && Gameplay.UnexpectedFailures == 0
+            && (Postgres?.ItemInvariants?.Violations ?? 0) == 0
+            && BurstCompleted();
+    }
+
+    // A planned burst ran, registered every account, and every account finished its login or
+    // logout. Whether they finished in time is the quality boundary's question.
+    private bool BurstCompleted()
+    {
+        if (Configuration.Burst is null)
+        {
+            return true;
+        }
+
+        return FullStack?.Burst is { } burst
+            && burst.Provisioned == burst.Accounts
+            && burst.Completed == burst.Accounts;
+    }
+
     // The steady interval, in which the worker's steady intervals and the remote cadence count.
     public DateTime? SteadyStartedAt { get; init; }
 
@@ -272,7 +303,12 @@ public sealed record StressRunReport(
                 options.SteadyDuration.TotalSeconds,
                 options.InventoryOperationInterval.TotalSeconds,
                 options.LootOperationInterval.TotalSeconds,
-                options.Seed),
+                options.Seed)
+            {
+                Burst = options.Burst is { } burst
+                    ? new StressBurstPlan(burst.KindName, burst.Accounts, burst.At.TotalSeconds, burst.Deadline.TotalSeconds)
+                    : null
+            },
             providerReport.Worker ?? target.Worker,
             workerProcess,
             providerReport.GameServiceProcess,

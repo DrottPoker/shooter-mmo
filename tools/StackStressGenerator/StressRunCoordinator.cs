@@ -42,6 +42,7 @@ public sealed class StressRunCoordinator(
     private int steadyJoinedBots;
     private volatile StressDriftSample? latestDrift;
     private long nextDriftTimestamp;
+    private Task? burst;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
     {
@@ -154,6 +155,7 @@ public sealed class StressRunCoordinator(
                 if (steadyDeadlineTimestamp.HasValue)
                 {
                     DispatchChurn(now, steadyStartedTimestamp);
+                    StartBurst(now, steadyStartedTimestamp, cancellationToken);
                 }
 
                 if (now >= nextJoinedCountTimestamp)
@@ -193,6 +195,13 @@ public sealed class StressRunCoordinator(
             {
                 group.EndSteadyMeasurement();
                 group.ForEachBot((bot, timestamp) => bot.EndRemoteCadenceWindow(timestamp));
+            }
+
+            // A burst ends within the steady interval by its plan; one that takes longer is still
+            // waited for, and its summary says how long it took.
+            if (burst is not null)
+            {
+                await burst;
             }
 
             WriteProgress();
@@ -340,6 +349,13 @@ public sealed class StressRunCoordinator(
 
     private void ThrowOnFailure(Task sampling)
     {
+        if (burst is { IsFaulted: true })
+        {
+            throw new InvalidOperationException(
+                "The burst failed: " + burst.Exception!.GetBaseException().Message,
+                burst.Exception.GetBaseException());
+        }
+
         if (sampling.IsFaulted)
         {
             throw new InvalidOperationException(
@@ -454,6 +470,22 @@ public sealed class StressRunCoordinator(
             ReadRejoinFacts = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.ReadRejoinFactsAsync(plan, token), token),
             Regeneration = rejoin is null ? new PlayingRegeneration(1, 1) : PlayingRegeneration.Load(options.CombatRulesPath)
         };
+    }
+
+    // Fires the login or logout burst once its time in the steady interval came. It runs on a pool
+    // thread, apart from the poll threads and this loop.
+    private void StartBurst(long now, long steadyStartedTimestamp, CancellationToken cancellationToken)
+    {
+        if (burst is not null
+            || options.Burst is not { } plan
+            || admissionProvider is not FullStackStressAdmissionProvider fullStack
+            || now < AddDuration(steadyStartedTimestamp, plan.At))
+        {
+            return;
+        }
+
+        var offset = Stopwatch.GetElapsedTime(steadyStartedTimestamp, now).TotalSeconds;
+        burst = Task.Run(() => fullStack.RunBurstAsync(offset, cancellationToken), cancellationToken);
     }
 
     // The churn's events of the steady interval, for the bots that joined.

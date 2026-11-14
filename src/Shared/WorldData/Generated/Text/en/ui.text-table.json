@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "352c269e281d6b6e67eb0ebfe92d2d517abaaeca4fd755b21eb17f586925ed33",
+  "revision": "db81295b4c5c1da070f3de2cc93501aae29d7bccf7e1d2cec0f3124ce2b89a06",
   "entries": [
     {
       "key": "ui/characters/body-in-world",
@@ -1247,6 +1247,14 @@
     {
       "key": "ui/login/build-release",
       "text": "Environment {environment}  \u00B7  Release build {commit}  \u00B7  Built {time} UTC"
+    },
+    {
+      "key": "ui/login/busy-retry",
+      "text": "The game service is busy. Trying again in {seconds} s (retry {retry} of {retries}). Esc or a change to the form stops it."
+    },
+    {
+      "key": "ui/login/busy-stopped",
+      "text": "Stopped trying again. Send the form when you are ready."
     },
     {
       "key": "ui/login/checking-content",

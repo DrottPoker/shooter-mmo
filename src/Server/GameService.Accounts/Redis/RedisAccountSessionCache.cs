@@ -14,6 +14,9 @@ internal sealed class RedisAccountSessionCache(
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web);
 
+    private const int MaximumTombstoneAttempts = 2;
+    private static readonly TimeSpan TombstoneRetryPause = TimeSpan.FromMilliseconds(100);
+
     public async ValueTask<AccountSessionCacheLookup> GetAsync(
         string tokenHash,
         CancellationToken cancellationToken)
@@ -131,6 +134,9 @@ internal sealed class RedisAccountSessionCache(
         }
     }
 
+    // Stores every tombstone of the revocation in one round trip. A transient failure, such as a
+    // timeout or a lost connection, is tried once more within SessionRevocationDeadline; a
+    // tombstone write is idempotent, so a second attempt is safe.
     public async ValueTask<bool> PrepareRevocationsAsync(
         IReadOnlyCollection<AccountSessionCacheRevocation> revocations,
         CancellationToken cancellationToken)
@@ -141,56 +147,112 @@ internal sealed class RedisAccountSessionCache(
             return true;
         }
 
-        try
+        var started = timeProvider.GetTimestamp();
+        Exception? failure = null;
+        for (var attempt = 1; attempt <= MaximumTombstoneAttempts; attempt++)
         {
-            var database = await connectionProvider.GetDatabaseAsync(cancellationToken);
-            foreach (var revocation in revocations)
+            if (Remaining(started) <= TimeSpan.Zero)
             {
-                var marked = await database.StringSetAsync(
-                        TombstoneKey(revocation.SessionId),
-                        revocation.Reason,
-                        options.SessionRevocationTombstoneLifetime)
-                    .WaitAsync(cancellationToken);
-                if (!marked)
+                break;
+            }
+
+            try
+            {
+                var database = await connectionProvider.GetDatabaseAsync(cancellationToken)
+                    .AsTask()
+                    .WaitAsync(Remaining(started), timeProvider, cancellationToken);
+                var writes = Task.WhenAll(revocations.Select(revocation => database.StringSetAsync(
+                    TombstoneKey(revocation.SessionId),
+                    revocation.Reason,
+                    options.SessionRevocationTombstoneLifetime)));
+                ObserveLateFailure(writes);
+                var marked = await writes.WaitAsync(Remaining(started), timeProvider, cancellationToken);
+                if (!marked.All(stored => stored))
                 {
                     metrics.RecordRedisFailure("session_cache_tombstone");
                     return false;
                 }
-            }
 
-            foreach (var revocation in revocations)
+                await DeleteTokenKeysAsync(database, revocations, cancellationToken);
+                return true;
+            }
+            catch (Exception exception) when (IsRedisFailure(exception, cancellationToken))
             {
-                try
+                failure = exception;
+                if (!IsTransient(exception) || attempt == MaximumTombstoneAttempts)
                 {
-                    await database.KeyDeleteAsync(TokenKey(revocation.TokenHash))
-                        .WaitAsync(cancellationToken);
-                }
-                catch (Exception exception) when (IsRedisFailure(exception, cancellationToken))
-                {
-                    if (metrics.RecordRedisFailure("session_cache_delete"))
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "A Redis session cache key could not be deleted after its revocation tombstone was stored. The tombstone still prevents stale authorization. Repeated warnings are throttled.");
-                    }
+                    break;
                 }
 
-                metrics.RecordSessionCacheInvalidation();
+                metrics.RecordRedisFailure("session_cache_revoke_retry");
+                // A lost connection fails at once; a short pause lets the client reconnect.
+                var remaining = Remaining(started);
+                await Task.Delay(
+                    remaining < TombstoneRetryPause ? remaining : TombstoneRetryPause,
+                    timeProvider,
+                    cancellationToken);
             }
+        }
 
-            return true;
+        if (metrics.RecordRedisFailure("session_cache_revoke"))
+        {
+            logger.LogWarning(
+                failure,
+                "Redis session revocation tombstones could not be stored within {DeadlineMilliseconds} ms. The durable revocation must not commit while stale cache entries can remain valid. Repeated warnings are throttled.",
+                options.SessionRevocationDeadline.TotalMilliseconds);
+        }
+
+        return false;
+    }
+
+    // The cached tokens go after their tombstones, together; a failure here leaves stale keys
+    // that the tombstones already make useless.
+    private async Task DeleteTokenKeysAsync(
+        IDatabase database,
+        IReadOnlyCollection<AccountSessionCacheRevocation> revocations,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.WhenAll(revocations.Select(revocation => database.KeyDeleteAsync(TokenKey(revocation.TokenHash))))
+                .WaitAsync(cancellationToken);
         }
         catch (Exception exception) when (IsRedisFailure(exception, cancellationToken))
         {
-            if (metrics.RecordRedisFailure("session_cache_revoke"))
+            if (metrics.RecordRedisFailure("session_cache_delete"))
             {
                 logger.LogWarning(
                     exception,
-                    "Redis session revocation tombstones could not be stored. The durable revocation must not commit while stale cache entries can remain valid. Repeated warnings are throttled.");
+                    "A Redis session cache key could not be deleted after its revocation tombstone was stored. The tombstone still prevents stale authorization. Repeated warnings are throttled.");
             }
-
-            return false;
         }
+
+        for (var index = 0; index < revocations.Count; index++)
+        {
+            metrics.RecordSessionCacheInvalidation();
+        }
+    }
+
+    // What is left of the revocation deadline, never below zero.
+    private TimeSpan Remaining(long started)
+    {
+        var remaining = options.SessionRevocationDeadline - timeProvider.GetElapsedTime(started);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    // A write that the deadline gave up on may still fail later; its failure is observed here.
+    private static void ObserveLateFailure(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static bool IsTransient(Exception exception)
+    {
+        return exception is RedisTimeoutException or RedisConnectionException or TimeoutException;
     }
 
     private string TokenKey(string tokenHash)

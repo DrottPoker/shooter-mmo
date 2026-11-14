@@ -1,0 +1,20 @@
+{
+  "description": "Logout burst: 500 accounts that registered before the ramp, and so are logged in, all log out at once 10 seconds into the steady interval, while 20 bots move items in their inventories in the stress arena. Every logout stores its revocation tombstone in Redis before its revocation commits; every account is expected to end logged out within 60 seconds, with no session_cache_invalidation_unavailable.",
+  "mode": "full-stack",
+  "workload": "inventory",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 20,
+    "ramp-step": 20,
+    "ramp-interval-seconds": 5,
+    "duration-seconds": 90,
+    "http-concurrency": 32,
+    "inventory-operation-interval-seconds": 3,
+    "report-interval-seconds": 10,
+    "seed": 1337,
+    "logout-burst-accounts": 500,
+    "burst-at-seconds": 10,
+    "burst-deadline-seconds": 60
+  }
+}

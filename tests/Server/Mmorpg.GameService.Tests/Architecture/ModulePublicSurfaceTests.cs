@@ -14,6 +14,7 @@ public sealed class ModulePublicSurfaceTests
             [
                 "Mmorpg.GameService.Accounts.AccountsModule",
                 "Mmorpg.GameService.Accounts.AccountsModuleOptions",
+                "Mmorpg.GameService.Accounts.PasswordHashing.PasswordHashingOptions",
                 "Mmorpg.GameService.Accounts.Redis.RedisAccelerationOptions",
                 "Mmorpg.GameService.Accounts.SimulationWorkerCredentials"
             ],

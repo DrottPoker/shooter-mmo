@@ -38,14 +38,18 @@ public sealed class RedisConnectionProvider : IRedisConnectionProvider, IAsyncDi
         multiplexer.Dispose();
     }
 
+    // The client's own timeout, not the readiness probe's: a probe answers within a second or
+    // reports Redis unready, while a command may wait out a short stall of the process.
     private static Task<ConnectionMultiplexer> ConnectAsync(PlatformOptions platformOptions)
     {
+        var timeout = checked((int)platformOptions.RedisCommandTimeout.TotalMilliseconds);
         var options = ConfigurationOptions.Parse(platformOptions.RedisConnectionString);
         options.AbortOnConnectFail = false;
         options.BacklogPolicy = BacklogPolicy.FailFast;
         options.ConnectRetry = 1;
-        options.ConnectTimeout = checked((int)platformOptions.HealthCheckTimeout.TotalMilliseconds);
-        options.AsyncTimeout = checked((int)platformOptions.HealthCheckTimeout.TotalMilliseconds);
+        options.ConnectTimeout = timeout;
+        options.AsyncTimeout = timeout;
+        options.SyncTimeout = timeout;
         options.ClientName = "shooter-mmo-game-service";
         return ConnectionMultiplexer.ConnectAsync(options);
     }

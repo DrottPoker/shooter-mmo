@@ -205,7 +205,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             var username = "live_" + suffix;
             account = null;
             ApiError error = null;
-            yield return api.Register(
+            yield return LiveStackWalker.Register(
+                api,
                 BaseUrl,
                 new RegisterAccountRequest
                 {

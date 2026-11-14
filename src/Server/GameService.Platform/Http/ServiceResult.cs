@@ -4,6 +4,9 @@ public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int Status
 {
     public bool Succeeded => Error is null;
 
+    // When the caller should try again, sent as the Retry-After header of the failure.
+    public TimeSpan? RetryAfter { get; init; }
+
     public static ServiceResult<T> Ok(T value)
     {
         return new ServiceResult<T>(value, null, StatusCodes.Status200OK);
@@ -42,6 +45,11 @@ public sealed record ServiceResult<T>(T? Value, ErrorResponse? Error, int Status
     public static ServiceResult<T> ServiceUnavailable(string code, string message)
     {
         return Failure(StatusCodes.Status503ServiceUnavailable, code, message);
+    }
+
+    public static ServiceResult<T> ServiceUnavailable(string code, string message, TimeSpan retryAfter)
+    {
+        return Failure(StatusCodes.Status503ServiceUnavailable, code, message) with { RetryAfter = retryAfter };
     }
 
     private static ServiceResult<T> Failure(int statusCode, string code, string message)

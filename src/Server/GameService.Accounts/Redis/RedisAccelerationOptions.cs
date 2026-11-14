@@ -10,6 +10,12 @@ public sealed record RedisAccelerationOptions(
     TimeSpan MetricsInterval)
 {
     public const string SectionName = "RedisAcceleration";
+    public const int DefaultSessionRevocationDeadlineMilliseconds = 5_000;
+
+    // How long storing the revocation tombstones of one logout or login may take, a retry of a
+    // transient failure included.
+    public TimeSpan SessionRevocationDeadline { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultSessionRevocationDeadlineMilliseconds);
 
     // Redis is never contacted. PostgreSQL alone validates sessions and the in-process
     // limiter alone applies the authentication rate limits.
@@ -37,6 +43,9 @@ public sealed record RedisAccelerationOptions(
             "AuthenticationRateLimitingEnabled",
             true);
         var metricsIntervalSeconds = section.GetValue("MetricsIntervalSeconds", 30);
+        var sessionRevocationDeadlineMilliseconds = section.GetValue(
+            "SessionRevocationDeadlineMilliseconds",
+            DefaultSessionRevocationDeadlineMilliseconds);
 
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(keyPrefix)
@@ -65,6 +74,11 @@ public sealed record RedisAccelerationOptions(
             errors.Add($"{SectionName}:MetricsIntervalSeconds must be between 1 and 3600.");
         }
 
+        if (sessionRevocationDeadlineMilliseconds is < 100 or > 30_000)
+        {
+            errors.Add($"{SectionName}:SessionRevocationDeadlineMilliseconds must be between 100 and 30000.");
+        }
+
         if (errors.Count > 0)
         {
             throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
@@ -77,6 +91,9 @@ public sealed record RedisAccelerationOptions(
             TimeSpan.FromSeconds(sessionCacheTtlSeconds),
             TimeSpan.FromSeconds(sessionRevocationTombstoneSeconds),
             authenticationRateLimitingEnabled,
-            TimeSpan.FromSeconds(metricsIntervalSeconds));
+            TimeSpan.FromSeconds(metricsIntervalSeconds))
+        {
+            SessionRevocationDeadline = TimeSpan.FromMilliseconds(sessionRevocationDeadlineMilliseconds)
+        };
     }
 }

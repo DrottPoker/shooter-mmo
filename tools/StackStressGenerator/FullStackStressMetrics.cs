@@ -11,6 +11,11 @@ public sealed record StressHttpOperationSummary(
     // Rate-limited answers that a paced request waited out and sent again; they are neither
     // requests nor failures.
     public long RateLimitWaits { get; init; }
+
+    // auth_busy answers of the password hashing lane that a registration or login waited out and
+    // sent again; expected under a burst, neither requests nor failures. A last refusal after
+    // every wait counts as a failure with the code auth_busy.
+    public long BusyWaits { get; init; }
 }
 
 public sealed record StressFullStackSummary(
@@ -29,6 +34,12 @@ public sealed record StressFullStackSummary(
     public int ChurnLogouts { get; init; }
 
     public int ChurnLogins { get; init; }
+
+    // The login or logout burst, or null for a run without one.
+    public StressBurstSummary? Burst { get; init; }
+
+    // The accounts that the burst registered before the ramp.
+    public int BurstAccounts { get; init; }
 }
 
 public sealed class FullStackStressMetrics(int seed)
@@ -91,6 +102,23 @@ public sealed class FullStackStressMetrics(int seed)
         }
     }
 
+    // A registration or login was refused with auth_busy and waits before it is sent again.
+    public void RecordBusyWait(string operation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        lock (gate)
+        {
+            if (!operations.TryGetValue(operation, out var metrics))
+            {
+                metrics = new OperationMetrics(
+                    new StressLatencyAccumulator(unchecked(seed + operations.Count + 100)));
+                operations.Add(operation, metrics);
+            }
+
+            metrics.BusyWaits++;
+        }
+    }
+
     public IReadOnlyDictionary<string, StressHttpOperationSummary> Capture()
     {
         lock (gate)
@@ -109,7 +137,8 @@ public sealed class FullStackStressMetrics(int seed)
                             pair.Value.FailureCodes,
                             StringComparer.Ordinal))
                     {
-                        RateLimitWaits = pair.Value.RateLimitWaits
+                        RateLimitWaits = pair.Value.RateLimitWaits,
+                        BusyWaits = pair.Value.BusyWaits
                     },
                     StringComparer.Ordinal);
         }
@@ -124,6 +153,8 @@ public sealed class FullStackStressMetrics(int seed)
         public long Failures { get; set; }
 
         public long RateLimitWaits { get; set; }
+
+        public long BusyWaits { get; set; }
 
         public Dictionary<int, long> StatusCodes { get; } = [];
 

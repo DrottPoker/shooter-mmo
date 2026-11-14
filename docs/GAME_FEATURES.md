@@ -53,6 +53,12 @@ bindings and player-configurable rebinding are not implemented.
   form is disabled, so a second click or `Enter` cannot send it again. A failed
   request shows its reason in red under the button, with its stable error
   code; when GameService does not answer, the message names its address.
+- When too many players log in or create accounts at once, a login waits for
+  up to 10 seconds. When GameService is too busy even for that, the card says
+  `The game service is busy.` with a countdown, and the client tries again by
+  itself, up to five times. `Esc`, a change to the form, or the other tab
+  stops it; when every try was busy, the card says
+  `The game service is busy. Try again in a moment.`
 - Only one client session may be active for an account. A login on a second
   client replaces the first one: the first client is disconnected from its
   shard, clears its local account state, and returns to LoginMenu, whose card

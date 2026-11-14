@@ -25,6 +25,11 @@ namespace Mmorpg.Client.Api
     // its native resources.
     public sealed class ApiClient : IDisposable, IJoinTicketApi
     {
+        // A login or registration may wait this long in GameService's password hashing queue
+        // before it is hashed, so it gets this much more than the request timeout. It is the
+        // largest wait GameService accepts as a setting (Auth:PasswordHashing:MaxWaitSeconds).
+        public const int AuthenticationQueueSeconds = 10;
+
         private readonly int timeoutSeconds;
         private readonly HashSet<UnityWebRequest> activeRequests = new HashSet<UnityWebRequest>();
         private bool disposed;
@@ -68,7 +73,8 @@ namespace Mmorpg.Client.Api
                 JsonUtility.ToJson(request),
                 null,
                 onSuccess,
-                onError);
+                onError,
+                AuthenticationQueueSeconds);
         }
 
         public IEnumerator Login(
@@ -83,7 +89,8 @@ namespace Mmorpg.Client.Api
                 JsonUtility.ToJson(request),
                 null,
                 onSuccess,
-                onError);
+                onError,
+                AuthenticationQueueSeconds);
         }
 
         public IEnumerator Logout(
@@ -287,9 +294,10 @@ namespace Mmorpg.Client.Api
             string json,
             string sessionToken,
             Action<T> onSuccess,
-            Action<ApiError> onError)
+            Action<ApiError> onError,
+            int extraTimeoutSeconds = 0)
         {
-            var request = CreateRequest(method, url, json, sessionToken);
+            var request = CreateRequest(method, url, json, sessionToken, extraTimeoutSeconds);
             try
             {
                 yield return request.SendWebRequest();
@@ -405,7 +413,8 @@ namespace Mmorpg.Client.Api
             string method,
             string url,
             string json,
-            string sessionToken)
+            string sessionToken,
+            int extraTimeoutSeconds = 0)
         {
             if (disposed)
             {
@@ -415,7 +424,7 @@ namespace Mmorpg.Client.Api
             var request = new UnityWebRequest(url, method)
             {
                 downloadHandler = new DownloadHandlerBuffer(),
-                timeout = timeoutSeconds
+                timeout = timeoutSeconds + Mathf.Max(0, extraTimeoutSeconds)
             };
 
             if (!string.IsNullOrEmpty(json))
@@ -445,6 +454,11 @@ namespace Mmorpg.Client.Api
 
         internal static ApiError ParseHttpError(long statusCode, string body, string fallbackMessage)
         {
+            return ParseHttpError(statusCode, body, fallbackMessage, null);
+        }
+
+        internal static ApiError ParseHttpError(long statusCode, string body, string fallbackMessage, string retryAfter)
+        {
             ProblemDetailsResponse problem = null;
             if (!string.IsNullOrWhiteSpace(body))
             {
@@ -471,7 +485,8 @@ namespace Mmorpg.Client.Api
                 statusCode,
                 code,
                 message,
-                correlationId);
+                correlationId,
+                ApiError.ParseRetryAfter(retryAfter));
         }
 
         private static ApiError CreateError(UnityWebRequest request)
@@ -492,7 +507,7 @@ namespace Mmorpg.Client.Api
 
             if (request.responseCode > 0)
             {
-                return ParseHttpError(request.responseCode, body, request.error);
+                return ParseHttpError(request.responseCode, body, request.error, request.GetResponseHeader("Retry-After"));
             }
 
             return InvalidResponse(request.error);

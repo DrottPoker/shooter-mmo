@@ -246,6 +246,7 @@ A GameService module declares every meter it creates in
 
 | Meter | What it measures |
 | --- | --- |
+| `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, retention cleanup, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
@@ -262,8 +263,13 @@ A GameService module declares every meter it creates in
 | `game_service.items.cleanup` | counter | Maintenance removals, labeled `target`: `recovery_delivery`, `closed_corpse`, `audit_operation`, or `claimed_recovery_delivery`. |
 | `game_service.items.corpses` | gauge | Durable corpses, labeled `state`: `open` or `closed`. |
 | `game_service.items.recovery.backlog` | gauge | Unclaimed Recovery deliveries. |
+| `game_service.accounts.password_hashing.in_flight` | gauge | Password hashes running on the lane's threads. |
+| `game_service.accounts.password_hashing.queue_length` | gauge | Registrations and logins waiting in the lane's queue. |
+| `game_service.accounts.password_hashing.wait.duration` | histogram, ms | How long a hash waited in the queue before a lane thread took it. |
+| `game_service.accounts.password_hashing.duration` | histogram, ms | How long one hash or check took on its lane thread; the lane's queue limit follows it. |
+| `game_service.accounts.password_hashing.refusals` | counter | Requests refused with `auth_busy` because they would have waited longer than `Auth:PasswordHashing:MaxWaitSeconds`, labeled `operation`: `hash` for a registration or `verify` for a login. |
 | `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, or `invalidation`. |
-| `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`. |
+| `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`, such as `session_cache_revoke` for revocation tombstones that could not be stored and `session_cache_revoke_retry` for a first attempt that failed for a transient reason and was sent again. |
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 
 The periodic item summary log counts only committed and rejected transactions.
@@ -406,7 +412,10 @@ entries of both processes, and the trace share one id.
   and leaves are logged at `Debug`. Successful real-player lifecycle events stay
   at `Information`, and every admission failure stays visible. The synthetic bot
   population appears in the status line.
-- GameService throttles repeated Redis warning logs per operation.
+- GameService throttles repeated Redis warning logs per operation, and the
+  password hashing lane logs a refusal with `auth_busy` as a warning at most
+  every 30 seconds, with the queue, the hashes in flight, and the measured time
+  of a hash.
 
 ## Traces
 

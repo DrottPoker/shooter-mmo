@@ -65,6 +65,43 @@ public sealed class StressGeneratorOptionsTests
         Assert.Equal(TimeSpan.FromSeconds(30), options.SteadyDuration);
     }
 
+    // A burst is a login or a logout burst of the full stack, and it and its deadline fit the
+    // steady interval.
+    [Fact]
+    public void ABurstNeedsTheFullStackAndFitsTheSteadyInterval()
+    {
+        string[] fullStack =
+        [
+            "--mode", "full-stack",
+            "--postgres-connection-string", "Host=127.0.0.1;Database=shooter_mmo_stack_stress_test;Username=test;Password=test",
+            "--confirm-disposable-database", "shooter_mmo_stack_stress_test",
+            "--duration-seconds", "90"
+        ];
+
+        var login = StressGeneratorOptions.Parse(
+            [.. fullStack, "--login-burst-accounts", "500", "--burst-at-seconds", "10", "--burst-deadline-seconds", "60"],
+            Directory.GetCurrentDirectory());
+        var logout = StressGeneratorOptions.Parse(
+            [.. fullStack, "--logout-burst-accounts", "250"],
+            Directory.GetCurrentDirectory());
+        var none = StressGeneratorOptions.Parse(fullStack, Directory.GetCurrentDirectory());
+
+        Assert.Equal(new StressBurstOptions(StressBurstKind.Login, 500, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(60)), login.Burst);
+        Assert.Equal(new StressBurstOptions(StressBurstKind.Logout, 250, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(60)), logout.Burst);
+        Assert.Null(none.Burst);
+        AssertRefused([.. fullStack, "--login-burst-accounts", "5", "--logout-burst-accounts", "5"], "not both");
+        AssertRefused([.. fullStack, "--login-burst-accounts", "5", "--burst-at-seconds", "40", "--burst-deadline-seconds", "60"], "does not fit");
+        AssertRefused([.. fullStack, "--burst-at-seconds", "5"], "need --login-burst-accounts");
+        AssertRefused(["--login-burst-accounts", "5"], "full-stack");
+
+        static void AssertRefused(string[] arguments, string expected)
+        {
+            var exception = Assert.Throws<StressGeneratorOptionException>(() =>
+                StressGeneratorOptions.Parse(arguments, Directory.GetCurrentDirectory()));
+            Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void FullStackRequiresDisposableDatabaseConfirmation()
     {

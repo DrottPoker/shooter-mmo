@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace Mmorpg.Client.Api
 {
@@ -18,12 +19,24 @@ namespace Mmorpg.Client.Api
             string code,
             string message,
             string correlationId)
+            : this(kind, statusCode, code, message, correlationId, 0)
+        {
+        }
+
+        public ApiError(
+            ApiErrorKind kind,
+            long statusCode,
+            string code,
+            string message,
+            string correlationId,
+            int retryAfterSeconds)
         {
             Kind = kind;
             StatusCode = statusCode;
             Code = string.IsNullOrWhiteSpace(code) ? "unknown_error" : code;
             Message = string.IsNullOrWhiteSpace(message) ? "The request failed." : message;
             CorrelationId = correlationId ?? string.Empty;
+            RetryAfterSeconds = Math.Max(0, retryAfterSeconds);
         }
 
         public ApiErrorKind Kind { get; private set; }
@@ -35,6 +48,9 @@ namespace Mmorpg.Client.Api
         public string Message { get; private set; }
 
         public string CorrelationId { get; private set; }
+
+        // The Retry-After of the answer in seconds, or 0 when it named none.
+        public int RetryAfterSeconds { get; private set; }
 
         public bool IsUnauthorized
         {
@@ -48,7 +64,20 @@ namespace Mmorpg.Client.Api
             var correlation = string.IsNullOrWhiteSpace(CorrelationId)
                 ? string.Empty
                 : " Correlation: " + CorrelationId + ".";
-            return status + Code + ": " + Message + correlation;
+            var retry = RetryAfterSeconds > 0
+                ? " Retry after " + RetryAfterSeconds.ToString(CultureInfo.InvariantCulture) + " s."
+                : string.Empty;
+            return status + Code + ": " + Message + correlation + retry;
+        }
+
+        // A Retry-After header in delay-seconds; a date or anything else reads as none.
+        public static int ParseRetryAfter(string header)
+        {
+            int seconds;
+            return !string.IsNullOrWhiteSpace(header)
+                && int.TryParse(header.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out seconds)
+                    ? seconds
+                    : 0;
         }
     }
 

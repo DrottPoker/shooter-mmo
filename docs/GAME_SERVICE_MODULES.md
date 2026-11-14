@@ -965,8 +965,8 @@ immutable validated option records instead of reading `IConfiguration`:
 
 | Keys | Owner |
 | --- | --- |
-| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds` | `PlatformOptions` |
-| `Auth:SessionLifetimeHours`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
+| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds` | `PlatformOptions` |
+| `Auth:SessionLifetimeHours`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Quests:CatalogPath` | `QuestsModuleOptions` |

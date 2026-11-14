@@ -98,7 +98,7 @@ public static class Program
         WriteFinalSummary(report, options.OutputPath);
         var exitCode = report.Verdict is { Valid: false }
             ? CouldNotMeasureExitCode
-            : !PassedOwnChecks(report)
+            : !report.PassedOwnChecks()
                 ? 1
                 : report.Verdict is { Passed: false }
                     ? 3
@@ -115,19 +115,6 @@ public static class Program
 
     // The generator fell behind, so the run measured nothing; it is neither passed nor failed.
     public const int CouldNotMeasureExitCode = 4;
-
-    // The generator's own checks, which decide exit code 1 as before the quality boundary.
-    internal static bool PassedOwnChecks(StressRunReport report)
-    {
-        var bots = report.Configuration.BotCount;
-        return report.Bots.FailedBots == 0
-            && report.Bots.JoinedBots == bots
-            && report.Bots.CompletedBots == bots
-            && (report.FullStack is null
-                || report.FullStack.LoggedOutBots == report.FullStack.AdmittedBots)
-            && report.Gameplay.UnexpectedFailures == 0
-            && (report.Postgres?.ItemInvariants?.Violations ?? 0) == 0;
-    }
 
     private static int WritePlan(string[] args)
     {
@@ -288,7 +275,7 @@ public static class Program
             report = report with { Verdict = boundary.Evaluate(report) };
             var exitCode = report.Verdict is { Valid: false }
                 ? CouldNotMeasureExitCode
-                : !PassedOwnChecks(report) || !report.Verdict.Passed
+                : !report.PassedOwnChecks() || !report.Verdict.Passed
                     ? 1
                     : 0;
             await report.WriteAsync(reportPath, CancellationToken.None);

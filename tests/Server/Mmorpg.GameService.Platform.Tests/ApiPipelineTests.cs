@@ -143,6 +143,45 @@ public sealed class ApiPipelineTests
         await application.StopAsync(cancellationToken);
     }
 
+    // A refusal that names when to try again sends it as Retry-After in whole seconds, beside
+    // its code in the Problem Details.
+    [Fact]
+    public async Task AServiceResultWithARetryTimeSendsTheRetryAfterHeader()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        builder.Services.AddApiProblemDetails();
+
+        await using var application = builder.Build();
+        application.UseApiPipeline();
+        application.MapGet(
+            "/busy",
+            () => ServiceResult<bool>.ServiceUnavailable(
+                    "auth_busy",
+                    "Busy.",
+                    TimeSpan.FromSeconds(6.2))
+                .ToHttpResult());
+        application.MapGet(
+            "/unavailable",
+            () => ServiceResult<bool>.ServiceUnavailable("database_unavailable", "Down.").ToHttpResult());
+        await application.StartAsync(cancellationToken);
+        using var client = CreateClient(application);
+
+        using var busy = await client.GetAsync("/busy", cancellationToken);
+        var problem = await busy.Content.ReadFromJsonAsync<DatabaseProblem>(cancellationToken);
+        using var unavailable = await client.GetAsync("/unavailable", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, busy.StatusCode);
+        Assert.Equal("auth_busy", problem?.Code);
+        Assert.Equal(TimeSpan.FromSeconds(7), busy.Headers.RetryAfter?.Delta);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
+        Assert.Null(unavailable.Headers.RetryAfter);
+        Assert.Equal("1", ServiceResultExtensions.FormatRetryAfter(TimeSpan.FromMilliseconds(10)));
+        await application.StopAsync(cancellationToken);
+    }
+
     private static async Task<WebApplication> StartAsync(
         Action<WebApplicationBuilder> configure,
         CancellationToken cancellationToken)

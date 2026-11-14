@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "903a7f1b69a54a67a97609f104a055b4dd585e86366f38a45a25816d683b8db8",
+  "revision": "dd020761b1cf80c5fe5185b64791d359c5267bbc2fcd186598dbca8bf1a2e657",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -35,6 +35,10 @@
     {
       "key": "message/appearance_change_in_flight",
       "text": "The last change of the look is still being saved."
+    },
+    {
+      "key": "message/auth_busy",
+      "text": "The game service is busy. Try again in a moment."
     },
     {
       "key": "message/auth_service_timeout",

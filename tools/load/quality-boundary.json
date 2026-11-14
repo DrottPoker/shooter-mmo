@@ -99,6 +99,24 @@
       "allow": []
     },
     {
+      "rule": "worker_heartbeat_failures",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No failed registry heartbeat of the worker over the run, counted from its warning lines once the services stopped. Two failures in a row let the worker's registration lease expire, and the worker stops itself."
+    },
+    {
+      "rule": "auth_service_timeouts",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No warning, error, or critical line of the worker log that names auth_service_timeout, a call to GameService that did not answer within the worker's timeout, over the run, counted once the services stopped."
+    },
+    {
+      "rule": "burst_incomplete_accounts",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Every account of a login or logout burst ends logged in or logged out within the burst's deadline, after it waited out every auth_busy refusal of the password hashing lane; a refusal is counted and expected, never a failure. Not applicable to a run without a burst."
+    },
+    {
       "rule": "generator_poll_lateness_p99_ms",
       "limit": 16.67,
       "unit": "ms",

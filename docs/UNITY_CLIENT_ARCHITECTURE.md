@@ -907,10 +907,13 @@ client, so the text goes at zero and nothing more is assumed; it never blocks
   iterator, so each owner disposes its client in `OnDestroy`, which aborts and
   releases any request that has not completed.
 
-`ApiError` carries the failure kind, HTTP status, stable code, message, and
-correlation id. The code is the server's, or the client's own for a request
-that got no usable answer; the message is the diagnostic for the log, and
-panels display the text of the code. Array
+`ApiError` carries the failure kind, HTTP status, stable code, message,
+correlation id, and the answer's `Retry-After` in seconds, 0 without one. The
+code is the server's, or the client's own for a request that got no usable
+answer; the message is the diagnostic for the log, and panels display the text
+of the code. A login or registration may wait up to 10 seconds in GameService's
+password hashing queue, so its timeout is the request timeout plus
+`ApiClient.AuthenticationQueueSeconds`, 10 seconds. Array
 responses are validated through `JsonArrayUtility` before they reach UI state.
 
 ## Client Diagnostics
@@ -1355,6 +1358,20 @@ text of `account_session_replaced`, as
 GameService connection, the environment and the build, and a warning while the
 GameService address is overridden, as
 [Environment And Build Stamp](#environment-and-build-stamp) describes.
+
+A login or registration that GameService refuses with `503 auth_busy`, because
+its [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane) is
+full, is waited out and sent again by itself. `AuthBusyRetry` of the API
+assembly holds the rule: the wait is the answer's `Retry-After`, at least 1
+and at most 30 seconds, and 5 seconds when the header is missing or not a
+number of seconds, and a request is sent again at most 5 times. The caller
+passes the time, so EditMode tests cover the rule without waiting. While it
+waits, the form is usable and the status line shows `ui/login/busy-retry`, the
+seconds left counting down and the retry of the five; `Esc`, a change to any
+field, or the other tab stops it and shows `ui/login/busy-stopped`, and
+`Enter` sends at once and counts from the start. When the retries are used up,
+the card shows the text of `auth_busy`. The live stack tests register their
+accounts by the same rule, through `LiveStackWalker.Register`.
 
 ### CharacterSelect
 
