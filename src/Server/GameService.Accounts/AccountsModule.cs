@@ -3,9 +3,12 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Accounts.PasswordHashing;
+using Mmorpg.GameService.Accounts.Persistence;
 using Mmorpg.GameService.Accounts.Redis;
+using Mmorpg.GameService.Accounts.Retention;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
+using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Accounts;
 
@@ -15,7 +18,7 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
 {
     public string Name => "Accounts";
 
-    public IReadOnlyList<DatabaseMigration> Migrations { get; } = [];
+    public IReadOnlyList<DatabaseMigration> Migrations => AccountsSchemaMigrations.All;
 
     public IReadOnlyList<string> MeterNames { get; } =
         [PasswordHashingMetrics.MeterName, RedisAccelerationMetrics.MeterName];
@@ -35,6 +38,7 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
         services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
         services.AddSingleton<RedisAuthenticationRateLimiter>();
         services.AddSingleton<IAccountLocks, AccountLocks>();
+        services.AddSingleton<IRetentionTask, AccountSessionRetentionTask>();
         services.AddScoped<AccountService>();
         services.AddScoped<SessionService>();
         services.AddHostedService<RedisAccelerationMetricsReporterService>();

@@ -59,6 +59,8 @@ public sealed class StressQualityBoundary
             ["deadlocks"] = ("count", StressRuleKind.Maximum),
             ["item_invariant_violations"] = ("count", StressRuleKind.Maximum),
             ["process_memory_growth"] = ("MiB", StressRuleKind.Maximum),
+            ["retained_table_growth"] = ("percent", StressRuleKind.Maximum),
+            ["retention_lag"] = ("s", StressRuleKind.Maximum),
             ["service_log_errors"] = ("count", StressRuleKind.Maximum),
             ["worker_heartbeat_failures"] = ("count", StressRuleKind.Maximum),
             ["auth_service_timeouts"] = ("count", StressRuleKind.Maximum),
@@ -355,6 +357,8 @@ public sealed class StressQualityBoundary
                             : null)
                     : Measurement.Missing("no PostgreSQL samples."),
             "process_memory_growth" => MeasureMemoryGrowth(report),
+            "retained_table_growth" => MeasureRetainedTableGrowth(report),
+            "retention_lag" => MeasureRetentionLag(report),
             "service_log_errors" => report.ServiceLogs is not { } logs
                 ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
                 : Measurement.Of(
@@ -428,6 +432,58 @@ public sealed class StressQualityBoundary
             "worst " + worst.Process + "; " + string.Join(
                 ", ",
                 measured.Select(trend => Invariant($"{trend.Process} {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h"))));
+    }
+
+    // How much the two operation tables grew from the retention sample, taken once GameService's
+    // retention window passed in the steady interval, to its end; the worse table is judged.
+    private static Measurement MeasureRetainedTableGrowth(StressRunReport report)
+    {
+        if (RetentionNotApplicable(report) is { } skip)
+        {
+            return skip;
+        }
+
+        if (report.Soak?.Retention is not { } retention)
+        {
+            return Measurement.Missing("the retention sample or the count at the end of the steady interval was not taken.");
+        }
+
+        return Measurement.Of(
+            Math.Max(retention.OperationGrowthPercent, retention.ChangeGrowthPercent),
+            Invariant($"item_operations {retention.OperationsAtSample} to {retention.OperationsAtEnd} rows ({retention.OperationGrowthPercent:+0.0;-0.0} %), item_operation_changes {retention.ChangesAtSample} to {retention.ChangesAtEnd} ({retention.ChangeGrowthPercent:+0.0;-0.0} %), from {retention.SampleOffsetSeconds:0} s into the steady interval to its end"));
+    }
+
+    // The longest that a drift check of the steady interval saw an item operation due.
+    private static Measurement MeasureRetentionLag(StressRunReport report)
+    {
+        if (RetentionNotApplicable(report) is { } skip)
+        {
+            return skip;
+        }
+
+        var drift = report.Soak?.Drift;
+        return drift?.MaximumRetentionLagSeconds is { } lag
+            ? Measurement.Of(lag, Invariant($"the worst of {drift.Samples} drift checks, with a retention window of {report.Configuration.Retention!.ItemHistorySeconds:0} s and passes every {report.Configuration.Retention.IntervalSeconds:0} s"))
+            : Measurement.Missing("no drift check of the steady interval measured the retention lag.");
+    }
+
+    // Retention is judged only when the plan gave GameService's retention settings and the window
+    // passes early enough in the planned steady interval to compare two samples after it.
+    private static Measurement? RetentionNotApplicable(StressRunReport report)
+    {
+        if (report.Configuration.Mode != "full-stack")
+        {
+            return Measurement.Skip("no database in worker-only mode");
+        }
+
+        if (report.Configuration.Retention is not { } plan)
+        {
+            return Measurement.Skip("the plan passed no retention settings of GameService");
+        }
+
+        return plan.SampleOffsetSeconds is null
+            ? Measurement.Skip(Invariant($"a retention window of {plan.ItemHistorySeconds:0} s and two passes of {plan.IntervalSeconds:0} s leave less than {StressRetentionPlan.MinimumComparison.TotalMinutes:0} minutes of the planned steady interval of {report.Configuration.SteadyDurationSeconds:0} s"))
+            : null;
     }
 
     // The worse direction's lateness against the due time; a proxy that dropped packets because

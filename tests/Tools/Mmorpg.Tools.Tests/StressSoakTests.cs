@@ -351,6 +351,61 @@ public sealed class StressSoakTests
         Assert.Null(unmeasured.Measured);
     }
 
+    // The sample comes once the window and two passes went by, and only when two minutes of the
+    // planned steady interval are left after it.
+    [Fact]
+    public void TheRetentionSampleWaitsForTheWindowAndTwoPasses()
+    {
+        var soak = StressRetentionPlan.Create(240, 15, TimeSpan.FromMinutes(10))!;
+        var tooShort = StressRetentionPlan.Create(240, 15, TimeSpan.FromSeconds(389))!;
+        var production = StressRetentionPlan.Create(1_209_600, 60, TimeSpan.FromMinutes(30))!;
+
+        Assert.Equal(270, soak.SampleOffsetSeconds);
+        Assert.Null(tooShort.SampleOffsetSeconds);
+        Assert.Null(production.SampleOffsetSeconds);
+        Assert.Null(StressRetentionPlan.Create(null, 15, TimeSpan.FromMinutes(10)));
+    }
+
+    [Fact]
+    public void TheRetentionRulesJudgeTheOperationTablesAndTheLagOfARunWhoseWindowPassed()
+    {
+        var boundary = StressQualityBoundary.Load(BoundaryPath);
+        var growthLimit = boundary.Rules.Single(rule => rule.Rule == "retained_table_growth").Limit;
+        var lagLimit = boundary.Rules.Single(rule => rule.Rule == "retention_lag").Limit;
+
+        var keepsUp = RetentionReport(operations: (1_000, 1_100), changes: (5_000, 5_200), lag: lagLimit - 1);
+        var grows = RetentionReport(operations: (1_000, 1_000 + (int)(10 * (growthLimit + 1))), changes: (5_000, 5_000), lag: 1);
+        var behind = RetentionReport(operations: (1_000, 1_000), changes: (5_000, 5_000), lag: lagLimit + 1);
+        var sampled = RetentionReport(operations: (1_000, 1_000), changes: (5_000, 5_000), lag: 1);
+        var unsampled = sampled with { Soak = sampled.Soak! with { Retention = null } };
+        var notPlanned = SoakReport(minutes: 10, workerGrowth: 0);
+
+        Assert.True(Rule(boundary, keepsUp, "retained_table_growth").Passed);
+        Assert.Equal(10, Rule(boundary, keepsUp, "retained_table_growth").Measured!.Value, 6);
+        Assert.True(Rule(boundary, keepsUp, "retention_lag").Passed);
+        Assert.False(Rule(boundary, grows, "retained_table_growth").Passed);
+        Assert.Contains("item_operations 1000 to", Rule(boundary, grows, "retained_table_growth").Note, StringComparison.Ordinal);
+        Assert.False(Rule(boundary, behind, "retention_lag").Passed);
+        Assert.False(Rule(boundary, unsampled, "retained_table_growth").Passed);
+        Assert.Null(Rule(boundary, unsampled, "retained_table_growth").Measured);
+        Assert.True(Rule(boundary, notPlanned, "retained_table_growth").Passed);
+        Assert.StartsWith("Not applicable", Rule(boundary, notPlanned, "retention_lag").Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheGeneratorTakesTheRetentionSettings()
+    {
+        var options = StressGeneratorOptions.Parse(
+            ["--retention-item-history-seconds", "240", "--retention-interval-seconds", "15"],
+            Directory.GetCurrentDirectory());
+
+        Assert.Equal(240, options.RetentionItemHistorySeconds);
+        Assert.Equal(15, options.RetentionIntervalSeconds);
+        Assert.Throws<StressGeneratorOptionException>(() => StressGeneratorOptions.Parse(
+            ["--retention-item-history-seconds", "59"],
+            Directory.GetCurrentDirectory()));
+    }
+
     // A planned ten-minute interval is judged even when its measured end falls a little short.
     [Fact]
     public void APlannedSixHundredSecondIntervalAlwaysAppliesTheMemoryRule()
@@ -715,6 +770,27 @@ public sealed class StressSoakTests
                     new StressMemoryTrend("generator", 100, 0, [400, 400, 400, 400, 400], 0, [100, 100, 100, 100, 100])
                 ]),
             ServiceLogs = new StressServiceLogSummary([], [])
+        };
+    }
+
+    // A ten-minute soak with the soak scenarios' retention window of four minutes, its retention
+    // sample, and the worst lag of its drift checks.
+    private static StressRunReport RetentionReport((long Sample, long End) operations, (long Sample, long End) changes, double lag)
+    {
+        var report = SoakReport(minutes: 10, workerGrowth: 0);
+        var drift = new StressDriftAccumulator(10, 30, 64);
+        drift.Add(Drift([], 0) with { RetentionLagSeconds = lag });
+        return report with
+        {
+            Configuration = report.Configuration with
+            {
+                Retention = StressRetentionPlan.Create(240, 15, TimeSpan.FromMinutes(10))
+            },
+            Soak = report.Soak! with
+            {
+                Drift = drift.Capture(),
+                Retention = new StressRetentionSummary(270, operations.Sample, operations.End, changes.Sample, changes.End, lag)
+            }
         };
     }
 

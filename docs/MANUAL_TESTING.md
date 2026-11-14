@@ -3009,10 +3009,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenari
 
 Expected result: `soak-10min` takes about 15 minutes and `soak-30min` about 40,
 on an otherwise idle machine. Both churn their bots as above, `process_memory_growth`
-is judged, and the verdict lists the growth of every process in its note. The
-summary in the run folder carries the ten tables that grew the most, Redis, the
-worst drift values, the memory of every process, the deaths per role, the churn
-counters, and the service log classes; [Soak](STACK_STRESS_TESTING.md#soak)
+is judged, and the verdict lists the growth of every process in its note. With
+their retention windows of four minutes, `retained_table_growth` and
+`retention_lag` are judged too, and the script prints a `Retention:` line with
+the two operation tables at the retention sample and at the end and the worst
+lag. The summary in the run folder carries the ten tables that grew the most,
+Redis, the worst drift values, the retention numbers, the memory of every
+process, the deaths per role, the churn counters, and the service log classes; [Soak](STACK_STRESS_TESTING.md#soak)
 says how to read them. A `failed` verdict with numbers is a finding about the
 stack to record, not a failure of the check; a `could not measure` result means
 the generator fell behind. Both `soak-10min` rehearsals of 2026-11-14 failed
@@ -3249,7 +3252,36 @@ startup. Every online worker shows `runs_mirrored_quests` as true.
 Keep GameService and a worker running for a few minutes while a client plays.
 
 Expected result: GameService periodically logs an item summary with
-transaction, contention, lifecycle, corpse, Recovery, and cleanup counts, and
-the worker's status line separates real players from bots and live from durable
-corpses. No password, session token, join ticket, service secret, or command
-body appears in either terminal.
+transaction, contention, lifecycle, corpse, Recovery, and Recovery expiry
+counts, and the worker's status line separates real players from bots and live
+from durable corpses. No password, session token, join ticket, service secret,
+or command body appears in either terminal.
+
+### Retention
+
+Start GameService with short retention windows, so its history is trimmed while
+you watch:
+
+```powershell
+$env:Retention__ItemHistory = "00:03:00"
+$env:Retention__SessionHistory = "00:03:00"
+$env:Retention__IntervalSeconds = "15"
+dotnet run --project src/Server/GameService
+```
+
+Join with a client, move and destroy a few items, and leave and join again a
+few times over five minutes. Then read the oldest rows, as
+[Look Into The Database](#look-into-the-database) describes:
+
+```text
+select min(completed_at), now() - min(completed_at) as oldest from item_operations where completed_at is not null;
+select count(*) from character_simulation_sessions where coalesce(released_at, expires_at) < now() - interval '4 minutes';
+```
+
+Expected result: from three minutes after the first item move on, GameService
+logs `Retention pass deleted <n> rows` with `item_operations` among the tasks
+about every 15 seconds, the oldest completed operation stays younger than about
+three and a half minutes, unless a death event of an open or recently closed
+corpse holds it, and no ended simulation session older than four minutes is
+left. The client keeps playing throughout. Remove the three variables, or
+close the terminal, before you start GameService for anything else.

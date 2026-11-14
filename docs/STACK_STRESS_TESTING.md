@@ -345,7 +345,7 @@ sets is an error.
 | `playing-250` | full-stack `playing` | 250 bots of the reference mix on the reference variant, steps of 25 six seconds apart, 300 s steady, 2 poll threads |
 | `playing-500` | full-stack `playing` | 500 bots of the reference mix on the reference variant, steps of 25 five seconds apart, 300 s steady, 4 poll threads; the Scale Target |
 | `hotspot-100` | full-stack `playing` | 100 traders in the town of Development World 2 at its one vendor, steps of 20 five seconds apart, 120 s steady |
-| `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set |
+| `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set, and for the [retention rules](#storage-growth) |
 | `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
 | `login-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [login burst](#burst-scenarios) of 400 logged-in accounts 10 s into it, each with 60 s to end logged in again |
 | `logout-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [logout burst](#burst-scenarios) of 500 logged-in accounts 10 s into it, each with 60 s to end logged out |
@@ -505,9 +505,11 @@ masked. The local secrets and the connection string are the test values that
   gets the connection string in `STACK_STRESS_POSTGRES` and the fixture secret
   in `STACK_STRESS_FIXTURE_SECRET`, never as arguments. For the [Soak](#soak)
   numbers it gets `--redis-endpoint` with the disposable Redis, and
-  `--database-pool-size` and `--worker-heartbeat-timeout-seconds` with
-  GameService's `Database:MaximumPoolSize` and
-  `Simulation:WorkerHeartbeatTimeoutSeconds`, read from its checked-in
+  `--database-pool-size`, `--worker-heartbeat-timeout-seconds`,
+  `--retention-item-history-seconds`, and `--retention-interval-seconds` with
+  GameService's `Database:MaximumPoolSize`,
+  `Simulation:WorkerHeartbeatTimeoutSeconds`, `Retention:ItemHistory`, and
+  `Retention:IntervalSeconds`, read from its checked-in
   `Config/appsettings.json` unless the scenario's `gameServiceSettings` set
   them.
 - A `playing` scenario with `teleportToGrounds`: the worker gets
@@ -1049,13 +1051,30 @@ table with its rows and bytes at both ends and its growth per hour and per
 player hour, sorted by bytes per hour, and the summary carries the top ten.
 
 Read the list from the top: a table that grows by bytes per player hour grows
-with play and needs a retention or archiving rule; a table whose growth stays
-near zero at a steady population, such as `accounts` or `characters`, grows
-only with new players. Rows per player hour show which operation writes it, and
-bytes per row show whether the payloads or the indexes dominate. A player hour
-is one bot playing for an hour; the players are the bots joined when the steady
-interval began. No rule judges growth yet: phase 5 of the hardening plan, the
-database's retention and indexes, decides what is acceptable from these lists.
+with play and needs a [retention](GAME_SERVICE_MODULES.md#retention) task; a
+table whose growth stays near zero at a steady population, such as `accounts`
+or `characters`, grows only with new players. Rows per player hour show which
+operation writes it, and bytes per row show whether the payloads or the indexes
+dominate. A player hour is one bot playing for an hour; the players are the
+bots joined when the steady interval began.
+
+GameService keeps its history 14 days, which no run lasts, so both soak
+scenarios give it retention windows of four minutes and a pass every 15
+seconds, `Retention__ItemHistory`, `Retention__SessionHistory`, and
+`Retention__IntervalSeconds` in their `gameServiceSettings`. Once the window and
+two passes went by in the steady interval, every row written before it is due,
+and the generator counts `item_operations` and `item_operation_changes` again:
+the retention sample. While retention keeps up, both tables hold about one
+window of operations from then on and stay level. The rule
+`retained_table_growth` of the [Quality Boundary](#quality-boundary) judges how
+much they grew from the retention sample to the end of the steady interval, and
+`retention_lag` the longest that a [drift check](#drift-checks) saw a completed
+operation past the window and not held by a death event, the lag that
+GameService's own metric `game_service.retention.lag` reports. `soak.retention`
+of the report and the summary holds both counts, their growth, and the worst
+lag, and the script prints them. A run whose window and two passes leave less
+than two minutes of the planned steady interval, every scenario but the soaks,
+judges neither rule.
 
 ### Memory And GC Trend
 
@@ -1104,8 +1123,9 @@ lease's end, one session heartbeat, the least lease left, the age of the
 worker's registry heartbeat against GameService's
 `Simulation:WorkerHeartbeatTimeoutSeconds`, the pending item operations,
 GameService's connections and the ones in use against its pool, the
-`Database:MaximumPoolSize` the plan passes, and the oldest transaction that
-waits idle.
+`Database:MaximumPoolSize` the plan passes, the oldest transaction that waits
+idle, and the retention lag of the item operations against the
+`Retention:ItemHistory` the plan passes.
 
 Every bot says whether it certainly holds a simulation session and whether it
 may hold one. A joined bot that plays, also one that waits for a safe moment to
@@ -1348,6 +1368,8 @@ worker-only mode, passes and says so.
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
 | `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
+| `retained_table_growth` | `item_operations` and `item_operation_changes` grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
+| `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
 | `worker_heartbeat_failures` | 0 warning lines of a failed worker registry heartbeat over the run, counted once the services stopped | Two failures in a row let the worker's registration lease expire, and the worker stops itself |
 | `auth_service_timeouts` | 0 warning, error, or critical lines of the worker log that name `auth_service_timeout` over the run | A call of the worker that GameService did not answer within the worker's timeout refuses a join or loses a heartbeat |
@@ -1689,8 +1711,17 @@ reports.
 6. **One corpse is one queue.** With 250 clients on the shared corpse of
    `mixed-250`, a deposit's p95 was 4.6 seconds. That is the deliberate worst
    case of the mixed workload, not a spread of corpses.
-7. **Storage growth**, as [The 30 Minute Soak](#the-30-minute-soak) shows: the
-   two operation tables are never trimmed.
+7. **Storage growth.** [The 30 Minute Soak](#the-30-minute-soak) measured the
+   history without retention: 184 MiB per hour at 250 players, 94 percent of it
+   in the two operation tables, about 8 GiB per day at 500. GameService now
+   deletes its history after `Retention:ItemHistory` and
+   `Retention:SessionHistory`, 14 days each, as
+   [Retention](GAME_SERVICE_MODULES.md#retention) describes, so the database
+   levels off at about 14 days of history, roughly 110 GiB per Shard at the
+   Scale Target by those numbers, and the soaks judge whether retention keeps up
+   with the rules `retained_table_growth` and `retention_lag`. Left to measure
+   on an idle machine: both soaks with retention, and what a pass costs at a
+   full table. The gold ledger is kept on purpose and grows with trades.
 8. **The generator needs several poll threads** for 200 and more bots. With one
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
@@ -1827,6 +1858,7 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--redis-endpoint` | none | Full-stack: the loopback `host:port` of the disposable Redis, whose keys and used memory the soak reads |
 | `--database-pool-size` | none | Full-stack: GameService's `Database:MaximumPoolSize`, which the drift checks compare its connections with |
 | `--worker-heartbeat-timeout-seconds` | none | Full-stack: GameService's `Simulation:WorkerHeartbeatTimeoutSeconds`, against which the drift checks give the worker's registration headroom |
+| `--retention-item-history-seconds`, `--retention-interval-seconds` | none | Full-stack: GameService's `Retention:ItemHistory` and `Retention:IntervalSeconds`, which the retention sample, the retention lag, and the two retention rules judge against |
 | `--network-profile` | none | The network profile file the bots' traffic goes through, by the proxy that `tools/Test-Load.ps1` starts; the report names it and the verdict applies its allowances |
 | `--login-burst-accounts`, `--logout-burst-accounts` | `0` | Full-stack: the accounts of a [login or logout burst](#burst-scenarios), registered before the ramp; at most one of the two |
 | `--burst-at-seconds` | `10` | How far into the steady interval the burst starts |

@@ -3,8 +3,10 @@ using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Placement.Integration;
 using Mmorpg.GameService.Placement.Persistence;
+using Mmorpg.GameService.Placement.Retention;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
+using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Placement;
 
@@ -27,6 +29,11 @@ public sealed class PlacementModule(PlacementModuleOptions options) : IGameServi
         services.AddSingleton(options.DevelopmentSimulationBots);
         services.AddSingleton(options.WorkerLeasePolicy);
         services.AddSingleton<IAccountSessionLifecycleHandler, SimulationAccountSessionLifecycleHandler>();
+        services.AddSingleton<IAccountSessionReferences, SimulationAccountSessionReferences>();
+        // Join tickets go first in a pass: a session waits for the tickets that name it.
+        services.AddSingleton<IRetentionTask, JoinTicketRetentionTask>();
+        services.AddSingleton<IRetentionTask, SimulationSessionRetentionTask>();
+        services.AddSingleton<IRetentionTask, SimulationAssignmentRetentionTask>();
         services.AddSingleton<ISimulationSessionAuthority, SimulationSessionAuthority>();
         services.AddSingleton<ISimulationWorkerAuthority, SimulationWorkerAuthority>();
         services.AddSingleton<ISimulationPresence, SimulationPresence>();

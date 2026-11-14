@@ -1,4 +1,3 @@
-using System.Data;
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
@@ -7,12 +6,11 @@ using Npgsql;
 
 namespace Mmorpg.GameService.Items;
 
-internal sealed record ItemOperationsMaintenanceResult(
-    int ExpiredRecoveryDeliveries,
-    int RemovedClosedCorpses,
-    int RemovedAuditOperations,
-    int RemovedClaimedRecoveryDeliveries = 0);
+internal sealed record ItemOperationsMaintenanceResult(int ExpiredRecoveryDeliveries);
 
+// Recovery expiry, which is game logic: an unclaimed delivery past its expiry has its items
+// destroyed through a system operation. Trimming history is the retention tasks' work, as
+// docs/GAME_SERVICE_MODULES.md describes under Retention.
 internal sealed class ItemOperationsMaintenanceService(
     NpgsqlDataSource dataSource,
     ItemTransactionService transactionService,
@@ -25,17 +23,8 @@ internal sealed class ItemOperationsMaintenanceService(
     {
         var expiredRecoveryDeliveries = await ExpireRecoveryDeliveriesAsync(
             cancellationToken);
-        var (removedClosedCorpses, removedAuditOperations, removedClaimedRecoveryDeliveries) =
-            await RemoveRetainedRowsAsync(cancellationToken);
         metrics.RecordCleanup("recovery_delivery", expiredRecoveryDeliveries);
-        metrics.RecordCleanup("closed_corpse", removedClosedCorpses);
-        metrics.RecordCleanup("audit_operation", removedAuditOperations);
-        metrics.RecordCleanup("claimed_recovery_delivery", removedClaimedRecoveryDeliveries);
-        return new ItemOperationsMaintenanceResult(
-            expiredRecoveryDeliveries,
-            removedClosedCorpses,
-            removedAuditOperations,
-            removedClaimedRecoveryDeliveries);
+        return new ItemOperationsMaintenanceResult(expiredRecoveryDeliveries);
     }
 
     private async Task<int> ExpireRecoveryDeliveriesAsync(
@@ -89,160 +78,6 @@ internal sealed class ItemOperationsMaintenanceService(
 
         return expiredCount;
     }
-
-    private async Task<(int RemovedClosedCorpses, int RemovedAuditOperations, int RemovedClaimedRecoveryDeliveries)>
-        RemoveRetainedRowsAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
-            cancellationToken);
-        try
-        {
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                select
-                    set_config('statement_timeout', @StatementTimeout, true),
-                    set_config('lock_timeout', @LockTimeout, true);
-                """,
-                new
-                {
-                    StatementTimeout = $"{options.TransactionTimeout.TotalMilliseconds:0}ms",
-                    LockTimeout = $"{options.LockTimeout.TotalMilliseconds:0}ms"
-                },
-                transaction,
-                cancellationToken: cancellationToken));
-            var corpseIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
-                """
-                select corpse.id
-                from corpses corpse
-                where corpse.closed_at is not null
-                  and corpse.closed_at <= now() - make_interval(secs => @RetentionSeconds)
-                  and not exists (
-                      select 1
-                      from corpse_sections section
-                      join item_instances item on item.container_id = section.container_id
-                      where section.corpse_id = corpse.id)
-                order by corpse.closed_at, corpse.id
-                limit @BatchSize
-                for update of corpse skip locked;
-                """,
-                new
-                {
-                    RetentionSeconds = options.ClosedCorpseRetention.TotalSeconds,
-                    BatchSize = options.CleanupBatchSize
-                },
-                transaction,
-                cancellationToken: cancellationToken))).ToArray();
-            var containerIds = corpseIds.Length == 0
-                ? []
-                : (await connection.QueryAsync<Guid>(new CommandDefinition(
-                    """
-                    select container_id
-                    from corpse_sections
-                    where corpse_id = any(@CorpseIds)
-                    order by container_id;
-                    """,
-                    new { CorpseIds = corpseIds },
-                    transaction,
-                    cancellationToken: cancellationToken))).ToArray();
-            if (corpseIds.Length > 0)
-            {
-                await connection.ExecuteAsync(new CommandDefinition(
-                    "delete from death_events where corpse_id = any(@CorpseIds);",
-                    new { CorpseIds = corpseIds },
-                    transaction,
-                    cancellationToken: cancellationToken));
-                await connection.ExecuteAsync(new CommandDefinition(
-                    "delete from corpses where id = any(@CorpseIds);",
-                    new { CorpseIds = corpseIds },
-                    transaction,
-                    cancellationToken: cancellationToken));
-                await connection.ExecuteAsync(new CommandDefinition(
-                    """
-                    delete from item_containers
-                    where id = any(@ContainerIds)
-                      and lifecycle in ('closed', 'destroyed')
-                      and not exists (
-                          select 1 from item_instances where container_id = item_containers.id);
-                    """,
-                    new { ContainerIds = containerIds },
-                    transaction,
-                    cancellationToken: cancellationToken));
-            }
-
-            var removedAuditOperations = await connection.ExecuteScalarAsync<int>(
-                new CommandDefinition(
-                    """
-                    with candidates as (
-                        select operation.operation_id
-                        from item_operations operation
-                        where operation.completed_at is not null
-                          and operation.completed_at
-                              <= now() - make_interval(secs => @RetentionSeconds)
-                          and not exists (
-                              select 1
-                              from item_destructions destruction
-                              where destruction.source_operation_id = operation.operation_id)
-                          and not exists (
-                              select 1
-                              from death_events event
-                              where event.operation_id = operation.operation_id)
-                        order by operation.completed_at, operation.operation_id
-                        limit @BatchSize
-                        for update of operation skip locked
-                    ), deleted as (
-                        delete from item_operations operation
-                        using candidates
-                        where operation.operation_id = candidates.operation_id
-                        returning operation.operation_id
-                    )
-                    select count(*)::integer from deleted;
-                    """,
-                    new
-                    {
-                        RetentionSeconds = options.AuditRetention.TotalSeconds,
-                        BatchSize = options.CleanupBatchSize
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
-            // A claimed delivery is history only; its items already left Recovery Storage.
-            var removedClaimedRecoveryDeliveries = await connection.ExecuteScalarAsync<int>(
-                new CommandDefinition(
-                    """
-                    with candidates as (
-                        select delivery.id
-                        from recovery_deliveries delivery
-                        where delivery.claimed_at is not null
-                          and delivery.claimed_at
-                              <= now() - make_interval(secs => @RetentionSeconds)
-                        order by delivery.claimed_at, delivery.id
-                        limit @BatchSize
-                        for update of delivery skip locked
-                    ), deleted as (
-                        delete from recovery_deliveries delivery
-                        using candidates
-                        where delivery.id = candidates.id
-                        returning delivery.id
-                    )
-                    select count(*)::integer from deleted;
-                    """,
-                    new
-                    {
-                        RetentionSeconds = options.AuditRetention.TotalSeconds,
-                        BatchSize = options.CleanupBatchSize
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken));
-            await transaction.CommitAsync(cancellationToken);
-            return (corpseIds.Length, removedAuditOperations, removedClaimedRecoveryDeliveries);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-            throw;
-        }
-    }
 }
 
 internal sealed class ItemOperationsMaintenanceHostedService(
@@ -268,17 +103,11 @@ internal sealed class ItemOperationsMaintenanceHostedService(
             var service = scope.ServiceProvider
                 .GetRequiredService<ItemOperationsMaintenanceService>();
             var result = await service.RunOnceAsync(cancellationToken);
-            if (result.ExpiredRecoveryDeliveries > 0
-                || result.RemovedClosedCorpses > 0
-                || result.RemovedAuditOperations > 0
-                || result.RemovedClaimedRecoveryDeliveries > 0)
+            if (result.ExpiredRecoveryDeliveries > 0)
             {
                 logger.LogInformation(
-                    "Item operations maintenance expired {ExpiredRecoveryDeliveries} Recovery deliveries, removed {RemovedClosedCorpses} retained closed corpses, {RemovedAuditOperations} retained audit operations, and {RemovedClaimedRecoveryDeliveries} retained claimed Recovery deliveries.",
-                    result.ExpiredRecoveryDeliveries,
-                    result.RemovedClosedCorpses,
-                    result.RemovedAuditOperations,
-                    result.RemovedClaimedRecoveryDeliveries);
+                    "Item operations maintenance expired {ExpiredRecoveryDeliveries} Recovery deliveries.",
+                    result.ExpiredRecoveryDeliveries);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

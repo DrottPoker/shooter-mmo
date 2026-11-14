@@ -242,13 +242,15 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 ### GameService
 
 A GameService module declares every meter it creates in
-`IGameServiceModule.MeterNames`:
+`IGameServiceModule.MeterNames`, and Platform, which is no module, declares its
+own in `PlatformMeters.Names`:
 
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
 | `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
-| `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, retention cleanup, open and closed corpses, and the Recovery backlog. |
+| `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
+| `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, and the lag. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
 | Instrument | Type | Meaning |
@@ -260,7 +262,7 @@ A GameService module declares every meter it creates in
 | `game_service.items.conflicts` | counter | Rejections by `kind`: `operation` for a reused operation id, `stale_revision`, or `timeout`. |
 | `game_service.items.death_partitions` | counter | Committed player death partitions. |
 | `game_service.items.policy_actions` | counter | Policy, quest, and death operations, labeled `action` and `outcome`. |
-| `game_service.items.cleanup` | counter | Maintenance removals, labeled `target`: `recovery_delivery`, `closed_corpse`, `audit_operation`, or `claimed_recovery_delivery`. |
+| `game_service.items.cleanup` | counter | Unclaimed Recovery deliveries that the maintenance expired, labeled `target`: `recovery_delivery`. What retention trims counts in `game_service.retention.deleted`. |
 | `game_service.items.corpses` | gauge | Durable corpses, labeled `state`: `open` or `closed`. |
 | `game_service.items.recovery.backlog` | gauge | Unclaimed Recovery deliveries. |
 | `game_service.accounts.password_hashing.in_flight` | gauge | Password hashes running on the lane's threads. |
@@ -271,6 +273,9 @@ A GameService module declares every meter it creates in
 | `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, or `invalidation`. |
 | `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`, such as `session_cache_revoke` for revocation tombstones that could not be stored and `session_cache_revoke_retry` for a first attempt that failed for a transient reason and was sent again. |
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
+| `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
+| `game_service.retention.duration` | histogram, ms | The time one task spent in one pass, all its batches together, labeled `task`. |
+| `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. |
 
 The periodic item summary log counts only committed and rejected transactions.
 Vendor trades and gathering yields show in the transaction instruments by their
@@ -299,7 +304,8 @@ GameService has no separate currency or economy instrument yet.
   operation, item, corpse, and actor ids are never labels. Shard ids are,
   because Shards are a small configured set.
 - A GameService module declares every meter it creates in
-  `IGameServiceModule.MeterNames`; the worker lists its meters in
+  `IGameServiceModule.MeterNames`, Platform in `PlatformMeters.Names`; the
+  worker lists its meters in
   `SimulationWorkerTelemetry.MeterNames`. A guard test in each process fails
   when a class owns a `Meter` that is not exported, and every metric class
   publishes its meter name as `public const string MeterName`.
@@ -398,12 +404,16 @@ entries of both processes, and the trace share one id.
   [Stack Stress Testing](STACK_STRESS_TESTING.md#measurements) describes, not a
   contract for anything else.
 - GameService logs a cumulative item summary of transaction, contention,
-  lifecycle, corpse, Recovery, and cleanup counts every
+  lifecycle, corpse, Recovery, and Recovery expiry counts every
   `Items:Operations:MetricsIntervalSeconds`, and the Redis counters every
   `RedisAcceleration:MetricsIntervalSeconds`. Item transaction logs include the
   correlation and operation ids, classify expected contention below warning,
   promote significant lifecycle commits, and exclude credentials, tokens, and
   command bodies.
+- The retention host logs a pass that deleted rows at `Information`, with its
+  rows and time and the rows of every task, a pass that used its budget with
+  rows still due at `Warning`, naming the tasks, a batch that gave up on a lock
+  or statement timeout at `Warning`, and a task that failed at `Error`.
 - SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
   messages below `Warning`. Domain failures and HTTP warnings remain visible,
   but high-frequency bot heartbeat and release requests do not drown out worker
@@ -462,8 +472,8 @@ to reload the files.
   players and capacity per Shard, requests, p95 latency and errors by route,
   rate limits, session cache and Redis, PostgreSQL latency and connection pool,
   item transactions by outcome and kind, contention, corpses and Recovery,
-  lifecycle operations, process CPU, memory, thread pool, GC, and GameService
-  warnings and errors.
+  lifecycle operations, the rows that retention deleted and its lag by task,
+  process CPU, memory, thread pool, GC, and GameService warnings and errors.
 
 ## Alerts
 

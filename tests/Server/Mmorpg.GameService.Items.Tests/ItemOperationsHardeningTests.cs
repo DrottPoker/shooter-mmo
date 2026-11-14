@@ -11,7 +11,7 @@ namespace Mmorpg.GameService.Items.Tests;
 public sealed class ItemOperationsHardeningTests
 {
     [Fact]
-    public void ConfigurationBoundsTimeoutsPayloadsAndRetentionOrder()
+    public void ConfigurationBoundsTimeoutsPayloadsAndTheRecoveryExpiry()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -22,9 +22,7 @@ public sealed class ItemOperationsHardeningTests
                 ["Items:Operations:MaximumHttpRequestBodyBytes"] = "32768",
                 ["Items:Operations:MetricsIntervalSeconds"] = "10",
                 ["Items:Operations:MaintenanceIntervalSeconds"] = "20",
-                ["Items:Operations:CleanupBatchSize"] = "32",
-                ["Items:Operations:AuditRetentionDays"] = "14",
-                ["Items:Operations:ClosedCorpseRetentionDays"] = "21"
+                ["Items:Operations:CleanupBatchSize"] = "32"
             })
             .Build();
 
@@ -34,23 +32,20 @@ public sealed class ItemOperationsHardeningTests
         Assert.Equal(TimeSpan.FromMilliseconds(250), options.LockTimeout);
         Assert.Equal(8192, options.MaximumCommandPayloadBytes);
         Assert.Equal(32768, options.MaximumHttpRequestBodyBytes);
+        Assert.Equal(TimeSpan.FromSeconds(20), options.MaintenanceInterval);
         Assert.Equal(32, options.CleanupBatchSize);
-        Assert.Equal(TimeSpan.FromDays(14), options.AuditRetention);
-        Assert.Equal(TimeSpan.FromDays(21), options.ClosedCorpseRetention);
     }
 
     [Theory]
     [InlineData("Items:Operations:LockTimeoutMilliseconds", "11000")]
     [InlineData("Items:Operations:MaximumCommandPayloadBytes", "10")]
-    [InlineData("Items:Operations:AuditRetentionDays", "31")]
+    [InlineData("Items:Operations:CleanupBatchSize", "1001")]
     public void InvalidOperationalBoundsFailFast(string key, string value)
     {
         var values = new Dictionary<string, string?>
         {
             ["Items:Operations:TransactionTimeoutMilliseconds"] = "10000",
             ["Items:Operations:LockTimeoutMilliseconds"] = "2000",
-            ["Items:Operations:AuditRetentionDays"] = "30",
-            ["Items:Operations:ClosedCorpseRetentionDays"] = "30",
             [key] = value
         };
         var configuration = new ConfigurationBuilder()
@@ -59,6 +54,24 @@ public sealed class ItemOperationsHardeningTests
 
         Assert.Throws<InvalidOperationException>(
             () => ItemOperationsOptions.FromConfiguration(configuration));
+    }
+
+    // The retention of item history moved to Retention:ItemHistory, so an old key fails the
+    // start instead of being ignored.
+    [Theory]
+    [InlineData("Items:Operations:AuditRetentionDays")]
+    [InlineData("Items:Operations:ClosedCorpseRetentionDays")]
+    public void RemovedRetentionKeysFailTheStartAndNameTheirReplacement(string key)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [key] = "30" })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => ItemOperationsOptions.FromConfiguration(configuration));
+
+        Assert.Contains(key, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Retention:ItemHistory", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,8 +123,7 @@ public sealed class ItemOperationsHardeningTests
         metrics.RecordLockWait("character_state", TimeSpan.FromMilliseconds(2));
         metrics.ObserveOperationalState(3, 4, 5);
         metrics.RecordCleanup("recovery_delivery", 2);
-        metrics.RecordCleanup("closed_corpse", 1);
-        metrics.RecordCleanup("audit_operation", 7);
+        Assert.Throws<ArgumentOutOfRangeException>(() => metrics.RecordCleanup("audit_operation", 7));
         listener.RecordObservableInstruments();
 
         var snapshot = metrics.Capture();
@@ -126,8 +138,6 @@ public sealed class ItemOperationsHardeningTests
         Assert.Equal(4, snapshot.ClosedCorpses);
         Assert.Equal(5, snapshot.RecoveryBacklog);
         Assert.Equal(2, snapshot.ExpiredRecoveryDeliveries);
-        Assert.Equal(1, snapshot.RemovedClosedCorpses);
-        Assert.Equal(7, snapshot.RemovedAuditOperations);
         Assert.Subset(
             new HashSet<string>(StringComparer.Ordinal)
             {

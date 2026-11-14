@@ -35,6 +35,10 @@ public interface IStressAdmissionProvider : IAsyncDisposable
     // Counts the database's tables and reads Redis at one end of the steady interval.
     Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken);
 
+    // Counts the two operation tables once GameService's retention window passed in the steady
+    // interval, or does nothing when the mode has no database.
+    Task CaptureRetentionSampleAsync(CancellationToken cancellationToken);
+
     StressProviderReport CaptureReport();
 }
 
@@ -49,6 +53,9 @@ public sealed record StressProviderReport(
     public StressStorageGrowthSummary? Storage { get; init; }
 
     public StressDriftSummary? Drift { get; init; }
+
+    // Whether retention kept up, when the run's plan held a retention sample.
+    public StressRetentionSummary? Retention { get; init; }
 }
 
 public sealed class WorkerOnlyStressAdmissionProvider(
@@ -114,6 +121,12 @@ public sealed class WorkerOnlyStressAdmissionProvider(
     }
 
     public Task CaptureSteadyBoundaryAsync(bool start, int players, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public Task CaptureRetentionSampleAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;

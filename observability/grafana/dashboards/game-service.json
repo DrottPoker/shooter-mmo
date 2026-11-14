@@ -1229,7 +1229,7 @@
     {
       "type": "timeseries",
       "title": "Lifecycle",
-      "description": "Death partitions, policy actions, and retention cleanup per minute.",
+      "description": "Death partitions, policy actions, and Recovery expiry per minute.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1282,8 +1282,8 @@
         },
         {
           "refId": "C",
-          "expr": "sum by (target) (increase(game_service_items_cleanup_total{job=\"mmorpg/game-service\", instance=~\"$instance\"}[1m]))",
-          "legendFormat": "cleanup {{target}}",
+          "expr": "sum(increase(game_service_items_cleanup_total{job=\"mmorpg/game-service\", instance=~\"$instance\", target=\"recovery_delivery\"}[1m]))",
+          "legendFormat": "Recovery expiry",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1299,13 +1299,121 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "Retention",
+      "description": "Rows that the retention tasks deleted per minute, by task.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (task) (increase(game_service_retention_deleted_total{job=\"mmorpg/game-service\", instance=~\"$instance\"}[1m]))",
+          "legendFormat": "{{task}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "id": 32,
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Retention lag",
+      "description": "How long the oldest due row had been due when each task's latest pass began; it stays near the retention interval while retention keeps up.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (task) (game_service_retention_lag_seconds{job=\"mmorpg/game-service\", instance=~\"$instance\"})",
+          "legendFormat": "{{task}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "id": 33,
+      "gridPos": {
+        "x": 12,
+        "y": 55,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
       "type": "row",
       "id": 25,
       "title": "GameService process",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 62,
         "w": 24,
         "h": 1
       },
@@ -1360,7 +1468,7 @@
       "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 63,
         "w": 6,
         "h": 7
       }
@@ -1423,7 +1531,7 @@
       "id": 27,
       "gridPos": {
         "x": 6,
-        "y": 56,
+        "y": 63,
         "w": 6,
         "h": 7
       }
@@ -1486,7 +1594,7 @@
       "id": 28,
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 63,
         "w": 6,
         "h": 7
       }
@@ -1549,7 +1657,7 @@
       "id": 29,
       "gridPos": {
         "x": 18,
-        "y": 56,
+        "y": 63,
         "w": 6,
         "h": 7
       }
@@ -1561,7 +1669,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 63,
+        "y": 70,
         "w": 24,
         "h": 1
       },
@@ -1599,7 +1707,7 @@
       "id": 31,
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 71,
         "w": 24,
         "h": 10
       }

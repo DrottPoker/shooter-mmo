@@ -7,10 +7,17 @@ public sealed record ItemOperationsOptions(
     long MaximumHttpRequestBodyBytes,
     TimeSpan MetricsInterval,
     TimeSpan MaintenanceInterval,
-    int CleanupBatchSize,
-    TimeSpan AuditRetention,
-    TimeSpan ClosedCorpseRetention)
+    int CleanupBatchSize)
 {
+    // Retention of item history moved to the Retention section, which one setting per class
+    // governs; a removed key fails the start instead of being ignored.
+    private static readonly IReadOnlyDictionary<string, string> RemovedKeys =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Items:Operations:AuditRetentionDays"] = "Retention:ItemHistory",
+            ["Items:Operations:ClosedCorpseRetentionDays"] = "Retention:ItemHistory"
+        };
+
     public static ItemOperationsOptions FromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -64,31 +71,18 @@ public sealed record ItemOperationsOptions(
             1,
             1_000,
             errors);
-        var auditRetentionDays = ReadBoundedInt(
-            configuration,
-            "Items:Operations:AuditRetentionDays",
-            30,
-            1,
-            3_650,
-            errors);
-        var closedCorpseRetentionDays = ReadBoundedInt(
-            configuration,
-            "Items:Operations:ClosedCorpseRetentionDays",
-            30,
-            1,
-            3_650,
-            errors);
+        foreach (var removed in RemovedKeys)
+        {
+            if (configuration[removed.Key] is not null)
+            {
+                errors.Add($"{removed.Key} was removed; {removed.Value} sets the retention of item history.");
+            }
+        }
 
         if (lockTimeoutMilliseconds > transactionTimeoutMilliseconds)
         {
             errors.Add(
                 "Items:Operations:LockTimeoutMilliseconds cannot exceed TransactionTimeoutMilliseconds.");
-        }
-
-        if (closedCorpseRetentionDays < auditRetentionDays)
-        {
-            errors.Add(
-                "Items:Operations:ClosedCorpseRetentionDays cannot be shorter than AuditRetentionDays.");
         }
 
         if (errors.Count > 0)
@@ -105,9 +99,7 @@ public sealed record ItemOperationsOptions(
             maximumHttpRequestBodyBytes,
             TimeSpan.FromSeconds(metricsIntervalSeconds),
             TimeSpan.FromSeconds(maintenanceIntervalSeconds),
-            cleanupBatchSize,
-            TimeSpan.FromDays(auditRetentionDays),
-            TimeSpan.FromDays(closedCorpseRetentionDays));
+            cleanupBatchSize);
     }
 
     public static ItemOperationsOptions CreateDefaults()
@@ -119,9 +111,7 @@ public sealed record ItemOperationsOptions(
             262_144,
             TimeSpan.FromSeconds(30),
             TimeSpan.FromMinutes(1),
-            64,
-            TimeSpan.FromDays(30),
-            TimeSpan.FromDays(30));
+            64);
     }
 
     private static int ReadBoundedInt(

@@ -42,6 +42,7 @@ public static partial class ObservabilityAssets
         {
             null or "" => string.Empty,
             "ms" => "_milliseconds",
+            "s" => "_seconds",
             _ => throw new NotSupportedException(
                 $"Unit '{instrument.Unit}' of {instrument.Name} has no Prometheus suffix mapping in the test helper.")
         };

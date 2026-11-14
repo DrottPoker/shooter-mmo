@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Tests.Architecture;
 
@@ -31,7 +32,10 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.players|",
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.authentication_rate_limit.operations|",
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.failures|",
-        "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.session_cache.operations|"
+        "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.session_cache.operations|",
+        "Mmorpg.GameService.Retention|1.0.0|Counter`1|game_service.retention.deleted|",
+        "Mmorpg.GameService.Retention|1.0.0|Histogram`1|game_service.retention.duration|ms",
+        "Mmorpg.GameService.Retention|1.0.0|ObservableGauge`1|game_service.retention.lag|s"
     ];
 
     [Fact]
@@ -45,7 +49,8 @@ public sealed class MeterInstrumentNamesTests
                 if (instrument.Meter.Name is "Mmorpg.GameService.Accounts"
                     or "Mmorpg.GameService.Items"
                     or "Mmorpg.GameService.Placement"
-                    or "Mmorpg.GameService.Redis")
+                    or "Mmorpg.GameService.Redis"
+                    or "Mmorpg.GameService.Retention")
                 {
                     lock (published)
                     {
@@ -66,6 +71,7 @@ public sealed class MeterInstrumentNamesTests
         using var redisMetrics = new RedisAccelerationMetrics();
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();
+        using var retentionMetrics = new RetentionMetrics();
 
         string[] actual;
         lock (published)

@@ -460,13 +460,16 @@ public sealed record StressLoadPlan(
                 arguments.AddRange(["--world-data-path", StressWorldVariant.WorkerWorldsPath(worldVariantPath)]);
             }
 
-            // The soak reads Redis and compares the drift checks with GameService's own limits.
-            var (poolSize, heartbeatTimeout) = GameServiceLimits(scenario, workingDirectory);
+            // The soak reads Redis and compares the drift checks and the retention rules with
+            // GameService's own limits.
+            var limits = GameServiceLimits(scenario, workingDirectory);
             arguments.AddRange(
             [
                 "--redis-endpoint", RedisConnection,
-                "--database-pool-size", poolSize.ToString(CultureInfo.InvariantCulture),
-                "--worker-heartbeat-timeout-seconds", heartbeatTimeout.ToString(CultureInfo.InvariantCulture)
+                "--database-pool-size", limits.PoolSize.ToString(CultureInfo.InvariantCulture),
+                "--worker-heartbeat-timeout-seconds", limits.HeartbeatTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+                "--retention-item-history-seconds", limits.ItemHistorySeconds.ToString(CultureInfo.InvariantCulture),
+                "--retention-interval-seconds", limits.RetentionIntervalSeconds.ToString(CultureInfo.InvariantCulture)
             ]);
         }
         else
@@ -607,9 +610,10 @@ public sealed record StressLoadPlan(
             });
     }
 
-    // GameService's database pool and the time after which it takes a silent worker offline:
-    // its checked-in configuration, unless the scenario sets them for GameService.
-    private static (int PoolSize, int HeartbeatTimeoutSeconds) GameServiceLimits(
+    // GameService's database pool, the time after which it takes a silent worker offline, and its
+    // retention window of item history and retention interval: its checked-in configuration,
+    // unless the scenario sets them for GameService.
+    private static (int PoolSize, int HeartbeatTimeoutSeconds, int ItemHistorySeconds, int RetentionIntervalSeconds) GameServiceLimits(
         StressLoadScenario scenario,
         string workingDirectory)
     {
@@ -626,7 +630,17 @@ public sealed record StressLoadPlan(
             ?? root.GetProperty("Database").GetProperty("MaximumPoolSize").GetInt32();
         var timeout = Setting(scenario, "Simulation__WorkerHeartbeatTimeoutSeconds")
             ?? root.GetProperty("Simulation").GetProperty("WorkerHeartbeatTimeoutSeconds").GetInt32();
-        return (pool, timeout);
+        var itemHistory = scenario.GameServiceSettings.GetValueOrDefault("Retention__ItemHistory")
+            ?? root.GetProperty("Retention").GetProperty("ItemHistory").GetString()!;
+        if (!TimeSpan.TryParse(itemHistory, CultureInfo.InvariantCulture, out var window) || window <= TimeSpan.Zero)
+        {
+            throw new StressGeneratorOptionException(
+                $"The scenario '{scenario.Name}' gives GameService the retention window '{itemHistory}', which is no time span such as 00:04:00.");
+        }
+
+        var interval = Setting(scenario, "Retention__IntervalSeconds")
+            ?? root.GetProperty("Retention").GetProperty("IntervalSeconds").GetInt32();
+        return (pool, timeout, (int)Math.Ceiling(window.TotalSeconds), interval);
     }
 
     private static int? Setting(StressLoadScenario scenario, string name)

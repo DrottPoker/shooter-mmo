@@ -167,7 +167,7 @@ public sealed class ItemOperationsHardeningIntegrationTests
     }
 
     [PostgresIntegrationFact]
-    public async Task MaintenanceExpiresRecoveryAndRemovesEligibleRetainedRowsWithoutLoss()
+    public async Task MaintenanceExpiresRecoveryAndRetentionRemovesEligibleRowsWithoutLoss()
     {
         await using var context = await PostgresIntegrationTestContext.CreateAsync();
         var player = await context.RegisterPlayerAsync(
@@ -294,8 +294,6 @@ public sealed class ItemOperationsHardeningIntegrationTests
 
         var options = ItemOperationsOptions.CreateDefaults() with
         {
-            AuditRetention = TimeSpan.FromDays(1),
-            ClosedCorpseRetention = TimeSpan.FromDays(1),
             CleanupBatchSize = 64
         };
         using var metrics = new ItemOperationsMetrics();
@@ -311,10 +309,11 @@ public sealed class ItemOperationsHardeningIntegrationTests
             NullLogger<ItemOperationsMaintenanceService>.Instance);
 
         var result = await maintenance.RunOnceAsync(CancellationToken.None);
+        var pass = await RetentionPasses.RunAsync(context, TimeSpan.FromDays(1), TimeSpan.FromDays(1));
 
         Assert.Equal(1, result.ExpiredRecoveryDeliveries);
-        Assert.Equal(1, result.RemovedClosedCorpses);
-        Assert.True(result.RemovedAuditOperations >= 1);
+        Assert.Equal(1, pass.Task("closed_corpses").Deleted);
+        Assert.True(pass.Task("item_operations").Deleted >= 1);
         Assert.Equal(
             0,
             await connection.ExecuteScalarAsync<int>(
@@ -345,10 +344,15 @@ public sealed class ItemOperationsHardeningIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_operations where operation_id = @OperationId;",
                 new { OperationId = rejectedOperationId }));
-        var metricSnapshot = metrics.Capture();
-        Assert.Equal(1, metricSnapshot.ExpiredRecoveryDeliveries);
-        Assert.Equal(1, metricSnapshot.RemovedClosedCorpses);
-        Assert.True(metricSnapshot.RemovedAuditOperations >= 1);
+        Assert.Equal(1, metrics.Capture().ExpiredRecoveryDeliveries);
+
+        // The closed corpse took its death event along in the same pass, which freed the death's
+        // operation for the item operations task.
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_operations where operation_id = any(@OperationIds);",
+                new { OperationIds = new[] { deathOperationId, expiryOperationId } }));
 
         // The death event row left with its corpse, but the advanced character revision
         // still stops a late replay from partitioning the character a second time.
@@ -432,21 +436,10 @@ public sealed class ItemOperationsHardeningIntegrationTests
         // A claimed delivery is history only and never returns from the player read.
         Assert.Empty((await GetRecoveryAsync(context, player)).RecoveryStorage.Deliveries);
 
-        var options = ItemOperationsOptions.CreateDefaults() with
-        {
-            AuditRetention = TimeSpan.FromDays(1),
-            CleanupBatchSize = 64
-        };
-        using var metrics = new ItemOperationsMetrics();
-        var maintenance = new ItemOperationsMaintenanceService(
-            context.DataSource,
-            ItemTransactionServiceFactory.Create(context.Services, options: options, metrics: metrics),
-            options,
-            metrics,
-            NullLogger<ItemOperationsMaintenanceService>.Instance);
         await using var connection = await context.DataSource.OpenConnectionAsync();
 
-        Assert.Equal(0, (await maintenance.RunOnceAsync(CancellationToken.None)).RemovedClaimedRecoveryDeliveries);
+        var early = await RetentionPasses.RunAsync(context, TimeSpan.FromDays(1), TimeSpan.FromDays(1));
+        Assert.Equal(0, early.Task("claimed_recovery_deliveries").Deleted);
         Assert.Equal(
             1,
             await connection.ExecuteScalarAsync<int>(
@@ -462,10 +455,9 @@ public sealed class ItemOperationsHardeningIntegrationTests
             where id = @DeliveryId;
             """,
             new { DeliveryId = deliveryId });
-        var result = await maintenance.RunOnceAsync(CancellationToken.None);
+        var pass = await RetentionPasses.RunAsync(context, TimeSpan.FromDays(1), TimeSpan.FromDays(1));
 
-        Assert.Equal(1, result.RemovedClaimedRecoveryDeliveries);
-        Assert.Equal(1, metrics.Capture().RemovedClaimedRecoveryDeliveries);
+        Assert.Equal(1, pass.Task("claimed_recovery_deliveries").Deleted);
         Assert.Equal(
             0,
             await connection.ExecuteScalarAsync<int>(

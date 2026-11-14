@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Retention;
 using Npgsql;
 
 namespace Mmorpg.GameService.Platform.Configuration;
@@ -21,6 +22,9 @@ public sealed record PlatformOptions(
     // readiness probe's timeout; a caller may wait less.
     public TimeSpan RedisCommandTimeout { get; init; } =
         TimeSpan.FromMilliseconds(DefaultRedisCommandTimeoutMilliseconds);
+
+    // The Retention section, which the retention host and every module's retention tasks share.
+    public RetentionOptions Retention { get; init; } = RetentionOptions.Default;
 
     public static PlatformOptions Read(IConfiguration configuration, ICollection<string> errors)
     {
@@ -59,6 +63,7 @@ public sealed record PlatformOptions(
                 100,
                 60_000,
                 errors);
+        var retention = RetentionOptions.Read(configuration, errors);
 
         // Invalid settings fail startup, so only a valid connection string is rewritten.
         return new PlatformOptions(
@@ -69,7 +74,8 @@ public sealed record PlatformOptions(
             TimeSpan.FromMilliseconds(healthTimeoutMilliseconds),
             runMigrationsOnStartup)
         {
-            RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds)
+            RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds),
+            Retention = retention
         };
     }
 

@@ -227,6 +227,11 @@ function Write-Soak($Summary) {
         Write-Step "Churn: $($soak.churn.leaves) leaves, $($soak.churn.rejoinsBody) back to the body, $($soak.churn.rejoinsSaved) back from the saved place, $($soak.churn.rejoinChecksFailed) failed checks; $($soak.churn.churnSkippedUnsafe) not safe in time, $($soak.churn.churnSkippedBusy) still away, $($soak.churn.churnSkippedLate) too late."
     }
 
+    if ($soak.retention) {
+        $retention = $soak.retention
+        Write-Step "Retention: item_operations $($retention.operationsAtSample) -> $($retention.operationsAtEnd) rows ($(Format-Number $retention.operationGrowthPercent) %), item_operation_changes $($retention.changesAtSample) -> $($retention.changesAtEnd) rows ($(Format-Number $retention.changeGrowthPercent) %), from $(Format-Number $retention.sampleOffsetSeconds) s into the steady interval to its end; worst lag $(Format-Number $retention.maximumLagSeconds) s."
+    }
+
     foreach ($trend in @($soak.memory)) {
         $fifths = @($trend.workingSetFifthsMiB | ForEach-Object { Format-Number $_ }) -join " / "
         Write-Step "Memory of the $($trend.process): working set $(Format-Number $trend.workingSetSlopeMiBPerHour) MiB/h, fifths $fifths MiB."

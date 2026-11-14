@@ -25,6 +25,7 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
     private StressTableSnapshot? tablesAtSteadyEnd;
     private StressRedisSnapshot? redisAtSteadyStart;
     private StressRedisSnapshot? redisAtSteadyEnd;
+    private (long Operations, long Changes)? operationTablesAtRetentionSample;
     private int steadyPlayers;
     private int churnLogouts;
     private int churnLogins;
@@ -65,7 +66,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             options.ConfirmedDisposableDatabase!,
             options.WorkerId,
             options.WorkerHeartbeatTimeoutSeconds,
-            options.DatabasePoolSize);
+            options.DatabasePoolSize,
+            options.RetentionItemHistorySeconds);
         redisEndpoint = options.RedisEndpoint is null ? null : StressRedisSampler.ParseEndpoint(options.RedisEndpoint);
         concurrency = new SemaphoreSlim(options.HttpConcurrency, options.HttpConcurrency);
         password = $"StackStress_{Convert.ToHexString(RandomNumberGenerator.GetBytes(12))}!";
@@ -382,6 +384,16 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             + (redis is null ? "." : $"; Redis holds {redis.Keys} keys in {redis.UsedMemoryBytes / 1024d / 1024d:0.0} MiB."));
     }
 
+    // The two operation tables once GameService's retention window passed, which the end of the
+    // steady interval is compared with.
+    public async Task CaptureRetentionSampleAsync(CancellationToken cancellationToken)
+    {
+        var counts = await postgresSampler.CountOperationTablesAsync(cancellationToken);
+        operationTablesAtRetentionSample = counts;
+        Console.WriteLine(
+            $"Retention sample: {counts.Operations} item operations and {counts.Changes} journal rows.");
+    }
+
     public void MarkSteadyEnd(long endTimestamp)
     {
         gameServiceProcessSampler?.MarkSteadyEnd(endTimestamp);
@@ -625,8 +637,32 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                     redisAtSteadyEnd,
                     steadyPlayers)
                 : null,
-            Drift = postgresSampler.CaptureDrift()
+            Drift = postgresSampler.CaptureDrift(),
+            Retention = CreateRetentionSummary()
         };
+    }
+
+    private StressRetentionSummary? CreateRetentionSummary()
+    {
+        var plan = StressRetentionPlan.Create(
+            options.RetentionItemHistorySeconds,
+            options.RetentionIntervalSeconds,
+            options.SteadyDuration);
+        if (plan?.SampleOffsetSeconds is not { } offset
+            || operationTablesAtRetentionSample is not { } sample
+            || tablesAtSteadyEnd is null)
+        {
+            return null;
+        }
+
+        long Rows(string table) => tablesAtSteadyEnd.Tables.FirstOrDefault(entry => entry.Table == table)?.Rows ?? 0;
+        return new StressRetentionSummary(
+            offset,
+            sample.Operations,
+            Rows("item_operations"),
+            sample.Changes,
+            Rows("item_operation_changes"),
+            postgresSampler.CaptureDrift()?.MaximumRetentionLagSeconds);
     }
 
     public async ValueTask DisposeAsync()

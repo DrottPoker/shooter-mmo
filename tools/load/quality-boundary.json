@@ -92,6 +92,18 @@
       "description": "Maximum. For the worker, GameService, and the generator, how far the average working set of the last fifth of the steady interval lies above that of the second fifth; the worst process is judged. The first fifth is left out because caches, pools, and the JIT warm up in it. Only a planned steady interval of ten minutes or more is judged; a shorter one is not applicable."
     },
     {
+      "rule": "retained_table_growth",
+      "limit": 25,
+      "unit": "percent",
+      "description": "Maximum. How much item_operations and item_operation_changes grew from the retention sample, taken once GameService's Retention:ItemHistory window and two retention passes went by in the steady interval, to the end of the steady interval; the worse table is judged. While retention keeps up, both tables hold about one window of rows and stay level; without it they grow with every operation. Only a run whose window and two passes leave at least two minutes of the planned steady interval is judged, which the soak scenarios' short windows do; any other run is not applicable."
+    },
+    {
+      "rule": "retention_lag",
+      "limit": 60,
+      "unit": "s",
+      "description": "Maximum. The longest that a drift check of the steady interval saw a completed item operation past GameService's Retention:ItemHistory window, and no death event holding it, still in the database. While retention keeps up, it stays within a retention interval and the length of a pass; the soak scenarios run a pass every 15 seconds. Not applicable to the same runs as retained_table_growth."
+    },
+    {
       "rule": "service_log_errors",
       "limit": 0,
       "unit": "count",

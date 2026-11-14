@@ -17,10 +17,7 @@ internal sealed record ItemOperationsMetricsSnapshot(
     long OpenCorpses,
     long ClosedCorpses,
     long RecoveryBacklog,
-    long ExpiredRecoveryDeliveries,
-    long RemovedClosedCorpses,
-    long RemovedAuditOperations,
-    long RemovedClaimedRecoveryDeliveries = 0);
+    long ExpiredRecoveryDeliveries);
 
 // The item operation metrics. A transaction is labeled with its registration's operation kind,
 // so the kinds are exactly those of the item command catalog, and the registration's flags
@@ -50,9 +47,6 @@ internal sealed class ItemOperationsMetrics : IDisposable
     private long closedCorpses;
     private long recoveryBacklog;
     private long expiredRecoveryDeliveries;
-    private long removedClosedCorpses;
-    private long removedAuditOperations;
-    private long removedClaimedRecoveryDeliveries;
 
     public ItemOperationsMetrics()
     {
@@ -180,6 +174,8 @@ internal sealed class ItemOperationsMetrics : IDisposable
         Interlocked.Exchange(ref recoveryBacklog, currentRecoveryBacklog);
     }
 
+    // Maintenance removals by target. Recovery expiry is the one target; the retention host
+    // counts what retention trims.
     public void RecordCleanup(string target, long count)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
@@ -192,15 +188,6 @@ internal sealed class ItemOperationsMetrics : IDisposable
         {
             case "recovery_delivery":
                 Interlocked.Add(ref expiredRecoveryDeliveries, count);
-                break;
-            case "closed_corpse":
-                Interlocked.Add(ref removedClosedCorpses, count);
-                break;
-            case "audit_operation":
-                Interlocked.Add(ref removedAuditOperations, count);
-                break;
-            case "claimed_recovery_delivery":
-                Interlocked.Add(ref removedClaimedRecoveryDeliveries, count);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(
@@ -229,10 +216,7 @@ internal sealed class ItemOperationsMetrics : IDisposable
             Volatile.Read(ref openCorpses),
             Volatile.Read(ref closedCorpses),
             Volatile.Read(ref recoveryBacklog),
-            Volatile.Read(ref expiredRecoveryDeliveries),
-            Volatile.Read(ref removedClosedCorpses),
-            Volatile.Read(ref removedAuditOperations),
-            Volatile.Read(ref removedClaimedRecoveryDeliveries));
+            Volatile.Read(ref expiredRecoveryDeliveries));
     }
 
     public void Dispose()

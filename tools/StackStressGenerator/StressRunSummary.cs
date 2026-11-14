@@ -236,6 +236,9 @@ public sealed record StressSummarySoak(
     IReadOnlyDictionary<string, long>? Churn,
     IReadOnlyList<StressLogClass> LogClasses)
 {
+    // Whether retention kept up, for a run whose retention window passed early in it.
+    public StressRetentionSummary? Retention { get; init; }
+
     // The churn's counters, by their report names.
     private static readonly string[] ChurnCounters =
     [
@@ -259,6 +262,9 @@ public sealed record StressSummarySoak(
             counters is null || counters.GetValueOrDefault("churnRequests") == 0
                 ? null
                 : ChurnCounters.ToDictionary(name => name, name => counters.GetValueOrDefault(name), StringComparer.Ordinal),
-            report.ServiceLogs?.Classes ?? []);
+            report.ServiceLogs?.Classes ?? [])
+        {
+            Retention = report.Soak?.Retention
+        };
     }
 }

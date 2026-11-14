@@ -155,6 +155,23 @@ public sealed class StressLoadPlanTests
         Assert.False(plan.WorkerEnvironment.ContainsKey("SimulationWorker__LingeringBodySeconds"));
     }
 
+    // The retention rules judge against GameService's own retention settings: the checked-in
+    // ones, or the short windows that the soak scenarios give it.
+    [Fact]
+    public void AFullStackPlanPassesGameServicesRetentionSettingsToTheGenerator()
+    {
+        var smoke = Plan(LoadShipped("smoke"));
+        var soak = Plan(LoadShipped("soak-10min"));
+
+        Assert.Equal("1209600", ArgumentOf(smoke, "--retention-item-history-seconds"));
+        Assert.Equal("60", ArgumentOf(smoke, "--retention-interval-seconds"));
+        Assert.Equal("00:04:00", soak.GameServiceEnvironment["Retention__ItemHistory"]);
+        Assert.Equal("00:04:00", soak.GameServiceEnvironment["Retention__SessionHistory"]);
+        Assert.Equal("240", ArgumentOf(soak, "--retention-item-history-seconds"));
+        Assert.Equal("15", ArgumentOf(soak, "--retention-interval-seconds"));
+        Assert.DoesNotContain("--retention-item-history-seconds", Plan(LoadShipped("worker-only-200")).GeneratorArguments);
+    }
+
     // The teleport to the home grounds needs the worker's development admin tools, which only
     // its Development environment allows; the other Development option of the worker stays off.
     [Fact]
@@ -421,6 +438,13 @@ public sealed class StressLoadPlanTests
     }
 
     private static string BoundaryPath => Path.Combine(LoadDirectory, "quality-boundary.json");
+
+    private static string ArgumentOf(StressLoadPlan plan, string option)
+    {
+        var index = plan.GeneratorArguments.ToList().IndexOf(option);
+        Assert.True(index >= 0, $"The plan passes no {option}.");
+        return plan.GeneratorArguments[index + 1];
+    }
 
     private static string RunFolder() => Path.Combine(Path.GetTempPath(), "load-plan-test");
 
