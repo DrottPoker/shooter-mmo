@@ -762,6 +762,26 @@ public sealed class StressQualityVerdictTests
         };
     }
 
+    // Without a quality boundary the generator's own checks decide the exit code, so a burst
+    // that did not run, did not register its accounts, or left an account unfinished fails them.
+    [Fact]
+    public void TheGeneratorsOwnChecksFailWhenABurstDidNotFinish()
+    {
+        var finished = WithBurst(FullStackReport(), incomplete: 0);
+        var unfinished = WithBurst(FullStackReport(), incomplete: 3);
+        var notRun = finished with { FullStack = finished.FullStack! with { Burst = null } };
+        var notRegistered = finished with
+        {
+            FullStack = finished.FullStack! with { Burst = finished.FullStack.Burst! with { Provisioned = 499 } }
+        };
+
+        Assert.True(FullStackReport().PassedOwnChecks());
+        Assert.True(finished.PassedOwnChecks());
+        Assert.False(unfinished.PassedOwnChecks());
+        Assert.False(notRun.PassedOwnChecks());
+        Assert.False(notRegistered.PassedOwnChecks());
+    }
+
     private static StressRunReport WithBurst(StressRunReport report, int incomplete)
     {
         return report with

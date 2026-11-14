@@ -180,6 +180,33 @@ public sealed record StressRunReport(
     StressBotAggregate Bots,
     StressAuthorityCounters? Authority)
 {
+    // The generator's own checks, which decide exit code 1 as before the quality boundary.
+    public bool PassedOwnChecks()
+    {
+        var bots = Configuration.BotCount;
+        return Bots.FailedBots == 0
+            && Bots.JoinedBots == bots
+            && Bots.CompletedBots == bots
+            && (FullStack is null || FullStack.LoggedOutBots == FullStack.AdmittedBots)
+            && Gameplay.UnexpectedFailures == 0
+            && (Postgres?.ItemInvariants?.Violations ?? 0) == 0
+            && BurstCompleted();
+    }
+
+    // A planned burst ran, registered every account, and every account finished its login or
+    // logout. Whether they finished in time is the quality boundary's question.
+    private bool BurstCompleted()
+    {
+        if (Configuration.Burst is null)
+        {
+            return true;
+        }
+
+        return FullStack?.Burst is { } burst
+            && burst.Provisioned == burst.Accounts
+            && burst.Completed == burst.Accounts;
+    }
+
     // The steady interval, in which the worker's steady intervals and the remote cadence count.
     public DateTime? SteadyStartedAt { get; init; }
 
