@@ -11,9 +11,13 @@ namespace Mmorpg.SimulationWorker.GameServiceApi;
 // AvailableTime without a lock or an allocation; the changes take a lock. Thread-safe.
 public sealed class GameServiceAvailability
 {
-    // What a refused durable action and the stop after a whole outage tell the client.
+    // What a refused durable action tells the client.
     public const string UnavailableCode = "game_service_unavailable";
     public const string UnavailableMessage = "GameService does not answer, so items, trade, and quests are paused.";
+
+    // What the stop after a whole outage tolerance tells the client.
+    public const string OutageStopCode = "game_service_outage";
+    public const string OutageStopMessage = "GameService did not answer for the outage tolerance, so the shard shut down.";
 
     private readonly TimeProvider timeProvider;
     private readonly ILogger logger;

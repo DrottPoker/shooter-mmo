@@ -32,7 +32,7 @@ public sealed class GameServiceOutageMonitor(
                 continue;
             }
 
-            stopReason.Set(GameServiceAvailability.UnavailableCode, GameServiceAvailability.UnavailableMessage);
+            stopReason.Set(GameServiceAvailability.OutageStopCode, GameServiceAvailability.OutageStopMessage);
             logger.LogCritical(
                 "GameService has not answered a registry heartbeat for {Age}, longer than the outage tolerance of {Tolerance}. Stopping the worker in order.",
                 age,

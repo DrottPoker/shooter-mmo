@@ -187,6 +187,10 @@
       "text": "That equipment slot is taken."
     },
     {
+      "key": "message/game_service_outage",
+      "text": "The shard lost its connection to the game service and shut down. Your character continues as it was last saved. Try joining again in a moment."
+    },
+    {
       "key": "message/game_service_unavailable",
       "text": "The game cannot save right now. Items, trade, and quests are paused; they come back by themselves."
     },

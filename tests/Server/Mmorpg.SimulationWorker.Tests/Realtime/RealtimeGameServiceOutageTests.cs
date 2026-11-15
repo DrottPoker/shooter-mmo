@@ -570,13 +570,13 @@ public sealed class RealtimeGameServiceOutageTests
             () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackReleased),
             "a shot");
         GoDown(harness);
-        harness.StopReason.Set(Unavailable, GameServiceAvailability.UnavailableMessage);
+        harness.StopReason.Set(GameServiceAvailability.OutageStopCode, GameServiceAvailability.OutageStopMessage);
         var callsBefore = harness.GameService.Calls.Count;
 
         await harness.StopWhilePollingAsync();
 
-        Assert.Equal(Unavailable, archerClient.ServerDisconnect?.Code);
-        Assert.Equal(Unavailable, targetClient.ServerDisconnect?.Code);
+        Assert.Equal(GameServiceAvailability.OutageStopCode, archerClient.ServerDisconnect?.Code);
+        Assert.Equal(GameServiceAvailability.OutageStopCode, targetClient.ServerDisconnect?.Code);
         Assert.Equal(callsBefore, harness.GameService.Calls.Count);
         Assert.Contains(harness.Logger.Entries, entry => entry.Message.Contains("are not saved at shutdown", StringComparison.Ordinal));
         Assert.Contains(harness.Logger.Entries, entry => entry.Message.Contains("are not committed at shutdown", StringComparison.Ordinal));

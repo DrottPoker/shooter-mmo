@@ -698,9 +698,10 @@ Expected result:
   the critical line `GameService has not answered a registry heartbeat for
   <time>, longer than the outage tolerance of 00:02:00. Stopping the worker in
   order.` and stops. The client leaves the World, and the next entry screen
-  shows `The game cannot save right now. Items, trade, and quests are paused;
-  they come back by themselves.` After the restart the character enters at the
-  place of its last checkpoint, which was at most 30 seconds before the outage.
+  shows `The shard lost its connection to the game service and shut down. Your
+  character continues as it was last saved. Try joining again in a moment.`
+  After the restart the character enters at the place of its last checkpoint,
+  which was at most 30 seconds before the outage.
 
 ### Remembered Choices And Shortcuts
 

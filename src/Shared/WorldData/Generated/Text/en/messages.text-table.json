@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "5b26c1d472c1fa6a991f4a017e75db9236a0229d0adb1fad6ad8a1858d49e275",
+  "revision": "84ea51afdd2a27d2e8deb7e97048e4a95f1f4908604f3a80536b1982ea46cb41",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -187,6 +187,10 @@
     {
       "key": "message/equipment_slot_occupied",
       "text": "That equipment slot is taken."
+    },
+    {
+      "key": "message/game_service_outage",
+      "text": "The shard lost its connection to the game service and shut down. Your character continues as it was last saved. Try joining again in a moment."
     },
     {
       "key": "message/game_service_unavailable",

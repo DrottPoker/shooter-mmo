@@ -93,7 +93,7 @@ public sealed class GameServiceOutageTests
         Assert.True(worker.Lifetime.StopRequested.Task.IsCompleted);
         var stoppedAt = worker.Lifetime.StoppedAt!.Value;
         Assert.InRange(stoppedAt - lastAnswered, Tolerance, Tolerance + TimeSpan.FromSeconds(1));
-        Assert.Equal(GameServiceAvailability.UnavailableCode, worker.StopReason.Code);
+        Assert.Equal(GameServiceAvailability.OutageStopCode, worker.StopReason.Code);
         Assert.Single(worker.MonitorLogger.Entries, entry => entry.Level == LogLevel.Critical);
         // No session was invalidated on the way.
         Assert.Single(worker.Sessions.ListActiveSessions());

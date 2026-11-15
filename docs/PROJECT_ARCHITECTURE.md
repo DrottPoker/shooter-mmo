@@ -591,7 +591,7 @@ order:
 
 1. The realtime shutdown: every connected peer gets a `ServerDisconnect` with
    the reason of the stop, `server_shutdown` for a normal stop and for lost
-   authority and `game_service_unavailable` when the outage tolerance ran out,
+   authority and `game_service_outage` when the outage tolerance ran out,
    and half a second at most to acknowledge it. Then the transport stops, the
    work that waits for GameService gives up, in-flight operations finish, the
    combat flush commits arrow shots and quest credits with the session

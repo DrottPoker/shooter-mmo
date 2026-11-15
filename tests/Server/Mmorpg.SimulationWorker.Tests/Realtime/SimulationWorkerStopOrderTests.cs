@@ -176,9 +176,9 @@ public sealed class SimulationWorkerStopOrderTests
 
         await shutdown;
         Assert.False(harness.Availability.IsAvailable);
-        Assert.Equal(GameServiceAvailability.UnavailableCode, harness.StopReason.Code);
+        Assert.Equal(GameServiceAvailability.OutageStopCode, harness.StopReason.Code);
         await harness.PollUntilAsync(() => walker.ServerDisconnect is not null, "the stop notice");
-        Assert.Equal(GameServiceAvailability.UnavailableCode, walker.ServerDisconnect!.Code);
+        Assert.Equal(GameServiceAvailability.OutageStopCode, walker.ServerDisconnect!.Code);
         Assert.Single(harness.AvailabilityLogger.Entries, entry => entry.Level == LogLevel.Warning);
         // After the silence began, only registry heartbeats and one offline attempt went out.
         var calls = harness.GameService.Calls.Skip(callsBefore)

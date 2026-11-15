@@ -362,7 +362,7 @@ replication go on; everything durable is paused.
   cannot be consumed.
 - When the last successful registry heartbeat is older than the tolerance,
   `GameServiceOutageMonitor` stops the worker in order: every connected peer
-  gets `ServerDisconnect` with `game_service_unavailable`, the realtime
+  gets `ServerDisconnect` with `game_service_outage`, the realtime
   shutdown sends nothing that would only spend its timeout, neither arrows,
   credits, nor the last checkpoint, the worker tries once to go offline, and
   the sessions are not released; their leases expire, or a runtime that
@@ -2010,7 +2010,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | --- | --- |
 | Packets and dispatch | `invalid_packet`, `udp_rate_limited`, `join_required`, `unexpected_message`, `internal_error`, and per family an `invalid_*_delivery` code for a message on the wrong channel or delivery and an `invalid_*` code for a malformed intent, such as `invalid_join_request`, `invalid_movement_input`, `invalid_item_operation`, and `invalid_world_interaction` |
 | Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing`, `death_not_saved` when a death was given up at the retry horizon |
-| Worker stop | In the `ServerDisconnect` that every connected peer gets when the worker stops: `server_shutdown` for a normal stop and a lost authority, and `game_service_unavailable` when the outage tolerance ran out |
+| Worker stop | In the `ServerDisconnect` that every connected peer gets when the worker stops: `server_shutdown` for a normal stop and a lost authority, and `game_service_outage` when the outage tolerance ran out |
 | GameService calls | `auth_service_timeout`, `auth_service_unavailable`, `auth_service_rejected`, `auth_service_authentication_failed`, `invalid_auth_response`, and `game_service_unavailable` for a durable action that the worker refused because GameService does not answer |
 | Movement | `movement_unavailable`, `unknown_movement_path` |
 | Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
