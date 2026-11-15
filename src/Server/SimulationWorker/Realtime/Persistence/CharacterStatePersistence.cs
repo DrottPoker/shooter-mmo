@@ -228,7 +228,7 @@ internal sealed class CharacterStatePersistence(
         if (!availability.IsAvailable)
         {
             nextCheckpointTick = tick.ServerTick;
-            return;
+            return false;
         }
 
         if (checkpointInFlight || !CombatTicks.IsReached(tick.ServerTick, nextCheckpointTick))
