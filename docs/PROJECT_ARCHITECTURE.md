@@ -377,9 +377,14 @@ contract:
   broadcast that fails every time it is due reaches the limit. The checkpoint
   leaves out a player whose session the worker no longer holds, so the state of
   a player that the isolation below took out in the same tick is not saved.
-  Taking an entity out of the world finishes also when a part of it throws: a
-  despawn that cannot be sent to one peer still goes to the others, and every
-  removal hook runs, before the first exception leaves the step.
+  A send never throws: `RealtimePeerSender` catches a packet that cannot be
+  sent, counts and logs the peer's first failed send, and schedules that peer's
+  disconnect, with `internal_error` when that still reaches it, so a spawn in
+  the middle of an interest refresh, a despawn in the middle of a teardown, or
+  a carry notice in the movement phase costs only its own peer and never the
+  player's state. Taking an entity out of the world finishes also when a part
+  of it throws: every removal hook runs before the first exception leaves the
+  step.
   Where a phase walks players or recipients one by one, `RealtimeFailureIsolation`
   takes out only the one that failed, at the worker's call site and never
   inside `src/Shared`: a player whose movement step or look fails gets its

@@ -7,6 +7,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldCollision;
 
@@ -93,10 +94,9 @@ public sealed class RealtimeLoopFailureTests
         }
     }
 
-    // The despawn of a removed player cannot be sent to one of the peers that see it: the peers
-    // after it still get the despawn, and the removal hooks still run, so the session of the
-    // removed player is released. The exception leaves the supervision afterwards, where the
-    // loop guard counts it.
+    // The despawn of a removed player cannot be sent to one of the peers that see it: that
+    // peer is disconnected alone, the other peers still get the despawn, and the removal hooks
+    // run, so the session of the removed player is released.
     [Fact]
     public async Task ADespawnThatFailsForOnePeerStillFinishesTheRemoval()
     {
@@ -138,11 +138,18 @@ public sealed class RealtimeLoopFailureTests
         blocked.Peer.FailReliableSends = true;
         var supervision = SupervisorService.Create(fixture);
 
-        var failure = Assert.Throws<InvalidOperationException>(() => supervision.Supervisor.EnforcePeerState());
+        var failuresBefore = fixture.LoopGuard.TotalFailures;
+        supervision.Supervisor.EnforcePeerState();
 
-        Assert.Equal("The reliable send broke.", failure.Message);
         Assert.False(fixture.Entities.TryGetPlayer(failing.Entity.NetworkEntityId, out _));
         Assert.Contains(viewer.Peer.Sent, sent => sent.Type == RealtimeMessageType.EntityDespawn);
+        Assert.NotNull(blocked.Context.DisconnectAfterUtc);
+        Assert.Null(viewer.Context.DisconnectAfterUtc);
+        Assert.Equal(failuresBefore + 1, fixture.LoopGuard.TotalFailures);
+        Assert.Contains(
+            fixture.Logger.Entries,
+            entry => entry.Level == LogLevel.Error
+                && entry.Message.Contains("send failed for UDP peer 1", StringComparison.Ordinal));
         await fixture.OperationTracker.WaitForAllAsync();
         var release = Assert.Single(fixture.GameService.Releases);
         Assert.Equal(failing.Session.SimulationSessionId, release.SimulationSessionId);
@@ -220,10 +227,53 @@ public sealed class RealtimeLoopFailureTests
         Assert.Equal("internal_error", reason.Code);
         Assert.NotNull(failing.Context.DisconnectAfterUtc);
         Assert.DoesNotContain(failing.Peer.Sent, sent => sent.Delivery == DeliveryMethod.Unreliable);
-        var errors = fixture.Logger.Entries.Where(entry => entry.Level >= LogLevel.Error).ToArray();
-        Assert.NotEmpty(errors);
-        Assert.All(errors, entry => Assert.Contains("snapshots failed for UDP peer 2", entry.Message, StringComparison.Ordinal));
-        Assert.Equal(errors.Length, fixture.LoopGuard.TotalFailures);
+        // The first failed send takes the peer out; the sends that follow fail quietly.
+        var error = Assert.Single(fixture.Logger.Entries, entry => entry.Level >= LogLevel.Error);
+        Assert.Contains("send failed for UDP peer 2", error.Message, StringComparison.Ordinal);
+        Assert.Equal(1, fixture.LoopGuard.TotalFailures);
+    }
+
+    // The notice of a changed carry state cannot be sent to its player: the player's state is
+    // sound, so the session stays and only the peer is disconnected, which leaves the
+    // character in the world as a body. The movement phase goes on with the other players.
+    [Fact]
+    public void ACarryNoticeThatCannotBeSentCostsThePeerNotThePlayer()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var burdened = fixture.ConnectPlayer(1, "Burdened Player");
+        var other = fixture.ConnectPlayer(2, "Other Player");
+        var carry = burdened.Session.CarryState;
+        Assert.Equal(ItemStateApplyResult.Applied, fixture.CharacterItemStateStore.ApplyCommitted(
+            burdened.Session.CharacterId,
+            burdened.Session.SimulationSessionId,
+            CharacterStateTestData.ItemState(
+                new PlayerCarryState(carry.ItemStateRevision + 1, carry.CarriedWeight + 1, carry.CarryCapacity)),
+            out _));
+        burdened.Peer.FailReliableSends = true;
+        var phases = new SimulationTickPhases();
+        new PlayerMovementTickPhase(fixture.CarrySync, fixture.PerformanceMetrics, fixture.FailureIsolation)
+            .AddTickPhase(phases);
+        var loop = new SimulationTickLoop(
+            fixture.Clock,
+            fixture.Entities,
+            phases,
+            fixture.PerformanceMetrics,
+            fixture.LoopGuard,
+            fixture.Logger);
+        var nextTick = TimeSpan.Zero;
+
+        loop.ProcessDueTicks(nextTick, TimeSpan.FromMilliseconds(1000d / 30d), ref nextTick);
+
+        Assert.True(fixture.SessionStore.IsCurrent(burdened.Session, DateTime.UtcNow));
+        Assert.True(fixture.Entities.TryGetPlayer(burdened.Entity.NetworkEntityId, out _));
+        Assert.Equal(carry.ItemStateRevision + 1, burdened.Entity.Movement.CarryState.ItemStateRevision);
+        Assert.NotNull(burdened.Context.DisconnectAfterUtc);
+        Assert.Null(other.Context.DisconnectAfterUtc);
+        var error = Assert.Single(fixture.Logger.Entries, entry => entry.Level >= LogLevel.Error);
+        Assert.Contains("send failed for UDP peer 1", error.Message, StringComparison.Ordinal);
+        var interval = fixture.PerformanceMetrics.CaptureAndReset();
+        Assert.Equal(0, interval.LoopStepFailures);
+        Assert.Equal(1, interval.LoopIsolatedFailures);
     }
 
     // A connect callback that throws costs only its own connection, and a disconnect callback
