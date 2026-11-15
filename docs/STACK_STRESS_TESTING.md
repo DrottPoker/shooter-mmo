@@ -485,15 +485,19 @@ The item invariant holds at the end as in every full-stack run. The report and
 the summary carry the outage as `outage`, and the script prints it after the
 verdict.
 
-The runs of 2026-11-15 failed `gameplay_unexpected_failures` with one to three
-`loot_open` timeouts and as many late results, and nothing else. A client
-operation that reaches the worker in the seconds before it notices the outage
-enters the player's lane behind durable work, such as a bow fighter's arrow
-batch, that waits for GameService and keeps the lane meanwhile; the operation
-is answered only after the return, a minute later, and the bot's 30 second
-operation timeout ends first. The verdict counts it on purpose, since a player
-waits that minute too. GameService's process numbers cover only the process before the stop,
-because the sampler follows one process.
+The scenario found a defect on its first runs: a client operation that reached
+the worker in the seconds before it noticed the outage waited in the player's
+lane behind durable work, such as a bow fighter's arrow batch, that keeps the
+lane until GameService returns, and was answered a minute late. The worker now
+refuses every durable client operation that waits in a lane at the moment
+GameService stops answering. The run of 2026-11-15 after that fix, on a
+machine in use, passed every rule with 100 of 100 bots: GameService was down
+62.2 seconds, the worker noticed the outage 4.8 seconds after the stop and the
+return within 0.1 seconds of the readiness, 277 refusals and 11 calls that the
+stop cut off were expected, none fell outside the window, the 36 kills while
+saving was paused all left their corpses, and the first durable action
+committed 0.2 seconds after the return. GameService's process numbers cover
+only the process before the stop, because the sampler follows one process.
 
 A variant whose outage outlasts the worker's tolerance, which must end with
 every bot disconnected with `game_service_outage` and the worker stopped in

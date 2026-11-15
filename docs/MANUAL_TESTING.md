@@ -3035,10 +3035,10 @@ heard one notice of each kind, the refusals and in-flight failures inside the
 window are counted as expected with none outside it, and the first durable
 action committed a few seconds after the readiness. In the table the four
 `outage_` rules, `worker_heartbeat_failures`, `http_unexpected_failures`, and
-`item_invariant_violations` read `pass`; `gameplay_unexpected_failures` passes
-too unless a `loot_open` waited behind an arrow batch, as
+`item_invariant_violations` read `pass`, and `gameplay_unexpected_failures`
+passes with a note that names what the outage explains, as
 [GameService Outage Scenario](STACK_STRESS_TESTING.md#gameservice-outage-scenario)
-describes, and its note names every failure. The
+describes. The
 run folder holds `outage-request.json`, `outage-window.json`, and
 `game-service-2.log`, and every log entry of both services starts with its UTC
 time. A run takes about seven minutes.
