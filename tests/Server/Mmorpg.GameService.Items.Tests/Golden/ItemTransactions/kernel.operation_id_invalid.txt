@@ -1,5 +1,6 @@
 scenario: kernel.operation_id_invalid
 trace:
+round trips: 0
 result:
   operation kind: grant
   operation id matches: yes

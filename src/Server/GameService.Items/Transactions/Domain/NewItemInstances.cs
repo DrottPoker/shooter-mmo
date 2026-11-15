@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
@@ -8,8 +9,13 @@ namespace Mmorpg.GameService.Items.Transactions.Domain;
 // from nothing uses it, so a new Bag always gets its contents container.
 internal static class NewItemInstances
 {
+    // Adds the writes of the new item to the caller's batch. An ordinary item leaves them there
+    // unsent, so they travel with what the caller adds next, such as the read of the new item's
+    // audit state. A Bag sends them with the read of its slot count and then creates its
+    // contents container, which needs that count.
     public static async Task CreateAsync(
         ItemTransactionContext context,
+        PostgresBatch write,
         Guid itemInstanceId,
         ResolvedItemDefinition definition,
         int quantity,
@@ -19,7 +25,7 @@ internal static class NewItemInstances
         string policySourceId,
         CancellationToken cancellationToken)
     {
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        write.Execute(
             """
             insert into item_instances (
                 id,
@@ -41,13 +47,11 @@ internal static class NewItemInstances
                 Quantity = quantity,
                 ContainerId = containerId,
                 SlotIndex = slotIndex
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
+            });
 
         foreach (var policyKind in definition.RuntimeDefinition.DefaultPolicies)
         {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
+            write.Execute(
                 """
                 insert into item_instance_policies (
                     id,
@@ -69,9 +73,7 @@ internal static class NewItemInstances
                     PolicyKind = policyKind,
                     SourceKind = policySourceKind,
                     SourceId = policySourceId
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+                });
         }
 
         if (!definition.IsBag)
@@ -80,15 +82,15 @@ internal static class NewItemInstances
         }
 
         var bagContainerId = Guid.NewGuid();
-        var slotCapacity = await context.Connection.QuerySingleAsync<int>(new CommandDefinition(
+        var slots = write.QuerySingleOrDefault<int>(
             """
             select count(*)
             from bag_definition_slots
             where definition_id = @DefinitionId;
             """,
-            new { DefinitionId = definition.RuntimeDefinition.Id },
-            context.Transaction,
-            cancellationToken: cancellationToken));
+            new { DefinitionId = definition.RuntimeDefinition.Id });
+        await write.ExecuteAsync(cancellationToken);
+        var slotCapacity = slots.Value;
         if (slotCapacity <= 0)
         {
             throw new InvalidOperationException(

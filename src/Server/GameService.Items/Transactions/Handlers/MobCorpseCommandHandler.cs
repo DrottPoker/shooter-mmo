@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.Server.Common.Identity;
 using Mmorpg.WorldData.Actors;
 
@@ -142,10 +143,12 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
         {
             var (loot, definition, quantity) = kept[index];
             var itemInstanceId = ScopedGuid.Create("mob-loot-item", loot.GrantId);
+            var create = new PostgresBatch(context.Scope);
             if (loot.QuestId is not null)
             {
                 await NewItemInstances.CreateAsync(
                     context,
+                    create,
                     itemInstanceId,
                     definition,
                     quantity,
@@ -158,41 +161,38 @@ internal sealed class MobCorpseCommandHandler(ItemSimulationAuthority simulation
             }
             else
             {
-                await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_instances (
-                    id,
-                    definition_id,
-                    quantity,
-                    container_id,
-                    container_slot_index)
-                values (
-                    @ItemInstanceId,
-                    @DefinitionId,
-                    @Quantity,
-                    @ContainerId,
-                    @SlotIndex);
-                """,
-                new
-                {
-                    ItemInstanceId = itemInstanceId,
-                    DefinitionId = definition.RuntimeDefinition.Id,
-                    Quantity = quantity,
-                    ContainerId = generalContainerId,
-                    SlotIndex = index
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+                create.Execute(
+                    """
+                    insert into item_instances (
+                        id,
+                        definition_id,
+                        quantity,
+                        container_id,
+                        container_slot_index)
+                    values (
+                        @ItemInstanceId,
+                        @DefinitionId,
+                        @Quantity,
+                        @ContainerId,
+                        @SlotIndex);
+                    """,
+                    new
+                    {
+                        ItemInstanceId = itemInstanceId,
+                        DefinitionId = definition.RuntimeDefinition.Id,
+                        Quantity = quantity,
+                        ContainerId = generalContainerId,
+                        SlotIndex = index
+                    });
             }
 
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                itemInstanceId,
-                cancellationToken);
+            var afterState = context.Journal.CaptureItemStateJson(create, itemInstanceId);
+            await create.ExecuteAsync(cancellationToken);
             context.Journal.AddItemAudit(
                 "persistent_mob_loot_materialized",
                 itemInstanceId,
                 null,
-                afterState);
+                afterState.Value);
             context.Journal.IncludeResultItem(itemInstanceId);
         }
 

@@ -1,16 +1,25 @@
 scenario: process_player_death.event_replayed
 trace:
+  -- round trip
   c1 begin ReadCommitted
   c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
   c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  -- round trip
   c1 sql savepoint item_mutation
+  -- round trip
   c1 sql select pg_advisory_xact_lock($1, $2)
+  -- round trip
   c1 sql select account_id from characters where id = $1 and deleted_at is null for no key update
+  -- round trip
   c1 sql select state.character_id as "CharacterId", state.revision as "Revision", state.carried_weight as "CarriedWeight", state.base_carry_capacity as "BaseCarryCapacity", state.carry_capacity as "CarryCapacity", state.permanent_inventory_container_id as "PermanentInventoryContainerId", state.bank_container_id as "BankContainerId", state.recovery_storage_container_id as "RecoveryStorageContainerId" from character_item_states state where state.character_id = $1 for update of state
+  -- round trip
   c1 sql select event.request_hash as "RequestHash", event.corpse_id as "CorpseId", event.operation_id as "OriginalOperationId" from death_events event join corpses corpse on corpse.id = event.corpse_id where event.id = $1 for update of event, corpse
+  -- round trip
   c1 sql insert into item_operation_changes ( operation_id, change_index, item_instance_id, change_kind, before_state, after_state) values ( $1, $2, $3, $4, cast($5 as jsonb), cast($6 as jsonb))
   c1 sql update item_operations set status = $1, result_payload = cast($2 as jsonb), revision = revision + 1, completed_at = now() where operation_id = $3
+  -- round trip
   c1 commit
+round trips: 8
 result:
   operation kind: process_player_death
   operation id matches: yes

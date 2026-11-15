@@ -7,15 +7,12 @@ namespace Mmorpg.GameService.Placement;
 internal sealed class SimulationWorkerAuthority(PlacementModuleOptions options)
     : ISimulationWorkerAuthority
 {
-    public async Task<SimulationWorkerRuntime?> GetRuntimeAsync(
-        PostgresTransactionScope scope,
-        string workerId,
-        CancellationToken cancellationToken)
+    public PostgresBatchResult<SimulationWorkerRuntime?> AddGetRuntime(PostgresBatch batch, string workerId)
     {
-        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(batch);
 
-        var row = await scope.Connection.QuerySingleOrDefaultAsync<WorkerRuntimeRow>(
-            new CommandDefinition(
+        return batch
+            .QuerySingleOrDefault<WorkerRuntimeRow>(
                 """
                 select
                     worker.runtime_id as "RuntimeId",
@@ -23,22 +20,19 @@ internal sealed class SimulationWorkerAuthority(PlacementModuleOptions options)
                 from simulation_workers worker
                 where worker.id = @WorkerId;
                 """,
-                new { WorkerId = workerId },
-                scope.Transaction,
-                cancellationToken: cancellationToken));
-        return row is null ? null : new SimulationWorkerRuntime(row.RuntimeId, row.IsOnline);
+                new { WorkerId = workerId })
+            .Select(row => row is null ? null : new SimulationWorkerRuntime(row.RuntimeId, row.IsOnline));
     }
 
-    public async Task<bool> LockAssignmentForShareAsync(
-        PostgresTransactionScope scope,
+    public PostgresBatchResult<bool> AddLockAssignmentForShare(
+        PostgresBatch batch,
         string workerId,
-        string shardId,
-        CancellationToken cancellationToken)
+        string shardId)
     {
-        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(batch);
 
-        var assignmentId = await scope.Connection.QuerySingleOrDefaultAsync<string>(
-            new CommandDefinition(
+        return batch
+            .QuerySingleOrDefault<string>(
                 """
                 select assignment.id
                 from simulation_assignments assignment
@@ -51,10 +45,8 @@ internal sealed class SimulationWorkerAuthority(PlacementModuleOptions options)
                 {
                     WorkerId = workerId,
                     ShardId = shardId
-                },
-                scope.Transaction,
-                cancellationToken: cancellationToken));
-        return !string.IsNullOrWhiteSpace(assignmentId);
+                })
+            .Select(assignmentId => !string.IsNullOrWhiteSpace(assignmentId));
     }
 
     public async Task<SimulationWorkerShardLease?> GetShardLeaseAsync(

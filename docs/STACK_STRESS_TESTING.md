@@ -1718,7 +1718,17 @@ reports.
    a full World.
 6. **One corpse is one queue.** With 250 clients on the shared corpse of
    `mixed-250`, a deposit's p95 was 4.6 seconds. That is the deliberate worst
-   case of the mixed workload, not a spread of corpses.
+   case of the mixed workload, not a spread of corpses. The worker lets one
+   mutation of a corpse through at a time, so the queue is as long as each
+   operation's database round trips: every statement of an item transaction
+   was one. The kernel now sends the statements that nothing decides between
+   together, as [Round Trips](GAME_SERVICE_MODULES.md#round-trips) describes, with
+   the same statements in the same order: a corpse deposit takes 25 to 27 round
+   trips instead of 35 to 38, a loot 24 to 26 instead of 34 to 37, and a worker's
+   relocation 23 instead of 33. On loopback a round trip costs a fraction of a
+   millisecond, so the gain shows mostly with the database on another host.
+   Left to measure on an idle machine: the deposit p95 of `mixed-250` with the
+   batched kernel, and the operation times with PostgreSQL on another host.
 7. **Storage growth.** [The 30 Minute Soak](#the-30-minute-soak) measured the
    history without retention: 184 MiB per hour at 250 players, 94 percent of it
    in the two operation tables, about 8 GiB per day at 500. GameService now

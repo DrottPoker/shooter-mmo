@@ -473,6 +473,19 @@ compares with. Run the tests
 with `MMORPG_UPDATE_GOLDENS=1` to rewrite the files after an intended change,
 and review every golden diff before committing it.
 
+An item transaction trace lists what Npgsql logs, one line per event: `c1 begin`,
+`c1 commit`, and `c1 rollback` for the transaction, `c1 sql` for a statement, and
+`c1 batch N` with its `N` statements below it for one command of several
+statements. `c2` is a second connection. The kit's `SqlTraceRecorder` also sees
+through the data source's batch filter which logged batches are a
+`PostgresBatch`, whose statements keep one `sql` line each, as when they
+travelled alone. A `-- round trip` line starts every round trip, which holds the
+lines below it up to the next one: a command, a batch, a commit, or a rollback. A
+begin travels with the round trip after it. `round trips: N` after the trace
+pins the count. A change that only lets statements travel together changes only
+the round trip lines and the count; a diff that changes, adds, removes, or moves
+a statement line changes what the transaction does.
+
 ### Realtime Protocol Goldens
 
 The realtime protocol golden cases live in

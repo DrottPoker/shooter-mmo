@@ -28,6 +28,10 @@ public interface ICharacterLocks
         Guid characterId,
         CancellationToken cancellationToken);
 
+    // Adds the same lock to the caller's batch, whose result is the account id or null once the
+    // batch ran, so the lock can share a round trip with the caller's statements.
+    PostgresBatchResult<Guid?> AddLockActiveForItemMutation(PostgresBatch batch, Guid characterId);
+
     // Locks the active characters among the ids FOR NO KEY UPDATE in ascending id order
     // and returns each locked character's account id.
     Task<IReadOnlyDictionary<Guid, Guid>> LockActiveForItemMutationAsync(

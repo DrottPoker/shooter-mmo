@@ -1,5 +1,5 @@
-using Dapper;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Contracts;
@@ -23,25 +23,23 @@ public static class ItemQuantityConsumption
                 "The consume quantity exceeds the current item quantity.");
         }
 
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
-            cancellationToken);
+        var consume = new PostgresBatch(context.Scope);
+        var beforeState = context.Journal.CaptureItemStateJson(consume, item.ItemInstanceId);
         if (quantity == item.Quantity)
         {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
+            consume.Execute(
                 "delete from item_instances where id = @ItemInstanceId;",
-                new { item.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
+                new { item.ItemInstanceId });
+            await consume.ExecuteAsync(cancellationToken);
             context.Journal.AddItemAudit(
                 consumedAuditKind,
                 item.ItemInstanceId,
-                beforeState,
+                beforeState.Value,
                 null);
         }
         else
         {
-            await ReduceAsync(context, item, quantity, beforeState, partlyConsumedAuditKind, cancellationToken);
+            await ReduceAsync(context, consume, item, quantity, beforeState, partlyConsumedAuditKind, cancellationToken);
         }
 
         context.Journal.TouchContainer(item.ContainerId);
@@ -60,35 +58,38 @@ public static class ItemQuantityConsumption
         CancellationToken cancellationToken)
     {
         ItemDestructions.EnsureReason(destructionReason);
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
-            cancellationToken);
+        var remove = new PostgresBatch(context.Scope);
+        var beforeState = context.Journal.CaptureItemStateJson(remove, item.ItemInstanceId);
         if (quantity == item.Quantity)
         {
+            // The destruction is one command of two statements and keeps its own round trip.
+            await remove.ExecuteAsync(cancellationToken);
             await ItemDestructions.DestroyAsync(context, item, destructionReason, cancellationToken);
             context.Journal.AddItemAudit(
                 removedAuditKind,
                 item.ItemInstanceId,
-                beforeState,
+                beforeState.Value,
                 null);
         }
         else
         {
-            await ReduceAsync(context, item, quantity, beforeState, partlyRemovedAuditKind, cancellationToken);
+            await ReduceAsync(context, remove, item, quantity, beforeState, partlyRemovedAuditKind, cancellationToken);
         }
 
         context.Journal.TouchContainer(item.ContainerId);
     }
 
+    // The smaller stack and its audit state after the read of its state before, in one round trip.
     private static async Task ReduceAsync(
         ItemTransactionContext context,
+        PostgresBatch reduce,
         LockedItem item,
         int quantity,
-        string? beforeState,
+        PostgresBatchResult<string?> beforeState,
         string auditKind,
         CancellationToken cancellationToken)
     {
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        reduce.Execute(
             """
             update item_instances
             set quantity = quantity - @Quantity,
@@ -96,17 +97,14 @@ public static class ItemQuantityConsumption
                 updated_at = now()
             where id = @ItemInstanceId;
             """,
-            new { Quantity = quantity, item.ItemInstanceId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        var afterState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
-            cancellationToken);
+            new { Quantity = quantity, item.ItemInstanceId });
+        var afterState = context.Journal.CaptureItemStateJson(reduce, item.ItemInstanceId);
+        await reduce.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             auditKind,
             item.ItemInstanceId,
-            beforeState,
-            afterState);
+            beforeState.Value,
+            afterState.Value);
         context.Journal.IncludeResultItem(item.ItemInstanceId);
     }
 

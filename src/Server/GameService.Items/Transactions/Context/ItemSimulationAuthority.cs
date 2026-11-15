@@ -1,7 +1,9 @@
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.Server.Common.Identity;
+using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
 namespace Mmorpg.GameService.Items.Transactions;
@@ -25,8 +27,15 @@ internal sealed class ItemSimulationAuthority(
     // account session ended runs only a command that may run after that end, the work of the
     // character's body; any other command is refused with the code of the end, last, so every
     // failure that ends the session wins over it.
+    //
+    // The checks keep their order, and statements share a round trip only where no check decides
+    // between them: the character lock travels with the timeouts in the kernel's prelude, the
+    // session lock runs alone because the character check decides whether it may run, and the
+    // worker read travels with the assignment lock. A non-worker actor leaves the prelude to the
+    // kernel.
     public async Task ValidateLiveSessionAsync(
         ItemTransactionSession transactionSession,
+        PostgresBatch prelude,
         Guid? actorCharacterId,
         bool mayRunAfterAccountSessionEnd,
         CancellationToken cancellationToken)
@@ -46,10 +55,9 @@ internal sealed class ItemSimulationAuthority(
                 "The item operation character does not match the simulation session.");
         }
 
-        var characterAccountId = await characterLocks.LockActiveForItemMutationAsync(
-            transactionSession.Scope,
-            simulation.CharacterId,
-            cancellationToken);
+        var lockedCharacter = characterLocks.AddLockActiveForItemMutation(prelude, simulation.CharacterId);
+        await prelude.ExecuteAsync(cancellationToken);
+        var characterAccountId = lockedCharacter.Value;
         if (characterAccountId is null || characterAccountId != transactionSession.Actor.AccountId)
         {
             Reject(
@@ -101,28 +109,26 @@ internal sealed class ItemSimulationAuthority(
                 "The simulation session credentials or Shard binding are invalid.");
         }
 
-        var worker = await simulationWorkers.GetRuntimeAsync(
-            transactionSession.Scope,
+        // The worker read only reads, and the assignment is the acting worker's own, so the lock
+        // shares the round trip; a failed worker check still wins over the lock's result or error.
+        var workerBatch = new PostgresBatch(transactionSession.Scope);
+        var worker = simulationWorkers.AddGetRuntime(workerBatch, simulation.WorkerId);
+        var ownsAssignment = simulationWorkers.AddLockAssignmentForShare(
+            workerBatch,
             simulation.WorkerId,
-            cancellationToken);
-        if (worker is null
-            || !worker.IsOnline
-            || !string.Equals(
-                worker.RuntimeId,
-                simulation.WorkerRuntimeId,
-                StringComparison.Ordinal))
+            simulation.ShardId);
+        try
         {
-            Reject(
-                ItemTransactionErrorCodes.WorkerRuntimeChanged,
-                "The simulation worker runtime no longer owns live authority.");
+            await workerBatch.ExecuteAsync(cancellationToken);
+        }
+        catch (PostgresException) when (worker.HasValue)
+        {
+            EnsureWorkerRuntime(worker.Value, simulation);
+            throw;
         }
 
-        var ownsAssignment = await simulationWorkers.LockAssignmentForShareAsync(
-            transactionSession.Scope,
-            simulation.WorkerId,
-            simulation.ShardId,
-            cancellationToken);
-        if (!ownsAssignment)
+        EnsureWorkerRuntime(worker.Value, simulation);
+        if (!ownsAssignment.Value)
         {
             Reject(
                 ItemTransactionErrorCodes.WrongSimulationWorker,
@@ -134,6 +140,23 @@ internal sealed class ItemSimulationAuthority(
             Reject(
                 SimulationAccountSessionEndCodes.Of(end),
                 SimulationAccountSessionEndCodes.MessageOf(end));
+        }
+    }
+
+    private static void EnsureWorkerRuntime(
+        SimulationWorkerRuntime? worker,
+        SimulationItemTransactionAuthority simulation)
+    {
+        if (worker is null
+            || !worker.IsOnline
+            || !string.Equals(
+                worker.RuntimeId,
+                simulation.WorkerRuntimeId,
+                StringComparison.Ordinal))
+        {
+            Reject(
+                ItemTransactionErrorCodes.WorkerRuntimeChanged,
+                "The simulation worker runtime no longer owns live authority.");
         }
     }
 

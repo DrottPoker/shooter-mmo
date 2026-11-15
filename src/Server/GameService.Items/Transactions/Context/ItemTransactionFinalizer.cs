@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
@@ -10,7 +11,7 @@ namespace Mmorpg.GameService.Items.Transactions;
 // Kernel-owned finalization of a successful handler: container revisions, carry
 // weight and the hard cap, character revisions, result item revisions, and audit rows,
 // in this order, and the result with the journal's sections. It fails a transaction whose
-// handler recorded no audit change.
+// handler recorded no audit change. Statements that no check separates share a round trip.
 internal sealed class ItemTransactionFinalizer(
     ItemTransactionSession session,
     ItemChangeJournal journal)
@@ -28,7 +29,10 @@ internal sealed class ItemTransactionFinalizer(
 
     private string OperationKind => session.OperationKind;
 
+    // The audit rows go into the completion batch unsent, so they travel with the operation's
+    // completion, which the kernel adds to it.
     public async Task<ItemTransactionResult> FinalizeAsync(
+        PostgresBatch completion,
         CancellationToken cancellationToken)
     {
         if (journal.AuditChanges.Count == 0)
@@ -38,35 +42,32 @@ internal sealed class ItemTransactionFinalizer(
         }
 
         var containerIds = journal.TouchedContainerIds.Order().ToArray();
+        IReadOnlyList<ItemTransactionContainerRevision> containerResults = [];
         if (containerIds.Length > 0)
         {
-            await Connection.ExecuteAsync(new CommandDefinition(
+            // The read follows the update in the same round trip and sees the new revisions.
+            var containers = new PostgresBatch(session.Scope);
+            containers.Execute(
                 """
                 update item_containers
                 set revision = revision + 1,
                     updated_at = now()
                 where id = any(@ContainerIds);
                 """,
-                new { ContainerIds = containerIds },
-                Transaction,
-                cancellationToken: cancellationToken));
+                new { ContainerIds = containerIds });
+            var revisions = containers.Query<ItemTransactionContainerRevision>(
+                """
+                select
+                    id as "ContainerId",
+                    revision as "Revision"
+                from item_containers
+                where id = any(@ContainerIds)
+                order by id;
+                """,
+                new { ContainerIds = containerIds });
+            await containers.ExecuteAsync(cancellationToken);
+            containerResults = revisions.Value;
         }
-
-        var containerResults = containerIds.Length == 0
-            ? []
-            : (await Connection.QueryAsync<ItemTransactionContainerRevision>(
-                new CommandDefinition(
-                    """
-                    select
-                        id as "ContainerId",
-                        revision as "Revision"
-                    from item_containers
-                    where id = any(@ContainerIds)
-                    order by id;
-                    """,
-                    new { ContainerIds = containerIds },
-                    Transaction,
-                    cancellationToken: cancellationToken))).ToArray();
 
         var characterResults = new List<ItemTransactionCharacterRevision>();
         foreach (var characterId in journal.TouchedCharacterIds.Order())
@@ -150,7 +151,7 @@ internal sealed class ItemTransactionFinalizer(
         for (var index = 0; index < journal.AuditChanges.Count; index++)
         {
             var change = journal.AuditChanges[index];
-            await Connection.ExecuteAsync(new CommandDefinition(
+            completion.Execute(
                 """
                 insert into item_operation_changes (
                     operation_id,
@@ -175,9 +176,7 @@ internal sealed class ItemTransactionFinalizer(
                     change.ChangeKind,
                     change.BeforeState,
                     change.AfterState
-                },
-                Transaction,
-                cancellationToken: cancellationToken));
+                });
         }
 
         return new ItemTransactionResult(

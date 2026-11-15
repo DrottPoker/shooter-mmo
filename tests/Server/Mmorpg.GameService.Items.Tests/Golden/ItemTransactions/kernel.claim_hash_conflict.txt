@@ -1,10 +1,14 @@
 scenario: kernel.claim_hash_conflict
 trace:
+  -- round trip
   c1 begin ReadCommitted
   c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
   c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  -- round trip
   c1 sql select operation_kind as "OperationKind", request_hash as "RequestHash", status as "Status", result_payload::text as "ResultPayload" from item_operations where operation_id = $1 for update
+  -- round trip
   c1 commit
+round trips: 3
 result:
   operation kind: grant
   operation id matches: yes

@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
@@ -126,8 +127,10 @@ internal sealed class ItemGrantCommandHandler
             false,
             cancellationToken);
         var itemInstanceId = Guid.NewGuid();
+        var create = new PostgresBatch(context.Scope);
         await NewItemInstances.CreateAsync(
             context,
+            create,
             itemInstanceId,
             definition,
             command.Quantity,
@@ -137,10 +140,9 @@ internal sealed class ItemGrantCommandHandler
             policySourceId,
             cancellationToken);
 
-        var afterState = await context.Journal.CaptureItemStateJsonAsync(
-            itemInstanceId,
-            cancellationToken);
-        context.Journal.AddItemAudit("item_granted", itemInstanceId, null, afterState);
+        var afterState = context.Journal.CaptureItemStateJson(create, itemInstanceId);
+        await create.ExecuteAsync(cancellationToken);
+        context.Journal.AddItemAudit("item_granted", itemInstanceId, null, afterState.Value);
         context.Journal.TouchContainer(destination.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
         context.Journal.IncludeResultItem(itemInstanceId);

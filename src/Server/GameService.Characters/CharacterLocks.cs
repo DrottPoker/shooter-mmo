@@ -6,6 +6,15 @@ namespace Mmorpg.GameService.Characters;
 
 internal sealed class CharacterLocks : ICharacterLocks
 {
+    private const string LockActiveForItemMutationSql =
+        """
+        select account_id
+        from characters
+        where id = @CharacterId
+          and deleted_at is null
+        for no key update;
+        """;
+
     public async Task<bool> LockOwnedActiveForUpdateAsync(
         PostgresTransactionScope scope,
         Guid accountId,
@@ -54,16 +63,19 @@ internal sealed class CharacterLocks : ICharacterLocks
 
         return scope.Connection.QuerySingleOrDefaultAsync<Guid?>(
             new CommandDefinition(
-                """
-                select account_id
-                from characters
-                where id = @CharacterId
-                  and deleted_at is null
-                for no key update;
-                """,
+                LockActiveForItemMutationSql,
                 new { CharacterId = characterId },
                 scope.Transaction,
                 cancellationToken: cancellationToken));
+    }
+
+    public PostgresBatchResult<Guid?> AddLockActiveForItemMutation(PostgresBatch batch, Guid characterId)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+
+        return batch.QuerySingleOrDefault<Guid?>(
+            LockActiveForItemMutationSql,
+            new { CharacterId = characterId });
     }
 
     public async Task<IReadOnlyDictionary<Guid, Guid>> LockActiveForItemMutationAsync(
