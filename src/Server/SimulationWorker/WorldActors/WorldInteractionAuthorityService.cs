@@ -38,16 +38,6 @@ public sealed class WorldInteractionAuthorityService(
     WorldActorLineOfSightService lineOfSight,
     WorldActorMetrics metrics)
 {
-    public WorldInteractionAuthorityResult Process(
-        int peerId,
-        PlayerSimulationEntity player,
-        RealtimeWorldInteractionIntent intent)
-    {
-        return ProcessAsync(peerId, player, intent, CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
-    }
-
     public async Task<WorldInteractionAuthorityResult> ProcessAsync(
         int peerId,
         PlayerSimulationEntity player,

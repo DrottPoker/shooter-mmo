@@ -54,6 +54,9 @@ public sealed record RealtimePerformanceMetricsSnapshot(
 
     // The time the loop thread spent in its timed work: every tick and every loop step.
     public double LoopBusyMilliseconds { get; init; }
+
+    // Steps that players and Mobs skipped because collision chunks around them still loaded.
+    public long CollisionPendingSteps { get; init; }
 }
 
 public sealed record RealtimeNamedDurationSummary(string Name, RealtimeDurationSummary Summary);
@@ -87,6 +90,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Counter<long> snapshotPacketSendCounter;
     private readonly Counter<long> snapshotEntityUpdateDeferredCounter;
     private readonly Counter<long> loopFailureCounter;
+    private readonly Counter<long> collisionPendingStepCounter;
     private readonly ObservableGauge<int> corpseMutationBacklogGauge;
     private readonly ObservableGauge<int> activeCorpseMutationGauge;
     private readonly DurationAccumulator networkPoll = new();
@@ -117,6 +121,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private long snapshotEntityUpdatesDeferred;
     private long loopStepFailures;
     private long loopIsolatedFailures;
+    private long collisionPendingSteps;
 
     public RealtimePerformanceMetrics()
     {
@@ -145,6 +150,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         snapshotEntityUpdateDeferredCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.entity_updates_deferred");
         loopFailureCounter = meter.CreateCounter<long>("simulation_worker.loop.failures");
+        collisionPendingStepCounter = meter.CreateCounter<long>(
+            "simulation_worker.simulation.collision_streaming.pending_steps");
         meter.CreateObservableGauge(
             "simulation_worker.loop.completed_operations.backlog",
             () => Volatile.Read(ref completedOperationBacklog));
@@ -252,6 +259,13 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     // The timer of one step of a loop iteration, labeled with its name.
     internal DurationTimer LoopStepTimer(string name) =>
         GetOrAddTimer(loopStepTimers, loopStepHistogram, LoopStepTag, name);
+
+    // A player or Mob that did not step because collision chunks around it still loaded.
+    public void RecordCollisionPendingStep()
+    {
+        Interlocked.Increment(ref collisionPendingSteps);
+        collisionPendingStepCounter.Add(1);
+    }
 
     public void RecordTickResynchronization()
     {
@@ -386,7 +400,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             TickPhases = tickPhases,
             LoopSteps = loopSteps,
             GcPauseMilliseconds = gcPauseMilliseconds,
-            LoopBusyMilliseconds = loopBusyMilliseconds
+            LoopBusyMilliseconds = loopBusyMilliseconds,
+            CollisionPendingSteps = Interlocked.Exchange(ref collisionPendingSteps, 0)
         };
     }
 

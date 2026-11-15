@@ -45,6 +45,7 @@ internal sealed class MobSystem : IMobSnapshotSource
     private readonly CombatLineOfSight lineOfSight;
     private readonly EntityPresenceReplicator presence;
     private readonly CombatMetrics? metrics;
+    private readonly CollisionChunkGate? collisionChunks;
     private readonly Dictionary<string, WorldActorBrainProfileDefinition> brains;
     private readonly Dictionary<string, WorldActorLocomotionProfileDefinition> locomotionProfiles;
     private readonly Dictionary<string, MobLocomotion> locomotions = new(StringComparer.Ordinal);
@@ -67,7 +68,8 @@ internal sealed class MobSystem : IMobSnapshotSource
         CombatLineOfSight lineOfSight,
         EntityPresenceReplicator presence,
         WorldActorRuntime? content,
-        CombatMetrics? metrics)
+        CombatMetrics? metrics,
+        CollisionChunkGate? collisionChunks = null)
     {
         this.config = config;
         this.clock = clock;
@@ -76,6 +78,7 @@ internal sealed class MobSystem : IMobSnapshotSource
         this.lineOfSight = lineOfSight;
         this.presence = presence;
         this.metrics = metrics;
+        this.collisionChunks = collisionChunks;
         brains = (content?.Catalog.BrainProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         locomotionProfiles = (content?.Catalog.LocomotionProfiles ?? []).ToDictionary(profile => profile.Id, StringComparer.Ordinal);
         patrolPaths = (content?.Spawns.PatrolPaths ?? []).ToDictionary(
@@ -560,6 +563,12 @@ internal sealed class MobSystem : IMobSnapshotSource
     {
         var path = agent.Path;
         if (path is null)
+        {
+            return;
+        }
+
+        // A Mob whose collision chunks still load waits for them where it stands.
+        if (collisionChunks is not null && !collisionChunks.CanStep(agent.Position))
         {
             return;
         }

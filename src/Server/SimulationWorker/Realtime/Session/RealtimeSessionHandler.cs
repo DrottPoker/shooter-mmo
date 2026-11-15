@@ -13,8 +13,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Accepts join and leave requests and finalizes joins: a join registers the entity, or resumes a
 // lingering body of its session, binds the peer and sends the accept, the baseline and the spawns
-// in that order. A leave ends the connection at once: the entity stays as a lingering body while
-// the session goes on. Loop-confined; GameService calls run in SessionAuthorityOperations.
+// in that order. The join of a new entity whose place has collision chunks that still load waits
+// in the collision chunk gate and is finalized again from the start once they are in. A leave
+// ends the connection at once: the entity stays as a lingering body while the session goes on.
+// Loop-confined; GameService calls run in SessionAuthorityOperations.
 internal sealed class RealtimeSessionHandler(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
@@ -25,6 +27,7 @@ internal sealed class RealtimeSessionHandler(
     ConnectionEntityBindingRegistry connectionBindings,
     ChunkedStaticCollisionWorld staticCollisionWorld,
     ICollisionWorld collisionWorld,
+    CollisionChunkGate collisionChunks,
     PeerAdmissionGuard admissionGuard,
     EntityPresenceReplicator presence,
     RealtimeLifecycleHooks hooks,
@@ -226,15 +229,27 @@ internal sealed class RealtimeSessionHandler(
 
         session = session with { CarryState = currentCarryState! };
 
-        // A registered placement, such as a saved place, decides where a new entity starts.
-        var initialMovementState = hooks.PlaceNewPlayer(session)
-            ?? PlayerMovementSimulation.CreateInitialState(
+        // A registered placement, such as a saved place, decides where a new entity starts. Its
+        // collision loads before it stands there; until then nothing of the join happens.
+        var initialMovementState = default(PlayerMovementState);
+        if (!KeepsEntity(session))
+        {
+            var place = hooks.PlaceNewPlayer(session) ?? PlayerPlace.Spawn(config.MovementSpawn);
+            if (!collisionChunks.IsLoadedAround(place.Position))
+            {
+                collisionChunks.WaitFor(place.Position, this, completed);
+                return;
+            }
+
+            initialMovementState = PlayerMovementSimulation.CreateInitialState(
                 config.MovementSimulation,
                 collisionWorld,
-                config.MovementSpawn.X,
-                config.MovementSpawn.Y,
-                config.MovementSpawn.Z,
-                config.MovementSpawn.YawDegrees);
+                place.X,
+                place.Y,
+                place.Z,
+                place.YawDegrees);
+        }
+
         var registration = entityRegistry.RegisterPlayer(
             session,
             () => new AuthoritativePlayerMovement(
@@ -371,6 +386,13 @@ internal sealed class RealtimeSessionHandler(
         }
 
         sessionOperations.ReleaseDetachedInBackground(session);
+    }
+
+    // A reconnect of the same session keeps its entity where it stands.
+    private bool KeepsEntity(ActiveSimulationSession session)
+    {
+        return entityRegistry.TryGetPlayerByCharacterId(session.CharacterId, out var existing)
+            && existing!.Session.SimulationSessionId == session.SimulationSessionId;
     }
 
     private bool IsCurrentSession(ActiveSimulationSession session)

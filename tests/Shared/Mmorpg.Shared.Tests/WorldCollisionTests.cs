@@ -17,6 +17,37 @@ public sealed class WorldCollisionTests
         14f,
         CharacterCollisionSettings.Default);
 
+    // The form that fills reusable sets plans the same chunks as the one that builds new sets, and
+    // once the sets have grown it allocates nothing.
+    [Fact]
+    public void StreamingPlannerFillsReusableSetsWithTheSameChunksWithoutAllocating()
+    {
+        var planner = new CollisionChunkStreamingPlanner(32f, 2, 3);
+        var anchors = new[]
+        {
+            new SimulationVector3(1f, 0f, 1f),
+            new SimulationVector3(-170f, 3f, 40f),
+            new SimulationVector3(-170.5f, 3f, 41f)
+        };
+        var anchorChunks = anchors.Select(planner.ToChunk).ToList();
+        var required = new HashSet<CollisionChunkCoordinate>();
+        var retained = new HashSet<CollisionChunkCoordinate>();
+
+        planner.FillChunks(anchorChunks, required, retained);
+
+        Assert.Equal(new CollisionChunkCoordinate(-6, 1), anchorChunks[1]);
+        Assert.True(planner.GetRequiredChunks(anchors).SetEquals(required));
+        Assert.True(planner.GetRetainedChunks(anchors).SetEquals(retained));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var pass = 0; pass < 100; pass++)
+        {
+            planner.FillChunks(anchorChunks, required, retained);
+        }
+
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(25 + 25, required.Count);
+    }
+
     [Fact]
     public void CompilerProducesDeterministicVersionedChunks()
     {

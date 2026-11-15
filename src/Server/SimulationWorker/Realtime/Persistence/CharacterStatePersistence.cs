@@ -5,7 +5,6 @@ using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
-using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -24,8 +23,6 @@ namespace Mmorpg.SimulationWorker.Realtime;
 internal sealed class CharacterStatePersistence(
     SimulationWorkerConfig config,
     string collisionRevision,
-    ICollisionWorld collisionWorld,
-    WorldCollisionStreamingStore? collisionStreamingStore,
     ActiveSimulationSessionStore sessionStore,
     SimulationEntityRegistry entityRegistry,
     CombatSystem combat,
@@ -47,7 +44,8 @@ internal sealed class CharacterStatePersistence(
     private readonly Dictionary<ulong, TrackedPlayer> players = [];
 
     // What a placement decided for a new entity of the session, until its join hook takes it.
-    private readonly Dictionary<Guid, RestoredState?> placements = [];
+    private readonly Dictionary<Guid, Placement> placements = [];
+    private readonly List<Guid> abandonedPlacements = [];
 
     private long lastSequence;
     private uint nextCheckpointTick;
@@ -60,7 +58,8 @@ internal sealed class CharacterStatePersistence(
     }
 
     // Where a joining session's new entity starts. A reconnect keeps its entity and its place.
-    public PlayerMovementState? Place(ActiveSimulationSession session)
+    // The join places it there once the collision around the place is loaded.
+    public PlayerPlace? Place(ActiveSimulationSession session)
     {
         if (session.IsSyntheticBot
             || (entityRegistry.TryGetPlayerByCharacterId(session.CharacterId, out var existing)
@@ -69,24 +68,16 @@ internal sealed class CharacterStatePersistence(
             return null;
         }
 
+        DropAbandonedPlacements();
         var restored = Resolve(session);
-        placements[session.SimulationSessionId] = restored;
+        placements[session.SimulationSessionId] = new Placement(session.CharacterId, restored);
         if (restored is not { RestoresPosition: true } placed)
         {
             return null;
         }
 
         var state = placed.State;
-        // As a teleport does, the collision around the saved place loads before the player
-        // stands on it.
-        collisionStreamingStore?.EnsureLoaded(new SimulationVector3(state.PositionX, state.PositionY, state.PositionZ));
-        return PlayerMovementSimulation.CreateInitialState(
-            config.MovementSimulation,
-            collisionWorld,
-            state.PositionX,
-            state.PositionY,
-            state.PositionZ,
-            state.YawDegrees);
+        return new PlayerPlace(state.PositionX, state.PositionY, state.PositionZ, state.YawDegrees);
     }
 
     // Combat made the player a combatant with full vitals; a new entity takes the saved ones.
@@ -98,7 +89,8 @@ internal sealed class CharacterStatePersistence(
             return;
         }
 
-        var isNewEntity = placements.Remove(session.SimulationSessionId, out var restored);
+        var isNewEntity = placements.Remove(session.SimulationSessionId, out var placement);
+        var restored = placement.State;
         if (players.ContainsKey(entity.NetworkEntityId)
             || !combat.TryGetPlayerCombatant(entity.NetworkEntityId, out var combatant))
         {
@@ -348,6 +340,27 @@ internal sealed class CharacterStatePersistence(
         return new RestoredState(state, restoresPosition, restoresPosition ? state : null);
     }
 
+    // A join that never finished, such as one whose peer left while it waited for the collision
+    // of its place, leaves its placement behind; the next placement drops it once the worker no
+    // longer holds its session.
+    private void DropAbandonedPlacements()
+    {
+        abandonedPlacements.Clear();
+        foreach (var (sessionId, placement) in placements)
+        {
+            if (!sessionStore.TryGet(placement.CharacterId, out var current)
+                || current!.SimulationSessionId != sessionId)
+            {
+                abandonedPlacements.Add(sessionId);
+            }
+        }
+
+        foreach (var sessionId in abandonedPlacements)
+        {
+            placements.Remove(sessionId);
+        }
+    }
+
     private bool IsHeld(ActiveSimulationSession session)
     {
         return sessionStore.TryGet(session.CharacterId, out var current)
@@ -365,6 +378,8 @@ internal sealed class CharacterStatePersistence(
         CharacterStateSnapshot State,
         bool RestoresPosition,
         CharacterStateSnapshot? Saved);
+
+    private readonly record struct Placement(Guid CharacterId, RestoredState? State);
 
     private sealed class TrackedPlayer(PlayerSimulationEntity entity)
     {

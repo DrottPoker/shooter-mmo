@@ -1660,6 +1660,11 @@ The worker must log `Development admin tools are enabled`.
    done.` Right-click the ground. Expected result: the world menu offers
    `Teleport here` after `Walk here`, and choosing it teleports too. Press `Pick
    a spot` and then Escape. Expected result: `Teleport cancelled.`
+   Teleport across the World, to a place more than 100 m from you and every
+   other player. Expected result: you appear there standing on the ground after
+   a moment, within a few tenths of a second, the footer says `done.` only
+   then, and you do not fall through the terrain; the worker logs no
+   `collision streaming failed`.
 4. On the `Combat` tab turn on `Invulnerable`, teleport to the wolf woods around
    `(-105, 0, -105)`, and let a wolf bite you. Expected result: the bites show
    no damage, and your health stays full. Turn it off, take a bite, and press

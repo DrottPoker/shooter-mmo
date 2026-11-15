@@ -12,6 +12,7 @@ public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
     private readonly List<WorldActorRuntimeState> actorBuffer = [];
     private readonly Dictionary<ScheduleKey, List<WorldActorRuntimeState>> schedules = [];
     private readonly List<TierTransition> transitions = [];
+    private readonly List<WorldActorRuntimeState> changed = [];
     private long observedPopulationRevision = -1;
 
     public IReadOnlyList<WorldActorRuntimeState> Evaluate(
@@ -23,6 +24,7 @@ public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
         return Evaluate(PlayerSpatialGrid.From(players), serverTick, simulationTickRateHz);
     }
 
+    // The actors whose tier changed, in a list that the next call reuses.
     public IReadOnlyList<WorldActorRuntimeState> Evaluate(
         PlayerSpatialGrid players,
         uint serverTick,
@@ -36,7 +38,7 @@ public sealed class WorldActorActivityScheduler(WorldActorStore actorStore)
         }
 
         RefreshSchedules(simulationTickRateHz);
-        var changed = new List<WorldActorRuntimeState>();
+        changed.Clear();
         transitions.Clear();
         foreach (var schedule in schedules)
         {

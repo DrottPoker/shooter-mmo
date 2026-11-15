@@ -45,7 +45,8 @@ internal sealed class RealtimePeerContext(
     // this peer's lane. Its lane opens when that operation ends.
     public RealtimePeerContext? LaneSuccessor { get; set; }
 
-    public string? CorpsePresenceSignature { get; set; }
+    // The corpse presence this peer was sent last.
+    public CorpsePresenceSent CorpsePresence { get; } = new();
 
     public DateTime? DisconnectAfterUtc { get; set; }
 

@@ -21,6 +21,9 @@ internal sealed class WorldActorRuntimeDriver(
 {
     private readonly List<WorldActorTimer> dueTimers = [];
 
+    // The population gauges are counted once a second, not every tick.
+    private readonly uint populationIntervalTicks = (uint)Math.Max(1, config.MovementSimulation.TickRateHz);
+
     // Respawns a dead Mob when its respawn timer is due; set by the composition.
     public Action<WorldActorTimer>? RespawnMob { get; set; }
 
@@ -76,16 +79,17 @@ internal sealed class WorldActorRuntimeDriver(
         RespawnDueResourceNodes(serverTick);
         if (worldActorActivityScheduler is not null)
         {
-            foreach (var changedActor in worldActorActivityScheduler.Evaluate(
-                         players,
-                         serverTick,
-                         config.MovementSimulation.TickRateHz,
-                         KeepActive))
+            var changed = worldActorActivityScheduler.Evaluate(
+                players,
+                serverTick,
+                config.MovementSimulation.TickRateHz,
+                KeepActive);
+            for (var index = 0; index < changed.Count; index++)
             {
-                presence.BroadcastWorldActorState(changedActor);
+                presence.BroadcastWorldActorState(changed[index]);
             }
 
-            if (worldActorStore is not null)
+            if (worldActorStore is not null && serverTick % populationIntervalTicks == 0)
             {
                 worldActorMetrics?.ObservePopulation(worldActorStore.ListActors());
             }

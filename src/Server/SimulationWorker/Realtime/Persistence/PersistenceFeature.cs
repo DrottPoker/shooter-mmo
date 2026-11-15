@@ -44,8 +44,6 @@ internal static class PersistenceFeature
         var persistence = new CharacterStatePersistence(
             core.Config,
             core.StaticCollisionWorld.Revision,
-            core.CollisionWorld,
-            core.CollisionStreamingStore,
             core.SessionStore,
             core.EntityRegistry,
             combat.Combat,

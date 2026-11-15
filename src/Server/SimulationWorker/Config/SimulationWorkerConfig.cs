@@ -511,6 +511,12 @@ public sealed record SimulationWorkerConfig(
             "SimulationWorker:SnapshotReplication:RefreshIntervalSnapshots",
             errors);
         var collisionStreamingSection = section.GetSection("CollisionStreaming");
+        // Chunks load off the loop, and a mover steps only where its own chunk and its eight
+        // neighbours are loaded. With 32 m chunks and a load radius of 2, a chunk that becomes
+        // required lies at least one whole chunk, 32 m, beyond the chunk its anchor entered, so a
+        // mover needs it only after crossing that chunk: 0.64 s at the fastest player, 5 m/s times
+        // the admin maximum of 1000 percent, and 1.6 s for a Mob at its maximum of 20 m/s. A
+        // loader that takes longer only makes the mover wait; a radius of 1 leaves no such time.
         var collisionLoadRadiusChunks = PositiveInt(
             collisionStreamingSection["LoadRadiusChunks"],
             "SimulationWorker:CollisionStreaming:LoadRadiusChunks",

@@ -56,20 +56,54 @@ public sealed class WorldActorMetrics : IDisposable
         gatheringCycles = meter.CreateCounter<long>("simulation_worker.gathering.cycles");
     }
 
-    public void ObservePopulation(IReadOnlyCollection<WorldActorRuntimeState> actors)
+    // Counts the actors of each kind and tier in one pass, without allocating. The loop calls it
+    // when an assignment activates and then once a second from the world actor phase.
+    public void ObservePopulation(IReadOnlyList<WorldActorRuntimeState> actors)
     {
         ArgumentNullException.ThrowIfNull(actors);
-        Interlocked.Exchange(ref npcPopulation, actors.Count(actor => actor.Definition.Kind == "npc"));
-        Interlocked.Exchange(ref mobPopulation, actors.Count(actor => actor.Definition.Kind == "mob"));
-        Interlocked.Exchange(ref eventDrivenPopulation, actors.Count(actor => actor.ActivityTier == "event_driven"));
-        Interlocked.Exchange(ref dormantPopulation, actors.Count(actor => actor.ActivityTier == "dormant"));
-        Interlocked.Exchange(ref activePopulation, actors.Count(actor => actor.ActivityTier == "active"));
-        Interlocked.Exchange(
-            ref resourceNodePopulation,
-            actors.Count(actor => actor.Definition.Kind == "resource_node"));
-        Interlocked.Exchange(
-            ref depletedResourceNodes,
-            actors.Count(actor => actor.ResourceProfile is not null && !actor.IsActive));
+        long npcs = 0, mobs = 0, eventDriven = 0, dormant = 0, active = 0, resourceNodes = 0, depleted = 0;
+        for (var index = 0; index < actors.Count; index++)
+        {
+            var actor = actors[index];
+            switch (actor.Definition.Kind)
+            {
+                case "npc":
+                    npcs++;
+                    break;
+                case "mob":
+                    mobs++;
+                    break;
+                case "resource_node":
+                    resourceNodes++;
+                    break;
+            }
+
+            switch (actor.ActivityTier)
+            {
+                case "event_driven":
+                    eventDriven++;
+                    break;
+                case "dormant":
+                    dormant++;
+                    break;
+                case "active":
+                    active++;
+                    break;
+            }
+
+            if (actor.ResourceProfile is not null && !actor.IsActive)
+            {
+                depleted++;
+            }
+        }
+
+        Interlocked.Exchange(ref npcPopulation, npcs);
+        Interlocked.Exchange(ref mobPopulation, mobs);
+        Interlocked.Exchange(ref eventDrivenPopulation, eventDriven);
+        Interlocked.Exchange(ref dormantPopulation, dormant);
+        Interlocked.Exchange(ref activePopulation, active);
+        Interlocked.Exchange(ref resourceNodePopulation, resourceNodes);
+        Interlocked.Exchange(ref depletedResourceNodes, depleted);
     }
 
     public void SetActiveGatherers(long count) =>

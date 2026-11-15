@@ -5,13 +5,17 @@ using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// Keeps the collision chunks around the players, the World spawn, and the moving Mobs loaded.
-// Without a streaming store it does nothing, but its duration is still recorded.
+// Keeps the collision chunks around the players, the World spawn, the moving Mobs, and the places
+// that a join or a teleport waits for loaded. The store plans only when an anchor changed its
+// chunk, loads on its background loader, and takes the finished chunks in here; then the waiting
+// joins and teleports whose places are loaded go back to the completion queue. No file is read
+// here. Without a streaming store it does nothing, but its duration is still recorded.
 // Loop-confined.
 internal sealed class CollisionStreamingTickPhase(
     SimulationWorkerConfig config,
     MobSystem mobs,
     WorldCollisionStreamingStore? collisionStreamingStore,
+    CollisionChunkGate gate,
     RealtimePerformanceMetrics performanceMetrics)
 {
     private readonly List<SimulationVector3> anchorBuffer = [];
@@ -50,6 +54,8 @@ internal sealed class CollisionStreamingTickPhase(
             config.MovementSpawn.Y,
             config.MovementSpawn.Z));
         mobs.CopyCollisionAnchorsTo(anchorBuffer);
+        gate.AddAnchorsTo(anchorBuffer);
         collisionStreamingStore.Refresh(anchorBuffer);
+        gate.ReleaseLoadedPlaces();
     }
 }
