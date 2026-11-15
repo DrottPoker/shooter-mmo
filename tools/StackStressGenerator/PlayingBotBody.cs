@@ -552,12 +552,14 @@ public sealed class PlayingBotBody : IPlayingBotBody
             StartReloadWhenBehind(now, cancellationToken);
             FollowRoute(now);
             DrainCombatEvents(now);
-            if (outage is { HasPendingKills: true })
+            // Every look counts, also without a waiting kill: the tracker needs to know which
+            // corpses stood there before a kill.
+            if (outage is not null && (View.Corpses.Count > 0 || outage.HasPendingKills))
             {
-                outage.MatchKillCorpses(
-                    View.Corpses.Values
-                        .Where(corpse => !string.IsNullOrEmpty(corpse.Source.ActorDefinitionId))
-                        .Select(corpse => (corpse.Source.ActorDefinitionId, corpse.PositionX, corpse.PositionZ)),
+                outage.ObserveMobCorpses(
+                    View.Corpses
+                        .Where(corpse => !string.IsNullOrEmpty(corpse.Value.Source.ActorDefinitionId))
+                        .Select(corpse => (corpse.Key, corpse.Value.Source.ActorDefinitionId, corpse.Value.PositionX, corpse.Value.PositionZ)),
                     DateTime.UtcNow);
             }
         }

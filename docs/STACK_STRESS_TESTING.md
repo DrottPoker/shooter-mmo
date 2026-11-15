@@ -470,7 +470,9 @@ and failed when the script reported no window:
   completed bot that joined before the stop, heard exactly one notice that
   GameService does not answer and one that it answers again.
 - `outage_kill_corpses_missing`: a bot that killed a Mob while its saving was
-  paused saw that Mob's corpse within 10 seconds. The bots have no quests, so a
+  paused saw that Mob's corpse within 10 seconds: a corpse of the Mob's kind
+  near the place, that the bot first saw after the kill and that stands for no
+  other kill. The bots have no quests, so a
   kill makes no quest credit, and the wolves' live corpses need GameService
   only for quest drops; the report counts the kills and their corpses.
 - `outage_return_seconds`: the worker logged that GameService answers again at
@@ -479,7 +481,8 @@ and failed when the script reported no window:
   does not answer.
 - `outage_durable_recovery_seconds`: the first durable action of a bot, an
   equip, item move, loot, trade, or gathering start, committed at most 15
-  seconds after GameService was ready.
+  seconds after GameService was ready. One that committed before the script's
+  readiness poll saw GameService counts as zero seconds.
 
 The item invariant holds at the end as in every full-stack run. The report and
 the summary carry the outage as `outage`, and the script prints it after the
