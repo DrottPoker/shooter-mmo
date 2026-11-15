@@ -135,7 +135,7 @@ public sealed class RealtimeMetricsReporterService(
 
         var performance = interval.Performance;
         logger.LogInformation(
-            "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}.",
+            "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot visibility groups {SnapshotVisibilityGroups}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}; loop failures of whole steps {LoopStepFailures} and of single players or peers {LoopIsolatedFailures}.",
             Format(performance.NetworkPoll),
             Format(performance.CompletedOperations),
             Format(performance.JoinQueueDelay),
@@ -163,7 +163,9 @@ public sealed class RealtimeMetricsReporterService(
             performance.SnapshotVisibilityGroups,
             performance.SnapshotPacketsEncoded,
             performance.SnapshotPacketsSent,
-            performance.SnapshotEntityUpdatesDeferred);
+            performance.SnapshotEntityUpdatesDeferred,
+            performance.LoopStepFailures,
+            performance.LoopIsolatedFailures);
     }
 
     private RealtimeMobActivity? CaptureMobs()

@@ -111,12 +111,13 @@ public sealed class RealtimeFeatureRegistrationTests
             [typeof(CombatSystem), typeof(AdminIntentHandler), typeof(CharacterStatePersistence)],
             hooks.PlayerJoined.Select(hook => hook.Method.DeclaringType));
         // The lists keep registration order; the hooks of a player's way out run in reverse, so
-        // persistence sees a player go while combat still holds it.
+        // persistence sees a player go while combat still holds it, and the release of a player
+        // that the loop took out comes last, after persistence dropped its final state.
         Assert.Equal(
             [typeof(CombatSystem)],
             hooks.ConnectionEnded.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
-            [typeof(CombatSystem), typeof(CharacterStatePersistence)],
+            [typeof(RealtimeFailureIsolation), typeof(CombatSystem), typeof(CharacterStatePersistence)],
             hooks.PlayerRemoved.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
             [typeof(CombatReplicator)],

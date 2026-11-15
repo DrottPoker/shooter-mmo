@@ -49,7 +49,8 @@ internal sealed class AppearanceFeature
             core.ConnectionBindings,
             core.ItemStateStore,
             dependencies.Looks,
-            dependencies.Settings);
+            dependencies.Settings,
+            core.FailureIsolation);
         var intents = new AppearanceIntentHandler(
             core.Peers,
             core.Sender,

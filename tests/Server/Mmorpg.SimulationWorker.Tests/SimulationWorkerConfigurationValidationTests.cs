@@ -322,6 +322,32 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    [Theory]
+    [InlineData(null, 30, null)]
+    [InlineData("1", 1, null)]
+    [InlineData("500", 500, null)]
+    [InlineData("0", 0, "SimulationWorker:TickPhaseFailureLimit must be a positive integer.")]
+    [InlineData("-3", 0, "SimulationWorker:TickPhaseFailureLimit must be a positive integer.")]
+    public void TheTickPhaseFailureLimitDefaultsToThirtyAndIsAtLeastOne(
+        string? value,
+        int expectedLimit,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:TickPhaseFailureLimit"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            Assert.Equal(expectedLimit, SimulationWorkerConfig.FromConfiguration(configuration).TickPhaseFailureLimit);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     [Fact]
     public void ThePerformanceReportPathIsOptionalAndResolvedToAFullPath()
     {

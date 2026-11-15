@@ -644,6 +644,26 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - A peer with more than `MaxReliableQueuedPackets` unacknowledged reliable
   control packets is disconnected, so a client that never acknowledges cannot
   grow server memory without bound.
+- An unexpected exception costs as little of the Shard as possible. A packet,
+  a completed operation, or a connection, disconnection, or connection request
+  that fails costs only its own peer. A player whose own movement step or look
+  fails leaves alone: the client gets `internal_error`, and its character
+  leaves the world at once, without a lingering body. The worker then releases
+  its session without a final state, because that state may be broken, so the
+  character is free at once and resumes from its last checkpoint. A peer whose
+  snapshot or look packets fail
+  to build or send is disconnected with `internal_error`, and its character
+  stays as a lingering body. Any other
+  failed tick phase or loop step is skipped for that run while the rest of the
+  tick goes on, so every player feels at most a hitch. A tick phase or loop
+  step that fails `TickPhaseFailureLimit` runs in a row, 30 by default, stops
+  the worker in order, as a graceful stop does; for a phase that works only on
+  some ticks, such as the snapshots, only the ticks on which it was due count
+  as runs. The remaining players are
+  saved in one last checkpoint, and the worker goes offline and releases its
+  sessions, so nobody stays in a world that no longer moves. Every failure
+  writes an error line and counts in `simulation_worker.loop.failures`, as
+  [Monitoring](MONITORING.md#simulationworker) lists.
 
 Join acceptance carries Shard and World identity, the Shard rules, and the
 initial carry tuple. A standalone client must be rebuilt when the protocol
@@ -2058,6 +2078,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
 | `LingeringBodySeconds` | `20` | How long a character's body stays in the world after its connection ended and after every hit it takes, 1 to 3,600 seconds, as [Lingering Bodies](#lingering-bodies) describes |
+| `TickPhaseFailureLimit` | `30` | How many runs in a row one tick phase or loop step may fail before the worker stops itself, at least 1, as [Realtime UDP Transport](#realtime-udp-transport) describes |
 | `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |
 | `UdpQuotas:InboundBytesPerSecond`, `InboundByteBurst` | 128 KiB, 256 KiB | Inbound bytes per peer |
 | `UdpQuotas:SnapshotBytesPerSecond`, `SnapshotByteBurst` | 256 KiB, 512 KiB | Unreliable snapshot bytes per peer |

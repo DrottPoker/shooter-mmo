@@ -16,6 +16,7 @@ internal static class SnapshotFeature
             core.Presence,
             core.NetworkMetrics,
             core.PerformanceMetrics,
-            core.Clock).AddTickPhase(core.Registries.TickPhases);
+            core.Clock,
+            core.FailureIsolation).AddTickPhase(core.Registries.TickPhases);
     }
 }

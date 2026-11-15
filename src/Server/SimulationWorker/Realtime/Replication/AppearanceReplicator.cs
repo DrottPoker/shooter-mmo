@@ -9,7 +9,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Gives every spawn the look of its player, and sends a new look to every connection that sees
 // the player and to its owner when it changes: its visible equipment, its lowered headwear, the
 // tool it uses, such as its pickaxe while it gathers, or in Development its body model and look.
-// The owner gets its own look when it joins, since it never spawns its own player. Loop-confined.
+// The owner gets its own look when it joins, since it never spawns its own player. A player whose
+// look fails to build leaves the Shard alone, and a peer that a look fails to reach is
+// disconnected alone. Loop-confined.
 internal sealed class AppearanceReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -18,8 +20,11 @@ internal sealed class AppearanceReplicator(
     ConnectionEntityBindingRegistry connectionBindings,
     CharacterItemStateStore itemStates,
     CharacterLookStore looks,
-    AppearanceReplicationSettings settings)
+    AppearanceReplicationSettings settings,
+    RealtimeFailureIsolation isolation)
 {
+    public const string PhaseName = "appearances";
+
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly HashSet<ulong> seen = [];
     private readonly Dictionary<ulong, Sent> sent = [];
@@ -79,15 +84,18 @@ internal sealed class AppearanceReplicator(
     public void AddTickPhase(SimulationTickPhases phases, SimulationWorkerConfig config)
     {
         var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-        phases.Add(
+        phases.AddPeriodic(
             SimulationTickOrder.Appearances,
-            "appearances",
+            PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks == 0)
+                if (tick.ServerTick % intervalTicks != 0)
                 {
-                    Broadcast();
+                    return false;
                 }
+
+                Broadcast();
+                return true;
             });
     }
 
@@ -101,33 +109,14 @@ internal sealed class AppearanceReplicator(
         foreach (var entity in playerBuffer)
         {
             seen.Add(entity.NetworkEntityId);
-            var (lookVersion, itemRevision) = VersionsOf(entity);
-            var owner = connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out var connectionId)
-                ? connectionId
-                : -1;
-            var known = sent.TryGetValue(entity.NetworkEntityId, out var previous);
-            if (known && previous.LookVersion == lookVersion && previous.ItemRevision == itemRevision && previous.Owner == owner
-                && string.Equals(previous.UsedSlot, entity.UsedEquipmentSlot, StringComparison.Ordinal))
+            try
             {
-                continue;
+                BroadcastIfChanged(entity);
             }
-
-            var appearance = AppearanceOf(entity);
-            var key = KeyOf(appearance);
-            var changed = known && !string.Equals(previous.Key, key, StringComparison.Ordinal);
-            byte[]? packet = null;
-            if (changed)
+            catch (Exception exception)
             {
-                packet = Encode(entity.NetworkEntityId, appearance);
-                SendToViewers(entity.NetworkEntityId, packet, owner);
+                isolation.RemovePlayer(PhaseName, entity, exception);
             }
-
-            if (owner >= 0 && (!known || changed || previous.Owner != owner))
-            {
-                SendTo(owner, packet ?? Encode(entity.NetworkEntityId, appearance));
-            }
-
-            sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, owner, entity.UsedEquipmentSlot, key);
         }
 
         if (sent.Count > seen.Count)
@@ -137,6 +126,38 @@ internal sealed class AppearanceReplicator(
                 sent.Remove(entityId);
             }
         }
+    }
+
+    // Sends one player's look where it has to go when it changed.
+    private void BroadcastIfChanged(PlayerSimulationEntity entity)
+    {
+        var (lookVersion, itemRevision) = VersionsOf(entity);
+        var owner = connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out var connectionId)
+            ? connectionId
+            : -1;
+        var known = sent.TryGetValue(entity.NetworkEntityId, out var previous);
+        if (known && previous.LookVersion == lookVersion && previous.ItemRevision == itemRevision && previous.Owner == owner
+            && string.Equals(previous.UsedSlot, entity.UsedEquipmentSlot, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var appearance = AppearanceOf(entity);
+        var key = KeyOf(appearance);
+        var changed = known && !string.Equals(previous.Key, key, StringComparison.Ordinal);
+        byte[]? packet = null;
+        if (changed)
+        {
+            packet = Encode(entity.NetworkEntityId, appearance);
+            SendToViewers(entity.NetworkEntityId, packet, owner);
+        }
+
+        if (owner >= 0 && (!known || changed || previous.Owner != owner))
+        {
+            SendTo(owner, packet ?? Encode(entity.NetworkEntityId, appearance));
+        }
+
+        sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, owner, entity.UsedEquipmentSlot, key);
     }
 
     public void Clear()
@@ -164,7 +185,7 @@ internal sealed class AppearanceReplicator(
                 && presence.IsVisibleTo(context.PeerId, entityId)
                 && peers.TryGetCurrentPeer(context, out var peer))
             {
-                sender.SendControl(peer, packet);
+                Send(peer, context, packet);
             }
         }
     }
@@ -175,7 +196,19 @@ internal sealed class AppearanceReplicator(
             && context.Session is not null
             && peers.TryGetCurrentPeer(context, out var peer))
         {
+            Send(peer, context, packet);
+        }
+    }
+
+    private void Send(IRealtimePeerConnection peer, RealtimePeerContext context, byte[] packet)
+    {
+        try
+        {
             sender.SendControl(peer, packet);
+        }
+        catch (Exception exception)
+        {
+            isolation.DisconnectPeer(PhaseName, peer, context, exception);
         }
     }
 

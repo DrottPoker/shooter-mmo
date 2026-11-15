@@ -20,7 +20,7 @@ internal sealed class RealtimePeerLifecycle(
     ActiveSimulationSessionStore sessionStore,
     RealtimeSessionTeardown teardown,
     RealtimeNetworkMetrics networkMetrics,
-    ILogger logger)
+    ILogger logger) : IRealtimePeerLifecycle
 {
     public void OnPeerConnected(int peerId, IPAddress address)
     {

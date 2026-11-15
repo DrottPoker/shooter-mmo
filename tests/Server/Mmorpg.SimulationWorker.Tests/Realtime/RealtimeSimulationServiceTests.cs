@@ -199,6 +199,9 @@ public sealed class RealtimeSimulationServiceTests
             await server.StopAsync(CancellationToken.None);
             server.Dispose();
         }
+
+        // The loop only logs a failed step, so a failure fails the test here.
+        Assert.Equal(0, server.Server.LoopGuard.TotalFailures);
     }
 
     private static async Task RunRealtimeSessionAsync(
@@ -477,6 +480,9 @@ public sealed class RealtimeSimulationServiceTests
             await server.StopAsync(CancellationToken.None);
             server.Dispose();
         }
+
+        // The loop only logs a failed step, so a failure fails the test here.
+        Assert.Equal(0, server.Server.LoopGuard.TotalFailures);
     }
 
     [Fact]
@@ -584,6 +590,9 @@ public sealed class RealtimeSimulationServiceTests
             await server.StopAsync(CancellationToken.None);
             server.Dispose();
         }
+
+        // The loop only logs a failed step, so a failure fails the test here.
+        Assert.Equal(0, server.Server.LoopGuard.TotalFailures);
     }
 
     private static SimulationWorkerConfig CreateConfig(int port)

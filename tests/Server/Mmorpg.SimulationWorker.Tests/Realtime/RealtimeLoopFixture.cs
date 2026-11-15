@@ -5,9 +5,11 @@ using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing.Content;
@@ -18,6 +20,8 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // test can drive one handler deterministically without sockets or loop timing.
 internal sealed class RealtimeLoopFixture : IDisposable
 {
+    private readonly HttpClient httpClient;
+
     public RealtimeLoopFixture(
         bool enableWorldActors = false,
         IReadOnlyList<IWorldActorCapabilityHandler>? capabilityHandlers = null,
@@ -53,7 +57,12 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
         Bodies = new LingeringBodies(Config.LingeringBodySeconds, Config.MovementSimulation.TickRateHz, Clock);
         Registry = new RealtimePeerRegistry(Directory, Bindings, Entities, Metrics);
-        Sender = new RealtimePeerSender(Metrics, NullLogger.Instance);
+        LoopGuard = new RealtimeLoopGuard(
+            SimulationWorkerConfig.DefaultTickPhaseFailureLimit,
+            Clock,
+            PerformanceMetrics,
+            Logger);
+        Sender = new RealtimePeerSender(Metrics, NullLogger.Instance, Registry, LoopGuard);
         Presence = new EntityPresenceReplicator(
             Registry,
             Sender,
@@ -79,6 +88,30 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Hooks,
             Bodies);
         Scheduler = new AuthorityOperationScheduler(Registry);
+        httpClient = new HttpClient(GameService) { BaseAddress = new Uri("http://game-service.test") };
+        var client = new GameServiceClient(httpClient);
+        ReleaseService = new SimulationSessionReleaseService(
+            client,
+            SessionStore,
+            CharacterStateTestData.SessionStores(CharacterItemStateStore));
+        SessionOperations = new SessionAuthorityOperations(
+            new SimulationJoinService(
+                client,
+                SessionStore,
+                CharacterItemStateStore,
+                Config,
+                new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow)),
+            ReleaseService,
+            Completions,
+            OperationTracker,
+            NullLogger.Instance);
+        FailureIsolation = new RealtimeFailureIsolation(
+            SessionStore,
+            Sender,
+            LoopGuard,
+            SessionOperations,
+            ReleaseService.FinalStates);
+        FailureIsolation.AddHooks(Hooks);
         CompletionTargets = new OperationCompletionTargets(Registry, Bindings, Entities, SessionStore);
     }
 
@@ -91,6 +124,22 @@ internal sealed class RealtimeLoopFixture : IDisposable
     public RecordingPeerDirectory Directory { get; } = new();
 
     public RealtimeNetworkMetrics Metrics { get; } = new();
+
+    public RealtimePerformanceMetrics PerformanceMetrics { get; } = new();
+
+    public CapturingLogger<RealtimeSimulationService> Logger { get; } = new();
+
+    // Counts the loop failures that the fixture's components report, as the server's guard does.
+    public RealtimeLoopGuard LoopGuard { get; }
+
+    public RealtimeFailureIsolation FailureIsolation { get; }
+
+    // Answers the releases that the fixture's session operations start.
+    public ScriptedGameServiceHandler GameService { get; } = new();
+
+    public SimulationSessionReleaseService ReleaseService { get; }
+
+    public SessionAuthorityOperations SessionOperations { get; }
 
     public RealtimeSimulationClock Clock { get; } = new();
 
@@ -141,7 +190,8 @@ internal sealed class RealtimeLoopFixture : IDisposable
     public OperationCompletionTargets CompletionTargets { get; }
 
     // Registers a joined player at the movement spawn, bound to a connected peer.
-    public ConnectedPlayer ConnectPlayer(int peerId, string name = "Loop Hero")
+    // A player whose movement queries the given collision world instead of the fixture's.
+    public ConnectedPlayer ConnectPlayer(int peerId, string name = "Loop Hero", ICollisionWorld? movementCollision = null)
     {
         var session = RealtimeTestSessions.Create(name);
         Assert.Equal(ActiveSimulationSessionRegistration.Joined, SessionStore.Register(session));
@@ -163,7 +213,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
                     initialState,
                     Config.MovementSimulation,
                     session.CarryState,
-                    CollisionWorld))
+                    movementCollision ?? CollisionWorld))
             .Entity;
         Bindings.Bind(peerId, entity.NetworkEntityId);
         var peer = new RecordingPeerConnection(peerId);
@@ -261,7 +311,9 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
     public void Dispose()
     {
+        httpClient.Dispose();
         Metrics.Dispose();
+        PerformanceMetrics.Dispose();
         WorldActorMetrics?.Dispose();
     }
 }

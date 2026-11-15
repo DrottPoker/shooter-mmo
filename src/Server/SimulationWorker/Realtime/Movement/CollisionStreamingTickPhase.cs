@@ -18,7 +18,8 @@ internal sealed class CollisionStreamingTickPhase(
 
     public void AddTickPhase(SimulationTickPhases phases)
     {
-        phases.Add(SimulationTickOrder.CollisionStreaming, "collision streaming", Run);
+        // Movement steps against the loaded chunks, and a missing chunk is no collision at all.
+        phases.AddPrerequisite(SimulationTickOrder.CollisionStreaming, "collision streaming", Run);
     }
 
     private void Run(in SimulationTick tick)

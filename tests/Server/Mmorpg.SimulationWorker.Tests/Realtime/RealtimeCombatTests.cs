@@ -365,7 +365,7 @@ public sealed class RealtimeCombatTests
         var releasesAtConsumption = -1;
         harness.GameService.OnAmmunitionConsumption = (_, request, _) =>
         {
-            releasesAtConsumption = harness.GameService.ReleaseCount;
+            Volatile.Write(ref releasesAtConsumption, harness.GameService.ReleaseCount);
             return Task.FromResult(harness.GameService.DefaultAmmunitionConsumption(request));
         };
         await harness.StartAsync();
@@ -386,12 +386,14 @@ public sealed class RealtimeCombatTests
         await harness.PollUntilAsync(
             () => archerClient.Has(RealtimeMessageType.LeaveAccepted),
             "the leave");
+        // The scripted GameService records the request before it calls the handler above, so
+        // the wait is for the handler's own value.
         await harness.PollUntilAsync(
-            () => harness.GameService.AmmunitionConsumptions.Count == 1,
+            () => Volatile.Read(ref releasesAtConsumption) >= 0,
             "the batch of the body");
         var batch = Assert.Single(harness.GameService.AmmunitionConsumptions);
         Assert.True(batch.Quantity >= 1);
-        Assert.Equal(0, releasesAtConsumption);
+        Assert.Equal(0, Volatile.Read(ref releasesAtConsumption));
         Assert.Equal(0, harness.GameService.ReleaseCount);
         Assert.Equal(2, harness.EntityRegistry.PlayerCount);
     }
@@ -467,7 +469,7 @@ public sealed class RealtimeCombatTests
         var releasesAtConsumption = -1;
         harness.GameService.OnAmmunitionConsumption = (_, request, _) =>
         {
-            releasesAtConsumption = harness.GameService.ReleaseCount;
+            Volatile.Write(ref releasesAtConsumption, harness.GameService.ReleaseCount);
             return Task.FromResult(harness.GameService.DefaultAmmunitionConsumption(request));
         };
         await harness.StartAsync();
@@ -484,10 +486,13 @@ public sealed class RealtimeCombatTests
 
         archerClient.Stop();
 
+        // The scripted GameService records the request before it calls the handler above, so
+        // the wait is for the handler's own value.
         await harness.PollUntilAsync(
-            () => harness.GameService.AmmunitionConsumptions.Count == 1,
+            () => Volatile.Read(ref releasesAtConsumption) >= 0,
             "the batch of the body");
-        Assert.Equal(0, releasesAtConsumption);
+        Assert.Single(harness.GameService.AmmunitionConsumptions);
+        Assert.Equal(0, Volatile.Read(ref releasesAtConsumption));
         Assert.Equal(0, harness.GameService.ReleaseCount);
         Assert.Equal(2, harness.EntityRegistry.PlayerCount);
     }

@@ -37,7 +37,9 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     long SnapshotVisibilityGroups,
     long SnapshotPacketsEncoded,
     long SnapshotPacketsSent,
-    long SnapshotEntityUpdatesDeferred);
+    long SnapshotEntityUpdatesDeferred,
+    long LoopStepFailures,
+    long LoopIsolatedFailures);
 
 public sealed class RealtimePerformanceMetrics : IDisposable
 {
@@ -60,6 +62,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Counter<long> snapshotPacketEncodingCounter;
     private readonly Counter<long> snapshotPacketSendCounter;
     private readonly Counter<long> snapshotEntityUpdateDeferredCounter;
+    private readonly Counter<long> loopFailureCounter;
     private readonly ObservableGauge<int> corpseMutationBacklogGauge;
     private readonly ObservableGauge<int> activeCorpseMutationGauge;
     private readonly DurationAccumulator networkPoll = new();
@@ -87,6 +90,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private long snapshotPacketsEncoded;
     private long snapshotPacketsSent;
     private long snapshotEntityUpdatesDeferred;
+    private long loopStepFailures;
+    private long loopIsolatedFailures;
 
     public RealtimePerformanceMetrics()
     {
@@ -112,6 +117,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             "simulation_worker.simulation.snapshot.packets_sent");
         snapshotEntityUpdateDeferredCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.entity_updates_deferred");
+        loopFailureCounter = meter.CreateCounter<long>("simulation_worker.loop.failures");
         meter.CreateObservableGauge(
             "simulation_worker.loop.completed_operations.backlog",
             () => Volatile.Read(ref completedOperationBacklog));
@@ -241,6 +247,23 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         snapshotEntityUpdateDeferredCounter.Add(entityUpdatesDeferred);
     }
 
+    // A tick phase or loop step that threw, labeled with its name and with what it took out.
+    internal void RecordLoopFailure(string step, RealtimeLoopFailureScope scope)
+    {
+        Interlocked.Increment(ref scope == RealtimeLoopFailureScope.Step ? ref loopStepFailures : ref loopIsolatedFailures);
+        loopFailureCounter.Add(
+            1,
+            new KeyValuePair<string, object?>("step", step),
+            new KeyValuePair<string, object?>(
+                "scope",
+                scope switch
+                {
+                    RealtimeLoopFailureScope.Step => "step",
+                    RealtimeLoopFailureScope.Player => "player",
+                    _ => "peer"
+                }));
+    }
+
     public RealtimePerformanceMetricsSnapshot CaptureAndReset()
     {
         var allocatedBytes = GC.GetTotalAllocatedBytes(false);
@@ -301,7 +324,9 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             Interlocked.Exchange(ref snapshotVisibilityGroups, 0),
             Interlocked.Exchange(ref snapshotPacketsEncoded, 0),
             Interlocked.Exchange(ref snapshotPacketsSent, 0),
-            Interlocked.Exchange(ref snapshotEntityUpdatesDeferred, 0));
+            Interlocked.Exchange(ref snapshotEntityUpdatesDeferred, 0),
+            Interlocked.Exchange(ref loopStepFailures, 0),
+            Interlocked.Exchange(ref loopIsolatedFailures, 0));
     }
 
     public void Dispose()

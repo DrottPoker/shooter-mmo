@@ -41,6 +41,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.join.queue_delay.duration",
         "simulation_worker.loop.completed_operations.backlog",
         "simulation_worker.loop.completed_operations.duration",
+        "simulation_worker.loop.failures",
         "simulation_worker.loop.network_poll.duration",
         "simulation_worker.simulation.collision_streaming.duration",
         "simulation_worker.simulation.interest.duration",

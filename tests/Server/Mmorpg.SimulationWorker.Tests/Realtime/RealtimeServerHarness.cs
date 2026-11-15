@@ -16,6 +16,7 @@ using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.SimulationWorker.WorldCollision;
 using Mmorpg.Testing;
 using Mmorpg.Testing.Content;
 using Mmorpg.WorldData.Actors;
@@ -75,6 +76,18 @@ internal sealed class RealtimeServerHarnessOptions
 
     // Replaces the default 20 seconds that a body stays after its connection ended.
     public int? LingeringBodySeconds { get; init; }
+
+    // Streams collision chunks around the players, the spawn, and moving Mobs, as a worker with
+    // World collision does; without it the collision streaming phase does nothing.
+    public WorldCollisionStreamingStore? CollisionStreamingStore { get; init; }
+
+    // Replaces the default 30 failed runs in a row that stop the loop.
+    public int? TickPhaseFailureLimit { get; init; }
+
+    // The test expects a tick phase, loop step, player, or peer to fail. Without it the harness
+    // fails the test at dispose when the loop guard counted any failure, since the loop only
+    // logs them and goes on.
+    public bool ExpectLoopFailures { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -231,6 +244,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 CorpseViewers,
                 StaticCollisionWorld,
                 CollisionWorld,
+                CollisionStreamingStore: options.CollisionStreamingStore,
                 NetworkMetrics: NetworkMetrics,
                 PerformanceMetrics: PerformanceMetrics,
                 RegistrationLease: options.RegistrationLease,
@@ -348,6 +362,9 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
     public SimulationSessionReleaseService ReleaseService { get; }
 
     public RealtimeSimulationService Service { get; }
+
+    // Every tick phase, loop step, player, and peer failure that the loop guard counted.
+    public long LoopFailures => Service.Server.LoopGuard.TotalFailures;
 
     public static RealtimeServerHarness Create(RealtimeServerHarnessOptions? options = null)
     {
@@ -512,6 +529,19 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         }
 
         httpClient.Dispose();
+
+        // The loop logs a failure and goes on, so a failure the test did not expect would pass
+        // unnoticed; it fails the test here instead.
+        if (LoopFailures > 0 && !Options.ExpectLoopFailures)
+        {
+            Assert.Fail(
+                $"The realtime loop counted {LoopFailures} unexpected failures: "
+                + string.Join(
+                    " | ",
+                    Logger.Entries
+                        .Where(entry => entry.Level >= LogLevel.Error)
+                        .Select(entry => $"{entry.Message} {entry.Exception?.GetType().Name}: {entry.Exception?.Message}")));
+        }
     }
 
     public static SimulationWorkerConfig CreateConfig(
@@ -556,7 +586,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             InterestManagement = options.InterestManagement
                 ?? InterestManagementConfig.Default,
             CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30),
-            LingeringBodySeconds = options.LingeringBodySeconds ?? SimulationWorkerConfig.DefaultLingeringBodySeconds
+            LingeringBodySeconds = options.LingeringBodySeconds ?? SimulationWorkerConfig.DefaultLingeringBodySeconds,
+            TickPhaseFailureLimit = options.TickPhaseFailureLimit ?? SimulationWorkerConfig.DefaultTickPhaseFailureLimit
         };
     }
 
