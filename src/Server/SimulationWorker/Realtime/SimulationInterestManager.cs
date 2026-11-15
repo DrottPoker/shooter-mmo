@@ -1,16 +1,30 @@
+using System.Runtime.InteropServices;
 using Mmorpg.SimulationWorker.Config;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 public readonly record struct SimulationInterestEntity(ulong EntityId, float X, float Z);
 
-public sealed record SimulationInterestUpdate(
+// What one refresh of a connection changed: the entities that entered and left its view, each
+// ascending by id, and its visible set after the refresh. The lists belong to the manager and
+// hold until the connection's next refresh.
+public readonly record struct SimulationInterestUpdate(
     IReadOnlyList<ulong> Entered,
     IReadOnlyList<ulong> Exited,
     IReadOnlySet<ulong> Visible);
 
+// The spatial index of the entities and what each connection sees of them. Every indexed entity
+// has a slot that stays its own while it is indexed, with its position in flat arrays, and every
+// cell lists the slots in it, so the visibility test reads positions without a lookup. A
+// connection keeps its visible entities ascending by id, each with its slot and its tier, near
+// within NearRadius or still within NearExitRadius when it was near before. A refresh marks the
+// last visible set by slot, scans the cells around the observer once, deciding visibility and
+// tier where it computes the distance, and touches the visible set only for what entered or
+// left. Loop-confined.
 public sealed class SimulationInterestManager
 {
+    private const int InitialSlotCapacity = 256;
+
     private static readonly IReadOnlySet<ulong> EmptyVisible = new HashSet<ulong>();
     private static readonly IReadOnlyList<ulong> EmptyOrderedVisible = Array.Empty<ulong>();
     private static readonly IReadOnlyList<bool> EmptyOrderedNear = Array.Empty<bool>();
@@ -20,14 +34,45 @@ public sealed class SimulationInterestManager
     private readonly float exitRadiusSquared;
     private readonly float nearRadiusSquared;
     private readonly float nearExitRadiusSquared;
+
+    // A cell farther than the exit radius and a margin of a meter, which covers the rounding of a
+    // position into its cell, is skipped by a refresh.
+    private readonly float cellSkipDistanceSquared;
     private readonly int cellRadius;
-    private readonly Dictionary<ulong, SimulationInterestEntity> entities = [];
-    // Cells hold the entities themselves, so the visibility test reads positions without a
-    // dictionary lookup per candidate.
-    private readonly Dictionary<long, List<SimulationInterestEntity>> entitiesByCell = [];
-    private readonly Stack<List<SimulationInterestEntity>> cellListPool = [];
+    private readonly Dictionary<ulong, int> slotByEntityId = [];
+    private readonly Stack<int> freeSlots = [];
+    private readonly Dictionary<long, List<int>> slotsByCell = [];
+    private readonly Stack<List<int>> cellListPool = [];
     private readonly Dictionary<int, ConnectionInterestState> interestsByConnection = [];
     private readonly Dictionary<ulong, int> connectionIdsByControlledEntityId = [];
+
+    // Scratch of one refresh: the visible entities it found, and the merged ordered lists.
+    private readonly List<int> candidateSlots = [];
+    private readonly List<ulong> mergedIds = [];
+    private readonly List<bool> mergedNear = [];
+    private readonly List<int> mergedSlots = [];
+
+    // Per slot: the entity, 0 for a free slot, its position and cell, and its index in the cell.
+    private ulong[] slotEntityIds = new ulong[InitialSlotCapacity];
+    private float[] slotX = new float[InitialSlotCapacity];
+    private float[] slotZ = new float[InitialSlotCapacity];
+    private long[] slotCells = new long[InitialSlotCapacity];
+    private int[] slotIndexInCell = new int[InitialSlotCapacity];
+
+    // Per slot, the stamp of the last synchronization that listed it, and for the refresh that
+    // runs: whether the entity was visible and near before it, and whether it is visible and near
+    // now. A slot is marked when its stamp equals the current one, so nothing is cleared.
+    private uint[] synchronizedStamps = new uint[InitialSlotCapacity];
+    private uint[] wasVisibleStamps = new uint[InitialSlotCapacity];
+    private bool[] wasNear = new bool[InitialSlotCapacity];
+    private uint[] visibleStamps = new uint[InitialSlotCapacity];
+    private bool[] near = new bool[InitialSlotCapacity];
+    private int usedSlots;
+    private uint synchronizeStamp;
+    private uint refreshStamp;
+
+    // Every change of a connection's visible list takes the next version, unique across connections.
+    private ulong visibleVersion;
 
     public SimulationInterestManager(InterestManagementConfig config)
     {
@@ -53,72 +98,105 @@ public sealed class SimulationInterestManager
         exitRadiusSquared = config.ExitRadius * config.ExitRadius;
         nearRadiusSquared = config.NearRadius * config.NearRadius;
         nearExitRadiusSquared = config.NearExitRadius * config.NearExitRadius;
+        cellSkipDistanceSquared = (config.ExitRadius + 1f) * (config.ExitRadius + 1f);
         cellRadius = (int)Math.Ceiling(config.ExitRadius / config.CellSize);
     }
 
     // Each connection's visible set is refreshed every this many snapshots.
     public int RefreshIntervalSnapshots { get; }
 
-    public void Rebuild(IEnumerable<SimulationInterestEntity> currentEntities)
-    {
-        ArgumentNullException.ThrowIfNull(currentEntities);
-        entities.Clear();
-        foreach (var cellEntities in entitiesByCell.Values)
-        {
-            cellEntities.Clear();
-            cellListPool.Push(cellEntities);
-        }
+    public int EntityCount => slotByEntityId.Count;
 
-        entitiesByCell.Clear();
+    // Makes the index hold exactly these entities at these positions. An entity that stays in
+    // its cell only gets its new position; one that changed cells moves, a new one is added, and
+    // one that is no longer listed leaves the index. What the connections see changes only at
+    // their refreshes, as before.
+    public void Synchronize(ReadOnlySpan<SimulationInterestEntity> currentEntities)
+    {
+        var stamp = NextSynchronizeStamp();
         foreach (var entity in currentEntities)
         {
             ValidateEntity(entity, nameof(currentEntities));
-            AddToSpatialIndex(entity);
+            if (slotByEntityId.TryGetValue(entity.EntityId, out var slot))
+            {
+                if (synchronizedStamps[slot] == stamp)
+                {
+                    throw new ArgumentException(
+                        $"Interest entity {entity.EntityId} is listed more than once.",
+                        nameof(currentEntities));
+                }
+
+                Move(slot, entity.X, entity.Z);
+            }
+            else
+            {
+                slot = AddSlot(entity);
+            }
+
+            synchronizedStamps[slot] = stamp;
+        }
+
+        for (var slot = 0; slot < usedSlots; slot++)
+        {
+            if (slotEntityIds[slot] != 0 && synchronizedStamps[slot] != stamp)
+            {
+                RemoveSlot(slot);
+            }
         }
     }
 
     public IReadOnlyList<int> AddEntity(SimulationInterestEntity entity)
     {
         ValidateEntity(entity, nameof(entity));
-        if (entities.ContainsKey(entity.EntityId))
+        if (slotByEntityId.ContainsKey(entity.EntityId))
         {
             throw new InvalidOperationException(
                 $"Interest entity {entity.EntityId} is already registered.");
         }
 
-        AddToSpatialIndex(entity);
+        var entitySlot = AddSlot(entity);
         var enteredConnections = new List<int>();
-        VisitNearbyEntities(entity, candidate =>
+        var centerX = ToCell(entity.X);
+        var centerZ = ToCell(entity.Z);
+        for (var z = centerZ - cellRadius; z <= centerZ + cellRadius; z++)
         {
-            if (candidate.EntityId == entity.EntityId
-                || !connectionIdsByControlledEntityId.TryGetValue(
-                    candidate.EntityId,
-                    out var connectionId)
-                || !interestsByConnection.TryGetValue(connectionId, out var state)
-                || !IsWithinRadius(
-                    candidate,
-                    entity,
-                    enterRadiusSquared)
-                || !state.Visible.Add(entity.EntityId))
+            for (var x = centerX - cellRadius; x <= centerX + cellRadius; x++)
             {
-                return;
-            }
+                if (!slotsByCell.TryGetValue(CellKey(x, z), out var cellSlots))
+                {
+                    continue;
+                }
 
-            var near = IsWithinRadius(candidate, entity, nearRadiusSquared);
-            if (near)
-            {
-                state.Near.Add(entity.EntityId);
-            }
+                foreach (var observerSlot in cellSlots)
+                {
+                    var observerId = slotEntityIds[observerSlot];
+                    if (observerSlot == entitySlot
+                        || !connectionIdsByControlledEntityId.TryGetValue(observerId, out var connectionId)
+                        || !interestsByConnection.TryGetValue(connectionId, out var state))
+                    {
+                        continue;
+                    }
 
-            var index = state.OrderedVisible.BinarySearch(entity.EntityId);
-            if (index < 0)
-            {
-                state.OrderedVisible.Insert(~index, entity.EntityId);
-                state.OrderedNear.Insert(~index, near);
-            }
+                    var distanceSquared = DistanceSquared(observerSlot, entitySlot);
+                    if (distanceSquared > enterRadiusSquared || !state.Visible.Add(entity.EntityId))
+                    {
+                        continue;
+                    }
 
-            enteredConnections.Add(connectionId);
-        });
+                    var index = state.OrderedVisible.BinarySearch(entity.EntityId);
+                    if (index < 0)
+                    {
+                        state.OrderedVisible.Insert(~index, entity.EntityId);
+                        state.OrderedNear.Insert(~index, distanceSquared <= nearRadiusSquared);
+                        state.OrderedSlots.Insert(~index, entitySlot);
+                        state.Version = ++visibleVersion;
+                    }
+
+                    enteredConnections.Add(connectionId);
+                }
+            }
+        }
+
         enteredConnections.Sort();
         return enteredConnections;
     }
@@ -126,75 +204,116 @@ public sealed class SimulationInterestManager
     public void UpdateEntity(SimulationInterestEntity entity)
     {
         ValidateEntity(entity, nameof(entity));
-        if (!entities.TryGetValue(entity.EntityId, out var previous))
+        if (!slotByEntityId.TryGetValue(entity.EntityId, out var slot))
         {
             throw new InvalidOperationException(
                 $"Interest entity {entity.EntityId} is not registered.");
         }
 
-        var previousCell = CellKey(ToCell(previous.X), ToCell(previous.Z));
-        var nextCell = CellKey(ToCell(entity.X), ToCell(entity.Z));
-        RemoveFromCell(previousCell, entity.EntityId);
-        AddToCell(nextCell, entity);
-        entities[entity.EntityId] = entity;
+        Move(slot, entity.X, entity.Z);
     }
 
     public SimulationInterestUpdate Refresh(int connectionId, ulong controlledEntityId)
     {
-        if (!entities.TryGetValue(controlledEntityId, out var observer))
+        if (!slotByEntityId.TryGetValue(controlledEntityId, out var observerSlot))
         {
             RemoveConnection(connectionId);
-            return new SimulationInterestUpdate([], [], EmptyVisible);
+            return new SimulationInterestUpdate(EmptyOrderedVisible, EmptyOrderedVisible, EmptyVisible);
         }
 
         if (!interestsByConnection.TryGetValue(connectionId, out var state))
         {
-            state = new ConnectionInterestState();
+            state = new ConnectionInterestState { Version = ++visibleVersion };
             interestsByConnection.Add(connectionId, state);
         }
 
         BindControlledEntity(connectionId, state, controlledEntityId);
-
-        state.Candidates.Clear();
-        state.Candidates.Add(controlledEntityId);
-        state.NextNear.Clear();
-        AddNearbyEntities(observer, state);
-        (state.Near, state.NextNear) = (state.NextNear, state.Near);
-
-        state.Entered.Clear();
-        foreach (var entityId in state.Candidates)
+        var stamp = NextRefreshStamp();
+        var orderedIds = CollectionsMarshal.AsSpan(state.OrderedVisible);
+        var orderedNear = CollectionsMarshal.AsSpan(state.OrderedNear);
+        var orderedSlots = CollectionsMarshal.AsSpan(state.OrderedSlots);
+        for (var index = 0; index < orderedIds.Length; index++)
         {
-            if (!state.Visible.Contains(entityId))
+            var slot = ResolveSlot(orderedIds[index], orderedSlots[index]);
+            orderedSlots[index] = slot;
+            if (slot >= 0)
             {
-                state.Entered.Add(entityId);
+                wasVisibleStamps[slot] = stamp;
+                wasNear[slot] = orderedNear[index];
+            }
+        }
+
+        // Within the enter radius an entity is visible either way, so only the band up to the
+        // exit radius, and the band up to the near exit radius, need what was seen before.
+        candidateSlots.Clear();
+        var observerX = slotX[observerSlot];
+        var observerZ = slotZ[observerSlot];
+        var centerX = ToCell(observerX);
+        var centerZ = ToCell(observerZ);
+        for (var z = centerZ - cellRadius; z <= centerZ + cellRadius; z++)
+        {
+            var cellDeltaZ = DistanceToCell(observerZ, z);
+            for (var x = centerX - cellRadius; x <= centerX + cellRadius; x++)
+            {
+                // A cell whose nearest point lies beyond the exit radius holds nothing visible.
+                var cellDeltaX = DistanceToCell(observerX, x);
+                if ((cellDeltaX * cellDeltaX) + (cellDeltaZ * cellDeltaZ) > cellSkipDistanceSquared
+                    || !slotsByCell.TryGetValue(CellKey(x, z), out var cellSlots))
+                {
+                    continue;
+                }
+
+                foreach (var slot in cellSlots)
+                {
+                    var deltaX = slotX[slot] - observerX;
+                    var deltaZ = slotZ[slot] - observerZ;
+                    var distanceSquared = (deltaX * deltaX) + (deltaZ * deltaZ);
+                    var wasVisible = wasVisibleStamps[slot] == stamp;
+                    if (distanceSquared > enterRadiusSquared
+                        && (distanceSquared > exitRadiusSquared || !wasVisible))
+                    {
+                        continue;
+                    }
+
+                    candidateSlots.Add(slot);
+                    visibleStamps[slot] = stamp;
+                    near[slot] = distanceSquared <= nearRadiusSquared
+                        || (distanceSquared <= nearExitRadiusSquared && wasVisible && wasNear[slot]);
+                }
             }
         }
 
         state.Exited.Clear();
-        foreach (var entityId in state.Visible)
+        for (var index = 0; index < orderedIds.Length; index++)
         {
-            if (!state.Candidates.Contains(entityId))
+            var slot = orderedSlots[index];
+            if (slot < 0 || visibleStamps[slot] != stamp)
             {
-                state.Exited.Add(entityId);
+                state.Exited.Add(orderedIds[index]);
             }
         }
 
-        if (state.Entered.Count > 0 || state.Exited.Count > 0)
+        state.Entered.Clear();
+        foreach (var slot in candidateSlots)
         {
-            state.Entered.Sort();
-            state.Exited.Sort();
-            state.Visible.Clear();
-            state.Visible.UnionWith(state.Candidates);
-            state.OrderedVisible.Clear();
-            state.OrderedVisible.AddRange(state.Visible);
-            state.OrderedVisible.Sort();
+            if (wasVisibleStamps[slot] != stamp)
+            {
+                state.Entered.Add(slotEntityIds[slot]);
+            }
         }
 
-        // The tiers may change without a change of the visible set.
-        state.OrderedNear.Clear();
-        foreach (var entityId in state.OrderedVisible)
+        if (state.Entered.Count == 0 && state.Exited.Count == 0)
         {
-            state.OrderedNear.Add(state.Near.Contains(entityId));
+            // The same entities: only the tiers may change.
+            for (var index = 0; index < orderedIds.Length; index++)
+            {
+                orderedNear[index] = near[orderedSlots[index]];
+            }
+        }
+        else
+        {
+            state.Entered.Sort();
+            ApplyMembershipChange(state, stamp);
         }
 
         return new SimulationInterestUpdate(state.Entered, state.Exited, state.Visible);
@@ -222,10 +341,38 @@ public sealed class SimulationInterestManager
             : EmptyOrderedNear;
     }
 
+    // The visible entities ascending by id and their tiers, as spans for the snapshot path, and
+    // the version of the list, which changes whenever its entities do and never repeats. They
+    // hold until the connection's visible set changes.
+    internal bool TryGetVisibleSpans(
+        int connectionId,
+        out ReadOnlySpan<ulong> orderedVisible,
+        out ReadOnlySpan<bool> orderedNear,
+        out ulong version)
+    {
+        if (!interestsByConnection.TryGetValue(connectionId, out var state))
+        {
+            orderedVisible = default;
+            orderedNear = default;
+            version = 0;
+            return false;
+        }
+
+        orderedVisible = CollectionsMarshal.AsSpan(state.OrderedVisible);
+        orderedNear = CollectionsMarshal.AsSpan(state.OrderedNear);
+        version = state.Version;
+        return true;
+    }
+
     public bool IsNear(int connectionId, ulong entityId)
     {
-        return interestsByConnection.TryGetValue(connectionId, out var state)
-            && state.Near.Contains(entityId);
+        if (!interestsByConnection.TryGetValue(connectionId, out var state))
+        {
+            return false;
+        }
+
+        var index = state.OrderedVisible.BinarySearch(entityId);
+        return index >= 0 && state.OrderedNear[index];
     }
 
     public bool IsVisibleToAnyConnection(ulong entityId)
@@ -261,11 +408,9 @@ public sealed class SimulationInterestManager
 
     public IReadOnlyList<int> ForgetEntity(ulong entityId)
     {
-        if (entities.Remove(entityId, out var entity))
+        if (slotByEntityId.TryGetValue(entityId, out var slot))
         {
-            RemoveFromCell(
-                CellKey(ToCell(entity.X), ToCell(entity.Z)),
-                entityId);
+            RemoveSlot(slot);
         }
 
         if (connectionIdsByControlledEntityId.Remove(entityId, out var connectionId)
@@ -279,8 +424,6 @@ public sealed class SimulationInterestManager
         foreach (var pair in interestsByConnection)
         {
             var state = pair.Value;
-            state.Candidates.Remove(entityId);
-            state.Near.Remove(entityId);
             if (!state.Visible.Remove(entityId))
             {
                 continue;
@@ -291,6 +434,8 @@ public sealed class SimulationInterestManager
             {
                 state.OrderedVisible.RemoveAt(orderedIndex);
                 state.OrderedNear.RemoveAt(orderedIndex);
+                state.OrderedSlots.RemoveAt(orderedIndex);
+                state.Version = ++visibleVersion;
             }
 
             affectedConnections.Add(pair.Key);
@@ -301,16 +446,91 @@ public sealed class SimulationInterestManager
 
     public void Clear()
     {
-        entities.Clear();
-        foreach (var cellEntities in entitiesByCell.Values)
+        slotByEntityId.Clear();
+        freeSlots.Clear();
+        foreach (var cellSlots in slotsByCell.Values)
         {
-            cellEntities.Clear();
-            cellListPool.Push(cellEntities);
+            cellSlots.Clear();
+            cellListPool.Push(cellSlots);
         }
 
-        entitiesByCell.Clear();
+        slotsByCell.Clear();
+        Array.Clear(slotEntityIds, 0, usedSlots);
+        usedSlots = 0;
         interestsByConnection.Clear();
         connectionIdsByControlledEntityId.Clear();
+    }
+
+    // The new visible lists: the entities that stayed, in their order, merged with the ones that
+    // entered, each with its tier. The visible set changes only by what entered and left.
+    private void ApplyMembershipChange(ConnectionInterestState state, uint stamp)
+    {
+        foreach (var entityId in state.Exited)
+        {
+            state.Visible.Remove(entityId);
+        }
+
+        foreach (var entityId in state.Entered)
+        {
+            state.Visible.Add(entityId);
+        }
+
+        mergedIds.Clear();
+        mergedNear.Clear();
+        mergedSlots.Clear();
+        var stayed = 0;
+        var entered = 0;
+        var orderedIds = state.OrderedVisible;
+        var orderedSlots = state.OrderedSlots;
+        while (stayed < orderedIds.Count || entered < state.Entered.Count)
+        {
+            if (stayed < orderedIds.Count)
+            {
+                var slot = orderedSlots[stayed];
+                if (slot < 0 || visibleStamps[slot] != stamp)
+                {
+                    stayed++;
+                    continue;
+                }
+
+                if (entered >= state.Entered.Count || orderedIds[stayed] < state.Entered[entered])
+                {
+                    AddMerged(orderedIds[stayed], slot);
+                    stayed++;
+                    continue;
+                }
+            }
+
+            var enteredId = state.Entered[entered++];
+            AddMerged(enteredId, slotByEntityId[enteredId]);
+        }
+
+        state.OrderedVisible.Clear();
+        state.OrderedVisible.AddRange(mergedIds);
+        state.OrderedNear.Clear();
+        state.OrderedNear.AddRange(mergedNear);
+        state.OrderedSlots.Clear();
+        state.OrderedSlots.AddRange(mergedSlots);
+        state.Version = ++visibleVersion;
+    }
+
+    private void AddMerged(ulong entityId, int slot)
+    {
+        mergedIds.Add(entityId);
+        mergedNear.Add(near[slot]);
+        mergedSlots.Add(slot);
+    }
+
+    // The slot an ordered entry names, checked against its entity, or found again when the
+    // entity left the index and came back; -1 when it is no longer indexed.
+    private int ResolveSlot(ulong entityId, int slot)
+    {
+        if ((uint)slot < (uint)usedSlots && slotEntityIds[slot] == entityId)
+        {
+            return slot;
+        }
+
+        return slotByEntityId.TryGetValue(entityId, out var current) ? current : -1;
     }
 
     private void BindControlledEntity(
@@ -345,79 +565,126 @@ public sealed class SimulationInterestManager
         connectionIdsByControlledEntityId[controlledEntityId] = connectionId;
     }
 
-    private void AddToSpatialIndex(SimulationInterestEntity entity)
+    private int AddSlot(SimulationInterestEntity entity)
     {
-        entities.Add(entity.EntityId, entity);
-        AddToCell(CellKey(ToCell(entity.X), ToCell(entity.Z)), entity);
-    }
-
-    private void AddToCell(long cellKey, SimulationInterestEntity entity)
-    {
-        if (!entitiesByCell.TryGetValue(cellKey, out var cellEntities))
+        if (!freeSlots.TryPop(out var slot))
         {
-            cellEntities = cellListPool.TryPop(out var pooled) ? pooled : [];
-            entitiesByCell.Add(cellKey, cellEntities);
+            slot = usedSlots++;
+            EnsureCapacity(usedSlots);
         }
 
-        cellEntities.Add(entity);
+        slotByEntityId.Add(entity.EntityId, slot);
+        slotEntityIds[slot] = entity.EntityId;
+        slotX[slot] = entity.X;
+        slotZ[slot] = entity.Z;
+        AddToCell(slot, CellKey(ToCell(entity.X), ToCell(entity.Z)));
+        return slot;
     }
 
-    private void RemoveFromCell(long cellKey, ulong entityId)
+    private void RemoveSlot(int slot)
     {
-        if (!entitiesByCell.TryGetValue(cellKey, out var cellEntities))
+        slotByEntityId.Remove(slotEntityIds[slot]);
+        RemoveFromCell(slot);
+        slotEntityIds[slot] = 0;
+        freeSlots.Push(slot);
+    }
+
+    private void Move(int slot, float x, float z)
+    {
+        var cell = CellKey(ToCell(x), ToCell(z));
+        if (cell != slotCells[slot])
+        {
+            RemoveFromCell(slot);
+            AddToCell(slot, cell);
+        }
+
+        slotX[slot] = x;
+        slotZ[slot] = z;
+    }
+
+    private void AddToCell(int slot, long cellKey)
+    {
+        if (!slotsByCell.TryGetValue(cellKey, out var cellSlots))
+        {
+            cellSlots = cellListPool.TryPop(out var pooled) ? pooled : [];
+            slotsByCell.Add(cellKey, cellSlots);
+        }
+
+        slotCells[slot] = cellKey;
+        slotIndexInCell[slot] = cellSlots.Count;
+        cellSlots.Add(slot);
+    }
+
+    private void RemoveFromCell(int slot)
+    {
+        var cellKey = slotCells[slot];
+        if (!slotsByCell.TryGetValue(cellKey, out var cellSlots))
         {
             return;
         }
 
-        for (var index = 0; index < cellEntities.Count; index++)
+        // The order inside a cell does not matter, so the last slot fills the gap.
+        var index = slotIndexInCell[slot];
+        var last = cellSlots[^1];
+        cellSlots[index] = last;
+        slotIndexInCell[last] = index;
+        cellSlots.RemoveAt(cellSlots.Count - 1);
+        if (cellSlots.Count == 0)
         {
-            if (cellEntities[index].EntityId == entityId)
-            {
-                // The order inside a cell does not matter, so the last entry fills the gap.
-                cellEntities[index] = cellEntities[^1];
-                cellEntities.RemoveAt(cellEntities.Count - 1);
-                break;
-            }
-        }
-
-        if (cellEntities.Count == 0)
-        {
-            entitiesByCell.Remove(cellKey);
-            cellListPool.Push(cellEntities);
+            slotsByCell.Remove(cellKey);
+            cellListPool.Push(cellSlots);
         }
     }
 
-    private void VisitNearbyEntities(
-        SimulationInterestEntity observer,
-        Action<SimulationInterestEntity> visitor)
+    private void EnsureCapacity(int slots)
     {
-        var observerCellX = ToCell(observer.X);
-        var observerCellZ = ToCell(observer.Z);
-        for (var z = observerCellZ - cellRadius; z <= observerCellZ + cellRadius; z++)
+        if (slots <= slotEntityIds.Length)
         {
-            for (var x = observerCellX - cellRadius; x <= observerCellX + cellRadius; x++)
-            {
-                if (!entitiesByCell.TryGetValue(CellKey(x, z), out var candidates))
-                {
-                    continue;
-                }
-
-                foreach (var candidate in candidates)
-                {
-                    visitor(candidate);
-                }
-            }
+            return;
         }
+
+        var capacity = Math.Max(slots, slotEntityIds.Length * 2);
+        Array.Resize(ref slotEntityIds, capacity);
+        Array.Resize(ref slotX, capacity);
+        Array.Resize(ref slotZ, capacity);
+        Array.Resize(ref slotCells, capacity);
+        Array.Resize(ref slotIndexInCell, capacity);
+        Array.Resize(ref synchronizedStamps, capacity);
+        Array.Resize(ref wasVisibleStamps, capacity);
+        Array.Resize(ref wasNear, capacity);
+        Array.Resize(ref visibleStamps, capacity);
+        Array.Resize(ref near, capacity);
     }
 
-    private static bool IsWithinRadius(
-        SimulationInterestEntity left,
-        SimulationInterestEntity right,
-        float radiusSquared)
+    // A stamp that no slot holds yet; when the counter wraps, the old stamps are cleared.
+    private uint NextSynchronizeStamp()
     {
-        var deltaX = right.X - left.X;
-        var deltaZ = right.Z - left.Z;
-        return ((deltaX * deltaX) + (deltaZ * deltaZ)) <= radiusSquared;
+        if (++synchronizeStamp == 0)
+        {
+            Array.Clear(synchronizedStamps);
+            synchronizeStamp = 1;
+        }
+
+        return synchronizeStamp;
+    }
+
+    private uint NextRefreshStamp()
+    {
+        if (++refreshStamp == 0)
+        {
+            Array.Clear(wasVisibleStamps);
+            Array.Clear(visibleStamps);
+            refreshStamp = 1;
+        }
+
+        return refreshStamp;
+    }
+
+    private float DistanceSquared(int slot, int otherSlot)
+    {
+        var deltaX = slotX[otherSlot] - slotX[slot];
+        var deltaZ = slotZ[otherSlot] - slotZ[slot];
+        return (deltaX * deltaX) + (deltaZ * deltaZ);
     }
 
     private static void ValidateEntity(
@@ -432,50 +699,16 @@ public sealed class SimulationInterestManager
         }
     }
 
-    // Adds the entities the observer sees to the candidates and the near ones to the next near
-    // tier: within the near radius, or within the near exit radius while already near.
-    private void AddNearbyEntities(SimulationInterestEntity observer, ConnectionInterestState state)
-    {
-        var previous = state.Visible;
-        var next = state.Candidates;
-        var observerCellX = ToCell(observer.X);
-        var observerCellZ = ToCell(observer.Z);
-        for (var z = observerCellZ - cellRadius; z <= observerCellZ + cellRadius; z++)
-        {
-            for (var x = observerCellX - cellRadius; x <= observerCellX + cellRadius; x++)
-            {
-                if (!entitiesByCell.TryGetValue(CellKey(x, z), out var candidates))
-                {
-                    continue;
-                }
-
-                foreach (var candidate in candidates)
-                {
-                    var deltaX = candidate.X - observer.X;
-                    var deltaZ = candidate.Z - observer.Z;
-                    var distanceSquared = (deltaX * deltaX) + (deltaZ * deltaZ);
-                    // Within the enter radius the entity is visible either way, so only the
-                    // band up to the exit radius needs the previous set.
-                    if (distanceSquared <= enterRadiusSquared
-                        || (distanceSquared <= exitRadiusSquared
-                            && previous.Contains(candidate.EntityId)))
-                    {
-                        next.Add(candidate.EntityId);
-                        if (distanceSquared <= nearRadiusSquared
-                            || (distanceSquared <= nearExitRadiusSquared
-                                && state.Near.Contains(candidate.EntityId)))
-                        {
-                            state.NextNear.Add(candidate.EntityId);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private int ToCell(float position)
     {
         return (int)Math.Floor(position / cellSize);
+    }
+
+    // How far a position lies outside a cell along one axis, 0 inside it.
+    private float DistanceToCell(float position, int cell)
+    {
+        var start = cell * cellSize;
+        return Math.Max(0f, Math.Max(start - position, position - (start + cellSize)));
     }
 
     private static long CellKey(int x, int z)
@@ -494,16 +727,16 @@ public sealed class SimulationInterestManager
 
         public HashSet<ulong> Visible { get; } = [];
 
-        public HashSet<ulong> Candidates { get; } = [];
-
+        // The visible entities ascending by id, and parallel to them their tier and their slot,
+        // which a refresh checks against the entity before it trusts it.
         public List<ulong> OrderedVisible { get; } = [];
 
-        // The near tier, and parallel to OrderedVisible whether each entity is in it.
-        public HashSet<ulong> Near { get; set; } = [];
-
-        public HashSet<ulong> NextNear { get; set; } = [];
-
         public List<bool> OrderedNear { get; } = [];
+
+        public List<int> OrderedSlots { get; } = [];
+
+        // The version of OrderedVisible.
+        public ulong Version { get; set; }
 
         public List<ulong> Entered { get; } = [];
 

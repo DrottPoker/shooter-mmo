@@ -101,7 +101,7 @@ public sealed class RealtimeReplicationContractTests
         var performance = harness.PerformanceMetrics.CaptureAndReset();
         Assert.True(performance.SnapshotPacketsEncoded > 0);
         Assert.True(performance.SnapshotPacketsSent > 0);
-        Assert.True(performance.SnapshotVisibilityGroups > 0);
+        Assert.True(performance.SnapshotRemoteRecipients > 0);
         Assert.NotNull(performance.SnapshotBroadcast);
         Assert.NotNull(performance.InterestRefresh);
         Assert.NotNull(performance.MovementSimulation);

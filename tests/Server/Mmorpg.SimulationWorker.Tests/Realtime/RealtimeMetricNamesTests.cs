@@ -51,7 +51,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.simulation.snapshot.entity_updates_deferred",
         "simulation_worker.simulation.snapshot.packets_encoded",
         "simulation_worker.simulation.snapshot.packets_sent",
-        "simulation_worker.simulation.snapshot.visibility_groups",
+        "simulation_worker.simulation.snapshot.remote_recipients",
         "simulation_worker.simulation.snapshot_broadcast.duration",
         "simulation_worker.simulation.tick.duration",
         "simulation_worker.simulation.tick.lag",

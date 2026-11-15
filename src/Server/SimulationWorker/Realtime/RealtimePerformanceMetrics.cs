@@ -34,7 +34,7 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     long ManagedHeapSizeBytes,
     long ManagedHeapFragmentedBytes,
     long TotalManagedMemoryBytes,
-    long SnapshotVisibilityGroups,
+    long SnapshotRemoteRecipients,
     long SnapshotPacketsEncoded,
     long SnapshotPacketsSent,
     long SnapshotEntityUpdatesDeferred,
@@ -82,7 +82,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly Histogram<double> snapshotBroadcastHistogram;
     private readonly Counter<long> tickResynchronizationCounter;
     private readonly Counter<long> tickOverrunCounter;
-    private readonly Counter<long> snapshotVisibilityGroupCounter;
+    private readonly Counter<long> snapshotRemoteRecipientCounter;
     private readonly Counter<long> snapshotPacketEncodingCounter;
     private readonly Counter<long> snapshotPacketSendCounter;
     private readonly Counter<long> snapshotEntityUpdateDeferredCounter;
@@ -111,7 +111,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private int previousGeneration1Collections = GC.CollectionCount(1);
     private int previousGeneration2Collections = GC.CollectionCount(2);
     private TimeSpan previousGcPause = GC.GetTotalPauseDuration();
-    private long snapshotVisibilityGroups;
+    private long snapshotRemoteRecipients;
     private long snapshotPacketsEncoded;
     private long snapshotPacketsSent;
     private long snapshotEntityUpdatesDeferred;
@@ -136,8 +136,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             "simulation_worker.simulation.tick.resynchronizations");
         tickOverrunCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.tick.overruns");
-        snapshotVisibilityGroupCounter = meter.CreateCounter<long>(
-            "simulation_worker.simulation.snapshot.visibility_groups");
+        snapshotRemoteRecipientCounter = meter.CreateCounter<long>(
+            "simulation_worker.simulation.snapshot.remote_recipients");
         snapshotPacketEncodingCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.snapshot.packets_encoded");
         snapshotPacketSendCounter = meter.CreateCounter<long>(
@@ -259,25 +259,25 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         tickResynchronizationCounter.Add(1);
     }
 
-    public void RecordSnapshotPacketReuse(
-        int visibilityGroups,
+    public void RecordSnapshotSends(
+        int remoteRecipients,
         int packetsEncoded,
         int packetsSent,
         long entityUpdatesDeferred)
     {
-        if (visibilityGroups < 0
+        if (remoteRecipients < 0
             || packetsEncoded < 0
             || packetsSent < 0
             || entityUpdatesDeferred < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(visibilityGroups));
+            throw new ArgumentOutOfRangeException(nameof(remoteRecipients));
         }
 
-        Interlocked.Add(ref snapshotVisibilityGroups, visibilityGroups);
+        Interlocked.Add(ref snapshotRemoteRecipients, remoteRecipients);
         Interlocked.Add(ref snapshotPacketsEncoded, packetsEncoded);
         Interlocked.Add(ref snapshotPacketsSent, packetsSent);
         Interlocked.Add(ref snapshotEntityUpdatesDeferred, entityUpdatesDeferred);
-        snapshotVisibilityGroupCounter.Add(visibilityGroups);
+        snapshotRemoteRecipientCounter.Add(remoteRecipients);
         snapshotPacketEncodingCounter.Add(packetsEncoded);
         snapshotPacketSendCounter.Add(packetsSent);
         snapshotEntityUpdateDeferredCounter.Add(entityUpdatesDeferred);
@@ -376,7 +376,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             memoryInfo.HeapSizeBytes,
             memoryInfo.FragmentedBytes,
             GC.GetTotalMemory(false),
-            Interlocked.Exchange(ref snapshotVisibilityGroups, 0),
+            Interlocked.Exchange(ref snapshotRemoteRecipients, 0),
             Interlocked.Exchange(ref snapshotPacketsEncoded, 0),
             Interlocked.Exchange(ref snapshotPacketsSent, 0),
             Interlocked.Exchange(ref snapshotEntityUpdatesDeferred, 0),

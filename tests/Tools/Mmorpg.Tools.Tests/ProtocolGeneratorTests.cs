@@ -582,6 +582,49 @@ public sealed class ProtocolGeneratorTests
             ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(plain.ToJsonString())));
     }
 
+    [Fact]
+    public void EncodeIntoWritesAWholeMessageOfStructsFromItsMembers()
+    {
+        var schema = GeneratedSchema();
+        var point = schema["structs"]![0]!.AsObject();
+        point["rules"] = true;
+        var message = schema["messages"]![0]!.AsObject();
+        message.Remove("rules");
+        message.Remove("emptySizeConstant");
+        message["encodeInto"] = true;
+        message["fields"] = JsonNode.Parse(
+            """
+            [
+              { "name": "Sequence", "type": "u32", "minimum": 1 },
+              { "name": "Target", "type": "Point" },
+              { "name": "Held", "type": "Buttons" }
+            ]
+            """);
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Contains(
+            "public static int EncodeSnapshot(Span<byte> destination, uint sequence, float targetX, float targetY, bool targetIsActive, RealtimeButtons held)",
+            family,
+            StringComparison.Ordinal);
+        Assert.Contains("if (sequence < 1", family, StringComparison.Ordinal);
+        Assert.Contains("|| !IsFinite(targetX)", family, StringComparison.Ordinal);
+        Assert.Contains("|| targetX <= 0f", family, StringComparison.Ordinal);
+        Assert.Contains("|| !IsDefined(held)", family, StringComparison.Ordinal);
+        Assert.Contains("|| !SatisfiesPointRules(targetX, targetY, targetIsActive)", family, StringComparison.Ordinal);
+        Assert.Contains("var writer = StartPacket(destination, RealtimeMessageType.Snapshot);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteSingle(targetY);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteByte((byte)((targetIsActive ? 1 : 0)));", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteByte((byte)held);", family, StringComparison.Ordinal);
+        Assert.Contains("return writer.Position;", family, StringComparison.Ordinal);
+
+        // A struct field may not hold more than flat fields.
+        point["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Label", "type": "string", "maxLength": 4 }"""));
+        point.Remove("sizeConstant");
+        var exception = Assert.Throws<ProtocolSchemaException>(() => ProtocolSchemaLoader.Load(schema.ToJsonString()));
+        Assert.Equal("$.messages[0].encodeInto", exception.Path);
+    }
+
     [Theory]
     [InlineData("struct with rules", "$.structs[0].encodeInto")]
     [InlineData("struct with text", "$.structs[0].encodeInto")]

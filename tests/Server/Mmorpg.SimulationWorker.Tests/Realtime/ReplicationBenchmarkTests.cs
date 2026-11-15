@@ -115,7 +115,7 @@ public sealed class ReplicationBenchmarkTests
             [
                 numbers.Snapshots, numbers.SnapshotBytes, numbers.ReliableBytes, numbers.AllBytes, numbers.UnreliablePackets,
                 numbers.ReliablePackets, numbers.SnapshotRecords, numbers.OwnerRecords, numbers.RemoteRecords,
-                numbers.DeferredUpdates, numbers.VisibilityGroups, numbers.PacketsEncoded, numbers.SpawnPackets,
+                numbers.DeferredUpdates, numbers.RemoteRecipients, numbers.PacketsEncoded, numbers.SpawnPackets,
                 numbers.DespawnPackets, numbers.DroppedSnapshotPackets, numbers.NearMovingSightings, numbers.NearMovingRecords
             ]);
         Assert.Equal(3_420d, numbers.SnapshotBytesPerPlayerPerSecond, 9);

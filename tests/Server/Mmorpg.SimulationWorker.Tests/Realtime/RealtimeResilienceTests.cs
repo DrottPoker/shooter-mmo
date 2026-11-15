@@ -84,7 +84,7 @@ public sealed class RealtimeResilienceTests
     {
         var manager = new SimulationInterestManager(
             new InterestManagementConfig(10f, 20f, 25f));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 19f, 0f),
             new SimulationInterestEntity(3, 30f, 0f)
@@ -101,7 +101,7 @@ public sealed class RealtimeResilienceTests
         Assert.Empty(unchanged.Exited);
         Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(7));
 
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 24f, 0f),
             new SimulationInterestEntity(3, 21f, 0f)
@@ -110,7 +110,7 @@ public sealed class RealtimeResilienceTests
         Assert.Contains((ulong)2, hysteresis.Visible);
         Assert.DoesNotContain((ulong)3, hysteresis.Visible);
 
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 26f, 0f)
         ]);
@@ -124,7 +124,7 @@ public sealed class RealtimeResilienceTests
     {
         var manager = new SimulationInterestManager(
             new InterestManagementConfig(10f, 20f, 25f));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 100f, 0f)
         ]);
@@ -147,7 +147,7 @@ public sealed class RealtimeResilienceTests
     {
         var manager = new SimulationInterestManager(
             new InterestManagementConfig(10f, 20f, 25f));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 50f, 0f)
         ]);

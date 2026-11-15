@@ -133,7 +133,7 @@ public sealed class AppearanceReplicatorTests
     {
         var players = new List<Mmorpg.SimulationWorker.Entities.PlayerSimulationEntity>();
         fixture.Entities.CopyPlayersTo(players);
-        fixture.Presence.RebuildInterestIndex(players);
+        fixture.Presence.SynchronizeInterestIndex(players);
         for (var refresh = 0; refresh < 64; refresh++)
         {
             fixture.Presence.RefreshInterests(null);

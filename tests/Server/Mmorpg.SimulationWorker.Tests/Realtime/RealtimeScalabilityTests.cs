@@ -58,7 +58,7 @@ public sealed class RealtimeScalabilityTests
     {
         var manager = new SimulationInterestManager(
             new InterestManagementConfig(64f, 20f, 25f));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 15f, 0f),
             new SimulationInterestEntity(3, 22f, 0f)
@@ -67,7 +67,7 @@ public sealed class RealtimeScalabilityTests
         Assert.Equal([1ul, 2ul], manager.GetVisibleOrdered(1));
         Assert.DoesNotContain(3ul, first.Visible);
 
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 22f, 0f),
             new SimulationInterestEntity(3, 22f, 1f)
@@ -81,7 +81,7 @@ public sealed class RealtimeScalabilityTests
     public void TheNearTierIsDecidedAtTheRefreshWithHysteresis()
     {
         var manager = new SimulationInterestManager(new InterestManagementConfig(64f, 128f, 144f, 3, 48f, 56f));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 40f, 0f),
             new SimulationInterestEntity(3, 52f, 0f),
@@ -93,7 +93,7 @@ public sealed class RealtimeScalabilityTests
 
         // Between 48 and 56 m a near entity stays near and a far one stays far; beyond 56 m it
         // leaves. Nothing changes before the connection's next refresh.
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 50f, 0f),
             new SimulationInterestEntity(3, 50f, 1f),
@@ -102,7 +102,7 @@ public sealed class RealtimeScalabilityTests
         Assert.Equal([true, true, false, false], manager.GetNearOrdered(1));
         manager.Refresh(1, 1);
         Assert.Equal([true, true, false, true], manager.GetNearOrdered(1));
-        manager.Rebuild([
+        manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 57f, 0f),
             new SimulationInterestEntity(3, 50f, 1f),
@@ -138,7 +138,7 @@ public sealed class RealtimeScalabilityTests
                 (index / 250) * 16f))
             .ToArray();
         var stopwatch = Stopwatch.StartNew();
-        manager.Rebuild(entities);
+        manager.Synchronize(entities);
 
         long totalVisible = 0;
         for (var connectionId = 1; connectionId <= observerCount; connectionId++)

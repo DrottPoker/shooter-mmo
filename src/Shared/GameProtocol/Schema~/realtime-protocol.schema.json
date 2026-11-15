@@ -169,7 +169,7 @@
             "type": "boolean"
           },
           "encodeInto": {
-            "description": "Also generates Encode<Message>Header(destination, fields, count), which writes the packet up to its last array into a caller's buffer; the caller appends the elements with the element struct's encoder. Needs a last array of a struct with encodeInto, after fields that are numbers, enums, or bit fields.",
+            "description": "Also writes the message into a caller's buffer without allocating. With a last array of a struct with encodeInto, after fields that are numbers, enums, or bit fields, it generates Encode<Message>Header(destination, fields, count), which writes the packet up to the array; the caller appends the elements with the element struct's encoder. With fields that are numbers, enums, bit fields, or structs of them, it generates Encode<Message>(destination, members), which writes the whole packet; a struct with rules needs a hand-written Satisfies<Struct>Rules over its members.",
             "type": "boolean"
           },
           "fields": { "$ref": "#/$defs/fields" },

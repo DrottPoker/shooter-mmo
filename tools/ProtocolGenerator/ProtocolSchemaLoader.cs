@@ -355,8 +355,9 @@ public static partial class ProtocolSchemaLoader
             {
                 throw node.Error(
                     "encodeInto",
-                    "requires a class message without rules or variants whose last field is an array without distinct rules "
-                    + "of a struct with encodeInto, after fields that are numbers, enums, or bit fields.");
+                    "requires a class message without rules or variants whose fields are numbers, enums, bit fields, "
+                    + "or structs of them, or whose last field is an array without distinct rules of a struct with "
+                    + "encodeInto after fields that are numbers, enums, or bit fields.");
             }
 
             CheckMessageSizes(node, message, scope);
@@ -419,18 +420,28 @@ public static partial class ProtocolSchemaLoader
             && field.Type is PrimitiveType or EnumWireType or BitsWireType);
     }
 
+    // A message is written whole from its members when its fields are flat or structs of flat
+    // fields, or as a header in front of the elements of a last array.
     private static bool CanEncodeInto(MessageDefinition message)
     {
-        return message.Api == MessageApi.Class
-            && message.Union is null
-            && !message.Rules
-            && message.Fields[^1] is
+        if (message.Api != MessageApi.Class || message.Union is not null || message.Rules)
+        {
+            return false;
+        }
+
+        if (message.Fields[^1].Type is ArrayWireType)
+        {
+            return message.Fields[^1] is
             {
                 Presence: FieldPresence.Always,
                 Type: ArrayWireType { Element.Type: StructWireType { Definition.EncodeInto: true } },
                 Rules: { Distinct: false, DistinctBy: null }
             }
-            && AreFlat(message.Fields.Take(message.Fields.Count - 1));
+                && AreFlat(message.Fields.Take(message.Fields.Count - 1));
+        }
+
+        return message.Fields.All(field => AreFlat([field])
+            || field is { Presence: FieldPresence.Always, Type: StructWireType structType } && AreFlat(structType.Definition.Fields));
     }
 
     // A struct read with blank acceptOnDecode relaxes its own text fields, so it must not nest

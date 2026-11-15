@@ -209,7 +209,7 @@ public sealed class SnapshotSchedulerTests
         fixture.Snapshot(near: []);
         fixture.Visible = [Own, 2];
         fixture.Snapshot(near: []);
-        Assert.Equal(2ul, Assert.Single(fixture.State.Entities).EntityId);
+        Assert.Equal([Own, 2ul], fixture.State.Entities.Select(entry => entry.EntityId));
 
         fixture.Visible = [Own, 2, 3];
         Assert.Equal([3u], fixture.Snapshot(near: []).Where(entityId => !fixture.IsRefreshSlot(entityId)));
