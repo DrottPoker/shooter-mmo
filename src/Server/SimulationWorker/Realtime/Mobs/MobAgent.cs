@@ -82,9 +82,6 @@ internal sealed class MobAgent(
     // The last tick the Mob attacked or was hit; the brain gives up after its give-up time.
     public uint LastEngagementTick { get; set; }
 
-    // The pose changed since the last movement snapshot that carried the Mob.
-    public bool SnapshotPending { get; set; }
-
     // The pose changed this tick.
     public bool PoseChangedThisTick { get; set; }
 

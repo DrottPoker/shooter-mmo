@@ -78,6 +78,52 @@ public sealed class RealtimeScalabilityTests
     }
 
     [Fact]
+    public void TheNearTierIsDecidedAtTheRefreshWithHysteresis()
+    {
+        var manager = new SimulationInterestManager(new InterestManagementConfig(64f, 128f, 144f, 3, 48f, 56f));
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 40f, 0f),
+            new SimulationInterestEntity(3, 52f, 0f),
+            new SimulationInterestEntity(4, 100f, 0f)
+        ]);
+        manager.Refresh(1, 1);
+        Assert.Equal([1ul, 2ul, 3ul, 4ul], manager.GetVisibleOrdered(1));
+        Assert.Equal([true, true, false, false], manager.GetNearOrdered(1));
+
+        // Between 48 and 56 m a near entity stays near and a far one stays far; beyond 56 m it
+        // leaves. Nothing changes before the connection's next refresh.
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 50f, 0f),
+            new SimulationInterestEntity(3, 50f, 1f),
+            new SimulationInterestEntity(4, 30f, 0f)
+        ]);
+        Assert.Equal([true, true, false, false], manager.GetNearOrdered(1));
+        manager.Refresh(1, 1);
+        Assert.Equal([true, true, false, true], manager.GetNearOrdered(1));
+        manager.Rebuild([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 57f, 0f),
+            new SimulationInterestEntity(3, 50f, 1f),
+            new SimulationInterestEntity(4, 30f, 0f)
+        ]);
+        manager.Refresh(1, 1);
+        Assert.Equal([true, false, false, true], manager.GetNearOrdered(1));
+        Assert.False(manager.IsNear(1, 2));
+        Assert.True(manager.IsNear(1, 4));
+
+        // A joining entity takes its tier at once, and a forgotten one leaves both lists.
+        manager.AddEntity(new SimulationInterestEntity(5, 10f, 0f));
+        manager.AddEntity(new SimulationInterestEntity(6, 70f, 0f));
+        Assert.Equal([1ul, 2ul, 3ul, 4ul, 5ul, 6ul], manager.GetVisibleOrdered(1));
+        Assert.Equal([true, false, false, true, true, false], manager.GetNearOrdered(1));
+        manager.ForgetEntity(4);
+        Assert.Equal([1ul, 2ul, 3ul, 5ul, 6ul], manager.GetVisibleOrdered(1));
+        Assert.Equal([true, false, false, true, false], manager.GetNearOrdered(1));
+    }
+
+    [Fact]
     [Trait("Category", "Load")]
     public void SpatialInterestAndSnapshotEncodingRemainBoundedAtLargeEntityCounts()
     {
@@ -124,14 +170,11 @@ public sealed class RealtimeScalabilityTests
         var visible = Enumerable.Range(1, entityCount)
             .Select(index => (ulong)index)
             .ToArray();
-        var records = CreateSnapshotRecords(visible);
         var bytesPerRecipient = (38 * 1024 * 1024) / 15 / entityCount;
+        var budget = new BudgetFixture(visible);
 
-        var first = records.Plan(visible, 1, bytesPerRecipient, 9_500);
-        var firstIds = DecodeEntityIds(records, first);
-        records = CreateSnapshotRecords(visible);
-        var second = records.Plan(visible, 2, bytesPerRecipient, 9_500);
-        var secondIds = DecodeEntityIds(records, second);
+        var first = budget.Plan(1, bytesPerRecipient, out var firstIds);
+        var second = budget.Plan(2, bytesPerRecipient, out var secondIds);
 
         Assert.Equal(172, first.RecordCount);
         Assert.Equal(828, first.DeferredCount);
@@ -139,6 +182,7 @@ public sealed class RealtimeScalabilityTests
         Assert.True(
             first.TotalBytes + RealtimeProtocol.OwnerSimulationSnapshotPacketSize
                 <= (bytesPerRecipient * 9_500) / 10_000);
+        Assert.Equal(172, second.RecordCount);
         Assert.Empty(firstIds.Intersect(secondIds));
         Assert.Equal(344, firstIds.Concat(secondIds).Distinct().Count());
     }
@@ -150,10 +194,9 @@ public sealed class RealtimeScalabilityTests
         var visible = Enumerable.Range(1, entityCount)
             .Select(index => (ulong)index)
             .ToArray();
-        var records = CreateSnapshotRecords(visible);
         var bytesPerRecipient = (38 * 1024 * 1024) / 15 / entityCount;
 
-        var plan = records.Plan(visible, 1, bytesPerRecipient, 9_500);
+        var plan = new BudgetFixture(visible).Plan(1, bytesPerRecipient, out _);
 
         // The 54-byte owner snapshot shares the budget, so 289 remote entities fit.
         Assert.Equal(289, plan.RecordCount);
@@ -164,31 +207,39 @@ public sealed class RealtimeScalabilityTests
                 <= (bytesPerRecipient * 9_500) / 10_000);
     }
 
-    private static SnapshotRecords CreateSnapshotRecords(IEnumerable<ulong> entityIds)
+    // One recipient that sees every entity, all new in view, so the budget alone decides.
+    private sealed class BudgetFixture(ulong[] visible)
     {
-        var records = new SnapshotRecords();
-        foreach (var entityId in entityIds)
+        private readonly SnapshotRecords records = new();
+        private readonly SnapshotScheduler scheduler = new(SnapshotReplicationConfig.Default);
+        private readonly SnapshotRecipientState state = new(new RealtimePeerContext(1, DateTime.UtcNow, UdpQuotaConfig.Default), ulong.MaxValue);
+        private readonly bool[] near = new bool[visible.Length];
+
+        public SnapshotRecipientPlan Plan(uint sequence, int bytesPerRecipient, out IReadOnlyList<ulong> entityIds)
         {
-            records.Add(entityId, new PlayerMovementState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true));
+            records.BeginSnapshot(sequence);
+            foreach (var entityId in visible)
+            {
+                records.Report(entityId, new PlayerMovementState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true));
+            }
+
+            records.EndReports();
+            var plan = scheduler.Plan(records, state, visible, near, bytesPerRecipient);
+            var ids = new List<ulong>();
+            for (var chunk = 0; chunk < plan.PacketCount; chunk++)
+            {
+                Assert.True(
+                    RealtimeProtocol.TryDecodeSimulationSnapshot(
+                        scheduler.WriteChunk(chunk, sequence, out _).ToArray(),
+                        out var snapshot,
+                        out var error),
+                    error);
+                ids.AddRange(snapshot.Entities.Select(entity => (ulong)entity.EntityId));
+            }
+
+            scheduler.Complete(sent: true);
+            entityIds = ids;
+            return plan;
         }
-
-        return records;
-    }
-
-    private static IReadOnlyList<ulong> DecodeEntityIds(SnapshotRecords records, SnapshotRecipientPlan plan)
-    {
-        var entityIds = new List<ulong>();
-        for (var chunk = 0; chunk < plan.PacketCount; chunk++)
-        {
-            Assert.True(
-                RealtimeProtocol.TryDecodeSimulationSnapshot(
-                    records.WriteChunk(chunk, 1, 1, out _).ToArray(),
-                    out var snapshot,
-                    out var error),
-                error);
-            entityIds.AddRange(snapshot.Entities.Select(entity => (ulong)entity.EntityId));
-        }
-
-        return entityIds;
     }
 }

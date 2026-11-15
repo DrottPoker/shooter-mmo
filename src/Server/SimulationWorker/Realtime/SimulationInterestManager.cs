@@ -13,10 +13,13 @@ public sealed class SimulationInterestManager
 {
     private static readonly IReadOnlySet<ulong> EmptyVisible = new HashSet<ulong>();
     private static readonly IReadOnlyList<ulong> EmptyOrderedVisible = Array.Empty<ulong>();
+    private static readonly IReadOnlyList<bool> EmptyOrderedNear = Array.Empty<bool>();
 
     private readonly float cellSize;
     private readonly float enterRadiusSquared;
     private readonly float exitRadiusSquared;
+    private readonly float nearRadiusSquared;
+    private readonly float nearExitRadiusSquared;
     private readonly int cellRadius;
     private readonly Dictionary<ulong, SimulationInterestEntity> entities = [];
     // Cells hold the entities themselves, so the visibility test reads positions without a
@@ -35,7 +38,11 @@ public sealed class SimulationInterestManager
             || config.CellSize <= 0f
             || config.EnterRadius <= 0f
             || config.ExitRadius < config.EnterRadius
-            || config.ExitRadius / config.CellSize > 64f)
+            || config.ExitRadius / config.CellSize > 64f
+            || !IsFinite(config.NearRadius)
+            || !IsFinite(config.NearExitRadius)
+            || config.NearRadius <= 0f
+            || config.NearExitRadius < config.NearRadius)
         {
             throw new ArgumentException("Interest management configuration is invalid.", nameof(config));
         }
@@ -44,6 +51,8 @@ public sealed class SimulationInterestManager
         RefreshIntervalSnapshots = Math.Max(1, config.RefreshIntervalSnapshots);
         enterRadiusSquared = config.EnterRadius * config.EnterRadius;
         exitRadiusSquared = config.ExitRadius * config.ExitRadius;
+        nearRadiusSquared = config.NearRadius * config.NearRadius;
+        nearExitRadiusSquared = config.NearExitRadius * config.NearExitRadius;
         cellRadius = (int)Math.Ceiling(config.ExitRadius / config.CellSize);
     }
 
@@ -95,7 +104,19 @@ public sealed class SimulationInterestManager
                 return;
             }
 
-            InsertOrdered(state.OrderedVisible, entity.EntityId);
+            var near = IsWithinRadius(candidate, entity, nearRadiusSquared);
+            if (near)
+            {
+                state.Near.Add(entity.EntityId);
+            }
+
+            var index = state.OrderedVisible.BinarySearch(entity.EntityId);
+            if (index < 0)
+            {
+                state.OrderedVisible.Insert(~index, entity.EntityId);
+                state.OrderedNear.Insert(~index, near);
+            }
+
             enteredConnections.Add(connectionId);
         });
         enteredConnections.Sort();
@@ -136,7 +157,9 @@ public sealed class SimulationInterestManager
 
         state.Candidates.Clear();
         state.Candidates.Add(controlledEntityId);
-        AddNearbyEntities(observer, state.Visible, state.Candidates);
+        state.NextNear.Clear();
+        AddNearbyEntities(observer, state);
+        (state.Near, state.NextNear) = (state.NextNear, state.Near);
 
         state.Entered.Clear();
         foreach (var entityId in state.Candidates)
@@ -167,6 +190,13 @@ public sealed class SimulationInterestManager
             state.OrderedVisible.Sort();
         }
 
+        // The tiers may change without a change of the visible set.
+        state.OrderedNear.Clear();
+        foreach (var entityId in state.OrderedVisible)
+        {
+            state.OrderedNear.Add(state.Near.Contains(entityId));
+        }
+
         return new SimulationInterestUpdate(state.Entered, state.Exited, state.Visible);
     }
 
@@ -182,6 +212,20 @@ public sealed class SimulationInterestManager
         return interestsByConnection.TryGetValue(connectionId, out var state)
             ? state.OrderedVisible
             : EmptyOrderedVisible;
+    }
+
+    // Whether each entity of GetVisibleOrdered, at the same index, is in the near tier.
+    public IReadOnlyList<bool> GetNearOrdered(int connectionId)
+    {
+        return interestsByConnection.TryGetValue(connectionId, out var state)
+            ? state.OrderedNear
+            : EmptyOrderedNear;
+    }
+
+    public bool IsNear(int connectionId, ulong entityId)
+    {
+        return interestsByConnection.TryGetValue(connectionId, out var state)
+            && state.Near.Contains(entityId);
     }
 
     public bool IsVisibleToAnyConnection(ulong entityId)
@@ -236,6 +280,7 @@ public sealed class SimulationInterestManager
         {
             var state = pair.Value;
             state.Candidates.Remove(entityId);
+            state.Near.Remove(entityId);
             if (!state.Visible.Remove(entityId))
             {
                 continue;
@@ -245,6 +290,7 @@ public sealed class SimulationInterestManager
             if (orderedIndex >= 0)
             {
                 state.OrderedVisible.RemoveAt(orderedIndex);
+                state.OrderedNear.RemoveAt(orderedIndex);
             }
 
             affectedConnections.Add(pair.Key);
@@ -374,15 +420,6 @@ public sealed class SimulationInterestManager
         return ((deltaX * deltaX) + (deltaZ * deltaZ)) <= radiusSquared;
     }
 
-    private static void InsertOrdered(List<ulong> values, ulong value)
-    {
-        var index = values.BinarySearch(value);
-        if (index < 0)
-        {
-            values.Insert(~index, value);
-        }
-    }
-
     private static void ValidateEntity(
         SimulationInterestEntity entity,
         string parameterName)
@@ -395,11 +432,12 @@ public sealed class SimulationInterestManager
         }
     }
 
-    private void AddNearbyEntities(
-        SimulationInterestEntity observer,
-        HashSet<ulong> previous,
-        HashSet<ulong> next)
+    // Adds the entities the observer sees to the candidates and the near ones to the next near
+    // tier: within the near radius, or within the near exit radius while already near.
+    private void AddNearbyEntities(SimulationInterestEntity observer, ConnectionInterestState state)
     {
+        var previous = state.Visible;
+        var next = state.Candidates;
         var observerCellX = ToCell(observer.X);
         var observerCellZ = ToCell(observer.Z);
         for (var z = observerCellZ - cellRadius; z <= observerCellZ + cellRadius; z++)
@@ -423,6 +461,12 @@ public sealed class SimulationInterestManager
                             && previous.Contains(candidate.EntityId)))
                     {
                         next.Add(candidate.EntityId);
+                        if (distanceSquared <= nearRadiusSquared
+                            || (distanceSquared <= nearExitRadiusSquared
+                                && state.Near.Contains(candidate.EntityId)))
+                        {
+                            state.NextNear.Add(candidate.EntityId);
+                        }
                     }
                 }
             }
@@ -453,6 +497,13 @@ public sealed class SimulationInterestManager
         public HashSet<ulong> Candidates { get; } = [];
 
         public List<ulong> OrderedVisible { get; } = [];
+
+        // The near tier, and parallel to OrderedVisible whether each entity is in it.
+        public HashSet<ulong> Near { get; set; } = [];
+
+        public HashSet<ulong> NextNear { get; set; } = [];
+
+        public List<bool> OrderedNear { get; } = [];
 
         public List<ulong> Entered { get; } = [];
 

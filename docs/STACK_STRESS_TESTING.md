@@ -118,9 +118,9 @@ The measured gameplay operations never call those routes.
 A crowd in one interest radius drives two overload paths of the worker:
 
 - Snapshots. Every joined client receives its own owner snapshot at the full
-  15 Hz, while remote entities share the rest of the worker-wide snapshot byte
-  budget in rotating fair chunks, so remote cadence drops before owner cadence
-  does. The worker counts the remote work it put off in
+  15 Hz, while its remote records share the rest of its byte budget, nearest
+  first, so remote cadence drops before owner cadence does, and far before
+  near. The worker counts the remote work it put off in
   `simulation_worker.simulation.snapshot.entity_updates_deferred`; that is
   scheduled degradation, not a dropped owner frame. The report's
   `estimatedMissingSnapshots` counts owner sequence gaps only. The rules are in
@@ -1316,10 +1316,11 @@ Every JSON report contains:
 - Owner and remote snapshot packet counts plus estimated missing owner
   sequences.
 - The remote update rate, how often the bots received the state of the remote
-  players they saw during the steady interval, as
+  players that walked near them during the steady interval, as
   [Remote Update Rate](#remote-update-rate) describes: the average, the fifth
   percentile, and the minimum over bots, the fifth percentile over every pair
-  of bot and remote player, and the records of entities without a player spawn.
+  of bot and remote player, the rate over every visible player for comparison,
+  and the records of entities without a player spawn.
 - The steady interval's start and end.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
@@ -1455,17 +1456,32 @@ seconds, and adds a `workerPerformance` section to the report:
 ### Remote Update Rate
 
 The remote update rate measures what a player sees: how often its client
-receives the state of each remote player in its interest set. Every remote
-snapshot frame carries every player the recipient sees, unless the worker
-deferred that player's update under its snapshot budget, so a received record
-is one update. Each bot's `SimulationBotSession` counts, for every remote player
-from its reliable spawn to its despawn, the snapshot frames that carry its
-state, once per snapshot sequence, inside the steady interval, and how long it
-saw the player there. A bot's rate is its updates divided by those seconds over
-all the players it saw; a duplicated or reordered frame never counts twice, and
-records of entities without a player spawn, such as a moving Mob, stay apart as
-`untrackedRecords`. The rule judges the fifth percentile over bots, so the
-players who see the least decide, not the average.
+receives the state of the remote players that walk near it. The worker sends a
+record only when it is due, as
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+describes: a standing player about once a second, a far one that walks about
+five times a second, and a near one that walks in every snapshot unless the
+budget deferred it. A rate over every visible player would therefore mostly
+count who stands, so the rate judges the near walkers alone.
+
+Each bot's `SimulationBotSession` follows every remote player from its reliable
+spawn to its despawn, once per snapshot sequence, so a duplicated or reordered
+frame never counts twice. A record counts as one near moving update when it is
+inside the steady interval, its position differs from the record before, the
+record before also moved, and the player is within 48 m of the bot, the
+worker's default `InterestManagement:NearRadius`; it adds the seconds since the
+record before. A bot's rate is those updates over those seconds, the rate at
+which its near walkers' records arrived while they walked. A bot that saw no
+player walk near it has no rate. Records of entities without a player spawn,
+such as a moving Mob, stay apart as `untrackedRecords`. The rule judges the
+fifth percentile over bots, so the players who see the least decide, not the
+average.
+
+Until changed-only replication, the rate counted every record of every visible
+player over the seconds it saw the player, which equalled the near moving rate
+because every snapshot carried every visible player. The report keeps that
+rate as `remoteAllEntitiesUpdateRateAverageHz` and
+`remoteAllEntitiesUpdateRateP5Hz`, for comparison only.
 
 The earlier figure of about 5.6 Hz at 400 mutually visible players was not a
 measurement: it is 15 Hz scaled by 95 percent of the 38 MiB/s aggregate
@@ -1747,11 +1763,18 @@ Per layout, over the measured ticks:
 - Deterministic: the snapshot bytes and all bytes per player and second, the
   packets per second, the entity records per player and snapshot, the owner's
   included, the bytes per record with the packet headers, the share of the
-  remote updates the budgets deferred, and the update rate that the players
-  see for the entities they see with a state, the average, the fifth
-  percentile over players, and the lowest, with the counts they come from:
-  bytes, packets, records, deferrals, visibility groups, encoded packets,
-  spawns, despawns, and dropped snapshots.
+  remote updates the budgets deferred, and the update rates, with the counts
+  they come from: bytes, packets, records, deferrals, visibility groups,
+  encoded packets, spawns, despawns, dropped snapshots, and the near moving
+  sightings and records.
+- The update rate is the one players judge: per player, the share of the
+  snapshots in which a walking entity within the near radius, 48 m, was in
+  the player's records, times the snapshot rate; the average, the fifth
+  percentile over players, and the lowest. Beside it, the same rate over all
+  players for the walking entities within 16 m and beyond the near exit
+  radius, 56 m, which shows how the budget degrades by distance, and the rate
+  over every entity the player sees with a state, standing or walking, the
+  measure before changed-only replication, for comparison.
 - Informative: the average and the exact 99th percentile of the tick, the
   interest refresh, and the snapshot broadcast, the bytes allocated per tick,
   the garbage collections and pause milliseconds per second of the World, the
@@ -1766,43 +1789,51 @@ another fingerprint. The timing numbers depend on the machine and what else
 runs on it, so they are compared, never judged.
 
 `ASmallLayoutKeepsItsDeterministicNumbers`, a fast test that runs with every
-test run, plays 40 players and 12 Mobs with a small aggregate budget, so
-updates are deferred, and pins every deterministic number, so the harness
-cannot change unnoticed. After an intended change of replication, take its new
+test run, plays 40 players and 12 Mobs with an aggregate budget so small that
+about half of the due records are deferred, and pins every deterministic
+number, so the harness and the budget order cannot change unnoticed. After an intended change of replication, take its new
 numbers from the test's output.
 
 ### Baseline
 
-`tools/load/baselines/replication.json` holds the baseline, recorded on the
-machine of [Measured Tiers](#measured-tiers) while other programs used about
-30 to 90 percent of all its cores, so its timings are high and only
-informative:
+`tools/load/baselines/replication.json` holds the baseline, recorded on
+2026-11-15 with changed-only replication, on the machine of
+[Measured Tiers](#measured-tiers) while other programs used about 14 percent of
+its cores, so its timings are informative only:
 
-| Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Bytes per record | Deferred | Update rate p5 | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick | Gen0 / gen1 per s |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `spread-500` | 72.5 | 72.9 | 47,146 | 117.9 | 41.95 | 45.3 % | 5.4 Hz | 4.5 / 13.4 ms | 12.8 / 34.5 ms | 2.2 MiB | 4.1 / 2.3 |
-| `crowd-200` | 123.5 | 123.5 | 30,000 | 201.0 | 41.96 | 0 % | 15.0 Hz | 0.5 / 1.0 ms | 0.8 / 1.6 ms | 36 KiB | 0.1 / 0 |
-| `crowd-500` | 73.7 | 73.7 | 45,000 | 120.0 | 41.94 | 76.2 % | 3.6 Hz | 2.2 / 4.8 ms | 3.8 / 8.2 ms | 79 KiB | 0.1 / 0 |
+| Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Deferred | Near walkers avg / p5 | Walkers within 16 m / beyond 56 m | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 2.7 / 4.8 ms | 7.1 / 12.9 ms | 77 KiB |
+| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.5 / 1.2 ms | 1.8 / 4.6 ms | 21 KiB |
+| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 3.5 / 6.6 ms | 12.6 / 23.7 ms | 60 KiB |
 
-Against the load runs: `spread-500` sends 118 records per player and snapshot
-of 41.95 bytes each, where `playing-500` sent 115 of 41.96 bytes, and 72.5 KiB
-of snapshots per player and second against 70.8 KiB, and it allocates 2.2 MiB
-per tick, 65 MiB per second, with 4.1 and 2.3 collections of generation 0 and 1
-per second, against 78 MiB and 4.9 and 2.8. It defers 45 percent of the
-updates against 36, and its players who see the least get 5.4 updates per
-second against 6.5, because its players see more of each other: 214 entities
-with a state per player and snapshot against 180. The likely reason is the
-layout: the bots of `playing-500` walk routes over reachable ground with
-pauses, die and come back at the World spawn, and leave their grounds for Mobs,
-nodes, and the vendor, which rectangles do not follow. All its bytes per player
-are 72.9 KiB/s against 77.2, and its packets per second 47,000 against 94,500:
-beside its 44,000 snapshot packets per second, `playing-500` sent about 50,000
-other packets of 65 bytes on average, of which spawns and despawns were 3,200,
-while the benchmark sends only snapshots, spawns, and despawns, 2,500 of these
-per second.
-`crowd-200` sends 123.5 KiB per player and second, as `worker-only-200` measured
-126, and `crowd-500` gives 3.6 updates per second, as `worker-only-500`
-measured 3.5.
+The same layouts through the three states of the replication, deterministic
+numbers only:
+
+| Layout | | Every record, 41 bytes | Every record, 14 bytes | Due records only |
+| --- | --- | ---: | ---: | ---: |
+| `spread-500` | Snapshot KiB/s per player | 72.5 | 45.7 | 15.7 |
+| | Packets per second | 47,146 | 36,452 | 20,707 |
+| | Deferred updates | 45.3 % | 0 % | 0 % |
+| `crowd-200` | Snapshot KiB/s per player | 123.5 | 42.7 | 26.9 |
+| `crowd-500` | Snapshot KiB/s per player | 73.7 | 73.8 | 30.3 |
+| | Packets per second | 45,000 | 45,000 | 22,500 |
+
+`spread-500` and `crowd-200` stay inside a player's budget of 32 KiB per
+second without deferring anything: a walker within 48 m comes in every
+snapshot, one beyond 56 m five to six times a second, and whoever stands once
+a second. `crowd-500` is the overload case: every player sees all 499 others,
+most of them walking within 48 m, so the budget fills in every snapshot and
+65 percent of the due records wait. The order of the budget decides who waits:
+a walker within 16 m still comes 14 times a second, the near walkers 10 times
+on average, and one beyond 56 m about once a second, where the 14 byte record
+without the order gave everybody 10.5.
+
+The broadcast takes about three times the time it took when every record went
+out, because the scheduler looks up what each recipient last got of every
+entity it sees. The load runs before the compact record sent 115 records of
+41.96 bytes per player and snapshot in `playing-500`, 70.8 KiB of snapshots
+per player and second.
 
 ## Load Runs Under A Network Profile
 

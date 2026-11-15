@@ -357,7 +357,12 @@ public sealed class SimulationBotSession
                     snapshotsReceived++;
                     foreach (var entity in remoteSnapshot.Entities)
                     {
-                        remoteCadence.OnRecord(entity.EntityId, remoteSnapshot.SnapshotSequence, nowTimestamp);
+                        remoteCadence.OnRecord(
+                            entity.EntityId,
+                            remoteSnapshot.SnapshotSequence,
+                            nowTimestamp,
+                            (entity.PositionX, entity.PositionZ),
+                            (latestPosition.X, latestPosition.Z));
                     }
 
                     world?.ApplySnapshot(remoteSnapshot);

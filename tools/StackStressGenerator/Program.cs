@@ -478,7 +478,7 @@ public static class Program
         if (report.Bots.RemoteCadence is { } cadence)
         {
             Console.WriteLine(
-                $"Remote player updates per second during the steady interval: average {cadence.AverageHz:0.0}, p5 over bots {cadence.P5Hz:0.0}, minimum {cadence.MinimumHz:0.0}, over {cadence.Bots} bots and {cadence.Pairs} pairs.");
+                $"Updates per second of the remote players that walked near a bot during the steady interval: average {cadence.AverageHz:0.0}, p5 over bots {cadence.P5Hz:0.0}, minimum {cadence.MinimumHz:0.0}, over {cadence.Bots} bots and {cadence.Pairs} pairs; of every remote player, standing or walking, near or far: average {cadence.AllEntitiesAverageHz:0.0}, p5 {cadence.AllEntitiesP5Hz:0.0}.");
         }
 
         if (report.Verdict is { } verdict)

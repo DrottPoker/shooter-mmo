@@ -3,45 +3,44 @@ using Mmorpg.GameSimulation;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// What one recipient's remote snapshot carries: the records sent, the visible updates the byte
-// budget deferred, and the chunk packets with their total size including the packet headers.
-internal readonly record struct SnapshotRecipientPlan(int RecordCount, int DeferredCount, int PacketCount, int TotalBytes);
-
 // The newest movement state of one entity that a snapshot replicates.
 internal readonly record struct SnapshotEntityState(ulong EntityId, PlayerMovementState State);
 
-// The remote entity records of one snapshot and the chunk packets built from them. Each entity's
-// record is quantized once per snapshot into its slot of one flat buffer. A recipient's chunks are
-// assembled by copying the records it sees into one reusable packet buffer, which the transport
-// copies when it sends, so nothing on this path allocates once the buffers have grown to the
-// population. Under a byte budget that cannot carry every visible record, a fair subset that
-// rotates with the snapshot sequence is sent and the rest is deferred. Loop-confined.
+// The quantized remote record of every entity with a state, kept from snapshot to snapshot. Each
+// snapshot reports every such entity once: its record is quantized into its slot of one flat
+// buffer, and when the record differs from the one before, the slot gets a new version, a number
+// that no other record of any entity ever had. The reported planar position is kept beside it
+// for the distances of the budget order. An entity that a snapshot does not report loses its
+// slot. Nothing here allocates once the buffers have grown to the population. Loop-confined.
 internal sealed class SnapshotRecords
 {
-    private const int RecordSize = RealtimeProtocol.SimulationSnapshotEntitySize;
-    private const int RecordsPerChunk = RealtimeProtocol.MaximumSnapshotEntitiesPerChunk;
+    internal const int RecordSize = RealtimeProtocol.SimulationSnapshotEntitySize;
+    internal const int RecordsPerChunk = RealtimeProtocol.MaximumSnapshotEntitiesPerChunk;
 
     private readonly Dictionary<ulong, int> slotByEntityId = [];
-    private readonly List<int> visibleSlots = [];
-    private readonly byte[] packet = new byte[RealtimeProtocol.MaximumUnreliablePacketSize];
     private byte[] records = new byte[256 * RecordSize];
-    private int plannedRecords;
-    private int plannedStart;
-    private int plannedPackets;
+    private ulong[] entityIds = new ulong[256];
+    private ulong[] versions = new ulong[256];
+    private uint[] reportedSequences = new uint[256];
+    private float[] positionsX = new float[256];
+    private float[] positionsZ = new float[256];
+    private int count;
+    private ulong nextVersion;
+    private uint sequence;
 
-    public int Count => slotByEntityId.Count;
+    public int Count => count;
 
-    public void Reset()
+    // The snapshot whose reports follow.
+    public uint Sequence => sequence;
+
+    public void BeginSnapshot(uint snapshotSequence)
     {
-        slotByEntityId.Clear();
-        visibleSlots.Clear();
-        plannedRecords = 0;
-        plannedPackets = 0;
+        sequence = snapshotSequence;
     }
 
     // Quantizes the entity's state into its slot. False, with no record, for a state that is not
     // finite, which no client could show.
-    public bool Add(ulong entityId, in PlayerMovementState state)
+    public bool Report(ulong entityId, in PlayerMovementState state)
     {
         if (!RealtimeEntitySnapshot.TryQuantizeHorizontal(state.PositionX, out var quantizedX)
             || !RealtimeEntitySnapshot.TryQuantizeVertical(state.PositionY, out var quantizedY)
@@ -51,108 +50,93 @@ internal sealed class SnapshotRecords
             return false;
         }
 
-        if (slotByEntityId.ContainsKey(entityId))
-        {
-            throw new InvalidOperationException($"Entity {entityId} has a snapshot record already.");
-        }
-
-        var slot = slotByEntityId.Count;
-        if ((slot + 1) * RecordSize > records.Length)
-        {
-            Array.Resize(ref records, records.Length * 2);
-        }
-
+        Span<byte> record = stackalloc byte[RecordSize];
         RealtimeProtocol.EncodeEntitySnapshot(
-            records.AsSpan(slot * RecordSize, RecordSize),
+            record,
             checked((uint)entityId),
             quantizedX,
             quantizedY,
             quantizedZ,
             yawStep,
             state.IsGrounded);
-        slotByEntityId.Add(entityId, slot);
+        if (!slotByEntityId.TryGetValue(entityId, out var slot))
+        {
+            slot = count;
+            EnsureCapacity(slot + 1);
+            count++;
+            slotByEntityId.Add(entityId, slot);
+            entityIds[slot] = entityId;
+            Store(slot, record);
+        }
+        else if (reportedSequences[slot] == sequence)
+        {
+            throw new InvalidOperationException($"Entity {entityId} has a snapshot record already.");
+        }
+        else if (!record.SequenceEqual(Record(slot)))
+        {
+            Store(slot, record);
+        }
+
+        reportedSequences[slot] = sequence;
+        positionsX[slot] = state.PositionX;
+        positionsZ[slot] = state.PositionZ;
         return true;
     }
 
-    // Chooses the records of one recipient within its byte budget, of which the owner snapshot
-    // takes its share first. The plan holds until the next call; WriteChunk builds its packets.
-    public SnapshotRecipientPlan Plan(
-        IReadOnlyList<ulong> orderedVisibleEntityIds,
-        uint snapshotSequence,
-        int bytesPerRecipient,
-        int overloadTargetUtilizationBasisPoints)
+    // Drops the slot of every entity that this snapshot did not report.
+    public void EndReports()
     {
-        ArgumentNullException.ThrowIfNull(orderedVisibleEntityIds);
-        ArgumentOutOfRangeException.ThrowIfNegative(bytesPerRecipient);
-        if (overloadTargetUtilizationBasisPoints is <= 0 or > 10_000)
+        for (var slot = count - 1; slot >= 0; slot--)
         {
-            throw new ArgumentOutOfRangeException(nameof(overloadTargetUtilizationBasisPoints));
-        }
-
-        plannedRecords = 0;
-        plannedPackets = 0;
-        visibleSlots.Clear();
-        for (var index = 0; index < orderedVisibleEntityIds.Count; index++)
-        {
-            if (slotByEntityId.TryGetValue(orderedVisibleEntityIds[index], out var slot))
+            if (reportedSequences[slot] == sequence)
             {
-                visibleSlots.Add(slot);
+                continue;
             }
-        }
 
-        if (visibleSlots.Count == 0)
-        {
-            return default;
-        }
+            slotByEntityId.Remove(entityIds[slot]);
+            var last = count - 1;
+            if (slot != last)
+            {
+                Record(last).CopyTo(records.AsSpan(slot * RecordSize, RecordSize));
+                entityIds[slot] = entityIds[last];
+                versions[slot] = versions[last];
+                reportedSequences[slot] = reportedSequences[last];
+                positionsX[slot] = positionsX[last];
+                positionsZ[slot] = positionsZ[last];
+                slotByEntityId[entityIds[slot]] = slot;
+            }
 
-        var targetBytes = (int)Math.Min(
-            int.MaxValue,
-            ((long)bytesPerRecipient * overloadTargetUtilizationBasisPoints) / 10_000L);
-        var fullBytes = CalculateEncodedBytes(visibleSlots.Count);
-        var remoteByteBudget = fullBytes + RealtimeProtocol.OwnerSimulationSnapshotPacketSize <= targetBytes
-            ? fullBytes
-            : Math.Max(0, targetBytes - RealtimeProtocol.OwnerSimulationSnapshotPacketSize);
-        var selected = CalculateMaximumEntityCount(remoteByteBudget, visibleSlots.Count);
-        if (selected == 0)
-        {
-            return new SnapshotRecipientPlan(0, visibleSlots.Count, 0, 0);
+            count--;
         }
-
-        plannedRecords = selected;
-        plannedStart = selected == visibleSlots.Count
-            ? 0
-            : (int)(((ulong)unchecked(snapshotSequence - 1u) * (uint)selected) % (ulong)visibleSlots.Count);
-        plannedPackets = (selected + RecordsPerChunk - 1) / RecordsPerChunk;
-        return new SnapshotRecipientPlan(
-            selected,
-            visibleSlots.Count - selected,
-            plannedPackets,
-            CalculateEncodedBytes(selected));
     }
 
-    // Builds one chunk of the last plan into the packet buffer. The span stays valid until the
-    // next call, and the transport copies it when it sends.
-    public ReadOnlySpan<byte> WriteChunk(int chunkIndex, uint snapshotSequence, uint serverTick, out int recordCount)
+    public bool TryGetSlot(ulong entityId, out int slot)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(chunkIndex);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(chunkIndex, plannedPackets);
-        var first = chunkIndex * RecordsPerChunk;
-        recordCount = Math.Min(RecordsPerChunk, plannedRecords - first);
-        var length = RealtimeProtocol.EncodeSimulationSnapshotHeader(
-            packet,
-            snapshotSequence,
-            serverTick,
-            (ushort)chunkIndex,
-            (ushort)plannedPackets,
-            recordCount);
-        for (var index = 0; index < recordCount; index++)
-        {
-            var slot = visibleSlots[(plannedStart + first + index) % visibleSlots.Count];
-            records.AsSpan(slot * RecordSize, RecordSize).CopyTo(packet.AsSpan(length));
-            length += RecordSize;
-        }
+        return slotByEntityId.TryGetValue(entityId, out slot);
+    }
 
-        return packet.AsSpan(0, length);
+    public ulong EntityIdOf(int slot)
+    {
+        return entityIds[slot];
+    }
+
+    // The version of the slot's record; a recipient that has this version has the record.
+    public ulong VersionOf(int slot)
+    {
+        return versions[slot];
+    }
+
+    public ReadOnlySpan<byte> Record(int slot)
+    {
+        return records.AsSpan(slot * RecordSize, RecordSize);
+    }
+
+    // The squared planar distance between the reported positions of two slots.
+    public float DistanceSquared(int slot, int otherSlot)
+    {
+        var deltaX = positionsX[slot] - positionsX[otherSlot];
+        var deltaZ = positionsZ[slot] - positionsZ[otherSlot];
+        return (deltaX * deltaX) + (deltaZ * deltaZ);
     }
 
     // The bytes of entityCount records in as few chunks as hold them, with their packet headers.
@@ -182,5 +166,27 @@ internal sealed class SnapshotRecords
         }
 
         return count;
+    }
+
+    private void Store(int slot, ReadOnlySpan<byte> record)
+    {
+        record.CopyTo(records.AsSpan(slot * RecordSize, RecordSize));
+        versions[slot] = ++nextVersion;
+    }
+
+    private void EnsureCapacity(int slots)
+    {
+        if (slots <= entityIds.Length)
+        {
+            return;
+        }
+
+        var capacity = entityIds.Length * 2;
+        Array.Resize(ref records, capacity * RecordSize);
+        Array.Resize(ref entityIds, capacity);
+        Array.Resize(ref versions, capacity);
+        Array.Resize(ref reportedSequences, capacity);
+        Array.Resize(ref positionsX, capacity);
+        Array.Resize(ref positionsZ, capacity);
     }
 }

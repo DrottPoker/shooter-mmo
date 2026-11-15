@@ -222,19 +222,17 @@ internal sealed class MobSystem : IMobSnapshotSource
         metrics?.RecordMobPhase(Stopwatch.GetElapsedTime(started));
     }
 
-    // The newest pose of every Mob that moved since the last movement snapshot.
-    public void CopyPendingStatesTo(List<SnapshotEntityState> destination)
+    // The pose of every living Mob that stood on its ground; the snapshot decides whether its
+    // record changed.
+    public void CopyStatesTo(List<SnapshotEntityState> destination)
     {
         destination.Clear();
         foreach (var agent in ordered)
         {
-            if (!agent.SnapshotPending)
+            if (agent.HasMovement && agent.Combatant.LifeState != RealtimeCombatLifeState.Dead)
             {
-                continue;
+                destination.Add(new SnapshotEntityState(agent.EntityId, agent.Movement));
             }
-
-            agent.SnapshotPending = false;
-            destination.Add(new SnapshotEntityState(agent.EntityId, agent.Movement));
         }
     }
 
@@ -597,7 +595,6 @@ internal sealed class MobSystem : IMobSnapshotSource
         }
 
         agent.RestPublished = true;
-        agent.SnapshotPending = false;
         agent.Actor.PublishRestPose();
         presence.BroadcastWorldActorState(agent.Actor);
     }
@@ -618,7 +615,6 @@ internal sealed class MobSystem : IMobSnapshotSource
 
         agent.Actor.SetPose(state.PositionX, state.PositionY, state.PositionZ, state.YawDegrees);
         agent.PoseChangedThisTick = true;
-        agent.SnapshotPending = true;
         agent.RestPublished = false;
     }
 

@@ -91,7 +91,9 @@ function Write-Result($Result) {
             "Records per player and snapshot" = Format-Number $numbers.recordsPerPlayerPerSnapshot "0.0"
             "Bytes per record" = Format-Number $numbers.bytesPerRecord "0.00"
             "Deferred" = (Format-Number ($numbers.deferredShare * 100) "0.0") + " %"
-            "Update rate p5 Hz" = Format-Number $numbers.updateRateP5Hz "0.0"
+            "Near moving update rate avg/p5 Hz" = (Format-Number $numbers.updateRateAverageHz "0.0") + " / " + (Format-Number $numbers.updateRateP5Hz "0.0")
+            "Moving update rate within 16 m / beyond 56 m Hz" = (Format-Number $numbers.nearestMovingUpdateRateHz "0.0") + " / " + (Format-Number $numbers.farMovingUpdateRateHz "0.0")
+            "All entities update rate avg/p5 Hz" = (Format-Number $numbers.allEntitiesUpdateRateAverageHz "0.0") + " / " + (Format-Number $numbers.allEntitiesUpdateRateP5Hz "0.0")
             "Interest avg/p99 ms" = (Format-Number $timing.interestAverageMs "0.00") + " / " + (Format-Number $timing.interestP99Ms "0.00")
             "Broadcast avg/p99 ms" = (Format-Number $timing.broadcastAverageMs "0.00") + " / " + (Format-Number $timing.broadcastP99Ms "0.00")
             "KiB allocated per tick" = Format-Number ($timing.allocatedBytesPerTick / 1024) "0"

@@ -62,6 +62,13 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(
             9_500,
             config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
+        Assert.Equal((48f, 56f), (config.InterestManagement.NearRadius, config.InterestManagement.NearExitRadius));
+        Assert.Equal(
+            (32_768, 3, 3, 15),
+            (config.SnapshotReplication.PlayerBytesPerSecond,
+                config.SnapshotReplication.FarIntervalSnapshots,
+                config.SnapshotReplication.StopRepeats,
+                config.SnapshotReplication.RefreshIntervalSnapshots));
         Assert.Equal(2, config.CollisionStreaming.LoadRadiusChunks);
         Assert.Equal(38 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotBytesPerSecond);
         Assert.Equal(4 * 1024 * 1024, config.UdpQuotas.AggregateSnapshotByteBurst);
@@ -252,6 +259,28 @@ public sealed class SimulationWorkerConfigurationValidationTests
             () => SimulationWorkerConfig.FromConfiguration(configuration));
 
         Assert.Contains("RefreshIntervalSnapshots must not exceed one second", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("InterestManagement:NearRadius", "0", "NearRadius must be positive")]
+    [InlineData("InterestManagement:NearExitRadius", "40", "NearExitRadius at least NearRadius")]
+    [InlineData("InterestManagement:NearExitRadius", "129", "at most EnterRadius")]
+    [InlineData("SnapshotReplication:PlayerBytesPerSecond", "1000", "PlayerBytesPerSecond must hold")]
+    [InlineData("SnapshotReplication:PlayerBytesPerSecond", "300000", "at most UdpQuotas:SnapshotBytesPerSecond")]
+    [InlineData("SnapshotReplication:FarIntervalSnapshots", "16", "must not exceed one second of snapshots")]
+    [InlineData("SnapshotReplication:StopRepeats", "0", "StopRepeats must be a positive integer")]
+    [InlineData("SnapshotReplication:RefreshIntervalSnapshots", "2", "RefreshIntervalSnapshots must lie between")]
+    [InlineData("SnapshotReplication:RefreshIntervalSnapshots", "151", "RefreshIntervalSnapshots must lie between")]
+    public void SimulationWorkerRejectsInvalidTiersAndRecordSchedules(string key, string value, string message)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:" + key] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+
+        Assert.Contains(message, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

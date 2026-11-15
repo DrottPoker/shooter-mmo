@@ -4,12 +4,13 @@ using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
 {
-    // Presents a remote actor that travels in the snapshots only while its pose changes and
-    // reports the pose it comes to rest at reliably, such as a Mob. Snapshots move it through
-    // the remote player presentation, with the same render clock and delay. A movement starts
-    // from the reliable pose the actor stands at. A rest pose that arrives while snapshots
-    // still play becomes their final state, so the actor settles without a jump. A rest pose
-    // without recent snapshots, or a teleport, is the caller's to apply directly.
+    // Presents a remote actor that reports the pose it comes to rest at reliably, such as a
+    // Mob. Snapshots move it through the remote player presentation, with the same render clock
+    // and delay. A movement starts from the reliable pose the actor stands at, and a snapshot
+    // record at the pose it stands at changes nothing, so an actor that stands costs nothing.
+    // A rest pose that arrives while snapshots play, or after they played out, becomes their
+    // final state, so the actor settles without a jump. A rest pose without any snapshot, or a
+    // teleport, is the caller's to apply directly.
     public sealed class RemoteActorMovement
     {
         // A pose this far from the newest state is a teleport, such as an evading Mob that the
@@ -136,11 +137,24 @@ namespace Mmorpg.Client.Gameplay
             if (!presenter.HasPose
                 || !presenter.TryGetNewestState(out var newestTick, out var newest))
             {
-                StartFrom(RestState(restPosition, restYawDegrees), serverTick, sample);
+                // A record of the actor where it stands, such as a refresh, starts nothing.
+                var rest = RestState(restPosition, restYawDegrees);
+                if (IsSamePose(rest, sample))
+                {
+                    return false;
+                }
+
+                StartFrom(rest, serverTick, sample);
                 return true;
             }
 
             if (!MovementSequence.IsNewer(serverTick, newestTick))
+            {
+                return false;
+            }
+
+            // The actor stands where it rested; the record says so again.
+            if (resting && IsSamePose(newest, sample))
             {
                 return false;
             }
@@ -167,8 +181,7 @@ namespace Mmorpg.Client.Gameplay
 
         // Applies the reliable pose the actor came to rest at. Returns true when the snapshots
         // keep presenting the actor and settle on that pose, or false when the caller applies
-        // it directly: no snapshot moves the actor, the snapshots already played out at another
-        // pose, or the pose is a teleport.
+        // it directly: no snapshot moves the actor, or the pose is a teleport.
         public bool TrySettle(Vector3 position, float yawDegrees)
         {
             if (!presenter.HasPose
@@ -178,20 +191,22 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var rest = RestState(position, yawDegrees);
-            if (IsSamePose(newest, rest))
-            {
-                resting = true;
-                return true;
-            }
-
-            if (presenter.IsPlayedOut || Distance(newest, rest) > TeleportDistance)
+            if (Distance(newest, rest) > TeleportDistance)
             {
                 Clear();
                 return false;
             }
 
-            // The rest pose is the next state after the newest snapshot.
-            presenter.Push(unchecked(newestTick + (uint)snapshotIntervalTicks), rest);
+            // The rest pose is the next state after the newest snapshot, and the one after that
+            // repeats it: the actor stands there, so nothing walks on past it.
+            var restTick = unchecked(newestTick + (uint)snapshotIntervalTicks);
+            if (!IsSamePose(newest, rest))
+            {
+                presenter.Push(restTick, rest);
+                restTick = unchecked(restTick + (uint)snapshotIntervalTicks);
+            }
+
+            presenter.Push(restTick, rest);
             resting = true;
             return true;
         }

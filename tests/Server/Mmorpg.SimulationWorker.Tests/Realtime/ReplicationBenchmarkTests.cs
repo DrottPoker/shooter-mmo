@@ -111,22 +111,30 @@ public sealed class ReplicationBenchmarkTests
         var numbers = first.Deterministic;
         TestContext.Current.TestOutputHelper?.WriteLine(JsonSerializer.Serialize(numbers, SerializerOptions));
         Assert.Equal(
-            [45L, 759_854L, 3_206L, 763_060L, 3_600L, 41L, 46_561L, 1_800L, 44_761L, 1_156L, 1_800L, 3_600L, 18L, 23L, 0L],
+            [45L, 410_400L, 3_206L, 413_606L, 3_600L, 41L, 21_600L, 1_800L, 19_800L, 19_623L, 1_800L, 3_600L, 18L, 23L, 0L, 25_470L, 18_266L],
             [
                 numbers.Snapshots, numbers.SnapshotBytes, numbers.ReliableBytes, numbers.AllBytes, numbers.UnreliablePackets,
                 numbers.ReliablePackets, numbers.SnapshotRecords, numbers.OwnerRecords, numbers.RemoteRecords,
                 numbers.DeferredUpdates, numbers.VisibilityGroups, numbers.PacketsEncoded, numbers.SpawnPackets,
-                numbers.DespawnPackets, numbers.DroppedSnapshotPackets
+                numbers.DespawnPackets, numbers.DroppedSnapshotPackets, numbers.NearMovingSightings, numbers.NearMovingRecords
             ]);
-        Assert.Equal(6_332.116666666667, numbers.SnapshotBytesPerPlayerPerSecond, 9);
-        Assert.Equal(6_358.833333333334, numbers.AllBytesPerPlayerPerSecond, 9);
+        Assert.Equal(3_420d, numbers.SnapshotBytesPerPlayerPerSecond, 9);
+        Assert.Equal(3_446.7166666666662, numbers.AllBytesPerPlayerPerSecond, 9);
         Assert.Equal(1_213.6666666666667, numbers.PacketsPerSecond, 9);
-        Assert.Equal(25.867222222222225, numbers.RecordsPerPlayerPerSnapshot, 9);
-        Assert.Equal(16.319537810614033, numbers.BytesPerRecord, 9);
-        Assert.Equal(0.025175860792299148, numbers.DeferredShare, 9);
-        Assert.Equal(14.682348054101421, numbers.UpdateRateAverageHz, 9);
-        Assert.Equal(13.626532083633741, numbers.UpdateRateP5Hz, 9);
-        Assert.Equal(13.490364025695932, numbers.UpdateRateMinimumHz, 9);
+        Assert.Equal(12d, numbers.RecordsPerPlayerPerSnapshot, 9);
+        Assert.Equal(19d, numbers.BytesPerRecord, 9);
+        Assert.Equal(0.49775511757096114, numbers.DeferredShare, 9);
+        // The budget holds eleven remote records per snapshot: the walkers near a player come
+        // at about two thirds of the snapshot rate, the nearest more often, and the far ones
+        // least.
+        Assert.Equal(10.81024305555556, numbers.UpdateRateAverageHz, 9);
+        Assert.Equal(9.604166666666666, numbers.UpdateRateP5Hz, 9);
+        Assert.Equal(9.6, numbers.UpdateRateMinimumHz, 9);
+        Assert.Equal(6.225577172753819, numbers.AllEntitiesUpdateRateAverageHz, 9);
+        Assert.Equal(4.714285714285714, numbers.AllEntitiesUpdateRateP5Hz, 9);
+        Assert.Equal(4.652255639097744, numbers.AllEntitiesUpdateRateMinimumHz, 9);
+        Assert.Equal(12.404760425082344, numbers.NearestMovingUpdateRateHz, 9);
+        Assert.Equal(1.0388821385176186, numbers.FarMovingUpdateRateHz, 9);
         Assert.Contains("snapshots", first.Timing.PhaseAverageMs.Keys);
         Assert.Contains("benchmark motion", first.Timing.PhaseAverageMs.Keys);
     }

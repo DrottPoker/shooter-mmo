@@ -8,8 +8,22 @@ namespace Mmorpg.Tools.SimulationBotClient;
 // never counts twice. Records of entities without a player spawn, such as moving Mobs, count
 // only as untracked records, and the bot's own entity never counts. The windows of one remote
 // player add up, so what the bot keeps grows with the players it saw, not with the run's length.
-public sealed class SimulationBotRemoteCadence
+//
+// The worker sends a record only when it is due, so a player that stands gets about one per
+// second. The rate that judges replication is therefore the near moving rate: a record whose
+// position differs from the one before, while the one before also moved, and while the player
+// is within NearRadius of the bot, counts as one update over the time since the record before.
+// The rate is those updates over that time, so a player that walks near the bot is judged by
+// the gaps between its records while it walks.
+public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotRemoteCadence.DefaultNearRadius)
 {
+    // The worker's default InterestManagement:NearRadius.
+    public const float DefaultNearRadius = 48f;
+
+    // Less than one step of the record does not move.
+    private const float MovedDistanceSquared = 0.0001f;
+
+    private readonly float nearRadiusSquared = nearRadius * nearRadius;
     private readonly Dictionary<ulong, TrackedEntity> visible = [];
     private readonly Dictionary<ulong, EntityWindow> closed = [];
     private ulong? ownEntityId;
@@ -44,7 +58,20 @@ public sealed class SimulationBotRemoteCadence
         Close(entity, nowTimestamp);
     }
 
+    // A record of an entity without its position, which counts for the rate of every entity
+    // only.
     public void OnRecord(ulong entityId, uint snapshotSequence, long nowTimestamp)
+    {
+        OnRecord(entityId, snapshotSequence, nowTimestamp, null, default);
+    }
+
+    // A record at x and z while the bot stands at own.
+    public void OnRecord(
+        ulong entityId,
+        uint snapshotSequence,
+        long nowTimestamp,
+        (float X, float Z)? position,
+        (float X, float Z) own)
     {
         if (entityId == ownEntityId)
         {
@@ -68,10 +95,31 @@ public sealed class SimulationBotRemoteCadence
 
         entity.HasSequence = true;
         entity.LastSequence = snapshotSequence;
-        if (IsInsideWindow(nowTimestamp))
+        var inside = IsInsideWindow(nowTimestamp);
+        if (inside)
         {
             entity.Updates++;
         }
+
+        if (position is not { } at)
+        {
+            return;
+        }
+
+        var moved = entity.HasPosition
+            && Square(at.X - entity.X) + Square(at.Z - entity.Z) > MovedDistanceSquared;
+        var near = Square(at.X - own.X) + Square(at.Z - own.Z) <= nearRadiusSquared;
+        if (inside && moved && entity.LastMoved && near && entity.LastRecordAt >= windowStart)
+        {
+            entity.NearMovingUpdates++;
+            entity.NearMovingSeconds += (nowTimestamp - entity.LastRecordAt) / (double)Stopwatch.Frequency;
+        }
+
+        entity.HasPosition = true;
+        entity.X = at.X;
+        entity.Z = at.Z;
+        entity.LastMoved = moved;
+        entity.LastRecordAt = nowTimestamp;
     }
 
     public void BeginWindow(long nowTimestamp)
@@ -96,6 +144,8 @@ public sealed class SimulationBotRemoteCadence
         {
             Close(entity, nowTimestamp);
             entity.Updates = 0;
+            entity.NearMovingUpdates = 0;
+            entity.NearMovingSeconds = 0;
             entity.Closed = true;
         }
     }
@@ -113,7 +163,18 @@ public sealed class SimulationBotRemoteCadence
             closed.Values.Sum(entity => entity.Updates),
             closed.Values.Sum(entity => entity.VisibleSeconds),
             untrackedRecords,
-            closed.Values.Select(entity => new SimulationBotEntityCadence(entity.Updates, entity.VisibleSeconds)).ToArray());
+            closed.Values
+                .Select(entity => new SimulationBotEntityCadence(
+                    entity.Updates,
+                    entity.VisibleSeconds,
+                    entity.NearMovingUpdates,
+                    entity.NearMovingSeconds))
+                .ToArray());
+    }
+
+    private static float Square(float value)
+    {
+        return value * value;
     }
 
     private bool IsInsideWindow(long timestamp)
@@ -142,6 +203,8 @@ public sealed class SimulationBotRemoteCadence
 
         window.Updates += entity.Updates;
         window.VisibleSeconds += (endTimestamp - from) / (double)Stopwatch.Frequency;
+        window.NearMovingUpdates += entity.NearMovingUpdates;
+        window.NearMovingSeconds += entity.NearMovingSeconds;
     }
 
     private sealed class TrackedEntity(ulong entityId, long spawnedAt)
@@ -156,6 +219,21 @@ public sealed class SimulationBotRemoteCadence
 
         public long Updates { get; set; }
 
+        public bool HasPosition { get; set; }
+
+        public float X { get; set; }
+
+        public float Z { get; set; }
+
+        // Whether the newest record moved from the one before it.
+        public bool LastMoved { get; set; }
+
+        public long LastRecordAt { get; set; }
+
+        public long NearMovingUpdates { get; set; }
+
+        public double NearMovingSeconds { get; set; }
+
         public bool Closed { get; set; }
     }
 
@@ -164,11 +242,20 @@ public sealed class SimulationBotRemoteCadence
         public long Updates { get; set; }
 
         public double VisibleSeconds { get; set; }
+
+        public long NearMovingUpdates { get; set; }
+
+        public double NearMovingSeconds { get; set; }
     }
 }
 
-// One remote player that a bot saw inside the window: the states it received and how long it saw it.
-public sealed record SimulationBotEntityCadence(long Updates, double VisibleSeconds);
+// One remote player that a bot saw inside the window: the states it received and how long it saw
+// it, and the updates it got while the player walked near, with the time they covered.
+public sealed record SimulationBotEntityCadence(
+    long Updates,
+    double VisibleSeconds,
+    long NearMovingUpdates = 0,
+    double NearMovingSeconds = 0);
 
 public sealed record SimulationBotRemoteCadenceSummary(
     int Entities,
@@ -177,8 +264,17 @@ public sealed record SimulationBotRemoteCadenceSummary(
     long UntrackedRecords,
     IReadOnlyList<SimulationBotEntityCadence> PerEntity)
 {
-    // Updates per second over every remote player the bot saw, weighted by how long it saw each.
-    public double? UpdatesPerSecond => VisibleSeconds > 0 ? Updates / VisibleSeconds : null;
+    public long NearMovingUpdates => PerEntity.Sum(entity => entity.NearMovingUpdates);
+
+    public double NearMovingSeconds => PerEntity.Sum(entity => entity.NearMovingSeconds);
+
+    // Updates per second of the remote players while they walked near the bot; null when none
+    // did.
+    public double? UpdatesPerSecond => NearMovingSeconds > 0 ? NearMovingUpdates / NearMovingSeconds : null;
+
+    // Records per second over every remote player the bot saw, weighted by how long it saw each,
+    // standing or walking, near or far.
+    public double? AllEntitiesUpdatesPerSecond => VisibleSeconds > 0 ? Updates / VisibleSeconds : null;
 
     // The measurements of two connections of one bot, such as before and after it left the game
     // and came back.

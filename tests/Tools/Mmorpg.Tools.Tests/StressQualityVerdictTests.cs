@@ -654,7 +654,7 @@ public sealed class StressQualityVerdictTests
             (long)(hz * 40 * 9),
             40 * 9,
             0,
-            Enumerable.Range(0, 9).Select(_ => new SimulationBotEntityCadence((long)(hz * 40), 40)).ToArray());
+            Enumerable.Range(0, 9).Select(_ => new SimulationBotEntityCadence((long)(hz * 40), 40, (long)(hz * 40), 40)).ToArray());
     }
 
     // The worker's Mob numbers fold like the other levels and counters of the steady interval.

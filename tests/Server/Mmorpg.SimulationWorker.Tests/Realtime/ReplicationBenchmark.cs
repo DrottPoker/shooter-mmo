@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
@@ -107,7 +108,7 @@ internal sealed record ReplicationLayout(
         30,
         90)
     {
-        AggregateSnapshotBytesPerSecond = 300_000
+        AggregateSnapshotBytesPerSecond = 150_000
     };
 
     // Replaces the aggregate snapshot budget of the worker's appsettings.json when set.
@@ -239,11 +240,17 @@ internal sealed class ReplicationClock(int tickRateHz) : TimeProvider
 }
 
 // The transport double: a peer that counts what the worker sends to it, by delivery method, and
-// the entity records of the snapshots among it, and discards the packets. It reads a packet in
-// place, so it adds no allocation of its own to the loop that the benchmark measures.
+// the entity records of the snapshots among it, keeps the entity ids of the records of the
+// current snapshot, and discards the packets. It reads a packet in place into lists that keep
+// their capacity, so it adds no allocation of its own to the loop that the benchmark measures.
 internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
 {
+    private const int RecordIdOffset = 0;
+
     public int Id { get; } = id;
+
+    // The entity ids of the remote records since ClearReceived.
+    public List<ulong> ReceivedEntityIds { get; } = new(1024);
 
     public long ReliablePackets { get; private set; }
 
@@ -292,7 +299,14 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
                 throw new InvalidOperationException("A remote snapshot holds a partial entity record.");
             }
 
-            RemoteRecords += payload / RealtimeProtocol.SimulationSnapshotEntitySize;
+            var records = payload / RealtimeProtocol.SimulationSnapshotEntitySize;
+            RemoteRecords += records;
+            for (var index = 0; index < records; index++)
+            {
+                var record = RealtimeProtocol.SimulationSnapshotPacketHeaderSize
+                    + (index * RealtimeProtocol.SimulationSnapshotEntitySize);
+                ReceivedEntityIds.Add(BinaryPrimitives.ReadUInt32LittleEndian(data[(record + RecordIdOffset)..]));
+            }
         }
     }
 
@@ -309,6 +323,7 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
         UnreliableBytes = 0;
         OwnerSnapshots = 0;
         RemoteRecords = 0;
+        ReceivedEntityIds.Clear();
     }
 }
 
@@ -345,6 +360,8 @@ internal sealed record ReplicationDeterministicNumbers(
     long SpawnPackets,
     long DespawnPackets,
     long DroppedSnapshotPackets,
+    long NearMovingSightings,
+    long NearMovingRecords,
     double SnapshotBytesPerPlayerPerSecond,
     double AllBytesPerPlayerPerSecond,
     double PacketsPerSecond,
@@ -353,7 +370,12 @@ internal sealed record ReplicationDeterministicNumbers(
     double DeferredShare,
     double UpdateRateAverageHz,
     double UpdateRateP5Hz,
-    double UpdateRateMinimumHz);
+    double UpdateRateMinimumHz,
+    double AllEntitiesUpdateRateAverageHz,
+    double AllEntitiesUpdateRateP5Hz,
+    double AllEntitiesUpdateRateMinimumHz,
+    double NearestMovingUpdateRateHz,
+    double FarMovingUpdateRateHz);
 
 // The numbers that depend on the machine and what else runs on it; informative only.
 internal sealed record ReplicationTimingNumbers(
@@ -392,6 +414,9 @@ internal sealed class ReplicationBenchmark : IDisposable
 {
     private const string MotionPhaseName = "benchmark motion";
 
+    // The nearest walking entities, those a player watches most closely.
+    private const float NearestRadius = 16f;
+
     private readonly ReplicationLayout layout;
     private readonly SimulationWorkerConfig config;
     private readonly ReplicationClock timeProvider;
@@ -408,7 +433,12 @@ internal sealed class ReplicationBenchmark : IDisposable
     private readonly MovingEntities players;
     private readonly MovingEntities mobs;
     private readonly List<CountingPeerConnection> recipients = [];
+    private readonly List<ulong> recipientEntityIds = [];
     private readonly HashSet<ulong> entitiesWithState = [];
+    private readonly HashSet<ulong> movingEntityIds = [];
+    private readonly Dictionary<ulong, (float X, float Z)> positions = [];
+    private readonly HashSet<ulong> received = [];
+    private readonly MovingMobs mobSnapshots;
     private readonly int snapshotIntervalTicks;
     private TimeSpan nextTick = TimeSpan.Zero;
 
@@ -448,7 +478,7 @@ internal sealed class ReplicationBenchmark : IDisposable
             ReplicationLayout.MobWalkSpeed / config.MovementSimulation.TickRateHz,
             mobStore.ListActors().Select(actor => (actor.PositionX, actor.PositionZ)).ToArray(),
             random);
-        var mobSnapshots = new MovingMobs(mobs);
+        mobSnapshots = new MovingMobs(mobs, mobStore);
 
         var collisionWorld = CollisionTestWorldFactory.Create();
         var sessionStore = new ActiveSimulationSessionStore();
@@ -476,6 +506,7 @@ internal sealed class ReplicationBenchmark : IDisposable
                     Session = session
                 });
                 recipients.Add(connection);
+                recipientEntityIds.Add(entity.NetworkEntityId);
                 playerIds.Add(entity.NetworkEntityId);
                 starts.Add(start);
             }
@@ -489,7 +520,9 @@ internal sealed class ReplicationBenchmark : IDisposable
             [.. starts],
             random);
         entitiesWithState.UnionWith(playerIds);
-        entitiesWithState.UnionWith(mobs.MovingIds);
+        entitiesWithState.UnionWith(mobStore.ListActors().Select(actor => actor.NetworkEntityId));
+        movingEntityIds.UnionWith(players.MovingIds);
+        movingEntityIds.UnionWith(mobs.MovingIds);
 
         // The failure isolation of the composition; nothing fails in a benchmark run.
         var client = new GameServiceClient(httpClient);
@@ -559,6 +592,13 @@ internal sealed class ReplicationBenchmark : IDisposable
 
         var remoteRecords = new long[recipients.Count];
         var visibleWithState = new long[recipients.Count];
+        var nearMovingSightings = new long[recipients.Count];
+        var nearMovingRecords = new long[recipients.Count];
+        var nearRadiusSquared = config.InterestManagement.NearRadius * config.InterestManagement.NearRadius;
+        var farRadiusSquared = config.InterestManagement.NearExitRadius * config.InterestManagement.NearExitRadius;
+        var nearestRadiusSquared = NearestRadius * NearestRadius;
+        var nearest = new MovingSightings();
+        var far = new MovingSightings();
         using var timings = new TimingRecorder(layout.MeasuredTicks);
         var generation0 = GC.CollectionCount(0);
         var generation1 = GC.CollectionCount(1);
@@ -578,14 +618,50 @@ internal sealed class ReplicationBenchmark : IDisposable
             }
 
             snapshots++;
+            CapturePositions();
             for (var index = 0; index < recipients.Count; index++)
             {
-                var visible = presence.GetVisibleOrdered(recipients[index].Id);
+                var recipient = recipients[index];
+                var own = recipientEntityIds[index];
+                var ownPosition = positions[own];
+                received.Clear();
+                received.UnionWith(recipient.ReceivedEntityIds);
+                recipient.ReceivedEntityIds.Clear();
+                var visible = presence.GetVisibleOrdered(recipient.Id);
                 for (var entity = 0; entity < visible.Count; entity++)
                 {
-                    if (entitiesWithState.Contains(visible[entity]))
+                    var entityId = visible[entity];
+                    if (entityId == own || !entitiesWithState.Contains(entityId))
                     {
-                        visibleWithState[index]++;
+                        continue;
+                    }
+
+                    visibleWithState[index]++;
+                    if (!movingEntityIds.Contains(entityId))
+                    {
+                        continue;
+                    }
+
+                    // A walking entity near the recipient, by the worker's near radius, among
+                    // them the nearest, and one that is always far, beyond the near exit radius.
+                    var position = positions[entityId];
+                    var deltaX = position.X - ownPosition.X;
+                    var deltaZ = position.Z - ownPosition.Z;
+                    var distanceSquared = (deltaX * deltaX) + (deltaZ * deltaZ);
+                    var got = received.Contains(entityId) ? 1 : 0;
+                    if (distanceSquared <= nearRadiusSquared)
+                    {
+                        nearMovingSightings[index]++;
+                        nearMovingRecords[index] += got;
+                    }
+
+                    if (distanceSquared <= nearestRadiusSquared)
+                    {
+                        nearest.Add(got);
+                    }
+                    else if (distanceSquared > farRadiusSquared)
+                    {
+                        far.Add(got);
                     }
                 }
             }
@@ -614,7 +690,7 @@ internal sealed class ReplicationBenchmark : IDisposable
             layout.WarmUpTicks,
             layout.MeasuredTicks,
             seconds,
-            Deterministic(snapshots, seconds, networkBefore, network, performance, remoteRecords, visibleWithState),
+            Deterministic(snapshots, seconds, networkBefore, network, performance, remoteRecords, visibleWithState, nearMovingSightings, nearMovingRecords, nearest, far),
             new ReplicationTimingNumbers(
                 wall.Elapsed.TotalSeconds,
                 timings.Tick.Average,
@@ -648,7 +724,11 @@ internal sealed class ReplicationBenchmark : IDisposable
         RealtimeNetworkMetricsSnapshot after,
         RealtimePerformanceMetricsSnapshot performance,
         long[] remoteRecords,
-        long[] visibleWithState)
+        long[] visibleWithState,
+        long[] nearMovingSightings,
+        long[] nearMovingRecords,
+        MovingSightings nearest,
+        MovingSightings far)
     {
         var snapshotBytes = recipients.Sum(recipient => recipient.UnreliableBytes);
         var reliableBytes = recipients.Sum(recipient => recipient.ReliableBytes);
@@ -664,6 +744,8 @@ internal sealed class ReplicationBenchmark : IDisposable
             throw new InvalidOperationException("The counting peers and the worker's network metrics disagree.");
         }
 
+        // The records per entity with a state that each recipient saw, as the update rate was
+        // measured before records went out only when due.
         var rates = new double[recipients.Count];
         for (var index = 0; index < rates.Length; index++)
         {
@@ -673,6 +755,14 @@ internal sealed class ReplicationBenchmark : IDisposable
         }
 
         Array.Sort(rates);
+
+        // The records per snapshot in which a walking entity was near, over the recipients that
+        // ever had one near.
+        var nearRates = Enumerable.Range(0, recipients.Count)
+            .Where(index => nearMovingSightings[index] > 0)
+            .Select(index => config.SnapshotRateHz * (nearMovingRecords[index] / (double)nearMovingSightings[index]))
+            .Order()
+            .ToArray();
         var playerCount = Math.Max(1, recipients.Count);
         var deferred = performance.SnapshotEntityUpdatesDeferred;
         return new ReplicationDeterministicNumbers(
@@ -691,15 +781,64 @@ internal sealed class ReplicationBenchmark : IDisposable
             after.SpawnPackets - before.SpawnPackets,
             after.DespawnPackets - before.DespawnPackets,
             after.DroppedSnapshotPackets - before.DroppedSnapshotPackets,
+            nearMovingSightings.Sum(),
+            nearMovingRecords.Sum(),
             snapshotBytes / seconds / playerCount,
             (snapshotBytes + reliableBytes) / seconds / playerCount,
             (unreliablePackets + reliablePackets) / seconds,
             records / (double)playerCount / Math.Max(1, snapshots),
             records == 0 ? 0 : snapshotBytes / (double)records,
             deferred + remote == 0 ? 0 : deferred / (double)(deferred + remote),
+            nearRates.Length == 0 ? 0 : nearRates.Average(),
+            P5(nearRates),
+            nearRates.Length == 0 ? 0 : nearRates[0],
             rates.Length == 0 ? 0 : rates.Average(),
-            rates.Length == 0 ? 0 : rates[Math.Max(0, (int)Math.Ceiling(rates.Length * 0.05) - 1)],
-            rates.Length == 0 ? 0 : rates[0]);
+            P5(rates),
+            rates.Length == 0 ? 0 : rates[0],
+            nearest.RateHz(config.SnapshotRateHz),
+            far.RateHz(config.SnapshotRateHz));
+    }
+
+    // The snapshots in which a walking entity lay in one distance band of a recipient, and how
+    // many of them carried its record.
+    private sealed class MovingSightings
+    {
+        private long sightings;
+        private long records;
+
+        public void Add(int got)
+        {
+            sightings++;
+            records += got;
+        }
+
+        public double RateHz(int snapshotRateHz)
+        {
+            return sightings == 0 ? 0 : snapshotRateHz * (records / (double)sightings);
+        }
+    }
+
+    private static double P5(double[] sorted)
+    {
+        return sorted.Length == 0 ? 0 : sorted[Math.Max(0, (int)Math.Ceiling(sorted.Length * 0.05) - 1)];
+    }
+
+    // Where every player and Mob stands after the tick.
+    private void CapturePositions()
+    {
+        positions.Clear();
+        foreach (var recipientEntityId in players.AllIds)
+        {
+            if (entities.TryGetPlayer(recipientEntityId, out var player))
+            {
+                positions[recipientEntityId] = (player!.Movement.State.PositionX, player.Movement.State.PositionZ);
+            }
+        }
+
+        foreach (var actor in mobStore.ListActors())
+        {
+            positions[actor.NetworkEntityId] = (actor.PositionX, actor.PositionZ);
+        }
     }
 
     // Advances the clock and runs one tick; true when the tick broadcast a snapshot.
@@ -875,11 +1014,14 @@ internal sealed class ReplicationBenchmark : IDisposable
             }
 
             MovingIds = [.. Movers.Select(mover => mover.EntityId)];
+            AllIds = entityIds;
         }
 
         public Mover[] Movers { get; }
 
         public IReadOnlyList<ulong> MovingIds { get; }
+
+        public IReadOnlyList<ulong> AllIds { get; }
 
         public void Step()
         {
@@ -915,18 +1057,41 @@ internal sealed class ReplicationBenchmark : IDisposable
         }
     }
 
-    // The Mobs of the seeded motion as the snapshot broadcast takes them: every walking Mob moved
-    // since the last snapshot, so each snapshot carries all of them.
-    private sealed class MovingMobs(MovingEntities mobs) : IMobSnapshotSource
+    // The Mobs as the snapshot broadcast takes them: every Mob of the store, a walking one at the
+    // pose of the seeded motion, in entity id order.
+    private sealed class MovingMobs : IMobSnapshotSource
     {
-        public void CopyPendingStatesTo(List<SnapshotEntityState> destination)
+        private readonly WorldActorRuntimeState[] actors;
+        private readonly Dictionary<ulong, int> moverIndexByEntityId = [];
+        private readonly MovingEntities mobs;
+
+        public MovingMobs(MovingEntities mobs, WorldActorStore store)
+        {
+            this.mobs = mobs;
+            actors = [.. store.ListActors().OrderBy(actor => actor.NetworkEntityId)];
+            for (var index = 0; index < mobs.Movers.Length; index++)
+            {
+                moverIndexByEntityId.Add(mobs.Movers[index].EntityId, index);
+            }
+        }
+
+        public void CopyStatesTo(List<SnapshotEntityState> destination)
         {
             destination.Clear();
-            foreach (var mover in mobs.Movers)
+            foreach (var actor in actors)
             {
+                if (moverIndexByEntityId.TryGetValue(actor.NetworkEntityId, out var index))
+                {
+                    var mover = mobs.Movers[index];
+                    destination.Add(new SnapshotEntityState(
+                        mover.EntityId,
+                        new PlayerMovementState(mover.X, 0f, mover.Z, mover.VelocityX, 0f, mover.VelocityZ, mover.YawDegrees, true)));
+                    continue;
+                }
+
                 destination.Add(new SnapshotEntityState(
-                    mover.EntityId,
-                    new PlayerMovementState(mover.X, 0f, mover.Z, mover.VelocityX, 0f, mover.VelocityZ, mover.YawDegrees, true)));
+                    actor.NetworkEntityId,
+                    new PlayerMovementState(actor.PositionX, actor.PositionY, actor.PositionZ, 0f, 0f, 0f, actor.YawDegrees, true)));
             }
         }
     }

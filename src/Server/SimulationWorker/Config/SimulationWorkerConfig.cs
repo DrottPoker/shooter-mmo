@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
+using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Networking;
 using Mmorpg.Server.Common.Worlds;
@@ -473,10 +474,41 @@ public sealed record SimulationWorkerConfig(
                 ?? InterestManagementConfig.Default.RefreshIntervalSnapshots.ToString(CultureInfo.InvariantCulture),
             "SimulationWorker:InterestManagement:RefreshIntervalSnapshots",
             errors);
+        var interestNearRadius = FiniteFloat(
+            interestSection["NearRadius"]
+                ?? InterestManagementConfig.Default.NearRadius.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:InterestManagement:NearRadius",
+            errors);
+        var interestNearExitRadius = FiniteFloat(
+            interestSection["NearExitRadius"]
+                ?? InterestManagementConfig.Default.NearExitRadius.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:InterestManagement:NearExitRadius",
+            errors);
         var snapshotReplicationSection = section.GetSection("SnapshotReplication");
+        var replicationDefaults = SnapshotReplicationConfig.Default;
         var overloadTargetUtilizationBasisPoints = PositiveInt(
             snapshotReplicationSection["OverloadTargetUtilizationBasisPoints"] ?? "9500",
             "SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints",
+            errors);
+        var playerBytesPerSecond = PositiveInt(
+            snapshotReplicationSection["PlayerBytesPerSecond"]
+                ?? replicationDefaults.PlayerBytesPerSecond.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:SnapshotReplication:PlayerBytesPerSecond",
+            errors);
+        var farIntervalSnapshots = PositiveInt(
+            snapshotReplicationSection["FarIntervalSnapshots"]
+                ?? replicationDefaults.FarIntervalSnapshots.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:SnapshotReplication:FarIntervalSnapshots",
+            errors);
+        var stopRepeats = PositiveInt(
+            snapshotReplicationSection["StopRepeats"]
+                ?? replicationDefaults.StopRepeats.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:SnapshotReplication:StopRepeats",
+            errors);
+        var refreshIntervalSnapshots = PositiveInt(
+            snapshotReplicationSection["RefreshIntervalSnapshots"]
+                ?? replicationDefaults.RefreshIntervalSnapshots.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:SnapshotReplication:RefreshIntervalSnapshots",
             errors);
         var collisionStreamingSection = section.GetSection("CollisionStreaming");
         var collisionLoadRadiusChunks = PositiveInt(
@@ -628,10 +660,34 @@ public sealed record SimulationWorkerConfig(
                 "SimulationWorker:InterestManagement:RefreshIntervalSnapshots must not exceed one second of snapshots.");
         }
 
+        if (interestNearRadius <= 0f
+            || interestNearExitRadius < interestNearRadius
+            || interestNearExitRadius > interestEnterRadius)
+        {
+            errors.Add(
+                "SimulationWorker:InterestManagement:NearRadius must be positive, and NearExitRadius at least NearRadius and at most EnterRadius.");
+        }
+
         if (overloadTargetUtilizationBasisPoints > 10_000)
         {
             errors.Add(
                 "SimulationWorker:SnapshotReplication:OverloadTargetUtilizationBasisPoints must not exceed 10000.");
+        }
+
+        if (playerBytesPerSecond < RealtimeProtocol.OwnerSimulationSnapshotPacketSize * snapshotRateHz * 2
+            || playerBytesPerSecond > snapshotBytesPerSecond)
+        {
+            errors.Add(
+                "SimulationWorker:SnapshotReplication:PlayerBytesPerSecond must hold at least twice the owner snapshots of one second and at most UdpQuotas:SnapshotBytesPerSecond.");
+        }
+
+        if (farIntervalSnapshots > snapshotRateHz
+            || stopRepeats > snapshotRateHz
+            || refreshIntervalSnapshots > 10 * snapshotRateHz
+            || refreshIntervalSnapshots < farIntervalSnapshots)
+        {
+            errors.Add(
+                "SimulationWorker:SnapshotReplication:FarIntervalSnapshots and StopRepeats must not exceed one second of snapshots, and RefreshIntervalSnapshots must lie between FarIntervalSnapshots and ten seconds of snapshots.");
         }
 
         if (collisionUnloadRadiusChunks < collisionLoadRadiusChunks)
@@ -782,9 +838,15 @@ public sealed record SimulationWorkerConfig(
                 interestCellSize,
                 interestEnterRadius,
                 interestExitRadius,
-                interestRefreshIntervalSnapshots),
+                interestRefreshIntervalSnapshots,
+                interestNearRadius,
+                interestNearExitRadius),
             SnapshotReplication = new SnapshotReplicationConfig(
-                overloadTargetUtilizationBasisPoints),
+                overloadTargetUtilizationBasisPoints,
+                playerBytesPerSecond,
+                farIntervalSnapshots,
+                stopRepeats,
+                refreshIntervalSnapshots),
             CollisionStreaming = new CollisionStreamingConfig(
                 collisionLoadRadiusChunks,
                 collisionUnloadRadiusChunks),
@@ -946,17 +1008,29 @@ public sealed record AdmissionConfig(
 
 // RefreshIntervalSnapshots spreads the visibility work: each connection's visible set is
 // recomputed every that many snapshots, the connections in turn. The exit radius beyond the
-// enter radius keeps an entity visible while its viewer waits for the next refresh.
+// enter radius keeps an entity visible while its viewer waits for the next refresh. A visible
+// entity within NearRadius becomes near and stays near until it is beyond NearExitRadius;
+// the refresh decides it.
 public sealed record InterestManagementConfig(
     float CellSize,
     float EnterRadius,
     float ExitRadius,
-    int RefreshIntervalSnapshots = 1)
+    int RefreshIntervalSnapshots = 1,
+    float NearRadius = 48f,
+    float NearExitRadius = 56f)
 {
     public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f, 3);
 }
 
-public sealed record SnapshotReplicationConfig(int OverloadTargetUtilizationBasisPoints)
+// How remote records are scheduled: a recipient's byte budget per second, the snapshots
+// between two records of a far entity that changed, the repeats of a record that stopped
+// changing, and the snapshots between two records of an entity that stands.
+public sealed record SnapshotReplicationConfig(
+    int OverloadTargetUtilizationBasisPoints,
+    int PlayerBytesPerSecond = 32_768,
+    int FarIntervalSnapshots = 3,
+    int StopRepeats = 3,
+    int RefreshIntervalSnapshots = 15)
 {
     public static SnapshotReplicationConfig Default { get; } = new(9_500);
 }

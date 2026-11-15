@@ -347,7 +347,7 @@ public sealed class StressQualityBoundary
                 : Measurement.Missing("no input was acknowledged."),
             "remote_update_rate_p5_hz" => report.Bots.RemoteCadence is { P5Hz: { } p5 } cadence
                 ? Measurement.Of(p5, Invariant($"p5 over {cadence.Bots} bots, average {cadence.AverageHz:0.0} Hz, minimum {cadence.MinimumHz:0.0} Hz"))
-                : Measurement.Missing("no bot saw a remote player during the steady interval."),
+                : Measurement.Missing("no bot saw a remote player walk near it during the steady interval."),
             "gameplay_operation_p95_ms" => MeasureGameplayP95(report),
             "bot_failures" => MeasureBotFailures(report),
             "gameplay_unexpected_failures" => MeasureGameplayFailures(report),

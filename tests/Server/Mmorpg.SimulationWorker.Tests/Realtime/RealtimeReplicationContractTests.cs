@@ -18,9 +18,11 @@ public sealed class RealtimeReplicationContractTests
         var entityId = client.JoinAccepted!.ControlledEntityId;
 
         await harness.PollUntilAsync(
-            () => client.Has(RealtimeMessageType.OwnerSimulationSnapshot)
-                && client.Has(RealtimeMessageType.SimulationSnapshot),
+            () => client.Has(RealtimeMessageType.OwnerSimulationSnapshot),
             "the first snapshots");
+
+        // Its own entity travels only in the owner snapshot, so a player alone gets no remote one.
+        Assert.False(client.Has(RealtimeMessageType.SimulationSnapshot));
 
         var packets = client.Packets;
         Assert.Equal(RealtimeMessageType.JoinAccepted, packets[0].Type);

@@ -75,10 +75,13 @@ public sealed record StressBotAggregate(
     IReadOnlyDictionary<string, int> FailureCodes,
     StressRemoteCadenceSummary? RemoteCadence = null);
 
-// How often the bots received the state of the remote players they saw during the steady
-// interval. Each bot's rate is its received states per second over every remote player it saw,
-// weighted by how long it saw each; the average, p5, and minimum are over bots. PairP5Hz is the
-// fifth percentile over every bot and remote player pair.
+// How often the bots received the state of the remote players that walked near them during the
+// steady interval. Each bot's rate is its updates per second of the remote players while they
+// walked within the near radius, over the time between those updates; the average, p5, and
+// minimum are over the bots that saw one walk near. PairP5Hz is the fifth percentile over every
+// bot and remote player pair that walked near. The all-entities numbers are the received states
+// per second over every remote player a bot saw, standing or walking, near or far, weighted by
+// how long it saw each, which the worker no longer sends at the snapshot rate.
 public sealed record StressRemoteCadenceSummary(
     int Bots,
     int Pairs,
@@ -86,15 +89,17 @@ public sealed record StressRemoteCadenceSummary(
     double P5Hz,
     double MinimumHz,
     double PairP5Hz,
-    long UntrackedRecords)
+    long UntrackedRecords,
+    double AllEntitiesAverageHz = 0,
+    double AllEntitiesP5Hz = 0)
 {
     public static StressRemoteCadenceSummary? Create(
         IEnumerable<Mmorpg.Tools.SimulationBotClient.SimulationBotRemoteCadenceSummary?> bots)
     {
-        var measured = bots
+        var all = bots
             .OfType<Mmorpg.Tools.SimulationBotClient.SimulationBotRemoteCadenceSummary>()
-            .Where(bot => bot.UpdatesPerSecond is not null)
             .ToArray();
+        var measured = all.Where(bot => bot.UpdatesPerSecond is not null).ToArray();
         if (measured.Length == 0)
         {
             return null;
@@ -103,8 +108,13 @@ public sealed record StressRemoteCadenceSummary(
         var rates = measured.Select(bot => bot.UpdatesPerSecond!.Value).Order().ToArray();
         var pairs = measured
             .SelectMany(bot => bot.PerEntity)
-            .Where(pair => pair.VisibleSeconds > 0)
-            .Select(pair => pair.Updates / pair.VisibleSeconds)
+            .Where(pair => pair.NearMovingSeconds > 0)
+            .Select(pair => pair.NearMovingUpdates / pair.NearMovingSeconds)
+            .Order()
+            .ToArray();
+        var allRates = all
+            .Where(bot => bot.AllEntitiesUpdatesPerSecond is not null)
+            .Select(bot => bot.AllEntitiesUpdatesPerSecond!.Value)
             .Order()
             .ToArray();
         return new StressRemoteCadenceSummary(
@@ -114,7 +124,9 @@ public sealed record StressRemoteCadenceSummary(
             Percentile(rates, 0.05),
             rates[0],
             pairs.Length == 0 ? 0 : Percentile(pairs, 0.05),
-            measured.Sum(bot => bot.UntrackedRecords));
+            all.Sum(bot => bot.UntrackedRecords),
+            allRates.Length == 0 ? 0 : allRates.Average(),
+            allRates.Length == 0 ? 0 : Percentile(allRates, 0.05));
     }
 
     private static double Percentile(IReadOnlyList<double> sorted, double percentile)
