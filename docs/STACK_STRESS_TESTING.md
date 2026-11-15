@@ -1796,36 +1796,44 @@ numbers from the test's output.
 
 ### Baseline
 
-`tools/load/baselines/replication.json` holds the baseline, recorded on the
-machine of [Measured Tiers](#measured-tiers) while other programs used about
-30 to 90 percent of all its cores, so its timings are high and only
-informative:
+`tools/load/baselines/replication.json` holds the baseline, recorded on
+2026-11-15 with changed-only replication, on the machine of
+[Measured Tiers](#measured-tiers) while other programs used about 14 percent of
+its cores, so its timings are informative only:
 
-| Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Bytes per record | Deferred | Update rate p5 | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick | Gen0 / gen1 per s |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `spread-500` | 72.5 | 72.9 | 47,146 | 117.9 | 41.95 | 45.3 % | 5.4 Hz | 4.5 / 13.4 ms | 12.8 / 34.5 ms | 2.2 MiB | 4.1 / 2.3 |
-| `crowd-200` | 123.5 | 123.5 | 30,000 | 201.0 | 41.96 | 0 % | 15.0 Hz | 0.5 / 1.0 ms | 0.8 / 1.6 ms | 36 KiB | 0.1 / 0 |
-| `crowd-500` | 73.7 | 73.7 | 45,000 | 120.0 | 41.94 | 76.2 % | 3.6 Hz | 2.2 / 4.8 ms | 3.8 / 8.2 ms | 79 KiB | 0.1 / 0 |
+| Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Deferred | Near walkers avg / p5 | Walkers within 16 m / beyond 56 m | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 2.7 / 4.8 ms | 7.1 / 12.9 ms | 77 KiB |
+| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.5 / 1.2 ms | 1.8 / 4.6 ms | 21 KiB |
+| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 3.5 / 6.6 ms | 12.6 / 23.7 ms | 60 KiB |
 
-Against the load runs: `spread-500` sends 118 records per player and snapshot
-of 41.95 bytes each, where `playing-500` sent 115 of 41.96 bytes, and 72.5 KiB
-of snapshots per player and second against 70.8 KiB, and it allocates 2.2 MiB
-per tick, 65 MiB per second, with 4.1 and 2.3 collections of generation 0 and 1
-per second, against 78 MiB and 4.9 and 2.8. It defers 45 percent of the
-updates against 36, and its players who see the least get 5.4 updates per
-second against 6.5, because its players see more of each other: 214 entities
-with a state per player and snapshot against 180. The likely reason is the
-layout: the bots of `playing-500` walk routes over reachable ground with
-pauses, die and come back at the World spawn, and leave their grounds for Mobs,
-nodes, and the vendor, which rectangles do not follow. All its bytes per player
-are 72.9 KiB/s against 77.2, and its packets per second 47,000 against 94,500:
-beside its 44,000 snapshot packets per second, `playing-500` sent about 50,000
-other packets of 65 bytes on average, of which spawns and despawns were 3,200,
-while the benchmark sends only snapshots, spawns, and despawns, 2,500 of these
-per second.
-`crowd-200` sends 123.5 KiB per player and second, as `worker-only-200` measured
-126, and `crowd-500` gives 3.6 updates per second, as `worker-only-500`
-measured 3.5.
+The same layouts through the three states of the replication, deterministic
+numbers only:
+
+| Layout | | Every record, 41 bytes | Every record, 14 bytes | Due records only |
+| --- | --- | ---: | ---: | ---: |
+| `spread-500` | Snapshot KiB/s per player | 72.5 | 45.7 | 15.7 |
+| | Packets per second | 47,146 | 36,452 | 20,707 |
+| | Deferred updates | 45.3 % | 0 % | 0 % |
+| `crowd-200` | Snapshot KiB/s per player | 123.5 | 42.7 | 26.9 |
+| `crowd-500` | Snapshot KiB/s per player | 73.7 | 73.8 | 30.3 |
+| | Packets per second | 45,000 | 45,000 | 22,500 |
+
+`spread-500` and `crowd-200` stay inside a player's budget of 32 KiB per
+second without deferring anything: a walker within 48 m comes in every
+snapshot, one beyond 56 m five to six times a second, and whoever stands once
+a second. `crowd-500` is the overload case: every player sees all 499 others,
+most of them walking within 48 m, so the budget fills in every snapshot and
+65 percent of the due records wait. The order of the budget decides who waits:
+a walker within 16 m still comes 14 times a second, the near walkers 10 times
+on average, and one beyond 56 m about once a second, where the 14 byte record
+without the order gave everybody 10.5.
+
+The broadcast takes about three times the time it took when every record went
+out, because the scheduler looks up what each recipient last got of every
+entity it sees. The load runs before the compact record sent 115 records of
+41.96 bytes per player and snapshot in `playing-500`, 70.8 KiB of snapshots
+per player and second.
 
 ## Load Runs Under A Network Profile
 
