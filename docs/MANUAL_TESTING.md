@@ -1662,7 +1662,7 @@ The worker must log `Development admin tools are enabled`.
    a spot` and then Escape. Expected result: `Teleport cancelled.`
    Teleport across the World, to a place more than 100 m from you and every
    other player. Expected result: you appear there standing on the ground after
-   a moment, usually within a tenth of a second, the footer says `done.` only
+   a moment, within a few tenths of a second, the footer says `done.` only
    then, and you do not fall through the terrain; the worker logs no
    `collision streaming failed`.
 4. On the `Combat` tab turn on `Invulnerable`, teleport to the wolf woods around
