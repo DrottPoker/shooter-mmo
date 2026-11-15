@@ -3,6 +3,7 @@ using Dapper;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Transactions;
@@ -40,9 +41,10 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
             : JsonSerializer.Deserialize<ItemTransactionResult>(payload, ItemOperationJson.Options);
     }
 
+    // Claims the operation in the round trip of the statements that the batch still holds, which
+    // never decide whether the claim may run.
     public async Task<ItemTransactionResult?> ClaimAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+        PostgresBatch batch,
         Guid operationId,
         ItemTransactionActor actor,
         Guid? actorCharacterId,
@@ -51,7 +53,7 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
         string requestPayload,
         CancellationToken cancellationToken)
     {
-        var claimed = await connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+        var claim = batch.QuerySingleOrDefault<int?>(
             $"""
             insert into item_operations (
                 operation_id,
@@ -78,14 +80,15 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
                 OperationKind = operationKind,
                 RequestHash = requestHash,
                 RequestPayload = requestPayload
-            },
-            transaction,
-            cancellationToken: cancellationToken));
-        if (claimed is not null)
+            });
+        await batch.ExecuteAsync(cancellationToken);
+        if (claim.Value is not null)
         {
             return null;
         }
 
+        var connection = batch.Scope.Connection;
+        var transaction = batch.Scope.Transaction;
         var existing = await connection.QuerySingleOrDefaultAsync<OperationRow>(new CommandDefinition(
             """
             select
@@ -138,15 +141,16 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
                 $"Stored result for item operation '{operationId}' is invalid.");
     }
 
+    // Completes the operation in the round trip of the statements that the batch still holds,
+    // such as the finalizer's audit rows or the rollback to the mutation savepoint.
     public Task CompleteAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+        PostgresBatch batch,
         ItemTransactionResult result,
         string status,
         CancellationToken cancellationToken)
     {
         var resultPayload = JsonSerializer.Serialize(result, ItemOperationJson.Options);
-        return connection.ExecuteAsync(new CommandDefinition(
+        batch.Execute(
             """
             update item_operations
             set status = @Status,
@@ -160,9 +164,8 @@ internal sealed class ItemOperationLedger(NpgsqlDataSource dataSource)
                 result.OperationId,
                 Status = status,
                 ResultPayload = resultPayload
-            },
-            transaction,
-            cancellationToken: cancellationToken));
+            });
+        return batch.ExecuteAsync(cancellationToken);
     }
 
     private sealed class OperationRow

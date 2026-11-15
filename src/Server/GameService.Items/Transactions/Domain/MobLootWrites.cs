@@ -1,5 +1,5 @@
-using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.Server.Common.Identity;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
@@ -24,7 +24,8 @@ internal static class MobLootWrites
         CancellationToken cancellationToken)
     {
         var itemInstanceId = ItemInstanceId(grant.GrantId);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var create = new PostgresBatch(context.Scope);
+        create.Execute(
             """
             insert into item_instances (
                 id,
@@ -46,10 +47,8 @@ internal static class MobLootWrites
                 Quantity = quantity,
                 ContainerId = containerId,
                 SlotIndex = slotIndex
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        await JournalAsync(context, grant, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
+            });
+        await JournalAsync(context, create, grant, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
         context.Journal.TouchContainer(containerId);
     }
 
@@ -64,8 +63,10 @@ internal static class MobLootWrites
         CancellationToken cancellationToken)
     {
         var itemInstanceId = ItemInstanceId(grant.GrantId);
+        var create = new PostgresBatch(context.Scope);
         await NewItemInstances.CreateAsync(
             context,
+            create,
             itemInstanceId,
             definition,
             quantity,
@@ -74,7 +75,7 @@ internal static class MobLootWrites
             ItemPolicySourceKinds.QuestGrant,
             questId,
             cancellationToken);
-        await JournalAsync(context, grant, itemInstanceId, "live_mob_quest_drop_granted", null, cancellationToken);
+        await JournalAsync(context, create, grant, itemInstanceId, "live_mob_quest_drop_granted", null, cancellationToken);
         context.Journal.TouchContainer(containerId);
     }
 
@@ -87,7 +88,8 @@ internal static class MobLootWrites
         CancellationToken cancellationToken)
     {
         var itemInstanceId = ItemInstanceId(grant.GrantId);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var create = new PostgresBatch(context.Scope);
+        create.Execute(
             """
             insert into item_instances (
                 id,
@@ -109,10 +111,8 @@ internal static class MobLootWrites
                 Quantity = quantity,
                 grant.CharacterId,
                 EquipmentSlotId = equipmentSlotId
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        await JournalAsync(context, grant, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
+            });
+        await JournalAsync(context, create, grant, itemInstanceId, "live_mob_loot_granted", null, cancellationToken);
     }
 
     public static async Task TopUpAsync(
@@ -122,10 +122,9 @@ internal static class MobLootWrites
         int quantity,
         CancellationToken cancellationToken)
     {
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            targetItemInstanceId,
-            cancellationToken);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var topUp = new PostgresBatch(context.Scope);
+        var beforeState = context.Journal.CaptureItemStateJson(topUp, targetItemInstanceId);
+        topUp.Execute(
             """
             update item_instances
             set quantity = quantity + @Quantity,
@@ -133,11 +132,10 @@ internal static class MobLootWrites
                 updated_at = now()
             where id = @ItemInstanceId;
             """,
-            new { Quantity = quantity, ItemInstanceId = targetItemInstanceId },
-            context.Transaction,
-            cancellationToken: cancellationToken));
+            new { Quantity = quantity, ItemInstanceId = targetItemInstanceId });
         await JournalAsync(
             context,
+            topUp,
             grant,
             targetItemInstanceId,
             "live_mob_loot_merged",
@@ -145,22 +143,23 @@ internal static class MobLootWrites
             cancellationToken);
     }
 
+    // The write in the batch, the item's state after it, and the audit rows, in one round trip.
     private static async Task JournalAsync(
         ItemTransactionContext context,
+        PostgresBatch write,
         MobLootGrantSource grant,
         Guid itemInstanceId,
         string auditKind,
-        string? beforeState,
+        PostgresBatchResult<string?>? beforeState,
         CancellationToken cancellationToken)
     {
-        var afterState = await context.Journal.CaptureItemStateJsonAsync(
-            itemInstanceId,
-            cancellationToken);
+        var afterState = context.Journal.CaptureItemStateJson(write, itemInstanceId);
+        await write.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             auditKind,
             itemInstanceId,
-            beforeState,
-            afterState);
+            beforeState?.Value,
+            afterState.Value);
         context.Journal.AddMetadataAudit(
             "live_mob_loot_grant_committed",
             null,

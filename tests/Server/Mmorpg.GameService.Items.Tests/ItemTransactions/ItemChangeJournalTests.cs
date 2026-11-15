@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Items.Contracts;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Testing;
 using Mmorpg.Testing;
 
@@ -60,7 +61,9 @@ public sealed class ItemChangeJournalTests
             new ItemStateReader(session, new ItemActorAuthority(session.Actor)));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new ItemTransactionFinalizer(session, journal).FinalizeAsync(CancellationToken.None));
+            () => new ItemTransactionFinalizer(session, journal).FinalizeAsync(
+                new PostgresBatch(session.Scope),
+                CancellationToken.None));
 
         Assert.Equal("Item operation 'grant' produced no audit changes.", exception.Message);
         await transaction.RollbackAsync();

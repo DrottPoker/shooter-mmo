@@ -1,11 +1,16 @@
 scenario: kernel.retried_system_rejection_released
 trace:
+  -- round trip
   c1 begin ReadCommitted
   c1 sql select set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)
   c1 sql insert into item_operations ( operation_id, actor_account_id, actor_character_id, operation_kind, request_hash, request_payload) values ( $1, (select accounts_sql_account.id from accounts accounts_sql_account where accounts_sql_account.id = cast($2 as uuid)), (select characters_sql_character.id from characters characters_sql_character where characters_sql_character.id = cast($3 as uuid)), $4, $5, cast($6 as jsonb)) on conflict (operation_id) do nothing returning 1
+  -- round trip
   c1 sql savepoint item_mutation
+  -- round trip
   c1 sql select id as "CorpseId", expires_at as "ExpiresAt", closed_at as "ClosedAt", close_reason as "CloseReason", expiry_operation_id as "ExpiryOperationId" from corpses where id = $1 for update
+  -- round trip
   c1 rollback
+round trips: 4
 result:
   operation kind: expire_corpse
   operation id matches: yes

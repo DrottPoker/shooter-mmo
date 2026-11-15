@@ -2,6 +2,7 @@ using System.Data;
 using System.Diagnostics;
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 
 namespace Mmorpg.GameService.Items.Transactions;
@@ -113,19 +114,6 @@ internal sealed class ItemTransactionKernel(
 
         try
         {
-            await connection.ExecuteAsync(new CommandDefinition(
-                """
-                select
-                    set_config('statement_timeout', @StatementTimeout, true),
-                    set_config('lock_timeout', @LockTimeout, true);
-                """,
-                new
-                {
-                    StatementTimeout = $"{operationsOptions.TransactionTimeout.TotalMilliseconds:0}ms",
-                    LockTimeout = $"{operationsOptions.LockTimeout.TotalMilliseconds:0}ms"
-                },
-                transaction,
-                cancellationToken: cancellationToken));
             var session = new ItemTransactionSession(
                 connection,
                 transaction,
@@ -136,17 +124,35 @@ internal sealed class ItemTransactionKernel(
                 session,
                 characterStateLocks,
                 operationsMetrics);
+
+            // The timeouts travel with the first statements that need them: the live authority's
+            // character lock for a worker actor, the operation claim for every other actor.
+            var prelude = new PostgresBatch(session.Scope);
+            prelude.Query<string>(
+                """
+                select
+                    set_config('statement_timeout', @StatementTimeout, true),
+                    set_config('lock_timeout', @LockTimeout, true);
+                """,
+                new
+                {
+                    StatementTimeout = $"{operationsOptions.TransactionTimeout.TotalMilliseconds:0}ms",
+                    LockTimeout = $"{operationsOptions.LockTimeout.TotalMilliseconds:0}ms"
+                });
             try
             {
                 ItemActorAuthority.EnsureValid(session.Actor);
                 await simulationAuthority.ValidateLiveSessionAsync(
                     session,
+                    prelude,
                     actorCharacterId,
                     registration.MayRunAfterAccountSessionEnd,
                     cancellationToken);
             }
             catch (ItemTransactionRejectedException exception)
             {
+                // A check that rejects before any statement ran still follows the timeouts.
+                await prelude.ExecuteAsync(cancellationToken);
                 await lifetime.RollbackAsync(cancellationToken);
                 // A lost response can make the worker retry after its session ended. A
                 // committed result must still replay instead of turning into a failure.
@@ -167,8 +173,7 @@ internal sealed class ItemTransactionKernel(
             try
             {
                 replay = await ledger.ClaimAsync(
-                    connection,
-                    transaction,
+                    prelude,
                     request.OperationId,
                     request.Actor,
                     actorCharacterId,
@@ -197,11 +202,11 @@ internal sealed class ItemTransactionKernel(
             try
             {
                 await registration.Handler.ExecuteAsync(context, request.Command, cancellationToken);
+                var completion = new PostgresBatch(session.Scope);
                 var result = await new ItemTransactionFinalizer(session, context.Journal)
-                    .FinalizeAsync(cancellationToken);
+                    .FinalizeAsync(completion, cancellationToken);
                 await ledger.CompleteAsync(
-                    connection,
-                    transaction,
+                    completion,
                     result,
                     "committed",
                     cancellationToken);
@@ -311,18 +316,16 @@ internal sealed class ItemTransactionKernel(
         string errorMessage,
         CancellationToken cancellationToken)
     {
-        await connection.ExecuteAsync(new CommandDefinition(
-            $"rollback to savepoint {MutationSavepoint};",
-            transaction: lifetime.Transaction,
-            cancellationToken: cancellationToken));
+        // The rollback and the stored rejection share a round trip; nothing decides between them.
+        var rejection = new PostgresBatch(new PostgresTransactionScope(connection, lifetime.Transaction));
+        rejection.Execute($"rollback to savepoint {MutationSavepoint};");
         var result = ItemTransactionOutcomes.CreateRejected(
             operationId,
             operationKind,
             errorCode,
             errorMessage);
         await ledger.CompleteAsync(
-            connection,
-            lifetime.Transaction,
+            rejection,
             result,
             "rejected",
             cancellationToken);

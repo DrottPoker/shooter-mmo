@@ -1,5 +1,5 @@
-using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Items.Transactions.Handlers;
 
@@ -54,11 +54,11 @@ internal sealed class ItemRelocationCommandHandler
             item.IsBag ? item.ItemInstanceId : null,
             false,
             cancellationToken);
-        var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-            item.ItemInstanceId,
-            cancellationToken);
-
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        // Nothing decides between the reads of the audit states and the move, so they share a
+        // round trip; each read sees the statements before it.
+        var move = new PostgresBatch(context.Scope);
+        var beforeState = context.Journal.CaptureItemStateJson(move, item.ItemInstanceId);
+        move.Execute(
             """
             update item_instances
             set container_id = @DestinationContainerId,
@@ -74,14 +74,14 @@ internal sealed class ItemRelocationCommandHandler
                 DestinationContainerId = destination.ContainerId,
                 DestinationSlotIndex = slotIndex,
                 item.ItemInstanceId
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-
-        var afterState = await context.Journal.CaptureItemStateJsonAsync(
+            });
+        var afterState = context.Journal.CaptureItemStateJson(move, item.ItemInstanceId);
+        await move.ExecuteAsync(cancellationToken);
+        context.Journal.AddItemAudit(
+            "item_relocated",
             item.ItemInstanceId,
-            cancellationToken);
-        context.Journal.AddItemAudit("item_relocated", item.ItemInstanceId, beforeState, afterState);
+            beforeState.Value,
+            afterState.Value);
         context.Journal.TouchContainer(item.ContainerId);
         context.Journal.TouchContainer(destination.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);
@@ -183,18 +183,11 @@ internal sealed class ItemRelocationCommandHandler
             cancellationToken,
             firstItem.ItemInstanceId);
 
-        var firstBeforeState = await context.Journal.CaptureItemStateJsonAsync(
-            firstItem.ItemInstanceId,
-            cancellationToken);
-        var secondBeforeState = await context.Journal.CaptureItemStateJsonAsync(
-            secondItem.ItemInstanceId,
-            cancellationToken);
-
-        await context.Connection.ExecuteAsync(new CommandDefinition(
-            "set constraints ux_item_instances_container_slot deferred;",
-            transaction: context.Transaction,
-            cancellationToken: cancellationToken));
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var swap = new PostgresBatch(context.Scope);
+        var firstBeforeState = context.Journal.CaptureItemStateJson(swap, firstItem.ItemInstanceId);
+        var secondBeforeState = context.Journal.CaptureItemStateJson(swap, secondItem.ItemInstanceId);
+        swap.Execute("set constraints ux_item_instances_container_slot deferred;");
+        swap.Execute(
             """
             update item_instances
             set container_id = case
@@ -222,26 +215,20 @@ internal sealed class ItemRelocationCommandHandler
                 FirstContainerSlotIndex = firstItem.ContainerSlotIndex.Value,
                 SecondContainerId = secondContainer.ContainerId,
                 SecondContainerSlotIndex = secondItem.ContainerSlotIndex.Value
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-
-        var firstAfterState = await context.Journal.CaptureItemStateJsonAsync(
-            firstItem.ItemInstanceId,
-            cancellationToken);
-        var secondAfterState = await context.Journal.CaptureItemStateJsonAsync(
-            secondItem.ItemInstanceId,
-            cancellationToken);
+            });
+        var firstAfterState = context.Journal.CaptureItemStateJson(swap, firstItem.ItemInstanceId);
+        var secondAfterState = context.Journal.CaptureItemStateJson(swap, secondItem.ItemInstanceId);
+        await swap.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             "container_items_swapped",
             firstItem.ItemInstanceId,
-            firstBeforeState,
-            firstAfterState);
+            firstBeforeState.Value,
+            firstAfterState.Value);
         context.Journal.AddItemAudit(
             "container_items_swapped",
             secondItem.ItemInstanceId,
-            secondBeforeState,
-            secondAfterState);
+            secondBeforeState.Value,
+            secondAfterState.Value);
         context.Journal.TouchContainer(firstContainer.ContainerId);
         context.Journal.TouchContainer(secondContainer.ContainerId);
         context.Journal.TouchCharacter(command.CharacterId);

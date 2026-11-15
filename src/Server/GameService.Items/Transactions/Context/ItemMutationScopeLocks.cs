@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
 
@@ -132,9 +133,12 @@ internal sealed class ItemMutationScopeLocks(
             }
         }
 
+        // No check separates the locks below, so they share round trips. Only the Bag children,
+        // which name the items and policies to lock, need a round trip of their own first.
+        var locks = new PostgresBatch(session.Scope);
         if (explicitContainerIds.Length > 0)
         {
-            await Connection.QueryAsync<Guid>(new CommandDefinition(
+            locks.Query<Guid>(
                 """
                 select id
                 from item_containers
@@ -142,9 +146,7 @@ internal sealed class ItemMutationScopeLocks(
                 order by id
                 for update;
                 """,
-                new { ContainerIds = explicitContainerIds },
-                Transaction,
-                cancellationToken: cancellationToken));
+                new { ContainerIds = explicitContainerIds });
         }
 
         var aggregateContainerIds = discoveryRows
@@ -154,18 +156,20 @@ internal sealed class ItemMutationScopeLocks(
             .Distinct()
             .Order()
             .ToArray();
-        var aggregateChildItemIds = aggregateContainerIds.Length == 0
-            ? []
-            : (await Connection.QueryAsync<Guid>(new CommandDefinition(
+        IReadOnlyList<Guid> aggregateChildItemIds = [];
+        if (aggregateContainerIds.Length > 0)
+        {
+            var children = locks.Query<Guid>(
                 """
                 select id
                 from item_instances
                 where container_id = any(@ContainerIds)
                 order by id;
                 """,
-                new { ContainerIds = aggregateContainerIds },
-                Transaction,
-                cancellationToken: cancellationToken))).ToArray();
+                new { ContainerIds = aggregateContainerIds });
+            await locks.ExecuteAsync(cancellationToken);
+            aggregateChildItemIds = children.Value;
+        }
 
         var ordinaryItemIds = requestedItemIds
             .Except(bagRootIds)
@@ -175,7 +179,7 @@ internal sealed class ItemMutationScopeLocks(
             .ToArray();
         if (ordinaryItemIds.Length > 0)
         {
-            await Connection.QueryAsync<Guid>(new CommandDefinition(
+            locks.Query<Guid>(
                 """
                 select id
                 from item_instances
@@ -183,9 +187,7 @@ internal sealed class ItemMutationScopeLocks(
                 order by id
                 for update;
                 """,
-                new { ItemIds = ordinaryItemIds },
-                Transaction,
-                cancellationToken: cancellationToken));
+                new { ItemIds = ordinaryItemIds });
         }
 
         var policyItemIds = requestedItemIds
@@ -196,7 +198,7 @@ internal sealed class ItemMutationScopeLocks(
             .ToArray();
         if (policyItemIds.Length > 0)
         {
-            await Connection.QueryAsync<Guid>(new CommandDefinition(
+            locks.Query<Guid>(
                 """
                 select id
                 from item_instance_policies
@@ -204,10 +206,10 @@ internal sealed class ItemMutationScopeLocks(
                 order by item_instance_id, id
                 for update;
                 """,
-                new { ItemIds = policyItemIds },
-                Transaction,
-                cancellationToken: cancellationToken));
+                new { ItemIds = policyItemIds });
         }
+
+        await locks.ExecuteAsync(cancellationToken);
     }
 
     private sealed class LockDiscoveryRow

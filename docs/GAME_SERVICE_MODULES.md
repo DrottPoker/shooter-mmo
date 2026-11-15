@@ -242,6 +242,15 @@ They never commit, roll back, or open their own connection. That keeps
 RepeatableRead snapshots and the transaction-local `statement_timeout` and
 `lock_timeout` that item transactions set.
 
+A contract method can also contribute its statement to the caller's
+`PostgresBatch` instead of running it, so the statement shares a round trip
+with the caller's own: it takes the batch, adds its own SQL with its parameters,
+and returns a `PostgresBatchResult<T>` that the caller reads once the batch ran.
+The SQL stays with the owner, so R1 to R3 hold for a batched statement as for any
+other. `ICharacterLocks.AddLockActiveForItemMutation` and
+`ISimulationWorkerAuthority.AddGetRuntime` and `AddLockAssignmentForShare` are
+such methods, as [Round Trips](#round-trips) describes.
+
 ## Contracts
 
 Every method that takes a `PostgresTransactionScope` runs in the caller's
@@ -254,7 +263,7 @@ caller keeps its own check order, error codes, and messages.
 | `IAccountSessionLifecycleHandler` | Accounts (SPI) | implemented by Placement | Mark the simulation sessions and consume the join tickets of sessions that are replaced or revoked |
 | `AccountsSql` | Accounts | Placement, Items | The one rule of an active account session, which Accounts' own statements use too, and the revocation reason, existing account id, and username fragments |
 | `IAccountSessionActivity` | Accounts | Placement | Move the ends of the account sessions that live simulation sessions hold, as their activity, at most once an hour |
-| `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order |
+| `ICharacterLocks` | Characters | Placement, Items | Placement `FOR UPDATE` locks and item mutation `FOR NO KEY UPDATE` locks in ascending id order, the lock of one character also as a statement of the caller's batch |
 | `ICharacterWallet` | Characters | Items, Quests, Economy | Debit or credit character currency with a `CurrencyChangeSource` and one ledger row, for insurance, vendor trades, the starting balance, quest rewards, and the Development item tool |
 | `ICharacterProgression` | Characters | Items | Set a character's level for the Development item tool |
 | `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
@@ -263,7 +272,7 @@ caller keeps its own check order, error codes, and messages.
 | `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
 | `ISimulationSessionAuthority` | Placement | Quests, Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment; both name whether the lease is live and how its account session ended, if it did |
-| `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment |
+| `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment; the live item authority's runtime read and assignment share lock are statements of the caller's batch |
 | `ISimulationPresence` | Placement | Items | Find a character that is in the world |
 | `PlacementSql` | Placement | Items | Shard existence and active simulation session fragments |
 | `ISimulationCharacterStateProvider` | Placement (SPI) | implemented by Items | Lock or read a character's carry state and equipment for its simulation session, or read those of many characters in one statement for the session heartbeat |
@@ -456,7 +465,9 @@ for a timeout or a retried system operation, which roll back completely and
 release the claim. A
 transaction whose commit or rollback was attempted is never rolled back again,
 so a constraint that fails at COMMIT is returned as an unstored rejection or
-propagates with its original error.
+propagates with its original error. The timeouts travel with the first
+statement that needs them, and statements that nothing decides between share a
+round trip, as [Round Trips](#round-trips) describes.
 
 `ItemTransactionContext` is the handler-facing API. It carries the
 `ItemTransactionSession` (connection, transaction, operation, actor, and the
@@ -538,6 +549,53 @@ or SQL fragments. The handler rules, readonly state, the lock order, sequential
 commands, rejection only through the context, and no HTTP API error codes, hold
 for the item command handlers of every module, each of which lives in its
 module's `Transactions/Handlers/` folder.
+
+### Round Trips
+
+Every statement that travels alone costs a network round trip, and an item
+operation runs one transaction of dozens of statements. Platform's
+`PostgresBatch` sends several statements in one round trip, in the caller's
+transaction: the owner of each statement adds it through its own code and reads
+its own `PostgresBatchResult<T>` once the batch ran. PostgreSQL still runs every
+statement on its own, in the order it was added, each with its own snapshot in
+`READ COMMITTED`, so "lock in one statement, read in the next" holds inside a
+batch, and the transaction's `statement_timeout` and `lock_timeout` apply to each
+statement. A statement binds its parameters as a Dapper command does and reads
+its rows with Dapper's mapping. When a statement fails, PostgreSQL skips the rest
+of the batch and `ExecuteAsync` throws that statement's error, so a lock timeout,
+a deadlock, or a constraint inside a batch ends the transaction as it did when
+the statement travelled alone, and the rows read before it keep their results.
+
+The statements of an operation and their order never change; only how many
+travel together does. A run of statements shares a round trip when no
+statement's text or parameters depend on an earlier result of the run. A check
+between two statements moves after the batch only when that changes nothing
+observable: the same rejection with the same message wins in the same order, and
+a rejected transaction rolls back, which releases a lock that a later statement
+of the batch took too. A run ends before a statement that must not run after a
+check failed: one that writes, one that could lock rows of another owner, one
+whose parameters come from an earlier result, and one that a golden trace shows
+not running after that check. One command of several statements, such as the
+definition load, keeps its own round trip, because it is one command in the
+goldens.
+
+| Run | Statements in one round trip | Where it ends and why |
+| --- | --- | --- |
+| Prelude of a worker actor | The timeouts and the character lock (S22); the session lock (S23) alone; the worker read (S24) and the assignment share lock (S25) | The session lock waits for the character check, because the session of a character that another account owns must not be locked; the worker read waits for the session checks, which the `kernel.live_authority_rejected_*` goldens show ending the transaction before it. A failed worker check still decides over the assignment lock's result or error, as it did when the lock never ran |
+| Prelude of any other actor | The timeouts and the operation claim | |
+| Claim and savepoint | Not shared | The savepoint does not run when the claim finds a stored result, which the `kernel.claim_*` goldens show |
+| Mutation scope | The container, item, and policy locks; the Bag children's read joins the container lock and the item and policy locks wait for it, because it names what they lock | The discovery reads and the Bag root lock with its check stay alone |
+| Audit states | The item row and its policies, also when the item is gone | |
+| Writes with their audit states | A write of one statement with the reads of the audit states before and after it: relocation and container swaps, corpse moves and equips, live Mob loot grants and top-ups, durable Mob corpse loot, carried acquisition, quantity consumption, and new items with their default policies; the policy copies of a split with the states after it | A write of several statements in one command and a new Bag's contents container keep their own round trips |
+| Finalizer and completion | The container revision update and read; the audit rows and the operation's completion; the rollback to the savepoint and the stored rejection | Carry state, the hard cap check, and each character's update stay apart, because the update writes after the check |
+
+The goldens pin the round trips of every operation, and
+`ItemTransactionRoundTripTests` states a budget for the most frequent one: a
+worker's relocation between two inventory slots takes at most 23 round trips,
+33 before the batches. The same tests check that a lock timeout inside a batch
+answers `item_transaction_timeout` and releases the claim, and that a failed
+worker check wins over a lock timeout of the assignment share lock in its round
+trip.
 
 ### Operation Kinds
 
@@ -1285,10 +1343,10 @@ the statement ids.
 | S19 | `bootstrap_character_item_state` reads `characters` | Chr R | R4, frozen |
 | S20 | Corpse restoration checks the worker lease | Plc R | `ISimulationWorkerAuthority.GetShardLeaseAsync` |
 | S21 | Corpse view checks session, worker, and assignment | Plc R, Acc R | `ISimulationSessionAuthority.GetReadAuthorityAsync` |
-| S22 | Live item authority locks the character | Chr L | `ICharacterLocks.LockActiveForItemMutationAsync` in `ItemSimulationAuthority` |
+| S22 | Live item authority locks the character | Chr L | `ICharacterLocks.AddLockActiveForItemMutation` in `ItemSimulationAuthority`, in the batch of the transaction's timeouts |
 | S23 | Live item authority locks the simulation session | Plc L, Acc R | `ISimulationSessionAuthority.LockForItemMutationAsync` in `ItemSimulationAuthority` |
-| S24 | Live item authority reads the worker runtime | Plc R | `ISimulationWorkerAuthority.GetRuntimeAsync` in `ItemSimulationAuthority` |
-| S25 | Live item authority shares the assignment | Plc L | `ISimulationWorkerAuthority.LockAssignmentForShareAsync` in `ItemSimulationAuthority` |
+| S24 | Live item authority reads the worker runtime | Plc R | `ISimulationWorkerAuthority.AddGetRuntime` in `ItemSimulationAuthority`, in one batch with S25 |
+| S25 | Live item authority shares the assignment | Plc L | `ISimulationWorkerAuthority.AddLockAssignmentForShare` in `ItemSimulationAuthority` |
 | S26 | Item mutations lock characters with their item state | Chr L | `ICharacterLocks`, then the item state lock, in `CharacterItemStateLocks` |
 | S27 | Offline item mutations check for an active session | Plc R | `ISimulationPresence.FindActiveCharacterAsync` in `CharacterItemStateLocks` |
 | S28 | Death and corpse loot lock one character with its item state | Chr L | as S26, in `CharacterItemStateLocks` |
@@ -1381,8 +1439,9 @@ boundary test checks the item command handlers of every module.
 
 The item transaction kernel also has golden tests:
 `ItemTransactionTraceGoldenTests` compares, byte for byte, the statements and
-transaction boundaries that Npgsql logs for one command or kernel path, the
-result, the stored operation, and its audit journal, and
+transaction boundaries that Npgsql logs for one command or kernel path, which of
+them share a round trip with the number of round trips, the result, the stored
+operation, and its audit journal, and
 `QuestTransactionTraceGoldenTests` in `Mmorpg.GameService.Quests.Tests` and
 `EconomyTransactionTraceGoldenTests` in `Mmorpg.GameService.Economy.Tests` do
 the same for the quest commands they cover and for the vendor and gathering

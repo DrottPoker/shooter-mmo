@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Reflection;
 using System.Text.Json;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Platform.Database;
 
 namespace Mmorpg.GameService.Items.Contracts;
 
@@ -57,13 +58,29 @@ public sealed class ItemChangeJournal
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {
-        var item = await reader.LoadItemAsync(itemInstanceId, cancellationToken);
+        var batch = new PostgresBatch(session.Scope);
+        var state = CaptureItemStateJson(batch, itemInstanceId);
+        await batch.ExecuteAsync(cancellationToken);
+        return state.Value;
+    }
+
+    // Adds the reads of an item's audit state to a batch: its row and its policies, which only
+    // read, so they share a round trip also when the item is gone. The state is null then.
+    internal PostgresBatchResult<string?> CaptureItemStateJson(PostgresBatch batch, Guid itemInstanceId)
+    {
+        return PostgresBatchResult.Combine(
+            reader.AddLoadItem(batch, itemInstanceId),
+            reader.AddLoadPolicies(batch, itemInstanceId),
+            SerializeItemState);
+    }
+
+    private static string? SerializeItemState(LockedItem? item, IReadOnlyList<LockedItemPolicy> policies)
+    {
         if (item is null)
         {
             return null;
         }
 
-        var policies = await reader.LoadPoliciesAsync(itemInstanceId, cancellationToken);
         var state = new ItemAuditState(
             item.ItemInstanceId,
             item.DefinitionId,

@@ -18,19 +18,15 @@ public sealed record SimulationWorkerShardLease(
 // It returns stored facts, and the caller decides which check fails first.
 public interface ISimulationWorkerAuthority
 {
-    // Reads the worker's registered runtime, or null when the worker does not exist.
-    Task<SimulationWorkerRuntime?> GetRuntimeAsync(
-        PostgresTransactionScope scope,
-        string workerId,
-        CancellationToken cancellationToken);
+    // Adds the read of the worker's registered runtime to the caller's batch, so it can share a
+    // round trip with the caller's statements. Once the batch ran, the result is the runtime, or
+    // null when the worker does not exist.
+    PostgresBatchResult<SimulationWorkerRuntime?> AddGetRuntime(PostgresBatch batch, string workerId);
 
-    // Locks the worker's active assignment to the Shard FOR SHARE. Returns false when
-    // the worker does not own an active assignment to the Shard.
-    Task<bool> LockAssignmentForShareAsync(
-        PostgresTransactionScope scope,
-        string workerId,
-        string shardId,
-        CancellationToken cancellationToken);
+    // Adds the FOR SHARE lock of the worker's active assignment to the Shard to the caller's
+    // batch. Once the batch ran, the result is false when the worker does not own an active
+    // assignment to the Shard.
+    PostgresBatchResult<bool> AddLockAssignmentForShare(PostgresBatch batch, string workerId, string shardId);
 
     // Reads the worker's lease with the placement heartbeat timeout and whether it owns
     // an active assignment to the Shard, or null when the worker does not exist.

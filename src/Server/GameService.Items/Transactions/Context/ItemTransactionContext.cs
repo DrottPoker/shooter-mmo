@@ -6,8 +6,8 @@ using Npgsql;
 namespace Mmorpg.GameService.Items.Contracts;
 
 // The handler-facing API of one item transaction: its session identity and five facets.
-// The kernel creates it after the transaction-local timeouts are set; it never commits
-// or rolls back. Handlers in Items use Connection and Transaction for their own statements;
+// The kernel creates it with the transaction, and a handler runs only after the
+// transaction-local timeouts and the operation claim; it never commits or rolls back. Handlers in Items use Connection and Transaction for their own statements;
 // commands above Items change items only through the facets and the item primitives.
 public sealed class ItemTransactionContext
 {

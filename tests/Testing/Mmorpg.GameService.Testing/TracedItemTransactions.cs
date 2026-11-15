@@ -34,6 +34,7 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         loggerFactory = SqlTraceRecorder.CreateLoggerFactory(Recorder);
         dataSource = new NpgsqlDataSourceBuilder(context.ConnectionString)
             .UseLoggerFactory(loggerFactory)
+            .ConfigureTracing(Recorder.ConfigureTracing)
             .Build();
         Service = ItemTransactionServiceFactory.Create(context.Services, dataSource, options);
     }
@@ -56,21 +57,29 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
         Guid operationId,
         Func<ItemTransactionService, Task<ItemTransactionResult>> execute)
     {
+        var (result, trace) = await TraceAsync(execute);
+        var rendered = await RenderAsync(scenario, operationId, trace, result);
+        goldens.AssertMatches(scenario, rendered);
+        return result;
+    }
+
+    // Runs one traced call and returns its result with its trace.
+    public async Task<(ItemTransactionResult Result, SqlTrace Trace)> TraceAsync(
+        Func<ItemTransactionService, Task<ItemTransactionResult>> execute)
+    {
         Recorder.Start();
         ItemTransactionResult result;
-        IReadOnlyList<string> trace;
         try
         {
             result = await execute(Service);
         }
-        finally
+        catch
         {
-            trace = Recorder.Stop();
+            Recorder.Stop();
+            throw;
         }
 
-        var rendered = await RenderAsync(scenario, operationId, trace, result);
-        goldens.AssertMatches(scenario, rendered);
-        return result;
+        return (result, Recorder.StopTrace());
     }
 
     public async ValueTask DisposeAsync()
@@ -82,17 +91,18 @@ internal sealed partial class TracedItemTransactions : IAsyncDisposable
     private async Task<string> RenderAsync(
         string scenario,
         Guid operationId,
-        IReadOnlyList<string> trace,
+        SqlTrace trace,
         ItemTransactionResult result)
     {
         var builder = new StringBuilder();
         builder.Append("scenario: ").Append(scenario).Append('\n');
         builder.Append("trace:\n");
-        foreach (var line in trace)
+        foreach (var line in trace.RoundTripLines)
         {
             builder.Append("  ").Append(line).Append('\n');
         }
 
+        builder.Append("round trips: ").Append(trace.RoundTrips).Append('\n');
         builder.Append("result:\n");
         builder.Append("  operation kind: ").Append(result.OperationKind).Append('\n');
         builder.Append("  operation id matches: ")

@@ -1,5 +1,6 @@
 scenario: kernel.payload_too_large
 trace:
+round trips: 0
 result:
   operation kind: add_recovery_delivery
   operation id matches: yes

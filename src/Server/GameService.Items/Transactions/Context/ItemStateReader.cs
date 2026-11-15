@@ -1,5 +1,6 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 using Npgsql;
 using static Mmorpg.GameService.Items.ItemTransactionRejection;
@@ -10,6 +11,49 @@ namespace Mmorpg.GameService.Items.Contracts;
 // with the ownership, revision, and live container access checks of each load.
 public sealed class ItemStateReader
 {
+    private const string LoadItemSql =
+        $"""
+        select
+            item.id as "ItemInstanceId",
+            item.definition_id as "DefinitionId",
+            item.quantity as "Quantity",
+            item.revision as "Revision",
+            item.container_id as "ContainerId",
+            item.container_slot_index as "ContainerSlotIndex",
+            item.equipped_character_id as "EquippedCharacterId",
+            item.equipment_slot_id as "EquipmentSlotId",
+            container.container_type as "SourceContainerType",
+            container.lifecycle as "SourceContainerLifecycle",
+            container.bound_bag_item_instance_id as "SourceBagItemInstanceId",
+            {ItemOwnershipSql.OwningCharacterId} as "OwningCharacterId",
+            (bag.definition_id is not null) as "IsBag",
+            bag.carry_capacity_bonus as "BagCarryCapacityBonus",
+            bag_container.id as "BagContentsContainerId",
+            bag_container.lifecycle as "BagContentsLifecycle",
+            bag_container.revision as "BagContentsRevision"
+        from item_instances item
+        {ItemOwnershipSql.Joins}
+        left join bag_definitions bag on bag.definition_id = item.definition_id
+        left join item_containers bag_container
+          on bag_container.bound_bag_item_instance_id = item.id
+         and bag_container.container_type = 'bag_contents'
+        where item.id = @ItemInstanceId;
+        """;
+
+    private const string LoadPoliciesSql =
+        """
+        select
+            id as "PolicyId",
+            policy_kind as "PolicyKind",
+            status as "Status",
+            source_kind as "SourceKind",
+            source_id as "SourceId",
+            revision as "Revision"
+        from item_instance_policies
+        where item_instance_id = @ItemInstanceId
+        order by policy_kind, source_kind, source_id, id;
+        """;
+
     private readonly ItemTransactionSession session;
     private readonly ItemActorAuthority authority;
 
@@ -59,36 +103,16 @@ public sealed class ItemStateReader
         CancellationToken cancellationToken)
     {
         return Connection.QuerySingleOrDefaultAsync<LockedItem>(new CommandDefinition(
-            $"""
-            select
-                item.id as "ItemInstanceId",
-                item.definition_id as "DefinitionId",
-                item.quantity as "Quantity",
-                item.revision as "Revision",
-                item.container_id as "ContainerId",
-                item.container_slot_index as "ContainerSlotIndex",
-                item.equipped_character_id as "EquippedCharacterId",
-                item.equipment_slot_id as "EquipmentSlotId",
-                container.container_type as "SourceContainerType",
-                container.lifecycle as "SourceContainerLifecycle",
-                container.bound_bag_item_instance_id as "SourceBagItemInstanceId",
-                {ItemOwnershipSql.OwningCharacterId} as "OwningCharacterId",
-                (bag.definition_id is not null) as "IsBag",
-                bag.carry_capacity_bonus as "BagCarryCapacityBonus",
-                bag_container.id as "BagContentsContainerId",
-                bag_container.lifecycle as "BagContentsLifecycle",
-                bag_container.revision as "BagContentsRevision"
-            from item_instances item
-            {ItemOwnershipSql.Joins}
-            left join bag_definitions bag on bag.definition_id = item.definition_id
-            left join item_containers bag_container
-              on bag_container.bound_bag_item_instance_id = item.id
-             and bag_container.container_type = 'bag_contents'
-            where item.id = @ItemInstanceId;
-            """,
+            LoadItemSql,
             new { ItemInstanceId = itemInstanceId },
             Transaction,
             cancellationToken: cancellationToken));
+    }
+
+    // The same read as LoadItemAsync, added to a batch.
+    internal PostgresBatchResult<LockedItem?> AddLoadItem(PostgresBatch batch, Guid itemInstanceId)
+    {
+        return batch.QuerySingleOrDefault<LockedItem>(LoadItemSql, new { ItemInstanceId = itemInstanceId });
     }
 
     // The item that the character has equipped in the slot, or null when the slot is empty.
@@ -397,23 +421,20 @@ public sealed class ItemStateReader
         return LoadPoliciesCoreAsync(itemInstanceId, cancellationToken);
     }
 
+    // The same read as LoadPoliciesAsync, added to a batch.
+    internal PostgresBatchResult<IReadOnlyList<LockedItemPolicy>> AddLoadPolicies(
+        PostgresBatch batch,
+        Guid itemInstanceId)
+    {
+        return batch.Query<LockedItemPolicy>(LoadPoliciesSql, new { ItemInstanceId = itemInstanceId });
+    }
+
     private async Task<IReadOnlyList<LockedItemPolicy>> LoadPoliciesCoreAsync(
         Guid itemInstanceId,
         CancellationToken cancellationToken)
     {
         return (await Connection.QueryAsync<LockedItemPolicy>(new CommandDefinition(
-            """
-            select
-                id as "PolicyId",
-                policy_kind as "PolicyKind",
-                status as "Status",
-                source_kind as "SourceKind",
-                source_id as "SourceId",
-                revision as "Revision"
-            from item_instance_policies
-            where item_instance_id = @ItemInstanceId
-            order by policy_kind, source_kind, source_id, id;
-            """,
+            LoadPoliciesSql,
             new { ItemInstanceId = itemInstanceId },
             Transaction,
             cancellationToken: cancellationToken))).ToArray();

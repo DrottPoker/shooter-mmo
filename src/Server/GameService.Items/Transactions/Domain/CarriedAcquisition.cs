@@ -1,6 +1,7 @@
 using Dapper;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Domain;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Contracts;
@@ -158,10 +159,9 @@ public static class CarriedAcquisition
             }
 
             var added = Math.Min(remaining, runtime.MaximumStackSize - stack.Quantity);
-            var beforeState = await context.Journal.CaptureItemStateJsonAsync(
-                stack.ItemInstanceId,
-                cancellationToken);
-            await context.Connection.ExecuteAsync(new CommandDefinition(
+            var increase = new PostgresBatch(context.Scope);
+            var beforeState = context.Journal.CaptureItemStateJson(increase, stack.ItemInstanceId);
+            increase.Execute(
                 """
                 update item_instances
                 set quantity = quantity + @Added,
@@ -169,17 +169,14 @@ public static class CarriedAcquisition
                     updated_at = now()
                 where id = @ItemInstanceId;
                 """,
-                new { Added = added, stack.ItemInstanceId },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                stack.ItemInstanceId,
-                cancellationToken);
+                new { Added = added, stack.ItemInstanceId });
+            var afterState = context.Journal.CaptureItemStateJson(increase, stack.ItemInstanceId);
+            await increase.ExecuteAsync(cancellationToken);
             context.Journal.AddItemAudit(
                 auditPrefix + "_stack_increased",
                 stack.ItemInstanceId,
-                beforeState,
-                afterState);
+                beforeState.Value,
+                afterState.Value);
             context.Journal.TouchContainer(stack.ContainerId);
             context.Journal.IncludeResultItem(stack.ItemInstanceId);
             remaining -= added;
@@ -262,8 +259,10 @@ public static class CarriedAcquisition
 
             var stackQuantity = Math.Min(remaining, runtime.MaximumStackSize);
             var itemInstanceId = Guid.NewGuid();
+            var create = new PostgresBatch(context.Scope);
             await NewItemInstances.CreateAsync(
                 context,
+                create,
                 itemInstanceId,
                 definition,
                 stackQuantity,
@@ -272,14 +271,13 @@ public static class CarriedAcquisition
                 policySourceKind,
                 policySourceId,
                 cancellationToken);
-            var afterState = await context.Journal.CaptureItemStateJsonAsync(
-                itemInstanceId,
-                cancellationToken);
+            var afterState = context.Journal.CaptureItemStateJson(create, itemInstanceId);
+            await create.ExecuteAsync(cancellationToken);
             context.Journal.AddItemAudit(
                 auditPrefix + "_item_created",
                 itemInstanceId,
                 null,
-                afterState);
+                afterState.Value);
             context.Journal.TouchContainer(slot.ContainerId);
             context.Journal.IncludeResultItem(itemInstanceId);
             remaining -= stackQuantity;

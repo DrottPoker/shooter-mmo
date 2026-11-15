@@ -1,11 +1,14 @@
 using Dapper;
 using Mmorpg.GameService.Items.Contracts;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.GameService.Items.Transactions.Domain;
 
 // Item writes for corpse transfers: move, split, merge, and swap, each with its
-// audit change kinds.
+// audit change kinds. The reads of the audit states share a round trip with the writes
+// that no check separates from them; a write of several statements in one command keeps
+// its own round trip.
 internal static class CorpseCustodyWrites
 {
     public static async Task MoveCorpseItemAsync(
@@ -32,10 +35,9 @@ internal static class CorpseCustodyWrites
         string auditKind,
         CancellationToken cancellationToken)
     {
-        var before = await context.Journal.CaptureItemStateJsonAsync(
-            source.ItemInstanceId,
-            cancellationToken);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var move = new PostgresBatch(context.Scope);
+        var before = context.Journal.CaptureItemStateJson(move, source.ItemInstanceId);
+        move.Execute(
             """
             update item_instances
             set container_id = @DestinationContainerId,
@@ -51,17 +53,14 @@ internal static class CorpseCustodyWrites
                 DestinationContainerId = destination.ContainerId,
                 DestinationSlotIndex = destinationSlotIndex,
                 source.ItemInstanceId
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        var after = await context.Journal.CaptureItemStateJsonAsync(
-            source.ItemInstanceId,
-            cancellationToken);
+            });
+        var after = context.Journal.CaptureItemStateJson(move, source.ItemInstanceId);
+        await move.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             auditKind,
             source.ItemInstanceId,
-            before,
-            after);
+            before.Value,
+            after.Value);
         context.Journal.IncludeResultItem(source.ItemInstanceId);
     }
 
@@ -134,54 +133,21 @@ internal static class CorpseCustodyWrites
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        foreach (var policy in policies.Where(policy => string.Equals(
-                     policy.Status,
-                     ItemPolicyRules.ActiveStatus,
-                     StringComparison.Ordinal)))
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_instance_policies (
-                    id,
-                    item_instance_id,
-                    policy_kind,
-                    source_kind,
-                    source_id)
-                values (
-                    @PolicyId,
-                    @ItemInstanceId,
-                    @PolicyKind,
-                    @SourceKind,
-                    @SourceId);
-                """,
-                new
-                {
-                    PolicyId = Guid.NewGuid(),
-                    ItemInstanceId = createdItemId,
-                    policy.PolicyKind,
-                    policy.SourceKind,
-                    policy.SourceId
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-        }
-
-        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
-            source.ItemInstanceId,
-            cancellationToken);
-        var createdAfter = await context.Journal.CaptureItemStateJsonAsync(
-            createdItemId,
-            cancellationToken);
+        var copy = new PostgresBatch(context.Scope);
+        AddPolicyCopies(copy, policies, createdItemId);
+        var sourceAfter = context.Journal.CaptureItemStateJson(copy, source.ItemInstanceId);
+        var createdAfter = context.Journal.CaptureItemStateJson(copy, createdItemId);
+        await copy.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             sourceAuditKind,
             source.ItemInstanceId,
             sourceBefore,
-            sourceAfter);
+            sourceAfter.Value);
         context.Journal.AddItemAudit(
             createdAuditKind,
             createdItemId,
             null,
-            createdAfter);
+            createdAfter.Value);
         context.Journal.IncludeResultItem(source.ItemInstanceId);
         context.Journal.IncludeResultItem(createdItemId);
     }
@@ -215,10 +181,9 @@ internal static class CorpseCustodyWrites
         string targetAuditKind,
         CancellationToken cancellationToken)
     {
-        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
+        var (sourceBefore, targetBefore) = await CaptureBothAsync(
+            context,
             source.ItemInstanceId,
-            cancellationToken);
-        var targetBefore = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         if (isPartial)
@@ -269,12 +234,23 @@ internal static class CorpseCustodyWrites
                 cancellationToken: cancellationToken));
         }
 
-        var sourceAfter = isPartial
-            ? await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken)
-            : null;
-        var targetAfter = await context.Journal.CaptureItemStateJsonAsync(
-            target.ItemInstanceId,
-            cancellationToken);
+        string? sourceAfter = null;
+        string? targetAfter;
+        if (isPartial)
+        {
+            (sourceAfter, targetAfter) = await CaptureBothAsync(
+                context,
+                source.ItemInstanceId,
+                target.ItemInstanceId,
+                cancellationToken);
+        }
+        else
+        {
+            targetAfter = await context.Journal.CaptureItemStateJsonAsync(
+                target.ItemInstanceId,
+                cancellationToken);
+        }
+
         context.Journal.AddItemAudit(
             isPartial ? sourceAuditKind : sourceAuditKind + "_removed",
             source.ItemInstanceId,
@@ -300,10 +276,9 @@ internal static class CorpseCustodyWrites
         string equipmentSlotId,
         CancellationToken cancellationToken)
     {
-        var before = await context.Journal.CaptureItemStateJsonAsync(
-            source.ItemInstanceId,
-            cancellationToken);
-        await context.Connection.ExecuteAsync(new CommandDefinition(
+        var equip = new PostgresBatch(context.Scope);
+        var before = context.Journal.CaptureItemStateJson(equip, source.ItemInstanceId);
+        equip.Execute(
             """
             update item_instances
             set container_id = null,
@@ -319,17 +294,14 @@ internal static class CorpseCustodyWrites
                 CharacterId = characterId,
                 EquipmentSlotId = equipmentSlotId,
                 source.ItemInstanceId
-            },
-            context.Transaction,
-            cancellationToken: cancellationToken));
-        var after = await context.Journal.CaptureItemStateJsonAsync(
-            source.ItemInstanceId,
-            cancellationToken);
+            });
+        var after = context.Journal.CaptureItemStateJson(equip, source.ItemInstanceId);
+        await equip.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             "corpse_item_looted_to_equipment",
             source.ItemInstanceId,
-            before,
-            after);
+            before.Value,
+            after.Value);
         context.Journal.IncludeResultItem(source.ItemInstanceId);
     }
 
@@ -381,48 +353,21 @@ internal static class CorpseCustodyWrites
             context.Transaction,
             cancellationToken: cancellationToken));
 
-        foreach (var policy in policies.Where(policy => string.Equals(
-                     policy.Status,
-                     ItemPolicyRules.ActiveStatus,
-                     StringComparison.Ordinal)))
-        {
-            await context.Connection.ExecuteAsync(new CommandDefinition(
-                """
-                insert into item_instance_policies (
-                    id,
-                    item_instance_id,
-                    policy_kind,
-                    source_kind,
-                    source_id)
-                values (
-                    @PolicyId,
-                    @ItemInstanceId,
-                    @PolicyKind,
-                    @SourceKind,
-                    @SourceId);
-                """,
-                new
-                {
-                    PolicyId = Guid.NewGuid(),
-                    ItemInstanceId = equippedItemId,
-                    policy.PolicyKind,
-                    policy.SourceKind,
-                    policy.SourceId
-                },
-                context.Transaction,
-                cancellationToken: cancellationToken));
-        }
-
+        var copy = new PostgresBatch(context.Scope);
+        AddPolicyCopies(copy, policies, equippedItemId);
+        var sourceAfter = context.Journal.CaptureItemStateJson(copy, source.ItemInstanceId);
+        var equippedAfter = context.Journal.CaptureItemStateJson(copy, equippedItemId);
+        await copy.ExecuteAsync(cancellationToken);
         context.Journal.AddItemAudit(
             "corpse_stack_loot_source",
             source.ItemInstanceId,
             sourceBefore,
-            await context.Journal.CaptureItemStateJsonAsync(source.ItemInstanceId, cancellationToken));
+            sourceAfter.Value);
         context.Journal.AddItemAudit(
             "corpse_item_looted_to_equipment",
             equippedItemId,
             null,
-            await context.Journal.CaptureItemStateJsonAsync(equippedItemId, cancellationToken));
+            equippedAfter.Value);
         context.Journal.IncludeResultItem(source.ItemInstanceId);
         context.Journal.IncludeResultItem(equippedItemId);
     }
@@ -436,10 +381,9 @@ internal static class CorpseCustodyWrites
         string equipmentSlotId,
         CancellationToken cancellationToken)
     {
-        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
+        var (sourceBefore, equippedBefore) = await CaptureBothAsync(
+            context,
             source.ItemInstanceId,
-            cancellationToken);
-        var equippedBefore = await context.Journal.CaptureItemStateJsonAsync(
             equipped.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -479,10 +423,9 @@ internal static class CorpseCustodyWrites
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
+        var (sourceAfter, equippedAfter) = await CaptureBothAsync(
+            context,
             source.ItemInstanceId,
-            cancellationToken);
-        var equippedAfter = await context.Journal.CaptureItemStateJsonAsync(
             equipped.ItemInstanceId,
             cancellationToken);
         context.Journal.AddItemAudit(
@@ -517,10 +460,9 @@ internal static class CorpseCustodyWrites
                 "Both swapped items must remain in their expected container slots.");
         }
 
-        var sourceBefore = await context.Journal.CaptureItemStateJsonAsync(
+        var (sourceBefore, targetBefore) = await CaptureBothAsync(
+            context,
             source.ItemInstanceId,
-            cancellationToken);
-        var targetBefore = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         await context.Connection.ExecuteAsync(new CommandDefinition(
@@ -553,10 +495,9 @@ internal static class CorpseCustodyWrites
             },
             context.Transaction,
             cancellationToken: cancellationToken));
-        var sourceAfter = await context.Journal.CaptureItemStateJsonAsync(
+        var (sourceAfter, targetAfter) = await CaptureBothAsync(
+            context,
             source.ItemInstanceId,
-            cancellationToken);
-        var targetAfter = await context.Journal.CaptureItemStateJsonAsync(
             target.ItemInstanceId,
             cancellationToken);
         context.Journal.AddItemAudit(
@@ -571,5 +512,56 @@ internal static class CorpseCustodyWrites
             targetAfter);
         context.Journal.IncludeResultItem(source.ItemInstanceId);
         context.Journal.IncludeResultItem(target.ItemInstanceId);
+    }
+
+    // The audit states of two items in one round trip.
+    private static async Task<(string? First, string? Second)> CaptureBothAsync(
+        ItemTransactionContext context,
+        Guid firstItemInstanceId,
+        Guid secondItemInstanceId,
+        CancellationToken cancellationToken)
+    {
+        var capture = new PostgresBatch(context.Scope);
+        var first = context.Journal.CaptureItemStateJson(capture, firstItemInstanceId);
+        var second = context.Journal.CaptureItemStateJson(capture, secondItemInstanceId);
+        await capture.ExecuteAsync(cancellationToken);
+        return (first.Value, second.Value);
+    }
+
+    // The source's active policies for a new item split from it.
+    private static void AddPolicyCopies(
+        PostgresBatch batch,
+        IReadOnlyList<LockedItemPolicy> policies,
+        Guid itemInstanceId)
+    {
+        foreach (var policy in policies.Where(policy => string.Equals(
+                     policy.Status,
+                     ItemPolicyRules.ActiveStatus,
+                     StringComparison.Ordinal)))
+        {
+            batch.Execute(
+                """
+                insert into item_instance_policies (
+                    id,
+                    item_instance_id,
+                    policy_kind,
+                    source_kind,
+                    source_id)
+                values (
+                    @PolicyId,
+                    @ItemInstanceId,
+                    @PolicyKind,
+                    @SourceKind,
+                    @SourceId);
+                """,
+                new
+                {
+                    PolicyId = Guid.NewGuid(),
+                    ItemInstanceId = itemInstanceId,
+                    policy.PolicyKind,
+                    policy.SourceKind,
+                    policy.SourceId
+                });
+        }
     }
 }
