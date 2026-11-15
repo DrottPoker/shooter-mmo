@@ -1749,6 +1749,13 @@ straight legs to random points of its ground at the World's walk speed, a
 walking Mob at 1.4 m/s, and the rest stands. After 90 ticks of warm-up, 900
 ticks, 30 seconds of the World, are measured.
 
+The benchmark runs every layout twice and reports the second run. The ticks
+follow each other without a pause, so during a first run the runtime is still
+compiling the optimized code of the paths the layout uses, and the first 30
+measured snapshots took up to six times as long, which showed as a 99th
+percentile far above what a running worker has. The two runs must give the
+same deterministic numbers, or the benchmark fails.
+
 | Layout | Players | Mobs | Walking | Ground |
 | --- | ---: | ---: | --- | --- |
 | `spread-500` | 500 | 180 | 60 % of the players, 20 % of the Mobs | `playing-500` on Development World 2: 200 fighters over the eight hunting grounds, 100 gatherers over the six node fields, 150 walkers that start on the three roads and walk over the World's 360 m square, and 50 traders in the town; the Mobs in the hunting grounds' wolf areas |
