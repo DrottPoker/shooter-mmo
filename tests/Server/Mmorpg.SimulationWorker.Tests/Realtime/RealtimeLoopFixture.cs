@@ -57,7 +57,12 @@ internal sealed class RealtimeLoopFixture : IDisposable
 
         Bodies = new LingeringBodies(Config.LingeringBodySeconds, Config.MovementSimulation.TickRateHz, Clock);
         Registry = new RealtimePeerRegistry(Directory, Bindings, Entities, Metrics);
-        Sender = new RealtimePeerSender(Metrics, NullLogger.Instance);
+        LoopGuard = new RealtimeLoopGuard(
+            SimulationWorkerConfig.DefaultTickPhaseFailureLimit,
+            Clock,
+            PerformanceMetrics,
+            Logger);
+        Sender = new RealtimePeerSender(Metrics, NullLogger.Instance, Registry, LoopGuard);
         Presence = new EntityPresenceReplicator(
             Registry,
             Sender,
@@ -83,11 +88,6 @@ internal sealed class RealtimeLoopFixture : IDisposable
             Hooks,
             Bodies);
         Scheduler = new AuthorityOperationScheduler(Registry);
-        LoopGuard = new RealtimeLoopGuard(
-            SimulationWorkerConfig.DefaultTickPhaseFailureLimit,
-            Clock,
-            PerformanceMetrics,
-            Logger);
         httpClient = new HttpClient(GameService) { BaseAddress = new Uri("http://game-service.test") };
         var client = new GameServiceClient(httpClient);
         ReleaseService = new SimulationSessionReleaseService(

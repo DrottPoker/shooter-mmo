@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -243,15 +244,27 @@ internal sealed class EntityPresenceReplicator(
         string reason,
         int? excludedConnectionId)
     {
+        // A send that throws for one connection must not keep the despawn from the others, who
+        // would show the entity for good. The first exception is thrown again after the last send.
         var affectedConnections = interestManager.ForgetEntity(entityId);
+        ExceptionDispatchInfo? failure = null;
         foreach (var connectionId in affectedConnections)
         {
             if (connectionId != excludedConnectionId
                 && peers.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
             {
-                SendDespawn(peer, entityId, reason);
+                try
+                {
+                    SendDespawn(peer, entityId, reason);
+                }
+                catch (Exception exception)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(exception);
+                }
             }
         }
+
+        failure?.Throw();
     }
 
     private RealtimeEntitySpawn ToRealtimeEntitySpawn(PlayerSimulationEntity entity)

@@ -736,7 +736,9 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   failed tick phase or loop step is skipped for that run while the rest of the
   tick goes on, so every player feels at most a hitch. A tick phase or loop
   step that fails `TickPhaseFailureLimit` runs in a row, 30 by default, stops
-  the worker in order, as a graceful stop does: the remaining players are
+  the worker in order, as a graceful stop does; for a phase that works only on
+  some ticks, such as the snapshots, only the ticks on which it was due count
+  as runs. The remaining players are
   saved in one last checkpoint, and the worker goes offline and releases its
   sessions, so nobody stays in a world that no longer moves. Every failure
   writes an error line and counts in `simulation_worker.loop.failures`, as

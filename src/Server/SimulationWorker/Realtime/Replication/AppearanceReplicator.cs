@@ -84,15 +84,18 @@ internal sealed class AppearanceReplicator(
     public void AddTickPhase(SimulationTickPhases phases, SimulationWorkerConfig config)
     {
         var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-        phases.Add(
+        phases.AddPeriodic(
             SimulationTickOrder.Appearances,
             PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks == 0)
+                if (tick.ServerTick % intervalTicks != 0)
                 {
-                    Broadcast();
+                    return false;
                 }
+
+                Broadcast();
+                return true;
             });
     }
 

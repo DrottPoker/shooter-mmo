@@ -40,15 +40,18 @@ internal sealed class SnapshotReplicator(
     public void AddTickPhase(SimulationTickPhases phases)
     {
         var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
-        phases.Add(
+        phases.AddPeriodic(
             SimulationTickOrder.Snapshots,
             PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks == 0)
+                if (tick.ServerTick % intervalTicks != 0)
                 {
-                    Broadcast();
+                    return false;
                 }
+
+                Broadcast();
+                return true;
             });
     }
 

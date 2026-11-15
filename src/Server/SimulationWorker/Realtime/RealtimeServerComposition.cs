@@ -140,12 +140,12 @@ internal static class RealtimeServerComposition
         var registries = new RealtimeFeatureRegistries();
         var completions = new RealtimeCompletionQueue();
         var operationTracker = new RealtimeOperationTracker();
-        var sender = new RealtimePeerSender(networkMetrics, logger);
         var peers = new RealtimePeerRegistry(
             transport,
             host.ConnectionBindings,
             host.EntityRegistry,
             networkMetrics);
+        var sender = new RealtimePeerSender(networkMetrics, logger, peers, loopGuard);
         var presence = new EntityPresenceReplicator(
             peers,
             sender,

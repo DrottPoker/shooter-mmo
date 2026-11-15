@@ -38,15 +38,18 @@ internal sealed class WorldInteractionHandler(
     public void AddTickPhase(SimulationTickPhases phases, int tickRateHz)
     {
         var intervalTicks = Math.Max(1, tickRateHz / 5);
-        phases.Add(
+        phases.AddPeriodic(
             SimulationTickOrder.InteractionRevalidation,
             "interaction revalidation",
             (in SimulationTick tick) =>
             {
-                if (IsActive && tick.ServerTick % intervalTicks == 0)
+                if (!IsActive || tick.ServerTick % intervalTicks != 0)
                 {
-                    RevalidateLeases();
+                    return false;
                 }
+
+                RevalidateLeases();
+                return true;
             });
     }
 

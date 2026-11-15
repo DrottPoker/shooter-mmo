@@ -56,7 +56,7 @@ internal sealed class CharacterStatePersistence(
 
     public void AddTickPhase(SimulationTickPhases phases)
     {
-        phases.Add(SimulationTickOrder.CharacterCheckpoint, "character checkpoint", (in SimulationTick tick) => Checkpoint(in tick));
+        phases.AddPeriodic(SimulationTickOrder.CharacterCheckpoint, "character checkpoint", (in SimulationTick tick) => Checkpoint(in tick));
     }
 
     // Where a joining session's new entity starts. A reconnect keeps its entity and its place.
@@ -205,19 +205,22 @@ internal sealed class CharacterStatePersistence(
     }
 
     // Runs every tick and does nothing until the interval is due, so it allocates nothing per
-    // player per tick. A due checkpoint waits while the previous call is in flight.
-    private void Checkpoint(in SimulationTick tick)
+    // player per tick. A due checkpoint waits while the previous call is in flight. A player
+    // whose session the worker no longer holds is left out: a session that an exception in the
+    // player's own step invalidated has a state that may be broken, and its entity stays until
+    // the end of the tick. Returns whether the checkpoint was due.
+    private bool Checkpoint(in SimulationTick tick)
     {
         if (operations is null)
         {
-            return;
+            return false;
         }
 
         if (!checkpointScheduled)
         {
             nextCheckpointTick = tick.ServerTick + checkpointIntervalTicks;
             checkpointScheduled = true;
-            return;
+            return false;
         }
 
         // While GameService does not answer, no checkpoint goes, and one is due right after it
@@ -230,7 +233,7 @@ internal sealed class CharacterStatePersistence(
 
         if (checkpointInFlight || !CombatTicks.IsReached(tick.ServerTick, nextCheckpointTick))
         {
-            return;
+            return false;
         }
 
         nextCheckpointTick = tick.ServerTick + checkpointIntervalTicks;
@@ -238,6 +241,7 @@ internal sealed class CharacterStatePersistence(
         foreach (var entity in tick.Players)
         {
             if (!players.TryGetValue(entity.NetworkEntityId, out var player)
+                || !IsHeld(entity.Session)
                 || Snapshot(player) is not { } snapshot
                 || player.LastSaved == snapshot)
             {
@@ -249,11 +253,12 @@ internal sealed class CharacterStatePersistence(
 
         if (entries is null)
         {
-            return;
+            return true;
         }
 
         checkpointInFlight = true;
         operationTracker.Track(operations.SendCheckpointAsync(this, entries));
+        return true;
     }
 
     private void Capture(TrackedPlayer player, ActiveSimulationSession session)

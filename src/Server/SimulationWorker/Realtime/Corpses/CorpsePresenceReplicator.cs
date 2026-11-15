@@ -25,15 +25,18 @@ internal sealed class CorpsePresenceReplicator(
     public void AddTickPhase(SimulationTickPhases phases)
     {
         var intervalTicks = Math.Max(1, config.MovementSimulation.TickRateHz / 2);
-        phases.Add(
+        phases.AddPeriodic(
             SimulationTickOrder.CorpsePresence,
             "corpse presence",
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks == 0)
+                if (tick.ServerTick % intervalTicks != 0)
                 {
-                    Broadcast();
+                    return false;
                 }
+
+                Broadcast();
+                return true;
             });
     }
 

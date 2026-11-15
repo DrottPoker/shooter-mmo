@@ -379,6 +379,26 @@ contract:
   that succeeds resets the count; at `SimulationWorker:TickPhaseFailureLimit`
   failures in a row the guard logs one critical line and ends the loop the way
   an unhandled exception does, so the shutdown below runs and the host stops.
+  A phase that the later phases rely on registers with `AddPrerequisite`: the
+  collision streaming does, because movement steps against the loaded chunks
+  and a chunk that is not loaded is no collision at all. When it fails, the
+  rest of that tick is skipped, so no player moves through missing geometry
+  and no such position is saved.
+  A phase that works only on some ticks, such as the snapshots on every second
+  tick or the character checkpoint at its interval, registers with
+  `AddPeriodic` and says for each tick whether it did its work: a tick on which
+  it was not due is no run, so it neither fails nor resets the count, and a
+  broadcast that fails every time it is due reaches the limit. The checkpoint
+  leaves out a player whose session the worker no longer holds, so the state of
+  a player that the isolation below took out in the same tick is not saved.
+  A send never throws: `RealtimePeerSender` catches a packet that cannot be
+  sent, counts and logs the peer's first failed send, and schedules that peer's
+  disconnect, with `internal_error` when that still reaches it, so a spawn in
+  the middle of an interest refresh, a despawn in the middle of a teardown, or
+  a carry notice in the movement phase costs only its own peer and never the
+  player's state. Taking an entity out of the world finishes also when a part
+  of it throws: every removal hook runs before the first exception leaves the
+  step.
   Where a phase walks players or recipients one by one, `RealtimeFailureIsolation`
   takes out only the one that failed, at the worker's call site and never
   inside `src/Shared`: a player whose movement step or look fails gets its
