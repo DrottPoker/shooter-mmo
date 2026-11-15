@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
+using System.Text.Json.Serialization;
 using LiteNetLib;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -240,17 +241,18 @@ internal sealed class ReplicationClock(int tickRateHz) : TimeProvider
 }
 
 // The transport double: a peer that counts what the worker sends to it, by delivery method, and
-// the entity records of the snapshots among it, keeps the entity ids of the records of the
-// current snapshot, and discards the packets. It reads a packet in place into lists that keep
-// their capacity, so it adds no allocation of its own to the loop that the benchmark measures.
+// the entity records of the snapshots among it, and discards the packets. It copies the records
+// of the remote snapshots, as a transport copies a packet, into a buffer that keeps its capacity,
+// and the benchmark reads their entity ids after the tick, so the peer adds neither work beyond
+// the copy nor an allocation of its own to the loop that the benchmark measures.
 internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
 {
     private const int RecordIdOffset = 0;
 
-    public int Id { get; } = id;
+    private byte[] receivedRecords = new byte[16 * 1024];
+    private int receivedLength;
 
-    // The entity ids of the remote records since ClearReceived.
-    public List<ulong> ReceivedEntityIds { get; } = new(1024);
+    public int Id { get; } = id;
 
     public long ReliablePackets { get; private set; }
 
@@ -299,15 +301,26 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
                 throw new InvalidOperationException("A remote snapshot holds a partial entity record.");
             }
 
-            var records = payload / RealtimeProtocol.SimulationSnapshotEntitySize;
-            RemoteRecords += records;
-            for (var index = 0; index < records; index++)
+            RemoteRecords += payload / RealtimeProtocol.SimulationSnapshotEntitySize;
+            if (receivedLength + payload > receivedRecords.Length)
             {
-                var record = RealtimeProtocol.SimulationSnapshotPacketHeaderSize
-                    + (index * RealtimeProtocol.SimulationSnapshotEntitySize);
-                ReceivedEntityIds.Add(BinaryPrimitives.ReadUInt32LittleEndian(data[(record + RecordIdOffset)..]));
+                Array.Resize(ref receivedRecords, Math.Max(receivedRecords.Length * 2, receivedLength + payload));
             }
+
+            data[RealtimeProtocol.SimulationSnapshotPacketHeaderSize..].CopyTo(receivedRecords.AsSpan(receivedLength));
+            receivedLength += payload;
         }
+    }
+
+    // Adds the entity ids of the remote records since the last call to destination.
+    public void TakeReceivedEntityIds(HashSet<ulong> destination)
+    {
+        for (var offset = 0; offset < receivedLength; offset += RealtimeProtocol.SimulationSnapshotEntitySize)
+        {
+            destination.Add(BinaryPrimitives.ReadUInt32LittleEndian(receivedRecords.AsSpan(offset + RecordIdOffset)));
+        }
+
+        receivedLength = 0;
     }
 
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
@@ -323,7 +336,7 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
         UnreliableBytes = 0;
         OwnerSnapshots = 0;
         RemoteRecords = 0;
-        ReceivedEntityIds.Clear();
+        receivedLength = 0;
     }
 }
 
@@ -355,7 +368,8 @@ internal sealed record ReplicationDeterministicNumbers(
     long OwnerRecords,
     long RemoteRecords,
     long DeferredUpdates,
-    long VisibilityGroups,
+    // The key stays the one of the recorded baselines, so their fingerprint holds.
+    [property: JsonPropertyName("visibilityGroups")] long RemoteRecipients,
     long PacketsEncoded,
     long SpawnPackets,
     long DespawnPackets,
@@ -625,8 +639,7 @@ internal sealed class ReplicationBenchmark : IDisposable
                 var own = recipientEntityIds[index];
                 var ownPosition = positions[own];
                 received.Clear();
-                received.UnionWith(recipient.ReceivedEntityIds);
-                recipient.ReceivedEntityIds.Clear();
+                recipient.TakeReceivedEntityIds(received);
                 var visible = presence.GetVisibleOrdered(recipient.Id);
                 for (var entity = 0; entity < visible.Count; entity++)
                 {
@@ -776,7 +789,7 @@ internal sealed class ReplicationBenchmark : IDisposable
             ownerRecords,
             remote,
             deferred,
-            performance.SnapshotVisibilityGroups,
+            performance.SnapshotRemoteRecipients,
             performance.SnapshotPacketsEncoded,
             after.SpawnPackets - before.SpawnPackets,
             after.DespawnPackets - before.DespawnPackets,

@@ -55,7 +55,7 @@ internal sealed class WorldActorRuntimeDriver(
                 workerIdentity.RuntimeId);
             worldActorMetrics?.ObservePopulation(actors);
             Activated?.Invoke(actors);
-            presence.RebuildInterestIndex(Array.Empty<PlayerSimulationEntity>());
+            presence.SynchronizeInterestIndex(Array.Empty<PlayerSimulationEntity>());
             networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
             logger.LogInformation(
                 "[SIMULATION] Activated {ActorCount} world actors from actor catalog revision {ActorCatalogRevision} and spawn revision {ActorSpawnRevision} for worker runtime {RuntimeId}.",

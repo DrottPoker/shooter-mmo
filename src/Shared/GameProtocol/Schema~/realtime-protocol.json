@@ -2665,6 +2665,7 @@
       "description": "The owner's authoritative state and input acknowledgement for reconciliation.",
       "parameter": "snapshot",
       "sizeConstant": "OwnerSimulationSnapshotPacketSize",
+      "encodeInto": true,
       "fields": [
         { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every owner snapshot." },
         { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the state." },

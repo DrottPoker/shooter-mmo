@@ -624,6 +624,47 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        /// <summary>
+        /// Writes one OwnerSimulationSnapshot frame of 54 bytes from its members into the start of destination and returns the bytes it wrote, validated as the message is, without allocating.
+        /// </summary>
+        public static int EncodeOwnerSimulationSnapshot(Span<byte> destination, uint snapshotSequence, uint serverTick, uint lastProcessedInputSequence, float statePositionX, float statePositionY, float statePositionZ, float stateVelocityX, float stateVelocityY, float stateVelocityZ, float stateYawDegrees, bool stateIsGrounded, uint pathProgressPathId, byte pathProgressNextWaypointIndex, byte pathProgressBlockedTicks)
+        {
+            if (!IsFinite(statePositionX)
+                || !IsFinite(statePositionY)
+                || !IsFinite(statePositionZ)
+                || !IsFinite(stateVelocityX)
+                || !IsFinite(stateVelocityY)
+                || !IsFinite(stateVelocityZ)
+                || !IsFinite(stateYawDegrees)
+                || pathProgressNextWaypointIndex > MaximumMovementPathWaypoints
+                || !SatisfiesMovementPathProgressRules(pathProgressPathId, pathProgressNextWaypointIndex, pathProgressBlockedTicks))
+            {
+                throw new ArgumentException("Owner simulation snapshot is invalid.");
+            }
+
+            if (destination.Length < 54)
+            {
+                throw new ArgumentException("Owner simulation snapshot does not fit the destination.", nameof(destination));
+            }
+
+            var writer = StartPacket(destination, RealtimeMessageType.OwnerSimulationSnapshot);
+            writer.WriteUInt32(snapshotSequence);
+            writer.WriteUInt32(serverTick);
+            writer.WriteUInt32(lastProcessedInputSequence);
+            writer.WriteSingle(statePositionX);
+            writer.WriteSingle(statePositionY);
+            writer.WriteSingle(statePositionZ);
+            writer.WriteSingle(stateVelocityX);
+            writer.WriteSingle(stateVelocityY);
+            writer.WriteSingle(stateVelocityZ);
+            writer.WriteSingle(stateYawDegrees);
+            writer.WriteByte((byte)((stateIsGrounded ? 1 : 0)));
+            writer.WriteUInt32(pathProgressPathId);
+            writer.WriteByte(pathProgressNextWaypointIndex);
+            writer.WriteByte(pathProgressBlockedTicks);
+            return writer.Position;
+        }
+
         private static void WritePlayerState(ref PacketWriter writer, RealtimePlayerState value)
         {
             writer.WriteSingle(value.PositionX);

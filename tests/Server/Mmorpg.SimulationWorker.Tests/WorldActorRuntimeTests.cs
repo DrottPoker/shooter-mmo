@@ -76,7 +76,7 @@ public sealed class WorldActorRuntimeTests
         var player = RegisterPlayer(registry, CreateSession(), 0f, -1f);
         var interest = new SimulationInterestManager(
             new InterestManagementConfig(16f, 32f, 36f));
-        interest.Rebuild(new[]
+        interest.Synchronize(new[]
         {
             new SimulationInterestEntity(player.NetworkEntityId, 0f, -1f),
             new SimulationInterestEntity(

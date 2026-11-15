@@ -1468,9 +1468,11 @@ Each bot's `SimulationBotSession` follows every remote player from its reliable
 spawn to its despawn, once per snapshot sequence, so a duplicated or reordered
 frame never counts twice. A record counts as one near moving update when it is
 inside the steady interval, its position differs from the record before, the
-record before also moved, and the player is within 48 m of the bot, the
-worker's default `InterestManagement:NearRadius`; it adds the seconds since the
-record before. A bot's rate is those updates over those seconds, the rate at
+record before also moved, and the player is within 48 m of the bot; it adds
+the seconds since the record before. The 48 m is the constant
+`SimulationBotRemoteCadence.DefaultNearRadius`, which the bot cannot read from
+the worker: it must equal the worker's `InterestManagement:NearRadius`, so a
+change of either changes both. A bot's rate is those updates over those seconds, the rate at
 which its near walkers' records arrived while they walked. A bot that saw no
 player walk near it has no rate. Records of entities without a player spawn,
 such as a moving Mob, stay apart as `untrackedRecords`. The rule judges the
@@ -1732,8 +1734,11 @@ way `RealtimeServerComposition` builds them, from the worker's own
 registry and sender, `EntityPresenceReplicator` with the interest manager,
 `SnapshotReplicator` with its `SnapshotRecords`, recipient rotation, and the
 per-peer and aggregate byte budgets, and the loop guard. Instead of UDP every
-peer is a transport double that counts what it is sent, by delivery method, and
-discards it; nothing needs GameService or a database. The real
+peer is a transport double that counts what it is sent, by delivery method,
+copies the records of the remote snapshots as a transport copies a packet, and
+discards the rest; the benchmark reads the copied records' entity ids after
+the tick, outside the measured phases. Nothing needs GameService or a
+database. The real
 `SimulationTickLoop` runs two phases: a seeded motion in the place of movement
 and the Mob brains, and the snapshot broadcast with its interest refresh. A
 clock that advances one tick per tick drives the byte budgets, so the ticks run
@@ -1743,6 +1748,13 @@ Each layout places its players and Mobs from a fixed seed. A fixed share walks
 straight legs to random points of its ground at the World's walk speed, a
 walking Mob at 1.4 m/s, and the rest stands. After 90 ticks of warm-up, 900
 ticks, 30 seconds of the World, are measured.
+
+The benchmark runs every layout twice and reports the second run. The ticks
+follow each other without a pause, so during a first run the runtime is still
+compiling the optimized code of the paths the layout uses, and the first 30
+measured snapshots took up to six times as long, which showed as a 99th
+percentile far above what a running worker has. The two runs must give the
+same deterministic numbers, or the benchmark fails.
 
 | Layout | Players | Mobs | Walking | Ground |
 | --- | ---: | ---: | --- | --- |
@@ -1764,7 +1776,7 @@ Per layout, over the measured ticks:
   packets per second, the entity records per player and snapshot, the owner's
   included, the bytes per record with the packet headers, the share of the
   remote updates the budgets deferred, and the update rates, with the counts
-  they come from: bytes, packets, records, deferrals, visibility groups,
+  they come from: bytes, packets, records, deferrals, remote recipients,
   encoded packets, spawns, despawns, dropped snapshots, and the near moving
   sightings and records.
 - The update rate is the one players judge: per player, the share of the
@@ -1798,14 +1810,14 @@ numbers from the test's output.
 
 `tools/load/baselines/replication.json` holds the baseline, recorded on
 2026-11-15 with changed-only replication, on the machine of
-[Measured Tiers](#measured-tiers) while other programs used about 14 percent of
+[Measured Tiers](#measured-tiers) while other programs used about 13 percent of
 its cores, so its timings are informative only:
 
 | Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Deferred | Near walkers avg / p5 | Walkers within 16 m / beyond 56 m | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 2.7 / 4.8 ms | 7.1 / 12.9 ms | 77 KiB |
-| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.5 / 1.2 ms | 1.8 / 4.6 ms | 21 KiB |
-| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 3.5 / 6.6 ms | 12.6 / 23.7 ms | 60 KiB |
+| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 1.1 / 2.7 ms | 2.5 / 5.7 ms | 24 KiB |
+| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.2 / 0.3 ms | 0.6 / 1.1 ms | 0 KiB |
+| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 1.2 / 2.7 ms | 6.7 / 15.1 ms | 0 KiB |
 
 The same layouts through the three states of the replication, deterministic
 numbers only:
@@ -1829,11 +1841,28 @@ a walker within 16 m still comes 14 times a second, the near walkers 10 times
 on average, and one beyond 56 m about once a second, where the 14 byte record
 without the order gave everybody 10.5.
 
-The broadcast takes about three times the time it took when every record went
-out, because the scheduler looks up what each recipient last got of every
-entity it sees. The load runs before the compact record sent 115 records of
-41.96 bytes per player and snapshot in `playing-500`, 70.8 KiB of snapshots
-per player and second.
+The timings are those of each layout's second run, as the benchmark reports
+them. Measured back to back on the same machine, first runs against first
+runs, the interest phase takes about half the time it took when every record
+went out, and the broadcast, which includes the interest phase, about as long
+in `crowd-200` and less in `spread-500`: in three alternating runs each,
+`crowd-200` took 0.70 ms against 0.70, and `spread-500` 3.3 to 3.6 ms against
+3.9 to 4.3. The interest index moves an entity only when it changes cells, a
+refresh decides visibility and tier in one scan, and the scheduler's state
+follows each visible list, so planning looks an entity up only when its view
+or its record moved. Every snapshot packet is written into a reusable buffer,
+so the two crowds allocate nothing per tick; what `spread-500` allocates is
+the spawns and despawns of entities that walk in and out of view.
+
+`crowd-500` takes about twice as long as when every record went out, because
+every recipient now chooses about 142 of about 400 due records. Of its
+broadcast, the planning takes about two thirds: deciding which of the 499
+visible entities are due about 3.3 ms, weighing the waiting near changes
+0.45 ms, and choosing the nearest 1.1 ms per snapshot, measured in a first run
+on a busy machine; the interest phase takes 1.4 ms and writing, sending, and
+completing the chunks 0.8 ms. The load runs before the compact record sent 115
+records of 41.96 bytes per player and snapshot in `playing-500`, 70.8 KiB of
+snapshots per player and second.
 
 ## Load Runs Under A Network Profile
 

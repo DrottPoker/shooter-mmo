@@ -49,14 +49,6 @@ internal static class RealtimeStateMapper
             state.IsGrounded);
     }
 
-    public static RealtimeMovementPathProgress ToRealtimePathProgress(MovementPathProgress progress)
-    {
-        return new RealtimeMovementPathProgress(
-            progress.PathId,
-            (byte)progress.NextWaypointIndex,
-            (byte)progress.BlockedTicks);
-    }
-
     public static RealtimeCarryState ToRealtimeCarryState(PlayerCarryState carryState)
     {
         return new RealtimeCarryState(

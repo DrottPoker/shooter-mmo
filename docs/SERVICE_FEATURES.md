@@ -843,8 +843,11 @@ authentication, and domain failures to structured results:
   deferred record is due in the next snapshot, whatever its tier, and the
   overdue class gives every entity at least about one record per second. A
   recipient with nothing due gets no remote snapshot.
-- Each recipient's MTU-safe chunks are assembled from the shared records into
-  one reusable packet buffer that the transport copies, so the broadcast
+- Each recipient's state lists its visible entities in the order of its
+  visible set and remembers where each entity's record is, so planning reads
+  arrays and looks an entity up only when the visible set or the record moved.
+- The owner snapshot and each recipient's MTU-safe chunks are written into
+  reusable packet buffers that the transport copies, so the broadcast
   allocates nothing per recipient or packet. The worker-wide byte bucket drops
   complete frames only after the budgets above.
 - `SnapshotReplication:OverloadTargetUtilizationBasisPoints` reserves aggregate
@@ -856,15 +859,19 @@ authentication, and domain failures to structured results:
 ## Interest Management
 
 `SimulationInterestManager` maintains a spatial hash from authoritative entity
-positions. Snapshot refreshes synchronize moving entities, while joins add one
-entity incrementally and update only existing nearby observers. Each peer has a
+positions. Every snapshot brings it to the players and world actors as they
+are: an entity that stays in its cell only gets its new position, one that
+changed cells moves, a new one is added, and one that is gone leaves. Joins add
+one entity at once and update only the nearby observers. Each peer has a
 visibility set:
 
 - The enter radius, 128 m by default, adds entities.
 - A larger exit radius, 144 m by default, prevents boundary flapping.
 - Visibility changes emit reliable spawn or despawn.
 - Snapshots contain only visible entity ids.
-- Ordered visibility remains cached until the set changes.
+- Each connection keeps its visible entities ascending by id, each with its
+  tier and its place in the index; the set changes only by what entered and
+  left.
 - Each connection's visibility set is recomputed every
   `RefreshIntervalSnapshots` snapshots, 3 by default, the connections in turn,
   so a 15 Hz snapshot rate refreshes a third of them per snapshot. The band
@@ -874,8 +881,9 @@ visibility set:
   `NearRadius`, 48 m by default, or still within `NearExitRadius`, 56 m, when
   they were near before. An entity that becomes visible between two refreshes
   is near when it is within the near radius.
-- The spatial cells store the entity positions, so the visibility test reads
-  them without a dictionary lookup per candidate.
+- A refresh scans the cells around the observer once and decides visibility
+  and tier where it computes each distance. The positions lie in flat arrays
+  that the cells point into, so the scan looks nothing up per candidate.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
   contains at most 71 current entity records of 14 bytes, as
   [Remote Entity Record](REALTIME_PROTOCOL.md#remote-entity-record) describes.
@@ -2233,10 +2241,10 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Admission:MaxUnauthenticatedPeers`, `MaxUnauthenticatedPeersPerAddress` | `256`, `8` | Remote peers that have not joined yet |
 | `Admission:ConnectionAttemptsPerAddressPerSecond`, `ConnectionAttemptBurstPerAddress` | `5`, `20` | New connections per remote address |
 | `Admission:MaxReliableQueuedPackets` | `1024` | Unacknowledged reliable packets before a disconnect |
-| `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; at most 64 cells per axis direction |
+| `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; a positive cell size of at most 4,096 m, a positive enter radius, an exit radius from the enter radius to 10,000 m, and at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
 | `InterestManagement:NearRadius`, `NearExitRadius` | `48`, `56` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |
-| `SnapshotReplication:OverloadTargetUtilizationBasisPoints` | `9500` | Share of the aggregate snapshot budget that dense remote state may use before it degrades |
+| `SnapshotReplication:OverloadTargetUtilizationBasisPoints` | `9500` | Share in basis points, 1 to 10,000, of a player's and of the aggregate snapshot budget that snapshots may use before remote records are deferred |
 | `SnapshotReplication:PlayerBytesPerSecond` | 32 KiB | Snapshot bytes per player and second, owner snapshot included, at least two seconds of owner snapshots and at most `UdpQuotas:SnapshotBytesPerSecond` |
 | `SnapshotReplication:FarIntervalSnapshots`, `StopRepeats`, `RefreshIntervalSnapshots` | `3`, `3`, `15` | Snapshots between two changes of a far entity, repeats of a record after its last change, and snapshots between two refreshes of an unchanged entity; the first two at most one second of snapshots, the refresh between the far interval and ten seconds of snapshots |
 | `CollisionStreaming:LoadRadiusChunks`, `UnloadRadiusChunks` | `2`, `3` | Collision streaming radii around each anchor, the unload radius at most 16 |

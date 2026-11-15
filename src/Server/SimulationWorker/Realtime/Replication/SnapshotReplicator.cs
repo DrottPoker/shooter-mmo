@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 
@@ -37,6 +38,7 @@ internal sealed class SnapshotReplicator(
     private readonly Dictionary<int, SnapshotRecipientState> recipientStates = [];
     private readonly List<int> staleRecipientStates = [];
     private readonly Dictionary<ulong, OwnerState> ownerStates = [];
+    private readonly byte[] ownerPacketBuffer = new byte[RealtimeProtocol.OwnerSimulationSnapshotPacketSize];
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
@@ -87,13 +89,9 @@ internal sealed class SnapshotReplicator(
                     continue;
                 }
 
-                var confirmed = entity.Movement.ConfirmedState;
                 ownerStates.Add(
                     entity.NetworkEntityId,
-                    new OwnerState(
-                        entity.Movement.LastProcessedInputSequence,
-                        RealtimeStateMapper.ToRealtimePlayerState(confirmed),
-                        RealtimeStateMapper.ToRealtimePathProgress(confirmed.PathProgress)));
+                    new OwnerState(entity.Movement.LastProcessedInputSequence, entity.Movement.ConfirmedState));
             }
 
             if (playerBuffer.Count == 0)
@@ -112,7 +110,7 @@ internal sealed class SnapshotReplicator(
 
             records.EndReports();
             var interestStarted = Stopwatch.GetTimestamp();
-            presence.RebuildInterestIndex(playerBuffer);
+            presence.SynchronizeInterestIndex(playerBuffer);
             presence.RefreshInterests(null);
             performanceMetrics.RecordInterestRefresh(
                 Stopwatch.GetElapsedTime(interestStarted));
@@ -160,13 +158,7 @@ internal sealed class SnapshotReplicator(
 
                 try
                 {
-                    var ownerPacket = RealtimeProtocol.EncodeOwnerSimulationSnapshot(
-                        new RealtimeOwnerSimulationSnapshot(
-                            snapshotSequence,
-                            clock.ServerTick,
-                            owner.LastProcessedInputSequence,
-                            owner.State,
-                            owner.PathProgress));
+                    var ownerPacket = EncodeOwnerSnapshot(owner);
                     encodedPacketCount++;
                     if (!aggregateSnapshotBytes.TryConsume(ownerPacket.Length))
                     {
@@ -203,13 +195,14 @@ internal sealed class SnapshotReplicator(
                 var sent = false;
                 try
                 {
-                    var peerId = recipient.Context.PeerId;
+                    presence.GetVisibleSpans(recipient.Context.PeerId, out var orderedVisible, out var orderedNear, out var visibleVersion);
                     var plan = scheduler.Plan(
                         records,
                         RecipientStateOf(recipient),
-                        presence.GetVisibleOrdered(peerId),
-                        presence.GetNearOrdered(peerId),
-                        bytesPerRecipient);
+                        orderedVisible,
+                        orderedNear,
+                        bytesPerRecipient,
+                        visibleVersion);
                     deferredEntityUpdateCount += plan.DeferredCount;
                     if (plan.PacketCount == 0)
                     {
@@ -230,8 +223,6 @@ internal sealed class SnapshotReplicator(
                         continue;
                     }
 
-                    // The chunks are built for this recipient alone, so it is a visibility group
-                    // of its own.
                     remoteRecipientCount++;
                     for (var packetIndex = 0; packetIndex < plan.PacketCount; packetIndex++)
                     {
@@ -265,7 +256,7 @@ internal sealed class SnapshotReplicator(
         }
         finally
         {
-            performanceMetrics.RecordSnapshotPacketReuse(
+            performanceMetrics.RecordSnapshotSends(
                 remoteRecipientCount,
                 encodedPacketCount,
                 sentPacketCount,
@@ -313,8 +304,31 @@ internal sealed class SnapshotReplicator(
         }
     }
 
-    private readonly record struct OwnerState(
-        uint LastProcessedInputSequence,
-        RealtimePlayerState State,
-        RealtimeMovementPathProgress PathProgress);
+    // The owner snapshot in the reusable owner packet buffer, which the transport copies. It throws
+    // for a state that is not finite, as the protocol's validation does.
+    private ReadOnlySpan<byte> EncodeOwnerSnapshot(in OwnerState owner)
+    {
+        var state = owner.State;
+        var progress = state.PathProgress;
+        var length = RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            ownerPacketBuffer,
+            snapshotSequence,
+            clock.ServerTick,
+            owner.LastProcessedInputSequence,
+            state.PositionX,
+            state.PositionY,
+            state.PositionZ,
+            state.VelocityX,
+            state.VelocityY,
+            state.VelocityZ,
+            state.YawDegrees,
+            state.IsGrounded,
+            progress.PathId,
+            (byte)progress.NextWaypointIndex,
+            (byte)progress.BlockedTicks);
+        return ownerPacketBuffer.AsSpan(0, length);
+    }
+
+    // The state after the owner's last processed input, which its reconciliation replays from.
+    private readonly record struct OwnerState(uint LastProcessedInputSequence, PlayerMovementState State);
 }

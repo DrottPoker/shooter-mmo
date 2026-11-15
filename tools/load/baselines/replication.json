@@ -1,14 +1,14 @@
 {
-  "commit": "4093eb4aa2caaf5f83732681b4a0fed767c227f1",
+  "commit": "6a8427387f5380ed0894ceb3a9bf293b2f7ff8bc",
   "sourceState": "clean",
   "treeDirty": false,
-  "date": "2026-11-15T19:14:30.3442771Z",
+  "date": "2026-11-15T20:47:54.2156479Z",
   "machine": {
     "cpu": "AMD Ryzen 7 5800 8-Core Processor",
     "logicalCores": 16,
     "operatingSystem": "Microsoft Windows 10.0.26200",
     "dotNet": ".NET 10.0.10",
-    "loadPercentBefore": 13.6666666666667
+    "loadPercentBefore": 12.6666666666667
   },
   "deterministicFingerprint": "3cbfbf445ad314a9d760d9c4f183199abcf140cffc03f5a296e75b5178f2aa58",
   "layouts": [
@@ -55,21 +55,21 @@
         "farMovingUpdateRateHz": 5.019068155773932
       },
       "timing": {
-        "wallSeconds": 4.4906117,
-        "tickAverageMs": 3.582231666666669,
-        "tickP99Ms": 10.9365,
-        "interestAverageMs": 2.724677111111113,
-        "interestP99Ms": 4.7998,
-        "broadcastAverageMs": 7.076752888888891,
-        "broadcastP99Ms": 12.8787,
-        "allocatedBytesPerTick": 78939.11111111111,
-        "generation0PerSecond": 0.2,
-        "generation1PerSecond": 0.1,
-        "generation2PerSecond": 0.03333333333333333,
-        "gcPauseMsPerSecond": 0.38176666666666664,
+        "wallSeconds": 2.0723784,
+        "tickAverageMs": 1.2643603333333326,
+        "tickP99Ms": 4.9018,
+        "interestAverageMs": 1.0897162222222216,
+        "interestP99Ms": 2.6875,
+        "broadcastAverageMs": 2.4611362222222235,
+        "broadcastP99Ms": 5.6865,
+        "allocatedBytesPerTick": 24086.515555555554,
+        "generation0PerSecond": 0.06666666666666667,
+        "generation1PerSecond": 0.06666666666666667,
+        "generation2PerSecond": 0,
+        "gcPauseMsPerSecond": 0.16133333333333333,
         "phaseAverageMs": {
-          "benchmark motion": 0.024886666666666668,
-          "snapshots": 7.07982
+          "benchmark motion": 0.016795555555555557,
+          "snapshots": 2.462273333333333
         }
       }
     },
@@ -116,21 +116,21 @@
         "farMovingUpdateRateHz": 6.018126888217522
       },
       "timing": {
-        "wallSeconds": 1.3080825,
-        "tickAverageMs": 0.9217988888888886,
-        "tickP99Ms": 3.6912,
-        "interestAverageMs": 0.5349995555555555,
-        "interestP99Ms": 1.2067,
-        "broadcastAverageMs": 1.8087173333333326,
-        "broadcastP99Ms": 4.5868,
-        "allocatedBytesPerTick": 21610.95111111111,
-        "generation0PerSecond": 0.1,
-        "generation1PerSecond": 0.1,
-        "generation2PerSecond": 0.03333333333333333,
-        "gcPauseMsPerSecond": 0.1299,
+        "wallSeconds": 0.5678766,
+        "tickAverageMs": 0.3058748888888885,
+        "tickP99Ms": 0.993,
+        "interestAverageMs": 0.15860288888888893,
+        "interestP99Ms": 0.3177,
+        "broadcastAverageMs": 0.5916073333333335,
+        "broadcastP99Ms": 1.091,
+        "allocatedBytesPerTick": 0,
+        "generation0PerSecond": 0,
+        "generation1PerSecond": 0,
+        "generation2PerSecond": 0,
+        "gcPauseMsPerSecond": 0,
         "phaseAverageMs": {
-          "benchmark motion": 0.008893333333333333,
-          "snapshots": 1.8104177777777777
+          "benchmark motion": 0.005127777777777778,
+          "snapshots": 0.5924155555555556
         }
       }
     },
@@ -177,21 +177,21 @@
         "farMovingUpdateRateHz": 1.1952920194758565
       },
       "timing": {
-        "wallSeconds": 9.0507305,
-        "tickAverageMs": 6.36117377777778,
-        "tickP99Ms": 19.8394,
-        "interestAverageMs": 3.465581555555556,
-        "interestP99Ms": 6.564,
-        "broadcastAverageMs": 12.609486888888897,
-        "broadcastP99Ms": 23.7166,
-        "allocatedBytesPerTick": 61538.915555555555,
-        "generation0PerSecond": 0.13333333333333333,
-        "generation1PerSecond": 0.06666666666666667,
+        "wallSeconds": 5.7288827,
+        "tickAverageMs": 3.3952380000000004,
+        "tickP99Ms": 12.1406,
+        "interestAverageMs": 1.2372591111111115,
+        "interestP99Ms": 2.6674,
+        "broadcastAverageMs": 6.695294666666661,
+        "broadcastP99Ms": 15.1465,
+        "allocatedBytesPerTick": 0,
+        "generation0PerSecond": 0,
+        "generation1PerSecond": 0,
         "generation2PerSecond": 0,
-        "gcPauseMsPerSecond": 0.27613333333333334,
+        "gcPauseMsPerSecond": 0,
         "phaseAverageMs": {
-          "benchmark motion": 0.029164444444444444,
-          "snapshots": 12.61414
+          "benchmark motion": 0.025264444444444444,
+          "snapshots": 6.697462222222223
         }
       }
     }

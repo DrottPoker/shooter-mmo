@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 
@@ -29,6 +31,11 @@ internal sealed class SnapshotRecords
     private uint sequence;
 
     public int Count => count;
+
+    // The entity of every slot and the version of its record, for the planner's loop.
+    internal ReadOnlySpan<ulong> EntityIds => entityIds.AsSpan(0, count);
+
+    internal ReadOnlySpan<ulong> Versions => versions.AsSpan(0, count);
 
     // The snapshot whose reports follow.
     public uint Sequence => sequence;
@@ -131,6 +138,14 @@ internal sealed class SnapshotRecords
         return records.AsSpan(slot * RecordSize, RecordSize);
     }
 
+    // Copies the slot's record to the start of destination in one block move.
+    internal void CopyRecord(int slot, Span<byte> destination)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)slot, (uint)count, nameof(slot));
+        ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, RecordSize, nameof(destination));
+        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(destination), ref records[slot * RecordSize], RecordSize);
+    }
+
     // The squared planar distance between the reported positions of two slots.
     public float DistanceSquared(int slot, int otherSlot)
     {
@@ -151,7 +166,8 @@ internal sealed class SnapshotRecords
         return checked((entityCount * RecordSize) + (packetCount * RealtimeProtocol.SimulationSnapshotPacketHeaderSize));
     }
 
-    // The most of availableEntities records whose packets fit byteBudget.
+    // The most of availableEntities records whose packets fit byteBudget: as many full chunks as
+    // fit, and in the rest one more header with as many records as fit after it.
     internal static int CalculateMaximumEntityCount(int byteBudget, int availableEntities)
     {
         if (byteBudget <= 0 || availableEntities <= 0)
@@ -159,13 +175,13 @@ internal sealed class SnapshotRecords
             return 0;
         }
 
-        var count = 0;
-        while (count < availableEntities && CalculateEncodedBytes(count + 1) <= byteBudget)
-        {
-            count++;
-        }
-
-        return count;
+        const int FullChunkBytes = (RecordsPerChunk * RecordSize) + RealtimeProtocol.SimulationSnapshotPacketHeaderSize;
+        var fullChunks = byteBudget / FullChunkBytes;
+        var rest = byteBudget - (fullChunks * FullChunkBytes);
+        var partial = rest >= RealtimeProtocol.SimulationSnapshotPacketHeaderSize + RecordSize
+            ? (rest - RealtimeProtocol.SimulationSnapshotPacketHeaderSize) / RecordSize
+            : 0;
+        return (int)Math.Min(availableEntities, ((long)fullChunks * RecordsPerChunk) + partial);
     }
 
     private void Store(int slot, ReadOnlySpan<byte> record)

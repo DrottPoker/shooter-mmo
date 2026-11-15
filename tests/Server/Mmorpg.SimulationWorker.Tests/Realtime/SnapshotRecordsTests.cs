@@ -63,6 +63,24 @@ public sealed class SnapshotRecordsTests
     }
 
     [Fact]
+    public void TheMostRecordsThatFitABudgetAreThoseWhosePacketsFit()
+    {
+        for (var budget = -1; budget <= 3 * 1023; budget++)
+        {
+            foreach (var available in new[] { 0, 1, 70, 71, 72, 142, 143, 300 })
+            {
+                var count = 0;
+                while (count < available && SnapshotRecords.CalculateEncodedBytes(count + 1) <= budget)
+                {
+                    count++;
+                }
+
+                Assert.Equal(count, SnapshotRecords.CalculateMaximumEntityCount(budget, available));
+            }
+        }
+    }
+
+    [Fact]
     public void ReportingPlanningAndBuildingChunksAllocateNothing()
     {
         var records = new SnapshotRecords();

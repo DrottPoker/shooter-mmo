@@ -667,8 +667,8 @@ shape before it can be treated as complete:
 - Keep every unreliable packet within LiteNetLib's `1023` byte single-packet
   limit. Do not depend on hidden transport fragmentation.
 - Define the overload behavior explicitly. Dense remote state may reduce its
-  fair update cadence, but owner reconciliation must remain fixed-rate and
-  measurable.
+  update cadence by distance, but owner reconciliation must remain fixed-rate
+  and measurable.
 - Add low-cardinality timing, backlog, allocation, byte, fan-out, and deferred
   work telemetry for any new high-frequency path, register its meter for export,
   and keep its recording allocation-free.
@@ -682,6 +682,31 @@ shape before it can be treated as complete:
 Per-entity tasks, timers, database sessions, and HTTP polling remain prohibited
 for moving populations. A feature that introduces all-to-all work must either
 prove the bounded tier or add spatial, frequency, or byte-budget degradation.
+
+Movement replication is built to this contract, on the single realtime loop:
+
+- The interest index keeps every entity in a cell of a spatial hash and moves
+  it only when it changes cells; each connection refreshes its visible set and
+  its near tier once every three snapshots, the connections in turn, and the
+  work of a refresh grows with the entities around the observer, not with the
+  World, as [Interest Management](SERVICE_FEATURES.md#interest-management)
+  describes.
+- Each entity's remote record is quantized once per snapshot, and a recipient
+  gets a record only when it is due: new in view, changed, stopping, or due
+  for its refresh, near entities at the snapshot rate and far ones at a third
+  of it, within a byte budget per player that takes the nearest first, as
+  [Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+  describes. The owner snapshot goes out at the full rate before any remote
+  record.
+- Every packet of a broadcast, owner and remote, is written into a reusable
+  buffer that the transport copies, so the snapshot path allocates nothing per
+  recipient. The scheduler keeps each recipient's state parallel to its
+  visible list and remembers where each entity's record is, so it looks an
+  entity up only when its view or its record moved.
+- The [replication benchmark](STACK_STRESS_TESTING.md#replication-benchmark)
+  measures the bytes, records, update rates by distance, and the time of the
+  interest and broadcast phases in three layouts, and its small layout pins
+  every deterministic number in a test that runs with every test run.
 
 ### GameSimulation
 

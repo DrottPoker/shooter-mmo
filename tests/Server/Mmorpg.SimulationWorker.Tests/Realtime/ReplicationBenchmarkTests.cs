@@ -45,8 +45,19 @@ public sealed class ReplicationBenchmarkTests
         var results = new List<ReplicationLayoutResult>();
         foreach (var layout in ReplicationLayout.Measured)
         {
-            using var benchmark = new ReplicationBenchmark(layout);
-            results.Add(benchmark.Run());
+            // Every layout runs twice and the second run counts. The ticks follow each other
+            // without a pause, so in a first run the runtime is still compiling the optimized
+            // code of the paths the layout uses while its first snapshots are measured.
+            ReplicationLayoutResult warmUp;
+            using (var benchmark = new ReplicationBenchmark(layout))
+            {
+                warmUp = benchmark.Run();
+            }
+
+            using var measured = new ReplicationBenchmark(layout);
+            var result = measured.Run();
+            Assert.Equal(warmUp.Deterministic, result.Deterministic);
+            results.Add(result);
         }
 
         var run = new ReplicationRunResult(
@@ -115,7 +126,7 @@ public sealed class ReplicationBenchmarkTests
             [
                 numbers.Snapshots, numbers.SnapshotBytes, numbers.ReliableBytes, numbers.AllBytes, numbers.UnreliablePackets,
                 numbers.ReliablePackets, numbers.SnapshotRecords, numbers.OwnerRecords, numbers.RemoteRecords,
-                numbers.DeferredUpdates, numbers.VisibilityGroups, numbers.PacketsEncoded, numbers.SpawnPackets,
+                numbers.DeferredUpdates, numbers.RemoteRecipients, numbers.PacketsEncoded, numbers.SpawnPackets,
                 numbers.DespawnPackets, numbers.DroppedSnapshotPackets, numbers.NearMovingSightings, numbers.NearMovingRecords
             ]);
         Assert.Equal(3_420d, numbers.SnapshotBytesPerPlayerPerSecond, 9);

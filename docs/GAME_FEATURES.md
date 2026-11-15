@@ -180,9 +180,23 @@ everyone. Their layouts are in [Development Worlds](DEVELOPMENT_WORLDS.md).
 
 Other players, NPCs, Mobs, and resource nodes appear when they come within
 128 m and disappear when they move beyond 144 m. Other characters move smoothly,
-at an even speed, about 133 ms behind the server; after a network stall that
-delay recovers instead of growing. Interest is described in
-[Interest Management](SERVICE_FEATURES.md#interest-management).
+at an even speed; after a network stall the delay recovers instead of growing:
+
+- Within about 48 m they move with every snapshot, 15 times a second, about
+  133 ms behind the server.
+- Farther away their positions come about five times a second, and they move
+  as smoothly about 0.4 s behind. Crossing from one distance to the other
+  slows or speeds a character up by at most an eighth for about a second.
+- A character that stops stands where it stopped. One whose updates pause
+  walks on for a quarter of a second, slows to a stop over the next quarter,
+  and returns to its true place without a jump.
+- In a dense crowd the nearest stay at the full rate and the farther ones are
+  updated less often, the farthest about once a second.
+
+Interest is described in
+[Interest Management](SERVICE_FEATURES.md#interest-management), and what is
+sent when in
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication).
 
 ## Characters And Their Looks
 

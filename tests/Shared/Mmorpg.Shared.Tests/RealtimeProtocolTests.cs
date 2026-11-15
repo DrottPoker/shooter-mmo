@@ -479,6 +479,35 @@ public sealed class RealtimeProtocolTests
     }
 
     [Fact]
+    public void TheOwnerSnapshotEncoderIntoACallersBufferWritesTheBytesOfTheAllocatingEncoder()
+    {
+        var expected = RealtimeProtocol.EncodeOwnerSimulationSnapshot(new RealtimeOwnerSimulationSnapshot(
+            41,
+            900,
+            77,
+            new RealtimePlayerState(1.5f, -2.25f, 300.125f, 4.5f, -0.5f, 0f, 271.5f, true),
+            new RealtimeMovementPathProgress(12, 3, 2)));
+        var buffer = new byte[RealtimeProtocol.MaximumUnreliablePacketSize];
+
+        var length = RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            buffer, 41, 900, 77, 1.5f, -2.25f, 300.125f, 4.5f, -0.5f, 0f, 271.5f, true, 12, 3, 2);
+
+        Assert.Equal(RealtimeProtocol.OwnerSimulationSnapshotPacketSize, length);
+        Assert.Equal(expected, buffer.AsSpan(0, length).ToArray());
+
+        // The same rules as the message: finite values, a waypoint within the path limit, and no
+        // progress without a path.
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            buffer, 1, 1, 1, float.NaN, 0f, 0f, 0f, 0f, 0f, 0f, true, 0, 0, 0));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            buffer, 1, 1, 1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, true, 5, RealtimeProtocolLimits.MaximumMovementPathWaypoints + 1, 0));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            buffer, 1, 1, 1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, true, 0, 1, 0));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeOwnerSimulationSnapshot(
+            new byte[RealtimeProtocol.OwnerSimulationSnapshotPacketSize - 1], 1, 1, 1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, true, 0, 0, 0));
+    }
+
+    [Fact]
     public void OwnerSimulationSnapshotRoundTripsPrioritizedReconciliationState()
     {
         var expected = new RealtimeOwnerSimulationSnapshot(

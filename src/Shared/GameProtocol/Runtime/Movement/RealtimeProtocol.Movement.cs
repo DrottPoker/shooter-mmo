@@ -17,8 +17,13 @@ namespace Mmorpg.GameProtocol
 
         private static bool SatisfiesRules(RealtimeMovementPathProgress progress)
         {
-            return progress.PathId != 0
-                || (progress.NextWaypointIndex == 0 && progress.BlockedTicks == 0);
+            return SatisfiesMovementPathProgressRules(progress.PathId, progress.NextWaypointIndex, progress.BlockedTicks);
+        }
+
+        // The same rule over the members, for the owner snapshot written into a buffer.
+        private static bool SatisfiesMovementPathProgressRules(uint pathId, byte nextWaypointIndex, byte blockedTicks)
+        {
+            return pathId != 0 || (nextWaypointIndex == 0 && blockedTicks == 0);
         }
 
         // A path travels only with the input that follows it, so the worker never has to

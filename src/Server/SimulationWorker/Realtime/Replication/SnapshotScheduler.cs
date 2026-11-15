@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Config;
@@ -33,21 +34,24 @@ internal readonly record struct SnapshotRecipientPlan(int RecordCount, int Defer
 
 // What a recipient got of one visible entity: the version of the record it last got and the
 // snapshot that carried it, the stop repeats still due, whether the entity is new in view,
-// whether a due record was deferred, and the priority a waiting near change gathered.
+// whether a due record was deferred, and the priority a waiting near change gathered. RecordSlot
+// remembers where the entity's record was, checked against the entity before it is trusted. The
+// entry fits 32 bytes, because planning reads one per visible entity of every recipient.
 internal struct SnapshotRecipientEntity
 {
     public ulong EntityId;
     public ulong SentVersion;
     public uint SentSequence;
-    public uint SeenSequence;
+    public int RecordSlot;
     public float NearPriority;
     public byte RepeatsLeft;
     public bool NewInView;
     public bool Deferred;
 }
 
-// The remote replication state of one recipient: what it got of each entity it sees. It belongs
-// to one connection and its controlled entity, and starts empty for another. Loop-confined.
+// The remote replication state of one recipient: what it got of each entity it sees, one entry
+// per visible entity in the order of its visible list, ascending by id. It belongs to one
+// connection and its controlled entity, and starts empty for another. Loop-confined.
 internal sealed class SnapshotRecipientState(RealtimePeerContext context, ulong controlledEntityId)
 {
     public RealtimePeerContext Context { get; } = context;
@@ -57,9 +61,22 @@ internal sealed class SnapshotRecipientState(RealtimePeerContext context, ulong 
     // The snapshot that last planned for this recipient.
     public uint LastSequence { get; set; }
 
-    internal Dictionary<ulong, int> IndexByEntityId { get; } = [];
+    // The version of the visible list that the entries are parallel to; 0 for none.
+    internal ulong AlignedVisibleVersion { get; set; }
 
-    internal List<SnapshotRecipientEntity> Entities { get; } = [];
+    internal List<SnapshotRecipientEntity> Entities { get; private set; } = [];
+
+    // Where the recipient's own record was, checked like an entry's.
+    internal int OwnRecordSlot { get; set; } = -1;
+
+    // The entries for another visible list, built beside the current ones and then swapped in,
+    // so a change of the list costs one pass.
+    internal List<SnapshotRecipientEntity> Spare { get; private set; } = [];
+
+    internal void SwapSpare()
+    {
+        (Entities, Spare) = (Spare, Entities);
+    }
 }
 
 // Decides which records each recipient gets in a snapshot and builds its chunks. A record is due
@@ -74,24 +91,39 @@ internal sealed class SnapshotRecipientState(RealtimePeerContext context, ulong 
 // priority each gathers while it waits, the inverse of its distance per snapshot, so when they
 // do not all fit the nearest go every snapshot and the others in turn, less often the farther
 // they are, and none waits for ever. A due record that does not fit stays due in the next
-// snapshot. Nothing allocates once the buffers have grown. Loop-confined.
+// snapshot. A recipient's entries stay parallel to its visible list and remember where each
+// record is, so a plan reads arrays and looks an entity up only when its view or its record
+// moved. Nothing allocates once the buffers have grown. Loop-confined.
 internal sealed class SnapshotScheduler
 {
     private const int ClassCount = 6;
+
+    // The near changes share one list, because their priority already holds how long they waited.
+    private const int NearChangedIndex = ((int)SnapshotRecordClass.NearChanged * 2) + 1;
 
     // Closer than this, every near change gathers priority as one at this distance.
     private const float MinimumPriorityDistance = 1f;
 
     private readonly SnapshotReplicationConfig settings;
 
-    // Per class, the due records that were deferred before, then the others.
+    // The intervals, and the multipliers that take an entity id modulo them without dividing.
+    private readonly uint farInterval;
+    private readonly uint refreshInterval;
+    private readonly ulong farMultiplier;
+    private readonly ulong refreshMultiplier;
+
+    // Per class, the due records that were deferred before, then the others, and which of each
+    // list the plan took: a count from a start, wrapping around.
     private readonly List<Due>[] due = new List<Due>[ClassCount * 2];
+    private readonly int[] takenStarts = new int[ClassCount * 2];
+    private readonly int[] takenCounts = new int[ClassCount * 2];
     private readonly List<Due> selected = [];
     private readonly byte[] packet = new byte[RealtimeProtocol.MaximumUnreliablePacketSize];
     private SnapshotRecords? plannedRecords;
     private SnapshotRecipientState? plannedState;
     private int plannedPackets;
-    private int seenCount;
+    private int plannedOwnSlot;
+    private bool nearWeighted;
 
     public SnapshotScheduler(SnapshotReplicationConfig settings)
     {
@@ -106,6 +138,10 @@ internal sealed class SnapshotScheduler
         }
 
         this.settings = settings;
+        farInterval = (uint)settings.FarIntervalSnapshots;
+        refreshInterval = (uint)settings.RefreshIntervalSnapshots;
+        farMultiplier = unchecked((ulong.MaxValue / farInterval) + 1);
+        refreshMultiplier = unchecked((ulong.MaxValue / refreshInterval) + 1);
         for (var index = 0; index < due.Length; index++)
         {
             due[index] = [];
@@ -113,21 +149,22 @@ internal sealed class SnapshotScheduler
     }
 
     // Chooses the records of one recipient within its byte budget, of which the owner snapshot
-    // takes its share first. orderedNear tells for each entity of orderedVisible whether it is
-    // near. The plan holds until Complete; WriteChunk builds its packets.
+    // takes its share first. orderedVisible is ascending by id, and orderedNear tells for each of
+    // its entities whether it is near. visibleVersion names the visible list, so an unchanged one
+    // needs no check; 0 means unknown. The plan holds until Complete; WriteChunk builds its
+    // packets.
     public SnapshotRecipientPlan Plan(
         SnapshotRecords records,
         SnapshotRecipientState state,
-        IReadOnlyList<ulong> orderedVisible,
-        IReadOnlyList<bool> orderedNear,
-        int bytesPerRecipient)
+        ReadOnlySpan<ulong> orderedVisible,
+        ReadOnlySpan<bool> orderedNear,
+        int bytesPerRecipient,
+        ulong visibleVersion = 0)
     {
         ArgumentNullException.ThrowIfNull(records);
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(orderedVisible);
-        ArgumentNullException.ThrowIfNull(orderedNear);
         ArgumentOutOfRangeException.ThrowIfNegative(bytesPerRecipient);
-        if (orderedNear.Count != orderedVisible.Count)
+        if (orderedNear.Length != orderedVisible.Length)
         {
             throw new ArgumentException("Every visible entity needs its tier.", nameof(orderedNear));
         }
@@ -142,47 +179,64 @@ internal sealed class SnapshotScheduler
             list.Clear();
         }
 
+        Array.Clear(takenCounts);
         state.LastSequence = sequence;
-        seenCount = 0;
-        var hasOwnSlot = records.TryGetSlot(state.ControlledEntityId, out var ownSlot);
-        var entities = CollectionsMarshal.AsSpan(state.Entities);
-        for (var index = 0; index < orderedVisible.Count; index++)
+        if (visibleVersion == 0
+            || visibleVersion != state.AlignedVisibleVersion
+            || state.Entities.Count != orderedVisible.Length)
         {
-            var entityId = orderedVisible[index];
-            if (entityId == state.ControlledEntityId || !records.TryGetSlot(entityId, out var slot))
-            {
-                continue;
-            }
-
-            if (!state.IndexByEntityId.TryGetValue(entityId, out var entryIndex))
-            {
-                entryIndex = state.Entities.Count;
-                state.IndexByEntityId.Add(entityId, entryIndex);
-                state.Entities.Add(new SnapshotRecipientEntity { EntityId = entityId, NewInView = true });
-                entities = CollectionsMarshal.AsSpan(state.Entities);
-            }
-
-            ref var entry = ref entities[entryIndex];
-            entry.SeenSequence = sequence;
-            seenCount++;
-            if (!TryClassify(ref entry, records.VersionOf(slot), orderedNear[index], sequence, out var recordClass))
-            {
-                entry.NearPriority = 0f;
-                continue;
-            }
-
-            if (recordClass == SnapshotRecordClass.NearChanged)
-            {
-                var distance = hasOwnSlot ? MathF.Sqrt(records.DistanceSquared(slot, ownSlot)) : 0f;
-                entry.NearPriority += 1f / MathF.Max(distance, MinimumPriorityDistance);
-            }
-            else
-            {
-                entry.NearPriority = 0f;
-            }
-
-            due[DueIndex(recordClass, entry.Deferred)].Add(new Due(slot, entryIndex, recordClass, entry.NearPriority));
+            Align(state, orderedVisible);
+            state.AlignedVisibleVersion = visibleVersion;
         }
+
+        // The id modulo the interval that puts an entity on its far or refresh slot in this snapshot.
+        var farSlotPhase = SlotPhase(sequence, farInterval);
+        var refreshSlotPhase = SlotPhase(sequence, refreshInterval);
+        var controlledEntityId = state.ControlledEntityId;
+        var ownSlot = state.OwnRecordSlot = ResolveRecordSlot(records, controlledEntityId, state.OwnRecordSlot);
+        var recordEntityIds = records.EntityIds;
+        var recordVersions = records.Versions;
+        var entities = CollectionsMarshal.AsSpan(state.Entities);
+        for (var index = 0; index < entities.Length; index++)
+        {
+            ref var entry = ref entities[index];
+            var entityId = entry.EntityId;
+            if (entityId == controlledEntityId)
+            {
+                continue;
+            }
+
+            // The remembered slot, while it still holds the entity's record.
+            var slot = entry.RecordSlot;
+            if ((uint)slot >= (uint)recordEntityIds.Length || recordEntityIds[slot] != entityId)
+            {
+                slot = entry.RecordSlot = records.TryGetSlot(entityId, out var current) ? current : -1;
+                if (slot < 0)
+                {
+                    // Without a record the entity is new again when its record returns.
+                    entry = NewlyVisible(entityId);
+                    continue;
+                }
+            }
+
+            if (!TryClassify(ref entry, recordVersions[slot], orderedNear[index], sequence, farSlotPhase, refreshSlotPhase, out var recordClass))
+            {
+                entry.NearPriority = 0f;
+                continue;
+            }
+
+            // A near change gathers its priority only when not every near change goes out, since
+            // a sent record starts again from zero.
+            if (recordClass != SnapshotRecordClass.NearChanged)
+            {
+                entry.NearPriority = 0f;
+            }
+
+            due[DueIndex(recordClass, entry.Deferred)].Add(new Due(slot, index, recordClass, 0f));
+        }
+
+        plannedOwnSlot = ownSlot;
+        nearWeighted = false;
 
         var dueCount = 0;
         foreach (var list in due)
@@ -205,27 +259,28 @@ internal sealed class SnapshotScheduler
         var remaining = SnapshotRecords.CalculateMaximumEntityCount(remoteByteBudget, dueCount);
         for (var dueIndex = 0; dueIndex < due.Length; dueIndex++)
         {
-            if (remaining == 0)
-            {
-                break;
-            }
-
             var list = due[dueIndex];
             var take = Math.Min(remaining, list.Count);
             var start = 0;
             if (take < list.Count)
             {
-                if (dueIndex == DueIndex(SnapshotRecordClass.NearChanged, deferred: false))
+                if (dueIndex == NearChangedIndex)
                 {
-                    MoveHighestPriorityFirst(CollectionsMarshal.AsSpan(list), take);
+                    WeighNearChanges();
+                    if (take > 0)
+                    {
+                        MoveHighestPriorityFirst(CollectionsMarshal.AsSpan(list), take);
+                    }
                 }
-                else
+                else if (take > 0)
                 {
                     // A part that cannot fit whole sends a subset that rotates with the snapshot.
                     start = (int)(((ulong)unchecked(sequence - 1u) * (uint)take) % (ulong)list.Count);
                 }
             }
 
+            takenStarts[dueIndex] = start;
+            takenCounts[dueIndex] = take;
             for (var index = 0; index < take; index++)
             {
                 selected.Add(list[(start + index) % list.Count]);
@@ -258,9 +313,9 @@ internal sealed class SnapshotScheduler
             (ushort)chunkIndex,
             (ushort)plannedPackets,
             recordCount);
-        for (var index = 0; index < recordCount; index++)
+        foreach (var item in CollectionsMarshal.AsSpan(selected).Slice(first, recordCount))
         {
-            records.Record(selected[first + index].Slot).CopyTo(packet.AsSpan(length));
+            records.CopyRecord(item.Slot, packet.AsSpan(length));
             length += SnapshotRecords.RecordSize;
         }
 
@@ -268,8 +323,7 @@ internal sealed class SnapshotScheduler
     }
 
     // Ends the plan. When its packets went out, the recipient has the selected records; every due
-    // record that did not go out stays due in the next snapshot. Then the entities that the
-    // recipient no longer sees are forgotten.
+    // record that did not go out stays due in the next snapshot.
     public void Complete(bool sent)
     {
         var records = plannedRecords;
@@ -279,23 +333,38 @@ internal sealed class SnapshotScheduler
             return;
         }
 
+        // What did not go out is deferred, and the near changes among it gathered their priority.
         var entities = CollectionsMarshal.AsSpan(state.Entities);
-        foreach (var list in due)
+        for (var dueIndex = 0; dueIndex < due.Length; dueIndex++)
         {
-            foreach (var item in list)
+            var list = CollectionsMarshal.AsSpan(due[dueIndex]);
+            var taken = sent ? takenCounts[dueIndex] : 0;
+            if (taken == list.Length)
             {
-                entities[item.EntryIndex].Deferred = true;
+                continue;
+            }
+
+            if (dueIndex == NearChangedIndex)
+            {
+                WeighNearChanges();
+            }
+
+            var start = takenStarts[dueIndex];
+            for (var index = taken; index < list.Length; index++)
+            {
+                entities[list[(start + index) % list.Length].EntryIndex].Deferred = true;
             }
         }
 
         if (sent)
         {
-            foreach (var item in selected)
+            var versions = records.Versions;
+            foreach (var item in CollectionsMarshal.AsSpan(selected))
             {
                 // A change starts the stop repeats, and a repeat counts one off; the record of an
                 // entity new in view confirms its spawn and starts none.
                 ref var entry = ref entities[item.EntryIndex];
-                var version = records.VersionOf(item.Slot);
+                var version = versions[item.Slot];
                 if (item.Class == SnapshotRecordClass.NewInView)
                 {
                     entry.RepeatsLeft = 0;
@@ -317,21 +386,19 @@ internal sealed class SnapshotScheduler
             }
         }
 
-        if (state.Entities.Count > seenCount)
-        {
-            Forget(state, records.Sequence);
-        }
-
         plannedRecords = null;
         plannedState = null;
         selected.Clear();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryClassify(
         ref SnapshotRecipientEntity entry,
         ulong version,
         bool near,
         uint sequence,
+        uint farSlotPhase,
+        uint refreshSlotPhase,
         out SnapshotRecordClass recordClass)
     {
         if (entry.NewInView)
@@ -340,26 +407,25 @@ internal sealed class SnapshotScheduler
             return true;
         }
 
-        var tierSlot = near || entry.Deferred || IsSlot(sequence, entry.EntityId, settings.FarIntervalSnapshots);
         bool isDue;
         if (version != entry.SentVersion)
         {
             recordClass = near ? SnapshotRecordClass.NearChanged : SnapshotRecordClass.FarChanged;
-            isDue = tierSlot;
+            isDue = near || entry.Deferred || Modulo(entry.EntityId, farMultiplier, farInterval) == farSlotPhase;
         }
         else if (entry.RepeatsLeft > 0)
         {
             recordClass = SnapshotRecordClass.StopRepeat;
-            isDue = tierSlot;
+            isDue = near || entry.Deferred || Modulo(entry.EntityId, farMultiplier, farInterval) == farSlotPhase;
         }
         else
         {
             recordClass = SnapshotRecordClass.Refresh;
-            isDue = entry.Deferred || IsSlot(sequence, entry.EntityId, settings.RefreshIntervalSnapshots);
+            isDue = entry.Deferred || Modulo(entry.EntityId, refreshMultiplier, refreshInterval) == refreshSlotPhase;
         }
 
         // A refresh on time comes one interval after the last record; only a deferred one is late.
-        if (isDue && unchecked(sequence - entry.SentSequence) > (uint)settings.RefreshIntervalSnapshots)
+        if (isDue && unchecked(sequence - entry.SentSequence) > refreshInterval)
         {
             recordClass = SnapshotRecordClass.Overdue;
         }
@@ -367,10 +433,89 @@ internal sealed class SnapshotScheduler
         return isDue;
     }
 
-    // The near changes share one list, because their priority already holds how long they waited.
+    // Makes the entries parallel to the visible list. Both ascend by id, so a changed list is
+    // merged in one pass: an entity that stayed keeps its entry, a new one gets a fresh entry,
+    // and one that left the view is forgotten. An unchanged list costs one comparison per entity.
+    private static void Align(SnapshotRecipientState state, ReadOnlySpan<ulong> orderedVisible)
+    {
+        var entries = CollectionsMarshal.AsSpan(state.Entities);
+        if (entries.Length == orderedVisible.Length)
+        {
+            var index = 0;
+            while (index < entries.Length && entries[index].EntityId == orderedVisible[index])
+            {
+                index++;
+            }
+
+            if (index == entries.Length)
+            {
+                return;
+            }
+        }
+
+        var spare = state.Spare;
+        CollectionsMarshal.SetCount(spare, orderedVisible.Length);
+        var merged = CollectionsMarshal.AsSpan(spare);
+        var entry = 0;
+        for (var index = 0; index < orderedVisible.Length; index++)
+        {
+            var entityId = orderedVisible[index];
+            if (index > 0 && entityId <= orderedVisible[index - 1])
+            {
+                throw new ArgumentException("The visible entities must ascend by id.", nameof(orderedVisible));
+            }
+
+            while (entry < entries.Length && entries[entry].EntityId < entityId)
+            {
+                entry++;
+            }
+
+            merged[index] = entry < entries.Length && entries[entry].EntityId == entityId
+                ? entries[entry++]
+                : NewlyVisible(entityId);
+        }
+
+        state.SwapSpare();
+    }
+
+    // The slot of the entity's record: the remembered one when it still holds the entity's
+    // record, else looked up; -1 when the entity has no record in this snapshot.
+    private static int ResolveRecordSlot(SnapshotRecords records, ulong entityId, int slot)
+    {
+        if ((uint)slot < (uint)records.Count && records.EntityIdOf(slot) == entityId)
+        {
+            return slot;
+        }
+
+        return records.TryGetSlot(entityId, out var current) ? current : -1;
+    }
+
     private static int DueIndex(SnapshotRecordClass recordClass, bool deferred)
     {
         return ((int)recordClass * 2) + (deferred && recordClass != SnapshotRecordClass.NearChanged ? 0 : 1);
+    }
+
+    // Every waiting near change gathers the inverse of its distance, once per plan, and the due
+    // list takes the priorities for the selection.
+    private void WeighNearChanges()
+    {
+        if (nearWeighted)
+        {
+            return;
+        }
+
+        nearWeighted = true;
+        var records = plannedRecords!;
+        var entities = CollectionsMarshal.AsSpan(plannedState!.Entities);
+        var near = CollectionsMarshal.AsSpan(due[NearChangedIndex]);
+        for (var index = 0; index < near.Length; index++)
+        {
+            ref var item = ref near[index];
+            var distance = plannedOwnSlot >= 0 ? MathF.Sqrt(records.DistanceSquared(item.Slot, plannedOwnSlot)) : 0f;
+            ref var entry = ref entities[item.EntryIndex];
+            entry.NearPriority += 1f / MathF.Max(distance, MinimumPriorityDistance);
+            item = item with { Priority = entry.NearPriority };
+        }
     }
 
     // Moves the count items of highest priority to the front, in no particular order, by
@@ -434,33 +579,25 @@ internal sealed class SnapshotScheduler
         return first.Priority != second.Priority ? first.Priority > second.Priority : first.Slot < second.Slot;
     }
 
-    // Slots are staggered by entity id, so not every entity is due in the same snapshot.
-    private static bool IsSlot(uint sequence, ulong entityId, int interval)
+    // Slots are staggered by entity id, so not every entity is due in the same snapshot: an entity
+    // is on its slot when the sequence plus its id is a multiple of the interval, so when its id
+    // modulo the interval is this phase.
+    private static uint SlotPhase(uint sequence, uint interval)
     {
-        return (sequence + entityId) % (ulong)interval == 0;
+        return (interval - (sequence % interval)) % interval;
     }
 
-    private static void Forget(SnapshotRecipientState state, uint sequence)
+    // The id modulo the interval by a multiplication, exact for every 32-bit id, which every
+    // entity with a record has.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Modulo(ulong entityId, ulong multiplier, uint interval)
     {
-        var entities = CollectionsMarshal.AsSpan(state.Entities);
-        for (var index = entities.Length - 1; index >= 0; index--)
-        {
-            if (entities[index].SeenSequence == sequence)
-            {
-                continue;
-            }
+        return (uint)Math.BigMul(unchecked(multiplier * (uint)entityId), interval, out _);
+    }
 
-            state.IndexByEntityId.Remove(entities[index].EntityId);
-            var last = entities.Length - 1;
-            if (index != last)
-            {
-                entities[index] = entities[last];
-                state.IndexByEntityId[entities[index].EntityId] = index;
-            }
-
-            state.Entities.RemoveAt(last);
-            entities = CollectionsMarshal.AsSpan(state.Entities);
-        }
+    private static SnapshotRecipientEntity NewlyVisible(ulong entityId)
+    {
+        return new SnapshotRecipientEntity { EntityId = entityId, RecordSlot = -1, NewInView = true };
     }
 
     private readonly record struct Due(int Slot, int EntryIndex, SnapshotRecordClass Class, float Priority);

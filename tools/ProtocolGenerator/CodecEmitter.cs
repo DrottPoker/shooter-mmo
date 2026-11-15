@@ -273,7 +273,85 @@ internal static class CodecEmitter
         if (message.EncodeInto)
         {
             writer.BlankLine();
-            EmitMessageHeaderEncodeInto(writer, message);
+            if (message.Fields[^1].Type is ArrayWireType)
+            {
+                EmitMessageHeaderEncodeInto(writer, message);
+            }
+            else
+            {
+                EmitMessageEncodeInto(writer, message);
+            }
+        }
+    }
+
+    // Writes a whole message of fixed size from its members into a caller's buffer and returns
+    // how many bytes it wrote. A struct field's members are parameters named after the field, and
+    // a struct with rules is checked by its hand-written Satisfies<Struct>Rules over its members.
+    private static void EmitMessageEncodeInto(CSharpWriter writer, MessageDefinition message)
+    {
+        var display = CSharpNames.Display(message.Name);
+        var size = WireSizes.OfMessage(message).Maximum.ToString(CultureInfo.InvariantCulture);
+        var parameters = new List<string>();
+        var conditions = new List<string>();
+        foreach (var field in message.Fields)
+        {
+            var (fields, memberOf) = Flattened(field);
+            parameters.AddRange(Members(fields).Select(member => $"{member.Type} {memberOf(member.Name)}"));
+            conditions.AddRange(ParameterFailures(fields, memberOf));
+            if (field.Type is StructWireType { Definition: { Rules: true } definition })
+            {
+                var arguments = Members(definition.Fields).Select(member => memberOf(member.Name));
+                conditions.Add($"!Satisfies{definition.Name}Rules({string.Join(", ", arguments)})");
+            }
+        }
+
+        writer.Summary(
+            $"Writes one {message.Name} frame of {size} bytes from its members into the start of destination and returns "
+            + "the bytes it wrote, validated as the message is, without allocating.");
+        writer.Open($"public static int Encode{message.Name}(Span<byte> destination, {string.Join(", ", parameters)})");
+        if (conditions.Count > 0)
+        {
+            OpenCondition(writer, conditions);
+            writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")});");
+            writer.Close();
+            writer.BlankLine();
+        }
+
+        writer.Open($"if (destination.Length < {size})");
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " does not fit the destination.")}, nameof(destination));");
+        writer.Close();
+        writer.BlankLine();
+        writer.Line($"var writer = StartPacket(destination, RealtimeMessageType.{message.Name});");
+        foreach (var field in message.Fields)
+        {
+            var (fields, memberOf) = Flattened(field);
+            EmitWrites(writer, fields, unwrap: false, union: null, display, memberOf);
+        }
+
+        writer.Line("return writer.Position;");
+        writer.Close();
+    }
+
+    // The flat fields that a field stands for, its own or its struct's, and the parameter of each.
+    private static (IReadOnlyList<FieldDefinition> Fields, Func<string, string> MemberOf) Flattened(FieldDefinition field)
+    {
+        return field.Type is StructWireType structType
+            ? (structType.Definition.Fields, name => CSharpNames.Parameter(field.Name + name))
+            : ([field], CSharpNames.Parameter);
+    }
+
+    // Expressions that are true when a parameter breaks a rule of its field.
+    private static IEnumerable<string> ParameterFailures(IReadOnlyList<FieldDefinition> fields, Func<string, string> memberOf)
+    {
+        foreach (var field in fields)
+        {
+            var failures = field.Type is BitsWireType bits
+                ? BitFailures(bits, memberOf)
+                : Failures(field.Type, field.Rules, memberOf(field.Name), sibling: memberOf);
+            foreach (var failure in failures)
+            {
+                yield return failure;
+            }
         }
     }
 

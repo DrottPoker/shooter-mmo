@@ -29,7 +29,7 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         performance.TickPhaseTimer("corpse presence");
         performance.LoopStepTimer("send flush").Record(TimeSpan.FromMilliseconds(5));
         performance.RecordTickResynchronization();
-        performance.RecordSnapshotPacketReuse(1, 2, 3, 7);
+        performance.RecordSnapshotSends(1, 2, 3, 7);
         performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Step);
         performance.RecordLoopFailure("movement", RealtimeLoopFailureScope.Player);
         performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Peer);

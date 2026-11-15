@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -22,6 +23,7 @@ internal sealed class EntityPresenceReplicator(
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
+    private Func<ulong, bool>? isVisibleToAnyConnection;
     private uint refreshCycle;
 
     public int ActiveEntityCount => entityRegistry.PlayerCount + (worldActorStore?.Count ?? 0);
@@ -119,10 +121,15 @@ internal sealed class EntityPresenceReplicator(
         return interestManager.GetVisibleOrdered(connectionId);
     }
 
-    // Whether each entity of GetVisibleOrdered is in the connection's near tier.
-    public IReadOnlyList<bool> GetNearOrdered(int connectionId)
+    // The connection's visible entities ascending by id, whether each is near, and the version of
+    // the list, for the snapshot path; empty for a connection without interest.
+    public void GetVisibleSpans(
+        int connectionId,
+        out ReadOnlySpan<ulong> orderedVisible,
+        out ReadOnlySpan<bool> orderedNear,
+        out ulong version)
     {
-        return interestManager.GetNearOrdered(connectionId);
+        interestManager.TryGetVisibleSpans(connectionId, out orderedVisible, out orderedNear, out version);
     }
 
     public void ForgetConnection(int connectionId)
@@ -191,9 +198,11 @@ internal sealed class EntityPresenceReplicator(
                 continue;
             }
 
+            // Indexed loops, because enumerating the interfaces would allocate an enumerator.
             var update = interestManager.Refresh(context.PeerId, controlledEntityId);
-            foreach (var enteredEntityId in update.Entered)
+            for (var index = 0; index < update.Entered.Count; index++)
             {
+                var enteredEntityId = update.Entered[index];
                 if (entityRegistry.TryGetPlayer(enteredEntityId, out var enteredEntity))
                 {
                     SendSpawn(peer, enteredEntity!);
@@ -207,8 +216,9 @@ internal sealed class EntityPresenceReplicator(
                 }
             }
 
-            foreach (var exitedEntityId in update.Exited)
+            for (var index = 0; index < update.Exited.Count; index++)
             {
+                var exitedEntityId = update.Exited[index];
                 if (worldActorStore is not null
                     && worldActorStore.TryGetByEntityId(
                         exitedEntityId,
@@ -242,7 +252,7 @@ internal sealed class EntityPresenceReplicator(
     // Drops world actor tombstones that no connection still sees.
     public void PruneDespawned()
     {
-        worldActorStore?.PruneDespawned(interestManager.IsVisibleToAnyConnection);
+        worldActorStore?.PruneDespawned(isVisibleToAnyConnection ??= interestManager.IsVisibleToAnyConnection);
     }
 
     public void BroadcastEntityDespawn(
@@ -287,7 +297,9 @@ internal sealed class EntityPresenceReplicator(
                 ?? new RealtimeCharacterAppearance(AppearanceReplicationSettings.Default.DefaultBodyModel, [], [], false, string.Empty));
     }
 
-    public void RebuildInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)
+    // Brings the interest index to the players and world actors as they are now; only what moved
+    // to another cell, came, or went changes more than its position.
+    public void SynchronizeInterestIndex(IReadOnlyList<PlayerSimulationEntity> players)
     {
         interestEntityBuffer.Clear();
         for (var index = 0; index < players.Count; index++)
@@ -312,7 +324,7 @@ internal sealed class EntityPresenceReplicator(
             }
         }
 
-        interestManager.Rebuild(interestEntityBuffer);
+        interestManager.Synchronize(CollectionsMarshal.AsSpan(interestEntityBuffer));
     }
 
     private void SendSpawn(IRealtimePeerConnection peer, PlayerSimulationEntity entity)

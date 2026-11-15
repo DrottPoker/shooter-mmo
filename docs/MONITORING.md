@@ -162,7 +162,7 @@ entity, peer, or runtime id as a label.
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
-| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase and every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, snapshot visibility groups, encoded and sent packets, and deferred entity updates, and the realtime loop's failures. |
+| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase and every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
@@ -205,7 +205,7 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.loop.completed_operations.backlog` | gauge | Completed authority operations that wait for the loop. |
 | `simulation_worker.join.queue_delay.duration`, `.finalization.duration` | histogram, ms | How long a join waited and how long its finalization took. |
 | `simulation_worker.corpse.mutation.backlog`, `.active_aggregates` | gauge | Corpse mutations waiting in the per-corpse coordinator, and the corpses with a mutation in flight. |
-| `simulation_worker.simulation.snapshot.visibility_groups`, `.packets_encoded`, `.packets_sent` | counter | Recipients whose remote snapshot chunks were built, each a visibility group of its own because every recipient's chunks are assembled for it alone; built owner and remote snapshot packets; and sent snapshot packets. |
+| `simulation_worker.simulation.snapshot.remote_recipients`, `.packets_encoded`, `.packets_sent` | counter | Recipients that got a remote snapshot, the owner and remote snapshot packets built, and the snapshot packets sent; a packet built but not sent was dropped by a byte budget. |
 | `simulation_worker.simulation.snapshot.entity_updates_deferred` | counter | Due remote entity records that a recipient's byte budget deferred to the next snapshot; a record deferred again counts again. |
 | `simulation_worker.loop.failures` | counter | Exceptions that the realtime loop caught, as [Realtime Server Structure And Threading Contract](PROJECT_ARCHITECTURE.md#realtime-server-structure-and-threading-contract) describes, labeled `step`, the tick phase or loop step, such as `movement`, `snapshots`, or `network poll`, and `scope`: `step` when the whole run of the step was skipped, `player` when only one player left the Shard, and `peer` when only one peer was disconnected or one connection request refused. Every failure also writes one error line, so any value above zero needs a look. |
 
@@ -399,7 +399,7 @@ entries of both processes, and the trace share one id.
   current and interval-maximum completed-operation and corpse-mutation backlogs,
   so admission congestion is distinguishable from UDP loss, process allocation,
   GC collection counts, managed heap size and fragmentation, live managed
-  memory, distinct visibility groups, encoded and sent snapshot packets, tick
+  memory, the recipients of remote snapshots, encoded and sent snapshot packets, tick
   overruns, the loop failures of whole steps and of single players or
   peers, the share of the interval that the loop thread was busy, and the
   garbage collection pauses of the interval.

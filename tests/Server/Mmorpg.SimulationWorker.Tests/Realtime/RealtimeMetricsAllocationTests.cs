@@ -80,7 +80,7 @@ public sealed class RealtimeMetricsAllocationTests
             performance.RecordMovementSimulation(duration);
             performance.RecordInterestRefresh(duration);
             performance.RecordSnapshotBroadcast(duration);
-            performance.RecordSnapshotPacketReuse(2, 4, 8, 0);
+            performance.RecordSnapshotSends(2, 4, 8, 0);
             performance.RecordSimulationTick(duration, TickBudget);
             network.RecordSent(120);
             network.RecordReceived(64);

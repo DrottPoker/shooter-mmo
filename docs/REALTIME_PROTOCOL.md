@@ -220,11 +220,19 @@ instead of allocating a packet, for a path that sends many packets per tick:
   the count, writes the frame header, the fields, and the count, and returns
   how many bytes it wrote. The caller appends exactly count structs, each
   written by the struct's encoder.
+- On a message without `rules` or variants whose fields are numbers, enums,
+  bit fields, or structs of them, `Encode<Message>(destination, members)` takes
+  every member, a struct field's members named after the field, such as
+  `stateIsGrounded`, validates them as the message's validation does, writes
+  the whole frame, and returns how many bytes it wrote. A struct field with
+  `rules` needs a hand-written `Satisfies<Struct>Rules(members)` beside the
+  struct's own rule, which the encoder calls.
 
-Both throw `ArgumentException` for an invalid value or a destination that is
+They throw `ArgumentException` for an invalid value or a destination that is
 too short. The option shapes only the C# API, so the wire contract and its
 fingerprint stay the same. `SimulationSnapshot` and its `EntitySnapshot` use it,
-so the worker builds a snapshot chunk without allocating.
+and so does `OwnerSimulationSnapshot`, so the worker builds every snapshot
+packet without allocating.
 
 ## Variants And Conditional Fields
 

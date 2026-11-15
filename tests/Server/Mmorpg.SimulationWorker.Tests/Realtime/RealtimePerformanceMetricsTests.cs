@@ -22,7 +22,7 @@ public sealed class RealtimePerformanceMetricsTests
         metrics.ObserveCorpseMutationCoordinator(9, 3);
         metrics.ObserveCorpseMutationCoordinator(5, 2);
         metrics.RecordTickResynchronization();
-        metrics.RecordSnapshotPacketReuse(2, 4, 40, 80);
+        metrics.RecordSnapshotSends(2, 4, 40, 80);
 
         var snapshot = metrics.CaptureAndReset();
 
@@ -46,7 +46,7 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.True(snapshot.ManagedHeapSizeBytes >= 0);
         Assert.True(snapshot.ManagedHeapFragmentedBytes >= 0);
         Assert.True(snapshot.TotalManagedMemoryBytes >= 0);
-        Assert.Equal(2, snapshot.SnapshotVisibilityGroups);
+        Assert.Equal(2, snapshot.SnapshotRemoteRecipients);
         Assert.Equal(4, snapshot.SnapshotPacketsEncoded);
         Assert.Equal(40, snapshot.SnapshotPacketsSent);
         Assert.Equal(80, snapshot.SnapshotEntityUpdatesDeferred);
@@ -63,7 +63,7 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Equal(2, reset.ActiveCorpseMutations);
         Assert.Equal(0, reset.TickResynchronizations);
         Assert.Equal(0, reset.TickOverruns);
-        Assert.Equal(0, reset.SnapshotVisibilityGroups);
+        Assert.Equal(0, reset.SnapshotRemoteRecipients);
         Assert.Equal(0, reset.SnapshotPacketsEncoded);
         Assert.Equal(0, reset.SnapshotPacketsSent);
         Assert.Equal(0, reset.SnapshotEntityUpdatesDeferred);
