@@ -560,6 +560,21 @@ namespace Mmorpg.Client.Items
             NotifyChanged();
         }
 
+        // Forgets a shown refusal of an operation with this code, such as one that no longer
+        // holds; an error that keeps the inventory unusable, or another refusal, stays.
+        public void ForgetRefusal(string code)
+        {
+            if (Error == null
+                || !string.Equals(Error.Code, code, StringComparison.Ordinal)
+                || Status is InventoryClientStatus.Error or InventoryClientStatus.UpdateRequired)
+            {
+                return;
+            }
+
+            Error = null;
+            NotifyChanged();
+        }
+
         public void MarkDisconnected(bool operationWasPending)
         {
             RequiresFullRefresh = true;

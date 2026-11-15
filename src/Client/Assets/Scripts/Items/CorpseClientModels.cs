@@ -613,6 +613,19 @@ namespace Mmorpg.Client.Items
             IsAutomaticRefreshPending = false;
         }
 
+        // Forgets a shown rejection with this code, such as one that no longer holds; any other
+        // outcome stays.
+        public void ForgetRefusal(string code)
+        {
+            if (Error == null || !string.Equals(Error.Code, code, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            Error = null;
+            RaiseChanged();
+        }
+
         public void Reset()
         {
             hasPresenceSequence = false;

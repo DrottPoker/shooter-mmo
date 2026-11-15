@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "db81295b4c5c1da070f3de2cc93501aae29d7bccf7e1d2cec0f3124ce2b89a06",
+  "revision": "84fe3f94c5b07a3ad3a959c0966fe088f156545e18112f5e00a90eab221c072b",
   "entries": [
     {
       "key": "ui/characters/body-in-world",
@@ -1711,6 +1711,10 @@
     {
       "key": "ui/world/reconnecting",
       "text": "Reconnecting to the world. {seconds} s left."
+    },
+    {
+      "key": "ui/world/saving-paused",
+      "text": "Saving is paused. Items, trade, and quests come back by themselves."
     },
     {
       "key": "ui/world/session-unavailable",

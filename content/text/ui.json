@@ -1711,6 +1711,10 @@
       "text": "Reconnecting to the world. {seconds} s left."
     },
     {
+      "key": "ui/world/saving-paused",
+      "text": "Saving is paused. Items, trade, and quests come back by themselves."
+    },
+    {
       "key": "ui/world/session-unavailable",
       "text": "The active simulation session is unavailable."
     },

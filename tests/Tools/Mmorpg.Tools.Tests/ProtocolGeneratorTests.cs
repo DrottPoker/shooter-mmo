@@ -32,8 +32,8 @@ public sealed class ProtocolGeneratorTests
     {
         var result = ProtocolGeneration.Run(ProtocolGeneratorOptions.Create(RepositoryPaths.Root, verifyOnly: true));
 
-        Assert.Equal(40, result.Model.Version);
-        Assert.Equal(45, result.Model.Messages.Count);
+        Assert.Equal(41, result.Model.Version);
+        Assert.Equal(46, result.Model.Messages.Count);
     }
 
     [Fact]

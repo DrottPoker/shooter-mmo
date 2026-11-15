@@ -308,6 +308,11 @@ namespace Mmorpg.Client.Tests.EditMode
             Hub.Session.SessionEnded += error => Record("SessionEnded " + Code(error), "SessionEnded", error);
             Hub.Session.UnexpectedlyDisconnected += error =>
                 Record("UnexpectedlyDisconnected " + Code(error), "UnexpectedlyDisconnected", error);
+            // The event has no argument; the state it announces is the session's IsGameServiceAvailable.
+            Hub.Session.GameServiceAvailabilityChanged += () => Record(
+                "GameServiceAvailabilityChanged " + (Hub.Session.IsGameServiceAvailable ? "available" : "unavailable"),
+                "GameServiceAvailabilityChanged",
+                Hub.Session.IsGameServiceAvailable);
             Hub.Movement.SimulationSnapshotReceived += snapshot => Record(
                 "SimulationSnapshotReceived " + snapshot.SnapshotSequence + "/" + snapshot.ServerTick,
                 "SimulationSnapshotReceived",

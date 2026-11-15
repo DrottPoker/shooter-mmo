@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 40,
+    "version": 41,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -3287,6 +3287,24 @@
           "type": "i32",
           "minimum": 1,
           "description": "How many of the item the corpse holds for the quest."
+        }
+      ]
+    },
+    {
+      "name": "GameServiceAvailabilityChanged",
+      "id": 46,
+      "family": "Session",
+      "direction": "serverToClient",
+      "channel": "ControlChannel",
+      "delivery": "reliableOrdered",
+      "description": "Whether GameService answers the worker, so the client shows while saving is paused. The worker sends it to every joined peer on every change, and after JoinAccepted while GameService does not answer; its absence means GameService answers.",
+      "api": "unwrap",
+      "parameter": "available",
+      "fields": [
+        {
+          "name": "Available",
+          "type": "bool",
+          "description": "Whether GameService answers; while it does not, the worker refuses items, trade, and quests."
         }
       ]
     }

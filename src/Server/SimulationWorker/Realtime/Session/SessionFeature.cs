@@ -4,7 +4,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // session plumbing that other features share, the session operations, the teardown, and the
 // lingering bodies, is part of RealtimeCoreServices, because the combat authority and every other
 // operation feature need it before this handler exists. The body timer releases a body's session
-// through the combat authority, which keeps it until its durable work committed.
+// through the combat authority, which keeps it until its durable work committed. The joined
+// players also learn whether GameService answers.
 internal static class SessionFeature
 {
     public static void Add(RealtimeCoreServices core, PlayerCombatFeature playerCombat)
@@ -42,5 +43,12 @@ internal static class SessionFeature
             core.Logger);
         timer.AddTickPhase(core.Registries.TickPhases);
         core.Registries.ShutdownSteps.Add(RealtimeShutdownOrder.LingeringBodies, "lingering bodies", timer.Clear);
+        var availabilityNotice = new GameServiceAvailabilityNotice(
+            core.GameServiceAvailability,
+            core.Peers,
+            core.Sender,
+            core.Logger);
+        availabilityNotice.AddTickPhase(core.Registries.TickPhases);
+        core.Registries.Hooks.AddPlayerJoined(availabilityNotice.OnPlayerJoined);
     }
 }

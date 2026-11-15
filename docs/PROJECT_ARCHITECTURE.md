@@ -350,6 +350,7 @@ contract:
   death committed, or whose session ended; interaction revalidation every fifth
   of a second while world interactions run; the gathering pass; changed looks
   and then snapshots at the snapshot rate; corpse presence twice per second;
+  the notice to every joined peer when GameService stops or starts answering;
   and the character checkpoint at its interval. The loop fills the players of the tick
   once, in entity id order, and hands every phase the server tick, those
   players, and the player grid; a phase that runs less often than every tick
@@ -489,9 +490,10 @@ constructor. A unit registers:
   starts at the World spawn. A connection-ended hook runs when a player's
   connection ended while its session goes on, right after its entity became a
   lingering body; the entity stays, and a removed hook follows only when the
-  body goes. A join reaches combat, then the admin tools, and then persistence,
-  a connection that ends reaches combat, and a removal reaches persistence,
-  then combat, and last the core's release of a player that the loop took out.
+  body goes. A join reaches the GameService availability notice, then combat,
+  then the admin tools, and then persistence, a connection that ends reaches
+  combat, and a removal reaches persistence, then combat, and last the core's
+  release of a player that the loop took out.
 - Per-character state. A store that keeps state per character and simulation
   session implements `ICharacterSessionStore` and joins
   `CharacterSessionStores.Create`, which `Program.cs` registers once. Session

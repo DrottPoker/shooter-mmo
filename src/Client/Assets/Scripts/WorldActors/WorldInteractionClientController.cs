@@ -152,6 +152,16 @@ namespace Mmorpg.Client.WorldActors
             Changed?.Invoke();
         }
 
+        // Forgets a shown error with this code, such as one that no longer holds; any other
+        // message stays.
+        public void ForgetRefusal(string code)
+        {
+            if (!string.IsNullOrEmpty(code) && string.Equals(LastErrorCode, code, StringComparison.Ordinal))
+            {
+                ClearMessage();
+            }
+        }
+
         public void SetLocalError(string code, string message)
         {
             LastErrorCode = code ?? string.Empty;
@@ -263,6 +273,7 @@ namespace Mmorpg.Client.WorldActors
             interactionChannel.WorldInteractionClosed += OnClosed;
             interactionChannel.GatheringStateReceived += OnGatheringState;
             realtimeSession.SessionEnded += OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged += OnGameServiceAvailabilityChanged;
             inventoryController.State.PredictionsDiscarded += OnPredictionsDiscarded;
             initialized = true;
             State.Clear();
@@ -933,6 +944,17 @@ namespace Mmorpg.Client.WorldActors
             ClearPendingOpen();
         }
 
+        // A refusal or a gathering stop because GameService did not answer no longer holds once
+        // it answers again.
+        private void OnGameServiceAvailabilityChanged()
+        {
+            if (realtimeSession.IsGameServiceAvailable)
+            {
+                State.ForgetRefusal(RealtimeSession.GameServiceUnavailableCode);
+                Gathering.ForgetStopReason(RealtimeSession.GameServiceUnavailableCode);
+            }
+        }
+
         private void Unsubscribe()
         {
             if (!initialized || interactionChannel == null)
@@ -945,6 +967,7 @@ namespace Mmorpg.Client.WorldActors
             interactionChannel.WorldInteractionClosed -= OnClosed;
             interactionChannel.GatheringStateReceived -= OnGatheringState;
             realtimeSession.SessionEnded -= OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged -= OnGameServiceAvailabilityChanged;
             inventoryController.State.PredictionsDiscarded -= OnPredictionsDiscarded;
             initialized = false;
         }

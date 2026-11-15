@@ -33,6 +33,8 @@ namespace Mmorpg.Client.Quests
         private ClientSessionRecovery recovery;
         private IInventoryOperationQueue inventory;
         private Guid pendingIntentId;
+        // The code of the refusal that LastIntentError shows, or empty.
+        private string lastIntentErrorCode = string.Empty;
         private bool initialized;
         private bool observedJoin;
         private bool loading;
@@ -106,6 +108,7 @@ namespace Mmorpg.Client.Quests
             questChannel.QuestIntentCompleted += OnQuestIntentCompleted;
             questChannel.QuestDropInCorpse += OnQuestDropInCorpse;
             realtimeSession.SessionEnded += OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged += OnGameServiceAvailabilityChanged;
             clientSession.SignedIn += OnSessionIdentityChanged;
             clientSession.SignedOut += OnSessionIdentityChanged;
             clientSession.SelectionChanged += OnSessionIdentityChanged;
@@ -165,6 +168,7 @@ namespace Mmorpg.Client.Quests
             pendingIntentId = intent.OperationId;
             LastIntentKind = intent.Kind;
             LastIntentError = string.Empty;
+            lastIntentErrorCode = string.Empty;
             IntentChanged?.Invoke();
             return true;
         }
@@ -232,6 +236,7 @@ namespace Mmorpg.Client.Quests
                 questChannel.QuestIntentCompleted -= OnQuestIntentCompleted;
                 questChannel.QuestDropInCorpse -= OnQuestDropInCorpse;
                 realtimeSession.SessionEnded -= OnSessionEnded;
+                realtimeSession.GameServiceAvailabilityChanged -= OnGameServiceAvailabilityChanged;
                 clientSession.SignedIn -= OnSessionIdentityChanged;
                 clientSession.SignedOut -= OnSessionIdentityChanged;
                 clientSession.SelectionChanged -= OnSessionIdentityChanged;
@@ -274,11 +279,12 @@ namespace Mmorpg.Client.Quests
             }
 
             pendingIntentId = Guid.Empty;
+            lastIntentErrorCode = result.Succeeded ? string.Empty : result.Error?.Code ?? "quest_intent_failed";
             LastIntentError = result.Succeeded
                 ? string.Empty
                 : ClientMessages.Text(
                     messageTexts,
-                    result.Error?.Code ?? "quest_intent_failed",
+                    lastIntentErrorCode,
                     result.Error?.Message);
             if (result.Succeeded && result.ItemStateRevision > 0)
             {
@@ -313,6 +319,21 @@ namespace Mmorpg.Client.Quests
 
             pendingIntentId = Guid.Empty;
             LastIntentError = string.Empty;
+            lastIntentErrorCode = string.Empty;
+            IntentChanged?.Invoke();
+        }
+
+        // A refusal because GameService did not answer no longer holds once it answers again.
+        private void OnGameServiceAvailabilityChanged()
+        {
+            if (!realtimeSession.IsGameServiceAvailable
+                || !string.Equals(lastIntentErrorCode, RealtimeSession.GameServiceUnavailableCode, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            LastIntentError = string.Empty;
+            lastIntentErrorCode = string.Empty;
             IntentChanged?.Invoke();
         }
 

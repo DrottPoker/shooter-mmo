@@ -140,6 +140,22 @@ namespace Mmorpg.Client.WorldActors
             return progress < 0f ? 0f : progress > 1f ? 1f : progress;
         }
 
+        // Forgets why gathering stopped when it stopped with this code, such as a reason that no
+        // longer holds; what it gathered stays.
+        public void ForgetStopReason(string code)
+        {
+            if (Status != GatheringClientStatus.Stopped
+                || string.IsNullOrEmpty(code)
+                || !string.Equals(StopCode, code, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            StopCode = string.Empty;
+            StopMessage = string.Empty;
+            Changed?.Invoke();
+        }
+
         public void Clear()
         {
             if (Status == GatheringClientStatus.Idle && InteractionSessionId == Guid.Empty)

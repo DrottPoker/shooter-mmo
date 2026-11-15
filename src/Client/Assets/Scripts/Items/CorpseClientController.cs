@@ -67,6 +67,7 @@ namespace Mmorpg.Client.Items
             corpseChannel.CorpseViewStateChunkReceived += OnViewStateChunk;
             corpseChannel.CorpseViewClosed += OnViewClosed;
             realtimeSession.SessionEnded += OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged += OnGameServiceAvailabilityChanged;
             initialized = true;
         }
 
@@ -1113,6 +1114,15 @@ namespace Mmorpg.Client.Items
             State.SetPredictedEdits(null);
         }
 
+        // A refusal because GameService did not answer no longer holds once it answers again.
+        private void OnGameServiceAvailabilityChanged()
+        {
+            if (realtimeSession.IsGameServiceAvailable)
+            {
+                State.ForgetRefusal(RealtimeSession.GameServiceUnavailableCode);
+            }
+        }
+
         private void Unsubscribe()
         {
             if (!initialized || corpseChannel == null)
@@ -1130,6 +1140,7 @@ namespace Mmorpg.Client.Items
             corpseChannel.CorpseViewStateChunkReceived -= OnViewStateChunk;
             corpseChannel.CorpseViewClosed -= OnViewClosed;
             realtimeSession.SessionEnded -= OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged -= OnGameServiceAvailabilityChanged;
             initialized = false;
         }
     }

@@ -311,6 +311,8 @@ World scene
       +-- InventoryWindows (runtime uGUI of the UI kit, themed by UiTheme)
       +-- ReconnectNotice (runtime uGUI of the UI kit) over a World whose connection is
       |   restored
+      +-- SavingPausedNotice (runtime uGUI of the UI kit) while the worker says that
+      |   GameService does not answer
       +-- temporary uGUI: TemporaryWorldInteractionPanel, TemporaryWorldContextMenu,
           TemporaryGameMessagePanel, TemporaryCombatHud, TemporaryDebugMenu,
           TemporaryAdminMenu
@@ -874,6 +876,38 @@ read again when their `Update` sees the session joined. The look link keeps the
 local look until the client leaves its World or its account, so the body keeps
 its look. `ReconnectNotice` shows the window's seconds over the World.
 
+### Saving Paused Notice
+
+While GameService does not answer its worker, the worker refuses items, trade,
+and quests with `game_service_unavailable` and says so with
+`GameServiceAvailabilityChanged`, as
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes.
+`RealtimeSession` keeps what it said as `IRealtimeSession.IsGameServiceAvailable`
+and raises `GameServiceAvailabilityChanged` once per change. Every join starts
+with GameService available, and every end of a session sets it back without the
+event, so nothing stays paused across a lost connection; a reconnect that the
+worker tells at once is paused again.
+
+`SavingPausedNotice`, in `Mmorpg.Client.Ui`, shows one TextMesh Pro line,
+`ui/world/saving-paused`, in the frame of `ReconnectNotice` and at its place
+over the World, exactly while the session is joined and GameService does not
+answer. The reconnect notice shows only while no session is joined, so the two
+never show together. Its canvas sorts under every window the player opens.
+
+A refusal with `game_service_unavailable` stops being true when GameService
+answers again, so every place that shows one forgets it on the change to
+available: the inventory status line of every inventory window, vendor
+included (`InventoryClientState.ForgetRefusal`, which keeps an error that makes
+the inventory unusable), the corpse window (`CorpseClientState.ForgetRefusal`),
+the interaction panel and the vendor's trade line
+(`WorldInteractionClientState.ForgetRefusal`), the reason a gathering stopped
+(`GatheringClientState.ForgetStopReason`, which keeps what it gathered), and the
+quest log's refused abandon (`QuestClientController`). Each controller listens
+to the session for it. Every other text stays, and each line still clears as it
+did before: the corpse window and the interaction panel at the next operation
+the player starts, the quest log at the next intent, and the inventory only at a
+reload or a newer refusal, since a committed operation leaves its line as it is.
+
 ### Entry Screen Notices
 
 `ClientNotices`, in `Mmorpg.Client.Core`, holds what the next entry screen
@@ -1010,7 +1044,7 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 
 | Part | Owns | Features read it through |
 | --- | --- | --- |
-| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, and the movement session. It handles the five session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. `WorldJoin` takes `RealtimeSession` itself for `Join`, for CharacterSelect and the reconnect, and `WorldExit` for `Leave` |
+| `RealtimeSession` | The connection state machine: join, leave, abort, their deadlines, every way a session ends and the events that announce it, the validation of a join acceptance, the joined session, the Shard rules, whether its worker reaches GameService, and the movement session. It handles the six session messages: `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, `GameServiceAvailabilityChanged`, and `ServerDisconnect` | `IRealtimeSession`: `State`, `IsJoined`, `JoinedSession`, `ShardRules`, `IsGameServiceAvailable`, `SessionJoined`, `SessionEnded`, `UnexpectedlyDisconnected`, `GameServiceAvailabilityChanged`, and the two ways a feature ends a session, `DisconnectForClientFailure` and `Abort`. `WorldJoin` takes `RealtimeSession` itself for `Join`, for CharacterSelect and the reconnect, and `WorldExit` for `Leave` |
 | `RealtimeMessageTable` | One entry per server message type: its handler, the states it runs in, the states it is dropped in, and the failure code of every other state | The hub only |
 | `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
 | A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
@@ -1418,6 +1452,8 @@ The canvases sort from the bottom up:
 | 20 | `TemporaryCombatHud` |
 | 35 | `TemporaryGameMessagePanel` |
 | 40 | `TemporaryWorldInteractionPanel` |
+| 85 | `SavingPausedNotice`, without a raycaster, so it takes no click |
+| 90 | `QuestWindows` |
 | 100 | `InventoryWindows` |
 | 120 | `TemporaryDebugMenu` and `TemporaryAdminMenu` |
 | 130 | `ReconnectNotice`, without a raycaster, so it takes no click |

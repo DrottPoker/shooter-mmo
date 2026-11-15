@@ -87,6 +87,42 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(channel.Disconnects, Is.Empty);
         }
 
+        // A rejection because GameService did not answer goes when the worker says it answers
+        // again, not when it says it stopped; any other rejection stays.
+        [Test]
+        public void ARefusalBecauseGameServiceDidNotAnswerGoesWhenItAnswersAgain()
+        {
+            OpenView();
+            var move = MoveItemToSecondSlot();
+            channel.Complete(
+                Rejected(
+                    move.OperationId,
+                    RealtimeCorpseInteractionKind.MoveItem,
+                    corpseId,
+                    RealtimeSession.GameServiceUnavailableCode,
+                    "GameService does not answer."));
+            Assert.That(controller.State.Error.Code, Is.EqualTo(RealtimeSession.GameServiceUnavailableCode));
+
+            channel.SetGameServiceAvailable(false);
+            Assert.That(controller.State.Error.Code, Is.EqualTo(RealtimeSession.GameServiceUnavailableCode));
+            channel.SetGameServiceAvailable(true);
+            Assert.That(controller.State.Error, Is.Null);
+            Assert.That(controller.State.CanMutate, Is.True);
+
+            var next = MoveItemToSecondSlot();
+            channel.Complete(
+                Rejected(
+                    next.OperationId,
+                    RealtimeCorpseInteractionKind.MoveItem,
+                    corpseId,
+                    "item_state_conflict",
+                    "The item changed."));
+            channel.SetGameServiceAvailable(false);
+            channel.SetGameServiceAvailable(true);
+            Assert.That(controller.State.Error.Code, Is.EqualTo("item_state_conflict"));
+            Assert.That(channel.Disconnects, Is.Empty);
+        }
+
         [Test]
         public void RejectedAutomaticRefreshDoesNotRefreshAgain()
         {
@@ -473,6 +509,16 @@ namespace Mmorpg.Client.Tests.EditMode
             public RealtimeShardRules ShardRules
             {
                 get { return null; }
+            }
+
+            public event Action GameServiceAvailabilityChanged;
+
+            public bool IsGameServiceAvailable { get; private set; } = true;
+
+            public void SetGameServiceAvailable(bool available)
+            {
+                IsGameServiceAvailable = available;
+                GameServiceAvailabilityChanged?.Invoke();
             }
 
             public List<RealtimeCorpseInteractionIntent> Sent { get; } =

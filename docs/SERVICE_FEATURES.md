@@ -337,6 +337,15 @@ replication go on; everything durable is paused.
   corpse view still works. An action that was already at GameService when the
   outage began fails as before, with `auth_service_timeout` or
   `auth_service_unavailable`.
+- The players learn it: the `game service availability` tick phase sends every
+  joined peer a `GameServiceAvailabilityChanged` once per change of the
+  availability, and a peer that joins or reconnects while GameService does not
+  answer gets one right after its `JoinAccepted`, as
+  [Session Messages](REALTIME_PROTOCOL.md#session-messages) describes. The
+  Unity client shows one line in the World while saving is paused and forgets
+  every shown `game_service_unavailable` refusal once GameService answers
+  again, as [Saving Paused Notice](UNITY_CLIENT_ARCHITECTURE.md#saving-paused-notice)
+  describes; the bots read the message and do nothing with it.
 - The work that must complete waits without spending a timeout and goes as soon
   as GameService answers again, with the operation id it had: a player death,
   a quest kill credit, an arrow batch, the creation of a Mob corpse that needs

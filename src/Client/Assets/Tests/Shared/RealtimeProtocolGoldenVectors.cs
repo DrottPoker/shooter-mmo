@@ -569,6 +569,10 @@ namespace Mmorpg.SharedTests
                 "00 00 00 00 00 33 00 00 00 00 00 48 41 00 00 50 " +
                 "c0 00 18 80 44 00 00 00 3f 00 00 1c c1 00 00 08 " +
                 "40 00 40 87 43 01",
+            ["Session/GameServiceAvailabilityChanged/available"] =
+                "01",
+            ["Session/GameServiceAvailabilityChanged/unavailable"] =
+                "00",
             ["Session/JoinAccepted/boundary"] = "sha256:607:773adc23ef8f616e6adf1c171805784310ce29db06b67d39820182429104111f",
             ["Session/JoinAccepted/typical"] = "sha256:333:a5ee8c9fd1d7558bcbd8de505961b74cc476ffd44c1495a01a94304700a92241",
             ["Session/JoinRejected/basic"] =

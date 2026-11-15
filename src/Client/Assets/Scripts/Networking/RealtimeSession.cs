@@ -44,6 +44,14 @@ namespace Mmorpg.Client.Networking
         // The gameplay rules of the joined Shard, or null outside a joined session.
         RealtimeShardRules ShardRules { get; }
 
+        // Raised when the worker of the joined session says that GameService stopped or started
+        // answering. A session that ends makes GameService count as available again without it.
+        event Action GameServiceAvailabilityChanged;
+
+        // False while the worker of the joined session says that GameService does not answer, so
+        // it refuses items, trade, and quests and saving is paused; true otherwise.
+        bool IsGameServiceAvailable { get; }
+
         // Ends the session as a protocol failure that the client found, such as state that
         // conflicts with what the worker sent.
         void DisconnectForClientFailure(string code, string message);
@@ -61,10 +69,15 @@ namespace Mmorpg.Client.Networking
 
     // The connection state machine of the hub: join, leave, abort, the deadlines, every way a
     // session ends, and the events that announce it. It owns the joined session, the Shard
-    // rules, and the movement session, clears the presence and the session-scoped parts at
-    // the point each ending requires, and handles the five session messages.
+    // rules, whether its worker reaches GameService, and the movement session, clears the
+    // presence and the session-scoped parts at the point each ending requires, and handles the
+    // six session messages.
     public sealed class RealtimeSession : IRealtimeSession
     {
+        // The code of an action that the worker refused because GameService did not answer. A
+        // shown refusal with it no longer holds once GameService answers again.
+        public const string GameServiceUnavailableCode = "game_service_unavailable";
+
         private readonly RealtimeConnection connection;
         private readonly ClientSettings settings;
         private readonly Func<float> realtimeClock;
@@ -105,6 +118,8 @@ namespace Mmorpg.Client.Networking
 
         public event Action<RealtimeClientError> UnexpectedlyDisconnected;
 
+        public event Action GameServiceAvailabilityChanged;
+
         public RealtimeConnectionState State { get; private set; }
 
         public bool IsJoined
@@ -115,6 +130,8 @@ namespace Mmorpg.Client.Networking
         public ActiveSimulationSessionResponse JoinedSession { get; private set; }
 
         public RealtimeShardRules ShardRules { get; private set; }
+
+        public bool IsGameServiceAvailable { get; private set; } = true;
 
         // Set exactly while the state is Joined or Leaving, so the handlers of those states
         // always have it.
@@ -155,6 +172,13 @@ namespace Mmorpg.Client.Networking
                 RealtimeStates.None,
                 "unexpected_leave_rejection",
                 "Leave rejection arrived in the wrong connection state.");
+            messages.Register(
+                RealtimeMessageType.GameServiceAvailabilityChanged,
+                HandleGameServiceAvailabilityChanged,
+                RealtimeStates.Joined,
+                RealtimeStates.Leaving,
+                "unexpected_game_service_availability",
+                "A GameService availability arrived without an active simulation session.");
             // The worker may end the connection in any state.
             messages.Register(
                 RealtimeMessageType.ServerDisconnect,
@@ -539,6 +563,7 @@ namespace Mmorpg.Client.Networking
             operationError = null;
             MovementSession = movementSession;
             ShardRules = accepted.ShardRules;
+            IsGameServiceAvailable = true;
             ClearScopedParts();
             State = RealtimeConnectionState.Joined;
             sessionJoined = true;
@@ -613,6 +638,29 @@ namespace Mmorpg.Client.Networking
                 rejection.Message);
             LogFailure(operationError);
             State = RealtimeConnectionState.Joined;
+        }
+
+        // A repeat of the current state changes nothing and raises nothing.
+        private void HandleGameServiceAvailabilityChanged(byte[] packet)
+        {
+            if (!RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged(packet, out var available, out var error))
+            {
+                FailProtocol("invalid_game_service_availability", error);
+                return;
+            }
+
+            if (available == IsGameServiceAvailable)
+            {
+                return;
+            }
+
+            IsGameServiceAvailable = available;
+            ClientLog.Info(
+                ClientLogCategory.Simulation,
+                available
+                    ? "SimulationWorker reports that GameService answers again; saving resumes."
+                    : "SimulationWorker reports that GameService does not answer; saving is paused.");
+            GameServiceAvailabilityChanged?.Invoke();
         }
 
         private void HandleServerDisconnect(byte[] packet)
@@ -717,6 +765,7 @@ namespace Mmorpg.Client.Networking
             JoinedSession = null;
             MovementSession = null;
             ShardRules = null;
+            IsGameServiceAvailable = true;
             ClearScopedParts();
         }
 

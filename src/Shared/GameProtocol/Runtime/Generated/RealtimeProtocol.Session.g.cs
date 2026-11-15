@@ -829,6 +829,63 @@ namespace Mmorpg.GameProtocol
             return true;
         }
 
+        /// <summary>
+        /// Whether GameService answers the worker, so the client shows while saving is paused. The worker sends it to every joined peer on every change, and after JoinAccepted while GameService does not answer; its absence means GameService answers.
+        /// </summary>
+        public static byte[] EncodeGameServiceAvailabilityChanged(bool available)
+        {
+            if (!IsValidGameServiceAvailabilityChanged(available))
+            {
+                throw new ArgumentException("Game service availability changed is invalid.", nameof(available));
+            }
+
+            var writer = StartPacket(RealtimeMessageType.GameServiceAvailabilityChanged, 1);
+            WriteGameServiceAvailabilityChanged(ref writer, available);
+            return writer.Finish();
+        }
+
+        public static bool TryDecodeGameServiceAvailabilityChanged(byte[] data, out bool available, out string error)
+        {
+            available = default;
+            if (!TryStartPacket(data, RealtimeMessageType.GameServiceAvailabilityChanged, out var reader, out error)
+                || !TryReadGameServiceAvailabilityChanged(ref reader, out var decoded, out error)
+                || !reader.TryFinish(out error))
+            {
+                return false;
+            }
+
+            if (!IsValidGameServiceAvailabilityChanged(decoded))
+            {
+                error = "Game service availability changed is invalid.";
+                return false;
+            }
+
+            available = decoded;
+            return true;
+        }
+
+        private static void WriteGameServiceAvailabilityChanged(ref PacketWriter writer, bool value)
+        {
+            writer.WriteBoolean(value);
+        }
+
+        private static bool TryReadGameServiceAvailabilityChanged(ref PacketReader reader, out bool value, out string error)
+        {
+            value = default;
+            if (!reader.TryReadBoolean(out var available, out error))
+            {
+                return false;
+            }
+
+            value = available;
+            return true;
+        }
+
+        private static bool IsValidGameServiceAvailabilityChanged(bool value)
+        {
+            return true;
+        }
+
         private static void WriteMessageArgument(ref PacketWriter writer, RealtimeMessageArgument value)
         {
             writer.WriteString(value.Name);
