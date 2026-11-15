@@ -735,7 +735,7 @@ dotnet run --project tools/WorldCollisionCompiler --configuration Release --no-b
 dotnet run --project tools/QuestCatalogCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/TextTableCompiler --configuration Release --no-build -- --verify
 dotnet run --project tools/ProtocolGenerator --configuration Release --no-build -- --verify
-dotnet test Mmorpg.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+dotnet test Mmorpg.slnx --configuration Release --no-build --filter "Category!=Benchmark" --logger "trx;LogFileName=test-results.trx"
 & .\tools\Verify-TestResults.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Run-UnityTests.ps1
 ```
@@ -831,6 +831,8 @@ ends with a summary:
   them from `.env`, in a worktree from the `.env` of the main checkout, starts the
   `docker-compose.test.yml` containers when they do not run, and stops the
   containers it started when it ends. A skipped test fails the check, as in CI.
+  The `Benchmark` category never runs here or in CI; only
+  [its own script](#measure-replication) runs it.
 - The Unity suites run through `tools/Run-UnityEditorTests.ps1` when an Editor
   has this checkout's project open, and otherwise headless through
   `tools/Run-UnityTests.ps1`. CI runs them headless, where Unity never evokes
@@ -1202,6 +1204,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenari
 
 Expected result: a table in which every rule passes, `Load scenario smoke
 passed`, and exit code 0, in about one and a half minutes.
+
+### Measure Replication
+
+`tools/Measure-Replication.ps1` measures the worker's replication path, interest
+and snapshots, without a stack: it runs the
+[Replication Benchmark](STACK_STRESS_TESTING.md#replication-benchmark) in
+Release, prints one table, writes `artifacts/replication/<timestamp>/result.json`,
+and prints the difference to `tools/load/baselines/replication.json`. Run it
+before and after a change of interest, snapshot encoding, or the byte budgets.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-Replication.ps1
+```
+
+Expected result: one block per layout, `spread-500`, `crowd-200`, and
+`crowd-500`, the fingerprint of the deterministic numbers, the line that they
+equal those of every earlier run of the same source state, the difference to
+the baseline, and exit code 0, in about half a minute. Exit code 1 means that a
+run of the same commit and changes had other byte or record numbers.
+`-UpdateBaseline` records the run as the baseline.
 
 ### Run The Live Stack Test
 

@@ -1,6 +1,6 @@
 # Shared helpers of the scripts that start local services as background processes and stop
-# them again: tools/Test-LiveStack.ps1 and tools/Test-Load.ps1. Dot-source it after setting
-# $StackStepPrefix, the tag in front of every progress line.
+# them again, tools/Test-LiveStack.ps1 and tools/Test-Load.ps1, and of the measurement scripts.
+# Dot-source it after setting $StackStepPrefix, the tag in front of every progress line.
 
 function Write-Step([string]$Message) {
     Write-Host "[$StackStepPrefix] $Message"

@@ -24,6 +24,10 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         var tickBudget = TimeSpan.FromMilliseconds(1000d / 30d);
         performance.RecordSimulationTick(TimeSpan.FromMilliseconds(3), tickBudget);
         performance.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget);
+        performance.TickPhaseTimer("movement").Record(TimeSpan.FromMilliseconds(2));
+        performance.TickPhaseTimer("snapshots").Record(TimeSpan.FromMilliseconds(30));
+        performance.TickPhaseTimer("corpse presence");
+        performance.LoopStepTimer("send flush").Record(TimeSpan.FromMilliseconds(5));
         performance.RecordTickResynchronization();
         performance.RecordSnapshotPacketReuse(1, 2, 3, 7);
         performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Step);
@@ -63,6 +67,15 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         Assert.Equal(interval.SingleCoreCpuPercent, root.GetProperty("cpuSingleCorePercent").GetDouble());
         Assert.Equal(interval.Performance.ProcessAllocatedBytes, root.GetProperty("allocatedBytes").GetInt64());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("interest").ValueKind);
+        // A phase without a sample in the interval is left out.
+        var phases = root.GetProperty("phases");
+        Assert.Equal(["movement", "snapshots"], phases.EnumerateObject().Select(phase => phase.Name));
+        Assert.Equal(30, phases.GetProperty("snapshots").GetProperty("maximumMs").GetDouble());
+        Assert.Equal(1, root.GetProperty("loopSteps").GetProperty("send flush").GetProperty("samples").GetInt64());
+        Assert.Equal(interval.Performance.GcPauseMilliseconds, root.GetProperty("gcPauseMs").GetDouble());
+        // The ticks of 3 and 40 ms and the send flush of 5 ms; the phases lie inside the ticks.
+        Assert.Equal(48d, interval.Performance.LoopBusyMilliseconds, 9);
+        Assert.Equal(48d / (interval.Seconds * 1000d) * 100d, root.GetProperty("loopBusyPercent").GetDouble(), 9);
 
         // The log lines show the same interval.
         Assert.Equal(3, logger.Entries.Count);
@@ -71,6 +84,7 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         Assert.Equal(1L, performanceLine["TickOverruns"]);
         Assert.Equal(1L, performanceLine["LoopStepFailures"]);
         Assert.Equal(2L, performanceLine["LoopIsolatedFailures"]);
+        Assert.Equal(interval.LoopBusyPercent, performanceLine["LoopBusyPercent"]);
         Assert.Contains("p99 <= 50.000 ms", (string)performanceLine["SimulationTick"]!, StringComparison.Ordinal);
         var networkLine = logger.Entries[1];
         Assert.Equal(1L, networkLine["QuotaRejects"]);

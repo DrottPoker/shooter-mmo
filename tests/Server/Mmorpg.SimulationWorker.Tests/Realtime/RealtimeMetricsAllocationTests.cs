@@ -23,11 +23,19 @@ public sealed class RealtimeMetricsAllocationTests
             .AddServerMetrics(SimulationWorkerTelemetry.MeterNames)
             .AddInMemoryExporter(exported)
             .Build();
+        // The loop creates its timers once, during composition.
+        RealtimePerformanceMetrics.DurationTimer[] timers =
+        [
+            performance.TickPhaseTimer("movement"),
+            performance.TickPhaseTimer("snapshots"),
+            performance.LoopStepTimer("network poll"),
+            performance.LoopStepTimer("send flush")
+        ];
 
         // The first measurement of each stream sets up its metric point.
-        RecordHotPath(performance, network, 100);
+        RecordHotPath(performance, network, timers, 100);
         provider.ForceFlush();
-        RecordHotPath(performance, network, 100);
+        RecordHotPath(performance, network, timers, 100);
 
         // A listener that another test left subscribed creates its metric points on this
         // thread once, so one quiet pass proves steady recording; an allocation in the
@@ -36,13 +44,15 @@ public sealed class RealtimeMetricsAllocationTests
         for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
         {
             var before = GC.GetAllocatedBytesForCurrentThread();
-            RecordHotPath(performance, network, 10_000);
+            RecordHotPath(performance, network, timers, 10_000);
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
         Assert.Contains(0L, allocated);
         provider.ForceFlush();
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick.duration");
+        Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick_phase.duration");
+        Assert.Contains(exported, metric => metric.Name == "simulation_worker.loop.step.duration");
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick.overruns");
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.realtime.snapshot.bytes");
     }
@@ -50,12 +60,18 @@ public sealed class RealtimeMetricsAllocationTests
     private static void RecordHotPath(
         RealtimePerformanceMetrics performance,
         RealtimeNetworkMetrics network,
+        RealtimePerformanceMetrics.DurationTimer[] timers,
         int iterations)
     {
         for (var iteration = 0; iteration < iterations; iteration++)
         {
             // 0 to 49 ms, so every bucket and the overrun counter see samples.
             var duration = TimeSpan.FromMilliseconds(iteration % 50);
+            foreach (var timer in timers)
+            {
+                timer.Record(duration);
+            }
+
             performance.RecordNetworkPoll(duration);
             performance.RecordCompletedOperations(duration);
             performance.ObserveCompletedOperationBacklog(iteration % 4);

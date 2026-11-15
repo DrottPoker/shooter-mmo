@@ -222,6 +222,43 @@ public sealed class SimulationTickLoopTests
         Assert.Equal(4, guard.TotalFailures);
     }
 
+    // Every phase is timed under its name, in tick order, but only on the ticks on which it did
+    // its work: a periodic phase that was not due and a run that threw are no samples. The loop
+    // busy time adds the ticks, which hold the phases.
+    [Fact]
+    public void EveryPhaseIsTimedOnlyOnTheTicksOnWhichItDidItsWork()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var phases = new SimulationTickPhases();
+        phases.AddPeriodic(SimulationTickOrder.Snapshots, "every second tick", static (in SimulationTick tick) => tick.ServerTick % 2 == 0);
+        phases.Add(SimulationTickOrder.Movement, "every tick", static (in SimulationTick _) => { });
+        phases.Add(SimulationTickOrder.Mobs, "failing at 3", static (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick == 3)
+            {
+                throw new InvalidOperationException("Tick 3 broke.");
+            }
+        });
+        var loop = CreateLoop(fixture.Clock, fixture.Entities, phases, metrics, out _);
+        var nextTick = TimeSpan.Zero;
+
+        RunTicks(loop, ref nextTick, 6);
+
+        var interval = metrics.CaptureAndReset();
+        Assert.Equal(
+            ["every tick", "failing at 3", "every second tick"],
+            interval.TickPhases.Select(phase => phase.Name));
+        Assert.Equal(6, interval.TickPhases[0].Summary.Samples);
+        Assert.Equal(5, interval.TickPhases[1].Summary.Samples);
+        Assert.Equal(3, interval.TickPhases[2].Summary.Samples);
+        Assert.Equal(
+            interval.SimulationTick!.AverageMilliseconds * interval.SimulationTick.Samples,
+            interval.LoopBusyMilliseconds,
+            9);
+        Assert.Empty(metrics.CaptureAndReset().TickPhases);
+    }
+
     // The loop runs at the tick rate for every player, so beyond its phases a tick must not
     // allocate: filling the players, building the tick, and calling the phases.
     [Fact]

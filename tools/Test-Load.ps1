@@ -3,8 +3,9 @@
 # describes. It builds GameService, SimulationWorker, and StackStressGenerator in Release, asks
 # the generator for the scenario's plan, recreates the disposable Docker stack of
 # docker-compose.stack-stress.yml when the mode needs it, starts the services as hidden
-# processes with the plan's settings, runs the generator, and prints the verdict with the
-# difference to the checked-in baseline of the scenario.
+# processes with the plan's settings, runs the generator, and prints the worker's worst interval
+# with its three costliest tick phases and the verdict with the difference to the checked-in
+# baseline of the scenario.
 #
 # Everything of a run goes into artifacts/load/<yyyyMMdd-HHmmss>-<scenario>/: the generator
 # report, the service and generator logs, the worker performance file, the PostgreSQL and Redis
@@ -342,6 +343,36 @@ function Write-Outage($Summary) {
     Write-Host "  Kills while saving was paused: $($outage.killsWhileSavingPaused), corpses seen $($outage.killCorpsesSeen), missing $($outage.killCorpsesMissing). First durable action $(Format-Number $outage.firstDurableSuccessAfterReadySeconds) s after GameService was ready; $($outage.botsWithDurableSuccessAfterReturn) bots committed one after the return."
 }
 
+# The worker's steady interval with the worst tick, its loop and GC numbers, and its three
+# costliest tick phases, so a failed tick rule names where the tick went.
+function Write-WorkerWorstInterval($Summary) {
+    $worst = $Summary.workerWorstInterval
+    if (-not $worst) {
+        return
+    }
+
+    Write-Step ("Worst worker interval from {0}: tick p99 {1} ms, average {2} ms; loop thread busy {3}% of the interval, process CPU {4}% of one core, GC pauses {5} ms per second. Its costliest tick phases:" -f `
+            $worst.intervalStart, (Format-Number $worst.tickP99Ms), (Format-Number $worst.tickAverageMs), (Format-Number $worst.loopBusyPercent),
+            (Format-Number $worst.cpuSingleCorePercent), (Format-Number $worst.gcPauseMsPerSecond))
+    $rows = foreach ($phase in @($worst.slowestPhases)) {
+        [pscustomobject]@{
+            Phase = $phase.name
+            "ms per s" = Format-Number $phase.msPerSecond
+            Samples = $phase.samples
+            "Average ms" = Format-Number $phase.averageMs
+            "p99 ms" = Format-Number $phase.p99Ms
+            "Maximum ms" = Format-Number $phase.maximumMs
+        }
+    }
+
+    if ($rows) {
+        $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+    }
+    else {
+        Write-Host "  The worker's file names no tick phases."
+    }
+}
+
 function Write-BaselineDifference($Summary) {
     if (-not (Test-Path -LiteralPath $baselinePath)) {
         Write-Step "No checked-in baseline for $Scenario under the network profile $runNetwork; -UpdateBaseline records this run as one."
@@ -665,6 +696,7 @@ if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     Write-Soak $summary
     Write-NetworkCounts $summary
     Write-Outage $summary
+    Write-WorkerWorstInterval $summary
     Write-Step "Quality boundary of $Scenario under the network profile $runNetwork ($($summary.bots) bots, $($summary.steadySeconds) s steady):"
     Write-Verdict $summary
     Write-BaselineDifference $summary

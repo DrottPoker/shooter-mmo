@@ -15,7 +15,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // it is still fighting or on its way home. Routes come from one planning queue with a
 // fixed budget per tick. Combat owns damage and the attack itself; the brain chooses the
 // target, walks, and decides when the Mob stands ready to attack. Loop-confined.
-internal sealed class MobSystem
+internal sealed class MobSystem : IMobSnapshotSource
 {
     // Routes planned per tick at most, shared by every Mob.
     public const int PlansPerTick = 8;

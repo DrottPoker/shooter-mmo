@@ -84,7 +84,40 @@ public sealed record StressWorkerInterval(
     public long? LoopStepFailures { get; init; }
 
     public long? LoopIsolatedFailures { get; init; }
+
+    // Every tick phase that did its work in the interval and every step of a loop iteration
+    // outside the tick, by name; the garbage collection pauses; and the share of the interval
+    // that the loop thread was busy. Null in a file of an older worker.
+    public IReadOnlyDictionary<string, StressWorkerDuration>? Phases { get; init; }
+
+    public IReadOnlyDictionary<string, StressWorkerDuration>? LoopSteps { get; init; }
+
+    public double? GcPauseMs { get; init; }
+
+    public double? LoopBusyPercent { get; init; }
 }
+
+// One phase of the worst interval: its samples, average, p99, and longest sample, and how many
+// milliseconds of every second it took, which orders the phases by cost.
+public sealed record StressWorkerPhaseCost(
+    string Name,
+    long Samples,
+    double AverageMs,
+    double P99Ms,
+    double MaximumMs,
+    double MsPerSecond);
+
+// The steady interval with the highest tick p99, the highest tick average breaking a tie, and its
+// three costliest tick phases.
+public sealed record StressWorkerWorstInterval(
+    DateTime IntervalStart,
+    DateTime IntervalEnd,
+    double TickP99Ms,
+    double TickAverageMs,
+    double CpuSingleCorePercent,
+    double? LoopBusyPercent,
+    double? GcPauseMsPerSecond,
+    IReadOnlyList<StressWorkerPhaseCost> SlowestPhases);
 
 // A duration over the folded intervals: the sample-weighted average, the worst interval
 // average, p95, and p99, and the longest single sample.
@@ -124,6 +157,22 @@ public sealed record StressWorkerPerformanceSummary(
     public long RunLoopStepFailures { get; init; }
 
     public long RunLoopIsolatedFailures { get; init; }
+
+    // Every tick phase and every loop step over the steady intervals, by name; empty for an
+    // older worker's file.
+    public IReadOnlyDictionary<string, StressWorkerDurationFold> Phases { get; init; } =
+        new Dictionary<string, StressWorkerDurationFold>(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, StressWorkerDurationFold> LoopSteps { get; init; } =
+        new Dictionary<string, StressWorkerDurationFold>(StringComparer.Ordinal);
+
+    // The loop thread's busy share in percent and the garbage collection pauses in milliseconds
+    // per second, over the steady intervals that carry them; null for an older worker's file.
+    public StressWorkerLevelFold? LoopBusyPercent { get; init; }
+
+    public StressWorkerLevelFold? GcPauseMsPerSecond { get; init; }
+
+    public StressWorkerWorstInterval? WorstInterval { get; init; }
 }
 
 public static class StressWorkerPerformance
@@ -313,8 +362,79 @@ public static class StressWorkerPerformance
             note)
         {
             RunLoopStepFailures = run.Sum(interval => interval.LoopStepFailures ?? 0),
-            RunLoopIsolatedFailures = run.Sum(interval => interval.LoopIsolatedFailures ?? 0)
+            RunLoopIsolatedFailures = run.Sum(interval => interval.LoopIsolatedFailures ?? 0),
+            Phases = FoldNamed(steady, interval => interval.Phases),
+            LoopSteps = FoldNamed(steady, interval => interval.LoopSteps),
+            LoopBusyPercent = FoldLevel(steady.Select(interval => interval.LoopBusyPercent)),
+            GcPauseMsPerSecond = FoldLevel(steady.Select(interval =>
+                interval.GcPauseMs is { } pause && interval.IntervalSeconds > 0
+                    ? pause / interval.IntervalSeconds
+                    : (double?)null)),
+            WorstInterval = FindWorstInterval(steady)
         };
+    }
+
+    public const int SlowestPhaseCount = 3;
+
+    // The names keep the order of their first appearance, which is the worker's tick order.
+    private static Dictionary<string, StressWorkerDurationFold> FoldNamed(
+        IReadOnlyList<StressWorkerInterval> intervals,
+        Func<StressWorkerInterval, IReadOnlyDictionary<string, StressWorkerDuration>?> select)
+    {
+        var names = intervals
+            .SelectMany(interval => select(interval)?.Keys ?? [])
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var folds = new Dictionary<string, StressWorkerDurationFold>(StringComparer.Ordinal);
+        foreach (var name in names)
+        {
+            if (FoldDuration(intervals.Select(interval => select(interval)?.GetValueOrDefault(name))) is { } fold)
+            {
+                folds[name] = fold;
+            }
+        }
+
+        return folds;
+    }
+
+    private static StressWorkerLevelFold? FoldLevel(IEnumerable<double?> source)
+    {
+        var values = source.OfType<double>().ToArray();
+        return values.Length == 0 ? null : new StressWorkerLevelFold(values.Average(), values.Max());
+    }
+
+    private static StressWorkerWorstInterval? FindWorstInterval(IReadOnlyList<StressWorkerInterval> steady)
+    {
+        var worst = steady
+            .Where(interval => interval.Tick is { Samples: > 0 })
+            .OrderByDescending(interval => interval.Tick!.P99Ms)
+            .ThenByDescending(interval => interval.Tick!.AverageMs)
+            .FirstOrDefault();
+        if (worst is null)
+        {
+            return null;
+        }
+
+        var seconds = worst.IntervalSeconds > 0 ? worst.IntervalSeconds : 1d;
+        return new StressWorkerWorstInterval(
+            worst.IntervalStart,
+            worst.IntervalEnd,
+            worst.Tick!.P99Ms,
+            worst.Tick.AverageMs,
+            worst.CpuSingleCorePercent,
+            worst.LoopBusyPercent,
+            worst.GcPauseMs is { } pause ? pause / seconds : null,
+            (worst.Phases ?? new Dictionary<string, StressWorkerDuration>())
+                .Select(phase => new StressWorkerPhaseCost(
+                    phase.Key,
+                    phase.Value.Samples,
+                    phase.Value.AverageMs,
+                    phase.Value.P99Ms,
+                    phase.Value.MaximumMs,
+                    phase.Value.AverageMs * phase.Value.Samples / seconds))
+                .OrderByDescending(phase => phase.MsPerSecond)
+                .Take(SlowestPhaseCount)
+                .ToArray());
     }
 
     // The worker writes one interval right after the other, so a later start than the previous

@@ -44,6 +44,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.loop.completed_operations.duration",
         "simulation_worker.loop.failures",
         "simulation_worker.loop.network_poll.duration",
+        "simulation_worker.loop.step.duration",
         "simulation_worker.simulation.collision_streaming.duration",
         "simulation_worker.simulation.interest.duration",
         "simulation_worker.simulation.movement.duration",
@@ -55,7 +56,8 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.simulation.tick.duration",
         "simulation_worker.simulation.tick.lag",
         "simulation_worker.simulation.tick.overruns",
-        "simulation_worker.simulation.tick.resynchronizations"
+        "simulation_worker.simulation.tick.resynchronizations",
+        "simulation_worker.simulation.tick_phase.duration"
     ];
 
     [Fact]
