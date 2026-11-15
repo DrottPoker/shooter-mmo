@@ -1810,14 +1810,14 @@ numbers from the test's output.
 
 `tools/load/baselines/replication.json` holds the baseline, recorded on
 2026-11-15 with changed-only replication, on the machine of
-[Measured Tiers](#measured-tiers) while other programs used about 14 percent of
+[Measured Tiers](#measured-tiers) while other programs used about 13 percent of
 its cores, so its timings are informative only:
 
 | Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Deferred | Near walkers avg / p5 | Walkers within 16 m / beyond 56 m | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 1.4 / 5.7 ms | 3.6 / 17.4 ms | 23 KiB |
-| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.2 / 0.4 ms | 0.7 / 1.5 ms | 0 KiB |
-| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 1.4 / 2.7 ms | 7.3 / 12.9 ms | 0 KiB |
+| `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 1.1 / 2.7 ms | 2.5 / 5.7 ms | 24 KiB |
+| `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.2 / 0.3 ms | 0.6 / 1.1 ms | 0 KiB |
+| `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 1.2 / 2.7 ms | 6.7 / 15.1 ms | 0 KiB |
 
 The same layouts through the three states of the replication, deterministic
 numbers only:
@@ -1841,28 +1841,28 @@ a walker within 16 m still comes 14 times a second, the near walkers 10 times
 on average, and one beyond 56 m about once a second, where the 14 byte record
 without the order gave everybody 10.5.
 
-The timings in the table come from a run while other programs used about 40
-percent of the cores. Measured back to back on the same machine, the interest
-phase takes about half the time it took when every record went out, and the
-broadcast, which includes the interest phase, about as long in `crowd-200`
-and less in `spread-500`: in three alternating runs each, `crowd-200` took
-0.70 ms against 0.70, and `spread-500` 3.3 to 3.6 ms against 3.9 to 4.3. The
-interest index moves an entity only when it changes cells, a refresh decides
-visibility and tier in one scan, and the scheduler's state follows each
-visible list, so planning looks an entity up only when its view or its record
-moved. Every snapshot packet is
-written into a reusable buffer, so the two crowds allocate nothing per tick;
-what `spread-500` allocates is the spawns and despawns of entities that walk
-in and out of view.
+The timings are those of each layout's second run, as the benchmark reports
+them. Measured back to back on the same machine, first runs against first
+runs, the interest phase takes about half the time it took when every record
+went out, and the broadcast, which includes the interest phase, about as long
+in `crowd-200` and less in `spread-500`: in three alternating runs each,
+`crowd-200` took 0.70 ms against 0.70, and `spread-500` 3.3 to 3.6 ms against
+3.9 to 4.3. The interest index moves an entity only when it changes cells, a
+refresh decides visibility and tier in one scan, and the scheduler's state
+follows each visible list, so planning looks an entity up only when its view
+or its record moved. Every snapshot packet is written into a reusable buffer,
+so the two crowds allocate nothing per tick; what `spread-500` allocates is
+the spawns and despawns of entities that walk in and out of view.
 
 `crowd-500` takes about twice as long as when every record went out, because
 every recipient now chooses about 142 of about 400 due records. Of its
 broadcast, the planning takes about two thirds: deciding which of the 499
 visible entities are due about 3.3 ms, weighing the waiting near changes
-0.45 ms, and choosing the nearest 1.1 ms per snapshot; the interest phase
-takes 1.4 ms and writing, sending, and completing the chunks 0.8 ms. The load
-runs before the compact record sent 115 records of 41.96 bytes per player and
-snapshot in `playing-500`, 70.8 KiB of snapshots per player and second.
+0.45 ms, and choosing the nearest 1.1 ms per snapshot, measured in a first run
+on a busy machine; the interest phase takes 1.4 ms and writing, sending, and
+completing the chunks 0.8 ms. The load runs before the compact record sent 115
+records of 41.96 bytes per player and snapshot in `playing-500`, 70.8 KiB of
+snapshots per player and second.
 
 ## Load Runs Under A Network Profile
 

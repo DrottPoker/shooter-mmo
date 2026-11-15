@@ -1,14 +1,14 @@
 {
-  "commit": "6b606da5a798913a420527b8ddebebdb507d16b7",
+  "commit": "6a8427387f5380ed0894ceb3a9bf293b2f7ff8bc",
   "sourceState": "clean",
   "treeDirty": false,
-  "date": "2026-11-15T20:43:39.5706545Z",
+  "date": "2026-11-15T20:47:54.2156479Z",
   "machine": {
     "cpu": "AMD Ryzen 7 5800 8-Core Processor",
     "logicalCores": 16,
     "operatingSystem": "Microsoft Windows 10.0.26200",
     "dotNet": ".NET 10.0.10",
-    "loadPercentBefore": 18.6666666666667
+    "loadPercentBefore": 12.6666666666667
   },
   "deterministicFingerprint": "3cbfbf445ad314a9d760d9c4f183199abcf140cffc03f5a296e75b5178f2aa58",
   "layouts": [
@@ -55,21 +55,21 @@
         "farMovingUpdateRateHz": 5.019068155773932
       },
       "timing": {
-        "wallSeconds": 2.6671464,
-        "tickAverageMs": 1.6787608888888867,
-        "tickP99Ms": 13.0427,
-        "interestAverageMs": 1.3998486666666665,
-        "interestP99Ms": 6.2939,
-        "broadcastAverageMs": 3.2698993333333353,
-        "broadcastP99Ms": 17.1813,
-        "allocatedBytesPerTick": 24013.2,
-        "generation0PerSecond": 0.03333333333333333,
-        "generation1PerSecond": 0.03333333333333333,
+        "wallSeconds": 2.0723784,
+        "tickAverageMs": 1.2643603333333326,
+        "tickP99Ms": 4.9018,
+        "interestAverageMs": 1.0897162222222216,
+        "interestP99Ms": 2.6875,
+        "broadcastAverageMs": 2.4611362222222235,
+        "broadcastP99Ms": 5.6865,
+        "allocatedBytesPerTick": 24086.515555555554,
+        "generation0PerSecond": 0.06666666666666667,
+        "generation1PerSecond": 0.06666666666666667,
         "generation2PerSecond": 0,
-        "gcPauseMsPerSecond": 0.04973333333333333,
+        "gcPauseMsPerSecond": 0.16133333333333333,
         "phaseAverageMs": {
-          "benchmark motion": 0.02388222222222222,
-          "snapshots": 3.271897777777778
+          "benchmark motion": 0.016795555555555557,
+          "snapshots": 2.462273333333333
         }
       }
     },
@@ -116,21 +116,21 @@
         "farMovingUpdateRateHz": 6.018126888217522
       },
       "timing": {
-        "wallSeconds": 0.581971,
-        "tickAverageMs": 0.31349388888888813,
-        "tickP99Ms": 1.1488,
-        "interestAverageMs": 0.15877222222222237,
-        "interestP99Ms": 0.3683,
-        "broadcastAverageMs": 0.605433333333333,
-        "broadcastP99Ms": 1.3164,
+        "wallSeconds": 0.5678766,
+        "tickAverageMs": 0.3058748888888885,
+        "tickP99Ms": 0.993,
+        "interestAverageMs": 0.15860288888888893,
+        "interestP99Ms": 0.3177,
+        "broadcastAverageMs": 0.5916073333333335,
+        "broadcastP99Ms": 1.091,
         "allocatedBytesPerTick": 0,
         "generation0PerSecond": 0,
         "generation1PerSecond": 0,
         "generation2PerSecond": 0,
         "gcPauseMsPerSecond": 0,
         "phaseAverageMs": {
-          "benchmark motion": 0.00574,
-          "snapshots": 0.6062977777777778
+          "benchmark motion": 0.005127777777777778,
+          "snapshots": 0.5924155555555556
         }
       }
     },
@@ -177,21 +177,21 @@
         "farMovingUpdateRateHz": 1.1952920194758565
       },
       "timing": {
-        "wallSeconds": 6.7817167,
-        "tickAverageMs": 3.968613222222221,
-        "tickP99Ms": 11.9218,
-        "interestAverageMs": 1.453716444444444,
-        "interestP99Ms": 3.2324,
-        "broadcastAverageMs": 7.81745844444445,
-        "broadcastP99Ms": 13.9911,
+        "wallSeconds": 5.7288827,
+        "tickAverageMs": 3.3952380000000004,
+        "tickP99Ms": 12.1406,
+        "interestAverageMs": 1.2372591111111115,
+        "interestP99Ms": 2.6674,
+        "broadcastAverageMs": 6.695294666666661,
+        "broadcastP99Ms": 15.1465,
         "allocatedBytesPerTick": 0,
         "generation0PerSecond": 0,
         "generation1PerSecond": 0,
         "generation2PerSecond": 0,
         "gcPauseMsPerSecond": 0,
         "phaseAverageMs": {
-          "benchmark motion": 0.029554444444444446,
-          "snapshots": 7.821435555555556
+          "benchmark motion": 0.025264444444444444,
+          "snapshots": 6.697462222222223
         }
       }
     }
