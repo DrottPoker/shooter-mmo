@@ -1428,7 +1428,10 @@ startup outside the Development environment, is on in the worker's
     everyone who sees it, as a respawn does, with the despawn reason
     `teleported`. When the collision chunks around the destination are not
     loaded, it waits for them and answers on a later tick, once the player
-    stands there; meanwhile the player plays on where it was. A
+    stands there; meanwhile the player plays on where it was. A teleport that
+    moves the character, or begins to wait, while an older one still waits
+    replaces the older one, which answers `admin_teleport_superseded` once its
+    chunks are in, so the character ends where the player asked last. A
     dead character gets `admin_character_dead`, a point outside the World
     `admin_teleport_outside_world`, and a point with no walkable ground near it
     `admin_teleport_no_ground`.
@@ -2123,7 +2126,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | World interaction notices | For a committed operation, in `WorldInteractionResult.NoticeCode`: `interaction_opened` with the capability's name as the argument `capability`, `gathering_started` with the same argument, `insurance_applied`, `insurance_removed`, `vendor_purchased`, `vendor_sold`, `quest_accepted`, `quest_abandoned`, `quest_items_regranted`, `quest_objective_completed`, `quest_items_delivered`, `quest_completed`, `quest_kill_counted` |
 | Gathering | `resource_node_depleted`, `gathering_interrupted`, `gathering_action_invalid`, `gathering_unavailable`, `gathering_failed`, and the GameService rejection of a yield, such as `gathering_tool_required`, which carries the node's tool kind as the argument `toolKind` both when the worker refuses the start and when GameService refuses a yield |
 | Combat | `combat_target_not_found`, `combat_target_not_attackable`, `combat_target_dead`, `combat_target_self`, `combat_player_versus_player_disabled`, `combat_character_dead`, `combat_intent_invalid`, `combat_intent_rate_limited`, `combat_unavailable` |
-| Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
+| Admin tools | `admin_tools_disabled`, `admin_character_dead`, `admin_teleport_outside_world`, `admin_teleport_no_ground`, `admin_teleport_superseded`, `admin_combat_unavailable`, `admin_unavailable`, `invalid_admin_intent` |
 | Looks | `appearance_unavailable`, `appearance_change_in_flight`, `appearance_change_failed`, `invalid_appearance_intent` |
 | Unity client | `item_catalog_update_required` |
 

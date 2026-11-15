@@ -159,6 +159,59 @@ public sealed class RealtimeCollisionStreamingTests
         Assert.DoesNotContain(streamed.Reads, read => read.ThreadName == LoopThreadName);
     }
 
+    // A teleport that waits for its chunks must not run after a newer teleport that completed
+    // meanwhile, or the character would end where the player asked first.
+    [Fact]
+    public async Task ANewerTeleportReplacesOneThatStillWaits()
+    {
+        using var streamed = new StreamedTestCollision(Spawn);
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            StreamedCollision = streamed,
+            EnableAdminTools = true
+        });
+        var traveller = harness.AddCharacter("Twice Teleported");
+        await harness.StartAsync();
+        var owner = await harness.JoinAsync(traveller);
+        streamed.HoldReads();
+
+        var far = StreamedTestCollision.FarPlace;
+        var first = RealtimeAdminIntent.CreateTeleport(Guid.NewGuid(), far.X, 0.05f, far.Z);
+        owner.Send(RealtimeProtocol.EncodeAdminIntent(first));
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(Results(owner));
+
+        // The second destination lies beside the spawn, where the chunks are loaded.
+        var second = RealtimeAdminIntent.CreateTeleport(Guid.NewGuid(), 2f, 0.05f, 1f);
+        owner.Send(RealtimeProtocol.EncodeAdminIntent(second));
+        await harness.PollUntilAsync(() => Results(owner).Count == 1, "the newer teleport");
+        Assert.True(Results(owner)[0].Succeeded);
+        Assert.Equal(second.OperationId, Results(owner)[0].OperationId);
+
+        streamed.ReleaseReads();
+        await harness.PollUntilAsync(() => Results(owner).Count == 2, "the answer to the replaced teleport");
+        var replaced = Results(owner)[1];
+        Assert.Equal(first.OperationId, replaced.OperationId);
+        Assert.False(replaced.Succeeded);
+        Assert.Equal("admin_teleport_superseded", replaced.Error!.Code);
+
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        var state = owner.OwnerSnapshots.Last().State;
+        Assert.Equal(2f, state.PositionX, 3);
+        Assert.Equal(1f, state.PositionZ, 3);
+
+        // A teleport after the replaced one waits and completes as usual.
+        streamed.HoldReads();
+        var third = RealtimeAdminIntent.CreateTeleport(Guid.NewGuid(), -far.X, 0.05f, -far.Z);
+        owner.Send(RealtimeProtocol.EncodeAdminIntent(third));
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        Assert.Equal(2, Results(owner).Count);
+        streamed.ReleaseReads();
+        await harness.PollUntilAsync(() => Results(owner).Count == 3, "the third teleport");
+        Assert.True(Results(owner)[2].Succeeded);
+        Assert.Equal(third.OperationId, Results(owner)[2].OperationId);
+    }
+
     // A required chunk whose file is broken fails every refresh while it is required, with the
     // message of the failed check, and is tried again each time.
     [Fact]
