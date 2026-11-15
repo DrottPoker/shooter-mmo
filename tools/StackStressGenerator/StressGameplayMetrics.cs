@@ -42,17 +42,24 @@ public sealed class StressGameplayMetrics(int seed)
         }
     }
 
+    // An untimed result counts without its latency, such as an answer that a GameService outage
+    // explains, whose time the outage's own summary keeps.
     public void RecordResult(
         string operation,
         double elapsedMilliseconds,
         bool succeeded,
         string? resultCode,
-        bool expectedRejection)
+        bool expectedRejection,
+        bool timed = true)
     {
         lock (gate)
         {
             var metrics = GetOrCreate(operation);
-            metrics.Latency.Record(elapsedMilliseconds);
+            if (timed)
+            {
+                metrics.Latency.Record(elapsedMilliseconds);
+            }
+
             if (succeeded)
             {
                 metrics.Successes++;

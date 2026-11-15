@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Mmorpg.Tools.StackStressGenerator;
 
 public sealed record StressHttpOperationSummary(
@@ -38,6 +40,11 @@ public sealed record StressFullStackSummary(
     // The login or logout burst, or null for a run without one.
     public StressBurstSummary? Burst { get; init; }
 
+    // When every failed request ended, in UTC, so a GameService outage can tell its own failures
+    // from the others; the outage summary keeps the count, the report not the times.
+    [JsonIgnore]
+    public IReadOnlyList<DateTime> FailureTimes { get; init; } = [];
+
     // The accounts that the burst registered before the ramp.
     public int BurstAccounts { get; init; }
 }
@@ -47,6 +54,10 @@ public sealed class FullStackStressMetrics(int seed)
     private readonly object gate = new();
     private readonly Dictionary<string, OperationMetrics> operations =
         new(StringComparer.Ordinal);
+
+    // A run fails long before this many requests failed; the times past it are not kept.
+    private const int MaximumFailureTimes = 100_000;
+    private readonly List<DateTime> failureTimes = [];
 
     public void Record(
         string operation,
@@ -73,6 +84,10 @@ public sealed class FullStackStressMetrics(int seed)
             else
             {
                 metrics.Failures++;
+                if (failureTimes.Count < MaximumFailureTimes)
+                {
+                    failureTimes.Add(DateTime.UtcNow);
+                }
             }
 
             metrics.StatusCodes[statusCode] =
@@ -116,6 +131,14 @@ public sealed class FullStackStressMetrics(int seed)
             }
 
             metrics.BusyWaits++;
+        }
+    }
+
+    public IReadOnlyList<DateTime> CaptureFailureTimes()
+    {
+        lock (gate)
+        {
+            return [.. failureTimes];
         }
     }
 

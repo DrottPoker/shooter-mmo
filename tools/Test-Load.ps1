@@ -23,6 +23,11 @@
 # advertises the proxy's port, stops it last, and keeps its counts in the run folder. The verdict
 # applies the profile's allowances, and the baseline is the one of the scenario and the profile.
 #
+# A scenario with a GameService outage has the generator ask for it during the steady interval:
+# the script then stops GameService with Ctrl+C, starts it again with the same settings once the
+# outage's seconds passed, logging to game-service-2.log, and writes the times it measured to
+# outage-window.json, which the generator and the judge read.
+#
 # Exit codes: 0 the run passed the quality boundary, 1 it ran and failed the boundary or the
 # generator's own checks, 2 it could not run, including a run that could not measure because the
 # generator or the network proxy itself fell behind.
@@ -101,6 +106,17 @@ function Format-Number($Value) {
     ([double]$Value).ToString("0.##", [Globalization.CultureInfo]::InvariantCulture)
 }
 
+# Writes what the script measured of the outage, whole, so the generator never reads half of it.
+function Save-OutageWindow([string]$Path, $Window) {
+    $temporary = "$Path.tmp"
+    [IO.File]::WriteAllText($temporary, ($Window | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+    Move-Item -LiteralPath $temporary -Destination $Path -Force
+}
+
+function Get-UtcStamp {
+    [DateTime]::UtcNow.ToString("o", [Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Write-PlanSection([string]$Title, $Environment, $Sensitive) {
     Write-Host "  $Title"
     foreach ($property in $Environment.PSObject.Properties) {
@@ -126,6 +142,10 @@ function Write-Plan($LoadPlan) {
 
     if ($LoadPlan.worldVariantPath) {
         Write-Host "  Writes the scenario's World variant to $($LoadPlan.worldVariantPath) before the worker starts."
+    }
+
+    if ($LoadPlan.outage) {
+        Write-Host "  GameService outage: $($LoadPlan.outage.atSeconds) s into the steady interval the generator writes $($LoadPlan.outage.requestPath); the script then stops GameService with Ctrl+C, starts it again $($LoadPlan.outage.seconds) s after the stop with the settings below, logging to game-service-2.log, and writes the stop, exit, start, and ready times to $($LoadPlan.outage.windowPath). Both services write the UTC time of every log entry, so the judge can tell the outage's own lines."
     }
 
     if ($LoadPlan.needsGameService) {
@@ -298,6 +318,28 @@ function Write-NetworkCounts($Summary) {
         }
     })
     $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+}
+
+# What the outage showed: when GameService was away, what the bots heard and met, and when the
+# worker noticed the outage and the return.
+function Write-Outage($Summary) {
+    $outage = $Summary.outage
+    if ($null -eq $outage) {
+        return
+    }
+
+    if ($outage.windowProblem) {
+        Write-Step "GameService outage: $($outage.windowProblem)"
+        return
+    }
+
+    Write-Step ("GameService outage: stopped {0}, ready again {1}, down {2} s. The worker noticed the outage {3} s after the stop and the return {4} s after GameService was ready{5}." -f $outage.stoppedAt, $outage.readyAt, (Format-Number $outage.measuredSeconds), (Format-Number $outage.workerNoticedOutageSeconds), (Format-Number $outage.workerNoticedReturnSeconds), $(if ($outage.workerLogNote) { "; $($outage.workerLogNote)" } else { "" }))
+    Write-Host "  Notices: $($outage.botsWithOneNoticeEach) of $($outage.botsAcrossOutage) bots joined across the outage heard one unavailable and one available notice; $($outage.unavailableNotices) unavailable and $($outage.availableNotices) available in all."
+    Write-Host "  Expected inside the window: $($outage.expectedRefusals) refusals with game_service_unavailable, $($outage.expectedInFlightFailures) failures of calls it cut off, $($outage.explainedInventoryRefreshFailures) failed item reads, and $($outage.explainedHttpFailures) failed requests; $($outage.unexplainedFailures) of the same answers outside it."
+    if ($outage.expectedAnswerLatency) {
+        Write-Host "  Those answers took p50 $(Format-Number $outage.expectedAnswerLatency.p50Ms) ms, p95 $(Format-Number $outage.expectedAnswerLatency.p95Ms) ms, at most $(Format-Number $outage.expectedAnswerLatency.maximumMs) ms; the operations' latencies leave them out."
+    }
+    Write-Host "  Kills while saving was paused: $($outage.killsWhileSavingPaused), corpses seen $($outage.killCorpsesSeen), missing $($outage.killCorpsesMissing). First durable action $(Format-Number $outage.firstDurableSuccessAfterReadySeconds) s after GameService was ready; $($outage.botsWithDurableSuccessAfterReturn) bots committed one after the return."
 }
 
 function Write-BaselineDifference($Summary) {
@@ -488,8 +530,48 @@ try {
 
         $offset = 0L
         $workerStopped = $false
+        $gameServiceLog = Join-Path $runFolder "game-service.log"
+        # The GameService outage moves through waiting, stopped, starting, and ready.
+        $outage = $loadPlan.outage
+        $outageState = "waiting"
+        $outageWindow = [ordered]@{ requestedAt = $null; stoppedAt = $null; exitedAt = $null; restartedAt = $null; readyAt = $null }
+        $outageStopped = $null
+        $outageRestarted = $null
         while (-not $generator.HasExited) {
             $offset = Write-NewOutput $generatorLog $offset
+            if ($outage -and $outageState -eq "waiting" -and (Test-Path -LiteralPath $outage.requestPath)) {
+                $outageWindow.requestedAt = (Get-Content -LiteralPath $outage.requestPath -Raw | ConvertFrom-Json).requestedAt
+                Write-Step "The generator asked for the GameService outage: stopping GameService for $($outage.seconds) s."
+                $outageStopped = [Diagnostics.Stopwatch]::StartNew()
+                $outageWindow.stoppedAt = Get-UtcStamp
+                Save-OutageWindow $outage.windowPath $outageWindow
+                Stop-StackProcess $gameService "GameService"
+                $gameService = $null
+                $outageWindow.exitedAt = Get-UtcStamp
+                Save-OutageWindow $outage.windowPath $outageWindow
+                $outageState = "stopped"
+            }
+            elseif ($outage -and $outageState -eq "stopped" -and $outageStopped.Elapsed.TotalSeconds -ge $outage.seconds) {
+                Write-Step "Starting GameService again $($outage.seconds) s after the stop, with the same settings."
+                $gameServiceLog = Join-Path $runFolder "game-service-2.log"
+                $gameService = Start-StackProcess "game-service-2" $gameServiceExe @() (ConvertTo-Hashtable $loadPlan.gameServiceEnvironment) $runFolder $repositoryRoot
+                $outageRestarted = [Diagnostics.Stopwatch]::StartNew()
+                $outageWindow.restartedAt = Get-UtcStamp
+                Save-OutageWindow $outage.windowPath $outageWindow
+                $outageState = "starting"
+            }
+            elseif ($outage -and $outageState -eq "starting") {
+                if (Test-HttpReady "$($loadPlan.gameServiceUrl)/health/ready") {
+                    $outageWindow.readyAt = Get-UtcStamp
+                    Save-OutageWindow $outage.windowPath $outageWindow
+                    Write-Step ("GameService is ready again {0:N1} s after the stop." -f $outageStopped.Elapsed.TotalSeconds)
+                    $outageState = "ready"
+                }
+                elseif ($outageRestarted.Elapsed.TotalSeconds -gt $ReadyTimeoutSeconds) {
+                    throw "GameService did not become ready again within $ReadyTimeoutSeconds s of its restart; its log is game-service-2.log in '$runFolder'."
+                }
+            }
+
             if (-not $loadPlan.needsGameService -and -not $workerStopped -and (Test-Path -LiteralPath $summaryPath)) {
                 # In worker-only mode the generator keeps its authority up after the summary, so the
                 # worker stops against it; then the generator stops with its own exit code.
@@ -505,7 +587,7 @@ try {
             }
 
             if ($null -ne $gameService -and $gameService.HasExited) {
-                Write-LogTail (Join-Path $runFolder "game-service.log")
+                Write-LogTail $gameServiceLog
                 throw "GameService ended during the run; its log is in '$runFolder'."
             }
 
@@ -582,6 +664,7 @@ if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
     $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     Write-Soak $summary
     Write-NetworkCounts $summary
+    Write-Outage $summary
     Write-Step "Quality boundary of $Scenario under the network profile $runNetwork ($($summary.bots) bots, $($summary.steadySeconds) s steady):"
     Write-Verdict $summary
     Write-BaselineDifference $summary

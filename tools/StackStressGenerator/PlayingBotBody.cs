@@ -11,7 +11,8 @@ namespace Mmorpg.Tools.StackStressGenerator;
 // and result code of every operation, classifies rejections with PlayingExpectedConflicts,
 // plans walks on the shared planner, follows them like the Unity client, reads the full item
 // state over HTTP when a committed change reached the bot only as a newer carry state, and
-// counts what its combat events and gathering states say.
+// counts what its combat events and gathering states say. In a run with a GameService outage it
+// leaves the answers that the outage explains to the outage's own accounting.
 public sealed class PlayingBotBody : IPlayingBotBody
 {
     // How late a gathering yield reached the bot against the cycle time the worker announced.
@@ -30,6 +31,7 @@ public sealed class PlayingBotBody : IPlayingBotBody
     private readonly PlayingMetrics metrics;
     private readonly TimeSpan operationTimeout;
     private readonly Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refreshInventory;
+    private readonly StressOutageBot? outage;
     private readonly List<RealtimeCombatEvent> recentEvents = [];
     private readonly List<RealtimeCombatEvent> drained = [];
     private readonly CollisionQueryBuffer sightBuffer = new();
@@ -59,9 +61,11 @@ public sealed class PlayingBotBody : IPlayingBotBody
         StressGameplayMetrics operations,
         PlayingMetrics metrics,
         TimeSpan operationTimeout,
-        Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refreshInventory)
+        Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refreshInventory,
+        StressOutageBot? outage = null)
     {
         BotIndex = botIndex;
+        this.outage = outage;
         this.role = role;
         this.client = client;
         View = view;
@@ -459,6 +463,8 @@ public sealed class PlayingBotBody : IPlayingBotBody
 
                 yieldDueTimestamp = now + MillisecondsToTicks(state.CycleMilliseconds);
                 View.Items.ObserveServerRevision(state.ItemStateRevision);
+                // A yield is the gathering's commit at GameService; its start is not.
+                outage?.RecordDurableSuccess(DateTime.UtcNow);
                 break;
             case RealtimeGatheringStateKind.Stopped:
                 yieldDueTimestamp = 0;
@@ -501,12 +507,27 @@ public sealed class PlayingBotBody : IPlayingBotBody
         }
 
         var expected = !succeeded && PlayingExpectedConflicts.IsExpected(pending.Operation, code);
+        var elapsed = Stopwatch.GetElapsedTime(pending.SentTimestamp).TotalMilliseconds;
+        var outageAnswer = !succeeded && !expected && outage is not null && StressOutageCodes.IsOutageCode(code);
+        if (outageAnswer)
+        {
+            // The outage's window decides once the run ended whether it explains the answer, and
+            // its summary keeps the answer's time, apart from the operation's latency.
+            expected = true;
+            outage!.RecordFailure(pending.Operation, code!, DateTime.UtcNow, elapsed);
+        }
+        else if (succeeded && outage is not null && IsDurable(pending.Operation))
+        {
+            outage.RecordDurableSuccess(DateTime.UtcNow);
+        }
+
         operations.RecordResult(
             pending.Operation,
-            Stopwatch.GetElapsedTime(pending.SentTimestamp).TotalMilliseconds,
+            elapsed,
             succeeded,
             succeeded ? null : code,
-            expected);
+            expected,
+            timed: !outageAnswer);
         if (!succeeded && pending.Operation == PlayingOperations.Attack)
         {
             firstHitTarget = 0;
@@ -533,7 +554,39 @@ public sealed class PlayingBotBody : IPlayingBotBody
             StartReloadWhenBehind(now, cancellationToken);
             FollowRoute(now);
             DrainCombatEvents(now);
+            // Every look counts, also without a waiting kill: the tracker needs to know which
+            // corpses stood there before a kill.
+            if (outage is not null && (View.Corpses.Count > 0 || outage.HasPendingKills))
+            {
+                outage.ObserveMobCorpses(
+                    View.Corpses
+                        .Where(corpse => !string.IsNullOrEmpty(corpse.Value.Source.ActorDefinitionId))
+                        .Select(corpse => (corpse.Key, corpse.Value.Source.ActorDefinitionId, corpse.Value.PositionX, corpse.Value.PositionZ)),
+                    DateTime.UtcNow);
+            }
         }
+    }
+
+    // The operations that GameService commits, whose success shows that saving works. The start
+    // of a gathering is not one: the worker decides it alone, and GameService commits the yield.
+    private static bool IsDurable(string operation)
+    {
+        return operation is PlayingOperations.Equip
+            or PlayingOperations.ItemMove
+            or PlayingOperations.LootAll
+            or PlayingOperations.VendorSale
+            or PlayingOperations.VendorPurchase;
+    }
+
+    private void RecordRefreshFailure()
+    {
+        if (outage is not null)
+        {
+            outage.RecordFailure(StressOutageCodes.InventoryRefresh, StressOutageCodes.InventoryRefreshFailed, DateTime.UtcNow);
+            return;
+        }
+
+        operations.RecordInventoryRefreshFailure();
     }
 
     // The role saw the events; the next think sees only newer ones.
@@ -614,7 +667,7 @@ public sealed class PlayingBotBody : IPlayingBotBody
             var snapshot = reload.GetAwaiter().GetResult();
             if (snapshot is null)
             {
-                operations.RecordInventoryRefreshFailure();
+                RecordRefreshFailure();
             }
             else
             {
@@ -623,7 +676,7 @@ public sealed class PlayingBotBody : IPlayingBotBody
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            operations.RecordInventoryRefreshFailure();
+            RecordRefreshFailure();
             Console.WriteLine($"Bot {BotIndex} item state reload failed: {exception.Message}");
         }
         finally
@@ -779,6 +832,11 @@ public sealed class PlayingBotBody : IPlayingBotBody
                         // Bots attack only Mobs, and a Mob's despawn can follow its death in
                         // the same poll, so the killer alone counts the kill.
                         metrics.Count(PlayingCounter.Kills);
+                        if (outage is not null)
+                        {
+                            var victim = View.Actors.GetValueOrDefault(combatEvent.TargetEntityId);
+                            outage.RecordKill(victim?.ActorDefinitionId, victim?.Position.X ?? 0f, victim?.Position.Z ?? 0f, DateTime.UtcNow);
+                        }
                     }
 
                     if (combatEvent.TargetEntityId == firstHitTarget)

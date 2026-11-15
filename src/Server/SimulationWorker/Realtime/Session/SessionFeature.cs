@@ -47,6 +47,7 @@ internal static class SessionFeature
             core.GameServiceAvailability,
             core.Peers,
             core.Sender,
+            core.AuthorityScheduler,
             core.Logger);
         availabilityNotice.AddTickPhase(core.Registries.TickPhases);
         core.Registries.Hooks.AddPlayerJoined(availabilityNotice.OnPlayerJoined);

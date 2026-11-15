@@ -331,10 +331,11 @@ replication go on; everything durable is paused.
   `game_service_unavailable`, without a GameService call and without entering
   the player's lane: item operations, corpse views and loot, live Mob loot,
   vendor trades, insurance, quest actions at an NPC, quest intents, the start
-  of gathering, and look changes. Such an action that waited in the lane is
-  refused the same way when its turn comes, a gathering that runs stops with
-  that code at its next cycle, and opening or closing an interaction or a
-  corpse view still works. An action that was already at GameService when the
+  of gathering, and look changes. Such an action that waits in a lane when
+  GameService stops answering is refused the same way right then, also behind
+  work that keeps the lane until GameService returns, such as an arrow batch,
+  a gathering that runs stops with that code at its next cycle, and opening or
+  closing an interaction or a corpse view still works. An action that was already at GameService when the
   outage began fails as before, with `auth_service_timeout` or
   `auth_service_unavailable`.
 - The players learn it: the `game service availability` tick phase sends every

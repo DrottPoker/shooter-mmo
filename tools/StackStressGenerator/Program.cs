@@ -270,7 +270,7 @@ public static class Program
             var summaryPath = Path.Combine(runFolder, "summary.json");
             var report = await StressRunReport.ReadAsync(reportPath, CancellationToken.None);
             var summary = StressRunSummary.Parse(await File.ReadAllTextAsync(summaryPath));
-            report = StressRunJudge.AddLogs(report, runFolder, boundary.LogAllowances);
+            report = StressRunJudge.AddLogs(report, runFolder, boundary.LogAllowances, boundary.OutageReturnLimitSeconds);
             report = StressNetworkProfiles.AddProxyCounts(report, runFolder);
             report = report with { Verdict = boundary.Evaluate(report) };
             var exitCode = report.Verdict is { Valid: false }

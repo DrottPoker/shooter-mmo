@@ -3013,6 +3013,36 @@ retries, and median and longest seconds, and the GameService log holds no
 `Redis session revocation tombstones could not be stored`. Each run takes about
 three minutes.
 
+### GameService Goes Away Under Load
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario outage-60s -Plan
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario outage-60s
+```
+
+Expected result: the plan prints a `GameService outage:` line that names the
+request and window files and says that the script stops GameService 60 s into
+the steady interval and starts it again 60 s after the stop, and both services
+get `Logging__Console__FormatterName = simple` and the timestamp settings. The
+run prints `Asked tools/Test-Load.ps1 to stop GameService for 60 s`, `The
+generator asked for the GameService outage`, `GameService stopped in <n> s`,
+some `Bot <n> item state reload failed` lines while GameService is away,
+`Starting GameService again 60 s after the stop`, and `GameService is ready
+again <n> s after the stop`; no bot fails. After the verdict it prints a
+`GameService outage:` block: the worker noticed the outage a few seconds after
+the stop and the return within about 2 seconds of the readiness, all 100 bots
+heard one notice of each kind, the refusals and in-flight failures inside the
+window are counted as expected with none outside it, and the first durable
+action committed a few seconds after the readiness. In the table the four
+`outage_` rules, `worker_heartbeat_failures`, `http_unexpected_failures`, and
+`item_invariant_violations` read `pass`, and `gameplay_unexpected_failures`
+passes with a note that names what the outage explains, as
+[GameService Outage Scenario](STACK_STRESS_TESTING.md#gameservice-outage-scenario)
+describes. The
+run folder holds `outage-request.json`, `outage-window.json`, and
+`game-service-2.log`, and every log entry of both services starts with its UTC
+time. A run takes about seven minutes.
+
 ### Bots That Play
 
 ```powershell

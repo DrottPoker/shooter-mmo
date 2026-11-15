@@ -43,6 +43,9 @@ public sealed class StressRunCoordinator(
     private volatile StressDriftSample? latestDrift;
     private long nextDriftTimestamp;
     private Task? burst;
+    private readonly StressOutageTracker? outage = options.Outage is { } outageOptions
+        ? new StressOutageTracker(outageOptions)
+        : null;
 
     public async Task<StressRunReport> RunAsync(CancellationToken cancellationToken)
     {
@@ -163,6 +166,7 @@ public sealed class StressRunCoordinator(
                 {
                     DispatchChurn(now, steadyStartedTimestamp);
                     StartBurst(now, steadyStartedTimestamp, cancellationToken);
+                    outage?.RequestIfDue(Stopwatch.GetElapsedTime(steadyStartedTimestamp, now));
 
                     // Once GameService's retention window passed in the steady interval, the
                     // operation tables are counted for the retention rules.
@@ -241,6 +245,7 @@ public sealed class StressRunCoordinator(
                 .OrderBy(bot => bot.BotIndex)
                 .ToArray();
             var providerReport = admissionProvider.CaptureReport();
+            var outageSummary = outage?.Capture(snapshots, providerReport.FullStack?.FailureTimes ?? []);
             var workerProcess = processSampler?.CreateSummary();
             var generatorProcess = generatorProcessSampler.CreateSummary();
             return StressRunReport.Create(
@@ -259,6 +264,7 @@ public sealed class StressRunCoordinator(
             {
                 SteadyStartedAt = steadyStartedAt,
                 SteadyEndedAt = steadyEndedAt,
+                Outage = outageSummary,
                 Playing = playing?.Metrics.Capture(),
                 Soak = new StressSoakSummary(
                     providerReport.Storage,
@@ -488,7 +494,8 @@ public sealed class StressRunCoordinator(
             // The way back starts on a pool thread, so nothing of it runs on a poll thread.
             Rejoin = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.RejoinAsync(plan, token), token),
             ReadRejoinFacts = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.ReadRejoinFactsAsync(plan, token), token),
-            Regeneration = rejoin is null ? new PlayingRegeneration(1, 1) : PlayingRegeneration.Load(options.CombatRulesPath)
+            Regeneration = rejoin is null ? new PlayingRegeneration(1, 1) : PlayingRegeneration.Load(options.CombatRulesPath),
+            Outage = outage
         };
     }
 

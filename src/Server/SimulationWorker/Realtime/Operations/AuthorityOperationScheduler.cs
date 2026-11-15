@@ -6,7 +6,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // operation runs while the rest wait in the peer's queue. Finalizers release the lane and
 // call StartNext. While GameService does not answer, a client operation that it must commit
 // never enters the lane, and one that waited in it is refused instead of started, so no lane
-// waits for a timeout. Loop-confined.
+// waits for a timeout; the ones that wait when GameService stops answering are refused right
+// then. Loop-confined.
 internal sealed class AuthorityOperationScheduler(
     RealtimePeerRegistry peers,
     GameServiceAvailability? availability = null)
@@ -22,6 +23,38 @@ internal sealed class AuthorityOperationScheduler(
 
         availability.RecordRefusedIntent(kind);
         return true;
+    }
+
+    // GameService stopped answering: every client operation that it must commit and that still
+    // waits in a lane is refused now. One that queued in the seconds before the worker noticed
+    // can wait behind work that keeps its lane for the whole outage, such as an arrow batch,
+    // and would otherwise be answered only when GameService returns. The operations that
+    // GameService takes no part in, and the system's own, keep their places.
+    public int RefuseQueuedDurableIntents()
+    {
+        var refused = 0;
+        foreach (var context in peers.Contexts)
+        {
+            var queue = context.AuthorityOperationQueue;
+            for (var waiting = queue.Count; waiting > 0; waiting--)
+            {
+                var operation = queue.Dequeue();
+                if (operation.DurableIntentKind is not { } kind)
+                {
+                    queue.Enqueue(operation);
+                    continue;
+                }
+
+                availability?.RecordRefusedIntent(kind);
+                operation.Refuse(
+                    context,
+                    GameServiceAvailability.UnavailableCode,
+                    GameServiceAvailability.UnavailableMessage);
+                refused++;
+            }
+        }
+
+        return refused;
     }
 
     public void Enqueue(RealtimePeerContext context, IRealtimeAuthorityOperation operation)
