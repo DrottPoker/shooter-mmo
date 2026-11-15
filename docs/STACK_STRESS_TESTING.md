@@ -1444,67 +1444,105 @@ baselines that are checked in.
 
 ## Measured Tiers
 
-These are the checked-in baselines in `tools/load/baselines`, recorded on
-2026-11-14 on an AMD Ryzen 7 5800 with 16 logical processors and 31.9 GiB of
-memory under Windows, with the generator, the worker, GameService, PostgreSQL,
-and Redis on that one machine. The machine was otherwise idle except for about
-twenty containers of another project that used about 15 percent of one core.
-The worker ran 30 simulation ticks and 15 snapshots per second. Each baseline
-file names its commit.
+These are the checked-in baselines in `tools/load/baselines`. The full-stack
+ones were recorded on 2026-11-15 at commit `f90564a`, after the database phase
+of the hardening plan; `worker-only-200` and `worker-only-500` are from
+2026-11-14 and do not touch the database. The machine is an AMD Ryzen 7 5800
+with 16 logical processors and 31.9 GiB of memory under Windows, with the
+generator, the worker, GameService, PostgreSQL, and Redis on that one machine.
+Beside the runs it held about twenty containers of another project, a browser,
+and chat programs, which together used 2 to 11 percent of all cores before a
+run. The worker ran 30 simulation ticks and 15 snapshots per second. Each
+baseline file names its commit.
 
 | Scenario | Result | Tick p99 | Input ack p50 / p99 | Updates per second seen, p5 | Slowest operation p95 | Worker CPU, one core | Sent per player |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `smoke` | passed | 4 ms | 38 / 79 ms | 15.0 | partial loot 430 ms | 21% | 10 KiB/s |
+| `smoke` | passed | 0.5 ms | 49 / 94 ms | 15.0 | corpse deposit 87 ms | 10% | 10 KiB/s |
 | `worker-only-200` | passed | 8 ms | 55 / 96 ms | 15.0 | none | 47% | 126 KiB/s |
 | `worker-only-500` | failed | 16 ms | 63 / 115 ms | **3.5** | none | 87% | 74 KiB/s |
-| `mixed-100` | passed | 4 ms | 45 / 82 ms | 15.0 | corpse deposit 416 ms | 28% | 67 KiB/s |
-| `hotspot-100` | passed | 4 ms | 42 / 79 ms | 15.0 | vendor sale 95 ms | 20% | 62 KiB/s |
-| `playing-100` | passed | 8 ms | 45 / 98 ms | 15.0 | equip 222 ms | 21% | 27 KiB/s |
-| `playing-250` | passed | 24 ms | 56 / 111 ms | 15.0 | equip 218 ms | 66% | 64 KiB/s |
-| `playing-500` | failed | **50 ms** | 72 / 133 ms | **6.6** | equip 266 ms | 144% | 77 KiB/s |
-| `soak-30min` | failed | 24 ms | 54 / 110 ms | 15.0 | rejoin 470 ms | 64% | 60 KiB/s |
+| `mixed-100` | passed | 4 ms | 43 / 77 ms | 15.0 | corpse deposit 115 ms | 26% | 68 KiB/s |
+| `hotspot-100` | passed | 4 ms | 40 / 74 ms | 15.0 | vendor sale 69 ms | 18% | 62 KiB/s |
+| `playing-100` | passed | 8 ms | 45 / 98 ms | 15.0 | equip 180 ms | 19% | 27 KiB/s |
+| `playing-250` | passed | 24 ms | 52 / 105 ms | 15.0 | equip 142 ms | 54% | 63 KiB/s |
+| `playing-500` | failed | **50 ms** | 63 / 115 ms | **6.5** | equip 186 ms | 123% | 77 KiB/s |
+| `mixed-250` | failed | 8 ms | 56 / 102 ms | 14.1 | **partial loot 2,246 ms** | 78% | 148 KiB/s |
+| `soak-30min` | passed | 24 ms | 51 / 103 ms | 15.0 | rejoin 372 ms | 53% | 60 KiB/s |
+| `login-burst` | passed | 1 ms | 38 / 86 ms | 15.0 | relocation 67 ms | 4% | 15 KiB/s |
+| `logout-burst` | passed | 1 ms | 41 / 75 ms | 15.0 | relocation 67 ms | 4% | 15 KiB/s |
 
-The tick p99 is a bucket upper bound, and bold numbers fail their rule.
-`playing-500` also had two PostgreSQL deadlocks and `soak-30min` one, which is
-its only failed rule. `mixed-250` has no baseline: see
-[What Limits The Next Tier](#what-limits-the-next-tier).
+The tick p99 is a bucket upper bound, and bold numbers fail their rule. No
+full-stack run had a PostgreSQL deadlock or a lock wait longer than the
+deadlock timeout, no call of the worker to GameService failed, and no service
+logged an error.
 
 What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target):
 
-- **250 playing players pass a five-minute run** on this machine with every
-  rule, at two thirds of a core for the worker. 100 players in one place pass
-  too.
-- **No tier has passed a 30-minute soak yet.** At 250 players with churn the
-  soak holds every rule for the tick, the update rate, the operations, the
-  memory, and the logs, and fails on one deadlock that the worker's retry
-  recovered.
+- **250 playing players pass a five-minute run and a 30-minute soak** on this
+  machine with every rule, at a bit more than half a core for the worker. 100
+  players in one place pass too.
 - **500 playing players fail** the tick budget and the update rate, and the
   worker needs more than one core, which its one loop thread does not have.
+  Nothing else fails there: every operation stays below 200 ms at the 95th
+  percentile.
+- **250 players on one shared corpse fail** only the operation time of that
+  corpse, the deliberate worst case of `mixed-250`: see entry 6 of
+  [What Limits The Next Tier](#what-limits-the-next-tier).
+- **A burst of logins waits and completes.** `login-burst` sent 400 logins
+  within 40 ms: the password hashing lane refused 147 of them once with
+  `auth_busy`, each went again by itself, and every account was logged in after
+  16.4 seconds, half of them after 7.9. `logout-burst` logged 500 accounts out
+  within 0.42 seconds.
+
+Against the baselines of 2026-11-14, before the database phase, on the same
+machine: the 95th percentile of most item operations fell by a fifth to a half
+(at 500 players a vendor purchase from 204 to 110 ms and a loot of everything
+from 225 to 126 ms; at 100 players on the shared corpse a deposit from 416 to
+115 ms, where the corpse also became a player's own with smaller stacks). The
+exception is the equip of the soak, 153 to 208 ms. The worker's CPU at 250
+players fell from 66 to 54 percent of a core, and the join's 95th percentile
+from about 500 to 210 to 340 ms in every scenario but `playing-100`, where it
+stayed at about 320. The tick and the update rate did not move, as expected:
+they belong to the worker's loop, not to the database. Two runs on two days
+do not separate the changes from the day's noise, so read these as direction.
 
 In `playing-100` to `playing-500` every gameplay operation succeeded: no
-unexpected rejection and no timeout in 280, 718, and 1,626 kills, their loots,
-the gathering, and the vendor trades, and 0.5 to 0.75 deaths per fighter and
+unexpected rejection and no timeout in 247, 728, and 1,587 kills, their loots,
+the gathering, and the vendor trades, and 0.5 to 0.8 deaths per fighter and
 ten minutes.
 
 ### The 30 Minute Soak
 
 `soak-30min` ran 250 playing bots for 1,800 seconds with ten percent of them
-leaving and returning per minute.
+leaving and returning per minute, and passed every rule. The run of 2026-11-14
+had failed on one deadlock.
 
-- **Churn**: 714 leaves, half of them with an account logout, 360 returns to a
-  standing body and 354 from the saved place. Every return kept its place and
+- **Churn**: 715 leaves, half of them with an account logout, 364 returns to a
+  standing body and 351 from the saved place. Every return kept its place and
   health; five bodies died while their players were away and came back at the
   spawn, as designed.
 - **Memory**: the working set levels off. Between the second and the last fifth
-  of the run the worker grew 0.8 MiB, to 173 MiB, and GameService 3.3 MiB, to
-  247 MiB. The worker's managed heap stayed at 64 MiB with 34 generation 2
-  collections per hour and 32 MiB allocated per second. The generator itself
+  of the run the worker grew 2.1 MiB, to 172 MiB, and GameService 3.5 MiB, to
+  248 MiB. The worker's managed heap stayed at 65 MiB with 34 generation 2
+  collections per hour and 31 MiB allocated per second. The generator itself
   grew 13 MiB.
 - **Drift**: no session without a bot, no playing bot without a session, no
-  session within ten seconds of its lease expiry, no pending item operation,
-  at most 6 of 64 pooled connections in use.
-- **Storage**: the database grew 184 MiB per hour, about 750 KiB per player
-  and hour.
+  session within ten seconds of its lease expiry (the least headroom was 20.1
+  of 30 seconds), no pending item operation, at most 3 of 64 pooled connections
+  in use.
+- **Retention**: a soak sets the retention windows to four minutes, so the run
+  shows whether the deletes keep up. Between 270 seconds into the steady
+  interval and its end `item_operations` grew 5.2 percent and
+  `item_operation_changes` 5.1 percent, against the 25 percent the rule
+  allows, and no row was more than 14.9 seconds past its window, against 60.
+  With those windows the whole database grew 34 MiB per hour.
+- **Logs**: no error or critical line. The warnings were one `session_revoked`
+  line of the session heartbeat, which a heartbeat on its way logs when it
+  meets the release of the same session and which changes nothing, and the
+  start notice of the development admin tools.
+
+What the history costs without retention was measured on 2026-11-14, before
+retention existed: the database grew 184 MiB per hour, about 750 KiB per player
+and hour.
 
 | Table | Rows per hour | Growth per hour | Per player and hour |
 | --- | ---: | ---: | ---: |
@@ -1514,13 +1552,10 @@ leaving and returning per minute.
 | `live_mob_loot_grants` | 10,000 | 2.2 MiB | 9 KiB |
 | `character_currency_ledger` | 7,300 | 1.9 MiB | 8 KiB |
 
-The two operation tables are 94 percent of the growth. `playing-500` grew 326
-MiB per hour, which is about 8 GiB per day and Shard at the Scale Target.
-
-- **Logs**: no error or critical line. The warnings were ten
-  `session_revoked` lines of the session heartbeat, which a heartbeat on its
-  way logs when it meets the release of the same session and which change
-  nothing, and the one death that the deadlock delayed.
+The two operation tables were 94 percent of that growth. `playing-500` grew 326
+MiB per hour then, which is about 8 GiB per day and Shard at the Scale Target;
+entry 7 of [What Limits The Next Tier](#what-limits-the-next-tier) says what 14
+days of it come to.
 
 ## Load Runs Under A Network Profile
 
@@ -1658,8 +1693,8 @@ What the profiles show:
 ## What Limits The Next Tier
 
 Each entry is a measured limit or defect with its evidence. None of them is
-tuned away in the load tooling; the run folders of 2026-11-14 hold the
-reports.
+tuned away in the load tooling; the run folders of 2026-11-14 and 2026-11-15
+hold the reports.
 
 1. **The worker's one loop thread.** At 500 playing players the worker uses 144
    percent of a core (LiteNetLib's threads included), its tick p99 leaves the
@@ -1673,32 +1708,32 @@ reports.
    budget of 38 MiB per second caps the rate at 3.5 updates per second
    (`worker-only-500`). Entity state is sent unquantized and in full.
 3. **A deadlock between a player death and the worker's registry heartbeat.**
-   The death's transaction holds the Shard's row in `simulation_assignments`
-   and inserts into `corpses`, whose foreign key needs a key-share lock on the
-   Shard's row in `shards`. The registry heartbeat holds that row and then asks
-   for the assignment row with `for update`. PostgreSQL aborts the death after
-   its one-second deadlock timeout, and the worker's retry commits it. Two in
-   five minutes at 500 players, one in thirty minutes at 250; both statements
-   are in each run's `postgres.log`.
+   Fixed. The death's transaction held the Shard's row in
+   `simulation_assignments` and needed a key-share lock on the Shard's row in
+   `shards` for its insert into `corpses`, while the registry heartbeat held
+   that row and asked for the assignment row: two in five minutes at 500
+   players and one in thirty minutes at 250 on 2026-11-14. The
+   [Lock Order](GAME_SERVICE_MODULES.md#lock-order) now fixes which statement
+   takes the Shard's row in which mode, and a heartbeat renewal only shares
+   it. On 2026-11-15 `playing-500` and `soak-30min` ran without a deadlock and
+   without a lock wait longer than the deadlock timeout.
 4. **A registration or login burst waits in the password hashing lane.**
    Every password hash runs in the
    [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane), at most
    eight at once on this machine, on threads of its own below normal priority,
    so a burst no longer takes GameService's thread pool or more than half the
-   cores. In runs of 2026-11-14 that shared the machine with a game,
-   `mixed-250`, which registers and logs in its accounts 64 at a time during
-   the ramp, completed with 250 of 250 bots: the lane refused 36
-   registrations and logins with `auth_busy`, each went again after its
-   `Retry-After`, and no registry heartbeat and no call of the worker to
-   GameService failed. It failed only the operation time of its shared corpse,
-   entry 6, and could not measure because the generator fell behind on the
-   busy machine, so it has no baseline yet. In `login-burst` the lane refused
-   about half of 400 logins at once, and every account was logged in within 25
-   seconds. Left to measure on an idle machine: how long a hash takes while
-   eight run, which sets how many logins the queue holds; how long an admitted
-   login waits, which reached 14 seconds when hashes slowed down after it was
-   admitted, beyond the 10 seconds the lane aims at; and the baselines of
-   `mixed-250`, `login-burst`, and `logout-burst`.
+   cores. On the idle machine `login-burst` sent 400 logins within 40 ms: the
+   lane refused 147 of them once with `auth_busy`, each went again after its
+   `Retry-After`, and every account was logged in after 16.4 seconds, half of
+   them after 7.9. `mixed-250`, which registers and logs in its accounts 64 at
+   a time during the ramp, completed with 250 of 250 bots and without one
+   refusal, and no registry heartbeat and no call of the worker to GameService
+   failed in either. At its first refusal the lane held 242 waiting logins
+   beside the 8 that hashed and took a hash for about 336 ms, so the queue
+   holds about 240 logins before a new one would wait longer than 10 seconds.
+   Not measured yet: how long a login waits once the lane admitted it, which
+   no report states by itself; on a machine that a game shared, that wait
+   reached 14 seconds, beyond the 10 seconds the lane aims at.
 5. **A logout burst no longer overruns the Redis session cache.** The six
    `session_cache_invalidation_unavailable` of an earlier `mixed-250` were
    answers that Redis sent in time and GameService read too late:
@@ -1710,25 +1745,28 @@ reports.
    took BCrypt off the thread pool, the Redis client has its own
    `Redis:CommandTimeoutMilliseconds`, the tombstones of one revocation go to
    Redis together, and a transient failure is tried once more within
-   `RedisAcceleration:SessionRevocationDeadlineMilliseconds`. `logout-burst`
-   logged 500 accounts out at once within a second, `login-burst` replaced 400
-   sessions, and `mixed-250` logged 250 accounts out, without one
-   `session_cache_invalidation_unavailable` or Redis timeout. Left to measure
-   on an idle machine: a logout burst at the Scale Target's 500 players beside
-   a full World.
+   `RedisAcceleration:SessionRevocationDeadlineMilliseconds`. On the idle
+   machine `logout-burst` logged 500 accounts out at once within 0.42
+   seconds, `login-burst` replaced 400 sessions, and `mixed-250` logged 250
+   accounts out, without one `session_cache_invalidation_unavailable` or Redis
+   timeout. Left to measure: a logout burst at the Scale Target's 500 players
+   beside a full World.
 6. **One corpse is one queue.** With 250 clients on the shared corpse of
-   `mixed-250`, a deposit's p95 was 4.6 seconds. That is the deliberate worst
-   case of the mixed workload, not a spread of corpses. The worker lets one
-   mutation of a corpse through at a time, so the queue is as long as each
-   operation's database round trips: every statement of an item transaction
-   was one. The kernel now sends the statements that nothing decides between
-   together, as [Round Trips](GAME_SERVICE_MODULES.md#round-trips) describes, with
-   the same statements in the same order: a corpse deposit takes 25 to 27 round
-   trips instead of 35 to 38, a loot 24 to 26 instead of 34 to 37, and a worker's
+   `mixed-250`, the 95th percentile of a deposit is 2.1 seconds and of a
+   partial loot 2.2 seconds on the idle machine, against the 1 second the rule
+   allows; it is the only rule the scenario fails. That is the deliberate
+   worst case of the mixed workload, not a spread of corpses: `mixed-100` has
+   115 ms on its shared corpse. The worker lets one mutation of a corpse
+   through at a time, so the queue is as long as each operation's database
+   round trips: every statement of an item transaction was one, and a deposit
+   took 4.6 seconds on 2026-11-14 on a machine that a game shared. The kernel
+   now sends the statements that nothing decides between together, as
+   [Round Trips](GAME_SERVICE_MODULES.md#round-trips) describes, with the same
+   statements in the same order: a corpse deposit takes 25 to 27 round trips
+   instead of 35 to 38, a loot 24 to 26 instead of 34 to 37, and a worker's
    relocation 23 instead of 33. On loopback a round trip costs a fraction of a
    millisecond, so the gain shows mostly with the database on another host.
-   Left to measure on an idle machine: the deposit p95 of `mixed-250` with the
-   batched kernel, and the operation times with PostgreSQL on another host.
+   Left to measure: the operation times with PostgreSQL on another host.
 7. **Storage growth.** [The 30 Minute Soak](#the-30-minute-soak) measured the
    history without retention: 184 MiB per hour at 250 players, 94 percent of it
    in the two operation tables, about 8 GiB per day at 500. GameService now
@@ -1736,10 +1774,11 @@ reports.
    `Retention:SessionHistory`, 14 days each, as
    [Retention](GAME_SERVICE_MODULES.md#retention) describes, so the database
    levels off at about 14 days of history, roughly 110 GiB per Shard at the
-   Scale Target by those numbers, and the soaks judge whether retention keeps up
-   with the rules `retained_table_growth` and `retention_lag`. Left to measure
-   on an idle machine: both soaks with retention, and what a pass costs at a
-   full table. The gold ledger is kept on purpose and grows with trades.
+   Scale Target by those numbers. `soak-30min` passed with retention on the
+   idle machine: with windows of four minutes the operation tables grew 5
+   percent between the fifth minute and the end, and no row was more than 15
+   seconds past its window. Left to measure: what a pass costs at a table that
+   holds 14 days. The gold ledger is kept on purpose and grows with trades.
 8. **The generator needs several poll threads** for 200 and more bots. With one
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
@@ -1797,8 +1836,11 @@ The same measurements also say what does not need work now:
 - **Memory** of the worker and GameService levels off within 30 minutes.
 - **Leases and sessions** never drifted: no session without a player, none
   near its expiry.
-- **Operations** stay below 300 ms at the 95th percentile up to 500 players on
+- **Operations** stay below 200 ms at the 95th percentile up to 500 players on
   loopback; only the tick and the update rate fail there.
+- **The database under play**: no deadlock and no long lock wait in any tier,
+  a 30-minute soak with retention keeping up, and bursts of 400 logins and 500
+  logouts that complete.
 - **The built client's frame** stays below 8 ms at the median with 200 dressed
   players in view and below 14 ms with 400, and no frame took longer than
   36 ms once the whole crowd was shown.
