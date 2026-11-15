@@ -48,6 +48,11 @@ public sealed class StressProcessSampler : IDisposable
     private readonly Process process;
     private readonly bool current;
     private readonly string label;
+
+    // Read once: a process that exited, such as GameService stopped for an outage, no longer
+    // answers them, and its summary still names it.
+    private readonly int processId;
+    private readonly string processName;
     private TimeSpan previousProcessorTime;
     private long previousTimestamp;
     private bool hasBaseline;
@@ -80,6 +85,8 @@ public sealed class StressProcessSampler : IDisposable
         this.process = process;
         this.current = current;
         this.label = label;
+        processId = process.Id;
+        processName = process.ProcessName;
     }
 
     public static StressProcessSampler AttachCurrent()
@@ -241,8 +248,8 @@ public sealed class StressProcessSampler : IDisposable
 
         var window = steady is { WorkingSet.Samples: > 0 } ? steady : null;
         return new StressProcessSummary(
-            process.Id,
-            process.ProcessName,
+            processId,
+            processName,
             samples,
             singleCoreCpuSum / samples,
             singleCoreCpuMaximum,

@@ -534,16 +534,19 @@ public sealed class StressSoakTests
         }
     }
 
+    // Each case replaces the allow list of service_log_errors with its own, or adds one to
+    // another rule.
     [Theory]
-    [InlineData("\"allow\": []", "\"allow\": [ { \"service\": \"game-service\", \"level\": \"error\", \"category\": \"C\", \"message\": \"M\", \"reason\": \"R\" } ]", null)]
-    [InlineData("\"allow\": []", "\"allow\": [ { \"service\": \"game-service\", \"level\": \"warning\", \"category\": \"C\", \"message\": \"M\", \"reason\": \"R\" } ]", "only error and critical")]
-    [InlineData("\"allow\": []", "\"allow\": [ { \"service\": \"game-service\", \"level\": \"error\", \"category\": \"C\", \"message\": \"M\" } ]", "needs the text 'reason'")]
-    [InlineData("\"rule\": \"deadlocks\",", "\"rule\": \"deadlocks\", \"allow\": [],", "unknown property 'allow'")]
-    public void TheAllowListBelongsToTheLogRuleAndNamesAReason(string find, string replace, string? error)
+    [InlineData("service_log_errors", "[ { \"service\": \"game-service\", \"level\": \"error\", \"category\": \"C\", \"message\": \"M\", \"reason\": \"R\" } ]", null)]
+    [InlineData("service_log_errors", "[ { \"service\": \"game-service\", \"level\": \"warning\", \"category\": \"C\", \"message\": \"M\", \"reason\": \"R\" } ]", "only error and critical")]
+    [InlineData("service_log_errors", "[ { \"service\": \"game-service\", \"level\": \"error\", \"category\": \"C\", \"message\": \"M\" } ]", "needs the text 'reason'")]
+    [InlineData("deadlocks", "[]", "unknown property 'allow'")]
+    public void TheAllowListBelongsToTheLogRuleAndNamesAReason(string rule, string allow, string? error)
     {
-        var json = File.ReadAllText(BoundaryPath).Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains(find, json, StringComparison.Ordinal);
-        json = json.Replace(find, replace, StringComparison.Ordinal);
+        var boundary = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(BoundaryPath))!;
+        boundary["rules"]!.AsArray().Single(entry => entry!["rule"]!.GetValue<string>() == rule)!["allow"] =
+            System.Text.Json.Nodes.JsonNode.Parse(allow);
+        var json = boundary.ToJsonString();
 
         if (error is null)
         {
@@ -555,10 +558,15 @@ public sealed class StressSoakTests
         Assert.Contains(error, exception.Message, StringComparison.Ordinal);
     }
 
+    // No class is allowed in every run; the checked-in entries hold only inside a GameService
+    // outage.
     [Fact]
-    public void TheCheckedInAllowListStartsEmpty()
+    public void TheCheckedInAllowListHoldsOnlyDuringAnOutage()
     {
-        Assert.Empty(StressQualityBoundary.Load(BoundaryPath).LogAllowances);
+        var allowances = StressQualityBoundary.Load(BoundaryPath).LogAllowances;
+
+        Assert.NotEmpty(allowances);
+        Assert.All(allowances, allowance => Assert.True(allowance.DuringOutage, allowance.Message));
     }
 
     // The judge reads the report the generator wrote, adds the logs, and judges it again.

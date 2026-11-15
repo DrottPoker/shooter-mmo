@@ -116,6 +116,9 @@ public sealed record PlayingRunContext(
 
     // How fast a body regenerates, for the rejoin check.
     public PlayingRegeneration Regeneration { get; init; } = new(1, 1);
+
+    // The GameService outage of the run, or null for a run without one.
+    public StressOutageTracker? Outage { get; init; }
 }
 
 // One bot of the playing workload: a headless client with a world view, the body that sends
@@ -146,6 +149,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
     private readonly Action<double> recordInputAcknowledgement;
     private readonly StressGameplayMetrics gameplayMetrics;
     private readonly Func<CancellationToken, Task<FullStackCharacterInventoryResponse?>> refreshInventory;
+    private readonly StressOutageBot? outage;
     private readonly IPlayingRole role;
     private readonly Random thinkRandom;
     private readonly long createdTimestamp = Stopwatch.GetTimestamp();
@@ -215,6 +219,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         botIndex = admission.BotIndex;
         characterName = admission.CharacterName;
         assignment = context.Assignments[admission.BotIndex];
+        outage = context.Outage?.Register(admission.BotIndex);
         var world = new SimulationBotWorldView(admission.CharacterName);
         if (admission.Inventory is { } inventory)
         {
@@ -452,6 +457,7 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
 
     public void OnJoined(RealtimeJoinAccepted session)
     {
+        outage?.OnJoined(DateTime.UtcNow);
         body.OnJoined(session);
     }
 
@@ -514,6 +520,11 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         body.OnInteractionResult(result);
     }
 
+    public void OnGameServiceAvailability(bool available)
+    {
+        outage?.OnNotice(available);
+    }
+
     public void OnGatheringState(RealtimeGatheringState state)
     {
         body.OnGathering(state);
@@ -550,7 +561,8 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
             gameplayMetrics,
             context.Metrics,
             options.GameplayOperationTimeout,
-            refreshInventory);
+            refreshInventory,
+            outage);
     }
 
     // Nothing in here may throw: an exception on a poll thread ends the poll thread. A failed

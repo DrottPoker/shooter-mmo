@@ -507,7 +507,11 @@ public sealed class SimulationBotSession
                 Decode<RealtimeQuestDropInCorpse>(packet, "invalid_quest_drop", RealtimeProtocol.TryDecodeQuestDropInCorpse, out _);
                 break;
             case RealtimeMessageType.GameServiceAvailabilityChanged:
-                Decode<bool>(packet, "invalid_game_service_availability", RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged, out _);
+                if (Decode<bool>(packet, "invalid_game_service_availability", RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged, out var available))
+                {
+                    realtimeObserver?.OnGameServiceAvailability(available);
+                }
+
                 break;
             case RealtimeMessageType.WorldInteractionOpened:
                 if (Decode<RealtimeWorldInteractionOpened>(packet, "invalid_world_interaction_opened", RealtimeProtocol.TryDecodeWorldInteractionOpened, out var interactionOpened))

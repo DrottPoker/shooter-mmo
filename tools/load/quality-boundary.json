@@ -107,26 +107,73 @@
       "rule": "service_log_errors",
       "limit": 0,
       "unit": "count",
-      "description": "Maximum. Error and critical lines of the GameService and worker logs, of their standard error, and of the standard error of the network impairment proxy under a network profile, counted once the services stopped, except the message classes of the allow list, each of which names why it is expected in every run.",
-      "allow": []
+      "description": "Maximum. Error and critical lines of the GameService and worker logs, of their standard error, and of the standard error of the network impairment proxy under a network profile, counted once the services stopped, except the message classes of the allow list, each of which names why it is expected in every run, or with duringOutage inside the window of a GameService outage only; an outage entry may name warning lines, which worker_heartbeat_failures and auth_service_timeouts then leave out.",
+      "allow": [
+        {
+          "service": "simulation-worker",
+          "level": "warning",
+          "category": "Mmorpg.SimulationWorker.Registry.SimulationWorkerHeartbeatService",
+          "message": "Simulation worker registry heartbeat failed",
+          "reason": "While GameService is stopped for an outage, the worker's registry heartbeat fails every 2 seconds until GameService answers again.",
+          "duringOutage": true
+        },
+        {
+          "service": "simulation-worker",
+          "level": "warning",
+          "category": "Mmorpg.SimulationWorker.GameServiceApi.GameServiceAvailability",
+          "message": "GameService does not answer the registry heartbeat",
+          "reason": "The worker says once that GameService does not answer when an outage begins.",
+          "duringOutage": true
+        }
+      ]
     },
     {
       "rule": "worker_heartbeat_failures",
       "limit": 0,
       "unit": "count",
-      "description": "Maximum. No failed registry heartbeat of the worker over the run, counted from its warning lines once the services stopped. Two failures in a row let the worker's registration lease expire, and the worker stops itself."
+      "description": "Maximum. No failed registry heartbeat of the worker over the run, counted from its warning lines once the services stopped. A failed heartbeat means that GameService did not answer the worker, which then refuses durable actions until it answers again and stops itself after its outage tolerance. Inside the window of a GameService outage the lines that an outage allowance names are left out."
     },
     {
       "rule": "auth_service_timeouts",
       "limit": 0,
       "unit": "count",
-      "description": "Maximum. No warning, error, or critical line of the worker log that names auth_service_timeout, a call to GameService that did not answer within the worker's timeout, over the run, counted once the services stopped."
+      "description": "Maximum. No warning, error, or critical line of the worker log that names auth_service_timeout, a call to GameService that did not answer within the worker's timeout, over the run, counted once the services stopped; inside the window of a GameService outage the lines that an outage allowance names are left out."
     },
     {
       "rule": "burst_incomplete_accounts",
       "limit": 0,
       "unit": "count",
       "description": "Maximum. Every account of a login or logout burst ends logged in or logged out within the burst's deadline, after it waited out every auth_busy refusal of the password hashing lane; a refusal is counted and expected, never a failure. Not applicable to a run without a burst."
+    },
+    {
+      "rule": "worker_loop_failures",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. No failed step of the worker's realtime loop and no failure that the loop isolated to one player or peer, from the loopStepFailures and loopIsolatedFailures of the worker intervals of the run."
+    },
+    {
+      "rule": "outage_notice_mismatches",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Every bot that was joined across a GameService outage heard exactly one notice that GameService does not answer and one that it answers again. Not applicable to a run without an outage."
+    },
+    {
+      "rule": "outage_kill_corpses_missing",
+      "limit": 0,
+      "unit": "count",
+      "description": "Maximum. Every Mob that a bot killed while saving was paused left a corpse that the killer saw within 10 seconds. Not applicable to a run without an outage."
+    },
+    {
+      "rule": "outage_return_seconds",
+      "limit": 5,
+      "unit": "s",
+      "description": "Maximum. How long after GameService answered its readiness check again the worker logged that GameService answers again, from the times of the worker's log; the note also says how long the worker took to notice the outage. Not applicable to a run without an outage."
+    },
+    {
+      "rule": "outage_durable_recovery_seconds",
+      "limit": 15,
+      "unit": "s",
+      "description": "Maximum. How long after GameService answered its readiness check again the first durable action of a bot, an equip, item move, loot, trade, or gathering start, committed. Not applicable to a run without an outage."
     },
     {
       "rule": "generator_poll_lateness_p99_ms",

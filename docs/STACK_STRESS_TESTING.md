@@ -301,6 +301,7 @@ ignores:
 | `postgres.log`, `redis.log` | The logs of the PostgreSQL and Redis containers, kept before the containers are removed; `postgres.log` holds both statements of every deadlock and every lock wait longer than the deadlock timeout of one second, because the compose file starts PostgreSQL with `log_lock_waits=on` |
 | `build-*.log`, `docker-compose-*.log` | The build and container output |
 | `world-variant/`, `world-variant.log` | The scenario's [World Variant](#world-variant) and the output of the content compilers that wrote it |
+| `outage-request.json`, `outage-window.json`, `game-service-2.log` | A [GameService outage](#gameservice-outage-scenario): the generator's request, the times the script measured, and the output of the restarted GameService, with its `.err.log` |
 
 Run `smoke` and `playing-smoke` after changing the load tooling, and the tiers
 when [Purpose](#purpose) says. What each of the two shows when it works is the
@@ -332,6 +333,7 @@ sets is an error.
 | `playing` | The roles, home grounds, and churn of the `playing` workload, which needs it, as [Playing Scenarios](#playing-scenarios) describes |
 | `worldVariant` | Extra Mob areas and node groups of a [World Variant](#world-variant), full-stack only |
 | `network` | The [network profile](#load-runs-under-a-network-profile) the bots' traffic goes through, `none` by default; `-Network` overrides it |
+| `outage` | A [GameService outage](#gameservice-outage-scenario): `atSeconds` into the steady interval and `seconds` long; full-stack `playing` without churn only |
 
 | Scenario | Mode and workload | Shape |
 | --- | --- | --- |
@@ -350,6 +352,7 @@ sets is an error.
 | `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
 | `login-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [login burst](#burst-scenarios) of 400 logged-in accounts 10 s into it, each with 60 s to end logged in again |
 | `logout-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [logout burst](#burst-scenarios) of 500 logged-in accounts 10 s into it, each with 60 s to end logged out |
+| `outage-60s` | full-stack `playing` | `playing-100` with a [GameService outage](#gameservice-outage-scenario): 60 s into the steady interval GameService stops, and it starts again 60 s after the stop |
 
 The tier scenarios use seed `1337`, three-second inventory and four-second
 corpse operations, and a ten-second metrics interval; their results are in
@@ -415,6 +418,88 @@ all bots share one address, and their logins with every retry stay below the
 authentication limit of 1,000 per minute that the plan sets; with 500 accounts
 the retries passed it, and the logins that waited out the limit missed their
 deadline.
+
+### GameService Outage Scenario
+
+`outage-60s` measures what players meet when GameService goes away for a minute
+while the worker plays on, as
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes. A
+scenario's `outage` section names when and for how long; the generator options
+`outage-at-seconds`, `outage-seconds`, and `outage-folder` carry it, and the
+plan owns them. An outage needs the full-stack `playing` workload without
+churn, whose way back needs GameService, lasts 10 to 100 seconds, below the
+worker's outage tolerance of 120 seconds, and leaves a minute of the steady
+interval after it.
+
+1. `atSeconds` into the steady interval the generator writes
+   `outage-request.json` into the run folder.
+2. The script sees it, stops GameService with `Ctrl+C`, and writes the time it
+   sent the `Ctrl+C` and the time the process ended into `outage-window.json`.
+   That stop is a normal shutdown, which waits for the requests it is serving.
+3. `seconds` after the stop the script starts GameService again with the same
+   settings, its output in `game-service-2.log`, and writes the time it started
+   it and the time `/health/ready` answered. The outage window runs from the
+   stop to that readiness. A restart that is not ready within
+   `-ReadyTimeoutSeconds` ends the run, which then could not run.
+4. When the run ends, the generator reads the window. Both services write the
+   UTC time of every log entry in a run with an outage, so the judge can tell
+   the outage's own log lines from the others.
+
+The bots read `GameServiceAvailabilityChanged` and count both kinds of notice.
+Inside the outage what the outage explains is expected and counted, not a
+failure: a refusal with `game_service_unavailable` between a bot's two notices
+or inside the window, a failure with `auth_service_timeout` or
+`auth_service_unavailable` of a call that was on its way when GameService
+stopped, received inside the window, a failed HTTP read of a bot's items inside
+the window, and every failed request inside it. The same answers outside the
+window count for `gameplay_unexpected_failures` and `http_unexpected_failures`
+and the generator's own checks, and the report's `outage` names them by
+operation and code. The operations' latencies, which `gameplay_operation_p95_ms`
+judges, leave out the answers that the outage explains; the report keeps their
+times as `outage.expectedAnswerLatency`, since a call that GameService stopped
+answering takes about two seconds on Windows before the worker refuses it. The worker's heartbeat warnings, its timed out calls, and
+the error lines that the outage causes are allowed only inside the window, from
+the stop to the latest return that `outage_return_seconds` accepts, by allow
+list entries with `duringOutage`, as [Service Log Classes](#service-log-classes)
+describes; the same lines outside it count as in any run.
+
+The outage's own verdict, each rule not applicable to a run without an outage
+and failed when the script reported no window:
+
+- `outage_notice_mismatches`: every bot that was joined across the outage, a
+  completed bot that joined before the stop, heard exactly one notice that
+  GameService does not answer and one that it answers again.
+- `outage_kill_corpses_missing`: a bot that killed a Mob while its saving was
+  paused saw that Mob's corpse within 10 seconds. The bots have no quests, so a
+  kill makes no quest credit, and the wolves' live corpses need GameService
+  only for quest drops; the report counts the kills and their corpses.
+- `outage_return_seconds`: the worker logged that GameService answers again at
+  most 5 seconds after GameService was ready; the note also says how long
+  GameService was down and how long after the stop the worker logged that it
+  does not answer.
+- `outage_durable_recovery_seconds`: the first durable action of a bot, an
+  equip, item move, loot, trade, or gathering start, committed at most 15
+  seconds after GameService was ready.
+
+The item invariant holds at the end as in every full-stack run. The report and
+the summary carry the outage as `outage`, and the script prints it after the
+verdict.
+
+The runs of 2026-11-15 failed `gameplay_unexpected_failures` with one to three
+`loot_open` timeouts and as many late results, and nothing else. A client
+operation that reaches the worker in the seconds before it notices the outage
+enters the player's lane behind durable work, such as a bow fighter's arrow
+batch, that waits for GameService and keeps the lane meanwhile; the operation
+is answered only after the return, a minute later, and the bot's 30 second
+operation timeout ends first. The verdict counts it on purpose, since a player
+waits that minute too. GameService's process numbers cover only the process before the stop,
+because the sampler follows one process.
+
+A variant whose outage outlasts the worker's tolerance, which must end with
+every bot disconnected with `game_service_outage` and the worker stopped in
+order, is not a scenario: the script treats a worker that ends during the run
+as a failed run, and every disconnected bot is a bot failure, so it needs its
+own verdict, not a parameter.
 
 ### What The Playing Scenarios Are For
 
@@ -526,6 +611,15 @@ masked. The local secrets and the connection string are the test values that
   `--network-profile` with the profile file and, in worker-only mode, the
   proxy's port as `--worker-udp-port`, and the proxy gets the generator's seed
   and `--counts` in the run folder.
+- A scenario with an `outage`: the generator gets `--outage-at-seconds`,
+  `--outage-seconds`, and `--outage-folder` with the run folder, and both
+  services get `Logging__Console__FormatterName` with `simple`, because the
+  console logger reads the formatter options only for a formatter named
+  explicitly, `Logging__Console__FormatterOptions__TimestampFormat` with
+  `yyyy-MM-ddTHH:mm:ss.fffZ `, and `Logging__Console__FormatterOptions__UseUtcTimestamp`,
+  so every log entry starts with its UTC time. The script stops and restarts
+  GameService as [GameService Outage Scenario](#gameservice-outage-scenario)
+  describes.
 - A scenario with a `worldVariant`: before the worker starts, the script runs
   `StackStressGenerator world-variant` and prints whether the variant keeps
   the checked-in collision revision; the worker gets
@@ -1166,7 +1260,16 @@ report keeps the classes under `serviceLogs` and the summary under
 `soak.logClasses`. The rule `service_log_errors` fails on every error or
 critical line whose class is not on the allow list of the boundary file, which
 names the service, level, category, start of the message, and the reason the
-class is expected in every run. The list starts empty.
+class is expected in every run. No class is allowed in every run.
+
+An entry with `"duringOutage": true` holds only in a run with a
+[GameService outage](#gameservice-outage-scenario) and only for lines whose
+time lies inside its window, which the timed logs of such a run show; it may
+also name warning lines, and `worker_heartbeat_failures` and
+`auth_service_timeouts` leave the warning lines it allows out and name them in
+their notes. In any other run, and for the same lines outside the window, the
+entry allows nothing. A run with an outage also reads `game-service-2.log` and
+its `.err.log`, the restarted GameService's output.
 
 The warning `Invalidated simulation session ... with code session_revoked after
 a refused heartbeat: invalid_simulation_session` is a race of a body's end with
@@ -1312,10 +1415,12 @@ seconds, and adds a `workerPerformance` section to the report:
   attack, or evade, `movingMobs` that moved in the interval's last tick, and
   `mobPathQueue`, the Mob routes waiting for the planning budget, each as its
   average and highest value. The Mob routes planned, `mobPathPlans`, are a
-  counter.
+  counter, and so are the realtime loop's failed steps and the failures it
+  isolated to one player or peer, `loopStepFailures` and `loopIsolatedFailures`.
 - `runIntervals`, `runSnapshotDrops`, and `runQuotaRejections`: the intervals
   that overlap the whole run, ramp and leave included, and their drops and
-  quota rejections.
+  quota rejections; `runLoopStepFailures` and `runLoopIsolatedFailures` are the
+  loop's failures over the same intervals, which `worker_loop_failures` judges.
 - `runCoverageGap` and `steadyCoverageGap`: empty when the worker intervals
   cover the whole run and follow each other without a gap, else what is
   missing. The worker writes one interval right after the other, so a gap means
@@ -1378,10 +1483,15 @@ worker-only mode, passes and says so.
 | `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `retained_table_growth` | `item_operations` and `item_operation_changes`, without the operations of deaths, which stay until their corpse is gone, grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
 | `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
-| `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and starts empty |
-| `worker_heartbeat_failures` | 0 warning lines of a failed worker registry heartbeat over the run, counted once the services stopped | A failed heartbeat means that GameService did not answer the worker, which then refuses durable actions until it answers again and stops itself after its outage tolerance |
-| `auth_service_timeouts` | 0 warning, error, or critical lines of the worker log that name `auth_service_timeout` over the run | A call of the worker that GameService did not answer within the worker's timeout refuses a join or loses a heartbeat |
+| `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and holds none; its entries for a GameService outage hold only inside one |
+| `worker_heartbeat_failures` | 0 warning lines of a failed worker registry heartbeat over the run, counted once the services stopped; inside a [GameService outage](#gameservice-outage-scenario) the lines its allowance names are left out | A failed heartbeat means that GameService did not answer the worker, which then refuses durable actions until it answers again and stops itself after its outage tolerance |
+| `auth_service_timeouts` | 0 warning, error, or critical lines of the worker log that name `auth_service_timeout` over the run; inside a GameService outage the lines its allowance names are left out | A call of the worker that GameService did not answer within the worker's timeout refuses a join or loses a heartbeat |
 | `burst_incomplete_accounts` | 0 accounts of a [burst](#burst-scenarios) that did not end logged in or out within its deadline, after waiting out every `auth_busy`; not applicable without a burst | A busy GameService may make a player wait and try again, never fail |
+| `worker_loop_failures` | 0 failed steps of the worker's realtime loop and failures that it isolated to one player or peer, from `loopStepFailures` and `loopIsolatedFailures` of the worker intervals of the run | A failure that the loop survives still ends a player's session or loses a step of the World |
+| `outage_notice_mismatches` | 0 bots joined across a [GameService outage](#gameservice-outage-scenario) without exactly one notice of each kind; not applicable without an outage | A player must learn that saving is paused and that it works again |
+| `outage_kill_corpses_missing` | 0 kills while saving was paused whose corpse the killer did not see within 10 s; not applicable without an outage | Fighting goes on during an outage, corpses included |
+| `outage_return_seconds` | At most 5 s from GameService's readiness to the worker's line that it answers again; not applicable without an outage | The worker retries its heartbeat every 2 s, so a return takes it about one retry |
+| `outage_durable_recovery_seconds` | At most 15 s from GameService's readiness to the first durable action that commits; not applicable without an outage | What was paused must work again soon after the return |
 
 ### Validity
 
@@ -1426,10 +1536,12 @@ or none, the verdict entries, the result, and
 update rate average and fifth percentile, the p95 of every gameplay operation
 kind, the worst steady tick p99, the worker's average single-core CPU and
 highest working set from its own intervals, the generator's average CPU, the
-payload bytes per bot and second that the worker received and sent, in
-full-stack mode `authBusyRefusals`, every `auth_busy` answer of the run, and
-for a burst its refusals and its median and longest seconds; the summary also
-carries the burst itself as `burst`.
+payload bytes per bot and second that the worker received and sent, the
+worker's loop failures over the run, `workerLoopStepFailures` and
+`workerLoopIsolatedFailures`, in full-stack mode `authBusyRefusals`, every
+`auth_busy` answer of the run, and for a burst its refusals and its median and
+longest seconds; the summary also carries the burst itself as `burst` and a
+[GameService outage](#gameservice-outage-scenario) as `outage`.
 
 `-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
 or under a network profile to `<scenario>.<profile>.json`, such as
@@ -1923,6 +2035,7 @@ dotnet run --project tools/StackStressGenerator -- --help
 | `--login-burst-accounts`, `--logout-burst-accounts` | `0` | Full-stack: the accounts of a [login or logout burst](#burst-scenarios), registered before the ramp; at most one of the two |
 | `--burst-at-seconds` | `10` | How far into the steady interval the burst starts |
 | `--burst-deadline-seconds` | `60` | How long every burst account has to end logged in or out; the burst and its deadline fit the steady interval |
+| `--outage-at-seconds`, `--outage-seconds`, `--outage-folder` | none | Full-stack `playing` without churn: when in the steady interval the generator asks `tools/Test-Load.ps1` for a [GameService outage](#gameservice-outage-scenario), how long it lasts, 10 to 100 seconds, and the folder of the request and the script's window; all three or none |
 
 `STACK_STRESS_FIXTURE_SECRET` supplies the fixture secret of the gameplay
 workloads; it is intentionally not accepted as a command-line argument. The

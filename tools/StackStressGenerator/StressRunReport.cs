@@ -194,7 +194,8 @@ public sealed record StressRunReport(
             && (FullStack is null || FullStack.LoggedOutBots == FullStack.AdmittedBots)
             && Gameplay.UnexpectedFailures == 0
             && (Postgres?.ItemInvariants?.Violations ?? 0) == 0
-            && BurstCompleted();
+            && BurstCompleted()
+            && (Outage is null || Outage.UnexplainedFailures == 0);
     }
 
     // A planned burst ran, registered every account, and every account finished its login or
@@ -241,6 +242,9 @@ public sealed record StressRunReport(
 
     // The network profile the bots' traffic went through, or null for a direct connection.
     public StressNetworkSummary? Network { get; init; }
+
+    // The GameService outage of the run, or null for a run without one.
+    public StressOutageSummary? Outage { get; init; }
 
     public static StressRunReport Create(
         DateTime startedAt,

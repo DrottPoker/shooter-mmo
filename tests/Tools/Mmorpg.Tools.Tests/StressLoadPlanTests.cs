@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Mmorpg.Testing;
 using Mmorpg.Tools.StackStressGenerator;
 
@@ -44,8 +45,81 @@ public sealed class StressLoadPlanTests
                 "soak-10min",
                 "soak-30min",
                 "login-burst",
-                "logout-burst"
+                "logout-burst",
+                "outage-60s"
             });
+    }
+
+    // The outage scenario hands its outage to the generator and makes both services write the
+    // UTC time of every log entry; a scenario without one changes neither.
+    [Fact]
+    public void TheOutageScenarioPlansItsOutage()
+    {
+        var plan = Plan(LoadShipped("outage-60s"));
+        var options = StressGeneratorOptions.Parse(
+            plan.GeneratorArguments.ToArray(),
+            RepositoryPaths.Root,
+            variable => plan.GeneratorEnvironment.GetValueOrDefault(variable));
+
+        Assert.Equal((60, 60), (plan.Outage!.AtSeconds, plan.Outage.Seconds));
+        Assert.Equal(Path.Combine(RunFolder(), StressOutageOptions.RequestFileName), plan.Outage.RequestPath);
+        Assert.Equal(Path.Combine(RunFolder(), StressOutageOptions.WindowFileName), plan.Outage.WindowPath);
+        Assert.Equal((TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60)), (options.Outage!.At, options.Outage.Duration));
+        Assert.Equal(plan.Outage.WindowPath, options.Outage.WindowPath);
+        Assert.Equal(plan.Outage.RequestPath, options.Outage.RequestPath);
+        foreach (var environment in new[] { plan.WorkerEnvironment, plan.GameServiceEnvironment })
+        {
+            Assert.Equal("simple", environment[StressLoadPlan.LogFormatterSetting]);
+            Assert.Equal(StressLoadPlan.LogTimestampFormat, environment[StressLoadPlan.LogTimestampFormatSetting]);
+            Assert.Equal("true", environment[StressLoadPlan.LogTimestampUtcSetting]);
+        }
+
+        var without = Plan(LoadShipped("playing-100"));
+        Assert.Null(without.Outage);
+        Assert.DoesNotContain(StressLoadPlan.LogTimestampFormatSetting, without.WorkerEnvironment.Keys);
+        Assert.DoesNotContain("--outage-at-seconds", without.GeneratorArguments);
+    }
+
+    [Theory]
+    [InlineData("mixed-gameplay", "\"atSeconds\": 10, \"seconds\": 20", "needs full-stack mode and the playing workload")]
+    [InlineData("playing", "\"atSeconds\": 10", "positive whole number 'seconds'")]
+    [InlineData("playing", "\"atSeconds\": 10, \"seconds\": 20, \"x\": 1", "unknown property 'x'")]
+    public void AnOutageSectionIsValidated(string workload, string outage, string expected)
+    {
+        var json = Scenario(
+            "\"mode\": \"full-stack\",",
+            "\"bots\": 5, \"duration-seconds\": 10",
+            (workload == "playing" ? "\"playing\": { \"roles\": { \"walker\": 100 } }," : string.Empty)
+                + "\"outage\": { " + outage + " },",
+            workload);
+
+        var exception = Assert.Throws<StressGeneratorOptionException>(() => StressLoadScenario.Parse("bad", json, "bad.json"));
+
+        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+    }
+
+    // The outage stays below the worker's outage tolerance and leaves a minute of the steady
+    // interval after it, which the plan checks as the generator will.
+    [Theory]
+    [InlineData(60, 101, "--outage-seconds")]
+    [InlineData(200, 60, "leaves less than 60 s")]
+    public void AnOutageMustStayShortAndEndInTime(int at, int seconds, string expected)
+    {
+        var scenario = JsonNode.Parse(File.ReadAllText(Path.Combine(LoadDirectory, "scenarios", "outage-60s.json")))!;
+        scenario["outage"]!["atSeconds"] = at;
+        scenario["outage"]!["seconds"] = seconds;
+        var path = Path.Combine(Path.GetTempPath(), $"outage-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, scenario.ToJsonString());
+        try
+        {
+            var exception = Assert.Throws<StressGeneratorOptionException>(() => Plan(StressLoadScenario.Load(path)));
+
+            Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     // The burst scenarios hand their burst to the generator, which a plan validates.

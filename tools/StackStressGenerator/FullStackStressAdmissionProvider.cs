@@ -624,7 +624,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 ChurnLogouts = Volatile.Read(ref churnLogouts),
                 ChurnLogins = Volatile.Read(ref churnLogins),
                 Burst = burst?.Summary,
-                BurstAccounts = burst?.RegisteredAccounts ?? 0
+                BurstAccounts = burst?.RegisteredAccounts ?? 0,
+                FailureTimes = metrics.CaptureFailureTimes()
             },
             gameServiceProcessSampler?.CreateSummary(),
             postgresSampler.CreateSummary())

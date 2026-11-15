@@ -33,6 +33,9 @@ public sealed record StressLoadScenario(
     // for a direct connection; -Network of tools/Test-Load.ps1 overrides it.
     public string? Network { get; init; }
 
+    // The GameService outage that tools/Test-Load.ps1 makes during the steady interval, or null.
+    public StressOutageScenario? Outage { get; init; }
+
     // The generator options a scenario may set. Endpoints, identities, secrets, and output paths
     // belong to the plan.
     public static readonly IReadOnlySet<string> GeneratorOptions = new HashSet<string>(StringComparer.Ordinal)
@@ -109,7 +112,8 @@ public sealed record StressLoadScenario(
                 "gameServiceSettings",
                 "playing",
                 "worldVariant",
-                "network");
+                "network",
+                "outage");
             var mode = StrictJson.RequireString(root, "mode", source, "the scenario") switch
             {
                 "worker-only" => StressRunMode.WorkerOnly,
@@ -169,6 +173,18 @@ public sealed record StressLoadScenario(
                 }
             }
 
+            StressOutageScenario? outage = null;
+            if (root.TryGetProperty("outage", out var outageElement))
+            {
+                if (mode != StressRunMode.FullStack || workload != StressWorkloadProfile.Playing)
+                {
+                    throw new StressGeneratorOptionException(
+                        $"'{source}': a GameService outage needs full-stack mode and the playing workload.");
+                }
+
+                outage = StressOutageScenario.Parse(outageElement, source);
+            }
+
             var generator = ReadGenerator(root, source);
             var workerSettings = ReadSettings(root, "workerSettings", source);
             var gameServiceSettings = ReadSettings(root, "gameServiceSettings", source);
@@ -191,7 +207,8 @@ public sealed record StressLoadScenario(
             {
                 Playing = playing,
                 WorldVariant = worldVariant,
-                Network = network
+                Network = network,
+                Outage = outage
             };
         }
     }
@@ -303,6 +320,18 @@ public sealed record StressLoadPlan(
     public string? NetworkProfilePath { get; init; }
 
     public StressNetworkProxyPlan? Proxy { get; init; }
+
+    // The GameService outage that tools/Test-Load.ps1 makes, with the files it exchanges with the
+    // generator, or null for none.
+    public StressOutagePlan? Outage { get; init; }
+
+    // The console format of both services in a run with an outage: every entry starts with its
+    // UTC time, so the judge can tell the outage's own log lines from the others. The console
+    // logger reads the formatter options only for a formatter named explicitly.
+    public const string LogFormatterSetting = "Logging__Console__FormatterName";
+    public const string LogTimestampFormatSetting = "Logging__Console__FormatterOptions__TimestampFormat";
+    public const string LogTimestampUtcSetting = "Logging__Console__FormatterOptions__UseUtcTimestamp";
+    public const string LogTimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ ";
 
     public const string FullStackGameServiceUrl = "http://127.0.0.1:5500";
     public const int FullStackGameServicePort = 5500;
@@ -507,6 +536,28 @@ public sealed record StressLoadPlan(
         workerEnvironment[MetricsIntervalSetting] =
             MetricsIntervalSeconds(generator["duration-seconds"]).ToString(CultureInfo.InvariantCulture);
         workerEnvironment["SimulationWorker__PerformanceReportPath"] = performancePath;
+        StressOutagePlan? outagePlan = null;
+        if (scenario.Outage is { } outage)
+        {
+            foreach (var environment in new[] { workerEnvironment, gameServiceEnvironment })
+            {
+                environment[LogFormatterSetting] = "simple";
+                environment[LogTimestampFormatSetting] = LogTimestampFormat;
+                environment[LogTimestampUtcSetting] = "true";
+            }
+
+            outagePlan = new StressOutagePlan(
+                outage.AtSeconds,
+                outage.Seconds,
+                Path.Combine(runFolder, StressOutageOptions.RequestFileName),
+                Path.Combine(runFolder, StressOutageOptions.WindowFileName));
+            arguments.AddRange(
+            [
+                "--outage-at-seconds", outage.AtSeconds.ToString(CultureInfo.InvariantCulture),
+                "--outage-seconds", outage.Seconds.ToString(CultureInfo.InvariantCulture),
+                "--outage-folder", runFolder
+            ]);
+        }
 
         Merge(workerEnvironment, scenario.WorkerSettings, "workerSettings", scenario.Name);
         RequireSteadyWorkerIntervals(
@@ -598,7 +649,8 @@ public sealed record StressLoadPlan(
             WorldVariantPath = worldVariantPath,
             Network = networkProfile?.Name ?? NetworkProfile.None,
             NetworkProfilePath = networkProfilePath,
-            Proxy = proxy
+            Proxy = proxy,
+            Outage = outagePlan
         };
     }
 
@@ -693,6 +745,35 @@ public sealed record StressLoadPlan(
         }
     }
 }
+
+// The outage section of a scenario: how far into the steady interval GameService stops, and how
+// long it stays stopped.
+public sealed record StressOutageScenario(int AtSeconds, int Seconds)
+{
+    public static StressOutageScenario Parse(JsonElement element, string source)
+    {
+        StrictJson.RequireObject(element, source, "the outage");
+        StrictJson.RequireOnly(element, source, "the outage", "atSeconds", "seconds");
+        return new StressOutageScenario(
+            RequireSeconds(element, "atSeconds", source),
+            RequireSeconds(element, "seconds", source));
+    }
+
+    private static int RequireSeconds(JsonElement element, string name, string source)
+    {
+        return element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var seconds)
+            && seconds > 0
+                ? seconds
+                : throw new StressGeneratorOptionException($"'{source}': the outage needs a positive whole number '{name}'.");
+    }
+}
+
+// What tools/Test-Load.ps1 does for a scenario's outage: AtSeconds into the steady interval the
+// generator writes RequestPath; the script then stops GameService, starts it again Seconds after
+// the stop with the same settings, and writes the times to WindowPath.
+public sealed record StressOutagePlan(int AtSeconds, int Seconds, string RequestPath, string WindowPath);
 
 // The network impairment proxy of a run under a network profile: it listens on UdpPort, which
 // the worker advertises, forwards to the worker's own ForwardUdpPort, and writes its counts to

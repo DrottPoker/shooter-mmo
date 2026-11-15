@@ -65,6 +65,11 @@ public sealed class StressQualityBoundary
             ["worker_heartbeat_failures"] = ("count", StressRuleKind.Maximum),
             ["auth_service_timeouts"] = ("count", StressRuleKind.Maximum),
             ["burst_incomplete_accounts"] = ("count", StressRuleKind.Maximum),
+            ["worker_loop_failures"] = ("count", StressRuleKind.Maximum),
+            ["outage_notice_mismatches"] = ("count", StressRuleKind.Maximum),
+            ["outage_kill_corpses_missing"] = ("count", StressRuleKind.Maximum),
+            ["outage_return_seconds"] = ("s", StressRuleKind.Maximum),
+            ["outage_durable_recovery_seconds"] = ("s", StressRuleKind.Maximum),
             ["generator_poll_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum),
             ["generator_route_queue_p99_ms"] = ("ms", StressRuleKind.Maximum),
             ["network_proxy_lateness_p99_ms"] = ("ms", StressRuleKind.Maximum)
@@ -93,6 +98,10 @@ public sealed class StressQualityBoundary
 
     // The error and critical message classes that service_log_errors accepts, each with its reason.
     public IReadOnlyList<StressLogAllowance> LogAllowances { get; }
+
+    // How long after GameService was ready the worker may notice the return; the outage's log
+    // window ends there.
+    public double OutageReturnLimitSeconds => Rules.Single(rule => rule.Rule == "outage_return_seconds").Limit;
 
     public static StressQualityBoundary Load(string path)
     {
@@ -191,7 +200,8 @@ public sealed class StressQualityBoundary
     }
 
     // The allow list of service_log_errors: every entry names the service, the level, the logger
-    // category, the start of the message class, and the reason it is expected in every run.
+    // category, the start of the message class, and the reason it is expected in every run. An
+    // entry with duringOutage holds only inside a GameService outage and may name warning lines.
     private static IEnumerable<StressLogAllowance> ParseAllowances(JsonElement rule, string source)
     {
         if (!rule.TryGetProperty("allow", out var allow))
@@ -207,11 +217,23 @@ public sealed class StressQualityBoundary
         foreach (var entry in allow.EnumerateArray())
         {
             StrictJson.RequireObject(entry, source, "an allowed log class");
-            StrictJson.RequireOnly(entry, source, "an allowed log class", "service", "level", "category", "message", "reason");
+            StrictJson.RequireOnly(entry, source, "an allowed log class", "service", "level", "category", "message", "reason", "duringOutage");
             var level = StrictJson.RequireString(entry, "level", source, "an allowed log class");
-            if (level is not (StressServiceLogs.Error or StressServiceLogs.Critical))
+            var duringOutage = false;
+            if (entry.TryGetProperty("duringOutage", out var outageElement))
             {
-                throw Invalid(source, $"an allowed log class has the level '{level}'; only error and critical lines are judged.");
+                duringOutage = outageElement.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    _ => throw Invalid(source, "'duringOutage' of an allowed log class must be true or false.")
+                };
+            }
+
+            if (level is not (StressServiceLogs.Error or StressServiceLogs.Critical)
+                && !(duringOutage && level == StressServiceLogs.Warning))
+            {
+                throw Invalid(source, $"an allowed log class has the level '{level}'; only error and critical lines are judged, and warning lines only during an outage.");
             }
 
             yield return new StressLogAllowance(
@@ -219,7 +241,10 @@ public sealed class StressQualityBoundary
                 level,
                 StrictJson.RequireString(entry, "category", source, "an allowed log class"),
                 StrictJson.RequireString(entry, "message", source, "an allowed log class"),
-                StrictJson.RequireString(entry, "reason", source, "an allowed log class"));
+                StrictJson.RequireString(entry, "reason", source, "an allowed log class"))
+            {
+                DuringOutage = duringOutage
+            };
         }
     }
 
@@ -325,12 +350,12 @@ public sealed class StressQualityBoundary
                 : Measurement.Missing("no bot saw a remote player during the steady interval."),
             "gameplay_operation_p95_ms" => MeasureGameplayP95(report),
             "bot_failures" => MeasureBotFailures(report),
-            "gameplay_unexpected_failures" => Measurement.Of(report.Gameplay.UnexpectedFailures, null),
+            "gameplay_unexpected_failures" => MeasureGameplayFailures(report),
             "http_unexpected_failures" => report.FullStack is null
                 ? fullStack
                     ? Measurement.Missing("the full-stack summary is missing.")
                     : Measurement.Skip("no HTTP in worker-only mode")
-                : MeasureHttpFailures(report.FullStack),
+                : MeasureHttpFailures(report.FullStack, report.Outage),
             "quota_rejections" => worker is null
                 ? Measurement.Missing("no worker performance file was read.")
                 : worker.RunCoverageGap is { } quotaGap
@@ -373,11 +398,45 @@ public sealed class StressQualityBoundary
                         : null),
             "worker_heartbeat_failures" => report.ServiceLogs is not { } heartbeatLogs
                 ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
-                : Measurement.Of(heartbeatLogs.WorkerHeartbeatFailures, "warning lines of the worker's registry heartbeat over the run"),
+                : Measurement.Of(
+                    heartbeatLogs.WorkerHeartbeatFailures,
+                    "warning lines of the worker's registry heartbeat over the run"
+                        + (report.Outage is null ? string.Empty : Invariant($" outside the outage window; {heartbeatLogs.WorkerHeartbeatFailuresDuringOutage} more inside it are the outage's own"))),
             "auth_service_timeouts" => report.ServiceLogs is not { } timeoutLogs
                 ? Measurement.Skip("the service logs are judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
-                : Measurement.Of(timeoutLogs.AuthServiceTimeouts, "worker log lines that name auth_service_timeout over the run"),
+                : Measurement.Of(
+                    timeoutLogs.AuthServiceTimeouts,
+                    "worker log lines that name auth_service_timeout over the run"
+                        + (report.Outage is null ? string.Empty : Invariant($" outside the outage window; {timeoutLogs.AuthServiceTimeoutsDuringOutage} more inside it are the outage's own"))),
             "burst_incomplete_accounts" => MeasureBurst(report),
+            "worker_loop_failures" => worker is null
+                ? Measurement.Missing("no worker performance file was read.")
+                : worker.RunCoverageGap is { } loopGap
+                    ? Measurement.Missing(loopGap)
+                    : Measurement.Of(
+                        worker.RunLoopStepFailures + worker.RunLoopIsolatedFailures,
+                        Invariant($"{worker.RunLoopStepFailures} failed loop steps and {worker.RunLoopIsolatedFailures} failures of single players or peers in {worker.RunIntervals} worker intervals of the run")),
+            "outage_notice_mismatches" => MeasureOutage(report, outage => outage.BotsAcrossOutage == 0
+                ? Measurement.Missing("no bot was joined across the outage.")
+                : Measurement.Of(
+                    outage.BotsAcrossOutage - outage.BotsWithOneNoticeEach,
+                    Invariant($"{outage.BotsWithOneNoticeEach} of {outage.BotsAcrossOutage} bots joined across the outage heard one unavailable and one available notice; {outage.UnavailableNotices} and {outage.AvailableNotices} in all")
+                        + (outage.OtherNotices.Count == 0 ? string.Empty : "; " + string.Join(", ", outage.OtherNotices)))),
+            "outage_kill_corpses_missing" => MeasureOutage(report, outage => Measurement.Of(
+                outage.KillCorpsesMissing,
+                Invariant($"{outage.KillsWhileSavingPaused} kills while saving was paused, {outage.KillCorpsesSeen} of their corpses seen within {StressOutageBot.KillCorpseWait.TotalSeconds:0} s"))),
+            "outage_return_seconds" => MeasureOutage(report, outage => report.ServiceLogs is null
+                ? Measurement.Skip("the worker's log is judged once the services stopped, by StackStressGenerator judge, which tools/Test-Load.ps1 runs")
+                : outage.WorkerNoticedReturnSeconds is { } returned
+                    ? Measurement.Of(
+                        returned,
+                        Invariant($"GameService was down {outage.MeasuredSeconds:0.0} s; the worker noticed the outage {outage.WorkerNoticedOutageSeconds:0.0} s after the stop and the return {returned:0.0} s after GameService was ready"))
+                    : Measurement.Missing(outage.WorkerLogNote ?? "the worker logged no return.")),
+            "outage_durable_recovery_seconds" => MeasureOutage(report, outage => outage.FirstDurableSuccessAfterReadySeconds is { } recovery
+                ? Measurement.Of(
+                    recovery,
+                    Invariant($"{outage.BotsWithDurableSuccessAfterReturn} bots committed a durable action after their available notice"))
+                : Measurement.Missing("no durable action committed after GameService was ready.")),
             "item_invariant_violations" => !fullStack
                 ? Measurement.Skip("no durable items in worker-only mode")
                 : report.Postgres?.ItemInvariants is { } invariants
@@ -573,14 +632,56 @@ public sealed class StressQualityBoundary
             Invariant($"{burst.Kind} burst of {burst.Accounts} accounts, {burst.CompletedInTime} within {burst.DeadlineSeconds:0} s; {burst.Refusals} auth_busy refusals of {burst.RefusedAccounts} accounts and {burst.Retries} retries; median {burst.MedianSeconds:0.0} s, longest {burst.LongestSeconds:0.0} s; first requests within {burst.SendSpreadMilliseconds:0} ms{failures}"));
     }
 
-    private static Measurement MeasureHttpFailures(StressFullStackSummary fullStack)
+    // Inside a GameService outage the failed requests are its own; the rule counts the others.
+    private static Measurement MeasureHttpFailures(StressFullStackSummary fullStack, StressOutageSummary? outage)
     {
         var failures = fullStack.Operations.Where(operation => operation.Value.Failures > 0).ToArray();
+        var explained = outage?.ExplainedHttpFailures ?? 0;
+        var note = failures.Length == 0
+            ? null
+            : string.Join(", ", failures.Select(operation => $"{operation.Key} {operation.Value.Failures}"));
+        if (outage is not null)
+        {
+            note = Invariant($"{explained} failed requests inside the outage window are its own") + (note is null ? string.Empty : "; all failures: " + note);
+        }
+
+        return Measurement.Of(failures.Sum(operation => operation.Value.Failures) - explained, note);
+    }
+
+    // Inside a GameService outage its refusals and the failures of the calls it cut off are
+    // expected; the same answers outside it fail the rule like any other.
+    private static Measurement MeasureGameplayFailures(StressRunReport report)
+    {
+        if (report.Outage is not { } outage)
+        {
+            return Measurement.Of(report.Gameplay.UnexpectedFailures, null);
+        }
+
+        var unexplained = outage.UnexplainedCodes.Count == 0
+            ? string.Empty
+            : "; outside the outage window: " + string.Join(", ", outage.UnexplainedCodes.Select(code => Invariant($"{code.Key} {code.Value}")));
+        var others = report.Gameplay.Operations
+            .Where(operation => operation.Value.UnexpectedRejections + operation.Value.Timeouts + operation.Value.IncompleteRequests > 0)
+            .Select(operation => Invariant($"{operation.Key} {operation.Value.UnexpectedRejections} unexpected, {operation.Value.Timeouts} timed out, {operation.Value.IncompleteRequests} incomplete"))
+            .ToArray();
         return Measurement.Of(
-            failures.Sum(operation => operation.Value.Failures),
-            failures.Length == 0
-                ? null
-                : string.Join(", ", failures.Select(operation => $"{operation.Key} {operation.Value.Failures}")));
+            report.Gameplay.UnexpectedFailures + outage.UnexplainedFailures,
+            Invariant($"inside the outage window {outage.ExpectedRefusals} refusals with {StressOutageCodes.Unavailable}, {outage.ExpectedInFlightFailures} failures of calls it cut off, and {outage.ExplainedInventoryRefreshFailures} failed item reads are expected{unexplained}")
+                + (others.Length == 0 ? string.Empty : "; other failures: " + string.Join(", ", others)));
+    }
+
+    // A rule of the GameService outage: not applicable without one, and missing without the
+    // window that the script measured.
+    private static Measurement MeasureOutage(StressRunReport report, Func<StressOutageSummary, Measurement> measure)
+    {
+        if (report.Outage is not { } outage)
+        {
+            return Measurement.Skip("the run has no GameService outage");
+        }
+
+        return outage.WindowProblem is { } problem
+            ? Measurement.Missing(problem)
+            : measure(outage);
     }
 
     private static string Invariant(FormattableString text)

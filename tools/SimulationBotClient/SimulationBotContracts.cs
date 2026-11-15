@@ -80,6 +80,12 @@ public interface ISimulationBotRealtimeObserver
     void OnAdminIntentResult(RealtimeAdminIntentResult result)
     {
     }
+
+    // The worker says whether GameService answers it; while it does not, it refuses items,
+    // trade, and quests.
+    void OnGameServiceAvailability(bool available)
+    {
+    }
 }
 
 // The counters a progress line reads while another thread polls the bot.

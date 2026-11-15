@@ -78,6 +78,12 @@ public sealed record StressWorkerInterval(
     public long? MobPathQueue { get; init; }
 
     public long? MobPathPlans { get; init; }
+
+    // The loop steps that failed as a whole, and the failures that the loop isolated to one
+    // player or peer. Null in a file of an older worker.
+    public long? LoopStepFailures { get; init; }
+
+    public long? LoopIsolatedFailures { get; init; }
 }
 
 // A duration over the folded intervals: the sample-weighted average, the worst interval
@@ -112,7 +118,13 @@ public sealed record StressWorkerPerformanceSummary(
     IReadOnlyDictionary<string, StressWorkerDurationFold> Durations,
     IReadOnlyDictionary<string, StressWorkerCounterFold> Counters,
     IReadOnlyDictionary<string, StressWorkerLevelFold> Levels,
-    string? Note);
+    string? Note)
+{
+    // The realtime loop's failures over the run, which the rule worker_loop_failures judges.
+    public long RunLoopStepFailures { get; init; }
+
+    public long RunLoopIsolatedFailures { get; init; }
+}
 
 public static class StressWorkerPerformance
 {
@@ -158,7 +170,9 @@ public static class StressWorkerPerformance
         ("generation0Collections", interval => interval.Generation0Collections),
         ("generation1Collections", interval => interval.Generation1Collections),
         ("generation2Collections", interval => interval.Generation2Collections),
-        ("mobPathPlans", interval => interval.MobPathPlans ?? 0)
+        ("mobPathPlans", interval => interval.MobPathPlans ?? 0),
+        ("loopStepFailures", interval => interval.LoopStepFailures ?? 0),
+        ("loopIsolatedFailures", interval => interval.LoopIsolatedFailures ?? 0)
     ];
 
     private static readonly (string Name, Func<StressWorkerInterval, double> Value)[] LevelFields =
@@ -296,7 +310,11 @@ public static class StressWorkerPerformance
                         steady.Average(field.Value),
                         steady.Max(field.Value)),
                     StringComparer.Ordinal),
-            note);
+            note)
+        {
+            RunLoopStepFailures = run.Sum(interval => interval.LoopStepFailures ?? 0),
+            RunLoopIsolatedFailures = run.Sum(interval => interval.LoopIsolatedFailures ?? 0)
+        };
     }
 
     // The worker writes one interval right after the other, so a later start than the previous

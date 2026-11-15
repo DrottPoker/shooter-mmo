@@ -87,10 +87,15 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(StressQualityBoundary.KnownRules.Count, verdict.Rules.Count);
         // The memory rule judges only a steady interval of ten minutes or more, the retention
         // rules only a run whose retention window passes early in it, the proxy rule only a run
-        // through a network profile, and the burst rule only a run with a burst.
+        // through a network profile, the burst rule only a run with a burst, and the outage rules
+        // only a run with a GameService outage.
         Assert.All(
-            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "retained_table_growth" or "retention_lag" or "network_proxy_lateness_p99_ms" or "burst_incomplete_accounts")),
+            verdict.Rules.Where(rule => rule.Rule is not ("process_memory_growth" or "retained_table_growth" or "retention_lag" or "network_proxy_lateness_p99_ms" or "burst_incomplete_accounts")
+                && !rule.Rule.StartsWith("outage_", StringComparison.Ordinal)),
             rule => Assert.NotNull(rule.Measured));
+        Assert.All(
+            verdict.Rules.Where(rule => rule.Rule.StartsWith("outage_", StringComparison.Ordinal)),
+            rule => Assert.StartsWith("Not applicable", rule.Note, StringComparison.Ordinal));
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "process_memory_growth").Note, StringComparison.Ordinal);
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "retained_table_growth").Note, StringComparison.Ordinal);
         Assert.StartsWith("Not applicable", verdict.Rules.Single(rule => rule.Rule == "retention_lag").Note, StringComparison.Ordinal);
@@ -162,6 +167,7 @@ public sealed class StressQualityVerdictTests
         "service_log_errors",
         "worker_heartbeat_failures",
         "auth_service_timeouts",
+        "worker_loop_failures",
         "burst_incomplete_accounts"
     };
 
@@ -245,7 +251,7 @@ public sealed class StressQualityVerdictTests
 
         var unevaluated = verdict.Rules.Where(rule => !rule.Passed).Select(rule => rule.Rule).Order(StringComparer.Ordinal);
         Assert.Equal(
-            ["fixed_tick_resynchronizations", "quota_rejections", "simulation_tick_p99_ms", "snapshot_drops"],
+            ["fixed_tick_resynchronizations", "quota_rejections", "simulation_tick_p99_ms", "snapshot_drops", "worker_loop_failures"],
             unevaluated);
         Assert.All(
             verdict.Rules.Where(rule => !rule.Passed),
@@ -435,11 +441,12 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst", "outage"],
                 root.EnumerateObject().Select(property => property.Name));
-            // A direct run names no network profile, and a run without a burst has none.
+            // A direct run names no network profile, and a run without a burst or an outage has none.
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("network").ValueKind);
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("burst").ValueKind);
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("outage").ValueKind);
             Assert.Equal(0, root.GetProperty("keyNumbers").GetProperty("authBusyRefusals").GetDouble());
             Assert.Equal("smoke", root.GetProperty("scenario").GetString());
             Assert.Equal("abc123", root.GetProperty("commit").GetString());
@@ -785,6 +792,123 @@ public sealed class StressQualityVerdictTests
         Assert.False(notRegistered.PassedOwnChecks());
     }
 
+    // A run with a GameService outage is judged by the outage's rules; inside its window the
+    // refusals and the failures it caused are expected, outside it they fail the usual rules and
+    // the generator's own checks.
+    [Fact]
+    public void AnOutageRunIsJudgedByItsOwnRulesAndTheUsualOnesOutsideItsWindow()
+    {
+        var report = WithOutage(FullStackReport());
+
+        var rules = Boundary().Evaluate(report).Rules.ToDictionary(rule => rule.Rule);
+
+        Assert.All(
+            rules.Values.Where(rule => rule.Rule.StartsWith("outage_", StringComparison.Ordinal)),
+            rule => Assert.True(rule.Passed, $"{rule.Rule}: {rule.Note}"));
+        Assert.Equal(1.5, rules["outage_return_seconds"].Measured);
+        Assert.Contains("noticed the outage 4.5 s after the stop", rules["outage_return_seconds"].Note, StringComparison.Ordinal);
+        Assert.Equal(2.5, rules["outage_durable_recovery_seconds"].Measured);
+        Assert.Equal(0, rules["outage_notice_mismatches"].Measured);
+        Assert.Equal(0, rules["gameplay_unexpected_failures"].Measured);
+        Assert.Contains("40 refusals with game_service_unavailable", rules["gameplay_unexpected_failures"].Note, StringComparison.Ordinal);
+        Assert.Equal(0, rules["http_unexpected_failures"].Measured);
+        Assert.Contains("3 failed requests inside the outage window", rules["http_unexpected_failures"].Note, StringComparison.Ordinal);
+        Assert.True(report.PassedOwnChecks());
+
+        var late = Boundary().Evaluate(report with { Outage = report.Outage! with { WorkerNoticedReturnSeconds = 5.5 } });
+        Assert.False(Assert.Single(late.Rules, rule => !rule.Passed).Passed);
+        Assert.Equal("outage_return_seconds", Assert.Single(late.Rules, rule => !rule.Passed).Rule);
+
+        var outside = report with
+        {
+            Outage = report.Outage! with
+            {
+                UnexplainedFailures = 2,
+                UnexplainedCodes = new Dictionary<string, long> { ["item_move auth_service_timeout"] = 2 }
+            }
+        };
+        var outsideRule = Boundary().Evaluate(outside).Rules.Single(rule => rule.Rule == "gameplay_unexpected_failures");
+        Assert.False(outsideRule.Passed);
+        Assert.Equal(2, outsideRule.Measured);
+        Assert.Contains("item_move auth_service_timeout 2", outsideRule.Note, StringComparison.Ordinal);
+        Assert.False(outside.PassedOwnChecks());
+
+        var noWindow = Boundary().Evaluate(report with { Outage = report.Outage! with { WindowProblem = "the script reported no window." } });
+        Assert.Equal(
+            ["outage_durable_recovery_seconds", "outage_kill_corpses_missing", "outage_notice_mismatches", "outage_return_seconds"],
+            noWindow.Rules.Where(rule => !rule.Passed).Select(rule => rule.Rule).Order(StringComparer.Ordinal));
+    }
+
+    // Before the judge read the worker's log, the return rule waits for it like the other log rules.
+    [Fact]
+    public void TheReturnRuleWaitsForTheJudge()
+    {
+        var report = WithOutage(FullStackReport()) with { ServiceLogs = null };
+
+        var rule = Boundary().Evaluate(report).Rules.Single(entry => entry.Rule == "outage_return_seconds");
+
+        Assert.True(rule.Passed);
+        Assert.StartsWith("Not applicable: the worker's log is judged", rule.Note, StringComparison.Ordinal);
+    }
+
+    // The loop failure fields of the worker's file fold over the run for worker_loop_failures; an
+    // older worker's file without them counts nothing.
+    [Fact]
+    public void TheWorkersLoopFailuresFoldOverTheRun()
+    {
+        var intervals = Enumerable.Range(0, 7)
+            .Select(index => Interval(RunStart.AddSeconds(index * 10), 4) with
+            {
+                LoopStepFailures = index == 1 ? 2 : 0,
+                LoopIsolatedFailures = index == 6 ? 1 : null
+            })
+            .ToArray();
+        var report = FullStackReport() with
+        {
+            WorkerPerformance = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd)
+        };
+
+        var rule = Boundary().Evaluate(report).Rules.Single(entry => entry.Rule == "worker_loop_failures");
+
+        Assert.False(rule.Passed);
+        Assert.Equal(3, rule.Measured);
+        Assert.Contains("2 failed loop steps and 1 failures of single players or peers", rule.Note, StringComparison.Ordinal);
+    }
+
+    private static StressRunReport WithOutage(StressRunReport report)
+    {
+        var stopped = SteadyStart.AddSeconds(10);
+        return report with
+        {
+            FullStack = report.FullStack! with
+            {
+                Operations = new Dictionary<string, StressHttpOperationSummary>
+                {
+                    ["account_login"] = report.FullStack.Operations["account_login"],
+                    ["inventory_read"] = report.FullStack.Operations["account_login"] with { Failures = 3 }
+                }
+            },
+            ServiceLogs = report.ServiceLogs! with { WorkerHeartbeatFailuresDuringOutage = 30 },
+            Outage = new StressOutageSummary(10, 60, stopped.AddSeconds(-1), stopped, stopped.AddSeconds(60), stopped.AddSeconds(62), null)
+            {
+                BotsAcrossOutage = 10,
+                BotsWithOneNoticeEach = 10,
+                UnavailableNotices = 10,
+                AvailableNotices = 10,
+                ExpectedRefusals = 40,
+                ExpectedInFlightFailures = 2,
+                ExplainedInventoryRefreshFailures = 3,
+                ExplainedHttpFailures = 3,
+                KillsWhileSavingPaused = 5,
+                KillCorpsesSeen = 5,
+                FirstDurableSuccessAfterReadySeconds = 2.5,
+                BotsWithDurableSuccessAfterReturn = 9,
+                WorkerNoticedOutageSeconds = 4.5,
+                WorkerNoticedReturnSeconds = 1.5
+            }
+        };
+    }
+
     private static StressRunReport WithBurst(StressRunReport report, int incomplete)
     {
         return report with
@@ -907,6 +1031,7 @@ public sealed class StressQualityVerdictTests
             "worker_heartbeat_failures" => report with { ServiceLogs = report.ServiceLogs! with { WorkerHeartbeatFailures = 1 } },
             "auth_service_timeouts" => report with { ServiceLogs = report.ServiceLogs! with { AuthServiceTimeouts = 1 } },
             "burst_incomplete_accounts" => WithBurst(report, incomplete: 1),
+            "worker_loop_failures" => report with { WorkerPerformance = worker with { RunLoopIsolatedFailures = 1 } },
             _ => throw new ArgumentOutOfRangeException(nameof(rule))
         };
     }

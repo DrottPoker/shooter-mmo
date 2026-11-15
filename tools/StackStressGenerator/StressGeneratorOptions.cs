@@ -121,6 +121,9 @@ public sealed record StressGeneratorOptions(
     // Full-stack: the login or logout burst of the run, or null for none.
     public StressBurstOptions? Burst { get; init; }
 
+    // Full-stack playing: the GameService outage that tools/Test-Load.ps1 makes, or null for none.
+    public StressOutageOptions? Outage { get; init; }
+
     public const int DefaultBurstAtSeconds = 10;
     public const int DefaultBurstDeadlineSeconds = 60;
 
@@ -269,6 +272,7 @@ public sealed record StressGeneratorOptions(
         var networkProfilePath = OptionalPath(values, "network-profile", workingDirectory);
         var steadySeconds = ParseInt(values, "duration-seconds", 300, 1, 86_400);
         var burst = ParseBurst(values, mode, steadySeconds);
+        var outage = ParseOutage(values, mode, playing, steadySeconds, workingDirectory);
 
         return new StressGeneratorOptions(
             mode,
@@ -352,8 +356,56 @@ public sealed record StressGeneratorOptions(
                 : null,
             NetworkProfilePath = networkProfilePath,
             Network = networkProfilePath is null ? null : StressNetworkProfiles.Load(networkProfilePath),
-            Burst = burst
+            Burst = burst,
+            Outage = outage
         };
+    }
+
+    // A GameService outage that the script makes in a full-stack playing run without churn: the
+    // churn's way back needs GameService. It is shorter than the worker's outage tolerance and
+    // leaves a minute of the steady interval after it.
+    private static StressOutageOptions? ParseOutage(
+        IReadOnlyDictionary<string, string> values,
+        StressRunMode mode,
+        PlayingScenario? playing,
+        int steadySeconds,
+        string workingDirectory)
+    {
+        if (!values.ContainsKey("outage-at-seconds") && !values.ContainsKey("outage-seconds") && !values.ContainsKey("outage-folder"))
+        {
+            return null;
+        }
+
+        if (!values.ContainsKey("outage-at-seconds") || !values.ContainsKey("outage-seconds") || !values.ContainsKey("outage-folder"))
+        {
+            throw new StressGeneratorOptionException(
+                "A GameService outage needs --outage-at-seconds, --outage-seconds, and --outage-folder.");
+        }
+
+        if (mode != StressRunMode.FullStack || playing is null)
+        {
+            throw new StressGeneratorOptionException(
+                "A GameService outage needs --mode full-stack and the playing workload.");
+        }
+
+        if (playing.Churn is not null)
+        {
+            throw new StressGeneratorOptionException(
+                "A GameService outage cannot run with churn, whose way back needs GameService.");
+        }
+
+        var at = ParseInt(values, "outage-at-seconds", 0, 1, 86_400);
+        var seconds = ParseInt(values, "outage-seconds", 0, StressOutageOptions.MinimumSeconds, StressOutageOptions.MaximumSeconds);
+        if (at + seconds + StressOutageOptions.MinimumSecondsAfter > steadySeconds)
+        {
+            throw new StressGeneratorOptionException(
+                $"The outage starts {at} s into the steady interval and lasts {seconds} s, which leaves less than {StressOutageOptions.MinimumSecondsAfter} s of the steady interval of {steadySeconds} s after it.");
+        }
+
+        return new StressOutageOptions(
+            TimeSpan.FromSeconds(at),
+            TimeSpan.FromSeconds(seconds),
+            OptionalPath(values, "outage-folder", workingDirectory)!);
     }
 
     // A login or a logout burst, never both; its start and its deadline lie inside the steady
@@ -499,6 +551,10 @@ public sealed record StressGeneratorOptions(
                                             during the steady interval. Default: 0, no burst
           --burst-at-seconds <seconds>      How far into the steady interval the burst starts. Default: 10
           --burst-deadline-seconds <s>      How long every burst account has to end logged in or out. Default: 60
+          --outage-at-seconds <seconds>     Full-stack playing: how far into the steady interval the generator asks
+                                            tools/Test-Load.ps1 to stop GameService. Default: no outage
+          --outage-seconds <seconds>        How long GameService stays stopped, 10 to 100
+          --outage-folder <dir>             Where the generator writes its request and reads the script's window
 
         Exit codes: 0 passed, 1 a bot, account, gameplay, or invariant check failed or the run
         failed, 2 invalid options, 3 the run passed its own checks but failed the quality
@@ -606,7 +662,10 @@ public sealed record StressGeneratorOptions(
             "login-burst-accounts",
             "logout-burst-accounts",
             "burst-at-seconds",
-            "burst-deadline-seconds"
+            "burst-deadline-seconds",
+            "outage-at-seconds",
+            "outage-seconds",
+            "outage-folder"
         };
         var unsupported = values.Keys.FirstOrDefault(key => !supported.Contains(key));
         if (unsupported is not null)

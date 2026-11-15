@@ -82,6 +82,9 @@ public sealed record StressRunSummary(
     // The login or logout burst of the run, or null for none.
     public StressBurstSummary? Burst { get; init; }
 
+    // The GameService outage of the run, or null for none.
+    public StressOutageSummary? Outage { get; init; }
+
     public const int TopTables = 10;
 
     public static StressRunSummary Create(
@@ -163,6 +166,8 @@ public sealed record StressRunSummary(
             numbers["workerTickP99Ms"] = worker.Durations.GetValueOrDefault("tick")?.WorstP99Ms;
             numbers["workerCpuAverageSingleCorePercent"] = worker.Levels["cpuSingleCorePercent"].Average;
             numbers["workerWorkingSetMaximumBytes"] = worker.Levels["workingSetBytes"].Worst;
+            numbers["workerLoopStepFailures"] = worker.RunLoopStepFailures;
+            numbers["workerLoopIsolatedFailures"] = worker.RunLoopIsolatedFailures;
             var players = worker.Levels["peers"].Average;
             if (players > 0 && worker.SteadySeconds > 0)
             {
@@ -193,7 +198,8 @@ public sealed record StressRunSummary(
         {
             Soak = StressSummarySoak.Create(report),
             Network = report.Network,
-            Burst = report.FullStack?.Burst
+            Burst = report.FullStack?.Burst,
+            Outage = report.Outage
         };
     }
 
