@@ -72,6 +72,50 @@ namespace Mmorpg.GameSimulation
             return BuildCoordinates(anchors, unloadRadiusChunks);
         }
 
+        // The chunk an anchor stands in.
+        public CollisionChunkCoordinate ToChunk(SimulationVector3 anchor)
+        {
+            if (!SimulationVector3.IsFinite(anchor))
+            {
+                throw new ArgumentException("Collision streaming anchors must be finite.", nameof(anchor));
+            }
+
+            return new CollisionChunkCoordinate(
+                ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.X, chunkSize),
+                ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.Z, chunkSize));
+        }
+
+        // Fills the reusable sets with the chunks around the anchors' chunks, so a caller that
+        // keeps its sets allocates nothing once they have grown.
+        public void FillChunks(
+            IReadOnlyList<CollisionChunkCoordinate> anchorChunks,
+            HashSet<CollisionChunkCoordinate> required,
+            HashSet<CollisionChunkCoordinate> retained)
+        {
+            if (anchorChunks == null)
+            {
+                throw new ArgumentNullException(nameof(anchorChunks));
+            }
+
+            if (required == null)
+            {
+                throw new ArgumentNullException(nameof(required));
+            }
+
+            if (retained == null)
+            {
+                throw new ArgumentNullException(nameof(retained));
+            }
+
+            required.Clear();
+            retained.Clear();
+            for (var index = 0; index < anchorChunks.Count; index++)
+            {
+                AddAround(anchorChunks[index], loadRadiusChunks, required);
+                AddAround(anchorChunks[index], unloadRadiusChunks, retained);
+            }
+        }
+
         private HashSet<CollisionChunkCoordinate> BuildCoordinates(
             IEnumerable<SimulationVector3> anchors,
             int radius)
@@ -89,18 +133,24 @@ namespace Mmorpg.GameSimulation
                     throw new ArgumentException("Collision streaming anchors must be finite.", nameof(anchors));
                 }
 
-                var centerX = ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.X, chunkSize);
-                var centerZ = ChunkedStaticCollisionWorld.ToChunkCoordinate(anchor.Z, chunkSize);
-                for (var z = centerZ - radius; z <= centerZ + radius; z++)
-                {
-                    for (var x = centerX - radius; x <= centerX + radius; x++)
-                    {
-                        coordinates.Add(new CollisionChunkCoordinate(x, z));
-                    }
-                }
+                AddAround(ToChunk(anchor), radius, coordinates);
             }
 
             return coordinates;
+        }
+
+        private static void AddAround(
+            CollisionChunkCoordinate center,
+            int radius,
+            HashSet<CollisionChunkCoordinate> coordinates)
+        {
+            for (var z = center.Z - radius; z <= center.Z + radius; z++)
+            {
+                for (var x = center.X - radius; x <= center.X + radius; x++)
+                {
+                    coordinates.Add(new CollisionChunkCoordinate(x, z));
+                }
+            }
         }
     }
 }

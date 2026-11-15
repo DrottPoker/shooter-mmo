@@ -186,6 +186,7 @@ internal static class RealtimeServerComposition
             StaticCollisionWorld = host.StaticCollisionWorld,
             CollisionWorld = host.CollisionWorld,
             CollisionStreamingStore = host.CollisionStreamingStore,
+            CollisionChunks = new CollisionChunkGate(host.CollisionStreamingStore, completions, performanceMetrics),
             RegistrationLease = host.RegistrationLease,
             WorkerIdentity = host.WorkerIdentity,
             ShardRules = host.ShardRules ?? new SimulationShardRules(),

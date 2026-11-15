@@ -131,7 +131,8 @@ internal sealed class CombatFeature
             lineOfSight,
             core.Presence,
             dependencies.WorldActors,
-            dependencies.Metrics);
+            dependencies.Metrics,
+            core.CollisionChunks);
         Combat = new CombatSystem(
             core.Config,
             dependencies.Rules,

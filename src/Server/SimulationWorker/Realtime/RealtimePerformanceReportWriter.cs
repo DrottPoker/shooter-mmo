@@ -157,6 +157,10 @@ internal sealed record RealtimePerformanceReportEntry(
     // The garbage collection pauses of the interval.
     public double GcPauseMs { get; init; }
 
+    // The steps that players and Mobs skipped in the interval because their collision chunks
+    // still loaded.
+    public long CollisionPendingSteps { get; init; }
+
     // The share of the interval that the loop thread spent in its ticks and loop steps; the rest
     // it waited for the next tick or poll.
     public double LoopBusyPercent { get; init; }
@@ -230,6 +234,7 @@ internal sealed record RealtimePerformanceReportEntry(
             Phases = ToEntries(performance.TickPhases),
             LoopSteps = ToEntries(performance.LoopSteps),
             GcPauseMs = performance.GcPauseMilliseconds,
+            CollisionPendingSteps = performance.CollisionPendingSteps,
             LoopBusyPercent = interval.LoopBusyPercent
         };
     }

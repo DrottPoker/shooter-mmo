@@ -81,6 +81,10 @@ internal sealed class RealtimeServerHarnessOptions
     // World collision does; without it the collision streaming phase does nothing.
     public WorldCollisionStreamingStore? CollisionStreamingStore { get; init; }
 
+    // Plays on streamed 4 m chunks of the test ground instead of the whole test World, so a far
+    // place waits for its chunks; replaces CollisionStreamingStore. The test disposes it.
+    public StreamedTestCollision? StreamedCollision { get; init; }
+
     // Replaces the default 30 failed runs in a row that stop the loop.
     public int? TickPhaseFailureLimit { get; init; }
 
@@ -157,7 +161,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             AvailabilityLogger);
         GameServiceClient = new GameServiceClient(httpClient, Availability);
         Identity = new SimulationWorkerIdentity(RuntimeId, DateTime.UtcNow.AddMinutes(-1));
-        StaticCollisionWorld = CollisionTestWorldFactory.Create();
+        StaticCollisionWorld = options.StreamedCollision?.Store.CollisionWorld ?? CollisionTestWorldFactory.Create();
         CollisionWorld = new CompositeCollisionWorld(
             StaticCollisionWorld,
             new DynamicCollisionWorld(StaticCollisionWorld.ChunkSize));
@@ -256,7 +260,7 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 CorpseViewers,
                 StaticCollisionWorld,
                 CollisionWorld,
-                CollisionStreamingStore: options.CollisionStreamingStore,
+                CollisionStreamingStore: options.StreamedCollision?.Store ?? options.CollisionStreamingStore,
                 NetworkMetrics: NetworkMetrics,
                 PerformanceMetrics: PerformanceMetrics,
                 RegistrationLease: options.RegistrationLease,

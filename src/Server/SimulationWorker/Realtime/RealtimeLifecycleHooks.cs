@@ -1,9 +1,18 @@
 using System.Runtime.ExceptionServices;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
+
+// Where a new player entity starts: a position and a facing, on whose ground the join places it.
+internal readonly record struct PlayerPlace(float X, float Y, float Z, float YawDegrees)
+{
+    public SimulationVector3 Position => new(X, Y, Z);
+
+    public static PlayerPlace Spawn(MovementSpawnConfig spawn) => new(spawn.X, spawn.Y, spawn.Z, spawn.YawDegrees);
+}
 
 // The lifecycle hooks that features add during composition. The hooks of a player's way in, the
 // placements, the joined hooks, and the spawn-sent hooks, run in registration order, so the order
@@ -14,13 +23,13 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Loop-confined once composed.
 internal sealed class RealtimeLifecycleHooks
 {
-    private readonly List<Func<ActiveSimulationSession, PlayerMovementState?>> playerPlacements = [];
+    private readonly List<Func<ActiveSimulationSession, PlayerPlace?>> playerPlacements = [];
     private readonly List<Action<RealtimePeerContext, PlayerSimulationEntity>> playerJoined = [];
     private readonly List<Action<RealtimePeerContext, ActiveSimulationSession, PlayerSimulationEntity>> connectionEnded = [];
     private readonly List<Action<RealtimePeerContext, ActiveSimulationSession, ulong>> playerRemoved = [];
     private readonly List<Action<IRealtimePeerConnection, ulong>> spawnSent = [];
 
-    public IReadOnlyList<Func<ActiveSimulationSession, PlayerMovementState?>> PlayerPlacements => playerPlacements;
+    public IReadOnlyList<Func<ActiveSimulationSession, PlayerPlace?>> PlayerPlacements => playerPlacements;
 
     public IReadOnlyList<Action<RealtimePeerContext, PlayerSimulationEntity>> PlayerJoined => playerJoined;
 
@@ -30,10 +39,10 @@ internal sealed class RealtimeLifecycleHooks
 
     public IReadOnlyList<Action<IRealtimePeerConnection, ulong>> SpawnSent => spawnSent;
 
-    // Asked where the entity of a joining session starts, before the join decides whether it
-    // creates the entity or a reconnect keeps it. The first placement that returns a state wins;
-    // without one the player starts at the World spawn.
-    public void AddPlayerPlacement(Func<ActiveSimulationSession, PlayerMovementState?> placement)
+    // Asked where the new entity of a joining session starts; a reconnect that keeps its entity
+    // asks none. The first placement that returns a place wins; without one the player starts at
+    // the World spawn. A join may ask again when it waited for the collision of the place.
+    public void AddPlayerPlacement(Func<ActiveSimulationSession, PlayerPlace?> placement)
     {
         ArgumentNullException.ThrowIfNull(placement);
         playerPlacements.Add(placement);
@@ -72,13 +81,13 @@ internal sealed class RealtimeLifecycleHooks
         spawnSent.Add(hook);
     }
 
-    public PlayerMovementState? PlaceNewPlayer(ActiveSimulationSession session)
+    public PlayerPlace? PlaceNewPlayer(ActiveSimulationSession session)
     {
         foreach (var placement in playerPlacements)
         {
-            if (placement(session) is { } state)
+            if (placement(session) is { } place)
             {
-                return state;
+                return place;
             }
         }
 

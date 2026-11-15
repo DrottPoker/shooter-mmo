@@ -2,14 +2,14 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
-using Mmorpg.SimulationWorker.WorldCollision;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // The development admin tools of the Admin menu: a player's walk speed, a teleport, full
 // health, and invulnerability. Only a worker whose options allow them carries them out, and
 // never for a synthetic bot. The walk speed and invulnerability last as long as the
-// character's entity, and the owner receives them after every join and every change.
+// character's entity, and the owner receives them after every join and every change. A teleport
+// to a place whose collision chunks still load waits for them and completes on a later tick.
 // Loop-confined.
 internal sealed class AdminIntentHandler(
     SimulationWorkerConfig config,
@@ -19,7 +19,7 @@ internal sealed class AdminIntentHandler(
     EntityPresenceReplicator presence,
     CombatSystem combat,
     ICollisionWorld collisionWorld,
-    WorldCollisionStreamingStore? collisionStreamingStore)
+    CollisionChunkGate collisionChunks) : IRealtimeCompletionHandler
 {
     public const string TeleportedReason = "teleported";
 
@@ -79,9 +79,41 @@ internal sealed class AdminIntentHandler(
             return;
         }
 
+        var waiting = false;
         var failure = !options.Enabled || entity.Session.IsSyntheticBot
             ? ToolsDisabled
-            : Apply(entity, intent);
+            : Apply(context, entity, intent, out waiting);
+        if (!waiting)
+        {
+            SendResult(peer, entity, intent, failure);
+        }
+    }
+
+    // A teleport whose destination loaded runs again as it would have at once, and its result
+    // goes to the player that asked when it still plays the same entity.
+    public void Complete(RealtimeOperationResult completion)
+    {
+        if (completion is not AdminTeleportReady ready
+            || !peers.TryGetCurrentPeer(ready.Context, out var peer)
+            || !peers.TryGetBoundPlayer(ready.Context, out var entity)
+            || entity.NetworkEntityId != ready.EntityId)
+        {
+            return;
+        }
+
+        var failure = Teleport(ready.Context, entity, ready.Intent, out var waiting);
+        if (!waiting)
+        {
+            SendResult(peer, entity, ready.Intent, failure);
+        }
+    }
+
+    private void SendResult(
+        IRealtimePeerConnection peer,
+        PlayerSimulationEntity entity,
+        RealtimeAdminIntent intent,
+        RealtimeError? failure)
+    {
         sender.SendControl(peer, RealtimeProtocol.EncodeAdminIntentResult(new RealtimeAdminIntentResult(
             intent.OperationId,
             intent.Kind,
@@ -94,15 +126,20 @@ internal sealed class AdminIntentHandler(
         }
     }
 
-    private RealtimeError? Apply(PlayerSimulationEntity entity, RealtimeAdminIntent intent)
+    private RealtimeError? Apply(
+        RealtimePeerContext context,
+        PlayerSimulationEntity entity,
+        RealtimeAdminIntent intent,
+        out bool waiting)
     {
+        waiting = false;
         switch (intent.Kind)
         {
             case RealtimeAdminIntentKind.SetMovementSpeed:
                 entity.Movement.SetWalkSpeedPercent(intent.SpeedPercent);
                 return null;
             case RealtimeAdminIntentKind.Teleport:
-                return Teleport(entity, intent.DestinationX, intent.DestinationY, intent.DestinationZ);
+                return Teleport(context, entity, intent, out waiting);
             case RealtimeAdminIntentKind.RestoreHealth:
                 return combat.TryRestoreHealthAndMana(entity) ? null : CharacterDead;
             case RealtimeAdminIntentKind.SetInvulnerable:
@@ -113,21 +150,37 @@ internal sealed class AdminIntentHandler(
     }
 
     // Moves a living player onto walkable ground at the destination, standing still, and shows
-    // it there to everyone who sees it, as a respawn does.
-    private RealtimeError? Teleport(PlayerSimulationEntity entity, float x, float y, float z)
+    // it there to everyone who sees it, as a respawn does. While the collision chunks of the
+    // destination still load, it waits for them and sends no result yet.
+    private RealtimeError? Teleport(
+        RealtimePeerContext context,
+        PlayerSimulationEntity entity,
+        RealtimeAdminIntent intent,
+        out bool waiting)
     {
+        waiting = false;
         if (combat.IsMovementBlocked(entity))
         {
             return CharacterDead;
         }
 
+        var x = intent.DestinationX;
+        var y = intent.DestinationY;
+        var z = intent.DestinationZ;
         var settings = config.MovementSimulation;
         if (x < settings.MinimumX || x > settings.MaximumX || z < settings.MinimumZ || z > settings.MaximumZ)
         {
             return OutsideWorld;
         }
 
-        collisionStreamingStore?.EnsureLoaded(new SimulationVector3(x, y, z));
+        var destination = new SimulationVector3(x, y, z);
+        if (!collisionChunks.IsLoadedAround(destination))
+        {
+            collisionChunks.WaitFor(destination, this, new AdminTeleportReady(context, entity.NetworkEntityId, intent));
+            waiting = true;
+            return null;
+        }
+
         var state = PlayerMovementSimulation.CreateInitialState(
             settings,
             collisionWorld,

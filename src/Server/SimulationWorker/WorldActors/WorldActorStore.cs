@@ -193,6 +193,10 @@ public sealed class WorldActorStore
     private readonly Dictionary<Guid, WorldActorRuntimeState> actorsByRuntimeId = [];
     private readonly Dictionary<ulong, WorldActorRuntimeState> despawnedActorsByEntityId = [];
     private readonly Dictionary<string, WorldActorActivityProfileDefinition> activityProfiles;
+
+    // The actors in entity id order, replaced only when an actor is added or removed, so a reader
+    // walks them without sorting or allocating.
+    private WorldActorRuntimeState[] orderedActors = [];
     private long populationRevision;
 
     public WorldActorStore(
@@ -296,11 +300,8 @@ public sealed class WorldActorStore
                 actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
             }
 
-            Interlocked.Increment(ref populationRevision);
-
-            return actorsByEntityId.Values
-                .OrderBy(actor => actor.NetworkEntityId)
-                .ToArray();
+            OnPopulationChangedLocked();
+            return orderedActors;
         }
     }
 
@@ -344,7 +345,7 @@ public sealed class WorldActorStore
             actor.SetActive(false);
             actorsByRuntimeId.Remove(actor.RuntimeActorId);
             despawnedActorsByEntityId.Add(actor.NetworkEntityId, actor);
-            Interlocked.Increment(ref populationRevision);
+            OnPopulationChangedLocked();
             return true;
         }
     }
@@ -375,7 +376,7 @@ public sealed class WorldActorStore
                 previous.BrainProfile);
             actorsByEntityId.Add(actor.NetworkEntityId, actor);
             actorsByRuntimeId.Add(actor.RuntimeActorId, actor);
-            Interlocked.Increment(ref populationRevision);
+            OnPopulationChangedLocked();
             return actor;
         }
     }
@@ -419,19 +420,17 @@ public sealed class WorldActorStore
         lock (syncRoot)
         {
             destination.Clear();
-            destination.AddRange(actorsByEntityId.Values);
-            destination.Sort(static (left, right) =>
-                left.NetworkEntityId.CompareTo(right.NetworkEntityId));
+            destination.AddRange(orderedActors);
         }
     }
 
+    // The actors in entity id order. The list stays as it is when actors are added or removed
+    // later; a new call returns the current one.
     public IReadOnlyList<WorldActorRuntimeState> ListActors()
     {
         lock (syncRoot)
         {
-            return actorsByEntityId.Values
-                .OrderBy(actor => actor.NetworkEntityId)
-                .ToArray();
+            return orderedActors;
         }
     }
 
@@ -442,8 +441,17 @@ public sealed class WorldActorStore
             actorsByEntityId.Clear();
             actorsByRuntimeId.Clear();
             despawnedActorsByEntityId.Clear();
-            Interlocked.Increment(ref populationRevision);
+            OnPopulationChangedLocked();
         }
+    }
+
+    private void OnPopulationChangedLocked()
+    {
+        var actors = new WorldActorRuntimeState[actorsByEntityId.Count];
+        actorsByEntityId.Values.CopyTo(actors, 0);
+        Array.Sort(actors, static (left, right) => left.NetworkEntityId.CompareTo(right.NetworkEntityId));
+        orderedActors = actors;
+        Interlocked.Increment(ref populationRevision);
     }
 
     // A resource node's gathering capability names its resource profile. The compiled data

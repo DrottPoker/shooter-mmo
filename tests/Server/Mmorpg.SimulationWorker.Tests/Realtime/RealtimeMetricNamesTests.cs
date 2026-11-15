@@ -46,6 +46,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.loop.network_poll.duration",
         "simulation_worker.loop.step.duration",
         "simulation_worker.simulation.collision_streaming.duration",
+        "simulation_worker.simulation.collision_streaming.pending_steps",
         "simulation_worker.simulation.interest.duration",
         "simulation_worker.simulation.movement.duration",
         "simulation_worker.simulation.snapshot.entity_updates_deferred",

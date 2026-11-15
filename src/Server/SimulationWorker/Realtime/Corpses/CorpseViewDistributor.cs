@@ -31,9 +31,14 @@ internal sealed class CorpseViewDistributor(
         corpseSnapshots[snapshot.CorpseId] = snapshot;
     }
 
-    public Guid[] GetViewedCorpseIds()
+    // Copies the ids of the viewed corpses, so the caller may close views while it walks them.
+    public void CopyViewedCorpseIdsTo(List<Guid> destination)
     {
-        return corpseSnapshots.Keys.ToArray();
+        destination.Clear();
+        foreach (var corpseId in corpseSnapshots.Keys)
+        {
+            destination.Add(corpseId);
+        }
     }
 
     public void ClearSnapshots()

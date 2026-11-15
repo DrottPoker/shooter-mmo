@@ -4,9 +4,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
+using Mmorpg.WorldData.Actors;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -511,8 +515,266 @@ public sealed class SimulationTickLoopTests
         Assert.Equal(0, guard.TotalFailures);
     }
 
+    // The composed collision streaming plans its chunks only when an anchor entered another chunk,
+    // so a tick in which nobody crossed a chunk border plans nothing and, with the movement guard of
+    // every player, allocates nothing. A player that crosses a border plans once.
+    [Fact]
+    public async Task CollisionStreamingAndMovementAllocateAndPlanNothingWhileNoAnchorChangesItsChunk()
+    {
+        var spawn = new SimulationVector3(0f, 0f, -1f);
+        using var streamed = new StreamedTestCollision(spawn);
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            StreamedCollision = streamed
+        });
+        var config = harness.Config;
+        var initialState = PlayerMovementSimulation.CreateInitialState(
+            config.MovementSimulation,
+            harness.CollisionWorld,
+            spawn.X,
+            spawn.Y,
+            spawn.Z,
+            0f);
+        var players = new List<PlayerSimulationEntity>();
+        for (var index = 0; index < 50; index++)
+        {
+            var session = RealtimeTestSessions.Create($"Streaming Player {index}");
+            Assert.Equal(ActiveSimulationSessionRegistration.Joined, harness.SessionStore.Register(session));
+            players.Add(harness.EntityRegistry.RegisterPlayer(
+                    session,
+                    () => new AuthoritativePlayerMovement(
+                        initialState,
+                        config.MovementSimulation,
+                        session.CarryState,
+                        harness.CollisionWorld))
+                .Entity);
+        }
+
+        var phases = new SimulationTickPhases();
+        foreach (var phase in harness.Service.Server.TickPhases.Where(phase => phase.Name is "collision streaming" or "movement"))
+        {
+            phases.AddPeriodic(phase.Order, phase.Name, phase.Run);
+        }
+
+        Assert.Equal(2, phases.InTickOrder().Length);
+        using var metrics = new RealtimePerformanceMetrics();
+        var loop = CreateLoop(new RealtimeSimulationClock(), harness.EntityRegistry, phases, metrics, out var guard);
+        var nextTick = TimeSpan.Zero;
+        RunTicks(loop, ref nextTick, 100);
+        var plans = streamed.Store.PlanCount;
+
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            RunTicks(loop, ref nextTick, 1_000);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Contains(0L, allocated);
+        Assert.Equal(plans, streamed.Store.PlanCount);
+
+        // A step within the chunk plans nothing; entering the next chunk east plans once.
+        players[0].Movement.Teleport(PlayerMovementSimulation.CreateInitialState(
+            config.MovementSimulation,
+            harness.CollisionWorld,
+            3f,
+            0f,
+            -1f,
+            0f));
+        RunTicks(loop, ref nextTick, 10);
+        Assert.Equal(plans, streamed.Store.PlanCount);
+        players[0].Movement.Teleport(PlayerMovementSimulation.CreateInitialState(
+            config.MovementSimulation,
+            harness.CollisionWorld,
+            5f,
+            0f,
+            -1f,
+            0f));
+        RunTicks(loop, ref nextTick, 10);
+        Assert.Equal(plans + 1, streamed.Store.PlanCount);
+        Assert.Equal(0, guard.TotalFailures);
+    }
+
+    // The world actor phase walks the store's ordered actors, reuses the scheduler's list, and
+    // counts the population once a second, so a tick in which no actor changes its tier allocates
+    // nothing, also on the ticks that count the population.
+    [Fact]
+    public void TheWorldActorPhaseAllocatesNothingOnTicksThatChangeNoTier()
+    {
+        using var fixture = new RealtimeLoopFixture(enableWorldActors: true);
+        var players = new List<PlayerSimulationEntity>();
+        for (var peerId = 1; peerId <= 20; peerId++)
+        {
+            players.Add(fixture.ConnectPlayer(peerId, $"Actor Watcher {peerId}").Entity);
+        }
+
+        var driver = new WorldActorRuntimeDriver(
+            fixture.Config,
+            fixture.WorldActors,
+            new WorldActorActivityScheduler(fixture.WorldActors!),
+            fixture.WorldActorMetrics,
+            null,
+            fixture.Presence,
+            fixture.Metrics,
+            fixture.Timers,
+            NullLogger.Instance);
+        var grid = new PlayerSpatialGrid();
+        grid.Rebuild(players);
+        var tick = 1u;
+        for (; tick <= 300; tick++)
+        {
+            driver.EvaluateTick(grid, tick);
+        }
+
+        Assert.Contains(fixture.WorldActors!.ListActors(), actor => actor.ActivityTier == WorldActorActivityTierIds.Active);
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var index = 0; index < 1_000; index++, tick++)
+            {
+                driver.EvaluateTick(grid, tick);
+            }
+
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Contains(0L, allocated);
+        Assert.True(fixture.WorldActorMetrics!.Capture().ActivePopulation > 0);
+    }
+
+    // A corpse presence broadcast that changes nothing for any peer sends nothing and allocates
+    // nothing; one in which a corpse changed sends every peer that sees it its presence again, in
+    // corpse id order, each viewer one body per loot group.
+    [Fact]
+    public void ACorpsePresenceBroadcastThatChangesNothingSendsAndAllocatesNothing()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var first = fixture.ConnectPlayer(1, "First Viewer");
+        var second = fixture.ConnectPlayer(2, "Second Viewer");
+        var durable = new DurableCorpseStore(TimeProvider.System);
+        var live = new LiveMobCorpseStore(TimeProvider.System);
+        var views = new CorpseViewDistributor(fixture.CorpseViewers, fixture.Leases, fixture.Registry, fixture.Sender, durable, live);
+        var replicator = new CorpsePresenceReplicator(fixture.Config, durable, live, null, views, fixture.Registry, fixture.Sender);
+        var near = Guid.NewGuid();
+        var far = Guid.NewGuid();
+        SeedDurableCorpse(durable, near, 2d, 1);
+        SeedDurableCorpse(durable, far, 200d, 1);
+        var group = Guid.NewGuid();
+        var firstOwned = live.CreateOrGet(LiveCorpse(group, first.Session.CharacterId));
+        var secondOwned = live.CreateOrGet(LiveCorpse(group, second.Session.CharacterId));
+
+        replicator.Broadcast();
+
+        Assert.Equal(
+            new[] { near, firstOwned.CorpseId }.Order(),
+            PresentedCorpses(first.Peer).Single());
+        Assert.Equal(
+            new[] { near, secondOwned.CorpseId }.Order(),
+            PresentedCorpses(second.Peer).Single());
+        for (var broadcast = 0; broadcast < 100; broadcast++)
+        {
+            replicator.Broadcast();
+        }
+
+        var allocated = new List<long>();
+        for (var pass = 0; pass < 3 && !allocated.Contains(0); pass++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var broadcast = 0; broadcast < 1_000; broadcast++)
+            {
+                replicator.Broadcast();
+            }
+
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Contains(0L, allocated);
+        Assert.Single(PresentedCorpses(first.Peer));
+        Assert.Single(PresentedCorpses(second.Peer));
+
+        SeedDurableCorpse(durable, near, 2d, 2);
+        replicator.Broadcast();
+
+        Assert.Equal(2, PresentedCorpses(first.Peer).Count);
+        Assert.Equal(2, PresentedCorpses(second.Peer).Count);
+        Assert.Equal(PresentedCorpses(first.Peer)[0], PresentedCorpses(first.Peer)[1]);
+    }
+
+    // The corpse ids of every corpse presence the peer was sent, one list per presence.
+    private static List<Guid[]> PresentedCorpses(RecordingPeerConnection peer)
+    {
+        var presences = new List<Guid[]>();
+        foreach (var send in peer.Sent)
+        {
+            if (RealtimeProtocol.TryReadMessageType(send.Data, out var type)
+                && type == RealtimeMessageType.CorpsePresenceSnapshotChunk
+                && RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk(send.Data, out var chunk, out _))
+            {
+                Assert.Equal(1, chunk.ChunkCount);
+                presences.Add(chunk.Corpses.Select(corpse => corpse.CorpseId).ToArray());
+            }
+        }
+
+        return presences;
+    }
+
+    private static void SeedDurableCorpse(DurableCorpseStore store, Guid corpseId, double positionX, long revision)
+    {
+        var now = DateTime.UtcNow;
+        store.Apply(new DurableCorpseResponse(
+            corpseId,
+            null,
+            "Fallen Hero",
+            RealtimeServerHarness.ShardId,
+            positionX,
+            0d,
+            -1d,
+            0d,
+            0d,
+            0d,
+            1d,
+            "player_corpse",
+            revision,
+            now.AddSeconds(-1),
+            now.AddMinutes(5),
+            false,
+            [
+                new CorpseSectionResponse("general_inventory", Guid.NewGuid(), 0, 1),
+                new CorpseSectionResponse("equipment", Guid.NewGuid(), 0, 0),
+                new CorpseSectionResponse("bag", Guid.NewGuid(), 0, 0)
+            ]));
+    }
+
+    private static LiveMobCorpseState LiveCorpse(Guid lootGroupId, Guid owner)
+    {
+        var now = DateTime.UtcNow;
+        return new LiveMobCorpseState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "mob.feral_alpha",
+            RealtimeServerHarness.ShardId,
+            1d,
+            0d,
+            -1d,
+            0f,
+            MobCorpseLifecycleService.DefaultPresentationKey,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            now,
+            now.AddMinutes(10),
+            [new LiveMobCorpseLootEntry(Guid.NewGuid(), Guid.NewGuid(), "fixture.ore", 1, 0)])
+        {
+            OwnerCharacterId = owner,
+            LootGroupId = lootGroupId
+        };
+    }
+
     // The loop with its guard, as the composition builds it.
-    private static SimulationTickLoop CreateLoop(
+    internal static SimulationTickLoop CreateLoop(
         RealtimeSimulationClock clock,
         SimulationEntityRegistry entities,
         SimulationTickPhases phases,
@@ -526,7 +788,7 @@ public sealed class SimulationTickLoopTests
     }
 
     // One due tick per call, so the loop never resynchronizes.
-    private static void RunTicks(SimulationTickLoop loop, ref TimeSpan nextTick, int count)
+    internal static void RunTicks(SimulationTickLoop loop, ref TimeSpan nextTick, int count)
     {
         for (var tick = 0; tick < count; tick++)
         {

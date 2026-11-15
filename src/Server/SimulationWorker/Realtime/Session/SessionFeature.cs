@@ -20,6 +20,7 @@ internal static class SessionFeature
             core.ConnectionBindings,
             core.StaticCollisionWorld,
             core.CollisionWorld,
+            core.CollisionChunks,
             core.AdmissionGuard,
             core.Presence,
             core.Registries.Hooks,

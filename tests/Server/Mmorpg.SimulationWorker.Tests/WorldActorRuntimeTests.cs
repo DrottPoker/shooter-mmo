@@ -374,7 +374,7 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
-    public void InteractionUsesStartAndMaintainBoundsRanges()
+    public async Task InteractionUsesStartAndMaintainBoundsRanges()
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var atStartRange = CreatePlayer(harness.Session, -0.9f, -1f);
@@ -386,7 +386,7 @@ public sealed class WorldActorRuntimeTests
             harness.Actor.RuntimeActorId,
             harness.Actor.InteractionRevision);
 
-        var opened = harness.Authority.Process(1, atStartRange, open);
+        var opened = await harness.Authority.ProcessAsync(1, atStartRange, open, TestContext.Current.CancellationToken);
 
         Assert.NotNull(opened.Opened);
         var withinMaintainRange = CreatePlayer(harness.Session, -1.4f, -1f);
@@ -403,25 +403,26 @@ public sealed class WorldActorRuntimeTests
             capability.Id,
             capability.Kind,
             capability.Revision);
-        var maintained = harness.Authority.Process(1, withinMaintainRange, action);
+        var maintained = await harness.Authority.ProcessAsync(1, withinMaintainRange, action, TestContext.Current.CancellationToken);
         Assert.Equal("world_interaction_capability_deferred", maintained.Result!.Error.Code);
         Assert.Null(maintained.Closed);
 
         var outsideMaintainRange = CreatePlayer(harness.Session, -1.41f, -1f);
-        var closed = harness.Authority.Process(1, outsideMaintainRange, action);
+        var closed = await harness.Authority.ProcessAsync(1, outsideMaintainRange, action, TestContext.Current.CancellationToken);
         Assert.Equal("world_interaction_out_of_range", closed.Result!.Error.Code);
         Assert.NotNull(closed.Closed);
     }
 
     [Fact]
-    public void InteractionRejectsOutsideStartRangeAndAuthoritativeBlockedLineOfSight()
+    public async Task InteractionRejectsOutsideStartRangeAndAuthoritativeBlockedLineOfSight()
     {
         var clearHarness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var outside = CreatePlayer(clearHarness.Session, -0.91f, -1f);
-        var outsideResult = clearHarness.Authority.Process(
+        var outsideResult = await clearHarness.Authority.ProcessAsync(
             1,
             outside,
-            CreateOpenIntent(clearHarness));
+            CreateOpenIntent(clearHarness),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal("world_interaction_out_of_range", outsideResult.Result!.Error.Code);
 
@@ -434,10 +435,11 @@ public sealed class WorldActorRuntimeTests
         var blockedWorld = new DynamicCollisionWorld(32f);
         blockedWorld.Upsert(blocker);
         var blockedHarness = CreateAuthorityHarness(blockedWorld);
-        var blocked = blockedHarness.Authority.Process(
+        var blocked = await blockedHarness.Authority.ProcessAsync(
             1,
             CreatePlayer(blockedHarness.Session, 0f, -1f),
-            CreateOpenIntent(blockedHarness));
+            CreateOpenIntent(blockedHarness),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(
             "world_interaction_line_of_sight_blocked",
@@ -445,11 +447,11 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
-    public void CapabilityKindAndRevisionAreServerFenced()
+    public async Task CapabilityKindAndRevisionAreServerFenced()
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var player = CreatePlayer(harness.Session, 0f, -1f);
-        var opened = harness.Authority.Process(1, player, CreateOpenIntent(harness)).Opened;
+        var opened = (await harness.Authority.ProcessAsync(1, player, CreateOpenIntent(harness), TestContext.Current.CancellationToken)).Opened;
         Assert.NotNull(opened);
         var capability = opened.Capabilities.First();
         var stale = RealtimeWorldInteractionIntent.CreateCapabilityAction(
@@ -464,7 +466,7 @@ public sealed class WorldActorRuntimeTests
             capability.Kind,
             capability.Revision + 1);
 
-        var result = harness.Authority.Process(1, player, stale);
+        var result = await harness.Authority.ProcessAsync(1, player, stale, TestContext.Current.CancellationToken);
 
         Assert.Equal(
             "world_interaction_capability_unavailable",
@@ -479,7 +481,7 @@ public sealed class WorldActorRuntimeTests
     [InlineData("missing", "world_actor_not_found")]
     [InlineData("assignment", "world_interaction_session_invalid")]
     [InlineData("worker_runtime", "world_interaction_session_invalid")]
-    public void InteractionRejectsInvalidAuthorityState(string failure, string expectedCode)
+    public async Task InteractionRejectsInvalidAuthorityState(string failure, string expectedCode)
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var player = CreatePlayer(harness.Session, 0f, -1f);
@@ -540,20 +542,20 @@ public sealed class WorldActorRuntimeTests
             player = CreatePlayer(wrongAssignment, 0f, -1f);
         }
 
-        var result = harness.Authority.Process(1, player, intent);
+        var result = await harness.Authority.ProcessAsync(1, player, intent, TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedCode, result.Result!.Error.Code);
     }
 
     [Fact]
-    public void RevalidationClosesOnlyAffectedLease()
+    public async Task RevalidationClosesOnlyAffectedLease()
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var firstPlayer = CreatePlayer(harness.Session, 0f, -1f);
         var secondSession = CreateSession();
         harness.SessionStore.Register(secondSession);
         var secondPlayer = CreatePlayer(secondSession, 0f, -1f);
-        Assert.NotNull(harness.Authority.Process(1, firstPlayer, CreateOpenIntent(harness)).Opened);
+        Assert.NotNull((await harness.Authority.ProcessAsync(1, firstPlayer, CreateOpenIntent(harness), TestContext.Current.CancellationToken)).Opened);
         var secondOpen = RealtimeWorldInteractionIntent.CreateOpen(
             Guid.NewGuid(),
             secondSession.SimulationSessionId,
@@ -561,7 +563,7 @@ public sealed class WorldActorRuntimeTests
             harness.Actor.NetworkEntityId,
             harness.Actor.RuntimeActorId,
             harness.Actor.InteractionRevision);
-        Assert.NotNull(harness.Authority.Process(2, secondPlayer, secondOpen).Opened);
+        Assert.NotNull((await harness.Authority.ProcessAsync(2, secondPlayer, secondOpen, TestContext.Current.CancellationToken)).Opened);
 
         var farFirstPlayer = CreatePlayer(harness.Session, -2f, -1f);
         var closures = harness.Authority.Revalidate(peerId =>
@@ -576,13 +578,13 @@ public sealed class WorldActorRuntimeTests
     [InlineData("despawn", "world_actor_not_found")]
     [InlineData("revision", "world_interaction_target_changed")]
     [InlineData("assignment", "world_interaction_session_invalid")]
-    public void RevalidationClosesDespawnedRevisionChangedOrReassignedTargets(
+    public async Task RevalidationClosesDespawnedRevisionChangedOrReassignedTargets(
         string change,
         string expectedCode)
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var player = CreatePlayer(harness.Session, 0f, -1f);
-        Assert.NotNull(harness.Authority.Process(1, player, CreateOpenIntent(harness)).Opened);
+        Assert.NotNull((await harness.Authority.ProcessAsync(1, player, CreateOpenIntent(harness), TestContext.Current.CancellationToken)).Opened);
         if (change == "despawn")
         {
             Assert.True(harness.Store.TryDespawn(harness.Actor.NetworkEntityId, out _));
@@ -609,11 +611,11 @@ public sealed class WorldActorRuntimeTests
     }
 
     [Fact]
-    public void DisconnectRemovesOnlyThatPlayersInteractionLease()
+    public async Task DisconnectRemovesOnlyThatPlayersInteractionLease()
     {
         var harness = CreateAuthorityHarness(new EmptyCollisionWorld());
         var player = CreatePlayer(harness.Session, 0f, -1f);
-        Assert.NotNull(harness.Authority.Process(1, player, CreateOpenIntent(harness)).Opened);
+        Assert.NotNull((await harness.Authority.ProcessAsync(1, player, CreateOpenIntent(harness), TestContext.Current.CancellationToken)).Opened);
 
         Assert.True(harness.Leases.RemovePeer(1));
 
@@ -672,12 +674,13 @@ public sealed class WorldActorRuntimeTests
         var scheduler = new WorldActorActivityScheduler(actorStore);
         var player = RegisterPlayer(registry, CreateSession(), 0f, -1f);
 
-        var activated = scheduler.Evaluate([player], 60, 30);
-        var returnedDormant = scheduler.Evaluate([], 66, 30);
+        // The scheduler reuses the list it returns, so each count is read before the next call.
+        var activated = scheduler.Evaluate([player], 60, 30).Count;
+        var returnedDormant = scheduler.Evaluate([], 66, 30).Count;
 
         Assert.Equal(population, actors.Count);
-        Assert.Equal(population / 2, activated.Count);
-        Assert.Equal(population / 2, returnedDormant.Count);
+        Assert.Equal(population / 2, activated);
+        Assert.Equal(population / 2, returnedDormant);
         Assert.All(
             actors.Where(actor => actor.Definition.Kind == WorldActorKindIds.Npc),
             actor => Assert.Equal(WorldActorActivityTierIds.EventDriven, actor.ActivityTier));

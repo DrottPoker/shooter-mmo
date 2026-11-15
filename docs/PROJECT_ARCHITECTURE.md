@@ -294,6 +294,13 @@ contract:
   `RealtimeOperationTracker` is confined to the loop thread and uses no lock.
   Off-loop code may only call synchronized services, post completions, and log,
   and it may read only the immutable `PeerId` of a peer context.
+- The collision chunk loader of `WorldCollisionStreamingStore` is the one thing
+  beside the loop that prepares simulation data. On one background task it
+  reads, hashes, and decodes the chunks the loop asked for and puts each
+  finished, immutable chunk, or why it failed, into a queue that only the loop
+  drains in the collision streaming phase; it touches no loop state, and the
+  loop never reads a chunk file once it runs. Before the loop starts, the chunks
+  around the World spawn load synchronously.
 - The thread boundary is a type boundary. A feature's off-loop part is a
   `*AuthorityOperations` class whose constructor receives only synchronized
   services, the completion queue, and a logger.
@@ -343,8 +350,13 @@ contract:
 - A tick runs the registered tick phases in the order that
   `Realtime/Movement/SimulationTickOrder.cs` declares, with the reason for each
   position; that file is the only place that decides the order. A tick runs:
-  collision streaming around the players, the World spawn, and moving Mobs;
-  carry state and movement per player in entity id order; the grid of player
+  collision streaming around the players, the World spawn, moving Mobs, and
+  the places that a join or a teleport waits for, which takes the chunks that
+  the loader finished in, unloads what left the unload radius, plans again
+  only when an anchor changed its chunk, and hands the waiting joins and
+  teleports whose places are loaded back to the completion queue;
+  carry state and movement per player in entity id order, where a player
+  whose own chunk or a neighbour still loads does not step; the grid of player
   positions; due world actor timers and world actor activity; Mob brains and
   movement; the combat phase; the lingering bodies whose time is up, whose
   death committed, or whose session ended; interaction revalidation every fifth
@@ -484,10 +496,11 @@ constructor. A unit registers:
   order the units add them. The hooks of its way out, connection-ended and
   removed, run in reverse: teardown mirrors setup, so the last feature to join a
   player is the first to see it go, while the features it builds on still hold
-  the player. A placement is asked where the entity of a joining session starts
-  before the join knows whether it creates the entity or a reconnect keeps it;
-  the first placement that returns a state wins, and without one the player
-  starts at the World spawn. A connection-ended hook runs when a player's
+  the player. A placement is asked where the new entity of a joining session
+  starts, and a reconnect that keeps its entity asks none; the first placement
+  that returns a place wins, and without one the player starts at the World
+  spawn. The join places the entity on that place's ground once its collision
+  chunks are loaded, and asks again when it had to wait. A connection-ended hook runs when a player's
   connection ended while its session goes on, right after its entity became a
   lingering body; the entity stays, and a removed hook follows only when the
   body goes. A join reaches the GameService availability notice, then combat,
@@ -563,9 +576,15 @@ for its end once its death committed.
 `RealtimeFeatureRegistrationTests` pins the composed tick phases, routes, hooks,
 the order the hooks run in, and shutdown steps, `SimulationTickLoopTests` pins
 that a tick allocates nothing beyond its phases, that the character checkpoint
-phase allocates nothing on a tick when it is not due, and that 500 lingering
-bodies add nothing to a tick that ends none of them, all with the guard
-around every phase, and `RealtimeLoopFailureTests` pins what one failing
+phase allocates nothing on a tick when it is not due, that 500 lingering
+bodies add nothing to a tick that ends none of them, that collision streaming
+and movement neither plan nor allocate while no anchor changes its chunk, that
+the world actor phase allocates nothing on ticks that change no tier, and that
+a corpse presence broadcast that changes nothing sends and allocates nothing,
+all with the guard around every phase,
+`RealtimeCollisionStreamingTests` pins that a mover, a join, and an admin
+teleport wait for chunks that still load and that the loop reads none of them,
+and `RealtimeLoopFailureTests` pins what one failing
 player, recipient, or transport callback takes out,
 `RealtimeInFlightOperationTests` pins that an operation answered after the
 connection ended reaches the body or the peer that came back, and nothing of a
@@ -1378,7 +1397,10 @@ The rules of each step are in
 4. SimulationWorker creates or reconnects the entity and binds it to the peer.
    A new entity starts at the saved place when the save names the Shard's World
    and the collision revision the worker runs, and otherwise at the World
-   spawn; it keeps the saved health and mana in any World.
+   spawn; it keeps the saved health and mana in any World. When the collision
+   chunks around that place are not loaded, the join waits in the
+   `CollisionChunkGate` until the streaming loader brought them in, and the
+   loop then finalizes it from the start, with every check again.
 5. A new entity is added incrementally to the spatial interest index. Existing
    visibility sets are updated only for nearby observers instead of globally
    refreshing every peer.

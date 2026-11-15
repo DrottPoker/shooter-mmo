@@ -48,6 +48,9 @@ internal sealed record RealtimeCoreServices
 
     public required WorldCollisionStreamingStore? CollisionStreamingStore { get; init; }
 
+    // Keeps movers, joins, and teleports off collision chunks that still load.
+    public required CollisionChunkGate CollisionChunks { get; init; }
+
     public required SimulationWorkerRegistrationLease? RegistrationLease { get; init; }
 
     public required SimulationWorkerIdentity? WorkerIdentity { get; init; }

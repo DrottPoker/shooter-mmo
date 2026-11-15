@@ -3,12 +3,14 @@ using System.Diagnostics;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Applies each player's latest committed carry state and then steps its movement, in entity
-// id order. A player whose step throws leaves the Shard alone; the others still move.
+// id order. A player whose step throws leaves the Shard alone; the others still move. A player
+// whose collision chunks still load does not step in this tick; its inputs wait for the next.
 // Loop-confined.
 internal sealed class PlayerMovementTickPhase(
     CarryStateSynchronizer carrySync,
     RealtimePerformanceMetrics performanceMetrics,
-    RealtimeFailureIsolation isolation)
+    RealtimeFailureIsolation isolation,
+    CollisionChunkGate? collisionChunks = null)
 {
     public const string Name = "movement";
 
@@ -25,7 +27,10 @@ internal sealed class PlayerMovementTickPhase(
             try
             {
                 carrySync.ApplyLatest(entity);
-                entity.Movement.SimulateTick();
+                if (collisionChunks?.CanStep(entity.Movement.State.Position) ?? true)
+                {
+                    entity.Movement.SimulateTick();
+                }
             }
             catch (Exception exception)
             {

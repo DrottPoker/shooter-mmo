@@ -46,14 +46,50 @@ public static class CorpseLootRights
         Guid characterId)
     {
         ArgumentNullException.ThrowIfNull(corpses);
-        return corpses
-            .GroupBy(corpse => corpse.LootGroupId)
-            .Select(group => group
-                .OrderBy(corpse => CanLoot(corpse, characterId) ? 0 : 1)
-                .ThenBy(corpse => corpse.CorpseId)
-                .First())
-            .OrderBy(corpse => corpse.CorpseId)
-            .ToArray();
+        var selected = new List<ICorpseRuntimePresence>();
+        SelectForViewer(corpses.ToArray(), characterId, [], selected);
+        return selected.ToArray();
+    }
+
+    // The same selection into the caller's reusable buffers, in corpse id order, without
+    // allocating once the buffers have grown.
+    public static void SelectForViewer(
+        IReadOnlyList<ICorpseRuntimePresence> corpses,
+        Guid characterId,
+        Dictionary<Guid, ICorpseRuntimePresence> groups,
+        List<ICorpseRuntimePresence> destination)
+    {
+        ArgumentNullException.ThrowIfNull(corpses);
+        ArgumentNullException.ThrowIfNull(groups);
+        ArgumentNullException.ThrowIfNull(destination);
+        groups.Clear();
+        for (var index = 0; index < corpses.Count; index++)
+        {
+            var corpse = corpses[index];
+            if (!groups.TryGetValue(corpse.LootGroupId, out var best)
+                || IsPreferred(corpse, best, characterId))
+            {
+                groups[corpse.LootGroupId] = corpse;
+            }
+        }
+
+        destination.Clear();
+        foreach (var corpse in groups.Values)
+        {
+            destination.Add(corpse);
+        }
+
+        destination.Sort(static (left, right) => left.CorpseId.CompareTo(right.CorpseId));
+    }
+
+    // A corpse the viewer may loot first, then the lower corpse id.
+    private static bool IsPreferred(ICorpseRuntimePresence candidate, ICorpseRuntimePresence best, Guid characterId)
+    {
+        var candidateRank = CanLoot(candidate, characterId) ? 0 : 1;
+        var bestRank = CanLoot(best, characterId) ? 0 : 1;
+        return candidateRank != bestRank
+            ? candidateRank < bestRank
+            : candidate.CorpseId.CompareTo(best.CorpseId) < 0;
     }
 }
 
@@ -128,8 +164,7 @@ public sealed record CorpseSectionState(
 public sealed class DurableCorpseStore(TimeProvider timeProvider)
 {
     private readonly object sync = new();
-    private IReadOnlyDictionary<Guid, DurableCorpseState> corpses =
-        new Dictionary<Guid, DurableCorpseState>();
+    private Dictionary<Guid, DurableCorpseState> corpses = [];
     private DateTime databaseTimeAtSnapshot;
     private long timestampAtSnapshot;
 
@@ -229,6 +264,28 @@ public sealed class DurableCorpseStore(TimeProvider timeProvider)
                 .OrderBy(corpse => corpse.CreatedAt)
                 .ThenBy(corpse => corpse.CorpseId)
                 .ToArray();
+        }
+    }
+
+    // Adds the active corpses to the destination, in no particular order, without allocating
+    // once the destination has grown. Returns how many it added.
+    public int AddActiveTo(List<ICorpseRuntimePresence> destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        lock (sync)
+        {
+            var estimatedDatabaseTime = EstimateDatabaseTimeLocked();
+            var added = 0;
+            foreach (var corpse in corpses.Values)
+            {
+                if (corpse.ExpiresAt > estimatedDatabaseTime)
+                {
+                    destination.Add(corpse);
+                    added++;
+                }
+            }
+
+            return added;
         }
     }
 

@@ -203,17 +203,17 @@ public sealed class RealtimeResilienceTests
                     CollisionWorldCompiler.ComputeSha256Hex(bytes)));
             }
 
-            var store = new WorldCollisionStreamingStore(
+            using var store = new WorldCollisionStreamingStore(
                 "test-world",
                 "test-revision",
                 32f,
                 sources,
                 new CollisionStreamingConfig(1, 1));
-            store.Refresh([new SimulationVector3(1f, 0f, 1f)]);
+            RefreshUntilLoaded(store, new SimulationVector3(1f, 0f, 1f));
             Assert.True(store.CollisionWorld.IsChunkLoaded(0, 0));
             Assert.False(store.CollisionWorld.IsChunkLoaded(10, 0));
 
-            store.Refresh([new SimulationVector3(321f, 0f, 1f)]);
+            RefreshUntilLoaded(store, new SimulationVector3(321f, 0f, 1f));
             Assert.False(store.CollisionWorld.IsChunkLoaded(0, 0));
             Assert.True(store.CollisionWorld.IsChunkLoaded(10, 0));
             Assert.Equal(1, store.LoadedChunkCount);
@@ -245,6 +245,20 @@ public sealed class RealtimeResilienceTests
         Assert.Equal(4, snapshot.DroppedSnapshotPackets);
         Assert.Equal(3, snapshot.BackpressureDroppedSnapshotPackets);
         Assert.Equal(2, snapshot.SnapshotEntityRecords);
+    }
+
+    // Refreshes as the streaming phase does every tick until the background loader brought every
+    // chunk around the anchor in.
+    private static void RefreshUntilLoaded(WorldCollisionStreamingStore store, SimulationVector3 anchor)
+    {
+        using var timeout = RealtimeServerHarness.CreateTimeout();
+        store.Refresh([anchor]);
+        while (store.LoadingChunkCount > 0)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            Thread.Sleep(1);
+            store.Refresh([anchor]);
+        }
     }
 
     private static void UpdateMaximum(ref int target, int value)

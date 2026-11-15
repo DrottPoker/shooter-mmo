@@ -15,7 +15,7 @@ public sealed class RealtimeWorldInteractionOperationsTests
         var player = fixture.ConnectPlayer(1);
         var actor = fixture.WorldActors!.ListActors()
             .Single(value => value.Definition.Id == "npc.city_services");
-        var opened = fixture.WorldInteractionAuthority!.Process(
+        var opened = (await fixture.WorldInteractionAuthority!.ProcessAsync(
                 player.Context.PeerId,
                 player.Entity,
                 RealtimeWorldInteractionIntent.CreateOpen(
@@ -24,7 +24,8 @@ public sealed class RealtimeWorldInteractionOperationsTests
                     RealtimeWorldInteractionTargetKind.WorldActor,
                     actor.NetworkEntityId,
                     actor.RuntimeActorId,
-                    actor.InteractionRevision))
+                    actor.InteractionRevision),
+                TestContext.Current.CancellationToken))
             .Opened;
         Assert.NotNull(opened);
         var dialogue = opened.Capabilities.Single(value => value.Id == "services.dialogue");

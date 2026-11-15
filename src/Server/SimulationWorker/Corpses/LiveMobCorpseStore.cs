@@ -62,6 +62,7 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
     private readonly object sync = new();
     private readonly Dictionary<Guid, LiveMobCorpseState> corpses = [];
     private readonly Dictionary<Guid, string> creationFingerprints = [];
+    private readonly List<Guid> expiredBuffer = [];
 
     public LiveMobCorpseState CreateOrGet(LiveMobCorpseState corpse)
     {
@@ -98,6 +99,28 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
                 .OrderBy(corpse => corpse.CreatedAt)
                 .ThenBy(corpse => corpse.CorpseId)
                 .ToArray();
+        }
+    }
+
+    // Adds the active corpses to the destination, in no particular order, without allocating
+    // once the destination has grown. Returns how many it added.
+    public int AddActiveTo(List<ICorpseRuntimePresence> destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        lock (sync)
+        {
+            PurgeExpiredLocked();
+            var added = 0;
+            foreach (var corpse in corpses.Values)
+            {
+                if (!corpse.IsEmpty)
+                {
+                    destination.Add(corpse);
+                    added++;
+                }
+            }
+
+            return added;
         }
     }
 
@@ -328,13 +351,20 @@ public sealed class LiveMobCorpseStore(TimeProvider timeProvider)
             []);
     }
 
+    // Allocates nothing when no corpse expired.
     private void PurgeExpiredLocked()
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        foreach (var corpseId in corpses
-                     .Where(pair => pair.Value.ExpiresAt <= now)
-                     .Select(pair => pair.Key)
-                     .ToArray())
+        expiredBuffer.Clear();
+        foreach (var (corpseId, corpse) in corpses)
+        {
+            if (corpse.ExpiresAt <= now)
+            {
+                expiredBuffer.Add(corpseId);
+            }
+        }
+
+        foreach (var corpseId in expiredBuffer)
         {
             corpses.Remove(corpseId);
             creationFingerprints.Remove(corpseId);

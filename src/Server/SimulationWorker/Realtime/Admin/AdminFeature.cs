@@ -13,7 +13,7 @@ internal static class AdminFeature
             core.Presence,
             combat.Combat,
             core.CollisionWorld,
-            core.CollisionStreamingStore);
+            core.CollisionChunks);
         AdminIntentHandler.AddRoute(core.Registries.Routes, admin.HandleIntent);
         core.Registries.Hooks.AddPlayerJoined(admin.OnPlayerJoined);
     }

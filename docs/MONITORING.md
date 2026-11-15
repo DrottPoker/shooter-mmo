@@ -200,6 +200,7 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.simulation.tick.resynchronizations` | counter | Times the clock skipped time after five catch-up ticks. |
 | `simulation_worker.simulation.tick_phase.duration` | histogram, ms | Every tick phase, labeled `phase` with the name it registered under, such as `collision streaming`, `movement`, `mobs`, `combat`, or `snapshots`. A phase is timed only on the ticks on which it did its work: a periodic phase that was not due, such as the snapshots on every second tick, and a run that threw are no samples. |
 | `simulation_worker.simulation.collision_streaming.duration`, `.movement.duration`, `.interest.duration`, `.snapshot_broadcast.duration` | histogram, ms | Four tick phases timed inside themselves, kept for the dashboards and the load tooling. The snapshot broadcast is the complete snapshot pipeline and includes the separately reported interest phase. |
+| `simulation_worker.simulation.collision_streaming.pending_steps` | counter | Steps that a player or Mob did not take because collision chunks around it still loaded on the streaming loader, as [Collision Data And Streaming](SERVICE_FEATURES.md#collision-data-and-streaming) describes. With the default radii it stays at zero in play; a value above zero means the loader fell behind the movers. |
 | `simulation_worker.loop.step.duration` | histogram, ms | Every step of a loop iteration outside the tick, labeled `step`: `network poll`, `completed operations`, `peer supervision`, `orphan sweep`, and `send flush`. |
 | `simulation_worker.loop.network_poll.duration`, `.completed_operations.duration` | histogram, ms | Transport polling and completion processing of one loop iteration, also in `simulation_worker.loop.step.duration`. |
 | `simulation_worker.loop.completed_operations.backlog` | gauge | Completed authority operations that wait for the loop. |
@@ -414,7 +415,9 @@ entries of both processes, and the trace share one id.
   iteration outside the tick by its name; `loopBusyPercent`, the share of the
   interval that the loop thread spent in its ticks and loop steps, beside the
   process CPU, which also holds the transport's threads; `gcPauseMs`, the
-  garbage collection pauses of the interval; tick overruns and
+  garbage collection pauses of the interval; `collisionPendingSteps`, the
+  steps that movers skipped because their collision chunks still loaded;
+  tick overruns and
   resynchronizations; the loop failures,
   `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,

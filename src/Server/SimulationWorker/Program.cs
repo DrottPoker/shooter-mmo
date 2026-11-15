@@ -81,7 +81,9 @@ var developmentAdminOptions =
         builder.Configuration,
         builder.Environment.IsDevelopment());
 var collisionStreamingStore = WorldCollisionLoader.LoadStreaming(config);
-collisionStreamingStore.Refresh([
+// The chunks around the spawn load before the loop starts; the loop then streams the rest on the
+// store's background loader.
+collisionStreamingStore.LoadBeforeStart([
     new SimulationVector3(
         config.MovementSpawn.X,
         config.MovementSpawn.Y,
@@ -110,7 +112,9 @@ builder.Services.AddSingleton<SimulationShardRules>();
 builder.Services.AddSingleton<CombatMetrics>();
 builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(developmentAdminOptions);
-builder.Services.AddSingleton(collisionStreamingStore);
+// Registered through a factory so that the host disposes the store, and with it the chunk
+// loader's task, once the realtime loop has stopped.
+builder.Services.AddSingleton(_ => collisionStreamingStore);
 builder.Services.AddSingleton(staticCollisionWorld);
 builder.Services.AddSingleton(dynamicCollisionWorld);
 builder.Services.AddSingleton(collisionWorld);
