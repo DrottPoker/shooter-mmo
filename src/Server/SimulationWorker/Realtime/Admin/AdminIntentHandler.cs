@@ -9,7 +9,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // health, and invulnerability. Only a worker whose options allow them carries them out, and
 // never for a synthetic bot. The walk speed and invulnerability last as long as the
 // character's entity, and the owner receives them after every join and every change. A teleport
-// to a place whose collision chunks still load waits for them and completes on a later tick.
+// to a place whose collision chunks still load waits for them and completes on a later tick. A
+// newer teleport of the same character replaces a waiting one, which is answered as superseded,
+// so the character ends where the player asked last.
 // Loop-confined.
 internal sealed class AdminIntentHandler(
     SimulationWorkerConfig config,
@@ -43,9 +45,16 @@ internal sealed class AdminIntentHandler(
         "admin_teleport_no_ground",
         "No walkable ground is at the destination.");
 
+    private static readonly RealtimeError TeleportSuperseded = new(
+        "admin_teleport_superseded",
+        "A newer teleport replaced this one.");
+
     private static readonly RealtimeRejection DeliveryRejection = new(
         "invalid_admin_delivery",
         "Admin intents require the reliable ordered control channel.");
+
+    // Per entity with a waiting teleport: its newest teleport request, and how many wait.
+    private readonly Dictionary<ulong, WaitingTeleports> waitingTeleports = [];
 
     public static void AddRoute(RealtimeMessageRoutes routes, RealtimeMessageHandler handler)
     {
@@ -93,19 +102,47 @@ internal sealed class AdminIntentHandler(
     // goes to the player that asked when it still plays the same entity.
     public void Complete(RealtimeOperationResult completion)
     {
-        if (completion is not AdminTeleportReady ready
-            || !peers.TryGetCurrentPeer(ready.Context, out var peer)
+        if (completion is not AdminTeleportReady ready)
+        {
+            return;
+        }
+
+        var newest = StopWaiting(ready.EntityId, ready.Intent.OperationId);
+        if (!peers.TryGetCurrentPeer(ready.Context, out var peer)
             || !peers.TryGetBoundPlayer(ready.Context, out var entity)
             || entity.NetworkEntityId != ready.EntityId)
         {
             return;
         }
 
-        var failure = Teleport(ready.Context, entity, ready.Intent, out var waiting);
+        // A teleport asked for after this one already decided where the character is.
+        var waiting = false;
+        var failure = newest ? Teleport(ready.Context, entity, ready.Intent, out waiting) : TeleportSuperseded;
         if (!waiting)
         {
             SendResult(peer, entity, ready.Intent, failure);
         }
+    }
+
+    // One teleport of the entity no longer waits. Returns whether no newer teleport was asked for
+    // since it began to wait.
+    private bool StopWaiting(ulong entityId, Guid operationId)
+    {
+        if (!waitingTeleports.TryGetValue(entityId, out var teleports))
+        {
+            return true;
+        }
+
+        if (teleports.Count <= 1)
+        {
+            waitingTeleports.Remove(entityId);
+        }
+        else
+        {
+            waitingTeleports[entityId] = teleports with { Count = teleports.Count - 1 };
+        }
+
+        return teleports.NewestOperationId == operationId;
     }
 
     private void SendResult(
@@ -174,9 +211,12 @@ internal sealed class AdminIntentHandler(
         }
 
         var destination = new SimulationVector3(x, y, z);
+        var entityId = entity.NetworkEntityId;
+        waitingTeleports.TryGetValue(entityId, out var teleports);
         if (!collisionChunks.IsLoadedAround(destination))
         {
-            collisionChunks.WaitFor(destination, this, new AdminTeleportReady(context, entity.NetworkEntityId, intent));
+            collisionChunks.WaitFor(destination, this, new AdminTeleportReady(context, entityId, intent));
+            waitingTeleports[entityId] = new WaitingTeleports(intent.OperationId, teleports.Count + 1);
             waiting = true;
             return null;
         }
@@ -193,6 +233,12 @@ internal sealed class AdminIntentHandler(
             return NoGround;
         }
 
+        // A teleport that moves the character replaces every one that still waits.
+        if (teleports.Count > 0)
+        {
+            waitingTeleports[entityId] = teleports with { NewestOperationId = intent.OperationId };
+        }
+
         entity.Movement.Teleport(state);
         presence.RespawnEntityForViewers(entity, TeleportedReason);
         return null;
@@ -204,4 +250,6 @@ internal sealed class AdminIntentHandler(
             (ushort)entity.Movement.WalkSpeedPercent,
             combat.IsAdminInvulnerable(entity))));
     }
+
+    private readonly record struct WaitingTeleports(Guid NewestOperationId, int Count);
 }
