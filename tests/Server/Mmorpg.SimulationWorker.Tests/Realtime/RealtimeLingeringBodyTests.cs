@@ -247,7 +247,7 @@ public sealed class RealtimeLingeringBodyTests
         // where its connection ended, which the observer's last snapshot shows.
         await harness.PollForAsync(TimeSpan.FromSeconds(1));
         Assert.Empty(harness.GameService.Releases);
-        var body = observer.Snapshots.SelectMany(snapshot => snapshot.Entities).Last(value => value.EntityId == entityId).State;
+        var body = observer.Snapshots.SelectMany(snapshot => snapshot.Entities).Last(value => value.EntityId == entityId);
         Assert.True(body.PositionX > 3.6f);
         var reconnect = character with { Ticket = "ticket-returning-hero", SimulationSessionToken = "returned-token" };
         harness.GameService.AddCharacter(reconnect);
@@ -255,9 +255,11 @@ public sealed class RealtimeLingeringBodyTests
 
         Assert.True(second.JoinAccepted!.IsReconnect);
         Assert.Equal(entityId, second.JoinAccepted.ControlledEntityId);
-        Assert.Equal(
-            (body.PositionX, body.PositionY, body.PositionZ),
-            (second.JoinAccepted.InitialPlayerState.PositionX, second.JoinAccepted.InitialPlayerState.PositionY, second.JoinAccepted.InitialPlayerState.PositionZ));
+        // The snapshot carries the body's position to the nearest step of its record.
+        var initial = second.JoinAccepted.InitialPlayerState;
+        Assert.InRange(Math.Abs(initial.PositionX - body.PositionX), 0f, 0.5f / RealtimeEntitySnapshot.HorizontalStepsPerMeter);
+        Assert.InRange(Math.Abs(initial.PositionY - body.PositionY), 0f, 0.5f / RealtimeEntitySnapshot.VerticalStepsPerMeter);
+        Assert.InRange(Math.Abs(initial.PositionZ - body.PositionZ), 0f, 0.5f / RealtimeEntitySnapshot.HorizontalStepsPerMeter);
         await harness.PollUntilAsync(() => OwnerStates(second).Any(), "the owner combat state");
         Assert.Equal((37, 12), (OwnerStates(second)[^1].Health, OwnerStates(second)[^1].Mana));
 

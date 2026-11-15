@@ -563,12 +563,14 @@ namespace Mmorpg.SharedTests
                 "6c 6f 74 68 69 6e 67 2e 77 6f 6f 6c 5f 63 6c 6f " +
                 "61 6b 01 01 14 00 74 6f 6f 6c 2e 73 74 61 72 74 " +
                 "65 72 5f 70 69 63 6b 61 78 65",
-            ["Replication/SimulationSnapshot/full chunk"] = "sha256:997:463fa3b27bbfcb34175c3d0642e78be59ea7530fc188e8827bf694e91a384b4d",
+            ["Replication/SimulationSnapshot/full chunk"] = "sha256:1007:c1c4807227cb3b21e4b023ce63da190b17b448594391f3478ae4f0b284b3464f",
+            ["Replication/SimulationSnapshot/range edges"] =
+                "0b 00 00 00 16 00 00 00 00 00 01 00 02 ff ff ff " +
+                "ff 00 00 80 00 80 ff ff 7f ff 03 01 00 00 00 ff " +
+                "ff 7f ff 7f 00 00 80 00 04",
             ["Replication/SimulationSnapshot/single entity"] =
                 "04 03 02 01 08 07 06 05 00 00 01 00 01 2a 00 00 " +
-                "00 00 00 00 00 33 00 00 00 00 00 48 41 00 00 50 " +
-                "c0 00 18 80 44 00 00 00 3f 00 00 1c c1 00 00 08 " +
-                "40 00 40 87 43 01",
+                "00 2a 00 c0 2a 80 d6 ff 3f 2a 04",
             ["Session/GameServiceAvailabilityChanged/available"] =
                 "01",
             ["Session/GameServiceAvailabilityChanged/unavailable"] =

@@ -27,6 +27,22 @@ internal sealed class RealtimePeerSender(
         Send(peer, packet, DeliveryMethod.Unreliable);
     }
 
+    // Sends a packet that a reusable buffer holds; the transport copies it.
+    public void SendUnreliable(IRealtimePeerConnection peer, ReadOnlySpan<byte> packet)
+    {
+        try
+        {
+            peer.Send(packet, DeliveryMethod.Unreliable);
+        }
+        catch (Exception exception)
+        {
+            DisconnectAfterFailedSend(peer, exception);
+            return;
+        }
+
+        networkMetrics.RecordSent(packet.Length);
+    }
+
     private void Send(IRealtimePeerConnection peer, byte[] packet, DeliveryMethod deliveryMethod)
     {
         try

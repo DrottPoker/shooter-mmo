@@ -30,7 +30,7 @@ values and `InvalidOperationException` for a packet above the limit.
 
 | Wire type | Encoding |
 | --- | --- |
-| `u8`, `u16`, `u32`, `u64`, `i32`, `i64` | Fixed-size integers |
+| `u8`, `u16`, `u32`, `u64`, `i16`, `i24`, `i32`, `i64` | Fixed-size integers; `i24` is three bytes of a signed value from -8,388,608 to 8,388,607 |
 | `f32` | IEEE single; NaN and infinities are rejected in both directions |
 | `bool` | One byte written as 0 or 1; any non-zero byte reads as true |
 | `guid` | 16 bytes in the order of .NET `Guid.ToByteArray` |
@@ -81,7 +81,9 @@ Encoding validates the value, computes the exact packet size with generated
 `PacketWriter` in `RealtimeProtocol.cs`. Decoding reads through `PacketReader`, a
 view over the packet bytes, so it allocates only the decoded values. Both use
 `BinaryPrimitives` for explicit little-endian access, so the bytes do not depend
-on the platform.
+on the platform. A struct or message with `encodeInto` is also encoded into a
+caller's buffer without allocating, as
+[Encoding Into A Buffer](#encoding-into-a-buffer) describes.
 
 Every family is generated from the schema. A family folder holds only what the
 schema cannot say:
@@ -90,7 +92,7 @@ schema cannot say:
 | --- | --- |
 | `Session` | None |
 | `Movement` | `Movement/RealtimeProtocol.Movement.cs`: cross-field rules |
-| `Replication` | `Replication/RealtimeProtocol.Replication.cs`: the player archetype ids |
+| `Replication` | `Replication/RealtimeProtocol.Replication.cs`: the player archetype ids and the precision of the remote entity record |
 | `Items` | `Items/RealtimeProtocol.Items.cs`: cross-field rules |
 | `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules, the shorter `RealtimeCorpseSlot` constructors, and the corpse view closure codes |
 | `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
@@ -136,7 +138,7 @@ each as a get-only property with the field's description.
 | `type` | C# type | Encoding |
 | --- | --- | --- |
 | `u8`, `u16`, `u32`, `u64` | `byte`, `ushort`, `uint`, `ulong` | Little-endian |
-| `i32`, `i64` | `int`, `long` | Little-endian |
+| `i16`, `i24`, `i32`, `i64` | `short`, `int`, `int`, `long` | Little-endian; an `i24` property must hold a 24-bit value |
 | `f32` | `float` | Always finite |
 | `bool` | `bool` | One byte |
 | `guid` | `Guid` | 16 bytes |
@@ -144,7 +146,7 @@ each as a get-only property with the field's description.
 | An enum name | The enum | One byte; the value must be defined, and a flags value may only combine defined bits |
 | A struct name | The struct class | The struct's fields |
 | `array` | An array of `items` | A `u8` count from `minCount` to `maxCount`, then the elements |
-| `bits8` | One `bool` property per entry in `bits` | One byte, lowest bit first; unknown bits are rejected |
+| `bits8`, `bits16` | One property per entry in `bits`: a `bool`, or with a `width` of 2 or more an unsigned `byte` or `ushort` that must fit that many bits | One or two bytes, lowest bit first; unknown bits are rejected |
 
 Value rules sit next to the type and apply both when encoding and when
 decoding:
@@ -203,6 +205,26 @@ It needs an optional string or `"blank": "allow"` on a string, and no
 message with arrays, become public `RealtimeProtocol` constants such as
 `OwnerSimulationSnapshotPacketSize`, so code that budgets packets never repeats
 a size by hand.
+
+### Encoding Into A Buffer
+
+`"encodeInto": true` adds an encoder that writes into a caller's `Span<byte>`
+instead of allocating a packet, for a path that sends many packets per tick:
+
+- On a struct of fixed size without `rules`, whose fields are numbers, enums,
+  or bit fields, `Encode<Struct>(destination, members)` validates the members as
+  the struct's own validation does and writes the struct's bytes.
+- On a message without `rules` or variants whose last field is an array of
+  such a struct, after fields of the same kinds, and without `distinct` rules,
+  `Encode<Message>Header(destination, fields, count)` validates the fields and
+  the count, writes the frame header, the fields, and the count, and returns
+  how many bytes it wrote. The caller appends exactly count structs, each
+  written by the struct's encoder.
+
+Both throw `ArgumentException` for an invalid value or a destination that is
+too short. The option shapes only the C# API, so the wire contract and its
+fingerprint stay the same. `SimulationSnapshot` and its `EntitySnapshot` use it,
+so the worker builds a snapshot chunk without allocating.
 
 ## Variants And Conditional Fields
 
@@ -373,26 +395,54 @@ so the client replays exactly the inputs after the acknowledged one. Remote
 `OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
 the next waypoint index, at most 32, which equals the waypoint count once the
 path ended, and the consecutive ticks in which collision blocked the path.
-Without a path, the index and the blocked ticks must be 0. Remote `PlayerState`
-records carry position, velocity, facing, and one flag, `IsGrounded`, and no
-path data. `MovementSettings` carries the tick and snapshot rates, the walk
-speed, turn rate, falling, the World bounds and ground height, and the character
-capsule and motor settings that the client predicts with.
+Without a path, the index and the blocked ticks must be 0. A remote
+`EntitySnapshot` carries no velocity and no path data, as
+[Remote Entity Record](#remote-entity-record) describes. `MovementSettings`
+carries the tick and snapshot rates, the walk speed, turn rate, falling, the
+World bounds and ground height, and the character capsule and motor settings
+that the client predicts with.
 
 ## Replication Messages
 
 `EntitySpawn` announces a player entity with its kind, persistent id, display
 name, archetype, server tick, initial state, and look. A remote simulation
 snapshot chunk carries the snapshot sequence, server tick, chunk index and
-count, and up to `MaximumSnapshotEntitiesPerChunk` (24) `EntitySnapshot`
-records, each an entity id, its last processed input sequence, and its
-`PlayerState`.
+count, and up to `MaximumSnapshotEntitiesPerChunk` (71) `EntitySnapshot`
+records, as many as fit the 1,023-byte unreliable packet: the 20 bytes of the
+frame header and chunk fields, and 14 bytes per record.
+
+### Remote Entity Record
+
+An `EntitySnapshot` carries only what a client shows of another entity,
+quantized, in 14 bytes:
+
+| Bytes | Field | Encoding |
+| ---: | --- | --- |
+| 4 | `EntityId` | `u32`, at least 1; every other message carries the same id in a `u64` |
+| 3 | `QuantizedX` | `i24` in steps of 1/128 m |
+| 2 | `QuantizedY` | `i16` in steps of 1/64 m |
+| 3 | `QuantizedZ` | `i24` in steps of 1/128 m |
+| 2 | `Pose` | `bits16`: `YawStep` in the low 10 bits, in steps of 360/1024 degrees, then `IsGrounded`; the other 5 bits must be 0 |
+
+The precision is in the hand-written
+`Replication/RealtimeProtocol.Replication.cs`. The worker rounds every value to
+the nearest step and clamps it to the range: x and z reach from -65,536 m to
+65,535.99 m in steps of 7.8 mm, y from -512 m to 511.98 m in steps of 15.6 mm,
+and the yaw any facing in steps of 0.35 degrees. A client multiplies back with
+`PositionX`, `PositionY`, `PositionZ`, and `YawDegrees`, so it shows a position
+within half a step of the worker's. A World manifest refuses bounds beyond
+65,535 m on x and z and a ground height or spawn beyond 511 m, as
+`WorldManifestValidator` checks. The worker gives out entity ids from 1 up to
+4,294,967,295 and refuses more. The record carries no velocity and no input
+sequence: the client derives the velocity it needs from the positions it
+interpolates, as
+[Remote Players](UNITY_CLIENT_ARCHITECTURE.md#remote-players) describes.
 
 A moving Mob travels in `SimulationSnapshot` like a remote player: an
-`EntitySnapshot` with the Mob's world actor entity id, input sequence 0, and its
-`PlayerState`, while its pose changes. The first tick it stands still sends one
-reliable `WorldActorState` with its rest pose and a newer state revision.
-Clients skip snapshot entities they do not know.
+`EntitySnapshot` with the Mob's world actor entity id, while its pose changes.
+The first tick it stands still sends one reliable `WorldActorState` with its
+rest pose and a newer state revision. Clients skip snapshot entities they do not
+know.
 
 ### Player Archetypes
 
@@ -849,8 +899,9 @@ C# API are left out, so a rename needs no new version. Generation fails when
 the contract of a locked version changes, records a new entry when
 `protocol.version` grows, and refuses a version below the newest locked one, so
 a version number is never reused. The fingerprint cannot see inside a
-hand-written `SatisfiesRules` overload: a change there that alters what a peer
-accepts needs a version bump by hand.
+hand-written `SatisfiesRules` overload or the precision of the remote entity
+record: a change there that alters what a peer accepts or what a value means
+needs a version bump by hand.
 
 Content that travels as free text, such as player archetypes, corpse
 presentation keys, error and closure codes, and despawn reasons, can grow

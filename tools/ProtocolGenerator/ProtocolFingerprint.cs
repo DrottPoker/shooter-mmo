@@ -84,7 +84,11 @@ public static class ProtocolFingerprint
                 + Fields(structType.Definition.Fields),
             ArrayWireType array => $"array({array.MinimumCount}..{array.MaximumCount.Value} "
                 + Type(array.Element.Type) + Rules(array.Element.Rules, [], array.Element.Type) + ")",
-            BitsWireType bits => $"bits8({bits.Bits.Count})",
+            BitsWireType bits => $"bits{bits.Size * 8}("
+                + (bits.Bits.Any(bit => bit.IsNumber)
+                    ? string.Join(",", bits.Bits.Select(bit => bit.Width))
+                    : bits.Bits.Count.ToString(CultureInfo.InvariantCulture))
+                + ")",
             _ => throw new InvalidOperationException($"Type {type} has no fingerprint.")
         };
     }

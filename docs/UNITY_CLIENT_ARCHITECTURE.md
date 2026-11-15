@@ -1000,7 +1000,7 @@ or costs time without a recording:
 | Corrections | Every correction of the prediction, which `LocalPlayerController.PositionCorrected` reports, as a distribution of meters, and the hard snaps per minute |
 | Rubber banding | `RenderedMotionTracker` reads where the local player is drawn, its transform after the presentation, and counts the part of a frame's horizontal movement that the walk speed does not explain; a frame without a bound player or with another player starts over, so a join or a reconnect counts no jump. The largest jump, the frames with a jump of 0.25 m or more, and the total |
 | After a silence | The largest correction and jump in the 2 s after a silence ended, such as an outage of the line |
-| Remote entities | Every frame each source reports, for the other players and the Mobs that snapshots move, whether `RemoteMovementPresenter.IsStarved`: the render clock reached the newest state while that state still moves, so the entity stands where the next snapshot should have moved it on. The entity-seconds seen and starved, the starvations, and the longest |
+| Remote entities | Every frame each source reports, for the other players and the Mobs that snapshots move, whether `RemoteMovementPresenter.IsStarved`: the render clock reached the newest state while the entity still moved between its two newest states, so it stands where the next snapshot should have moved it on. The entity-seconds seen and starved, the starvations, and the longest |
 | Reliable intents | The intents sent and the seconds to their results, over all and per kind of `RealtimeIntentKinds`. A recording turns `IRealtimeDiagnostics.IntentTimingEnabled` on, the channels report each intent's operation id through `RealtimeSender` when it leaves and when its result arrives, and the timing is off again when the recording ends |
 
 `StartRecording(label)` opens
@@ -1764,10 +1764,14 @@ for a person or a development bot.
 Its `RemoteMovementPresenter`, which moving Mobs share, buffers server states in
 `RemoteMovementInterpolation`, advances an adaptive monotonic frame-rate
 `RemoteRenderClock` behind the server, and applies the grounded presentation
-described above. `RemoteMovementPresenter.InterpolationDelayTicks` sets the
-render delay to two snapshot intervals and at least 100 ms: four ticks, about
-133 ms, at 30 ticks and 15 snapshots per second. One interval covers the wait for
-the next snapshot and the second a snapshot that arrives up to one interval late.
+described above. A snapshot record carries a quantized position, facing, and
+ground flag, and no velocity: `RemoteMovementPresenter.ToMovementState` turns it
+into a state within half a step of the worker's, and the presenter derives the
+velocity it needs from the positions and ticks of its two newest states.
+`RemoteMovementPresenter.InterpolationDelayTicks` sets the render delay to two
+snapshot intervals and at least 100 ms: four ticks, about 133 ms, at 30 ticks and
+15 snapshots per second. One interval covers the wait for the next snapshot and
+the second a snapshot that arrives up to one interval late.
 
 The clock measures that delay against an estimate of the server tick that
 advances with real time between snapshots. The estimate rises with any snapshot
@@ -3209,10 +3213,11 @@ revision, capability availability, and session validation; see
 ### Mob Movement
 
 A Mob that moves travels in the unreliable `SimulationSnapshot` like a remote
-player: an entity with its world actor entity id and a `PlayerState`. The worker
-includes it only while its pose changes, walking or turning to face its target,
-and sends one reliable `WorldActorState` with the rest pose when it stops. A Mob
-that never moves keeps its reliable pose.
+player: a record with its world actor entity id, its quantized position and
+facing, and its ground flag. The worker includes it only while its pose changes,
+walking or turning to face its target, and sends one reliable `WorldActorState`
+with the rest pose when it stops. A Mob that never moves keeps its reliable
+pose.
 
 `WorldActorPresentationController` subscribes to the snapshots of its realtime
 client and hands every entity that names a presented `MobView` to that view

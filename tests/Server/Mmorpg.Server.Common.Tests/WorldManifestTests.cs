@@ -35,6 +35,39 @@ public sealed class WorldManifestTests
     }
 
     [Fact]
+    public void ManifestRejectsAWorldBeyondWhatTheSnapshotRecordCarries()
+    {
+        var edge = CreateManifest();
+        edge.bounds.minimumX = -WorldManifestFormat.MaximumHorizontalCoordinate;
+        edge.bounds.maximumZ = WorldManifestFormat.MaximumHorizontalCoordinate;
+        edge.groundHeight = -WorldManifestFormat.MaximumVerticalCoordinate;
+        edge.spawn.y = WorldManifestFormat.MaximumVerticalCoordinate;
+        WorldManifestValidator.Validate(edge);
+
+        var wide = CreateManifest();
+        wide.bounds.maximumX = WorldManifestFormat.MaximumHorizontalCoordinate + 1f;
+        Assert.Contains(
+            "World bounds must stay within",
+            Assert.Throws<WorldManifestValidationException>(() => WorldManifestValidator.Validate(wide)).Message,
+            StringComparison.Ordinal);
+        var deep = CreateManifest();
+        deep.bounds.minimumZ = -WorldManifestFormat.MaximumHorizontalCoordinate - 1f;
+        Assert.Throws<WorldManifestValidationException>(() => WorldManifestValidator.Validate(deep));
+        var low = CreateManifest();
+        low.groundHeight = -WorldManifestFormat.MaximumVerticalCoordinate - 1f;
+        Assert.Contains(
+            "GroundHeight",
+            Assert.Throws<WorldManifestValidationException>(() => WorldManifestValidator.Validate(low)).Message,
+            StringComparison.Ordinal);
+        var high = CreateManifest();
+        high.spawn.y = WorldManifestFormat.MaximumVerticalCoordinate + 1f;
+        Assert.Contains(
+            "Spawn.Y",
+            Assert.Throws<WorldManifestValidationException>(() => WorldManifestValidator.Validate(high)).Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FileStoreRejectsRetiredServicePoints()
     {
         var root = Path.Combine(Path.GetTempPath(), "MmorpgWorldManifestTests", Guid.NewGuid().ToString("N"));

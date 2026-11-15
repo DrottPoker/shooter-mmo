@@ -49,6 +49,12 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
         Sent.Add(new RecordedPeerSend(data, deliveryMethod));
     }
 
+    // Keeps a copy, since the sender reuses its buffer.
+    public void Send(ReadOnlySpan<byte> data, DeliveryMethod deliveryMethod)
+    {
+        Send(data.ToArray(), deliveryMethod);
+    }
+
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
         return QueuedReliablePackets;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Mmorpg.GameSimulation;
 
@@ -38,6 +39,30 @@ namespace Mmorpg.Client.Gameplay
             }
 
             state = samples[samples.Count - 1].State;
+            return true;
+        }
+
+        // The planar velocity in meters per second between the two newest states, which a
+        // remote record does not carry. False with fewer than two states.
+        public bool TryGetNewestPlanarVelocity(int tickRateHz, out float velocityX, out float velocityZ)
+        {
+            velocityX = 0f;
+            velocityZ = 0f;
+            if (samples.Count < 2)
+            {
+                return false;
+            }
+
+            var newest = samples[samples.Count - 1];
+            var previous = samples[samples.Count - 2];
+            var seconds = (newest.ServerTick - previous.ServerTick) / (float)Math.Max(1, tickRateHz);
+            if (seconds <= 0f)
+            {
+                return false;
+            }
+
+            velocityX = (newest.State.PositionX - previous.State.PositionX) / seconds;
+            velocityZ = (newest.State.PositionZ - previous.State.PositionZ) / seconds;
             return true;
         }
 

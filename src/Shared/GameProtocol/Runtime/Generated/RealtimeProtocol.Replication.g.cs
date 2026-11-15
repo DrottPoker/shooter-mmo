@@ -25,34 +25,55 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// The state of one remote entity in a simulation snapshot.
+    /// What a client shows of one remote entity in a simulation snapshot, quantized: where it is, where it faces, and whether it stands on ground.
     /// </summary>
     public sealed partial class RealtimeEntitySnapshot
     {
         public RealtimeEntitySnapshot(
-            ulong entityId,
-            uint lastProcessedInputSequence,
-            RealtimePlayerState state)
+            uint entityId,
+            int quantizedX,
+            short quantizedY,
+            int quantizedZ,
+            ushort yawStep,
+            bool isGrounded)
         {
             EntityId = entityId;
-            LastProcessedInputSequence = lastProcessedInputSequence;
-            State = state;
+            QuantizedX = quantizedX;
+            QuantizedY = quantizedY;
+            QuantizedZ = quantizedZ;
+            YawStep = yawStep;
+            IsGrounded = isGrounded;
         }
 
         /// <summary>
-        /// The network entity id.
+        /// The network entity id, which every other message carries in 64 bits.
         /// </summary>
-        public ulong EntityId { get; }
+        public uint EntityId { get; }
 
         /// <summary>
-        /// The newest input sequence the worker applied for the entity.
+        /// World position on the x axis in steps of 1/128 m.
         /// </summary>
-        public uint LastProcessedInputSequence { get; }
+        public int QuantizedX { get; }
 
         /// <summary>
-        /// The entity's authoritative movement state.
+        /// World position on the y axis in steps of 1/64 m.
         /// </summary>
-        public RealtimePlayerState State { get; }
+        public short QuantizedY { get; }
+
+        /// <summary>
+        /// World position on the z axis in steps of 1/128 m.
+        /// </summary>
+        public int QuantizedZ { get; }
+
+        /// <summary>
+        /// Facing around the vertical axis in steps of 360/1024 degrees.
+        /// </summary>
+        public ushort YawStep { get; }
+
+        /// <summary>
+        /// The entity stands on walkable ground.
+        /// </summary>
+        public bool IsGrounded { get; }
     }
 
     /// <summary>
@@ -433,7 +454,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The encoded size in bytes of one EntitySnapshot.
         /// </summary>
-        public const int SimulationSnapshotEntitySize = 41;
+        public const int SimulationSnapshotEntitySize = 14;
 
         /// <summary>
         /// One chunk of the remote entity states visible to the recipient.
@@ -486,7 +507,7 @@ namespace Mmorpg.GameProtocol
         private static int SizeOfSimulationSnapshot(RealtimeSimulationSnapshot value)
         {
             var size = 12;
-            size += 1 + (value.Entities.Length * 41);
+            size += 1 + (value.Entities.Length * 14);
             return size;
         }
 
@@ -560,6 +581,33 @@ namespace Mmorpg.GameProtocol
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Writes the frame header, the fields before Entities, and the count of Entities into destination and returns the 20 bytes it wrote. The caller appends exactly entitiesCount EntitySnapshot values of 14 bytes, each written by EncodeEntitySnapshot, so the packet is built without allocating.
+        /// </summary>
+        public static int EncodeSimulationSnapshotHeader(Span<byte> destination, uint snapshotSequence, uint serverTick, ushort chunkIndex, ushort chunkCount, int entitiesCount)
+        {
+            if (chunkIndex >= chunkCount
+                || chunkCount < 1
+                || entitiesCount < 1
+                || entitiesCount > MaximumSnapshotEntitiesPerChunk)
+            {
+                throw new ArgumentException("Simulation snapshot is invalid.");
+            }
+
+            if (destination.Length < 20 + (entitiesCount * 14))
+            {
+                throw new ArgumentException("Simulation snapshot does not fit the destination.", nameof(destination));
+            }
+
+            var writer = StartPacket(destination, RealtimeMessageType.SimulationSnapshot);
+            writer.WriteUInt32(snapshotSequence);
+            writer.WriteUInt32(serverTick);
+            writer.WriteUInt16(chunkIndex);
+            writer.WriteUInt16(chunkCount);
+            writer.WriteByte((byte)entitiesCount);
+            return writer.Position;
         }
 
         /// <summary>
@@ -1156,30 +1204,48 @@ namespace Mmorpg.GameProtocol
 
         private static void WriteEntitySnapshot(ref PacketWriter writer, RealtimeEntitySnapshot value)
         {
-            writer.WriteUInt64(value.EntityId);
-            writer.WriteUInt32(value.LastProcessedInputSequence);
-            WritePlayerState(ref writer, value.State);
+            writer.WriteUInt32(value.EntityId);
+            writer.WriteInt24(value.QuantizedX);
+            writer.WriteInt16(value.QuantizedY);
+            writer.WriteInt24(value.QuantizedZ);
+            writer.WriteUInt16((ushort)(value.YawStep | (value.IsGrounded ? 1024 : 0)));
         }
 
         private static bool TryReadEntitySnapshot(ref PacketReader reader, out RealtimeEntitySnapshot value, out string error)
         {
             value = null;
-            if (!reader.TryReadUInt64(out var entityId, out error))
+            if (!reader.TryReadUInt32(out var entityId, out error))
             {
                 return false;
             }
 
-            if (!reader.TryReadUInt32(out var lastProcessedInputSequence, out error))
+            if (!reader.TryReadInt24(out var quantizedX, out error))
             {
                 return false;
             }
 
-            if (!TryReadPlayerState(ref reader, out var state, out error))
+            if (!reader.TryReadInt16(out var quantizedY, out error))
             {
                 return false;
             }
 
-            value = new RealtimeEntitySnapshot(entityId, lastProcessedInputSequence, state);
+            if (!reader.TryReadInt24(out var quantizedZ, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadUInt16(out var pose, out error))
+            {
+                return false;
+            }
+
+            if ((pose & ~0x07FF) != 0)
+            {
+                error = "Entity snapshot pose has unknown bits.";
+                return false;
+            }
+
+            value = new RealtimeEntitySnapshot(entityId, quantizedX, quantizedY, quantizedZ, (ushort)(pose & 0x03FF), (pose & 0x0400) != 0);
             return true;
         }
 
@@ -1187,12 +1253,44 @@ namespace Mmorpg.GameProtocol
         {
             if (value == null
                 || value.EntityId < 1
-                || !IsValidPlayerState(value.State))
+                || value.QuantizedX < -8388608
+                || value.QuantizedX > 8388607
+                || value.QuantizedZ < -8388608
+                || value.QuantizedZ > 8388607
+                || value.YawStep > 1023)
             {
                 return false;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Writes one EntitySnapshot of 14 bytes into the start of destination, validated as the struct is, without allocating.
+        /// </summary>
+        public static void EncodeEntitySnapshot(Span<byte> destination, uint entityId, int quantizedX, short quantizedY, int quantizedZ, ushort yawStep, bool isGrounded)
+        {
+            if (entityId < 1
+                || quantizedX < -8388608
+                || quantizedX > 8388607
+                || quantizedZ < -8388608
+                || quantizedZ > 8388607
+                || yawStep > 1023)
+            {
+                throw new ArgumentException("Entity snapshot is invalid.");
+            }
+
+            if (destination.Length < 14)
+            {
+                throw new ArgumentException("Entity snapshot does not fit the destination.", nameof(destination));
+            }
+
+            var writer = new PacketWriter(destination.Slice(0, 14));
+            writer.WriteUInt32(entityId);
+            writer.WriteInt24(quantizedX);
+            writer.WriteInt16(quantizedY);
+            writer.WriteInt24(quantizedZ);
+            writer.WriteUInt16((ushort)(yawStep | (isGrounded ? 1024 : 0)));
         }
 
         private static void WriteAppearanceChoice(ref PacketWriter writer, RealtimeAppearanceChoice value)

@@ -42,6 +42,17 @@ public sealed class SimulationEntityRegistryTests
     }
 
     [Fact]
+    public void EntityIdsStopAtTheLargestIdThatASnapshotRecordCarries()
+    {
+        var registry = new SimulationEntityRegistry(uint.MaxValue);
+
+        Assert.Equal(uint.MaxValue, registry.AllocateNetworkEntityId());
+        var exception = Assert.Throws<InvalidOperationException>(() => registry.AllocateNetworkEntityId());
+        Assert.Contains("exhausted", exception.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterPlayer(CreateSession(), CreateMovement));
+    }
+
+    [Fact]
     public void ReconnectPreservesEntityIdAndMovementForTheSameSimulationSession()
     {
         var registry = new SimulationEntityRegistry();

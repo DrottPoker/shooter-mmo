@@ -480,7 +480,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 serverTick,
                 0,
                 1,
-                new[] { new RealtimeEntitySnapshot(PlayerEntityId, 3, PlayerState()) });
+                new[] { new RealtimeEntitySnapshot((uint)PlayerEntityId, 0, 0, -128, 0, true) });
         }
 
         // Client intents, which the hub sends and a server never sends back.

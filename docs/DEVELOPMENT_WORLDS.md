@@ -36,7 +36,11 @@ hand. Each World's content lives in `content/worlds/<WorldId>`:
 
 - `world.json` is the only source of the spawn and the playable bounds. The
   builders read it to place `PlayerSpawn` and the boundary walls, and
-  SimulationWorker reads it to spawn characters and clamp movement.
+  SimulationWorker reads it to spawn characters and clamp movement. Its bounds
+  stay within 65,535 m of the origin on x and z, and its ground height and spawn
+  within 511 m up or down, the range of the
+  [Remote Entity Record](REALTIME_PROTOCOL.md#remote-entity-record); a manifest
+  beyond that is refused.
 - `actor-spawns.json` is the only source of NPC, Mob, and resource node
   positions; the layouts only keep those positions clear. A resource node blocks
   movement with its collision box, which the collision compilers add to the

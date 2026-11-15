@@ -372,21 +372,110 @@ public sealed class RealtimeProtocolTests
             3,
             new[]
             {
-                new RealtimeEntitySnapshot(73, 12, CreatePlayerState(3f))
+                RealtimeEntitySnapshot.Quantize(73, 3f, -1.5f, -1f, 90f, true),
+                new RealtimeEntitySnapshot(uint.MaxValue, -(1 << 23), short.MinValue, (1 << 23) - 1, 1023, false)
             });
 
-        var decoded = RealtimeProtocol.TryDecodeSimulationSnapshot(
-            RealtimeProtocol.EncodeSimulationSnapshot(expected),
-            out var actual,
-            out var error);
+        var packet = RealtimeProtocol.EncodeSimulationSnapshot(expected);
+        var decoded = RealtimeProtocol.TryDecodeSimulationSnapshot(packet, out var actual, out var error);
 
         Assert.True(decoded, error);
+        Assert.Equal(RealtimeProtocol.SimulationSnapshotPacketHeaderSize + (2 * 14), packet.Length);
         Assert.Equal(4u, actual.SnapshotSequence);
         Assert.Equal(90u, actual.ServerTick);
         Assert.Equal((ushort)1, actual.ChunkIndex);
         Assert.Equal((ushort)3, actual.ChunkCount);
-        Assert.Equal(73ul, actual.Entities[0].EntityId);
-        Assert.Equal(3f, actual.Entities[0].State.PositionX);
+        var near = actual.Entities[0];
+        Assert.Equal(
+            (73u, 3f, -1.5f, -1f, 90f, true),
+            (near.EntityId, near.PositionX, near.PositionY, near.PositionZ, near.YawDegrees, near.IsGrounded));
+        var edge = actual.Entities[1];
+        Assert.Equal(
+            (uint.MaxValue, -65536f, -512f, 65535.9921875f, 359.6484375f, false),
+            (edge.EntityId, edge.PositionX, edge.PositionY, edge.PositionZ, edge.YawDegrees, edge.IsGrounded));
+    }
+
+    [Fact]
+    public void QuantizationRoundsToTheNearestStepAndClampsToTheRange()
+    {
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeHorizontal(1.004f, out var nearStep));
+        Assert.Equal(129, nearStep);
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeHorizontal(-0.01171875f, out var negativeHalfStep));
+        Assert.Equal(-2, negativeHalfStep);
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeHorizontal(70_000f, out var high));
+        Assert.Equal((1 << 23) - 1, high);
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeHorizontal(-70_000f, out var low));
+        Assert.Equal(-(1 << 23), low);
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeVertical(-600f, out var deep));
+        Assert.Equal(short.MinValue, deep);
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeVertical(1.5078125f, out var height));
+        Assert.Equal(97, height);
+        Assert.False(RealtimeEntitySnapshot.TryQuantizeHorizontal(float.NaN, out _));
+        Assert.False(RealtimeEntitySnapshot.TryQuantizeVertical(float.PositiveInfinity, out _));
+        Assert.False(RealtimeEntitySnapshot.TryQuantizeYaw(float.NegativeInfinity, out _));
+
+        // Any turn, to the nearest of 1024 steps, and a full turn wraps to 0.
+        Assert.Equal(0, Yaw(0f));
+        Assert.Equal(256, Yaw(90f));
+        Assert.Equal(768, Yaw(-90f));
+        Assert.Equal(256, Yaw(450f));
+        Assert.Equal(0, Yaw(359.9f));
+        Assert.Equal(1023, Yaw(359.6f));
+        Assert.Throws<ArgumentException>(() => RealtimeEntitySnapshot.Quantize(1, float.NaN, 0f, 0f, 0f, true));
+    }
+
+    [Fact]
+    public void SnapshotEncodersIntoACallersBufferWriteTheBytesOfTheAllocatingEncoder()
+    {
+        var entities = new[]
+        {
+            new RealtimeEntitySnapshot(7, 1000, -64, -1000, 512, true),
+            new RealtimeEntitySnapshot(8, -(1 << 23), 32767, (1 << 23) - 1, 1023, false)
+        };
+        var expected = RealtimeProtocol.EncodeSimulationSnapshot(new RealtimeSimulationSnapshot(9, 10, 1, 2, entities));
+        var buffer = new byte[RealtimeProtocol.MaximumUnreliablePacketSize];
+
+        var length = RealtimeProtocol.EncodeSimulationSnapshotHeader(buffer, 9, 10, 1, 2, entities.Length);
+        Assert.Equal(RealtimeProtocol.SimulationSnapshotPacketHeaderSize, length);
+        foreach (var entity in entities)
+        {
+            RealtimeProtocol.EncodeEntitySnapshot(
+                buffer.AsSpan(length),
+                entity.EntityId,
+                entity.QuantizedX,
+                entity.QuantizedY,
+                entity.QuantizedZ,
+                entity.YawStep,
+                entity.IsGrounded);
+            length += RealtimeProtocol.SimulationSnapshotEntitySize;
+        }
+
+        Assert.Equal(expected, buffer.AsSpan(0, length).ToArray());
+        Assert.True(RealtimeProtocol.TryReadMessageType(buffer.AsSpan(0, length), out var type));
+        Assert.Equal(RealtimeMessageType.SimulationSnapshot, type);
+    }
+
+    [Fact]
+    public void SnapshotEncodersIntoACallersBufferRejectInvalidValuesAndShortBuffers()
+    {
+        var buffer = new byte[RealtimeProtocol.MaximumUnreliablePacketSize];
+
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySnapshot(buffer, 0, 0, 0, 0, 0, true));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySnapshot(buffer, 1, 1 << 23, 0, 0, 0, true));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySnapshot(buffer, 1, 0, 0, -(1 << 23) - 1, 0, true));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySnapshot(buffer, 1, 0, 0, 0, 1024, true));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeEntitySnapshot(new byte[13], 1, 0, 0, 0, 0, true));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshotHeader(buffer, 1, 1, 1, 1, 1));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshotHeader(buffer, 1, 1, 0, 0, 1));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshotHeader(buffer, 1, 1, 0, 1, 0));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshotHeader(
+            buffer,
+            1,
+            1,
+            0,
+            1,
+            RealtimeProtocol.MaximumSnapshotEntitiesPerChunk + 1));
+        Assert.Throws<ArgumentException>(() => RealtimeProtocol.EncodeSimulationSnapshotHeader(new byte[20 + 13], 1, 1, 0, 1, 1));
     }
 
     [Fact]
@@ -420,19 +509,21 @@ public sealed class RealtimeProtocolTests
     public void MaximumSimulationSnapshotChunkStaysInsideProtocolPacketLimit()
     {
         var entities = Enumerable.Range(1, RealtimeProtocol.MaximumSnapshotEntitiesPerChunk)
-            .Select(index => new RealtimeEntitySnapshot(
-                (ulong)index,
-                (uint)index,
-                CreatePlayerState(index)))
+            .Select(index => RealtimeEntitySnapshot.Quantize((uint)index, index, 0f, -1f, 0f, true))
             .ToArray();
         var packet = RealtimeProtocol.EncodeSimulationSnapshot(
             new RealtimeSimulationSnapshot(1, 1, 0, 1, entities));
 
+        Assert.Equal(14, RealtimeProtocol.SimulationSnapshotEntitySize);
+        Assert.Equal(71, RealtimeProtocol.MaximumSnapshotEntitiesPerChunk);
         Assert.Equal(
             RealtimeProtocol.SimulationSnapshotPacketHeaderSize
                 + (entities.Length * RealtimeProtocol.SimulationSnapshotEntitySize),
             packet.Length);
         Assert.True(packet.Length <= RealtimeProtocol.MaximumUnreliablePacketSize);
+
+        // One record more would not fit.
+        Assert.True(packet.Length + RealtimeProtocol.SimulationSnapshotEntitySize > RealtimeProtocol.MaximumUnreliablePacketSize);
     }
 
     [Fact]
@@ -456,7 +547,7 @@ public sealed class RealtimeProtocolTests
                 1,
                 0,
                 1,
-                [new RealtimeEntitySnapshot(0, 0, CreatePlayerState(0f))])));
+                [new RealtimeEntitySnapshot(0, 0, 0, 0, 0, true)])));
     }
 
     [Fact]
@@ -498,6 +589,12 @@ public sealed class RealtimeProtocolTests
             0.4f,
             0.1f,
             6);
+    }
+
+    private static int Yaw(float degrees)
+    {
+        Assert.True(RealtimeEntitySnapshot.TryQuantizeYaw(degrees, out var step));
+        return step;
     }
 
     private static RealtimePlayerState CreatePlayerState(float positionX)

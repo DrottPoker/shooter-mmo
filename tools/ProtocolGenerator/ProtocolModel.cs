@@ -110,6 +110,10 @@ public enum PrimitiveKind
     U16,
     U32,
     U64,
+    I16,
+
+    // Three bytes, a signed value from -8,388,608 to 8,388,607 in a C# int.
+    I24,
     I32,
     I64,
     F32,
@@ -134,10 +138,20 @@ public sealed record ArrayWireType(ElementDefinition Element, int MinimumCount, 
 // empty or whitespace in both directions.
 public sealed record StringWireType(IntBound MaximumLength, bool AllowBlank = false) : WireType;
 
-// One byte whose bits are boolean properties. Unknown bits are rejected.
-public sealed record BitsWireType(IReadOnlyList<BitDefinition> Bits) : WireType;
+// One or two bytes whose bits are properties, lowest bit first: a bool per one-bit entry and
+// an unsigned number per wider entry. Unknown bits are rejected.
+public sealed record BitsWireType(IReadOnlyList<BitDefinition> Bits, int Size = 1) : WireType
+{
+    public int Width => Bits.Sum(bit => bit.Width);
+}
 
-public sealed record BitDefinition(string Name, string? Description);
+// Width 1 is a bool; a wider entry is an unsigned number of that many bits.
+public sealed record BitDefinition(string Name, string? Description, int Width = 1)
+{
+    public bool IsNumber => Width > 1;
+
+    public int Maximum => (1 << Width) - 1;
+}
 
 // Value rules that apply to one field or one array element.
 public sealed record ValueRules(
@@ -251,6 +265,9 @@ public sealed class StructDefinition
 
     public string? SizeConstant { get; }
 
+    // Also generates an encoder that writes one struct into a caller's buffer.
+    public bool EncodeInto { get; init; }
+
     public List<FieldDefinition> Fields { get; } = [];
 }
 
@@ -299,4 +316,8 @@ public sealed record MessageDefinition(
 {
     // An unwrapped struct whose encode method takes the struct's fields as parameters.
     public bool ExpandedEncode { get; init; }
+
+    // Also generates an encoder that writes the packet up to its last array into a caller's
+    // buffer, after which the caller appends the elements.
+    public bool EncodeInto { get; init; }
 }

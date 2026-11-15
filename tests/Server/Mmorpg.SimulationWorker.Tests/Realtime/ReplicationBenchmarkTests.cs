@@ -111,22 +111,22 @@ public sealed class ReplicationBenchmarkTests
         var numbers = first.Deterministic;
         TestContext.Current.TestOutputHelper?.WriteLine(JsonSerializer.Serialize(numbers, SerializerOptions));
         Assert.Equal(
-            [45L, 797_400L, 3_206L, 800_606L, 3_600L, 41L, 18_000L, 1_800L, 16_200L, 29_717L, 559L, 2_359L, 18L, 23L, 0L],
+            [45L, 759_854L, 3_206L, 763_060L, 3_600L, 41L, 46_561L, 1_800L, 44_761L, 1_156L, 1_800L, 3_600L, 18L, 23L, 0L],
             [
                 numbers.Snapshots, numbers.SnapshotBytes, numbers.ReliableBytes, numbers.AllBytes, numbers.UnreliablePackets,
                 numbers.ReliablePackets, numbers.SnapshotRecords, numbers.OwnerRecords, numbers.RemoteRecords,
                 numbers.DeferredUpdates, numbers.VisibilityGroups, numbers.PacketsEncoded, numbers.SpawnPackets,
                 numbers.DespawnPackets, numbers.DroppedSnapshotPackets
             ]);
-        Assert.Equal(6_645d, numbers.SnapshotBytesPerPlayerPerSecond, 9);
-        Assert.Equal(6_671.716666666667, numbers.AllBytesPerPlayerPerSecond, 9);
+        Assert.Equal(6_332.116666666667, numbers.SnapshotBytesPerPlayerPerSecond, 9);
+        Assert.Equal(6_358.833333333334, numbers.AllBytesPerPlayerPerSecond, 9);
         Assert.Equal(1_213.6666666666667, numbers.PacketsPerSecond, 9);
-        Assert.Equal(10d, numbers.RecordsPerPlayerPerSnapshot, 9);
-        Assert.Equal(44.3, numbers.BytesPerRecord, 9);
-        Assert.Equal(0.6471894940871573, numbers.DeferredShare, 9);
-        Assert.Equal(5.390541463782061, numbers.UpdateRateAverageHz, 9);
-        Assert.Equal(4.379956741167988, numbers.UpdateRateP5Hz, 9);
-        Assert.Equal(4.336188436830835, numbers.UpdateRateMinimumHz, 9);
+        Assert.Equal(25.867222222222225, numbers.RecordsPerPlayerPerSnapshot, 9);
+        Assert.Equal(16.319537810614033, numbers.BytesPerRecord, 9);
+        Assert.Equal(0.025175860792299148, numbers.DeferredShare, 9);
+        Assert.Equal(14.682348054101421, numbers.UpdateRateAverageHz, 9);
+        Assert.Equal(13.626532083633741, numbers.UpdateRateP5Hz, 9);
+        Assert.Equal(13.490364025695932, numbers.UpdateRateMinimumHz, 9);
         Assert.Contains("snapshots", first.Timing.PhaseAverageMs.Keys);
         Assert.Contains("benchmark motion", first.Timing.PhaseAverageMs.Keys);
     }

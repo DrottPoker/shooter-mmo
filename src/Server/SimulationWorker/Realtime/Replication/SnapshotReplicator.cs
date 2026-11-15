@@ -7,10 +7,12 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Broadcasts movement snapshots: one owner snapshot per player plus interest-filtered
 // remote snapshots of players and of the Mobs that moved, within the per-peer and
-// aggregate byte budgets. The recipient rotation keeps the remote budget fair across
-// peers in registry order. A recipient whose packets fail to build or send is disconnected
-// alone, and the others still get theirs. The aggregate budget refills on the time provider's
-// clock, the system's unless the replication benchmark gives it its own. Loop-confined.
+// aggregate byte budgets. Every entity's remote record is quantized once per snapshot, and
+// each recipient's chunks are assembled from those records without allocating. The
+// recipient rotation keeps the remote budget fair across peers in registry order. A
+// recipient whose packets fail to build or send is disconnected alone, and the others
+// still get theirs. The aggregate budget refills on the time provider's clock, the
+// system's unless the replication benchmark gives it its own. Loop-confined.
 internal sealed class SnapshotReplicator(
     SimulationWorkerConfig config,
     IMobSnapshotSource mobs,
@@ -29,8 +31,8 @@ internal sealed class SnapshotReplicator(
 
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<SnapshotRecipient> snapshotRecipientBuffer = [];
-    private readonly List<RealtimeEntitySnapshot> mobSnapshotBuffer = [];
-    private readonly SnapshotPacketCache snapshotPacketCache = new();
+    private readonly List<SnapshotEntityState> mobStateBuffer = [];
+    private readonly SnapshotRecords records = new();
     private readonly Dictionary<ulong, OwnerState> ownerStates = [];
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
@@ -62,11 +64,12 @@ internal sealed class SnapshotReplicator(
     {
         var broadcastStarted = Stopwatch.GetTimestamp();
         var sentPacketCount = 0;
-        var encodedOwnerPacketCount = 0;
+        var encodedPacketCount = 0;
+        var remoteRecipientCount = 0;
         long deferredEntityUpdateCount = 0;
         try
         {
-            snapshotPacketCache.Reset();
+            records.Reset();
             ownerStates.Clear();
             entityRegistry.CopyPlayersTo(playerBuffer);
             foreach (var entity in playerBuffer)
@@ -74,10 +77,7 @@ internal sealed class SnapshotReplicator(
                 // Other players see where the character is now, a lingering body without a peer
                 // too; an owner gets the state after the last processed input, which its
                 // reconciliation replays from.
-                snapshotPacketCache.Add(new RealtimeEntitySnapshot(
-                    entity.NetworkEntityId,
-                    entity.Movement.LastProcessedInputSequence,
-                    RealtimeStateMapper.ToRealtimePlayerState(entity.Movement.State)));
+                records.Add(entity.NetworkEntityId, entity.Movement.State);
                 if (!connectionBindings.TryGetConnectionId(entity.NetworkEntityId, out _))
                 {
                     continue;
@@ -92,7 +92,7 @@ internal sealed class SnapshotReplicator(
                         RealtimeStateMapper.ToRealtimePathProgress(confirmed.PathProgress)));
             }
 
-            if (snapshotPacketCache.EntitySnapshotCount == 0)
+            if (playerBuffer.Count == 0)
             {
                 // No bound player has interest to refresh, but despawned world actors
                 // must still be pruned, or their tombstones stay until a player joins.
@@ -100,10 +100,10 @@ internal sealed class SnapshotReplicator(
                 return;
             }
 
-            mobs.CopyPendingSnapshotsTo(mobSnapshotBuffer);
-            foreach (var mobSnapshot in mobSnapshotBuffer)
+            mobs.CopyPendingStatesTo(mobStateBuffer);
+            foreach (var mob in mobStateBuffer)
             {
-                snapshotPacketCache.Add(mobSnapshot);
+                records.Add(mob.EntityId, mob.State);
             }
 
             var interestStarted = Stopwatch.GetTimestamp();
@@ -162,7 +162,7 @@ internal sealed class SnapshotReplicator(
                             owner.LastProcessedInputSequence,
                             owner.State,
                             owner.PathProgress));
-                    encodedOwnerPacketCount++;
+                    encodedPacketCount++;
                     if (!aggregateSnapshotBytes.TryConsume(ownerPacket.Length))
                     {
                         networkMetrics.RecordSnapshotBackpressureDropped(1);
@@ -197,40 +197,45 @@ internal sealed class SnapshotReplicator(
                     (recipientStart + recipientIndex) % snapshotRecipientBuffer.Count];
                 try
                 {
-                    var packetBatch = snapshotPacketCache.GetOrCreate(
+                    var plan = records.Plan(
                         presence.GetVisibleOrdered(recipient.Context.PeerId),
                         snapshotSequence,
-                        clock.ServerTick,
                         bytesPerRecipient,
                         config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
-                    deferredEntityUpdateCount += packetBatch.DeferredEntityCount;
-                    if (packetBatch.Packets.Count == 0)
+                    deferredEntityUpdateCount += plan.DeferredCount;
+                    if (plan.PacketCount == 0)
                     {
                         continue;
                     }
 
-                    if (!aggregateSnapshotBytes.TryConsume(packetBatch.TotalBytes))
+                    if (!aggregateSnapshotBytes.TryConsume(plan.TotalBytes))
                     {
-                        networkMetrics.RecordSnapshotBackpressureDropped(
-                            packetBatch.Packets.Count);
+                        networkMetrics.RecordSnapshotBackpressureDropped(plan.PacketCount);
                         continue;
                     }
 
                     lastAdmittedRecipientOffset = recipientIndex;
 
-                    if (!recipient.Context.Quota.TryConsumeSnapshot(packetBatch.TotalBytes))
+                    if (!recipient.Context.Quota.TryConsumeSnapshot(plan.TotalBytes))
                     {
-                        networkMetrics.RecordSnapshotDropped(packetBatch.Packets.Count);
+                        networkMetrics.RecordSnapshotDropped(plan.PacketCount);
                         continue;
                     }
 
-                    for (var packetIndex = 0; packetIndex < packetBatch.Packets.Count; packetIndex++)
+                    // The chunks are built for this recipient alone, so it is a visibility group
+                    // of its own.
+                    remoteRecipientCount++;
+                    for (var packetIndex = 0; packetIndex < plan.PacketCount; packetIndex++)
                     {
-                        var packet = packetBatch.Packets[packetIndex];
+                        var packet = records.WriteChunk(
+                            packetIndex,
+                            snapshotSequence,
+                            clock.ServerTick,
+                            out var recordCount);
+                        encodedPacketCount++;
                         sender.SendUnreliable(recipient.Peer, packet);
                         sentPacketCount++;
-                        networkMetrics.RecordSnapshotEntities(
-                            packetBatch.EntityCounts[packetIndex]);
+                        networkMetrics.RecordSnapshotEntities(recordCount);
                         networkMetrics.RecordSnapshotBytes(packet.Length);
                     }
                 }
@@ -247,8 +252,8 @@ internal sealed class SnapshotReplicator(
         finally
         {
             performanceMetrics.RecordSnapshotPacketReuse(
-                snapshotPacketCache.VisibilityGroupCount,
-                snapshotPacketCache.EncodedPacketCount + encodedOwnerPacketCount,
+                remoteRecipientCount,
+                encodedPacketCount,
                 sentPacketCount,
                 deferredEntityUpdateCount);
             performanceMetrics.RecordSnapshotBroadcast(

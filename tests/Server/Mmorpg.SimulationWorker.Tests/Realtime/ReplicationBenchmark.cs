@@ -239,7 +239,8 @@ internal sealed class ReplicationClock(int tickRateHz) : TimeProvider
 }
 
 // The transport double: a peer that counts what the worker sends to it, by delivery method, and
-// the entity records of the snapshots among it, and discards the packets.
+// the entity records of the snapshots among it, and discards the packets. It reads a packet in
+// place, so it adds no allocation of its own to the loop that the benchmark measures.
 internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
 {
     public int Id { get; } = id;
@@ -257,6 +258,11 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
     public long RemoteRecords { get; private set; }
 
     public void Send(byte[] data, DeliveryMethod deliveryMethod)
+    {
+        Send(new ReadOnlySpan<byte>(data), deliveryMethod);
+    }
+
+    public void Send(ReadOnlySpan<byte> data, DeliveryMethod deliveryMethod)
     {
         if (deliveryMethod == DeliveryMethod.Unreliable)
         {
@@ -913,15 +919,14 @@ internal sealed class ReplicationBenchmark : IDisposable
     // since the last snapshot, so each snapshot carries all of them.
     private sealed class MovingMobs(MovingEntities mobs) : IMobSnapshotSource
     {
-        public void CopyPendingSnapshotsTo(List<RealtimeEntitySnapshot> destination)
+        public void CopyPendingStatesTo(List<SnapshotEntityState> destination)
         {
             destination.Clear();
             foreach (var mover in mobs.Movers)
             {
-                destination.Add(new RealtimeEntitySnapshot(
+                destination.Add(new SnapshotEntityState(
                     mover.EntityId,
-                    0,
-                    new RealtimePlayerState(mover.X, 0f, mover.Z, mover.VelocityX, 0f, mover.VelocityZ, mover.YawDegrees, true)));
+                    new PlayerMovementState(mover.X, 0f, mover.Z, mover.VelocityX, 0f, mover.VelocityZ, mover.YawDegrees, true)));
             }
         }
     }

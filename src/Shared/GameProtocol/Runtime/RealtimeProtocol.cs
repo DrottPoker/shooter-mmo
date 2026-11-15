@@ -13,18 +13,31 @@ namespace Mmorpg.GameProtocol
 
         private const int GuidSize = 16;
 
+        private const int Int24Size = 3;
+
         // Decoding rejects invalid UTF-8 instead of replacing it.
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         public static bool TryReadMessageType(byte[] data, out RealtimeMessageType messageType)
         {
+            if (data == null)
+            {
+                messageType = default;
+                return false;
+            }
+
+            return TryReadMessageType(new ReadOnlySpan<byte>(data), out messageType);
+        }
+
+        // Reads the type of a packet that a caller's buffer holds, without allocating.
+        public static bool TryReadMessageType(ReadOnlySpan<byte> header, out RealtimeMessageType messageType)
+        {
             messageType = default;
-            if (data == null || data.Length < HeaderSize)
+            if (header.Length < HeaderSize)
             {
                 return false;
             }
 
-            var header = new ReadOnlySpan<byte>(data);
             if (BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic
                 || BinaryPrimitives.ReadUInt16LittleEndian(header.Slice(sizeof(uint))) != Version)
             {
@@ -45,6 +58,16 @@ namespace Mmorpg.GameProtocol
             }
 
             var writer = new PacketWriter(new byte[size]);
+            writer.WriteUInt32(Magic);
+            writer.WriteUInt16(Version);
+            writer.WriteByte((byte)messageType);
+            return writer;
+        }
+
+        // Writes the frame header into a caller's buffer, which the generated encoder sized.
+        private static PacketWriter StartPacket(Span<byte> destination, RealtimeMessageType messageType)
+        {
+            var writer = new PacketWriter(destination);
             writer.WriteUInt32(Magic);
             writer.WriteUInt16(Version);
             writer.WriteByte((byte)messageType);
@@ -115,17 +138,33 @@ namespace Mmorpg.GameProtocol
             return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
-        // Writes little-endian values into a packet that was allocated at its exact size.
-        // Callers validate every value first, so the writer only copies bytes.
+        // Writes little-endian values into a packet that was allocated at its exact size, or
+        // into a caller's buffer. Callers validate every value first, so the writer only copies
+        // bytes.
         private ref struct PacketWriter
         {
-            private readonly byte[] buffer;
+            private readonly byte[] packet;
+            private readonly Span<byte> buffer;
             private int position;
 
-            public PacketWriter(byte[] buffer)
+            public PacketWriter(byte[] packet)
             {
+                this.packet = packet;
+                buffer = packet;
+                position = 0;
+            }
+
+            public PacketWriter(Span<byte> buffer)
+            {
+                packet = null;
                 this.buffer = buffer;
                 position = 0;
+            }
+
+            // The bytes written so far.
+            public int Position
+            {
+                get { return position; }
             }
 
             public void WriteByte(byte value)
@@ -141,31 +180,46 @@ namespace Mmorpg.GameProtocol
 
             public void WriteUInt16(ushort value)
             {
-                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(position), value);
+                BinaryPrimitives.WriteUInt16LittleEndian(buffer.Slice(position), value);
                 position += sizeof(ushort);
             }
 
             public void WriteUInt32(uint value)
             {
-                BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(position), value);
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(position), value);
                 position += sizeof(uint);
             }
 
             public void WriteUInt64(ulong value)
             {
-                BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(position), value);
+                BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(position), value);
                 position += sizeof(ulong);
+            }
+
+            public void WriteInt16(short value)
+            {
+                BinaryPrimitives.WriteInt16LittleEndian(buffer.Slice(position), value);
+                position += sizeof(short);
+            }
+
+            // The low three bytes of a value that validation kept within 24 signed bits.
+            public void WriteInt24(int value)
+            {
+                buffer[position] = (byte)value;
+                buffer[position + 1] = (byte)(value >> 8);
+                buffer[position + 2] = (byte)(value >> 16);
+                position += Int24Size;
             }
 
             public void WriteInt32(int value)
             {
-                BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(position), value);
+                BinaryPrimitives.WriteInt32LittleEndian(buffer.Slice(position), value);
                 position += sizeof(int);
             }
 
             public void WriteInt64(long value)
             {
-                BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(position), value);
+                BinaryPrimitives.WriteInt64LittleEndian(buffer.Slice(position), value);
                 position += sizeof(long);
             }
 
@@ -177,7 +231,7 @@ namespace Mmorpg.GameProtocol
             // The byte order of Guid.ToByteArray.
             public void WriteGuid(Guid value)
             {
-                if (!value.TryWriteBytes(buffer.AsSpan(position)))
+                if (!value.TryWriteBytes(buffer.Slice(position)))
                 {
                     throw new InvalidOperationException("Realtime packet is too small for its identifier.");
                 }
@@ -187,20 +241,20 @@ namespace Mmorpg.GameProtocol
 
             public void WriteString(string value)
             {
-                var length = Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, position + sizeof(ushort));
+                var length = Encoding.UTF8.GetBytes(value.AsSpan(), buffer.Slice(position + sizeof(ushort)));
                 WriteUInt16((ushort)length);
                 position += length;
             }
 
-            // Every packet is sized exactly, so a mismatch is a generator defect.
+            // Every allocated packet is sized exactly, so a mismatch is a generator defect.
             public byte[] Finish()
             {
-                if (position != buffer.Length)
+                if (packet == null || position != packet.Length)
                 {
                     throw new InvalidOperationException("Realtime packet size does not match its encoded bytes.");
                 }
 
-                return buffer;
+                return packet;
             }
         }
 
@@ -279,6 +333,34 @@ namespace Mmorpg.GameProtocol
 
                 value = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(position));
                 position += sizeof(ulong);
+                return true;
+            }
+
+            public bool TryReadInt16(out short value, out string error)
+            {
+                if (!Has(sizeof(short), "Packet integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(position));
+                position += sizeof(short);
+                return true;
+            }
+
+            // Three bytes, sign-extended into an int.
+            public bool TryReadInt24(out int value, out string error)
+            {
+                if (!Has(Int24Size, "Packet integer is incomplete.", out error))
+                {
+                    value = 0;
+                    return false;
+                }
+
+                var bits = data[position] | (data[position + 1] << 8) | (data[position + 2] << 16);
+                value = (bits << 8) >> 8;
+                position += Int24Size;
                 return true;
             }
 

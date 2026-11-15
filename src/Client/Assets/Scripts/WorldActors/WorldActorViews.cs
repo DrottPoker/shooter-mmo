@@ -153,11 +153,16 @@ namespace Mmorpg.Client.WorldActors
             movement.ConfigureForSession(session);
         }
 
-        // Buffers a snapshot state of this Mob. A hidden Mob, such as a dead one, ignores it.
-        public void PushSnapshot(uint serverTick, RealtimePlayerState state)
+        // Buffers a snapshot record of this Mob. A hidden Mob, such as a dead one, ignores it.
+        public void PushSnapshot(uint serverTick, RealtimeEntitySnapshot record)
         {
-            if (!IsTargetActive
-                || !movement.PushSnapshot(serverTick, state, restPosition, restYawDegrees))
+            if (record == null
+                || !IsTargetActive
+                || !movement.PushSnapshot(
+                    serverTick,
+                    RemoteMovementPresenter.ToMovementState(record),
+                    restPosition,
+                    restYawDegrees))
             {
                 return;
             }

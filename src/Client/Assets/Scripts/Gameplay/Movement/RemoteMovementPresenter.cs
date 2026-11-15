@@ -69,19 +69,19 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Whether the entity ran out of states to interpolate while it moved: the render clock
-        // reached the newest state and that state still has speed, so the presented pose stands
-        // where the next snapshot should have taken it on. An entity that stopped is not starved.
+        // reached the newest state and the entity still moved between its two newest states, so
+        // the presented pose stands where the next snapshot should have taken it on. An entity
+        // that stopped is not starved.
         public bool IsStarved
         {
             get
             {
-                if (!IsPlayedOut || !interpolation.TryGetNewest(out var newest))
+                if (!IsPlayedOut || !TryGetDerivedVelocity(out var velocityX, out var velocityZ))
                 {
                     return false;
                 }
 
-                return (newest.VelocityX * newest.VelocityX) + (newest.VelocityZ * newest.VelocityZ)
-                    > StarvedSpeedSquared;
+                return (velocityX * velocityX) + (velocityZ * velocityZ) > StarvedSpeedSquared;
             }
         }
 
@@ -110,6 +110,21 @@ namespace Mmorpg.Client.Gameplay
             return Mathf.Max(
                 Mathf.Max(MinimumInterpolationDelayTicks, Mathf.CeilToInt(ticks * MinimumInterpolationDelaySeconds)),
                 snapshotIntervalTicks * InterpolationDelaySnapshotIntervals);
+        }
+
+        // The state of a remote record. The record carries no velocity: the presenter derives it
+        // from the positions of its two newest states.
+        public static PlayerMovementState ToMovementState(RealtimeEntitySnapshot record)
+        {
+            return new PlayerMovementState(
+                record.PositionX,
+                record.PositionY,
+                record.PositionZ,
+                0f,
+                0f,
+                0f,
+                record.YawDegrees,
+                record.IsGrounded);
         }
 
         public static PlayerMovementState ToMovementState(RealtimePlayerState state)
@@ -181,6 +196,13 @@ namespace Mmorpg.Client.Gameplay
         {
             serverTick = interpolation.LatestRawServerTick;
             return interpolation.TryGetNewest(out state);
+        }
+
+        // The planar velocity in meters per second from the two newest states, which stands in
+        // for the velocity that a remote record does not carry. False with fewer than two.
+        public bool TryGetDerivedVelocity(out float velocityX, out float velocityZ)
+        {
+            return interpolation.TryGetNewestPlanarVelocity(tickRateHz, out velocityX, out velocityZ);
         }
 
         // Advances the render clock by one frame and presents the state at it. Returns

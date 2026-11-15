@@ -128,15 +128,33 @@ namespace Mmorpg.Client.Gameplay
                     appearance.ToolInUse);
         }
 
+        // The initial state of the spawn.
         public void PushSnapshot(uint serverTick, RealtimePlayerState state)
         {
-            if (state == null || NetworkEntityId == 0)
+            if (state != null)
+            {
+                Push(serverTick, RemoteMovementPresenter.ToMovementState(state));
+            }
+        }
+
+        // A record of a remote snapshot.
+        public void PushSnapshot(uint serverTick, RealtimeEntitySnapshot record)
+        {
+            if (record != null)
+            {
+                Push(serverTick, RemoteMovementPresenter.ToMovementState(record));
+            }
+        }
+
+        private void Push(uint serverTick, PlayerMovementState state)
+        {
+            if (NetworkEntityId == 0)
             {
                 return;
             }
 
             var hadPose = movement.HasPose;
-            if (movement.Push(serverTick, RemoteMovementPresenter.ToMovementState(state)) && !hadPose)
+            if (movement.Push(serverTick, state) && !hadPose)
             {
                 ApplyPresentedPose();
             }
