@@ -46,7 +46,11 @@ internal readonly struct SimulationTickPlayers
 
 internal delegate void SimulationTickPhaseAction(in SimulationTick tick);
 
-internal sealed record SimulationTickPhase(int Order, string Name, SimulationTickPhaseAction Run);
+// A phase that works only on some ticks. It returns false for a tick on which it was not due,
+// so that tick counts neither as a failed nor as a successful run of the phase.
+internal delegate bool SimulationPeriodicTickPhaseAction(in SimulationTick tick);
+
+internal sealed record SimulationTickPhase(int Order, string Name, SimulationPeriodicTickPhaseAction Run);
 
 // The phases of a simulation tick that features register during composition, each under its
 // position in SimulationTickOrder. Loop-confined once composed.
@@ -54,7 +58,23 @@ internal sealed class SimulationTickPhases
 {
     private readonly List<SimulationTickPhase> phases = [];
 
+    // A phase that does its work on every tick.
     public void Add(int order, string name, SimulationTickPhaseAction run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        AddPeriodic(
+            order,
+            name,
+            (in SimulationTick tick) =>
+            {
+                run(in tick);
+                return true;
+            });
+    }
+
+    // A phase that says for each tick whether it did its work, such as one that broadcasts
+    // every second tick. Only a run that did work resets the phase's count of failed runs.
+    public void AddPeriodic(int order, string name, SimulationPeriodicTickPhaseAction run)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(run);

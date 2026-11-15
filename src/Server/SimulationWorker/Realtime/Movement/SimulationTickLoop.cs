@@ -63,8 +63,11 @@ internal sealed class SimulationTickLoop
             {
                 try
                 {
-                    orderedPhases[index].Run(in tick);
-                    phaseSteps[index].Succeeded();
+                    // A phase that was not due did no work, so its failed runs still count.
+                    if (orderedPhases[index].Run(in tick))
+                    {
+                        phaseSteps[index].Succeeded();
+                    }
                 }
                 catch (Exception exception)
                 {

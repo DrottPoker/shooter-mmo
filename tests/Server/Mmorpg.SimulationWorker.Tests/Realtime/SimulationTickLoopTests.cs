@@ -124,6 +124,69 @@ public sealed class SimulationTickLoopTests
         Assert.Contains("tick phase flaky failed 3 runs in a row at server tick 8", critical.Message, StringComparison.Ordinal);
     }
 
+    // A phase that works on every second tick and fails each time it does: the ticks between,
+    // on which it was not due, are no successful runs, so its failures still count as in a row
+    // and the third ends the loop.
+    [Fact]
+    public void ATickOnWhichAPhaseWasNotDueDoesNotResetItsFailedRuns()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var logger = new CapturingLogger<RealtimeSimulationService>();
+        var phases = new SimulationTickPhases();
+        phases.AddPeriodic(SimulationTickOrder.Snapshots, "every second tick", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick % 2 != 0)
+            {
+                return false;
+            }
+
+            throw new InvalidOperationException($"Tick {tick.ServerTick} broke.");
+        });
+        var loop = CreateLoop(fixture.Clock, fixture.Entities, phases, metrics, out var guard, failureLimit: 3, logger: logger);
+        var nextTick = TimeSpan.Zero;
+
+        // Due and failing at ticks 2 and 4, not due at 1, 3, and 5.
+        RunTicks(loop, ref nextTick, 5);
+        Assert.Equal(2, guard.TotalFailures);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Critical);
+
+        var stop = Assert.Throws<InvalidOperationException>(() => RunTicks(loop, ref nextTick, 1));
+
+        Assert.Equal("Tick 6 broke.", stop.InnerException!.Message);
+        Assert.Equal(3, guard.TotalFailures);
+        var critical = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Critical);
+        Assert.Contains("failed 3 runs in a row at server tick 6", critical.Message, StringComparison.Ordinal);
+    }
+
+    // A periodic phase that did its work resets the count like any other run that succeeds.
+    [Fact]
+    public void ADueRunThatSucceedsResetsTheFailedRunsOfAPeriodicPhase()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var phases = new SimulationTickPhases();
+        var failingTicks = new HashSet<uint> { 2, 4, 8, 10 };
+        phases.AddPeriodic(SimulationTickOrder.Snapshots, "every second tick", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick % 2 != 0)
+            {
+                return false;
+            }
+
+            return failingTicks.Contains(tick.ServerTick)
+                ? throw new InvalidOperationException($"Tick {tick.ServerTick} broke.")
+                : true;
+        });
+        var loop = CreateLoop(fixture.Clock, fixture.Entities, phases, metrics, out var guard, failureLimit: 3);
+        var nextTick = TimeSpan.Zero;
+
+        // Fails at 2 and 4, works at 6, fails at 8 and 10: never three in a row.
+        RunTicks(loop, ref nextTick, 11);
+
+        Assert.Equal(4, guard.TotalFailures);
+    }
+
     // The loop runs at the tick rate for every player, so beyond its phases a tick must not
     // allocate: filling the players, building the tick, and calling the phases.
     [Fact]
@@ -236,9 +299,12 @@ public sealed class SimulationTickLoopTests
             config.MovementSpawn.YawDegrees);
         // The harness is not started, so this thread is the loop: the joined hooks make every
         // player a combatant and track it for persistence.
+        var sessions = new List<ActiveSimulationSession>();
         for (var peerId = 1; peerId <= 50; peerId++)
         {
             var session = RealtimeTestSessions.Create($"Checkpoint Player {peerId}");
+            Assert.Equal(ActiveSimulationSessionRegistration.Joined, harness.SessionStore.Register(session));
+            sessions.Add(session);
             var entity = harness.EntityRegistry.RegisterPlayer(
                     session,
                     () => new AuthoritativePlayerMovement(
@@ -254,7 +320,7 @@ public sealed class SimulationTickLoopTests
 
         var checkpoint = harness.Service.Server.TickPhases.Single(phase => phase.Name == "character checkpoint");
         var phases = new SimulationTickPhases();
-        phases.Add(checkpoint.Order, checkpoint.Name, checkpoint.Run);
+        phases.AddPeriodic(checkpoint.Order, checkpoint.Name, checkpoint.Run);
         using var metrics = new RealtimePerformanceMetrics();
         var loop = CreateLoop(new RealtimeSimulationClock(), harness.EntityRegistry, phases, metrics, out var guard);
         var nextTick = TimeSpan.Zero;
@@ -272,10 +338,23 @@ public sealed class SimulationTickLoopTests
         Assert.Empty(harness.GameService.Checkpoints);
         Assert.Equal(0, guard.TotalFailures);
 
+        // A session that the worker no longer holds, as after an exception in the player's own
+        // step, is left out of the checkpoint although its entity is still among the players:
+        // its state may be broken.
+        var broken = sessions[7];
+        Assert.True(harness.SessionStore.Invalidate(
+            broken.CharacterId,
+            broken.SimulationSessionId,
+            broken.SimulationSessionToken,
+            RealtimeFailureIsolation.Code,
+            RealtimeFailureIsolation.Message));
+
         // The interval is 6,000 ticks, counted from the first tick.
         RunTicks(loop, ref nextTick, 6_000 - 100 - (allocated.Count * 1_000) + 1);
         await harness.PollUntilAsync(() => harness.GameService.Checkpoints.Count == 1, "the due checkpoint");
-        Assert.Equal(50, Assert.Single(harness.GameService.Checkpoints).States.Count);
+        var states = Assert.Single(harness.GameService.Checkpoints).States;
+        Assert.Equal(49, states.Count);
+        Assert.DoesNotContain(states, state => state.SimulationSessionId == broken.SimulationSessionId);
     }
 
     // 500 lingering bodies, made through the composed leave route, add nothing to a tick that ends
@@ -337,7 +416,7 @@ public sealed class SimulationTickLoopTests
         var phases = new SimulationTickPhases();
         foreach (var phase in server.TickPhases.Where(phase => phase.Name is "movement" or "combat" or "lingering bodies" or "character checkpoint"))
         {
-            phases.Add(phase.Order, phase.Name, phase.Run);
+            phases.AddPeriodic(phase.Order, phase.Name, phase.Run);
         }
 
         Assert.Equal(4, phases.InTickOrder().Length);

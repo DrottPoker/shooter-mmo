@@ -370,6 +370,13 @@ contract:
   that succeeds resets the count; at `SimulationWorker:TickPhaseFailureLimit`
   failures in a row the guard logs one critical line and ends the loop the way
   an unhandled exception does, so the shutdown below runs and the host stops.
+  A phase that works only on some ticks, such as the snapshots on every second
+  tick or the character checkpoint at its interval, registers with
+  `AddPeriodic` and says for each tick whether it did its work: a tick on which
+  it was not due is no run, so it neither fails nor resets the count, and a
+  broadcast that fails every time it is due reaches the limit. The checkpoint
+  leaves out a player whose session the worker no longer holds, so the state of
+  a player that the isolation below took out in the same tick is not saved.
   Where a phase walks players or recipients one by one, `RealtimeFailureIsolation`
   takes out only the one that failed, at the worker's call site and never
   inside `src/Shared`: a player whose movement step or look fails gets its
