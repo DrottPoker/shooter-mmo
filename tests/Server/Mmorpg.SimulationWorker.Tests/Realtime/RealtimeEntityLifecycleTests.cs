@@ -125,6 +125,9 @@ public sealed class RealtimeEntityLifecycleTests
             await server.StopAsync(CancellationToken.None);
             server.Dispose();
         }
+
+        // The loop only logs a failed step, so a failure fails the test here.
+        Assert.Equal(0, server.Server.LoopGuard.TotalFailures);
     }
 
     [Fact]

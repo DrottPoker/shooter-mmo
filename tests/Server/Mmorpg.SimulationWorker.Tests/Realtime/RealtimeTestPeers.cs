@@ -28,8 +28,16 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
 
     public int QueuedReliablePackets { get; set; }
 
+    // Makes every unreliable send throw, as a broken connection might.
+    public bool FailUnreliableSends { get; set; }
+
     public void Send(byte[] data, DeliveryMethod deliveryMethod)
     {
+        if (FailUnreliableSends && deliveryMethod == DeliveryMethod.Unreliable)
+        {
+            throw new InvalidOperationException("The unreliable send broke.");
+        }
+
         Sent.Add(new RecordedPeerSend(data, deliveryMethod));
     }
 

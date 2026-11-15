@@ -66,6 +66,11 @@ internal sealed record RealtimeCoreServices
 
     public required RealtimePerformanceMetrics PerformanceMetrics { get; init; }
 
+    // Counts loop failures, and takes one player or peer out of play after a failure of its own.
+    public required RealtimeLoopGuard LoopGuard { get; init; }
+
+    public required RealtimeFailureIsolation FailureIsolation { get; init; }
+
     public required PeerAdmissionGuard AdmissionGuard { get; init; }
 
     public required RealtimePeerRegistry Peers { get; init; }

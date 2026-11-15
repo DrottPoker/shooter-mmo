@@ -71,6 +71,11 @@ public sealed record SimulationWorkerConfig(
     // The longest stay a body may have; it also fits the LeaveAccepted field.
     public const int MaximumLingeringBodySeconds = 3_600;
 
+    // How many runs in a row one tick phase or loop step may fail before the worker stops.
+    public int TickPhaseFailureLimit { get; init; } = DefaultTickPhaseFailureLimit;
+
+    public const int DefaultTickPhaseFailureLimit = 30;
+
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
 
     public AdmissionConfig Admission { get; init; } = AdmissionConfig.Default;
@@ -329,6 +334,13 @@ public sealed record SimulationWorkerConfig(
             : PositiveInt(
                 section["LingeringBodySeconds"],
                 "SimulationWorker:LingeringBodySeconds",
+                errors);
+        var tickPhaseFailureLimit = string.IsNullOrWhiteSpace(
+                section["TickPhaseFailureLimit"])
+            ? DefaultTickPhaseFailureLimit
+            : PositiveInt(
+                section["TickPhaseFailureLimit"],
+                "SimulationWorker:TickPhaseFailureLimit",
                 errors);
         var udpQuotaSection = section.GetSection("UdpQuotas");
         var inboundPacketsPerSecond = PositiveInt(
@@ -673,6 +685,7 @@ public sealed record SimulationWorkerConfig(
             PerformanceReportPath = performanceReportPath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             LingeringBodySeconds = lingeringBodySeconds,
+            TickPhaseFailureLimit = tickPhaseFailureLimit,
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,
                 inboundPacketBurst,

@@ -24,7 +24,8 @@ public sealed class AppearanceReplicatorTests
             fixture.Bindings,
             fixture.CharacterItemStateStore,
             looks,
-            AppearanceReplicationSettings.Default);
+            AppearanceReplicationSettings.Default,
+            fixture.FailureIsolation);
         fixture.Presence.Appearances = replicator;
         var hooded = fixture.ConnectPlayer(1, "Hooded");
         var viewer = fixture.ConnectPlayer(2, "Viewer");
@@ -80,7 +81,8 @@ public sealed class AppearanceReplicatorTests
             fixture.Bindings,
             fixture.CharacterItemStateStore,
             looks,
-            AppearanceReplicationSettings.Default);
+            AppearanceReplicationSettings.Default,
+            fixture.FailureIsolation);
         fixture.Presence.Appearances = replicator;
         var miner = fixture.ConnectPlayer(1, "Miner");
         var viewer = fixture.ConnectPlayer(2, "Viewer");

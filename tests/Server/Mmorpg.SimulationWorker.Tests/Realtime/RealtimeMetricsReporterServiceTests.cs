@@ -26,6 +26,9 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         performance.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget);
         performance.RecordTickResynchronization();
         performance.RecordSnapshotPacketReuse(1, 2, 3, 7);
+        performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Step);
+        performance.RecordLoopFailure("movement", RealtimeLoopFailureScope.Player);
+        performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Peer);
         network.RecordReceived(100);
         network.RecordSent(50);
         network.RecordSent(25);
@@ -48,6 +51,8 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         Assert.Equal(1, root.GetProperty("tickOverruns").GetInt64());
         Assert.Equal(1, root.GetProperty("tickResynchronizations").GetInt64());
         Assert.Equal(7, root.GetProperty("snapshotEntityUpdatesDeferred").GetInt64());
+        Assert.Equal(1, root.GetProperty("loopStepFailures").GetInt64());
+        Assert.Equal(2, root.GetProperty("loopIsolatedFailures").GetInt64());
         Assert.Equal(1, root.GetProperty("packetsIn").GetInt64());
         Assert.Equal(100, root.GetProperty("bytesIn").GetInt64());
         Assert.Equal(2, root.GetProperty("packetsOut").GetInt64());
@@ -64,6 +69,8 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         var performanceLine = logger.Entries[2];
         Assert.Equal(1L, performanceLine["TickResynchronizations"]);
         Assert.Equal(1L, performanceLine["TickOverruns"]);
+        Assert.Equal(1L, performanceLine["LoopStepFailures"]);
+        Assert.Equal(2L, performanceLine["LoopIsolatedFailures"]);
         Assert.Contains("p99 <= 50.000 ms", (string)performanceLine["SimulationTick"]!, StringComparison.Ordinal);
         var networkLine = logger.Entries[1];
         Assert.Equal(1L, networkLine["QuotaRejects"]);

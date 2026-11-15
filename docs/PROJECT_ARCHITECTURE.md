@@ -360,18 +360,42 @@ contract:
   other hosted service, as
   [Hosted Services And Stop Order](#hosted-services-and-stop-order) describes.
 - A failing packet or completion disconnects only its own peer with
-  `internal_error`. An exception in a tick, peer supervision, or the orphan
-  sweep still stops the host.
+  `internal_error`. `RealtimeLoopGuard` runs every tick phase and every other
+  step of a loop iteration, network poll, completed operations, peer
+  supervision, orphan sweep, and send flush, inside a guard that costs
+  nothing when nothing throws: a step that throws logs one error line with its
+  name and the server tick, is counted, and is skipped for that run, while the
+  later phases of the tick and the later steps run, the tick counts, and the
+  clock is not touched. Each step counts its failed runs in a row, and a run
+  that succeeds resets the count; at `SimulationWorker:TickPhaseFailureLimit`
+  failures in a row the guard logs one critical line and ends the loop the way
+  an unhandled exception does, so the shutdown below runs and the host stops.
+  Where a phase walks players or recipients one by one, `RealtimeFailureIsolation`
+  takes out only the one that failed, at the worker's call site and never
+  inside `src/Shared`: a player whose movement step or look fails gets its
+  session invalidated with `internal_error`, so the supervisor disconnects its
+  peer and removes its entity after the tick and a body goes in the body
+  phase, and once the entity is gone the session is released in the background
+  without a final state; a recipient whose snapshot or look packets fail is
+  disconnected with `internal_error` like a failed packet. The LiteNetLib
+  connect, disconnect, and connection request callbacks are guarded the same
+  way: a failed connect disconnects its peer and a failed request is refused.
+  These isolated failures do not count toward the limit. The Mob phase has no
+  per-Mob guard, because no path takes a single Mob out of play without combat
+  and the world actors, so its failures count for the whole phase.
 - Components log through the service's `ILogger<RealtimeSimulationService>`, so
   the log category and templates stay stable. Completion record names appear in
   the failure log and must not change.
 - Corpse range checks keep their exact float arithmetic, and the realtime code
   never changes `src/Shared`.
 
-`IRealtimePeerConnection` and `IRealtimePeerDirectory` are the transport seam.
-Tests drive single components in memory with recording peers, and
+`IRealtimePeerConnection` and `IRealtimePeerDirectory` are the transport seam,
+and `IRealtimePeerLifecycle` is what the transport calls for a connect or
+disconnect. Tests drive single components in memory with recording peers, and
 `RealtimeServerHarness` drives the whole service over real UDP with a scripted
-GameService.
+GameService. Because the loop only logs a failure and goes on, the harness
+fails a test at dispose when the loop guard counted a failure that the test did
+not declare with `ExpectLoopFailures`.
 
 #### Registering A Realtime Feature
 
@@ -437,8 +461,8 @@ constructor. A unit registers:
   connection ended while its session goes on, right after its entity became a
   lingering body; the entity stays, and a removed hook follows only when the
   body goes. A join reaches combat, then the admin tools, and then persistence,
-  a connection that ends reaches combat, and a removal reaches persistence and
-  then combat.
+  a connection that ends reaches combat, and a removal reaches persistence,
+  then combat, and last the core's release of a player that the loop took out.
 - Per-character state. A store that keeps state per character and simulation
   session implements `ICharacterSessionStore` and joins
   `CharacterSessionStores.Create`, which `Program.cs` registers once. Session
@@ -509,7 +533,9 @@ for its end once its death committed.
 the order the hooks run in, and shutdown steps, `SimulationTickLoopTests` pins
 that a tick allocates nothing beyond its phases, that the character checkpoint
 phase allocates nothing on a tick when it is not due, and that 500 lingering
-bodies add nothing to a tick that ends none of them,
+bodies add nothing to a tick that ends none of them, all with the guard
+around every phase, and `RealtimeLoopFailureTests` pins what one failing
+player, recipient, or transport callback takes out,
 `RealtimeInFlightOperationTests` pins that an operation answered after the
 connection ended reaches the body or the peer that came back, and nothing of a
 session that ended, and `CharacterSessionStoresTests` pins the occasions of each

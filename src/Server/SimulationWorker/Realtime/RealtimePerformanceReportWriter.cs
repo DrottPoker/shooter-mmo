@@ -76,9 +76,9 @@ internal sealed record RealtimeDurationEntry(
 }
 
 // One line of the performance file. The p95 and p99 values are the upper bounds of the
-// histogram buckets the worker counts in, as in the log line. Traffic, drop, rejection, GC, and
-// Mob route plan values count this interval only; the other Mob numbers are the current gauges,
-// and all of them are null when the worker has no combat metrics.
+// histogram buckets the worker counts in, as in the log line. Traffic, drop, rejection, GC, loop
+// failure, and Mob route plan values count this interval only; the other Mob numbers are the
+// current gauges, and all of them are null when the worker has no combat metrics.
 internal sealed record RealtimePerformanceReportEntry(
     DateTime IntervalStart,
     DateTime IntervalEnd,
@@ -131,7 +131,9 @@ internal sealed record RealtimePerformanceReportEntry(
     int Generation2Collections,
     long ManagedHeapBytes,
     long ManagedHeapFragmentedBytes,
-    long TotalManagedMemoryBytes)
+    long TotalManagedMemoryBytes,
+    long LoopStepFailures,
+    long LoopIsolatedFailures)
 {
     public long? Mobs { get; init; }
 
@@ -200,7 +202,9 @@ internal sealed record RealtimePerformanceReportEntry(
             performance.Generation2Collections,
             performance.ManagedHeapSizeBytes,
             performance.ManagedHeapFragmentedBytes,
-            performance.TotalManagedMemoryBytes)
+            performance.TotalManagedMemoryBytes,
+            performance.LoopStepFailures,
+            performance.LoopIsolatedFailures)
         {
             Mobs = mobs?.Mobs,
             EngagedMobs = mobs?.EngagedMobs,

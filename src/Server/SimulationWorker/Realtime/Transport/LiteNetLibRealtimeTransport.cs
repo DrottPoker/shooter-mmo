@@ -9,15 +9,17 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Owns the LiteNetLib NetManager. UnsyncedEvents stays false, so every LiteNetLib
 // callback runs inside PollEvents on the realtime loop. A freed peer id can therefore be
 // reused only after its disconnect event was handled, which makes resolving peers by id
-// safe. Loop-confined.
+// safe. A connection request, connect, or disconnect callback that throws is logged and costs
+// only its own peer, so PollEvents goes on with the other events. Loop-confined.
 internal sealed class LiteNetLibRealtimeTransport(
     SimulationWorkerConfig config,
     RealtimeConnectionAdmission admission,
+    RealtimeLoopGuard loopGuard,
     ILogger logger) : IRealtimePeerDirectory
 {
     private NetManager? server;
 
-    public void Start(RealtimePeerLifecycle lifecycle, RealtimeMessageDispatcher dispatcher)
+    public void Start(IRealtimePeerLifecycle lifecycle, RealtimeMessageDispatcher dispatcher)
     {
         var listener = new EventBasedNetListener();
         server = new NetManager(listener)
@@ -31,9 +33,20 @@ internal sealed class LiteNetLibRealtimeTransport(
 
         listener.ConnectionRequestEvent += request =>
         {
-            if (!admission.TryAdmit(
+            bool admitted;
+            try
+            {
+                admitted = admission.TryAdmit(
                     request.RemoteEndPoint.Address,
-                    server.ConnectedPeersCount))
+                    server.ConnectedPeersCount);
+            }
+            catch (Exception exception)
+            {
+                loopGuard.ConnectionRequestFailed(request.RemoteEndPoint, exception);
+                admitted = false;
+            }
+
+            if (!admitted)
             {
                 request.Reject();
                 return;
@@ -41,9 +54,30 @@ internal sealed class LiteNetLibRealtimeTransport(
 
             request.AcceptIfKey(RealtimeProtocol.ConnectionKey);
         };
-        listener.PeerConnectedEvent += peer => lifecycle.OnPeerConnected(peer.Id, peer.Address);
+        listener.PeerConnectedEvent += peer =>
+        {
+            try
+            {
+                lifecycle.OnPeerConnected(peer.Id, peer.Address);
+            }
+            catch (Exception exception)
+            {
+                loopGuard.PeerFailed("peer connect", peer.Id, exception);
+                server.DisconnectPeer(peer);
+            }
+        };
         listener.PeerDisconnectedEvent += (peer, disconnectInfo) =>
-            lifecycle.OnPeerDisconnected(peer.Id, disconnectInfo.Reason);
+        {
+            try
+            {
+                lifecycle.OnPeerDisconnected(peer.Id, disconnectInfo.Reason);
+            }
+            catch (Exception exception)
+            {
+                // The peer is gone already; what its cleanup did not reach stays to the orphan sweep.
+                loopGuard.PeerFailed("peer disconnect", peer.Id, exception);
+            }
+        };
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
         {
             try

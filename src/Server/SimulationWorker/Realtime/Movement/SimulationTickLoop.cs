@@ -6,18 +6,37 @@ using Mmorpg.SimulationWorker.WorldActors;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs due fixed simulation ticks. Each tick advances the clock, fills the players of the tick
-// once in entity id order, and runs the registered phases in SimulationTickOrder. At most five
-// ticks catch up per call before the clock resynchronizes. Loop-confined.
-internal sealed class SimulationTickLoop(
-    RealtimeSimulationClock clock,
-    SimulationEntityRegistry entityRegistry,
-    SimulationTickPhases phases,
-    RealtimePerformanceMetrics performanceMetrics,
-    ILogger logger)
+// once in entity id order, and runs the registered phases in SimulationTickOrder. A phase that
+// throws is logged and skipped for this tick through the loop guard, and the later phases still
+// run. At most five ticks catch up per call before the clock resynchronizes. Loop-confined.
+internal sealed class SimulationTickLoop
 {
-    private readonly SimulationTickPhase[] orderedPhases = phases.InTickOrder();
+    private readonly RealtimeSimulationClock clock;
+    private readonly SimulationEntityRegistry entityRegistry;
+    private readonly RealtimePerformanceMetrics performanceMetrics;
+    private readonly RealtimeLoopGuard loopGuard;
+    private readonly ILogger logger;
+    private readonly SimulationTickPhase[] orderedPhases;
+    private readonly RealtimeLoopStep[] phaseSteps;
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly PlayerSpatialGrid playerGrid = new();
+
+    public SimulationTickLoop(
+        RealtimeSimulationClock clock,
+        SimulationEntityRegistry entityRegistry,
+        SimulationTickPhases phases,
+        RealtimePerformanceMetrics performanceMetrics,
+        RealtimeLoopGuard loopGuard,
+        ILogger logger)
+    {
+        this.clock = clock;
+        this.entityRegistry = entityRegistry;
+        this.performanceMetrics = performanceMetrics;
+        this.loopGuard = loopGuard;
+        this.logger = logger;
+        orderedPhases = phases.InTickOrder();
+        phaseSteps = [.. orderedPhases.Select(phase => loopGuard.TickPhase(phase.Name))];
+    }
 
     public IReadOnlyList<SimulationTickPhase> Phases => orderedPhases;
 
@@ -40,9 +59,17 @@ internal sealed class SimulationTickLoop(
                 clock.ServerTick,
                 new SimulationTickPlayers(playerBuffer),
                 playerGrid);
-            foreach (var phase in orderedPhases)
+            for (var index = 0; index < orderedPhases.Length; index++)
             {
-                phase.Run(in tick);
+                try
+                {
+                    orderedPhases[index].Run(in tick);
+                    phaseSteps[index].Succeeded();
+                }
+                catch (Exception exception)
+                {
+                    loopGuard.Failed(phaseSteps[index], exception);
+                }
             }
 
             performanceMetrics.RecordSimulationTick(

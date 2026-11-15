@@ -162,7 +162,7 @@ entity, peer, or runtime id as a label.
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
-| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of each tick phase and of network polling and completion processing, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, and snapshot visibility groups, encoded and sent packets, and deferred entity updates. |
+| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of each tick phase and of network polling and completion processing, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, snapshot visibility groups, encoded and sent packets, and deferred entity updates, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
@@ -204,6 +204,7 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.corpse.mutation.backlog`, `.active_aggregates` | gauge | Corpse mutations waiting in the per-corpse coordinator, and the corpses with a mutation in flight. |
 | `simulation_worker.simulation.snapshot.visibility_groups`, `.packets_encoded`, `.packets_sent` | counter | Distinct visibility groups per broadcast, encoded snapshot packets, and sent snapshot packets. |
 | `simulation_worker.simulation.snapshot.entity_updates_deferred` | counter | Remote entity updates that the fair budget deferred to a later snapshot. |
+| `simulation_worker.loop.failures` | counter | Exceptions that the realtime loop caught, as [Realtime Server Structure And Threading Contract](PROJECT_ARCHITECTURE.md#realtime-server-structure-and-threading-contract) describes, labeled `step`, the tick phase or loop step, such as `movement`, `snapshots`, or `network poll`, and `scope`: `step` when the whole run of the step was skipped, `player` when only one player left the Shard, and `peer` when only one peer was disconnected or one connection request refused. Every failure also writes one error line, so any value above zero needs a look. |
 
 The instruments of `Mmorpg.SimulationWorker.WorldActors` and
 `Mmorpg.SimulationWorker.Corpses`:
@@ -384,15 +385,17 @@ entries of both processes, and the trace share one id.
   current and interval-maximum completed-operation and corpse-mutation backlogs,
   so admission congestion is distinguishable from UDP loss, process allocation,
   GC collection counts, managed heap size and fragmentation, live managed
-  memory, distinct visibility groups, encoded and sent snapshot packets, and
-  tick overruns.
+  memory, distinct visibility groups, encoded and sent snapshot packets, tick
+  overruns, and the loop failures of whole steps and of single players or
+  peers.
 - With `SimulationWorker:PerformanceReportPath` set, environment form
   `SimulationWorker__PerformanceReportPath`, the worker also appends each
   interval of these three lines to that file as one JSON object per line,
   written from the same captured values: the interval's start, end, and
   length; players, bots, peers, and entities; CPU and working set; the tick
   and every timed phase with samples, average, p95 and p99 bucket bounds, and
-  maximum; tick overruns and resynchronizations; the backlogs; the interval's
+  maximum; tick overruns and resynchronizations; the loop failures,
+  `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
   snapshot bytes, joins, spawns, and despawns; allocation, GC collections
   per generation, and the managed heap; and the Mob numbers of the combat and

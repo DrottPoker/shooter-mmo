@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.GameProtocol;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
@@ -579,6 +580,7 @@ public sealed class RealtimeLingeringBodyTests
         private readonly HttpClient httpClient;
         private readonly RealtimePerformanceMetrics metrics = new();
         private readonly SimulationTickLoop loop;
+        private readonly RealtimeLoopGuard guard;
         private TimeSpan nextTick = TimeSpan.Zero;
 
         private BodyTimerService(RealtimeLoopFixture fixture)
@@ -608,7 +610,8 @@ public sealed class RealtimeLingeringBodyTests
                 NullLogger.Instance);
             var phases = new SimulationTickPhases();
             timer.AddTickPhase(phases);
-            loop = new SimulationTickLoop(fixture.Clock, fixture.Entities, phases, metrics, NullLogger.Instance);
+            guard = new RealtimeLoopGuard(SimulationWorkerConfig.DefaultTickPhaseFailureLimit, fixture.Clock, metrics, NullLogger.Instance);
+            loop = new SimulationTickLoop(fixture.Clock, fixture.Entities, phases, metrics, guard, NullLogger.Instance);
         }
 
         public ScriptedGameServiceHandler GameService { get; } = new();
@@ -630,6 +633,8 @@ public sealed class RealtimeLingeringBodyTests
 
         public ValueTask DisposeAsync()
         {
+            // A body phase that threw would only be logged, so it fails the test here.
+            Assert.Equal(0, guard.TotalFailures);
             metrics.Dispose();
             httpClient.Dispose();
             return ValueTask.CompletedTask;

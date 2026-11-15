@@ -35,6 +35,8 @@ internal static class RealtimeServerComposition
         var performanceMetrics = host.PerformanceMetrics
             ?? Own(new RealtimePerformanceMetrics(), ownedResources);
         var admissionGuard = new PeerAdmissionGuard(config.Admission);
+        var clock = new RealtimeSimulationClock();
+        var loopGuard = new RealtimeLoopGuard(config.TickPhaseFailureLimit, clock, performanceMetrics, logger);
         var transport = new LiteNetLibRealtimeTransport(
             config,
             new RealtimeConnectionAdmission(
@@ -42,8 +44,9 @@ internal static class RealtimeServerComposition
                 host.RegistrationLease,
                 admissionGuard,
                 networkMetrics),
+            loopGuard,
             logger);
-        var core = CreateCore(host, transport, admissionGuard, networkMetrics, performanceMetrics, logger);
+        var core = CreateCore(host, transport, admissionGuard, networkMetrics, performanceMetrics, clock, loopGuard, logger);
 
         // The features, each after the features it takes.
         var appearance = new AppearanceFeature(core, dependencies.Appearance);
@@ -102,12 +105,13 @@ internal static class RealtimeServerComposition
             new RealtimeCompletionProcessor(core.Completions, core.Peers, core.Sender, logger),
             core.OperationTracker,
             corpses.MutationCoordinator,
-            new SimulationTickLoop(core.Clock, core.EntityRegistry, registries.TickPhases, performanceMetrics, logger),
+            new SimulationTickLoop(core.Clock, core.EntityRegistry, registries.TickPhases, performanceMetrics, loopGuard, logger),
             supervisor,
             worldActors.Driver,
             host.TransportReadiness,
             performanceMetrics,
             registries,
+            loopGuard,
             ownedResources,
             logger);
     }
@@ -118,13 +122,14 @@ internal static class RealtimeServerComposition
         PeerAdmissionGuard admissionGuard,
         RealtimeNetworkMetrics networkMetrics,
         RealtimePerformanceMetrics performanceMetrics,
+        RealtimeSimulationClock clock,
+        RealtimeLoopGuard loopGuard,
         ILogger logger)
     {
         var config = host.Config;
         var registries = new RealtimeFeatureRegistries();
         var completions = new RealtimeCompletionQueue();
         var operationTracker = new RealtimeOperationTracker();
-        var clock = new RealtimeSimulationClock();
         var sender = new RealtimePeerSender(networkMetrics, logger);
         var peers = new RealtimePeerRegistry(
             transport,
@@ -142,6 +147,19 @@ internal static class RealtimeServerComposition
             clock,
             registries.Hooks);
         var bodies = new LingeringBodies(config.LingeringBodySeconds, config.MovementSimulation.TickRateHz, clock);
+        var sessionOperations = new SessionAuthorityOperations(
+            host.JoinService,
+            host.ReleaseService,
+            completions,
+            operationTracker,
+            logger);
+        var failureIsolation = new RealtimeFailureIsolation(
+            host.SessionStore,
+            sender,
+            loopGuard,
+            sessionOperations,
+            host.ReleaseService.FinalStates);
+        failureIsolation.AddHooks(registries.Hooks);
         return new RealtimeCoreServices
         {
             Config = config,
@@ -167,6 +185,8 @@ internal static class RealtimeServerComposition
             OperationTracker = operationTracker,
             NetworkMetrics = networkMetrics,
             PerformanceMetrics = performanceMetrics,
+            LoopGuard = loopGuard,
+            FailureIsolation = failureIsolation,
             AdmissionGuard = admissionGuard,
             Peers = peers,
             Sender = sender,
@@ -177,12 +197,7 @@ internal static class RealtimeServerComposition
                 host.ConnectionBindings,
                 peers,
                 sender),
-            SessionOperations = new SessionAuthorityOperations(
-                host.JoinService,
-                host.ReleaseService,
-                completions,
-                operationTracker,
-                logger),
+            SessionOperations = sessionOperations,
             // Teardown removes from the stores that a session release removes from.
             Teardown = new RealtimeSessionTeardown(
                 peers,

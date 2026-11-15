@@ -17,7 +17,7 @@ internal static class MovementFeature
             combat.Mobs,
             core.CollisionStreamingStore,
             core.PerformanceMetrics).AddTickPhase(tickPhases);
-        new PlayerMovementTickPhase(core.CarrySync, core.PerformanceMetrics).AddTickPhase(tickPhases);
+        new PlayerMovementTickPhase(core.CarrySync, core.PerformanceMetrics, core.FailureIsolation).AddTickPhase(tickPhases);
         tickPhases.Add(
             SimulationTickOrder.PlayerGrid,
             "player grid",

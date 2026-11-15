@@ -10,9 +10,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Owns the realtime loop thread. Each iteration polls the transport, drains completed
 // operations within a budget, runs due simulation ticks, supervises peers and hands the
 // queued packets to the transport, in that order. The loop then sleeps precisely until the
-// next tick or poll is due, so ticks and snapshots keep an even rhythm. Every component
-// except the completion queue and the operation tracker is confined to this thread, so none
-// of them needs a lock.
+// next tick or poll is due, so ticks and snapshots keep an even rhythm. Each step runs under
+// the loop guard: one that throws is logged and skipped for this iteration, and one that keeps
+// failing ends the loop. Every component except the completion queue and the operation tracker
+// is confined to this thread, so none of them needs a lock.
 internal sealed class RealtimeServer(
     SimulationWorkerConfig config,
     LiteNetLibRealtimeTransport transport,
@@ -28,15 +29,24 @@ internal sealed class RealtimeServer(
     RealtimeTransportReadiness transportReadiness,
     RealtimePerformanceMetrics performanceMetrics,
     RealtimeFeatureRegistries registries,
+    RealtimeLoopGuard loopGuard,
     IReadOnlyList<IDisposable> ownedResources,
     ILogger logger) : IDisposable
 {
+    private readonly RealtimeLoopStep networkPollStep = loopGuard.LoopStep("network poll");
+    private readonly RealtimeLoopStep completedOperationsStep = loopGuard.LoopStep("completed operations");
+    private readonly RealtimeLoopStep peerSupervisionStep = loopGuard.LoopStep("peer supervision");
+    private readonly RealtimeLoopStep orphanSweepStep = loopGuard.LoopStep("orphan sweep");
+    private readonly RealtimeLoopStep sendFlushStep = loopGuard.LoopStep("send flush");
     private bool disposed;
 
     // What the features registered; the guard tests read it.
     public RealtimeFeatureRegistries Registries => registries;
 
     public IReadOnlyList<SimulationTickPhase> TickPhases => tickLoop.Phases;
+
+    // Counts the failed steps and isolated players and peers; the test harness reads it.
+    public RealtimeLoopGuard LoopGuard => loopGuard;
 
     public async Task RunAsync(CancellationToken stoppingToken)
     {
@@ -123,11 +133,73 @@ internal sealed class RealtimeServer(
         ref TimeSpan nextSimulationTick)
     {
         var phaseStarted = Stopwatch.GetTimestamp();
-        transport.PollEvents();
+        try
+        {
+            transport.PollEvents();
+            networkPollStep.Succeeded();
+        }
+        catch (Exception exception)
+        {
+            loopGuard.Failed(networkPollStep, exception);
+        }
+
         performanceMetrics.RecordNetworkPoll(
             Stopwatch.GetElapsedTime(phaseStarted));
 
         phaseStarted = Stopwatch.GetTimestamp();
+        try
+        {
+            ProcessCompletedOperations(completedOperationBudget);
+            completedOperationsStep.Succeeded();
+        }
+        catch (Exception exception)
+        {
+            loopGuard.Failed(completedOperationsStep, exception);
+        }
+
+        performanceMetrics.RecordCompletedOperations(
+            Stopwatch.GetElapsedTime(phaseStarted));
+
+        // Every tick phase runs under the guard inside the tick loop.
+        tickLoop.ProcessDueTicks(
+            simulationClock.Elapsed,
+            simulationInterval,
+            ref nextSimulationTick);
+        try
+        {
+            supervisor.EnforcePeerState();
+            peerSupervisionStep.Succeeded();
+        }
+        catch (Exception exception)
+        {
+            loopGuard.Failed(peerSupervisionStep, exception);
+        }
+
+        try
+        {
+            supervisor.ReleaseOrphanedSessions();
+            orphanSweepStep.Succeeded();
+        }
+        catch (Exception exception)
+        {
+            loopGuard.Failed(orphanSweepStep, exception);
+        }
+
+        // The transport otherwise sends queued packets only on its own 15 ms update, which
+        // delayed every snapshot by a random part of that period.
+        try
+        {
+            transport.FlushSends();
+            sendFlushStep.Succeeded();
+        }
+        catch (Exception exception)
+        {
+            loopGuard.Failed(sendFlushStep, exception);
+        }
+    }
+
+    private void ProcessCompletedOperations(TimeSpan completedOperationBudget)
+    {
         performanceMetrics.ObserveCompletedOperationBacklog(
             completions.Count);
         performanceMetrics.ObserveCorpseMutationCoordinator(
@@ -139,18 +211,6 @@ internal sealed class RealtimeServer(
         performanceMetrics.ObserveCorpseMutationCoordinator(
             corpseMutationCoordinator.WaitingMutationCount,
             corpseMutationCoordinator.ActiveCorpseCount);
-        performanceMetrics.RecordCompletedOperations(
-            Stopwatch.GetElapsedTime(phaseStarted));
-        tickLoop.ProcessDueTicks(
-            simulationClock.Elapsed,
-            simulationInterval,
-            ref nextSimulationTick);
-        supervisor.EnforcePeerState();
-        supervisor.ReleaseOrphanedSessions();
-
-        // The transport otherwise sends queued packets only on its own 15 ms update, which
-        // delayed every snapshot by a random part of that period.
-        transport.FlushSends();
     }
 
     // The order is part of the shutdown contract: the transport stops first, so no event
