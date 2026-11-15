@@ -1,4 +1,5 @@
 using LiteNetLib;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -29,6 +30,13 @@ internal sealed class LiteNetLibPeerConnection : IRealtimePeerConnection
     public void Send(ReadOnlySpan<byte> data, DeliveryMethod deliveryMethod)
     {
         Peer.Send(data, deliveryMethod);
+    }
+
+    // LiteNetLib raises its delivery event with the disconnect as the token once the client
+    // acknowledged the packet; the transport's handler marks it.
+    public void SendDisconnectReason(byte[] data, RealtimePendingDisconnect disconnect)
+    {
+        Peer.SendWithDeliveryEvent(data, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered, disconnect);
     }
 
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)

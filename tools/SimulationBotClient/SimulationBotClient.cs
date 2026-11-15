@@ -187,7 +187,29 @@ public sealed class SimulationBotClient : IDisposable
 
     private void HandleDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
-        session.OnDisconnected(disconnectInfo.Reason.ToString());
+        session.OnDisconnected(
+            disconnectInfo.Reason.ToString(),
+            ReadDisconnectData(disconnectInfo.AdditionalData),
+            Stopwatch.GetTimestamp());
+    }
+
+    // LiteNetLib returns the event of an empty reader to its pool by itself, and a second
+    // recycle would hand that event out twice, so only a reader with data is recycled here.
+    private static byte[] ReadDisconnectData(NetPacketReader? reader)
+    {
+        if (reader is null || reader.IsNull)
+        {
+            return [];
+        }
+
+        try
+        {
+            return reader.GetRemainingBytes();
+        }
+        finally
+        {
+            reader.Recycle();
+        }
     }
 
     private void HandleNetworkReceive(

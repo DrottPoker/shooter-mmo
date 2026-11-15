@@ -14,7 +14,6 @@ internal sealed class RealtimePeerContext(
     TimeProvider? timeProvider = null)
 {
     public const int MaximumQueuedAuthorityOperations = 8;
-    public const int GracefulDisconnectDelayMilliseconds = 250;
 
     // Completions of work that belongs to no peer, such as a Mob's corpse, name this
     // context. It is never registered, so a failure never disconnects anyone.
@@ -48,12 +47,20 @@ internal sealed class RealtimePeerContext(
     // The corpse presence this peer was sent last.
     public CorpsePresenceSent CorpsePresence { get; } = new();
 
-    public DateTime? DisconnectAfterUtc { get; set; }
+    // The disconnect that this peer waits for, from the moment the worker decided to end the
+    // connection; null while the connection goes on.
+    public RealtimePendingDisconnect? PendingDisconnect { get; private set; }
 
-    // A rejected or finished peer keeps its connection briefly, so the reliable
-    // message that explains the disconnect can still be delivered.
-    public void ScheduleDisconnect(DateTime utcNow)
+    // Starts the disconnect with the data it carries. A peer that already goes keeps its first
+    // reason, as its client takes the first message that ends the session, and gets null.
+    public RealtimePendingDisconnect? BeginDisconnect(byte[]? data, DateTime utcNow)
     {
-        DisconnectAfterUtc = utcNow.AddMilliseconds(GracefulDisconnectDelayMilliseconds);
+        if (PendingDisconnect is not null)
+        {
+            return null;
+        }
+
+        PendingDisconnect = new RealtimePendingDisconnect(data, utcNow);
+        return PendingDisconnect;
     }
 }

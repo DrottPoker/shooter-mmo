@@ -121,8 +121,9 @@ internal sealed class RealtimeSessionTeardown(
 
         if (peers.TryGetCurrentPeer(previousContext, out var previousPeer))
         {
-            sender.SendControl(
+            sender.SendAndDisconnect(
                 previousPeer,
+                previousContext,
                 RealtimeProtocol.EncodeServerDisconnect(
                     "session_reconnected",
                     "This character connected from another client."));
@@ -131,7 +132,6 @@ internal sealed class RealtimeSessionTeardown(
             corpseViewers.RemovePeer(previousContext.PeerId);
             worldInteractionLeases?.RemovePeer(previousContext.PeerId);
             peers.RefreshPopulationMetrics();
-            previousContext.ScheduleDisconnect(DateTime.UtcNow);
         }
 
         presence.ForgetConnection(replacedConnectionId.Value);
@@ -243,7 +243,7 @@ internal sealed class RealtimeSessionTeardown(
             return;
         }
 
-        sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
+        sender.SendAndDisconnect(peer, context, RealtimeProtocol.EncodeServerDisconnect(code, message));
         sessionStore.Invalidate(
             session.CharacterId,
             session.SimulationSessionId,
@@ -257,7 +257,6 @@ internal sealed class RealtimeSessionTeardown(
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
         peers.RefreshPopulationMetrics();
-        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     // GameService said that the account session of the peer's session ended. The session goes on,
@@ -270,8 +269,7 @@ internal sealed class RealtimeSessionTeardown(
         string code)
     {
         var (disconnectCode, disconnectMessage) = GameServiceOutcome.AccountSessionEndDisconnect(code);
-        sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(disconnectCode, disconnectMessage));
+        sender.SendAndDisconnect(peer, context, RealtimeProtocol.EncodeServerDisconnect(disconnectCode, disconnectMessage));
         LeaveBody(context, session);
-        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 }

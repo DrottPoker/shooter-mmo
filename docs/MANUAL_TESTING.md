@@ -2916,7 +2916,7 @@ it in
   0.000 m and its hard snaps at 0, because every owner snapshot confirms the
   prediction, and a character that stands still stands where the worker has it.
   The client never leaves the World by itself, under `terrible` neither, and
-  the Console shows no error but the one of a failed leave below.
+  the Console shows no error.
 - Under `terrible` the line is down for 3 seconds once a minute. The other
   players and the Mobs freeze where their last snapshot left them, the
   character walks on, and when the line comes back the character jumps back by
@@ -2934,17 +2934,16 @@ it in
   holds it back: in the measured runs at most about 70 ms under `good` and
   120 ms under `normal`, and up to 1.7 seconds under `poor` and 2.6 seconds
   under `terrible`.
-- `Leave Shard` shows the body's countdown under `good`, `normal`, and `poor`.
-  Under `terrible` a leave can end with `Realtime operation failed: The
-  realtime connection closed: RemoteConnectionClose. [connection_lost]` in the
-  Console and go straight to Character Select, which then shows neither the
-  countdown nor a message although the body still stands and the Shard counts
-  it: the leave finding of
-  [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
-  The live stack test, which leaves a second after each join, met it in 3 of
-  220 leaves; a leave after two minutes of walking met it at the first try on
-  2026-11-14, so expect it more often after real play. The one measured leave
-  that met the outage took 8 seconds and ended cleanly.
+- `Leave Shard` shows the body's countdown under every profile, also after
+  minutes of walking and fighting, and the Console shows no `connection_lost`.
+  A leave takes about one round trip; a lost answer adds LiteNetLib's resend,
+  up to about a second under `terrible`, or up to the worker's 2 seconds, after
+  which the answer comes with the disconnect: the Console then shows `The
+  realtime connection closed with LeaveAccepted in its data before it arrived
+  on the control channel`. A leave that meets the outage of `terrible` takes
+  until the line is back and ends the same way. A Character Select without the
+  countdown and with `connection_lost` in the Console is a defect to record
+  with the profile.
 - What to look for, and to record with the profile when it shows: a jump back
   of the character without an outage, other players or wolves jumping, an
   attack, a loot, or a trade that takes long to answer or answers twice, and a

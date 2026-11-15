@@ -22,6 +22,8 @@ internal sealed record RecordedPeerSend(byte[] Data, DeliveryMethod Delivery)
 // An in-memory peer that records every packet the realtime loop sends to it.
 internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
 {
+    private readonly List<RealtimePendingDisconnect> unacknowledgedReasons = [];
+
     public int Id { get; } = id;
 
     public List<RecordedPeerSend> Sent { get; } = [];
@@ -55,11 +57,31 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
         Send(data.ToArray(), deliveryMethod);
     }
 
+    // Records the reason like any reliable send; AcknowledgeReasons plays the client's
+    // acknowledgement.
+    public void SendDisconnectReason(byte[] data, RealtimePendingDisconnect disconnect)
+    {
+        Send(data, DeliveryMethod.ReliableOrdered);
+        unacknowledgedReasons.Add(disconnect);
+    }
+
+    public void AcknowledgeReasons()
+    {
+        foreach (var disconnect in unacknowledgedReasons)
+        {
+            disconnect.MarkAcknowledged();
+        }
+
+        unacknowledgedReasons.Clear();
+    }
+
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
         return QueuedReliablePackets;
     }
 }
+
+internal sealed record RecordedDisconnect(int PeerId, byte[]? Data);
 
 // Resolves recording peers by id. A test reuses an id by replacing the entry, which is
 // how LiteNetLib hands a freed id to a new connection.
@@ -67,7 +89,7 @@ internal sealed class RecordingPeerDirectory : IRealtimePeerDirectory
 {
     public Dictionary<int, RecordingPeerConnection> Peers { get; } = [];
 
-    public List<int> Disconnected { get; } = [];
+    public List<RecordedDisconnect> Disconnected { get; } = [];
 
     public bool TryGetConnectedPeer(
         int peerId,
@@ -77,9 +99,9 @@ internal sealed class RecordingPeerDirectory : IRealtimePeerDirectory
         return peer is not null;
     }
 
-    public void DisconnectPeer(IRealtimePeerConnection peer)
+    public void DisconnectPeer(IRealtimePeerConnection peer, byte[]? data)
     {
-        Disconnected.Add(peer.Id);
+        Disconnected.Add(new RecordedDisconnect(peer.Id, data));
         Peers.Remove(peer.Id);
     }
 }

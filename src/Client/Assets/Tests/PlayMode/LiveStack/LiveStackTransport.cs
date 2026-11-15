@@ -19,7 +19,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         public LiveStackTransport()
         {
             inner.Received += OnReceived;
-            inner.Disconnected += reason => Disconnected?.Invoke(reason);
+            inner.Disconnected += (reason, data) => Disconnected?.Invoke(reason, data);
         }
 
         public event Action Connected
@@ -28,7 +28,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             remove { inner.Connected -= value; }
         }
 
-        public event Action<DisconnectReason> Disconnected;
+        public event Action<DisconnectReason, byte[]> Disconnected;
 
         public event Action<byte[], byte, DeliveryMethod> Received;
 
@@ -66,7 +66,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             if (lineLost)
             {
                 lineLost = false;
-                Disconnected?.Invoke(DisconnectReason.Timeout);
+                Disconnected?.Invoke(DisconnectReason.Timeout, Array.Empty<byte>());
             }
         }
 

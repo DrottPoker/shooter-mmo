@@ -73,7 +73,7 @@ public sealed class RealtimeLoopFailureTests
         var disconnect = Assert.Single(failing.Peer.Sent, sent => sent.Type == RealtimeMessageType.ServerDisconnect);
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(disconnect.Data, out var reason, out _));
         Assert.Equal("internal_error", reason.Code);
-        Assert.NotNull(failing.Context.DisconnectAfterUtc);
+        Assert.NotNull(failing.Context.PendingDisconnect);
         Assert.Null(failing.Context.Session);
         Assert.False(fixture.Entities.TryGetPlayer(failing.Entity.NetworkEntityId, out _));
         await fixture.OperationTracker.WaitForAllAsync();
@@ -87,7 +87,7 @@ public sealed class RealtimeLoopFailureTests
         Assert.Single(fixture.GameService.Releases);
         foreach (var other in new[] { walkerBefore, walkerAfter })
         {
-            Assert.Null(other.Context.DisconnectAfterUtc);
+            Assert.Null(other.Context.PendingDisconnect);
             Assert.DoesNotContain(other.Peer.Sent, sent => sent.Type == RealtimeMessageType.ServerDisconnect);
             Assert.True(fixture.Entities.TryGetPlayer(other.Entity.NetworkEntityId, out _));
             Assert.True(fixture.SessionStore.IsCurrent(other.Session, DateTime.UtcNow));
@@ -143,8 +143,8 @@ public sealed class RealtimeLoopFailureTests
 
         Assert.False(fixture.Entities.TryGetPlayer(failing.Entity.NetworkEntityId, out _));
         Assert.Contains(viewer.Peer.Sent, sent => sent.Type == RealtimeMessageType.EntityDespawn);
-        Assert.NotNull(blocked.Context.DisconnectAfterUtc);
-        Assert.Null(viewer.Context.DisconnectAfterUtc);
+        Assert.NotNull(blocked.Context.PendingDisconnect);
+        Assert.Null(viewer.Context.PendingDisconnect);
         Assert.Equal(failuresBefore + 1, fixture.LoopGuard.TotalFailures);
         Assert.Contains(
             fixture.Logger.Entries,
@@ -219,13 +219,13 @@ public sealed class RealtimeLoopFailureTests
         {
             Assert.Contains(other.Peer.Sent, sent => sent.Type == RealtimeMessageType.OwnerSimulationSnapshot);
             Assert.Contains(other.Peer.Sent, sent => sent.Type == RealtimeMessageType.SimulationSnapshot);
-            Assert.Null(other.Context.DisconnectAfterUtc);
+            Assert.Null(other.Context.PendingDisconnect);
         }
 
         var disconnect = Assert.Single(failing.Peer.Sent, sent => sent.Type == RealtimeMessageType.ServerDisconnect);
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(disconnect.Data, out var reason, out _));
         Assert.Equal("internal_error", reason.Code);
-        Assert.NotNull(failing.Context.DisconnectAfterUtc);
+        Assert.NotNull(failing.Context.PendingDisconnect);
         Assert.DoesNotContain(failing.Peer.Sent, sent => sent.Delivery == DeliveryMethod.Unreliable);
         // The first failed send takes the peer out; the sends that follow fail quietly.
         var error = Assert.Single(fixture.Logger.Entries, entry => entry.Level >= LogLevel.Error);
@@ -267,8 +267,8 @@ public sealed class RealtimeLoopFailureTests
         Assert.True(fixture.SessionStore.IsCurrent(burdened.Session, DateTime.UtcNow));
         Assert.True(fixture.Entities.TryGetPlayer(burdened.Entity.NetworkEntityId, out _));
         Assert.Equal(carry.ItemStateRevision + 1, burdened.Entity.Movement.CarryState.ItemStateRevision);
-        Assert.NotNull(burdened.Context.DisconnectAfterUtc);
-        Assert.Null(other.Context.DisconnectAfterUtc);
+        Assert.NotNull(burdened.Context.PendingDisconnect);
+        Assert.Null(other.Context.PendingDisconnect);
         var error = Assert.Single(fixture.Logger.Entries, entry => entry.Level >= LogLevel.Error);
         Assert.Contains("send failed for UDP peer 1", error.Message, StringComparison.Ordinal);
         var interval = fixture.PerformanceMetrics.CaptureAndReset();

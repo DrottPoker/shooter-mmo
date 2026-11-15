@@ -1978,20 +1978,20 @@ What the profiles show:
   LiteNetLib resends it, and under `terrible` only the operations at the start
   of a session, the equip and the teleport, before combat traffic fills the
   channel, keep a p50 near one round trip.
-- **A graceful leave fails as a lost connection on a lossy network.** 2 of 100
-  bots in one of two `normal` runs, 25 under `poor`, and 58 under `terrible`
-  failed with `connection_closed` at their leave after the steady interval,
-  and none before it: the worker disconnects a peer 250 ms after it sent
-  `LeaveAccepted` (`RealtimePeerContext.GracefulDisconnectDelayMilliseconds`),
-  and when that reliable message is lost or held back behind a lost one, the
-  disconnect arrives first. The Unity client's `RealtimeSession.Leave` fails
-  the same way but names it `connection_lost`, `The realtime connection
-  closed: RemoteConnectionClose.`, because the disconnect sets the operation's
-  error first;
-  [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
-  measures how often. The same 250 ms follow every `ServerDisconnect` and
-  protocol rejection, whose reason can be lost the same way. This is a finding
-  about the worker, not the bots; it is not fixed here.
+- **A graceful leave failed as a lost connection on a lossy network.** Fixed.
+  2 of 100 bots in one of two `normal` runs, 25 under `poor`, and 58 under
+  `terrible` failed with `connection_closed` at their leave after the steady
+  interval, and none before it: the worker disconnected a peer a quarter of a
+  second after it sent `LeaveAccepted`, and when that reliable message was
+  lost or held back behind a lost one, the disconnect arrived first. Since
+  the worker disconnects once the client acknowledged the answer, at most 2
+  seconds later, and the disconnect carries the answer too, as
+  [Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport)
+  describes, `playing-100` with `-DurationSeconds 180` lost no leave: on
+  2026-11-15, before the change, 29 of 100 bots failed under `poor` and 57
+  under `terrible`, and on 2026-11-16, after it, 0 and 0, with a game using
+  about one and a half cores beside the runs both times. The same holds for
+  every `ServerDisconnect`, protocol rejection, and the stop notice.
 - **An outage costs the inputs it spans.** Under `terrible` the input
   acknowledgement p99 is 3 seconds, the outage itself, so the rule fails as
   the profile predicts; the remote update rate, which the profile takes out,
@@ -2112,14 +2112,17 @@ hold the reports.
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
    ms, was partly the generator's own lateness: with four threads it is 115 ms.
-9. **A graceful leave can end as a lost connection on a lossy line.** After
-   `LeaveAccepted` the worker disconnects the peer 250 ms later. When that
-   reliable message is lost or waits behind a lost one, the disconnect arrives
-   first: 2, 25, and 58 of 100 bots under `normal`, `poor`, and `terrible`, and
-   a Unity client's first leave after two minutes of play under `terrible`.
-   The client then shows Character Select with neither the body's countdown
-   nor a message, although the body stands. The same 250 ms follows every
-   disconnect that carries a reason.
+9. **A graceful leave ended as a lost connection on a lossy line.** Fixed. The
+   worker disconnected the peer a quarter of a second after `LeaveAccepted`,
+   so a lost or held back answer let the disconnect arrive first: 2, 25, and 58
+   of 100 bots under `normal`, `poor`, and `terrible` on 2026-11-14. The worker
+   now waits for the client's acknowledgement, at most 2 seconds, and puts the
+   answer into the disconnect too; on 2026-11-16 no bot failed its leave under
+   `poor` or `terrible`, and the Unity client's leaves ended cleanly 100 of 100
+   times under both, as
+   [Measured Under The Profiles](#measured-under-the-profiles) and
+   [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
+   show. Every disconnect with a reason and the stop notice work the same way.
 10. **Reliable intents get a long tail as soon as packets are lost.** Under
     `poor` the median answer takes about one round trip, but one answer in
     twenty takes 0.4 to 1.6 seconds, and 2 to 7 seconds under `terrible`. The

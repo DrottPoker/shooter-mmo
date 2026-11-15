@@ -353,9 +353,9 @@ public sealed class RealtimeProtocolRejectionTests
         Assert.Null(client.ServerDisconnect);
     }
 
-    // A rejected peer keeps its session until the delayed disconnect, so broadcasts such as
-    // corpse presence may still follow the ServerDisconnect. Only a peer without a bound
-    // session is guaranteed to receive the ServerDisconnect as its last reliable message.
+    // A rejected peer keeps its session until the disconnect, so broadcasts such as corpse
+    // presence may still follow the ServerDisconnect. Only a peer without a bound session is
+    // guaranteed to receive the ServerDisconnect as its last reliable message.
     internal static async Task AssertRejectedAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client,
@@ -366,9 +366,6 @@ public sealed class RealtimeProtocolRejectionTests
             () => client.ServerDisconnect is not null && client.IsDisconnected,
             $"{client.Name} to be rejected with {expectedCode}");
         var reliable = client.ReliablePackets;
-        Assert.Single(
-            reliable,
-            packet => packet.Type == RealtimeMessageType.ServerDisconnect);
         if (expectLastReliable)
         {
             Assert.Equal(RealtimeMessageType.ServerDisconnect, reliable[^1].Type);
@@ -381,14 +378,11 @@ public sealed class RealtimeProtocolRejectionTests
             .ToArray();
         Assert.NotEmpty(rejections);
 
-        // The worker logs the rejection before it sends ServerDisconnect and schedules the
-        // delayed disconnect, and a late client poll only records the disconnect later, so
-        // this bound holds under any machine load. The earliest matching entry is used
-        // because the log does not name the client.
-        Assert.True(
-            client.DisconnectedAtUtc!.Value - rejections.Min(entry => entry.LoggedAtUtc)
-                >= TimeSpan.FromMilliseconds(150),
-            "The server must keep the peer for the graceful disconnect delay.");
+        // The disconnect waits for the client to acknowledge the ServerDisconnect, so it arrives
+        // after it, and carries it as its data.
+        var reason = Assert.Single(reliable, packet => packet.Type == RealtimeMessageType.ServerDisconnect);
+        Assert.True(client.DisconnectedAtUtc >= reason.ReceivedAtUtc);
+        Assert.Equal(reason.Data, client.DisconnectData);
     }
 
     internal static byte[] WithTrailingByte(byte[] packet)

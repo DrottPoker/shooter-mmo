@@ -647,7 +647,8 @@ valid, the character's entity stays in the world as a lingering body for
 `SimulationWorker:LingeringBodySeconds`, 20 by default:
 
 - A leave is answered at once with `LeaveAccepted`, whose `BodySeconds` says how
-  long the body stays, and the peer is disconnected after the answer. A lost or
+  long the body stays, and the peer is disconnected after the answer, as
+  [Realtime UDP Transport](#realtime-udp-transport) describes. A lost or
   timed-out connection and a connection that the worker ends with a
   `ServerDisconnect`, such as `udp_rate_limited`, `invalid_packet`, or
   `internal_error`, leave a body the same way. A leave of a session that ended
@@ -723,6 +724,17 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Packet magic, version, type, bounds, lengths, and finite numeric values are
   validated. Protocol violations receive a stable error where possible and are
   then disconnected.
+- A connection that the worker ends gets the message that says why, a
+  `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected`, on the reliable
+  control channel and again as the data of the disconnect, as
+  [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
+  describes. The worker disconnects once the client acknowledged that reliable
+  message, which LiteNetLib reports with a delivery event, no sooner than the
+  next loop iteration and no later than `GracefulDisconnectMaximumMilliseconds`,
+  2,000 by default, after it sent the message. A working line thus gets the
+  reason on the reliable channel about one round trip before the disconnect,
+  and a line that lost it gets it with the disconnect. Packets that such a peer
+  sends meanwhile are counted and dropped.
 - `SimulationWorker:Admission` limits remote peers that have not joined yet: at
   most `MaxUnauthenticatedPeers` in total and `MaxUnauthenticatedPeersPerAddress`
   per address, and new connections per address are rate limited by
@@ -730,9 +742,11 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   burst. Loopback peers, such as local bots and stress tools, are exempt.
   Refused connections are counted by the
   `simulation_worker.realtime.connections.rejected` metric.
-- A peer with more than `MaxReliableQueuedPackets` unacknowledged reliable
-  control packets is disconnected, so a client that never acknowledges cannot
-  grow server memory without bound.
+- A peer with more than `MaxReliableQueuedPackets` reliable control packets
+  waiting to be sent is disconnected, so a client that never acknowledges cannot
+  grow server memory without bound. LiteNetLib sends at most 64 unacknowledged
+  reliable packets per channel and queues the rest, and the limit counts that
+  queue.
 - An unexpected exception costs as little of the Shard as possible. A packet,
   a completed operation, or a connection, disconnection, or connection request
   that fails costs only its own peer. A player whose own movement step or look
@@ -2247,6 +2261,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `MaxConnections` | `1000` | Connection slots, at most 10,000 |
 | `JoinHandshakeTimeoutSeconds` | `10` | Time for a new peer to send its join request; also LiteNetLib's disconnect timeout |
 | `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
+| `GracefulDisconnectMaximumMilliseconds` | `2000` | Longest wait for the client to acknowledge the message that says why the worker ends its connection, before the disconnect, from 1 to the `JoinHandshakeTimeoutSeconds` that is also LiteNetLib's disconnect timeout, as [Realtime UDP Transport](#realtime-udp-transport) describes |
 | `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
 | `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters |
 | `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval, and the session heartbeat requests, and the releases at shutdown, that run at once, at most 128 |
@@ -2268,7 +2283,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `UdpQuotas:AggregateSnapshotBytesPerSecond`, `AggregateSnapshotByteBurst` | 38 MiB, 4 MiB | Unreliable snapshot bytes of the whole worker, with fair recipient rotation |
 | `Admission:MaxUnauthenticatedPeers`, `MaxUnauthenticatedPeersPerAddress` | `256`, `8` | Remote peers that have not joined yet |
 | `Admission:ConnectionAttemptsPerAddressPerSecond`, `ConnectionAttemptBurstPerAddress` | `5`, `20` | New connections per remote address |
-| `Admission:MaxReliableQueuedPackets` | `1024` | Unacknowledged reliable packets before a disconnect |
+| `Admission:MaxReliableQueuedPackets` | `1024` | Reliable control packets that wait behind the 64 unacknowledged ones LiteNetLib sends, before a disconnect |
 | `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; a positive cell size of at most 4,096 m, a positive enter radius, an exit radius from the enter radius to 10,000 m, and at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
 | `InterestManagement:NearRadius`, `NearExitRadius` | `48`, `56` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |

@@ -44,7 +44,7 @@ internal sealed class RealtimeMessageDispatcher
             }
 
             networkMetrics.RecordReceived(packet.Length);
-            if (context.DisconnectAfterUtc is not null)
+            if (context.PendingDisconnect is not null)
             {
                 return;
             }

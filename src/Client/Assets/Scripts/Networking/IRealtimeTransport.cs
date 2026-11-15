@@ -11,8 +11,9 @@ namespace Mmorpg.Client.Networking
     {
         event Action Connected;
 
-        // The connection closed, with LiteNetLib's reason.
-        event Action<DisconnectReason> Disconnected;
+        // The connection closed, with LiteNetLib's reason and the data the server put into its
+        // disconnect, empty when it sent none.
+        event Action<DisconnectReason, byte[]> Disconnected;
 
         // A packet from the server with the channel and delivery it arrived on.
         event Action<byte[], byte, DeliveryMethod> Received;

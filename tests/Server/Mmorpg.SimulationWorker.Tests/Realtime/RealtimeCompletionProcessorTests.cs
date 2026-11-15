@@ -80,9 +80,9 @@ public sealed class RealtimeCompletionProcessorTests
         Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(sent.Data, out var reason, out _));
         Assert.Equal("internal_error", reason.Code);
-        Assert.NotNull(failedContext.DisconnectAfterUtc);
+        Assert.NotNull(failedContext.PendingDisconnect);
         Assert.Empty(otherPeer.Sent);
-        Assert.Null(otherContext.DisconnectAfterUtc);
+        Assert.Null(otherContext.PendingDisconnect);
     }
 
     [Fact]

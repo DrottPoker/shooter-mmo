@@ -104,6 +104,14 @@ public sealed record SimulationWorkerConfig(
     // The longest stay a body may have; it also fits the LeaveAccepted field.
     public const int MaximumLingeringBodySeconds = 3_600;
 
+    // How long the worker waits for a client to acknowledge the message that says why its
+    // connection ends before it disconnects the peer anyway, at most the transport's disconnect
+    // timeout, JoinHandshakeTimeout.
+    public TimeSpan GracefulDisconnectMaximum { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultGracefulDisconnectMaximumMilliseconds);
+
+    public const int DefaultGracefulDisconnectMaximumMilliseconds = 2_000;
+
     // How many runs in a row one tick phase or loop step may fail before the worker stops.
     public int TickPhaseFailureLimit { get; init; } = DefaultTickPhaseFailureLimit;
 
@@ -241,6 +249,13 @@ public sealed record SimulationWorkerConfig(
                 configuration["SIMULATION_WORKER_NETWORK_POLL_INTERVAL_MILLISECONDS"]),
             "SimulationWorker:NetworkPollIntervalMilliseconds",
             errors);
+        var gracefulDisconnectMaximumMilliseconds = string.IsNullOrWhiteSpace(
+                section["GracefulDisconnectMaximumMilliseconds"])
+            ? DefaultGracefulDisconnectMaximumMilliseconds
+            : PositiveInt(
+                section["GracefulDisconnectMaximumMilliseconds"],
+                "SimulationWorker:GracefulDisconnectMaximumMilliseconds",
+                errors);
         var movementSection = section.GetSection("Movement");
         var movementTickRateHz = PositiveInt(
             movementSection["TickRateHz"],
@@ -568,6 +583,14 @@ public sealed record SimulationWorkerConfig(
             errors.Add("SimulationWorker:NetworkPollIntervalMilliseconds must not exceed 1000.");
         }
 
+        // LiteNetLib times the peer out after JoinHandshakeTimeoutSeconds, so a longer wait
+        // would never end in the disconnect that carries the reason.
+        if (gracefulDisconnectMaximumMilliseconds > joinHandshakeTimeoutSeconds * 1_000L)
+        {
+            errors.Add(
+                "SimulationWorker:GracefulDisconnectMaximumMilliseconds must not exceed JoinHandshakeTimeoutSeconds.");
+        }
+
         if (sessionHeartbeatMaxConcurrency > 128)
         {
             errors.Add("SimulationWorker:SimulationSessionHeartbeatMaxConcurrency must not exceed 128.");
@@ -824,6 +847,7 @@ public sealed record SimulationWorkerConfig(
             PerformanceReportPath = performanceReportPath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             LingeringBodySeconds = lingeringBodySeconds,
+            GracefulDisconnectMaximum = TimeSpan.FromMilliseconds(gracefulDisconnectMaximumMilliseconds),
             TickPhaseFailureLimit = tickPhaseFailureLimit,
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,

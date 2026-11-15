@@ -344,6 +344,48 @@ public sealed class SimulationBotSessionTests
         Assert.Equal(20, bot.Session.Capture().BodySeconds);
     }
 
+    // A lossy line can lose the leave's answer while the disconnect after it arrives; the
+    // disconnect carries the answer, and the leave completes as with the answer on the channel.
+    [Fact]
+    public void LeavesCleanlyWhenTheAnswerComesOnlyWithTheDisconnect()
+    {
+        var bot = JoinedBot();
+        bot.Session.BeginLeave(JoinedTimestamp);
+        bot.Session.Update(JoinedTimestamp + TickInterval());
+
+        bot.Session.OnDisconnected("RemoteConnectionClose", RealtimeProtocol.EncodeLeaveAccepted(20), JoinedTimestamp);
+
+        AssertState(bot.Session, SimulationBotClientState.Completed);
+        Assert.Equal(20, bot.Session.Capture().BodySeconds);
+    }
+
+    [Fact]
+    public void FailsWithTheCodeOfAServerDisconnectThatComesOnlyWithTheDisconnect()
+    {
+        var bot = JoinedBot();
+
+        bot.Session.OnDisconnected(
+            "RemoteConnectionClose",
+            RealtimeProtocol.EncodeServerDisconnect("server_shutdown", "The worker stops."),
+            JoinedTimestamp);
+
+        AssertFailed(bot.Session, "server_shutdown");
+    }
+
+    // Data that is no session end, such as the zeros LiteNetLib sends for data above its limit,
+    // leaves the disconnect a closed connection.
+    [Fact]
+    public void FailsAsAClosedConnectionWhenTheDisconnectCarriesOtherData()
+    {
+        var bot = JoinedBot();
+        bot.Session.BeginLeave(JoinedTimestamp);
+        bot.Session.Update(JoinedTimestamp + TickInterval());
+
+        bot.Session.OnDisconnected("RemoteConnectionClose", new byte[1015], JoinedTimestamp);
+
+        AssertFailed(bot.Session, "connection_closed");
+    }
+
     [Fact]
     public void FailsWhenTheWorkerDoesNotAcceptTheLeaveInTime()
     {

@@ -99,6 +99,9 @@ internal sealed class RealtimeServerHarnessOptions
 
     // Replaces the default retry horizon of 600 seconds.
     public TimeSpan? UncertainOperationRetryHorizon { get; init; }
+
+    // Replaces the default two seconds that a disconnect waits for its acknowledged reason.
+    public TimeSpan? GracefulDisconnectMaximum { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -464,19 +467,21 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         await PollForAsync(TimeSpan.FromMilliseconds(100));
     }
 
-    public RealtimeRecordingClient Connect(string name, string? joinTicket = null)
+    // Connects to the worker, or through a relay on viaPort.
+    public RealtimeRecordingClient Connect(string name, string? joinTicket = null, int? viaPort = null)
     {
         var client = new RealtimeRecordingClient(name, joinTicket);
         clients.Add(client);
-        client.Connect(Port);
+        client.Connect(viaPort ?? Port);
         return client;
     }
 
     public async Task<RealtimeRecordingClient> JoinAsync(
         RealtimeTestCharacter character,
-        string? clientName = null)
+        string? clientName = null,
+        int? viaPort = null)
     {
-        var client = Connect(clientName ?? character.Name, character.Ticket);
+        var client = Connect(clientName ?? character.Name, character.Ticket, viaPort);
         await PollUntilAsync(
             () => client.JoinAccepted is not null,
             $"{client.Name} to join");
@@ -639,6 +644,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30),
             LingeringBodySeconds = options.LingeringBodySeconds ?? SimulationWorkerConfig.DefaultLingeringBodySeconds,
             TickPhaseFailureLimit = options.TickPhaseFailureLimit ?? SimulationWorkerConfig.DefaultTickPhaseFailureLimit,
+            GracefulDisconnectMaximum = options.GracefulDisconnectMaximum
+                ?? TimeSpan.FromMilliseconds(SimulationWorkerConfig.DefaultGracefulDisconnectMaximumMilliseconds),
             UncertainOperationRetryHorizon = options.UncertainOperationRetryHorizon
                 ?? TimeSpan.FromSeconds(SimulationWorkerConfig.DefaultUncertainOperationRetryHorizonSeconds)
         };

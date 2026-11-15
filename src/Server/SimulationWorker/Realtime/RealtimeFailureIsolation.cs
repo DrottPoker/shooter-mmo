@@ -59,7 +59,7 @@ internal sealed class RealtimeFailureIsolation(
         ArgumentNullException.ThrowIfNull(peer);
         ArgumentNullException.ThrowIfNull(context);
         guard.PeerFailed(stepName, context.PeerId, exception);
-        if (context.DisconnectAfterUtc is not null)
+        if (context.PendingDisconnect is not null)
         {
             return;
         }
@@ -70,8 +70,8 @@ internal sealed class RealtimeFailureIsolation(
         }
         catch (Exception)
         {
-            // A peer whose sends fail still goes, without the message.
-            context.ScheduleDisconnect(DateTime.UtcNow);
+            // A peer whose rejection fails still goes, without the message and without a wait.
+            context.BeginDisconnect(null, DateTime.UtcNow)?.MarkAcknowledged();
         }
     }
 
