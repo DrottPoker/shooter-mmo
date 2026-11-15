@@ -117,9 +117,13 @@ public sealed class StressGameServiceOutageTests : IDisposable
         bot.RecordKill("mob.grey_wolf", 10, 10, Stopped.AddSeconds(5));
         bot.RecordKill("mob.feral_wolf", 40, 40, Stopped.AddSeconds(6));
         bot.RecordKill(null, 0, 0, Stopped.AddSeconds(7));
-        bot.MatchKillCorpses([("mob.grey_wolf", 12, 11), ("mob.feral_wolf", 60, 60)], Stopped.AddSeconds(8));
+        bot.ObserveMobCorpses(
+            [(Guid.NewGuid(), "mob.grey_wolf", 12, 11), (Guid.NewGuid(), "mob.feral_wolf", 60, 60)],
+            Stopped.AddSeconds(8));
         Assert.True(bot.HasPendingKills);
-        bot.MatchKillCorpses([("mob.feral_wolf", 60, 60)], Stopped.AddSeconds(6 + StressOutageBot.KillCorpseWait.TotalSeconds));
+        bot.ObserveMobCorpses(
+            [(Guid.NewGuid(), "mob.feral_wolf", 60, 60)],
+            Stopped.AddSeconds(6 + StressOutageBot.KillCorpseWait.TotalSeconds));
         bot.OnNotice(available: true);
         bot.RecordDurableSuccess(Ready.AddSeconds(3));
         bot.RecordDurableSuccess(Ready.AddSeconds(9));
@@ -129,6 +133,57 @@ public sealed class StressGameServiceOutageTests : IDisposable
         Assert.False(bot.HasPendingKills);
         Assert.Equal((3, 1, 1), (summary.KillsWhileSavingPaused, summary.KillCorpsesSeen, summary.KillCorpsesMissing));
         Assert.Equal(3, summary.FirstDurableSuccessAfterReadySeconds);
+        Assert.Equal(1, summary.BotsWithDurableSuccessAfterReturn);
+    }
+
+    // Two wolves of one kind die side by side while saving is paused, and one corpse appears:
+    // it stands for one kill, and the other counts as missing. A corpse of the same kind that
+    // the bot saw there before the kills stands for none of them.
+    [Fact]
+    public void ACorpseStandsForOneKillAndOnlyWhenItAppearedAfterTheKill()
+    {
+        var tracker = Tracker();
+        WriteWindow();
+        var bot = tracker.Register(1);
+        bot.OnJoined(Stopped.AddMinutes(-1));
+        var olderCorpse = Guid.NewGuid();
+        var newCorpse = Guid.NewGuid();
+        bot.ObserveMobCorpses([(olderCorpse, "mob.grey_wolf", 10, 10)], Stopped.AddSeconds(-30));
+        bot.OnNotice(available: false);
+        bot.RecordKill("mob.grey_wolf", 10, 10, Stopped.AddSeconds(5));
+        bot.RecordKill("mob.grey_wolf", 11, 10, Stopped.AddSeconds(6));
+
+        bot.ObserveMobCorpses(
+            [(olderCorpse, "mob.grey_wolf", 10, 10), (newCorpse, "mob.grey_wolf", 10, 10)],
+            Stopped.AddSeconds(7));
+        Assert.True(bot.HasPendingKills);
+        bot.ObserveMobCorpses(
+            [(olderCorpse, "mob.grey_wolf", 10, 10), (newCorpse, "mob.grey_wolf", 10, 10)],
+            Stopped.AddSeconds(6 + StressOutageBot.KillCorpseWait.TotalSeconds));
+        bot.OnNotice(available: true);
+
+        var summary = tracker.Capture([Snapshot(1)], []);
+
+        Assert.False(bot.HasPendingKills);
+        Assert.Equal((2, 1, 1), (summary.KillsWhileSavingPaused, summary.KillCorpsesSeen, summary.KillCorpsesMissing));
+    }
+
+    // A bot that commits a durable action after its available notice but before the script's
+    // readiness poll saw GameService recovered in zero seconds; that is no missing recovery.
+    [Fact]
+    public void ADurableSuccessBeforeTheRecordedReadinessIsARecoveryOfZeroSeconds()
+    {
+        var tracker = Tracker();
+        WriteWindow();
+        var bot = tracker.Register(1);
+        bot.OnJoined(Stopped.AddMinutes(-1));
+        bot.OnNotice(available: false);
+        bot.OnNotice(available: true);
+        bot.RecordDurableSuccess(Ready.AddMilliseconds(-300));
+
+        var summary = tracker.Capture([Snapshot(1)], []);
+
+        Assert.Equal(0, summary.FirstDurableSuccessAfterReadySeconds);
         Assert.Equal(1, summary.BotsWithDurableSuccessAfterReturn);
     }
 

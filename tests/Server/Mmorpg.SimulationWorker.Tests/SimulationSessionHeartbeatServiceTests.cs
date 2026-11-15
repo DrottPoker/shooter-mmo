@@ -148,7 +148,10 @@ public sealed class SimulationSessionHeartbeatServiceTests
     }
 
     // The retries of a round end with its interval, so a GameService that stays away costs at
-    // most the requests that fit into one interval.
+    // most the requests that fit into one interval. The retry delay does not divide the interval:
+    // with 200 ms the fifth retry would be due exactly at the interval's end, and a timer that
+    // fires a millisecond early then lets a sixth request through. With 300 ms the requests go
+    // at 0, 300, 600, and 900 ms, and the next would be far past the end.
     [Fact]
     public async Task RetriesEndWithTheRoundsInterval()
     {
@@ -157,12 +160,12 @@ public sealed class SimulationSessionHeartbeatServiceTests
             gameService,
             batchSize: 250,
             interval: TimeSpan.FromSeconds(1),
-            retryDelay: TimeSpan.FromMilliseconds(200));
+            retryDelay: TimeSpan.FromMilliseconds(300));
         var session = worker.AddSession();
 
         await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
 
-        Assert.InRange(gameService.Requests.Count, 2, 5);
+        Assert.InRange(gameService.Requests.Count, 2, 4);
         Assert.True(worker.Sessions.TryGet(session.CharacterId, out var current));
         Assert.Equal(session.SessionExpiresAt, current!.SessionExpiresAt);
     }

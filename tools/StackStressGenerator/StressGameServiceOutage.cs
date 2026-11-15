@@ -113,8 +113,16 @@ public sealed class StressOutageBot(int botIndex)
     public static readonly TimeSpan KillCorpseWait = TimeSpan.FromSeconds(10);
     private const float KillCorpseRadius = 5f;
 
+    // The corpse and the kill event travel on one reliable stream, so the bot can see the corpse
+    // a moment before it reads the kill.
+    private static readonly TimeSpan CorpseBeforeKillTolerance = TimeSpan.FromSeconds(1);
+
     private readonly List<StressOutageFailure> failures = [];
     private readonly List<PendingKill> pendingKills = [];
+
+    // When the bot first saw each Mob corpse, and the corpses that already stand for a kill.
+    private readonly Dictionary<Guid, DateTime> corpseFirstSeen = [];
+    private readonly HashSet<Guid> matchedCorpses = [];
 
     public int BotIndex { get; } = botIndex;
 
@@ -185,42 +193,59 @@ public sealed class StressOutageBot(int botIndex)
         KillsWhilePaused++;
         if (!string.IsNullOrEmpty(definitionId))
         {
-            pendingKills.Add(new PendingKill(definitionId, x, z, at + KillCorpseWait));
+            pendingKills.Add(new PendingKill(definitionId, x, z, at, at + KillCorpseWait));
         }
     }
 
-    // Matches the waiting kills with the Mob corpses the bot sees; a kill whose wait ran out
-    // counts as missing.
-    public void MatchKillCorpses(IEnumerable<(string DefinitionId, float X, float Z)> mobCorpses, DateTime now)
+    // Takes the Mob corpses the bot sees now, every time it looks, so the tracker knows when the
+    // bot first saw each of them, and matches the waiting kills in the order they happened. A
+    // corpse stands for one kill only, and only when the bot first saw it after that kill, so
+    // neither an older corpse of the same kind nearby nor the corpse of another kill can hide a
+    // corpse that was never created. A kill whose wait ran out counts as missing.
+    public void ObserveMobCorpses(
+        IEnumerable<(Guid CorpseId, string DefinitionId, float X, float Z)> mobCorpses,
+        DateTime now)
     {
-        if (pendingKills.Count == 0)
+        var corpses = mobCorpses as IReadOnlyCollection<(Guid CorpseId, string DefinitionId, float X, float Z)>
+            ?? mobCorpses.ToArray();
+        foreach (var corpse in corpses)
         {
-            return;
+            corpseFirstSeen.TryAdd(corpse.CorpseId, now);
         }
 
-        var corpses = mobCorpses.ToArray();
-        for (var index = pendingKills.Count - 1; index >= 0; index--)
+        for (var index = 0; index < pendingKills.Count; index++)
         {
             var kill = pendingKills[index];
-            var found = corpses.Any(corpse =>
-                string.Equals(corpse.DefinitionId, kill.DefinitionId, StringComparison.Ordinal)
-                && MathF.Sqrt(((corpse.X - kill.X) * (corpse.X - kill.X)) + ((corpse.Z - kill.Z) * (corpse.Z - kill.Z))) <= KillCorpseRadius);
-            if (found)
+            Guid? match = null;
+            foreach (var corpse in corpses)
             {
+                if (!matchedCorpses.Contains(corpse.CorpseId)
+                    && string.Equals(corpse.DefinitionId, kill.DefinitionId, StringComparison.Ordinal)
+                    && corpseFirstSeen[corpse.CorpseId] >= kill.At - CorpseBeforeKillTolerance
+                    && MathF.Sqrt(((corpse.X - kill.X) * (corpse.X - kill.X)) + ((corpse.Z - kill.Z) * (corpse.Z - kill.Z))) <= KillCorpseRadius)
+                {
+                    match = corpse.CorpseId;
+                    break;
+                }
+            }
+
+            if (match is { } corpseId)
+            {
+                matchedCorpses.Add(corpseId);
                 KillCorpsesSeen++;
-                pendingKills.RemoveAt(index);
+                pendingKills.RemoveAt(index--);
             }
             else if (now >= kill.Deadline)
             {
                 KillCorpsesMissing++;
-                pendingKills.RemoveAt(index);
+                pendingKills.RemoveAt(index--);
             }
         }
     }
 
     public bool HasPendingKills => pendingKills.Count > 0;
 
-    private sealed record PendingKill(string DefinitionId, float X, float Z, DateTime Deadline);
+    private sealed record PendingKill(string DefinitionId, float X, float Z, DateTime At, DateTime Deadline);
 }
 
 public sealed record StressOutageFailure(string Operation, string Code, DateTime At, bool SavingPaused, double? ElapsedMilliseconds);
@@ -416,11 +441,13 @@ public sealed class StressOutageTracker(StressOutageOptions options)
             }
         }
 
-        var firstSuccess = window?.ReadyAt is { } ready
+        // The first success after a bot's available notice. The script learns of the readiness
+        // by a poll every half second, so a bot can commit an action before the recorded
+        // readiness; that is a recovery of zero seconds, not none.
+        var firstSuccess = window?.ReadyAt is not null
             ? tracked
                 .Select(bot => bot.FirstDurableSuccessAfterReturn)
                 .OfType<DateTime>()
-                .Where(at => at >= ready)
                 .DefaultIfEmpty(DateTime.MinValue)
                 .Min()
             : DateTime.MinValue;
@@ -453,7 +480,7 @@ public sealed class StressOutageTracker(StressOutageOptions options)
             KillCorpsesSeen = tracked.Sum(bot => (long)bot.KillCorpsesSeen),
             KillCorpsesMissing = tracked.Sum(bot => (long)bot.KillCorpsesMissing),
             FirstDurableSuccessAfterReadySeconds = window?.ReadyAt is { } readyAt && firstSuccess != DateTime.MinValue
-                ? (firstSuccess - readyAt).TotalSeconds
+                ? Math.Max(0, (firstSuccess - readyAt).TotalSeconds)
                 : null,
             BotsWithDurableSuccessAfterReturn = tracked.Count(bot => bot.FirstDurableSuccessAfterReturn is not null)
         };

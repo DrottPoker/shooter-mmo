@@ -463,6 +463,8 @@ public sealed class PlayingBotBody : IPlayingBotBody
 
                 yieldDueTimestamp = now + MillisecondsToTicks(state.CycleMilliseconds);
                 View.Items.ObserveServerRevision(state.ItemStateRevision);
+                // A yield is the gathering's commit at GameService; its start is not.
+                outage?.RecordDurableSuccess(DateTime.UtcNow);
                 break;
             case RealtimeGatheringStateKind.Stopped:
                 yieldDueTimestamp = 0;
@@ -552,26 +554,28 @@ public sealed class PlayingBotBody : IPlayingBotBody
             StartReloadWhenBehind(now, cancellationToken);
             FollowRoute(now);
             DrainCombatEvents(now);
-            if (outage is { HasPendingKills: true })
+            // Every look counts, also without a waiting kill: the tracker needs to know which
+            // corpses stood there before a kill.
+            if (outage is not null && (View.Corpses.Count > 0 || outage.HasPendingKills))
             {
-                outage.MatchKillCorpses(
-                    View.Corpses.Values
-                        .Where(corpse => !string.IsNullOrEmpty(corpse.Source.ActorDefinitionId))
-                        .Select(corpse => (corpse.Source.ActorDefinitionId, corpse.PositionX, corpse.PositionZ)),
+                outage.ObserveMobCorpses(
+                    View.Corpses
+                        .Where(corpse => !string.IsNullOrEmpty(corpse.Value.Source.ActorDefinitionId))
+                        .Select(corpse => (corpse.Key, corpse.Value.Source.ActorDefinitionId, corpse.Value.PositionX, corpse.Value.PositionZ)),
                     DateTime.UtcNow);
             }
         }
     }
 
-    // The operations that GameService commits, whose success shows that saving works.
+    // The operations that GameService commits, whose success shows that saving works. The start
+    // of a gathering is not one: the worker decides it alone, and GameService commits the yield.
     private static bool IsDurable(string operation)
     {
         return operation is PlayingOperations.Equip
             or PlayingOperations.ItemMove
             or PlayingOperations.LootAll
             or PlayingOperations.VendorSale
-            or PlayingOperations.VendorPurchase
-            or PlayingOperations.GatherStart;
+            or PlayingOperations.VendorPurchase;
     }
 
     private void RecordRefreshFailure()
