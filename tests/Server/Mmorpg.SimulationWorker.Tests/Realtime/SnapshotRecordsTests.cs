@@ -1,5 +1,6 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Realtime;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -7,73 +8,53 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 public sealed class SnapshotRecordsTests
 {
     [Fact]
-    public void ARecipientsChunksCarryTheQuantizedRecordsItSees()
+    public void ARecordKeepsItsVersionUntilItChangesAndAnUnreportedEntityLosesItsSlot()
     {
         var records = new SnapshotRecords();
-        for (ulong entityId = 1; entityId <= 80; entityId++)
-        {
-            Assert.True(records.Add(entityId, State(entityId * 1.001f, 0.25f, entityId * -2.5f, entityId * 4f)));
-        }
+        Snapshot(records, 1, (1, State(1f)), (2, State(2f)), (3, State(3f)));
+        Assert.True(records.TryGetSlot(2, out var slot));
+        var first = records.VersionOf(slot);
 
-        var visible = Enumerable.Range(1, 80).Select(value => (ulong)value).ToArray();
-        var plan = records.Plan(visible, 7, int.MaxValue, 9_500);
+        // Less than half a step moves nothing on the wire.
+        Snapshot(records, 2, (1, State(1f)), (2, State(2.001f)), (3, State(3f)));
+        Assert.True(records.TryGetSlot(2, out slot));
+        Assert.Equal(first, records.VersionOf(slot));
 
-        Assert.Equal(new SnapshotRecipientPlan(80, 0, 2, (80 * 14) + (2 * 20)), plan);
-        var decoded = Chunks(records, plan, 7, 11);
-        Assert.Equal([71, 9], decoded.Select(chunk => chunk.Entities.Length));
-        Assert.All(decoded, chunk =>
-        {
-            Assert.Equal(7u, chunk.SnapshotSequence);
-            Assert.Equal(11u, chunk.ServerTick);
-            Assert.Equal(2, chunk.ChunkCount);
-        });
-        Assert.Equal([0, 1], decoded.Select(chunk => (int)chunk.ChunkIndex));
-        var entities = decoded.SelectMany(chunk => chunk.Entities).ToArray();
-        Assert.Equal(visible, entities.Select(entity => (ulong)entity.EntityId));
-        foreach (var entity in entities)
-        {
-            // Within half a step of 1/128 m, 1/64 m, and 360/1024 degrees.
-            Assert.InRange(Math.Abs(entity.PositionX - (entity.EntityId * 1.001f)), 0f, 0.5f / 128f);
-            Assert.Equal(0.25f, entity.PositionY);
-            Assert.InRange(Math.Abs(entity.PositionZ + (entity.EntityId * 2.5f)), 0f, 0.5f / 128f);
-            Assert.InRange(Math.Abs(entity.YawDegrees - (entity.EntityId * 4f % 360f)), 0f, 360f / 1024 / 2);
-            Assert.True(entity.IsGrounded);
-        }
+        Snapshot(records, 3, (1, State(1f)), (2, State(2.5f)), (3, State(3f)));
+        Assert.True(records.TryGetSlot(2, out slot));
+        Assert.True(records.VersionOf(slot) > first);
+
+        // Entity 1 is gone; the others keep their records in their new slots.
+        Snapshot(records, 4, (2, State(2.5f)), (3, State(3f)));
+        Assert.Equal(2, records.Count);
+        Assert.False(records.TryGetSlot(1, out _));
+        Assert.True(records.TryGetSlot(3, out var third));
+        Assert.Equal(3ul, records.EntityIdOf(third));
+        Assert.Equal(Quantized(3, State(3f)), records.Record(third).ToArray());
     }
 
     [Fact]
-    public void ARecipientGetsOnlyTheVisibleEntitiesThatHaveARecord()
+    public void AStateThatIsNotFiniteGetsNoRecordAndAnEntityIsReportedOnce()
     {
         var records = new SnapshotRecords();
-        records.Add(1, State(1f));
-        records.Add(2, State(2f));
+        records.BeginSnapshot(1);
 
-        var plan = records.Plan([1, 2, 3], 1, int.MaxValue, 9_500);
-
-        Assert.Equal(new SnapshotRecipientPlan(2, 0, 1, (2 * 14) + 20), plan);
-        Assert.Equal([1u, 2u], Chunks(records, plan, 1, 1).Single().Entities.Select(entity => entity.EntityId));
-        Assert.Equal(default, records.Plan([3, 4], 1, int.MaxValue, 9_500));
-    }
-
-    [Fact]
-    public void AStateThatIsNotFiniteGetsNoRecordAndAnEntityOnlyOne()
-    {
-        var records = new SnapshotRecords();
-
-        Assert.False(records.Add(1, State(float.NaN)));
-        Assert.False(records.Add(2, State(0f, yawDegrees: float.PositiveInfinity)));
-        Assert.True(records.Add(3, State(0f)));
+        Assert.False(records.Report(1, State(float.NaN)));
+        Assert.False(records.Report(2, State(0f, yawDegrees: float.PositiveInfinity)));
+        Assert.True(records.Report(3, State(0f)));
+        Assert.Throws<InvalidOperationException>(() => records.Report(3, State(1f)));
+        records.EndReports();
         Assert.Equal(1, records.Count);
-        Assert.Throws<InvalidOperationException>(() => records.Add(3, State(1f)));
     }
 
     [Fact]
     public void PositionsBeyondTheRangeAreClamped()
     {
         var records = new SnapshotRecords();
-        records.Add(1, State(100_000f, 600f, -100_000f, -90f));
+        Snapshot(records, 1, (1, State(100_000f, 600f, -100_000f, -90f)));
+        Assert.True(records.TryGetSlot(1, out var slot));
 
-        var entity = Chunks(records, records.Plan([1], 1, int.MaxValue, 9_500), 1, 1).Single().Entities.Single();
+        var entity = Decode(records.Record(slot));
 
         Assert.Equal((1 << 23) - 1, entity.QuantizedX);
         Assert.Equal(short.MaxValue, entity.QuantizedY);
@@ -82,29 +63,42 @@ public sealed class SnapshotRecordsTests
     }
 
     [Fact]
-    public void PlanningAndBuildingChunksAllocateNothing()
+    public void ReportingPlanningAndBuildingChunksAllocateNothing()
     {
         var records = new SnapshotRecords();
+        var scheduler = new SnapshotScheduler(SnapshotReplicationConfig.Default);
+        var state = new SnapshotRecipientState(new RealtimePeerContext(1, DateTime.UtcNow, UdpQuotaConfig.Default), 1);
         var visible = Enumerable.Range(1, 200).Select(value => (ulong)value).ToArray();
+        var near = visible.Select(entityId => entityId % 2 == 0).ToArray();
         void Broadcast(uint sequence)
         {
-            records.Reset();
+            records.BeginSnapshot(sequence);
             foreach (var entityId in visible)
             {
-                records.Add(entityId, State(entityId, 1f, 2f, 3f));
+                // Half of them walk.
+                records.Report(entityId, State(entityId + (entityId % 2 == 0 ? sequence * 0.15f : 0f), 1f, 2f, 3f));
             }
 
-            var plan = records.Plan(visible, sequence, 2_000, 9_500);
+            records.EndReports();
+
+            // About 60 records fit, fewer than the near walkers, so the budget order runs too.
+            var plan = scheduler.Plan(records, state, visible, near, 1_000);
             for (var chunk = 0; chunk < plan.PacketCount; chunk++)
             {
-                records.WriteChunk(chunk, sequence, sequence, out _);
+                scheduler.WriteChunk(chunk, sequence, out _);
             }
+
+            scheduler.Complete(sent: true);
         }
 
-        // The first broadcast grows the buffers to the population.
-        Broadcast(1);
+        // The first broadcasts grow the buffers to the population.
+        for (uint sequence = 1; sequence < 20; sequence++)
+        {
+            Broadcast(sequence);
+        }
+
         var before = GC.GetAllocatedBytesForCurrentThread();
-        for (uint sequence = 2; sequence < 20; sequence++)
+        for (uint sequence = 20; sequence < 60; sequence++)
         {
             Broadcast(sequence);
         }
@@ -112,25 +106,43 @@ public sealed class SnapshotRecordsTests
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
-    private static PlayerMovementState State(float positionX, float positionY = 0f, float positionZ = 0f, float yawDegrees = 0f)
+    internal static PlayerMovementState State(float positionX, float positionY = 0f, float positionZ = 0f, float yawDegrees = 0f)
     {
         return new PlayerMovementState(positionX, positionY, positionZ, 1f, 0f, 1f, yawDegrees, true);
     }
 
-    private static RealtimeSimulationSnapshot[] Chunks(SnapshotRecords records, SnapshotRecipientPlan plan, uint sequence, uint serverTick)
+    internal static void Snapshot(SnapshotRecords records, uint sequence, params (ulong EntityId, PlayerMovementState State)[] states)
     {
-        var chunks = new RealtimeSimulationSnapshot[plan.PacketCount];
-        var totalBytes = 0;
-        for (var index = 0; index < plan.PacketCount; index++)
+        records.BeginSnapshot(sequence);
+        foreach (var (entityId, state) in states)
         {
-            var packet = records.WriteChunk(index, sequence, serverTick, out var recordCount).ToArray();
-            totalBytes += packet.Length;
-            Assert.True(RealtimeProtocol.TryDecodeSimulationSnapshot(packet, out var decoded, out var error), error);
-            Assert.Equal(recordCount, decoded.Entities.Length);
-            chunks[index] = decoded;
+            Assert.True(records.Report(entityId, state));
         }
 
-        Assert.Equal(plan.TotalBytes, totalBytes);
-        return chunks;
+        records.EndReports();
+    }
+
+    private static byte[] Quantized(uint entityId, PlayerMovementState state)
+    {
+        var record = new byte[RealtimeProtocol.SimulationSnapshotEntitySize];
+        var quantized = RealtimeEntitySnapshot.Quantize(entityId, state.PositionX, state.PositionY, state.PositionZ, state.YawDegrees, state.IsGrounded);
+        RealtimeProtocol.EncodeEntitySnapshot(
+            record,
+            quantized.EntityId,
+            quantized.QuantizedX,
+            quantized.QuantizedY,
+            quantized.QuantizedZ,
+            quantized.YawStep,
+            quantized.IsGrounded);
+        return record;
+    }
+
+    private static RealtimeEntitySnapshot Decode(ReadOnlySpan<byte> record)
+    {
+        var packet = new byte[RealtimeProtocol.SimulationSnapshotPacketHeaderSize + record.Length];
+        var length = RealtimeProtocol.EncodeSimulationSnapshotHeader(packet, 1, 1, 0, 1, 1);
+        record.CopyTo(packet.AsSpan(length));
+        Assert.True(RealtimeProtocol.TryDecodeSimulationSnapshot(packet, out var snapshot, out var error), error);
+        return Assert.Single(snapshot.Entities);
     }
 }

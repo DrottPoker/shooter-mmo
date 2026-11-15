@@ -7,7 +7,11 @@ namespace Mmorpg.Client.Gameplay
     // earliest arrivals, because a late packet only delays the newest tick and never advances
     // the server. Measuring the delay against the newest received tick instead made the delay
     // shrink between snapshots and grow at each one, so the clock sped remote characters up and
-    // slowed them down at the snapshot rate.
+    // slowed them down at the snapshot rate. The render time runs on past the newest state at
+    // the clock's speed, so a newer state continues it without a jump; the current tick that
+    // states are sampled at never passes the newest state, and how far the render time is past
+    // it is the overrun, which a presenter may extrapolate. The delay is a number of ticks that
+    // may change from frame to frame.
     public sealed class RemoteRenderClock
     {
         private const double DelayToleranceTicks = 0.25d;
@@ -23,7 +27,17 @@ namespace Mmorpg.Client.Gameplay
         private double estimatedServerTick;
         private long observedLatestServerTick;
 
+        // The render time, at most the newest state.
         public double CurrentTick { get; private set; }
+
+        // How many ticks the render time is past the newest state; 0 while states are ahead.
+        public double OverrunTicks { get; private set; }
+
+        // The render time, also past the newest state.
+        public double RenderTick
+        {
+            get { return CurrentTick + OverrunTicks; }
+        }
 
         // The server tick the clock estimates the server has reached now.
         public double EstimatedServerTick
@@ -36,17 +50,19 @@ namespace Mmorpg.Client.Gameplay
         public void Clear()
         {
             CurrentTick = 0d;
+            OverrunTicks = 0d;
             estimatedServerTick = 0d;
             observedLatestServerTick = 0;
             IsInitialized = false;
         }
 
-        public double Reset(long latestServerTick, int interpolationDelayTicks)
+        public double Reset(long latestServerTick, double interpolationDelayTicks)
         {
             Validate(interpolationDelayTicks, 1, 0f);
             estimatedServerTick = latestServerTick;
             observedLatestServerTick = latestServerTick;
             CurrentTick = Math.Max(0d, latestServerTick - interpolationDelayTicks);
+            OverrunTicks = 0d;
             IsInitialized = true;
             return CurrentTick;
         }
@@ -55,7 +71,7 @@ namespace Mmorpg.Client.Gameplay
             float unscaledDeltaTime,
             int tickRateHz,
             long latestServerTick,
-            int interpolationDelayTicks)
+            double interpolationDelayTicks)
         {
             Validate(interpolationDelayTicks, tickRateHz, unscaledDeltaTime);
             if (!IsInitialized)
@@ -79,11 +95,12 @@ namespace Mmorpg.Client.Gameplay
                 tickRateHz * 0.5d);
             if (desiredTick - CurrentTick >= snapThresholdTicks)
             {
-                CurrentTick = Math.Min(latestServerTick, desiredTick);
+                SetRenderTick(desiredTick, latestServerTick);
                 return CurrentTick;
             }
 
-            var delayErrorTicks = (estimatedServerTick - CurrentTick) - interpolationDelayTicks;
+            var renderTick = RenderTick;
+            var delayErrorTicks = (estimatedServerTick - renderTick) - interpolationDelayTicks;
             var speedMultiplier = 1d;
             if (delayErrorTicks > DelayToleranceTicks)
             {
@@ -98,18 +115,22 @@ namespace Mmorpg.Client.Gameplay
                     1d + (delayErrorTicks / Math.Max(1, interpolationDelayTicks)));
             }
 
-            CurrentTick = Math.Min(
-                latestServerTick,
-                CurrentTick + (unscaledDeltaTime * tickRateHz * speedMultiplier));
+            SetRenderTick(renderTick + (unscaledDeltaTime * tickRateHz * speedMultiplier), latestServerTick);
             return CurrentTick;
         }
 
+        private void SetRenderTick(double renderTick, long latestServerTick)
+        {
+            CurrentTick = Math.Min(latestServerTick, renderTick);
+            OverrunTicks = Math.Max(0d, renderTick - latestServerTick);
+        }
+
         private static void Validate(
-            int interpolationDelayTicks,
+            double interpolationDelayTicks,
             int tickRateHz,
             float deltaTime)
         {
-            if (interpolationDelayTicks <= 0)
+            if (!(interpolationDelayTicks > 0d) || double.IsInfinity(interpolationDelayTicks))
             {
                 throw new ArgumentOutOfRangeException(nameof(interpolationDelayTicks));
             }

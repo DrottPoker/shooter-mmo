@@ -100,7 +100,7 @@ public sealed class SimulationBotSessionTests
         Assert.Equal(1, cadence.Entities);
         Assert.Equal(10, cadence.Updates);
         Assert.Equal(1d, cadence.VisibleSeconds, 6);
-        Assert.Equal(10d, cadence.UpdatesPerSecond!.Value, 6);
+        Assert.Equal(10d, cadence.AllEntitiesUpdatesPerSecond!.Value, 6);
         Assert.Equal(10, cadence.UntrackedRecords);
         AssertState(bot.Session, SimulationBotClientState.Joined);
     }

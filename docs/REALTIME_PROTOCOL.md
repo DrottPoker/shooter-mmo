@@ -438,11 +438,21 @@ sequence: the client derives the velocity it needs from the positions it
 interpolates, as
 [Remote Players](UNITY_CLIENT_ARCHITECTURE.md#remote-players) describes.
 
-A moving Mob travels in `SimulationSnapshot` like a remote player: an
-`EntitySnapshot` with the Mob's world actor entity id, while its pose changes.
-The first tick it stands still sends one reliable `WorldActorState` with its
-rest pose and a newer state revision. Clients skip snapshot entities they do not
-know.
+A remote snapshot carries a record of an entity only when it is due for that
+recipient, as
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+describes: when the entity entered the view, changed, stopped changing a few
+snapshots before, or waits for its refresh, at least about once a second. So
+the records of one entity arrive at uneven intervals, a record at the same
+position as the one before says the entity stands there, and a client keeps
+showing an entity it got no record of. The recipient's own entity is never in
+it; its owner snapshot carries it. A recipient with nothing due gets no remote
+snapshot.
+
+A Mob that can walk travels in `SimulationSnapshot` like a remote player: an
+`EntitySnapshot` with the Mob's world actor entity id. The first tick it stands
+still sends one reliable `WorldActorState` with its rest pose and a newer state
+revision. Clients skip snapshot entities they do not know.
 
 ### Player Archetypes
 

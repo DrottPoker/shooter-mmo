@@ -118,6 +118,8 @@ public sealed record StressRunSummary(
             ["inputAckP99Ms"] = report.Bots.InputAcknowledgementLatency?.P99Ms,
             ["remoteUpdateRateAverageHz"] = report.Bots.RemoteCadence?.AverageHz,
             ["remoteUpdateRateP5Hz"] = report.Bots.RemoteCadence?.P5Hz,
+            ["remoteAllEntitiesUpdateRateAverageHz"] = report.Bots.RemoteCadence?.AllEntitiesAverageHz,
+            ["remoteAllEntitiesUpdateRateP5Hz"] = report.Bots.RemoteCadence?.AllEntitiesP5Hz,
             ["generatorCpuAverageSingleCorePercent"] = report.GeneratorProcess?.AverageSingleCoreCpuPercent
         };
         foreach (var operation in report.Gameplay.Operations)

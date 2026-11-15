@@ -808,19 +808,50 @@ authentication, and domain failures to structured results:
   receives a reliable baseline before relying on snapshots.
 - Each joined peer receives a dedicated fixed-rate owner snapshot for input
   acknowledgement and reconciliation.
-- Remote snapshots carry every player entity that a peer sees, a lingering
-  body too; only a bound entity has an owner snapshot.
+- Remote snapshots carry the players and Mobs that a peer sees, a lingering
+  body too, but never the peer's own entity, which its owner snapshot carries;
+  only a bound entity has an owner snapshot.
 - Every entity's remote record is quantized once per snapshot into a flat
-  buffer, and each recipient's MTU-safe chunks are assembled from those records
-  into one reusable packet buffer that the transport copies, so the broadcast
-  allocates nothing per recipient or packet. Under dense overload, a rotating
-  fair subset reduces remote update cadence before the worker-wide byte bucket
-  begins dropping complete frames.
+  buffer that keeps it from one snapshot to the next, with a version that
+  changes only when the record's bytes change. Each recipient remembers which
+  version of every entity in its view it got, and a record goes to it only
+  when it is due, in this order:
+  1. **New in view**: an entity that entered the view, in the next snapshot.
+  2. **Overdue**: a due record of an entity that the recipient got nothing
+     of for longer than the refresh interval, because the budget deferred it.
+  3. **Near changed**: a changed entity in the near tier, every snapshot.
+  4. **Stop repeat**: the unchanged record again in the next
+     `SnapshotReplication:StopRepeats` snapshots, 3 by default, of the
+     entity's tier after its last change, so one lost packet cannot leave an
+     entity walking on in the client.
+  5. **Far changed**: a changed entity beyond the near tier, every
+     `FarIntervalSnapshots` snapshots, 3 by default, staggered by entity id.
+  6. **Refresh**: an unchanged entity once every `RefreshIntervalSnapshots`
+     snapshots, 15 by default, one second, staggered by entity id.
+- The near tier is the visible entities within `InterestManagement:NearRadius`,
+  48 m by default; an entity leaves it beyond `NearExitRadius`, 56 m. The tier
+  is decided at each refresh of the connection's visibility.
+- Each recipient gets at most `SnapshotReplication:PlayerBytesPerSecond`, 32
+  KiB by default, owner snapshot included, or its share of the aggregate budget
+  when that is smaller. The due records fill it in the order above, so the far
+  and unchanged entities degrade first. Within one class the records that the
+  last snapshot deferred go first and the rest rotate. The near changes go by
+  a priority instead: every snapshot that a near change waits adds the inverse
+  of its distance, and a sent record starts again from zero. When the near
+  changes do not all fit, the nearest therefore go in every snapshot and the
+  others in turn, less often the farther they are, and none waits for ever. A
+  deferred record is due in the next snapshot, whatever its tier, and the
+  overdue class gives every entity at least about one record per second. A
+  recipient with nothing due gets no remote snapshot.
+- Each recipient's MTU-safe chunks are assembled from the shared records into
+  one reusable packet buffer that the transport copies, so the broadcast
+  allocates nothing per recipient or packet. The worker-wide byte bucket drops
+  complete frames only after the budgets above.
 - `SnapshotReplication:OverloadTargetUtilizationBasisPoints` reserves aggregate
   burst headroom. Deferred remote entity updates remain visible through the
   `simulation_worker.simulation.snapshot.entity_updates_deferred` counter.
-- A moving Mob travels in the remote snapshots like a remote player, as
-  [Mob Brains](#mob-brains) describes.
+- A Mob travels in the remote snapshots like a remote player and by the same
+  rules, as [Mob Brains](#mob-brains) describes.
 
 ## Interest Management
 
@@ -839,6 +870,10 @@ visibility set:
   so a 15 Hz snapshot rate refreshes a third of them per snapshot. The band
   between the enter and exit radius keeps an entity visible while its viewer
   waits for its turn, and joins and leaves still update visibility at once.
+- The same refresh decides which visible entities are near: within
+  `NearRadius`, 48 m by default, or still within `NearExitRadius`, 56 m, when
+  they were near before. An entity that becomes visible between two refreshes
+  is near when it is within the near radius.
 - The spatial cells store the entity positions, so the visibility test reads
   them without a dictionary lookup per candidate.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
@@ -887,8 +922,10 @@ zone interest is deferred until zones exist.
   after the last processed input, without the steps taken ahead of late inputs,
   so the client replays exactly the inputs after the acknowledged one. Remote
   snapshots, combat, and interest use the current state.
-- Remote snapshots use the remaining fair byte budget. Their cadence degrades
-  explicitly under dense overload instead of starving owner reconciliation.
+- Remote snapshots use the rest of each player's byte budget. Their cadence
+  degrades by distance under dense overload instead of starving owner
+  reconciliation, as [Entity Registry And Replication](#entity-registry-and-replication)
+  describes.
 - The carry state slows walking through the shared encumbrance multiplier, as
   [Carry Weight And Encumbrance](INVENTORY_AND_DEATH_LOOT_DESIGN.md#carry-weight-and-encumbrance)
   defines.
@@ -1289,8 +1326,9 @@ in `content/actors/catalog.json`:
   20 m above and below their authored height, and a Mob starts to move only once
   the collision under it is loaded; walking Mobs keep their collision loaded
   like players.
-- A moving Mob travels in the unreliable `SimulationSnapshot` like a remote
-  player, and the snapshots change neither the state nor the interaction
+- Every living Mob that can walk travels in the unreliable `SimulationSnapshot`
+  like a remote player and by the same rules, so a standing one costs only its
+  refresh, and the snapshots change neither the state nor the interaction
   revision. The first tick it stands still sends one reliable `WorldActorState`
   with its rest pose, which advances the state revision but never the
   interaction revision.
@@ -2197,7 +2235,10 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Admission:MaxReliableQueuedPackets` | `1024` | Unacknowledged reliable packets before a disconnect |
 | `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
+| `InterestManagement:NearRadius`, `NearExitRadius` | `48`, `56` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |
 | `SnapshotReplication:OverloadTargetUtilizationBasisPoints` | `9500` | Share of the aggregate snapshot budget that dense remote state may use before it degrades |
+| `SnapshotReplication:PlayerBytesPerSecond` | 32 KiB | Snapshot bytes per player and second, owner snapshot included, at least two seconds of owner snapshots and at most `UdpQuotas:SnapshotBytesPerSecond` |
+| `SnapshotReplication:FarIntervalSnapshots`, `StopRepeats`, `RefreshIntervalSnapshots` | `3`, `3`, `15` | Snapshots between two changes of a far entity, repeats of a record after its last change, and snapshots between two refreshes of an unchanged entity; the first two at most one second of snapshots, the refresh between the far interval and ten seconds of snapshots |
 | `CollisionStreaming:LoadRadiusChunks`, `UnloadRadiusChunks` | `2`, `3` | Collision streaming radii around each anchor, the unload radius at most 16 |
 | `ItemInteraction:CorpseInteractionRadius` | `3` m | Range for opening and using a corpse, at most 20 m |
 | `ItemInteraction:CorpseDiscoveryRadius` | `32` m | Range of corpse presence, at least the interaction radius and at most 1,000 m |

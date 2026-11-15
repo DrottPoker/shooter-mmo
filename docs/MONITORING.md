@@ -206,7 +206,7 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.join.queue_delay.duration`, `.finalization.duration` | histogram, ms | How long a join waited and how long its finalization took. |
 | `simulation_worker.corpse.mutation.backlog`, `.active_aggregates` | gauge | Corpse mutations waiting in the per-corpse coordinator, and the corpses with a mutation in flight. |
 | `simulation_worker.simulation.snapshot.visibility_groups`, `.packets_encoded`, `.packets_sent` | counter | Recipients whose remote snapshot chunks were built, each a visibility group of its own because every recipient's chunks are assembled for it alone; built owner and remote snapshot packets; and sent snapshot packets. |
-| `simulation_worker.simulation.snapshot.entity_updates_deferred` | counter | Remote entity updates that the fair budget deferred to a later snapshot. |
+| `simulation_worker.simulation.snapshot.entity_updates_deferred` | counter | Due remote entity records that a recipient's byte budget deferred to the next snapshot; a record deferred again counts again. |
 | `simulation_worker.loop.failures` | counter | Exceptions that the realtime loop caught, as [Realtime Server Structure And Threading Contract](PROJECT_ARCHITECTURE.md#realtime-server-structure-and-threading-contract) describes, labeled `step`, the tick phase or loop step, such as `movement`, `snapshots`, or `network poll`, and `scope`: `step` when the whole run of the step was skipped, `player` when only one player left the Shard, and `peer` when only one peer was disconnected or one connection request refused. Every failure also writes one error line, so any value above zero needs a look. |
 
 The instruments of `Mmorpg.SimulationWorker.WorldActors` and

@@ -119,6 +119,12 @@ internal sealed class EntityPresenceReplicator(
         return interestManager.GetVisibleOrdered(connectionId);
     }
 
+    // Whether each entity of GetVisibleOrdered is in the connection's near tier.
+    public IReadOnlyList<bool> GetNearOrdered(int connectionId)
+    {
+        return interestManager.GetNearOrdered(connectionId);
+    }
+
     public void ForgetConnection(int connectionId)
     {
         interestManager.RemoveConnection(connectionId);

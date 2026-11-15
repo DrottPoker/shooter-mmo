@@ -1000,7 +1000,7 @@ or costs time without a recording:
 | Corrections | Every correction of the prediction, which `LocalPlayerController.PositionCorrected` reports, as a distribution of meters, and the hard snaps per minute |
 | Rubber banding | `RenderedMotionTracker` reads where the local player is drawn, its transform after the presentation, and counts the part of a frame's horizontal movement that the walk speed does not explain; a frame without a bound player or with another player starts over, so a join or a reconnect counts no jump. The largest jump, the frames with a jump of 0.25 m or more, and the total |
 | After a silence | The largest correction and jump in the 2 s after a silence ended, such as an outage of the line |
-| Remote entities | Every frame each source reports, for the other players and the Mobs that snapshots move, whether `RemoteMovementPresenter.IsStarved`: the render clock reached the newest state while the entity still moved between its two newest states, so it stands where the next snapshot should have moved it on. The entity-seconds seen and starved, the starvations, and the longest |
+| Remote entities | Every frame each source reports, for the other players and the Mobs that snapshots move, whether `RemoteMovementPresenter.IsStarved`: the render time passed the newest state while the entity still moved between its two newest states, and the extrapolation of 0.5 s ran out, so it stands where the next snapshot should have moved it on. A standing entity is not starved. The entity-seconds seen and starved, the starvations, and the longest |
 | Reliable intents | The intents sent and the seconds to their results, over all and per kind of `RealtimeIntentKinds`. A recording turns `IRealtimeDiagnostics.IntentTimingEnabled` on, the channels report each intent's operation id through `RealtimeSender` when it leaves and when its result arrives, and the timing is off again when the recording ends |
 
 `StartRecording(label)` opens
@@ -1768,10 +1768,36 @@ described above. A snapshot record carries a quantized position, facing, and
 ground flag, and no velocity: `RemoteMovementPresenter.ToMovementState` turns it
 into a state within half a step of the worker's, and the presenter derives the
 velocity it needs from the positions and ticks of its two newest states.
-`RemoteMovementPresenter.InterpolationDelayTicks` sets the render delay to two
-snapshot intervals and at least 100 ms: four ticks, about 133 ms, at 30 ticks and
-15 snapshots per second. One interval covers the wait for the next snapshot and
-the second a snapshot that arrives up to one interval late.
+`RemoteMovementPresenter.InterpolationDelayTicks` sets the starting render delay
+to two snapshot intervals and at least 100 ms: four ticks, about 133 ms, at 30
+ticks and 15 snapshots per second. One interval covers the wait for the next
+snapshot and the second a snapshot that arrives up to one interval late.
+
+The worker sends an entity's record only when it is due, as
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+describes, so the states of one entity arrive at uneven intervals: every
+snapshot near the player, every third farther away, and once a second while it
+stands. The presenter follows that per entity:
+
+- **Delay**: the interval between two moving states, smoothed so that one late
+  state moves the estimate a quarter of the way, sets the delay the entity asks
+  for, two such intervals, at least the starting delay and at most 0.5 s. The
+  delay moves toward it at 0.125 ticks per tick, so the render clock runs at
+  most an eighth slower or faster while an entity changes its tier, and the
+  entity neither jumps nor freezes.
+- **Standing**: a state at the same place as the one before, within 1 mm, means
+  the entity stands there now. A walking state after a stand starts from the
+  standing place one interval before it, so the entity neither glides there
+  from the last refresh a second before nor starts late, and the second between
+  two refreshes of a standing entity is no starvation.
+- **Extrapolation**: the render time runs on past the newest state. While the
+  newest state of a walking entity is older than the render time, the pose
+  continues along the velocity of the two newest states for 0.25 s and then
+  eases to a stop over the next 0.25 s, so it overshoots by at most 0.375 s of
+  walking.
+- **Blending back**: a newer state keeps the shown pose where it was, also an
+  extrapolated one, and blends the difference out at 3 m/s. A difference above
+  3 m snaps at once, as a teleport does.
 
 The clock measures that delay against an estimate of the server tick that
 advances with real time between snapshots. The estimate rises with any snapshot
@@ -3212,12 +3238,13 @@ revision, capability availability, and session validation; see
 
 ### Mob Movement
 
-A Mob that moves travels in the unreliable `SimulationSnapshot` like a remote
-player: a record with its world actor entity id, its quantized position and
-facing, and its ground flag. The worker includes it only while its pose changes,
-walking or turning to face its target, and sends one reliable `WorldActorState`
-with the rest pose when it stops. A Mob that never moves keeps its reliable
-pose.
+A Mob that can walk travels in the unreliable `SimulationSnapshot` like a remote
+player and by the same rules: a record with its world actor entity id, its
+quantized position and facing, and its ground flag, when it changed, a few
+snapshots after it stopped, and once a second as a refresh. The worker sends one
+reliable `WorldActorState` with the rest pose when it stops. A record at the
+pose where the Mob rests, such as a refresh, changes nothing, so a Mob that
+stands keeps its reliable pose and costs nothing per frame.
 
 `WorldActorPresentationController` subscribes to the snapshots of its realtime
 client and hands every entity that names a presented `MobView` to that view
@@ -3231,12 +3258,13 @@ interpolation, render clock, and render delay:
 - **Start.** The first snapshot after a rest anchors the reliable pose one render
   delay before it and restarts the render clock at the anchor, so the Mob stands
   where it was and then walks into the snapshot instead of jumping ahead.
-- **Settle.** A `WorldActorState` that arrives while snapshots still play becomes
-  their final state, one snapshot interval after the newest snapshot, so the Mob
-  walks onto its rest pose without a jump. A later snapshot that is not newer than
-  that state is ignored. A rest pose equal to the newest snapshot changes nothing.
-- **Jump.** A `WorldActorState` without any snapshot, one after the snapshots
-  played out at another pose, and one more than
+- **Settle.** A `WorldActorState` becomes the final state of the snapshots, one
+  snapshot interval after the newest snapshot, followed by a repeat of it, so
+  the Mob walks onto its rest pose and stands there without a jump, also when
+  the snapshots played out and the Mob walked on past its last snapshot for a
+  while: it then blends back. A later snapshot that is not newer than that
+  state, or that repeats the rest pose, is ignored.
+- **Jump.** A `WorldActorState` without any snapshot and one more than
   `RemoteActorMovement.TeleportDistance` (3 m) from the newest state, such as an
   evading Mob that the worker placed home, place the Mob at once. A snapshot that
   far away restarts the interpolation at the snapshot.

@@ -2582,6 +2582,30 @@ equips to the `back` slot; see
    and the hood. Loot the robe from the corpse with the second character.
    Expected result: the robe leaves the lying body at once.
 
+### Near And Far Players
+
+The worker sends a player's record only when it is due, nearest first, as
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
+describes.
+
+1. Start GameService and the default worker, start twelve development bots on
+   Development World 2 with
+   `dotnet run --project tools/ActiveSimulationBots --configuration Release -- --ActiveSimulationBots:ShardId local-shard-1 --ActiveSimulationBots:MinimumActiveBots 12 --ActiveSimulationBots:MaximumActiveBots 12 --ActiveSimulationBots:MinimumBehaviorSeconds 8 --ActiveSimulationBots:MaximumBehaviorSeconds 12`,
+   whose walks of 40 to 60 m carry bots beyond 56 m within minutes, and join
+   at the World spawn. In the F2 Debug menu, turn on `Record measurements to a
+   file`. Expected result: a bot that walks within about 48 m moves as
+   smoothly as the local player, and `Remote starved / longest` stays at 0 %
+   while the bots walk.
+2. Watch a bot that walks more than 56 m away. Expected result: it walks
+   smoothly too, about 0.4 s behind the worker instead of 0.13 s, without
+   stepping five times a second, freezing, or jumping.
+3. Watch a bot that stops, near and far. Expected result: it stands where it
+   stopped, without sliding on and back, and stays there, although its record
+   now comes about once a second.
+4. Watch a bot walk across 48 m toward the spawn or across 56 m away from it.
+   Expected result: no jump and no pause at the border; at most its walk looks
+   an eighth slower or faster for about a second.
+
 ## Art In The Game
 
 The models, materials, clips, catalogs, prefabs, and item presentation of

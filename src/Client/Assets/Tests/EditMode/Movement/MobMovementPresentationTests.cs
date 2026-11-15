@@ -10,7 +10,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // Mob snapshot routing, the shared remote interpolation, the settle onto the reliable rest
-    // pose, the direct jump without recent snapshots, and the cleanup on hide and respawn.
+    // pose, records where the Mob stands, the direct jump for a teleport, and the cleanup on
+    // hide and respawn.
     public sealed class MobMovementPresentationTests
     {
         private const ulong MobId = 11;
@@ -137,24 +138,53 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void ARestStateWithoutRecentSnapshotsIsAppliedDirectly()
+        public void ARestPoseSettlesAfterTheSnapshotsPlayedOutAndOnlyAJumpIsTheCallers()
         {
             var movement = Movement();
             Assert.That(movement.TrySettle(new Vector3(1f, 0f, 0f), 0f), Is.False, "No snapshot moves the Mob.");
 
+            // The snapshots end while the Mob walks: it walks on for a while and eases to a stop.
             var walk = new WalkSimulation(movement, Vector3.zero);
             walk.Snapshots(102, 110);
             walk.Frames(120);
-            var playedOut = movement.Position;
-            Assert.That(playedOut.x, Is.EqualTo(MetresPerTick * 10f).Within(0.0001f));
+            var extrapolated = (MetresPerTick * 10f)
+                + (MetresPerTick * TickRateHz * (RemoteMovementPresenter.ExtrapolationSeconds + (RemoteMovementPresenter.ExtrapolationEaseSeconds / 2f)));
+            Assert.That(movement.Position.x, Is.EqualTo(extrapolated).Within(0.01f));
+            Assert.That(movement.IsStarved, Is.True);
 
-            // The same pose keeps the snapshot presentation.
-            Assert.That(movement.TrySettle(playedOut, 90f), Is.True);
+            // The rest pose the worker reports brings it back without a jump.
+            Assert.That(movement.TrySettle(new Vector3(1.65f, 0f, 0f), 90f), Is.True);
+            Assert.That(movement.IsStarved, Is.False);
+            var settle = new WalkSimulation(movement, movement.Position);
+            settle.Frames(60);
+            Assert.That(settle.MaximumStep, Is.LessThanOrEqualTo(RemoteMovementPresenter.CorrectionMetresPerSecond * FrameSeconds * 1.01f));
+            Assert.That(movement.Position.x, Is.EqualTo(1.65f).Within(0.0001f));
             Assert.That(movement.IsDriven, Is.True);
 
-            // Another pose after the snapshots played out is a jump for the caller.
+            // A pose farther than a teleport from the newest state is a jump for the caller.
             Assert.That(movement.TrySettle(new Vector3(6f, 0f, 0f), 90f), Is.False);
             Assert.That(movement.IsDriven, Is.False);
+        }
+
+        [Test]
+        public void ARecordOfTheMobWhereItStandsChangesNothing()
+        {
+            var rest = new Vector3(1.65f, 0f, 0f);
+            var movement = Movement();
+
+            // A refresh of a Mob that never moved.
+            Assert.That(movement.PushSnapshot(102, State(1.65f), rest, 90f), Is.False);
+            Assert.That(movement.IsDriven, Is.False);
+
+            // The stop repeats after it came to rest.
+            var walk = new WalkSimulation(movement, Vector3.zero);
+            walk.Snapshots(102, 110);
+            Assert.That(movement.TrySettle(rest, 90f), Is.True);
+            walk.Frames(60);
+            Assert.That(movement.PushSnapshot(116, State(1.65f), rest, 90f), Is.False);
+            Assert.That(movement.PushSnapshot(146, State(1.65f), rest, 90f), Is.False);
+            Assert.That(movement.Advance(FrameSeconds, FrameSeconds), Is.False, "A settled rest pose costs nothing.");
+            Assert.That(movement.Position.x, Is.EqualTo(1.65f).Within(0.0001f));
         }
 
         [Test]
@@ -173,11 +203,19 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(movement.IsResting, Is.False);
             Assert.That(movement.Advance(0f, 0f), Is.True, "The movement runs again.");
 
+            // It walks on, stops at its last snapshot, and the worker reports that pose.
             var resumed = new WalkSimulation(movement, movement.Position);
-            resumed.Frames(30);
+            for (var tick = 402u; tick <= 410u; tick += 2)
+            {
+                Assert.That(movement.PushSnapshot(tick, State(1.95f + (MetresPerTick * (tick - 400))), new Vector3(1.65f, 0f, 0f), 90f), Is.True);
+                resumed.Frames(4);
+            }
+
+            Assert.That(movement.TrySettle(new Vector3(3.45f, 0f, 0f), 90f), Is.True);
+            resumed.Frames(60);
             Assert.That(resumed.MaximumStep, Is.LessThanOrEqualTo(MaximumFrameStep));
             Assert.That(resumed.MovedBackwards, Is.False);
-            Assert.That(movement.Position.x, Is.EqualTo(1.95f).Within(0.0001f));
+            Assert.That(movement.Position.x, Is.EqualTo(3.45f).Within(0.0001f));
         }
 
         [Test]
