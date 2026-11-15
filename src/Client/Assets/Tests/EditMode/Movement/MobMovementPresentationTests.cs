@@ -215,8 +215,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(mob.transform.position, Is.EqualTo(new Vector3(3f, 0f, -1f)));
 
                 mob.Movement.Configure(TickRateHz, SnapshotRateHz, null, CollisionSettings());
-                mob.PushSnapshot(102, Entity(MobId, 3.3f, -1f).State);
-                mob.PushSnapshot(104, Entity(MobId, 3.6f, -1f).State);
+                mob.PushSnapshot(102, Entity(MobId, 3.3f, -1f));
+                mob.PushSnapshot(104, Entity(MobId, 3.6f, -1f));
                 Assert.That(mob.Movement.IsDriven, Is.True);
                 Assert.That(mob.transform.position, Is.EqualTo(new Vector3(3f, 0f, -1f)));
 
@@ -234,7 +234,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 ApplyState(actors, mob, entry, 4, false, 3.75f);
                 Assert.That(mob.Movement.IsDriven, Is.False);
                 Assert.That(mobObject.activeSelf, Is.False);
-                mob.PushSnapshot(106, Entity(MobId, 3.9f, -1f).State);
+                mob.PushSnapshot(106, Entity(MobId, 3.9f, -1f));
                 Assert.That(mob.Movement.IsDriven, Is.False);
 
                 // When it returns it stands at its reliable pose and walks on from there.
@@ -242,7 +242,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(mobObject.activeSelf, Is.True);
                 Assert.That(mob.Movement.IsDriven, Is.False);
                 Assert.That(mob.transform.position, Is.EqualTo(new Vector3(8f, 0f, -1f)));
-                mob.PushSnapshot(300, Entity(MobId, 8.3f, -1f).State);
+                mob.PushSnapshot(300, Entity(MobId, 8.3f, -1f));
                 Assert.That(mob.Movement.IsDriven, Is.True);
                 Assert.That(mob.transform.position, Is.EqualTo(new Vector3(8f, 0f, -1f)));
             }
@@ -285,14 +285,14 @@ namespace Mmorpg.Client.Tests.EditMode
             mob.Apply(entry);
         }
 
-        private static RealtimePlayerState State(float positionX, float positionZ = 0f)
+        private static PlayerMovementState State(float positionX, float positionZ = 0f)
         {
-            return new RealtimePlayerState(positionX, 0f, positionZ, 4.5f, 0f, 0f, 90f, true);
+            return new PlayerMovementState(positionX, 0f, positionZ, 0f, 0f, 0f, 90f, true);
         }
 
         private static RealtimeEntitySnapshot Entity(ulong entityId, float positionX, float positionZ = -1f)
         {
-            return new RealtimeEntitySnapshot(entityId, 0, State(positionX, positionZ));
+            return RealtimeEntitySnapshot.Quantize((uint)entityId, positionX, 0f, positionZ, 90f, true);
         }
 
         private static RealtimeSimulationSnapshot Snapshot(uint serverTick, params RealtimeEntitySnapshot[] entities)

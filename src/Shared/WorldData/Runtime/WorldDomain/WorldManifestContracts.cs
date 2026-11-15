@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Mmorpg.WorldData.Worlds
 {
@@ -8,6 +9,11 @@ namespace Mmorpg.WorldData.Worlds
         // Version 2 removed radius service points; world actor capabilities grant item services.
         public const int Version = 2;
         public const string FileName = "world.json";
+
+        // How far from the origin a World may reach on x and z, and up or down on y, in meters:
+        // the realtime snapshot record carries a position only this far.
+        public const float MaximumHorizontalCoordinate = 65535f;
+        public const float MaximumVerticalCoordinate = 511f;
     }
 
     [Serializable]
@@ -83,6 +89,25 @@ namespace Mmorpg.WorldData.Worlds
                     "World bounds minimums must be lower than maximums.");
             }
 
+            if (Math.Abs(document.bounds.minimumX) > WorldManifestFormat.MaximumHorizontalCoordinate
+                || Math.Abs(document.bounds.maximumX) > WorldManifestFormat.MaximumHorizontalCoordinate
+                || Math.Abs(document.bounds.minimumZ) > WorldManifestFormat.MaximumHorizontalCoordinate
+                || Math.Abs(document.bounds.maximumZ) > WorldManifestFormat.MaximumHorizontalCoordinate)
+            {
+                throw new WorldManifestValidationException(
+                    "World bounds must stay within "
+                    + WorldManifestFormat.MaximumHorizontalCoordinate.ToString(CultureInfo.InvariantCulture)
+                    + " m of the origin on x and z, which the realtime snapshot record carries.");
+            }
+
+            if (Math.Abs(document.groundHeight) > WorldManifestFormat.MaximumVerticalCoordinate)
+            {
+                throw new WorldManifestValidationException(
+                    "GroundHeight must stay within "
+                    + WorldManifestFormat.MaximumVerticalCoordinate.ToString(CultureInfo.InvariantCulture)
+                    + " m of 0, which the realtime snapshot record carries.");
+            }
+
             if (document.spawn == null)
             {
                 throw new WorldManifestValidationException("Spawn is required.");
@@ -95,6 +120,13 @@ namespace Mmorpg.WorldData.Worlds
                 "Spawn");
             ValidateFinite(document.spawn.yawDegrees, "Spawn.YawDegrees");
             ValidateInsideBounds(document, document.spawn.x, document.spawn.z, "Spawn");
+            if (Math.Abs(document.spawn.y) > WorldManifestFormat.MaximumVerticalCoordinate)
+            {
+                throw new WorldManifestValidationException(
+                    "Spawn.Y must stay within "
+                    + WorldManifestFormat.MaximumVerticalCoordinate.ToString(CultureInfo.InvariantCulture)
+                    + " m of 0, which the realtime snapshot record carries.");
+            }
         }
 
         private static void ValidateInsideBounds(

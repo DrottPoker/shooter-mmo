@@ -1714,7 +1714,7 @@ it, as [Measure Replication](LOCAL_DEVELOPMENT.md#measure-replication) shows.
 way `RealtimeServerComposition` builds them, from the worker's own
 `appsettings.json`: the entity registry, the connection bindings, the peer
 registry and sender, `EntityPresenceReplicator` with the interest manager,
-`SnapshotReplicator` with its `SnapshotPacketCache`, recipient rotation, and the
+`SnapshotReplicator` with its `SnapshotRecords`, recipient rotation, and the
 per-peer and aggregate byte budgets, and the loop guard. Instead of UDP every
 peer is a transport double that counts what it is sent, by delivery method, and
 discards it; nothing needs GameService or a database. The real

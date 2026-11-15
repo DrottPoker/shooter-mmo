@@ -21,7 +21,7 @@ public sealed class SimulationBotWorldViewTests
             2,
             0,
             1,
-            [new RealtimeEntitySnapshot(100, 0, new RealtimePlayerState(-128f, 0.5f, -33f, 0f, 0f, 0f, 0f, true))])));
+            [RealtimeEntitySnapshot.Quantize(100, -128f, 0.5f, -33f, 0f, true)])));
         bot.Receive(RealtimeProtocol.EncodeOwnerCombatState(OwnCombat(4, health: 80, target: 100, status: RealtimeCombatAttackStatus.Attacking)));
         bot.Receive(RealtimeProtocol.EncodeCombatEventBatch(new RealtimeCombatEventBatch(3,
         [
@@ -82,7 +82,7 @@ public sealed class SimulationBotWorldViewTests
             sequence * 2,
             0,
             1,
-            [.. entities.Select(entity => new RealtimeEntitySnapshot(entity.Entity, 0, new RealtimePlayerState(entity.X, 0.5f, -33f, 0f, 0f, 0f, 0f, true)))]);
+            [.. entities.Select(entity => RealtimeEntitySnapshot.Quantize((uint)entity.Entity, entity.X, 0.5f, -33f, 0f, true))]);
     }
 
     [Fact]

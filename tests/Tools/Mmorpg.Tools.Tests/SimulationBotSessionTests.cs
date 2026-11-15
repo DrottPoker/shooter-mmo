@@ -63,8 +63,20 @@ public sealed class SimulationBotSessionTests
     public void CountsTheRemoteStatesOfEachSpawnedPlayerInsideTheWindow()
     {
         var bot = JoinedBot();
-        var spawnPacket = VectorOf(RealtimeMessageType.EntitySpawn);
-        Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(spawnPacket, out var spawn, out var error), error);
+        Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(VectorOf(RealtimeMessageType.EntitySpawn), out var vector, out var error), error);
+
+        // The spawn of the vector with an id that a snapshot record carries, as every id the worker
+        // gives out.
+        var spawn = new RealtimeEntitySpawn(
+            0x0E0F1011,
+            vector.Kind,
+            vector.PersistentId,
+            vector.DisplayName,
+            vector.ArchetypeId,
+            vector.ServerTick,
+            vector.InitialState,
+            vector.Appearance);
+        var spawnPacket = RealtimeProtocol.EncodeEntitySpawn(spawn);
         var untracked = spawn.EntityId + 1;
         var second = Ticks(TimeSpan.FromSeconds(1));
         var windowStart = JoinedTimestamp + second;
@@ -481,10 +493,7 @@ public sealed class SimulationBotSessionTests
             0,
             1,
             entityIds
-                .Select(entityId => new RealtimeEntitySnapshot(
-                    entityId,
-                    0,
-                    new RealtimePlayerState(0f, 0f, 0f, 0f, 0f, 0f, 0f, true)))
+                .Select(entityId => new RealtimeEntitySnapshot(checked((uint)entityId), 0, 0, 0, 0, true))
                 .ToArray()));
     }
 

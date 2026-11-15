@@ -1,5 +1,4 @@
 using Mmorpg.Client.Networking;
-using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using UnityEngine;
 
@@ -125,16 +124,15 @@ namespace Mmorpg.Client.Gameplay
         // reliable pose, where a movement starts. Returns whether the state was accepted.
         public bool PushSnapshot(
             uint serverTick,
-            RealtimePlayerState state,
+            PlayerMovementState sample,
             Vector3 restPosition,
             float restYawDegrees)
         {
-            if (!IsConfigured || state == null)
+            if (!IsConfigured)
             {
                 return false;
             }
 
-            var sample = RemoteMovementPresenter.ToMovementState(state);
             if (!presenter.HasPose
                 || !presenter.TryGetNewestState(out var newestTick, out var newest))
             {

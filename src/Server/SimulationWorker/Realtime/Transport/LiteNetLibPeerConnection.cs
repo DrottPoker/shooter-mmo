@@ -25,6 +25,12 @@ internal sealed class LiteNetLibPeerConnection : IRealtimePeerConnection
         Peer.Send(data, deliveryMethod);
     }
 
+    // LiteNetLib copies the bytes into a pooled packet before it returns.
+    public void Send(ReadOnlySpan<byte> data, DeliveryMethod deliveryMethod)
+    {
+        Peer.Send(data, deliveryMethod);
+    }
+
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
         return Peer.GetPacketsCountInReliableQueue(channelNumber, ordered);

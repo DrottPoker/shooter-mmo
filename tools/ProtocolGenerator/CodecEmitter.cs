@@ -17,7 +17,8 @@ internal static class CodecEmitter
                 PrimitiveKind.U16 => "ushort",
                 PrimitiveKind.U32 => "uint",
                 PrimitiveKind.U64 => "ulong",
-                PrimitiveKind.I32 => "int",
+                PrimitiveKind.I16 => "short",
+                PrimitiveKind.I24 or PrimitiveKind.I32 => "int",
                 PrimitiveKind.I64 => "long",
                 PrimitiveKind.F32 => "float",
                 PrimitiveKind.Bool => "bool",
@@ -89,6 +90,109 @@ internal static class CodecEmitter
         EmitTryRead(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, union: null);
         writer.BlankLine();
         EmitIsValid(writer, definition.Name, definition.ClassName, definition.Fields, unwrap: false, definition.Rules, union: null, leniency);
+        if (definition.EncodeInto)
+        {
+            writer.BlankLine();
+            EmitStructEncodeInto(writer, definition);
+        }
+    }
+
+    // Writes one struct of fixed size from its member values into a caller's buffer, validated
+    // like the struct, without allocating.
+    private static void EmitStructEncodeInto(CSharpWriter writer, StructDefinition definition)
+    {
+        var display = CSharpNames.Display(definition.Name);
+        var size = WireSizes.OfFields(definition.Fields).Maximum.ToString(CultureInfo.InvariantCulture);
+        var members = Members(definition.Fields).ToArray();
+        writer.Summary(
+            $"Writes one {definition.Name} of {size} bytes into the start of destination, validated as the struct is, without allocating.");
+        writer.Open($"public static void Encode{definition.Name}(Span<byte> destination, "
+            + string.Join(", ", members.Select(member => $"{member.Type} {CSharpNames.Parameter(member.Name)}")) + ")");
+        EmitParameterChecks(writer, definition.Fields, display);
+        writer.Open($"if (destination.Length < {size})");
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " does not fit the destination.")}, nameof(destination));");
+        writer.Close();
+        writer.BlankLine();
+        writer.Line($"var writer = new PacketWriter(destination.Slice(0, {size}));");
+        EmitWrites(writer, definition.Fields, unwrap: false, union: null, display, CSharpNames.Parameter);
+        writer.Close();
+    }
+
+    // Writes the frame header, the fields before the last array, and the array's count into a
+    // caller's buffer and returns how many bytes it wrote. The caller appends the elements, each
+    // written by the element struct's own encoder, so a packet is built without allocating.
+    private static void EmitMessageHeaderEncodeInto(CSharpWriter writer, MessageDefinition message)
+    {
+        var display = CSharpNames.Display(message.Name);
+        var array = message.Fields[^1];
+        var arrayType = (ArrayWireType)array.Type;
+        var element = ((StructWireType)arrayType.Element.Type).Definition;
+        var elementSize = WireSizes.OfFields(element.Fields).Maximum.ToString(CultureInfo.InvariantCulture);
+        var fields = message.Fields.Take(message.Fields.Count - 1).ToArray();
+        var count = CSharpNames.Parameter(array.Name) + "Count";
+        var headerSize = WireSizes.EmptyMessageSize(message).ToString(CultureInfo.InvariantCulture);
+        var parameters = Members(fields).Select(member => $"{member.Type} {CSharpNames.Parameter(member.Name)}")
+            .Append($"int {count}");
+        writer.Summary(
+            $"Writes the frame header, the fields before {array.Name}, and the count of {array.Name} into destination and returns "
+            + $"the {headerSize} bytes it wrote. The caller appends exactly {count} {element.Name} values of {elementSize} bytes, "
+            + $"each written by Encode{element.Name}, so the packet is built without allocating.");
+        writer.Open($"public static int Encode{message.Name}Header(Span<byte> destination, {string.Join(", ", parameters)})");
+        var countChecks = new List<string>();
+        if (arrayType.MinimumCount > 0)
+        {
+            countChecks.Add($"{count} < {arrayType.MinimumCount}");
+        }
+
+        countChecks.Add($"{count} > {arrayType.MaximumCount.Expression}");
+        EmitParameterChecks(writer, fields, display, countChecks);
+        writer.Open($"if (destination.Length < {headerSize} + ({count} * {elementSize}))");
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " does not fit the destination.")}, nameof(destination));");
+        writer.Close();
+        writer.BlankLine();
+        writer.Line($"var writer = StartPacket(destination, RealtimeMessageType.{message.Name});");
+        EmitWrites(writer, fields, unwrap: false, union: null, display, CSharpNames.Parameter);
+        writer.Line($"writer.WriteByte((byte){count});");
+        writer.Line("return writer.Position;");
+        writer.Close();
+    }
+
+    // Throws ArgumentException when a parameter of an encoder breaks a rule of its field.
+    private static void EmitParameterChecks(
+        CSharpWriter writer,
+        IReadOnlyList<FieldDefinition> fields,
+        string display,
+        IEnumerable<string>? extra = null)
+    {
+        var conditions = new List<string>();
+        foreach (var field in fields)
+        {
+            if (field.Type is BitsWireType bits)
+            {
+                conditions.AddRange(BitFailures(bits, CSharpNames.Parameter));
+                continue;
+            }
+
+            conditions.AddRange(Failures(field.Type, field.Rules, CSharpNames.Parameter(field.Name), sibling: CSharpNames.Parameter));
+        }
+
+        conditions.AddRange(extra ?? []);
+        if (conditions.Count == 0)
+        {
+            return;
+        }
+
+        OpenCondition(writer, conditions);
+        writer.Line($"throw new ArgumentException({CSharpWriter.Literal(display + " is invalid.")});");
+        writer.Close();
+        writer.BlankLine();
+    }
+
+    // A numeric bit-field entry must fit its width.
+    private static IEnumerable<string> BitFailures(BitsWireType bits, Func<string, string> member)
+    {
+        return bits.Bits.Where(bit => bit.IsNumber)
+            .Select(bit => $"{member(bit.Name)} > {bit.Maximum.ToString(CultureInfo.InvariantCulture)}");
     }
 
     public static void EmitMessageCodec(CSharpWriter writer, MessageDefinition message)
@@ -166,6 +270,11 @@ internal static class CodecEmitter
         EmitTryRead(writer, message.Name, modelType, message.Fields, unwrap, message.Union);
         writer.BlankLine();
         EmitIsValid(writer, message.Name, modelType, message.Fields, unwrap, message.Rules, message.Union, leniency);
+        if (message.EncodeInto)
+        {
+            writer.BlankLine();
+            EmitMessageHeaderEncodeInto(writer, message);
+        }
     }
 
     private static void EmitEmptyMessageCodec(CSharpWriter writer, MessageDefinition message)
@@ -252,7 +361,7 @@ internal static class CodecEmitter
             return "string.Empty";
         }
 
-        return typeName is "byte" or "ushort" or "uint" or "ulong" or "int" or "long" or "float" or "bool" or "Guid"
+        return typeName is "byte" or "ushort" or "uint" or "ulong" or "short" or "int" or "long" or "float" or "bool" or "Guid"
             ? "default"
             : "null";
     }
@@ -274,8 +383,8 @@ internal static class CodecEmitter
         };
     }
 
-    // A model member: one per field, and one bool per bit of a bits8 field.
-    // Fallback, when set, replaces a null constructor argument.
+    // A model member: one per field, and one per entry of a bit field, a bool for one bit and an
+    // unsigned number for a wider entry. Fallback, when set, replaces a null constructor argument.
     private sealed record Member(string Name, string Type, string? Description, string? Fallback = null);
 
     private static IEnumerable<Member> Members(IEnumerable<FieldDefinition> fields)
@@ -286,7 +395,7 @@ internal static class CodecEmitter
             {
                 foreach (var bit in bits.Bits)
                 {
-                    yield return new Member(bit.Name, "bool", bit.Description);
+                    yield return new Member(bit.Name, BitType(bits, bit), bit.Description);
                 }
 
                 continue;
@@ -294,6 +403,17 @@ internal static class CodecEmitter
 
             yield return new Member(field.Name, TypeName(field.Type), field.Description, field.NullAsEmpty ? EmptyValue(field.Type) : null);
         }
+    }
+
+    private static string BitType(BitsWireType bits, BitDefinition bit)
+    {
+        return !bit.IsNumber ? "bool" : bits.Size == 1 ? "byte" : "ushort";
+    }
+
+    // The hexadecimal literal of a bit-field mask, two digits per byte of the field.
+    private static string BitMask(BitsWireType bits, int mask)
+    {
+        return "0x" + mask.ToString("X" + (bits.Size * 2).ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
     }
 
     private static void EmitConstructor(CSharpWriter writer, string access, string className, IReadOnlyList<Member> members)
@@ -434,19 +554,42 @@ internal static class CodecEmitter
         writer.Open($"case {enumClass}.{unionCase.Kinds[^1].Value.Name}:");
     }
 
+    // MemberOf maps a field or bit name to the expression that holds its value: a property of
+    // value by default, or a parameter of an encoder that takes the members.
     private static void EmitWrites(
         CSharpWriter writer,
         IReadOnlyList<FieldDefinition> fields,
         bool unwrap,
         UnionDefinition? union,
-        string display)
+        string display,
+        Func<string, string>? memberOf = null)
     {
+        // An encoder that takes the members writes only flat fields, which are always present.
+        var flat = memberOf is not null;
+        memberOf ??= name => "value." + name;
         foreach (var field in fields)
         {
             if (field.Type is BitsWireType bits)
             {
-                var parts = bits.Bits.Select((bit, index) => $"(value.{bit.Name} ? {1 << index} : 0)");
-                writer.Line($"writer.WriteByte((byte)({string.Join(" | ", parts)}));");
+                var parts = new List<string>();
+                var shift = 0;
+                foreach (var bit in bits.Bits)
+                {
+                    parts.Add(!bit.IsNumber
+                        ? $"({memberOf(bit.Name)} ? {1 << shift} : 0)"
+                        : shift == 0 ? memberOf(bit.Name) : $"({memberOf(bit.Name)} << {shift})");
+                    shift += bit.Width;
+                }
+
+                writer.Line(bits.Size == 1
+                    ? $"writer.WriteByte((byte)({string.Join(" | ", parts)}));"
+                    : $"writer.WriteUInt16((ushort)({string.Join(" | ", parts)}));");
+                continue;
+            }
+
+            if (flat)
+            {
+                EmitWrite(writer, field.Type, memberOf(field.Name));
                 continue;
             }
 
@@ -713,15 +856,28 @@ internal static class CodecEmitter
             var fieldDisplay = FieldDisplay(name, field.Name);
             if (field.Type is BitsWireType bits)
             {
-                EmitPrimitiveRead(writer, "Byte", local);
-                var mask = (1 << bits.Bits.Count) - 1;
-                writer.Open($"if (({local} & ~0x{mask.ToString("X2", CultureInfo.InvariantCulture)}) != 0)");
+                EmitPrimitiveRead(writer, bits.Size == 1 ? "Byte" : "UInt16", local);
+                writer.Open($"if (({local} & ~{BitMask(bits, (1 << bits.Width) - 1)}) != 0)");
                 writer.Line($"error = {CSharpWriter.Literal(fieldDisplay + " has unknown bits.")};");
                 writer.Line("return false;");
                 writer.Close();
                 writer.BlankLine();
-                arguments.AddRange(bits.Bits.Select((_, index) =>
-                    $"({local} & 0x{(1 << index).ToString("X2", CultureInfo.InvariantCulture)}) != 0"));
+                var shift = 0;
+                foreach (var bit in bits.Bits)
+                {
+                    if (!bit.IsNumber)
+                    {
+                        arguments.Add($"({local} & {BitMask(bits, 1 << shift)}) != 0");
+                    }
+                    else
+                    {
+                        var shifted = shift == 0 ? local : $"({local} >> {shift})";
+                        arguments.Add($"({BitType(bits, bit)})({shifted} & {BitMask(bits, bit.Maximum)})");
+                    }
+
+                    shift += bit.Width;
+                }
+
                 continue;
             }
 
@@ -977,6 +1133,8 @@ internal static class CodecEmitter
             PrimitiveKind.U16 => "UInt16",
             PrimitiveKind.U32 => "UInt32",
             PrimitiveKind.U64 => "UInt64",
+            PrimitiveKind.I16 => "Int16",
+            PrimitiveKind.I24 => "Int24",
             PrimitiveKind.I32 => "Int32",
             PrimitiveKind.I64 => "Int64",
             PrimitiveKind.F32 => "Single",
@@ -1008,6 +1166,12 @@ internal static class CodecEmitter
         foreach (var field in fields)
         {
             var expression = unwrap ? "value" : "value." + field.Name;
+            if (field.Type is BitsWireType bits)
+            {
+                conditions.AddRange(BitFailures(bits, name => "value." + name));
+                continue;
+            }
+
             if (field.Presence == FieldPresence.Conditional)
             {
                 var structName = ((StructWireType)field.Type).Definition.Name;
@@ -1125,9 +1289,16 @@ internal static class CodecEmitter
         }
     }
 
-    // Expressions that are true when the value breaks a rule of its type.
-    private static IEnumerable<string> Failures(WireType type, ValueRules valueRules, string expression, Leniency? leniency = null)
+    // Expressions that are true when the value breaks a rule of its type. Sibling maps the name of
+    // another field, which lessThan compares with, to its expression.
+    private static IEnumerable<string> Failures(
+        WireType type,
+        ValueRules valueRules,
+        string expression,
+        Leniency? leniency = null,
+        Func<string, string>? sibling = null)
     {
+        sibling ??= name => "value." + name;
         switch (type)
         {
             case PrimitiveType { Kind: PrimitiveKind.F32 }:
@@ -1160,7 +1331,14 @@ internal static class CodecEmitter
                 }
 
                 break;
-            case PrimitiveType { Kind: not PrimitiveKind.Bool }:
+            case PrimitiveType { Kind: not PrimitiveKind.Bool } primitive:
+                // A 24-bit integer lives in a C# int, so its range is a rule of its own.
+                if (primitive.Kind == PrimitiveKind.I24)
+                {
+                    yield return $"{expression} < {ProtocolSchemaLoader.Int24Minimum.ToString(CultureInfo.InvariantCulture)}";
+                    yield return $"{expression} > {ProtocolSchemaLoader.Int24Maximum.ToString(CultureInfo.InvariantCulture)}";
+                }
+
                 if (valueRules.Minimum is not null)
                 {
                     yield return $"{expression} < {IntegerBound(valueRules.Minimum)}";
@@ -1173,7 +1351,7 @@ internal static class CodecEmitter
 
                 if (valueRules.LessThan is not null)
                 {
-                    yield return $"{expression} >= value.{valueRules.LessThan}";
+                    yield return $"{expression} >= {sibling(valueRules.LessThan)}";
                 }
 
                 break;

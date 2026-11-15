@@ -46,7 +46,15 @@ namespace Mmorpg.SharedTests
                     serverTick: 0,
                     chunkIndex: 2,
                     chunkCount: 3,
-                    entities: Enumerable.Range(1, 24).Select(index => EntitySnapshotModel((ulong)index * 1000003)).ToArray())));
+                    entities: Enumerable.Range(1, 71).Select(index => EntitySnapshotModel((uint)index * 1000003)).ToArray())));
+            r.Vector(
+                "Replication/SimulationSnapshot/range edges",
+                simulationSnapshot,
+                () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(
+                    0,
+                    1,
+                    new RealtimeEntitySnapshot(uint.MaxValue, -8388608, short.MinValue, 8388607, 1023, false),
+                    new RealtimeEntitySnapshot(1, 8388607, short.MaxValue, -8388608, 0, true))));
 
             r.Vector(
                 "Replication/EntityAppearanceChanged/typical",
@@ -147,24 +155,33 @@ namespace Mmorpg.SharedTests
 
             r.Accepts("Replication/SimulationSnapshot/baseline", SimulationSnapshotWire(0, 1, EntitySnapshotWire()));
             r.Accepts(
+                "Replication/SimulationSnapshot/negative positions",
+                SimulationSnapshotWire(0, 1, EntitySnapshotWire(x: -8388608, y: -1, z: -1)));
+            r.Accepts(
+                "Replication/SimulationSnapshot/largest yaw step on ground",
+                SimulationSnapshotWire(0, 1, EntitySnapshotWire(pose: 0x07FF)));
+            r.Rejects(
+                "Replication/SimulationSnapshot/unknown pose bit",
+                SimulationSnapshotWire(0, 1, EntitySnapshotWire(pose: 0x0800)));
+            r.Rejects(
+                "Replication/SimulationSnapshot/high pose bit",
+                SimulationSnapshotWire(0, 1, EntitySnapshotWire(pose: 0x8000)));
+            r.Accepts(
                 "Replication/SimulationSnapshot/last chunk of the largest count",
                 SimulationSnapshotWire(65534, 65535, EntitySnapshotWire()));
             r.Rejects("Replication/SimulationSnapshot/chunk count 0", SimulationSnapshotWire(0, 0, EntitySnapshotWire()));
             r.Rejects("Replication/SimulationSnapshot/chunk index equal to count", SimulationSnapshotWire(1, 1, EntitySnapshotWire()));
             r.Rejects("Replication/SimulationSnapshot/no entities", SimulationSnapshotWire(0, 1));
             r.Accepts(
-                "Replication/SimulationSnapshot/24 entities",
-                SimulationSnapshotWire(0, 1, Enumerable.Range(1, 24).Select(index => EntitySnapshotWire((ulong)index)).ToArray()));
+                "Replication/SimulationSnapshot/71 entities",
+                SimulationSnapshotWire(0, 1, Enumerable.Range(1, 71).Select(index => EntitySnapshotWire((uint)index)).ToArray()));
             r.Rejects(
-                "Replication/SimulationSnapshot/25 entities",
-                SimulationSnapshotWire(0, 1, Enumerable.Range(1, 25).Select(index => EntitySnapshotWire((ulong)index)).ToArray()));
+                "Replication/SimulationSnapshot/72 entities",
+                SimulationSnapshotWire(0, 1, Enumerable.Range(1, 72).Select(index => EntitySnapshotWire((uint)index)).ToArray()));
             r.Rejects("Replication/SimulationSnapshot/entity zero", SimulationSnapshotWire(0, 1, EntitySnapshotWire(0)));
             r.Accepts(
                 "Replication/SimulationSnapshot/duplicate entities",
                 SimulationSnapshotWire(0, 1, EntitySnapshotWire(5), EntitySnapshotWire(5)));
-            r.Rejects(
-                "Replication/SimulationSnapshot/NaN entity state",
-                SimulationSnapshotWire(0, 1, EntitySnapshotWire(5, PlayerStateWireWithBits(2, QuietNaNBits))));
 
             r.RejectsEncode("Replication/EntitySpawn/null spawn", () => RealtimeProtocol.EncodeEntitySpawn(null));
             r.RejectsEncode("Replication/EntitySpawn/entity zero", () => RealtimeProtocol.EncodeEntitySpawn(EntitySpawnModel(entityId: 0)));
@@ -226,11 +243,11 @@ namespace Mmorpg.SharedTests
                 "Replication/SimulationSnapshot/no entities",
                 () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(0, 1)));
             r.RejectsEncode(
-                "Replication/SimulationSnapshot/25 entities",
+                "Replication/SimulationSnapshot/72 entities",
                 () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(
                     0,
                     1,
-                    Enumerable.Range(1, 25).Select(index => EntitySnapshotModel((ulong)index)).ToArray())));
+                    Enumerable.Range(1, 72).Select(index => EntitySnapshotModel((uint)index)).ToArray())));
             r.RejectsEncode(
                 "Replication/SimulationSnapshot/null entity",
                 () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(0, 1, new RealtimeEntitySnapshot[] { null })));
@@ -238,11 +255,23 @@ namespace Mmorpg.SharedTests
                 "Replication/SimulationSnapshot/entity zero",
                 () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(0, 1, EntitySnapshotModel(0))));
             r.RejectsEncode(
-                "Replication/SimulationSnapshot/null entity state",
+                "Replication/SimulationSnapshot/x above 24 bits",
                 () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(
                     0,
                     1,
-                    new RealtimeEntitySnapshot(entityId: 1, lastProcessedInputSequence: 2, state: null))));
+                    new RealtimeEntitySnapshot(1, 8388608, 0, 0, 0, true))));
+            r.RejectsEncode(
+                "Replication/SimulationSnapshot/z below 24 bits",
+                () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(
+                    0,
+                    1,
+                    new RealtimeEntitySnapshot(1, 0, 0, -8388609, 0, true))));
+            r.RejectsEncode(
+                "Replication/SimulationSnapshot/yaw step 1024",
+                () => RealtimeProtocol.EncodeSimulationSnapshot(SimulationSnapshotModel(
+                    0,
+                    1,
+                    new RealtimeEntitySnapshot(1, 0, 0, 0, 1024, true))));
         }
 
         private static RealtimeEntitySpawn EntitySpawnModel(
@@ -314,12 +343,16 @@ namespace Mmorpg.SharedTests
             return toolInUse != null ? wire.Text(toolInUse) : wire;
         }
 
-        private static RealtimeEntitySnapshot EntitySnapshotModel(ulong entityId)
+        // Spread positions and facings that differ for every id.
+        private static RealtimeEntitySnapshot EntitySnapshotModel(uint entityId)
         {
             return new RealtimeEntitySnapshot(
                 entityId: entityId,
-                lastProcessedInputSequence: (uint)(entityId % 997) + 9,
-                state: PlayerStateModel());
+                quantizedX: (int)(entityId % 8388607) - 4194304,
+                quantizedY: (short)((int)(entityId % 65535) - 32768),
+                quantizedZ: 4194304 - (int)(entityId % 8388607),
+                yawStep: (ushort)(entityId % 1024),
+                isGrounded: entityId % 2 == 0);
         }
 
         private static RealtimeSimulationSnapshot SimulationSnapshotModel(
@@ -360,12 +393,14 @@ namespace Mmorpg.SharedTests
             return Wire.Message(RealtimeMessageType.EntityDespawn).U64(entityId).Text(reason ?? "out_of_interest");
         }
 
-        private static Wire EntitySnapshotWire(ulong entityId = 42, Wire state = null)
+        private static Wire EntitySnapshotWire(uint entityId = 42, int x = 1280, short y = -96, int z = -2560, ushort pose = 0x0500)
         {
             return Wire.Fragment()
-                .U64(entityId)
-                .U32((uint)(entityId % 997) + 9)
-                .Append(state ?? PlayerStateWire());
+                .U32(entityId)
+                .I24(x)
+                .I16(y)
+                .I24(z)
+                .U16(pose);
         }
 
         private static Wire SimulationSnapshotWire(ushort chunkIndex, ushort chunkCount, params Wire[] entities)

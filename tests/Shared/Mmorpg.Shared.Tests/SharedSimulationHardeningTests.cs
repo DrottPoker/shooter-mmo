@@ -7,6 +7,7 @@ using Mmorpg.Testing.Content;
 using Mmorpg.Tools.ContentPipeline;
 using Mmorpg.WorldData.Content;
 using Mmorpg.WorldData.Items;
+using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.Shared.Tests;
 
@@ -324,6 +325,25 @@ public sealed class SharedSimulationHardeningTests
 
         // The committed catalog compiles under these limits.
         Assert.NotEmpty(ItemCatalogTestData.Compile().Definitions);
+    }
+
+    [Fact]
+    public void WorldManifestLimitsFitTheSnapshotRecord()
+    {
+        Assert.True(WorldManifestFormat.MaximumHorizontalCoordinate <= RealtimeEntitySnapshot.MaximumHorizontalMeters);
+        Assert.True(WorldManifestFormat.MaximumVerticalCoordinate <= RealtimeEntitySnapshot.MaximumVerticalMeters);
+
+        // The record carries the edges of that range exactly, in both directions.
+        var edge = RealtimeEntitySnapshot.Quantize(
+            1,
+            -WorldManifestFormat.MaximumHorizontalCoordinate,
+            WorldManifestFormat.MaximumVerticalCoordinate,
+            WorldManifestFormat.MaximumHorizontalCoordinate,
+            0f,
+            true);
+        Assert.Equal(
+            (-WorldManifestFormat.MaximumHorizontalCoordinate, WorldManifestFormat.MaximumVerticalCoordinate, WorldManifestFormat.MaximumHorizontalCoordinate),
+            (edge.PositionX, edge.PositionY, edge.PositionZ));
     }
 
     [Fact]

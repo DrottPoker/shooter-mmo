@@ -200,7 +200,7 @@ namespace Mmorpg.Client.WorldActors
                     continue;
                 }
 
-                mob.PushSnapshot(snapshot.ServerTick, entity.State);
+                mob.PushSnapshot(snapshot.ServerTick, entity);
                 routed++;
             }
 

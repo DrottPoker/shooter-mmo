@@ -10,6 +10,17 @@ public sealed class SimulationEntityRegistry
     private readonly Dictionary<Guid, ulong> entityIdsByCharacterId = [];
     private ulong nextEntityId = 1;
 
+    public SimulationEntityRegistry()
+    {
+    }
+
+    // Starts the id counter elsewhere, so a test can reach the end of the id space.
+    internal SimulationEntityRegistry(ulong nextEntityId)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(nextEntityId);
+        this.nextEntityId = nextEntityId;
+    }
+
     public int PlayerCount
     {
         get
@@ -135,11 +146,13 @@ public sealed class SimulationEntityRegistry
         }
     }
 
+    // The remote snapshot record carries the id in 32 bits, so the counter stops there.
     private ulong AllocateEntityId()
     {
-        if (nextEntityId == 0)
+        if (nextEntityId > uint.MaxValue)
         {
-            throw new InvalidOperationException("Simulation entity id space is exhausted.");
+            throw new InvalidOperationException(
+                $"Simulation entity ids are exhausted: a snapshot record carries at most {uint.MaxValue} as an entity id.");
         }
 
         return nextEntityId++;

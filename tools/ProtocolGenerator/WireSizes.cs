@@ -26,7 +26,8 @@ public static class WireSizes
         return type switch
         {
             PrimitiveType primitive => SizeRange.Fixed(PrimitiveSize(primitive.Kind)),
-            EnumWireType or BitsWireType => SizeRange.Fixed(1),
+            EnumWireType => SizeRange.Fixed(1),
+            BitsWireType bits => SizeRange.Fixed(bits.Size),
             // A UTF-16 character encodes to at most three UTF-8 bytes; a surrogate pair
             // encodes to four bytes for two characters.
             StringWireType text => new SizeRange(2 + (text.AllowBlank ? 0 : 1), 2 + (3L * text.MaximumLength.Value)),
@@ -90,7 +91,8 @@ public static class WireSizes
         return kind switch
         {
             PrimitiveKind.U8 or PrimitiveKind.Bool => 1,
-            PrimitiveKind.U16 => 2,
+            PrimitiveKind.U16 or PrimitiveKind.I16 => 2,
+            PrimitiveKind.I24 => 3,
             PrimitiveKind.U32 or PrimitiveKind.I32 or PrimitiveKind.F32 => 4,
             PrimitiveKind.U64 or PrimitiveKind.I64 => 8,
             PrimitiveKind.Guid => 16,

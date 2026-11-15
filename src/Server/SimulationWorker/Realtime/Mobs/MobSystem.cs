@@ -223,7 +223,7 @@ internal sealed class MobSystem : IMobSnapshotSource
     }
 
     // The newest pose of every Mob that moved since the last movement snapshot.
-    public void CopyPendingSnapshotsTo(List<RealtimeEntitySnapshot> destination)
+    public void CopyPendingStatesTo(List<SnapshotEntityState> destination)
     {
         destination.Clear();
         foreach (var agent in ordered)
@@ -234,10 +234,7 @@ internal sealed class MobSystem : IMobSnapshotSource
             }
 
             agent.SnapshotPending = false;
-            destination.Add(new RealtimeEntitySnapshot(
-                agent.EntityId,
-                0,
-                RealtimeStateMapper.ToRealtimePlayerState(agent.Movement)));
+            destination.Add(new SnapshotEntityState(agent.EntityId, agent.Movement));
         }
     }
 

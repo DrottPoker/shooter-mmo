@@ -32,7 +32,7 @@ public sealed class ProtocolGeneratorTests
     {
         var result = ProtocolGeneration.Run(ProtocolGeneratorOptions.Create(RepositoryPaths.Root, verifyOnly: true));
 
-        Assert.Equal(41, result.Model.Version);
+        Assert.Equal(42, result.Model.Version);
         Assert.Equal(46, result.Model.Messages.Count);
     }
 
@@ -491,6 +491,156 @@ public sealed class ProtocolGeneratorTests
         Assert.Contains("public static bool TryDecodeRejected(byte[] data, out RealtimeLabel reason, out string error)", family, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NarrowSignedIntegersReadWriteAndValidateTheirRange()
+    {
+        var schema = GeneratedSchema();
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Height", "type": "i16", "minimum": -100 }"""));
+        schema["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Offset", "type": "i24" }"""));
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(SizeRange.Fixed(2), WireSizes.Of(model.Messages.Single().Fields[3].Type));
+        Assert.Equal(SizeRange.Fixed(3), WireSizes.Of(model.Messages.Single().Fields[4].Type));
+        Assert.Contains("public short Height { get; }", family, StringComparison.Ordinal);
+        Assert.Contains("public int Offset { get; }", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteInt16(value.Height);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteInt24(value.Offset);", family, StringComparison.Ordinal);
+        Assert.Contains("reader.TryReadInt16(out var height, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("reader.TryReadInt24(out var offset, out error)", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Height < -100", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Offset < -8388608", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Offset > 8388607", family, StringComparison.Ordinal);
+
+        var wider = GeneratedSchema();
+        wider["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Height", "type": "i16", "minimum": -100 }"""));
+        wider["messages"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Offset", "type": "i32" }"""));
+        Assert.NotEqual(
+            ProtocolFingerprint.Compute(model),
+            ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(wider.ToJsonString())));
+    }
+
+    [Fact]
+    public void WideBitFieldsCarryNumbersBesideTheirBits()
+    {
+        var schema = GeneratedSchema();
+        var flags = schema["structs"]![0]!["fields"]![2]!.AsObject();
+        flags["type"] = "bits16";
+        flags["bits"] = JsonNode.Parse("""[ { "name": "Heading", "width": 10 }, { "name": "IsActive" } ]""");
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.Equal(SizeRange.Fixed(4 + 4 + 2), WireSizes.OfFields(model.Structs.Single().Fields));
+        Assert.Contains("ushort heading,", family, StringComparison.Ordinal);
+        Assert.Contains("public ushort Heading { get; }", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteUInt16((ushort)(value.Heading | (value.IsActive ? 1024 : 0)));", family, StringComparison.Ordinal);
+        Assert.Contains("if ((flags & ~0x07FF) != 0)", family, StringComparison.Ordinal);
+        Assert.Contains("(ushort)(flags & 0x03FF), (flags & 0x0400) != 0", family, StringComparison.Ordinal);
+        Assert.Contains("|| value.Heading > 1023", family, StringComparison.Ordinal);
+        Assert.NotEqual(
+            ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(GeneratedSchema().ToJsonString())),
+            ProtocolFingerprint.Compute(model));
+
+        // A number above the lowest bits shifts into place.
+        flags["bits"] = JsonNode.Parse("""[ { "name": "IsActive" }, { "name": "Heading", "width": 3 } ]""");
+        family = ProtocolEmitter.Emit(ProtocolSchemaLoader.Load(schema.ToJsonString()))
+            .Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+        Assert.Contains("writer.WriteUInt16((ushort)((value.IsActive ? 1 : 0) | (value.Heading << 1)));", family, StringComparison.Ordinal);
+        Assert.Contains("(flags & 0x0001) != 0, (ushort)((flags >> 1) & 0x0007)", family, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EncodeIntoWritesAStructAndAPacketHeaderIntoACallersBuffer()
+    {
+        var schema = EncodeIntoSchema();
+        var model = ProtocolSchemaLoader.Load(schema.ToJsonString());
+        var family = ProtocolEmitter.Emit(model).Single(file => file.FileName == "RealtimeProtocol.Input.g.cs").Content;
+
+        Assert.True(model.Structs.Single().EncodeInto);
+        Assert.True(model.Messages.Single().EncodeInto);
+        Assert.Contains("public static void EncodePoint(Span<byte> destination, float x, float y, bool isActive)", family, StringComparison.Ordinal);
+        Assert.Contains("if (!IsFinite(x)", family, StringComparison.Ordinal);
+        Assert.Contains("if (destination.Length < 9)", family, StringComparison.Ordinal);
+        Assert.Contains("var writer = new PacketWriter(destination.Slice(0, 9));", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteSingle(x);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteByte((byte)((isActive ? 1 : 0)));", family, StringComparison.Ordinal);
+        Assert.Contains("public static int EncodeSnapshotHeader(Span<byte> destination, uint sequence, int pointsCount)", family, StringComparison.Ordinal);
+        Assert.Contains("if (sequence < 1", family, StringComparison.Ordinal);
+        Assert.Contains("|| pointsCount < 1", family, StringComparison.Ordinal);
+        Assert.Contains("|| pointsCount > MaximumThings)", family, StringComparison.Ordinal);
+        Assert.Contains("if (destination.Length < 12 + (pointsCount * 9))", family, StringComparison.Ordinal);
+        Assert.Contains("var writer = StartPacket(destination, RealtimeMessageType.Snapshot);", family, StringComparison.Ordinal);
+        Assert.Contains("writer.WriteByte((byte)pointsCount);", family, StringComparison.Ordinal);
+        Assert.Contains("return writer.Position;", family, StringComparison.Ordinal);
+
+        // The option only shapes the C# API, so the wire contract stays the same.
+        var plain = EncodeIntoSchema();
+        plain["structs"]![0]!.AsObject().Remove("encodeInto");
+        plain["messages"]![0]!.AsObject().Remove("encodeInto");
+        Assert.Equal(
+            ProtocolFingerprint.Compute(model),
+            ProtocolFingerprint.Compute(ProtocolSchemaLoader.Load(plain.ToJsonString())));
+    }
+
+    [Theory]
+    [InlineData("struct with rules", "$.structs[0].encodeInto")]
+    [InlineData("struct with text", "$.structs[0].encodeInto")]
+    [InlineData("message with rules", "$.messages[0].encodeInto")]
+    [InlineData("message that ends without an array", "$.messages[0].encodeInto")]
+    [InlineData("array of a struct without encodeInto", "$.messages[0].encodeInto")]
+    [InlineData("array with distinct elements", "$.messages[0].encodeInto")]
+    [InlineData("bit wider than its field", "$.structs[0].fields[2].bits[0].width")]
+    [InlineData("bits beyond their field", "$.structs[0].fields[2].bits")]
+    [InlineData("bound outside a 24-bit integer", "$.messages[0].fields[0].minimum")]
+    [InlineData("bound outside a 16-bit integer", "$.messages[0].fields[0].maximum")]
+    public void InvalidNarrowTypesAndEncodeIntoAreRejectedWithTheirPath(string mutation, string path)
+    {
+        var schema = EncodeIntoSchema();
+        var point = schema["structs"]![0]!.AsObject();
+        var message = schema["messages"]![0]!.AsObject();
+        var fields = message["fields"]!.AsArray();
+        switch (mutation)
+        {
+            case "struct with rules":
+                point["rules"] = true;
+                break;
+            case "struct with text":
+                point.Remove("sizeConstant");
+                point["fields"]!.AsArray().Add(JsonNode.Parse("""{ "name": "Label", "type": "string", "maxLength": 4 }"""));
+                break;
+            case "message with rules":
+                message["rules"] = true;
+                break;
+            case "message that ends without an array":
+                fields.Add(JsonNode.Parse("""{ "name": "Held", "type": "Buttons" }"""));
+                break;
+            case "array of a struct without encodeInto":
+                point.Remove("encodeInto");
+                break;
+            case "array with distinct elements":
+                fields[1]!["distinctBy"] = "X";
+                break;
+            case "bit wider than its field":
+                point["fields"]![2]!["bits"]![0]!["width"] = 8;
+                break;
+            case "bits beyond their field":
+                point["fields"]![2]!["bits"] = JsonNode.Parse("""[ { "name": "Heading", "width": 7 }, { "name": "IsActive" }, { "name": "IsIdle" } ]""");
+                break;
+            case "bound outside a 24-bit integer":
+                fields[0]!["type"] = "i24";
+                fields[0]!["minimum"] = -8388609;
+                break;
+            case "bound outside a 16-bit integer":
+                fields[0]!["type"] = "i16";
+                fields[0]!.AsObject().Remove("minimum");
+                fields[0]!["maximum"] = 32768;
+                break;
+        }
+
+        var exception = Assert.Throws<ProtocolSchemaException>(() => ProtocolSchemaLoader.Load(schema.ToJsonString()));
+        Assert.Equal(path, exception.Path);
+    }
+
     [Theory]
     [InlineData("discriminator that is not an enum", "$.messages[0].variants.discriminator")]
     [InlineData("kind without a case", "$.messages[0].variants.cases")]
@@ -818,6 +968,19 @@ public sealed class ProtocolGeneratorTests
               { "name": "Held", "type": "Buttons" }
             ]
             """);
+        return schema;
+    }
+
+    // The generated schema with a struct and a message that are also encoded into a caller's buffer:
+    // the message ends with the array and has no rules.
+    private static JsonObject EncodeIntoSchema()
+    {
+        var schema = GeneratedSchema();
+        schema["structs"]![0]!["encodeInto"] = true;
+        var message = schema["messages"]![0]!.AsObject();
+        message.Remove("rules");
+        message["encodeInto"] = true;
+        message["fields"]!.AsArray().RemoveAt(2);
         return schema;
     }
 

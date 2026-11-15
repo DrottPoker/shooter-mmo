@@ -624,7 +624,7 @@ namespace Mmorpg.Client.Gameplay
                     continue;
                 }
 
-                remotePlayer.PushSnapshot(snapshot.ServerTick, entity.State);
+                remotePlayer.PushSnapshot(snapshot.ServerTick, entity);
             }
         }
 

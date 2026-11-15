@@ -7,6 +7,10 @@ namespace Mmorpg.Tools.ProtocolGenerator;
 // Reads realtime-protocol.json strictly and resolves it into a validated ProtocolModel.
 public static partial class ProtocolSchemaLoader
 {
+    public const int Int24Minimum = -(1 << 23);
+
+    public const int Int24Maximum = (1 << 23) - 1;
+
     private const string ClassPrefix = "Realtime";
 
     private static readonly Dictionary<string, PrimitiveKind> Primitives = new(StringComparer.Ordinal)
@@ -15,6 +19,8 @@ public static partial class ProtocolSchemaLoader
         ["u16"] = PrimitiveKind.U16,
         ["u32"] = PrimitiveKind.U32,
         ["u64"] = PrimitiveKind.U64,
+        ["i16"] = PrimitiveKind.I16,
+        ["i24"] = PrimitiveKind.I24,
         ["i32"] = PrimitiveKind.I32,
         ["i64"] = PrimitiveKind.I64,
         ["f32"] = PrimitiveKind.F32,
@@ -210,7 +216,10 @@ public static partial class ProtocolSchemaLoader
                 RequireMemberName(node, "family"),
                 node.RequiredString("description"),
                 node.OptionalBoolean("rules", false),
-                OptionalMemberName(node, "sizeConstant"));
+                OptionalMemberName(node, "sizeConstant"))
+            {
+                EncodeInto = node.OptionalBoolean("encodeInto", false)
+            };
             if (!scope.Structs.TryAdd(name, definition))
             {
                 throw node.Error("name", $"'{name}' appears more than once.");
@@ -226,6 +235,13 @@ public static partial class ProtocolSchemaLoader
             if (blank is not null)
             {
                 throw nodes[index].Error("fields", $"'{blank.Name}' cannot use blank acceptOnDecode, which applies to message fields only.");
+            }
+
+            if (structs[index].EncodeInto && (structs[index].Rules || !AreFlat(structs[index].Fields)))
+            {
+                throw nodes[index].Error(
+                    "encodeInto",
+                    "requires a struct without rules whose fields are numbers, enums, or bit fields.");
             }
 
             nodes[index].EnsureFullyRead();
@@ -285,7 +301,7 @@ public static partial class ProtocolSchemaLoader
             EnsureFlatBlankStructs(node, fields);
             if (api == MessageApi.Unwrap && (fields.Count != 1 || fields[0].Type is BitsWireType))
             {
-                throw node.Error("api", "unwrap requires exactly one field that is not bits8.");
+                throw node.Error("api", "unwrap requires exactly one field that is not a bit field.");
             }
 
             var union = node.TryReadObject("variants", out var variantsNode) ? ReadUnion(variantsNode, fields, scope) : null;
@@ -332,8 +348,17 @@ public static partial class ProtocolSchemaLoader
                 fields,
                 union)
             {
-                ExpandedEncode = expandedEncode
+                ExpandedEncode = expandedEncode,
+                EncodeInto = node.OptionalBoolean("encodeInto", false)
             };
+            if (message.EncodeInto && !CanEncodeInto(message))
+            {
+                throw node.Error(
+                    "encodeInto",
+                    "requires a class message without rules or variants whose last field is an array without distinct rules "
+                    + "of a struct with encodeInto, after fields that are numbers, enums, or bit fields.");
+            }
+
             CheckMessageSizes(node, message, scope);
 
             messages.Add(message);
@@ -384,6 +409,28 @@ public static partial class ProtocolSchemaLoader
         }
 
         return fields;
+    }
+
+    // Fields that an encoder can write from plain parameters: always present numbers, enums,
+    // and bit fields.
+    private static bool AreFlat(IEnumerable<FieldDefinition> fields)
+    {
+        return fields.All(field => field.Presence == FieldPresence.Always
+            && field.Type is PrimitiveType or EnumWireType or BitsWireType);
+    }
+
+    private static bool CanEncodeInto(MessageDefinition message)
+    {
+        return message.Api == MessageApi.Class
+            && message.Union is null
+            && !message.Rules
+            && message.Fields[^1] is
+            {
+                Presence: FieldPresence.Always,
+                Type: ArrayWireType { Element.Type: StructWireType { Definition.EncodeInto: true } },
+                Rules: { Distinct: false, DistinctBy: null }
+            }
+            && AreFlat(message.Fields.Take(message.Fields.Count - 1));
     }
 
     // A struct read with blank acceptOnDecode relaxes its own text fields, so it must not nest
@@ -624,7 +671,8 @@ public static partial class ProtocolSchemaLoader
         WireType type = typeName switch
         {
             "array" => ReadArray(node, scope),
-            "bits8" => ReadBits(node),
+            "bits8" => ReadBits(node, 1),
+            "bits16" => ReadBits(node, 2),
             _ => scope.Resolve(node, "type", typeName)
         };
         var field = new FieldDefinition(name, description, type, ReadRules(node, type, scope));
@@ -718,21 +766,31 @@ public static partial class ProtocolSchemaLoader
         return new ArrayWireType(element, minimumCount, maximumCount);
     }
 
-    private static BitsWireType ReadBits(SchemaNode node)
+    // A bit field of size bytes. An entry is one bit, a bool, unless its width makes it an
+    // unsigned number of that many bits.
+    private static BitsWireType ReadBits(SchemaNode node, int size)
     {
         var bits = new List<BitDefinition>();
+        var capacity = size * 8;
         foreach (var bitNode in node.RequiredObjects("bits"))
         {
-            bits.Add(new BitDefinition(RequireMemberName(bitNode, "name"), bitNode.OptionalString("description")));
+            var width = bitNode.OptionalInteger("width") ?? 1;
+            if (width < 1 || width >= capacity)
+            {
+                throw bitNode.Error("width", $"must be between 1 and {capacity - 1}.");
+            }
+
+            bits.Add(new BitDefinition(RequireMemberName(bitNode, "name"), bitNode.OptionalString("description"), (int)width));
             bitNode.EnsureFullyRead();
         }
 
-        if (bits.Count is 0 or > 8)
+        var type = new BitsWireType(bits, size);
+        if (bits.Count == 0 || type.Width > capacity)
         {
-            throw node.Error("bits", "must contain between 1 and 8 bits.");
+            throw node.Error("bits", $"must use between 1 and {capacity} bits.");
         }
 
-        return new BitsWireType(bits);
+        return type;
     }
 
     // Reads the value rules that fit the type. Rules that do not fit stay unread, so the
@@ -820,6 +878,8 @@ public static partial class ProtocolSchemaLoader
             PrimitiveKind.U16 => (0L, ushort.MaxValue),
             PrimitiveKind.U32 => (0L, uint.MaxValue),
             PrimitiveKind.U64 => (0L, long.MaxValue),
+            PrimitiveKind.I16 => (short.MinValue, short.MaxValue),
+            PrimitiveKind.I24 => (Int24Minimum, Int24Maximum),
             PrimitiveKind.I32 => (int.MinValue, int.MaxValue),
             _ => (long.MinValue, long.MaxValue)
         };

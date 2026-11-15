@@ -113,6 +113,10 @@
             "description": "A public RealtimeProtocol constant with the fixed encoded size of the struct.",
             "$ref": "#/$defs/name"
           },
+          "encodeInto": {
+            "description": "Also generates Encode<Struct>(destination, members), which writes one struct of fixed size into a caller's buffer without allocating. Needs fields that are numbers, enums, or bit fields, and no rules.",
+            "type": "boolean"
+          },
           "fields": { "$ref": "#/$defs/fields" }
         }
       }
@@ -162,6 +166,10 @@
           },
           "runtimeSizeCheck": {
             "description": "Required exactly when a reliable message can exceed the packet limit; encoding then throws InvalidOperationException for an oversized packet.",
+            "type": "boolean"
+          },
+          "encodeInto": {
+            "description": "Also generates Encode<Message>Header(destination, fields, count), which writes the packet up to its last array into a caller's buffer; the caller appends the elements with the element struct's encoder. Needs a last array of a struct with encodeInto, after fields that are numbers, enums, or bit fields.",
             "type": "boolean"
           },
           "fields": { "$ref": "#/$defs/fields" },
@@ -257,9 +265,9 @@
       "anyOf": [ { "type": "number" }, { "$ref": "#/$defs/name" } ]
     },
     "type": {
-      "description": "u8, u16, u32, u64, i32, i64, f32, bool, guid, string, array, bits8, or the name of an enum or struct.",
+      "description": "u8, u16, u32, u64, i16, i24, i32, i64, f32, bool, guid, string, array, bits8, bits16, or the name of an enum or struct.",
       "type": "string",
-      "pattern": "^(u8|u16|u32|u64|i32|i64|f32|bool|guid|string|array|bits8|[A-Z][A-Za-z0-9]*)$"
+      "pattern": "^(u8|u16|u32|u64|i16|i24|i32|i64|f32|bool|guid|string|array|bits8|bits16|[A-Z][A-Za-z0-9]*)$"
     },
     "fields": {
       "type": "array",
@@ -337,15 +345,24 @@
           "distinct": { "description": "Array elements must differ.", "type": "boolean" },
           "distinctBy": { "description": "Struct array elements must differ in this field.", "$ref": "#/$defs/name" },
           "bits": {
-            "description": "The boolean properties of a bits8 field, lowest bit first.",
+            "description": "The properties of a bits8 or bits16 field, lowest bit first: a bool per entry, or an unsigned number of width bits.",
             "type": "array",
             "minItems": 1,
-            "maxItems": 8,
+            "maxItems": 16,
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": [ "name" ],
-              "properties": { "name": { "$ref": "#/$defs/name" }, "description": { "$ref": "#/$defs/text" } }
+              "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "description": { "$ref": "#/$defs/text" },
+                "width": {
+                  "description": "Bits of an unsigned number; 1, the default, is a bool.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 15
+                }
+              }
             }
           }
         }

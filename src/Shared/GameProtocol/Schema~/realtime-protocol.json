@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 41,
+    "version": 42,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -65,9 +65,9 @@
     },
     {
       "name": "MaximumSnapshotEntitiesPerChunk",
-      "value": 24,
+      "value": 71,
       "visibility": "protocol",
-      "description": "Entity records in one simulation snapshot chunk."
+      "description": "Entity records in one simulation snapshot chunk: as many as fit the unreliable packet limit."
     },
     {
       "name": "MaximumTimestampLength",
@@ -721,16 +721,32 @@
     {
       "name": "EntitySnapshot",
       "family": "Replication",
-      "description": "The state of one remote entity in a simulation snapshot.",
+      "description": "What a client shows of one remote entity in a simulation snapshot, quantized: where it is, where it faces, and whether it stands on ground.",
       "sizeConstant": "SimulationSnapshotEntitySize",
+      "encodeInto": true,
       "fields": [
-        { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity id." },
         {
-          "name": "LastProcessedInputSequence",
+          "name": "EntityId",
           "type": "u32",
-          "description": "The newest input sequence the worker applied for the entity."
+          "minimum": 1,
+          "description": "The network entity id, which every other message carries in 64 bits."
         },
-        { "name": "State", "type": "PlayerState", "description": "The entity's authoritative movement state." }
+        { "name": "QuantizedX", "type": "i24", "description": "World position on the x axis in steps of 1/128 m." },
+        { "name": "QuantizedY", "type": "i16", "description": "World position on the y axis in steps of 1/64 m." },
+        { "name": "QuantizedZ", "type": "i24", "description": "World position on the z axis in steps of 1/128 m." },
+        {
+          "name": "Pose",
+          "type": "bits16",
+          "description": "The facing and the movement state bits.",
+          "bits": [
+            {
+              "name": "YawStep",
+              "width": 10,
+              "description": "Facing around the vertical axis in steps of 360/1024 degrees."
+            },
+            { "name": "IsGrounded", "description": "The entity stands on walkable ground." }
+          ]
+        }
       ]
     },
     {
@@ -1488,6 +1504,7 @@
       "description": "One chunk of the remote entity states visible to the recipient.",
       "parameter": "snapshot",
       "emptySizeConstant": "SimulationSnapshotPacketHeaderSize",
+      "encodeInto": true,
       "fields": [
         { "name": "SnapshotSequence", "type": "u32", "description": "Increases with every snapshot frame." },
         { "name": "ServerTick", "type": "u32", "description": "The worker simulation tick of the states." },

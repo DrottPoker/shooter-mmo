@@ -412,7 +412,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 41;
+        public const ushort Version = 42;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -455,9 +455,9 @@ namespace Mmorpg.GameProtocol
         public const int MaximumInputBatchSize = 4;
 
         /// <summary>
-        /// Entity records in one simulation snapshot chunk.
+        /// Entity records in one simulation snapshot chunk: as many as fit the unreliable packet limit.
         /// </summary>
-        public const int MaximumSnapshotEntitiesPerChunk = 24;
+        public const int MaximumSnapshotEntitiesPerChunk = 71;
 
         private const uint Magic = 0x4F4D4D53;
         private const int MaximumIdentifierLength = RealtimeProtocolLimits.MaximumIdentifierLength;

@@ -796,7 +796,9 @@ authentication, and domain failures to structured results:
 
 ## Entity Registry And Replication
 
-- `SimulationEntityRegistry` owns nonzero network entity ids.
+- `SimulationEntityRegistry` owns nonzero network entity ids: a counter from 1
+  that stops with an error at 4,294,967,295, the largest id that a remote
+  snapshot record carries.
 - Persistent character id and transient network entity id are separate.
 - `ConnectionEntityBindingRegistry` enforces one peer per entity and one entity
   per peer.
@@ -808,9 +810,12 @@ authentication, and domain failures to structured results:
   acknowledgement and reconciliation.
 - Remote snapshots carry every player entity that a peer sees, a lingering
   body too; only a bound entity has an owner snapshot.
-- Remote visible entities use MTU-safe shared packet batches. Under dense
-  overload, a rotating fair subset reduces remote update cadence before the
-  worker-wide byte bucket begins dropping complete frames.
+- Every entity's remote record is quantized once per snapshot into a flat
+  buffer, and each recipient's MTU-safe chunks are assembled from those records
+  into one reusable packet buffer that the transport copies, so the broadcast
+  allocates nothing per recipient or packet. Under dense overload, a rotating
+  fair subset reduces remote update cadence before the worker-wide byte bucket
+  begins dropping complete frames.
 - `SnapshotReplication:OverloadTargetUtilizationBasisPoints` reserves aggregate
   burst headroom. Deferred remote entity updates remain visible through the
   `simulation_worker.simulation.snapshot.entity_updates_deferred` counter.
@@ -836,10 +841,9 @@ visibility set:
   waits for its turn, and joins and leaves still update visibility at once.
 - The spatial cells store the entity positions, so the visibility test reads
   them without a dictionary lookup per candidate.
-- Equal ordered visibility sets share one encoded snapshot packet batch per
-  broadcast.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
-  contains at most 24 current entity records.
+  contains at most 71 current entity records of 14 bytes, as
+  [Remote Entity Record](REALTIME_PROTOCOL.md#remote-entity-record) describes.
 - Cell size, radii, and the refresh interval are worker-owned configuration.
 
 This is process-local interest management for one complete shard. Cross-worker

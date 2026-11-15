@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 41;
+        public const ushort PinnedVersion = 42;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -275,9 +275,9 @@ namespace Mmorpg.SharedTests
             Expect(failures, "ChannelCount", RealtimeProtocol.ChannelCount, (byte)2);
             Expect(failures, "MaximumInputBatchSize", RealtimeProtocol.MaximumInputBatchSize, 4);
             Expect(failures, "OwnerSimulationSnapshotPacketSize", RealtimeProtocol.OwnerSimulationSnapshotPacketSize, 54);
-            Expect(failures, "MaximumSnapshotEntitiesPerChunk", RealtimeProtocol.MaximumSnapshotEntitiesPerChunk, 24);
+            Expect(failures, "MaximumSnapshotEntitiesPerChunk", RealtimeProtocol.MaximumSnapshotEntitiesPerChunk, 71);
             Expect(failures, "SimulationSnapshotPacketHeaderSize", RealtimeProtocol.SimulationSnapshotPacketHeaderSize, 20);
-            Expect(failures, "SimulationSnapshotEntitySize", RealtimeProtocol.SimulationSnapshotEntitySize, 41);
+            Expect(failures, "SimulationSnapshotEntitySize", RealtimeProtocol.SimulationSnapshotEntitySize, 14);
             Expect(failures, "Limits.MaximumIdentifierLength", RealtimeProtocolLimits.MaximumIdentifierLength, 128);
             Expect(failures, "Limits.MaximumNameLength", RealtimeProtocolLimits.MaximumNameLength, 128);
             Expect(failures, "Limits.MaximumEquipmentSlotIdLength", RealtimeProtocolLimits.MaximumEquipmentSlotIdLength, 64);
@@ -353,7 +353,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 29 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2a 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
@@ -807,6 +807,17 @@ namespace Mmorpg.SharedTests
             public Wire U64(ulong value)
             {
                 return Little(value, 8);
+            }
+
+            public Wire I16(short value)
+            {
+                return Little(unchecked((ushort)value), 2);
+            }
+
+            // The low three bytes of a 24-bit signed value.
+            public Wire I24(int value)
+            {
+                return Little(unchecked((uint)value) & 0xFFFFFF, 3);
             }
 
             public Wire I32(int value)

@@ -122,11 +122,11 @@ public sealed class SimulationBotWorldView
         {
             if (actors.TryGetValue(entity.EntityId, out var actor))
             {
-                actor.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ, snapshot.SnapshotSequence);
+                actor.MoveTo(entity.PositionX, entity.PositionY, entity.PositionZ, snapshot.SnapshotSequence);
             }
             else if (players.TryGetValue(entity.EntityId, out var player))
             {
-                player.MoveTo(entity.State.PositionX, entity.State.PositionY, entity.State.PositionZ, snapshot.SnapshotSequence);
+                player.MoveTo(entity.PositionX, entity.PositionY, entity.PositionZ, snapshot.SnapshotSequence);
             }
         }
     }
