@@ -1393,7 +1393,14 @@ Full-stack reports additionally contain:
 SimulationWorker logs interval timing for network polling, asynchronous
 completion handling, join queue and finalization, simulation ticks and lag,
 movement, collision streaming, interest work, snapshot construction and send,
-and fixed-tick resynchronization. The same values are published as metrics of
+and fixed-tick resynchronization, and the share of the interval that its loop
+thread was busy with the garbage collection pauses. Its performance file also
+times every tick phase and every step of a loop iteration by name: a phase only
+on the ticks on which it did its work, so the snapshots, which run on every
+second tick, have half as many samples as the tick. The loop thread's busy
+share is the time of its ticks and loop steps over the interval's length; the
+process CPU beside it also holds the transport's own threads, which send what
+the loop queued. The same values are published as metrics of
 the `Mmorpg.SimulationWorker.Performance` and `Mmorpg.SimulationWorker.Realtime`
 meters, listed in [Monitoring](MONITORING.md#simulationworker). Set
 `Telemetry__OtlpEndpoint` for GameService and SimulationWorker and start the
@@ -1411,6 +1418,14 @@ seconds, and adds a `workerPerformance` section to the report:
 - `durations`: every timed phase over those intervals, with its samples, the
   sample-weighted average, the worst interval average, p95, and p99, and the
   longest sample. The p95 and p99 are bucket upper bounds, as in the log.
+  `phases` and `loopSteps` fold every tick phase and every loop step by name
+  the same way, in tick order.
+- `loopBusyPercent` and `gcPauseMsPerSecond`: the loop thread's busy share and
+  the garbage collection pauses per second, each as its average and highest
+  interval; null for a file of a worker that does not write them.
+- `worstInterval`: the steady interval with the highest tick p99, the higher
+  tick average breaking a tie, with its loop busy share, process CPU, pauses,
+  and its three costliest tick phases by milliseconds per second.
 - `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
   resynchronizations, allocation, and GC collections, each as its total and its
   largest interval.
@@ -1542,10 +1557,15 @@ kind, the worst steady tick p99, the worker's average single-core CPU and
 highest working set from its own intervals, the generator's average CPU, the
 payload bytes per bot and second that the worker received and sent, the
 worker's loop failures over the run, `workerLoopStepFailures` and
-`workerLoopIsolatedFailures`, in full-stack mode `authBusyRefusals`, every
+`workerLoopIsolatedFailures`, the average share of the loop thread's busy time,
+`workerLoopBusyAveragePercent`, and its garbage collection pauses,
+`workerGcPauseMsPerSecond`, both absent for a worker that does not write them,
+so an older baseline still compares, in full-stack mode `authBusyRefusals`, every
 `auth_busy` answer of the run, and for a burst its refusals and its median and
-longest seconds; the summary also carries the burst itself as `burst` and a
-[GameService outage](#gameservice-outage-scenario) as `outage`.
+longest seconds; the summary also carries the burst itself as `burst`, a
+[GameService outage](#gameservice-outage-scenario) as `outage`, and the
+worker's `worstInterval` as `workerWorstInterval`. `tools/Test-Load.ps1`
+prints that interval with its three costliest tick phases before the verdict.
 
 `-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
 or under a network profile to `<scenario>.<profile>.json`, such as
@@ -1596,10 +1616,12 @@ What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target
 - **250 playing players pass a five-minute run and a 30-minute soak** on this
   machine with every rule, at a bit more than half a core for the worker. 100
   players in one place pass too.
-- **500 playing players fail** the tick budget and the update rate, and the
-  worker needs more than one core, which its one loop thread does not have.
-  Nothing else fails there: every operation stays below 200 ms at the 95th
-  percentile.
+- **500 playing players fail** the tick budget and the update rate. The worker
+  process uses more than one core, but its loop thread is busy only about a
+  third of the time; entry 1 of
+  [What Limits The Next Tier](#what-limits-the-next-tier) says where the time
+  goes. Nothing else fails there: every operation stays below 200 ms at the
+  95th percentile.
 - **250 players on one shared corpse fail** only the operation time of that
   corpse, the deliberate worst case of `mixed-250`: see entry 6 of
   [What Limits The Next Tier](#what-limits-the-next-tier).
@@ -1672,6 +1694,112 @@ The two operation tables were 94 percent of that growth. `playing-500` grew 326
 MiB per hour then, which is about 8 GiB per day and Shard at the Scale Target;
 entry 7 of [What Limits The Next Tier](#what-limits-the-next-tier) says what 14
 days of it come to.
+
+## Replication Benchmark
+
+A load run needs eight minutes and an idle machine. The replication benchmark
+measures the worker's replication path, interest and snapshots, in about half a
+minute on any machine, so each change of interest, snapshot encoding, or the
+byte budgets can be measured on its own. `tools/Measure-Replication.ps1` runs
+it, as [Measure Replication](LOCAL_DEVELOPMENT.md#measure-replication) shows.
+
+### What It Runs
+
+`ReplicationBenchmarkTests.MeasureTheReplicationLayouts` in
+`Mmorpg.SimulationWorker.Tests`, in the `Benchmark` category that CI and
+`tools/Test-Changes.ps1` leave out, builds the worker's replication objects the
+way `RealtimeServerComposition` builds them, from the worker's own
+`appsettings.json`: the entity registry, the connection bindings, the peer
+registry and sender, `EntityPresenceReplicator` with the interest manager,
+`SnapshotReplicator` with its `SnapshotPacketCache`, recipient rotation, and the
+per-peer and aggregate byte budgets, and the loop guard. Instead of UDP every
+peer is a transport double that counts what it is sent, by delivery method, and
+discards it; nothing needs GameService or a database. The real
+`SimulationTickLoop` runs two phases: a seeded motion in the place of movement
+and the Mob brains, and the snapshot broadcast with its interest refresh. A
+clock that advances one tick per tick drives the byte budgets, so the ticks run
+as fast as the machine allows and the budgets still refill as at the tick rate.
+
+Each layout places its players and Mobs from a fixed seed. A fixed share walks
+straight legs to random points of its ground at the World's walk speed, a
+walking Mob at 1.4 m/s, and the rest stands. After 90 ticks of warm-up, 900
+ticks, 30 seconds of the World, are measured.
+
+| Layout | Players | Mobs | Walking | Ground |
+| --- | ---: | ---: | --- | --- |
+| `spread-500` | 500 | 180 | 60 % of the players, 20 % of the Mobs | `playing-500` on Development World 2: 200 fighters over the eight hunting grounds, 100 gatherers over the six node fields, 150 walkers that start on the three roads and walk over the World's 360 m square, and 50 traders in the town; the Mobs in the hunting grounds' wolf areas |
+| `crowd-200` | 200 | 0 | 60 % | One circle of 30 m radius |
+| `crowd-500` | 500 | 0 | 60 % | One circle of 60 m radius |
+
+The Mobs are the benchmark's own definition shaped like the grey wolf, so no
+content change moves the numbers. What it leaves out: the movement simulation,
+the Mob brains, combat, world actor state, corpses, items, and looks, whose
+reliable messages a playing run also sends, and LiteNetLib's own sending.
+Players spawn with the default look.
+
+### What It Reports
+
+Per layout, over the measured ticks:
+
+- Deterministic: the snapshot bytes and all bytes per player and second, the
+  packets per second, the entity records per player and snapshot, the owner's
+  included, the bytes per record with the packet headers, the share of the
+  remote updates the budgets deferred, and the update rate that the players
+  see for the entities they see with a state, the average, the fifth
+  percentile over players, and the lowest, with the counts they come from:
+  bytes, packets, records, deferrals, visibility groups, encoded packets,
+  spawns, despawns, and dropped snapshots.
+- Informative: the average and the exact 99th percentile of the tick, the
+  interest refresh, and the snapshot broadcast, the bytes allocated per tick,
+  the garbage collections and pause milliseconds per second of the World, the
+  average of every tick phase, and the wall time.
+
+The deterministic numbers depend only on the code and the layout: one source
+state gives the same numbers on every run and machine. `result.json` holds
+their SHA-256 fingerprint with the commit and a hash of the uncommitted changes,
+and the script fails with exit code 1 when an earlier run in
+`artifacts/replication` or the baseline has the same commit and changes but
+another fingerprint. The timing numbers depend on the machine and what else
+runs on it, so they are compared, never judged.
+
+`ASmallLayoutKeepsItsDeterministicNumbers`, a fast test that runs with every
+test run, plays 40 players and 12 Mobs with a small aggregate budget, so
+updates are deferred, and pins every deterministic number, so the harness
+cannot change unnoticed. After an intended change of replication, take its new
+numbers from the test's output.
+
+### Baseline
+
+`tools/load/baselines/replication.json` holds the baseline, recorded on the
+machine of [Measured Tiers](#measured-tiers) while other programs used about
+30 to 90 percent of all its cores, so its timings are high and only
+informative:
+
+| Layout | Snapshot KiB/s per player | All KiB/s per player | Packets/s | Records per player and snapshot | Bytes per record | Deferred | Update rate p5 | Interest avg / p99 | Broadcast avg / p99 | Allocated per tick | Gen0 / gen1 per s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `spread-500` | 72.5 | 72.9 | 47,146 | 117.9 | 41.95 | 45.3 % | 5.4 Hz | 4.5 / 13.4 ms | 12.8 / 34.5 ms | 2.2 MiB | 4.1 / 2.3 |
+| `crowd-200` | 123.5 | 123.5 | 30,000 | 201.0 | 41.96 | 0 % | 15.0 Hz | 0.5 / 1.0 ms | 0.8 / 1.6 ms | 36 KiB | 0.1 / 0 |
+| `crowd-500` | 73.7 | 73.7 | 45,000 | 120.0 | 41.94 | 76.2 % | 3.6 Hz | 2.2 / 4.8 ms | 3.8 / 8.2 ms | 79 KiB | 0.1 / 0 |
+
+Against the load runs: `spread-500` sends 118 records per player and snapshot
+of 41.95 bytes each, where `playing-500` sent 115 of 41.96 bytes, and 72.5 KiB
+of snapshots per player and second against 70.8 KiB, and it allocates 2.2 MiB
+per tick, 65 MiB per second, with 4.1 and 2.3 collections of generation 0 and 1
+per second, against 78 MiB and 4.9 and 2.8. It defers 45 percent of the
+updates against 36, and its players who see the least get 5.4 updates per
+second against 6.5, because its players see more of each other: 214 entities
+with a state per player and snapshot against 180. The likely reason is the
+layout: the bots of `playing-500` walk routes over reachable ground with
+pauses, die and come back at the World spawn, and leave their grounds for Mobs,
+nodes, and the vendor, which rectangles do not follow. All its bytes per player
+are 72.9 KiB/s against 77.2, and its packets per second 47,000 against 94,500:
+beside its 44,000 snapshot packets per second, `playing-500` sent about 50,000
+other packets of 65 bytes on average, of which spawns and despawns were 3,200,
+while the benchmark sends only snapshots, spawns, and despawns, 2,500 of these
+per second.
+`crowd-200` sends 123.5 KiB per player and second, as `worker-only-200` measured
+126, and `crowd-500` gives 3.6 updates per second, as `worker-only-500`
+measured 3.5.
 
 ## Load Runs Under A Network Profile
 
@@ -1812,12 +1940,34 @@ Each entry is a measured limit or defect with its evidence. None of them is
 tuned away in the load tooling; the run folders of 2026-11-14 and 2026-11-15
 hold the reports.
 
-1. **The worker's one loop thread.** At 500 playing players the worker uses 144
-   percent of a core (LiteNetLib's threads included), its tick p99 leaves the
-   33.34 ms budget, and the update rate of the players who see the least falls
-   to 6.6 per second, although the players are spread over eight hunting
-   grounds, six node fields, and a town. At 250 it uses 66 percent and holds
-   15 updates per second.
+1. **Replication, not the loop thread.** At 500 playing players the tick p99
+   leaves the 33.34 ms budget and the update rate of the players who see the
+   least falls to 6.5 per second, although the players are spread over eight
+   hunting grounds, six node fields, and a town. The worker's performance file
+   of `playing-500` says where the time goes:
+   - The loop thread is busy only about a third of the time: 30 ticks per
+     second of 10.3 ms on average, 31 percent, and 3 percent for polling and
+     completions. The process uses 123 percent of a core, so most of its CPU
+     is outside the loop, in LiteNetLib's threads, which send 94,500 packets
+     per second: 44,000 snapshot packets and 50,000 others of 65 bytes on
+     average.
+   - The tail of the snapshot broadcast breaks the budget: it averages 9.9 ms,
+     of which interest takes 3.3, but its p99 bucket reaches 33.34 ms in 3 and
+     50 ms in 1 of the 30 intervals with all 500 players, and a single
+     broadcast took 64 ms.
+     Collision streaming and movement take 0.5 and 1.7 ms of a tick. The
+     worker allocates 78 MiB per second with 4.9 generation 0 and 2.8
+     generation 1 collections per second; how much of the tail they cause is
+     now measured as the interval's pause time.
+   - Every remote record is 42 bytes with its share of the packet header.
+     A player sees 180 entities with a state per snapshot, the aggregate
+     budget of 38 MiB per second lets 115 records through, the owner's
+     included, and so defers 36 percent of the updates; that is 77 KiB per
+     second and player.
+
+   At 250 the worker uses 54 percent of a core and holds 15 updates per
+   second. The [Replication Benchmark](#replication-benchmark) measures the
+   bytes, records, and deferrals of 500 spread players in a minute.
 2. **Bandwidth per player.** The worker sends 60 to 77 KiB per second to each
    of 250 to 500 spread players, about half a megabit, and 126 KiB per second
    when 200 stand in one place. With 500 in one place the aggregate snapshot

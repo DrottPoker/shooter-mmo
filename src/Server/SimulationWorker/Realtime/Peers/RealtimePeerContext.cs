@@ -5,11 +5,13 @@ using Mmorpg.SimulationWorker.WorldActors;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Per-peer state of one UDP connection. Only the realtime loop reads or mutates it;
-// off-loop code may read the immutable PeerId only.
+// off-loop code may read the immutable PeerId only. Its quotas refill on the time provider's
+// clock, the system's unless the replication benchmark gives it its own.
 internal sealed class RealtimePeerContext(
     int peerId,
     DateTime connectedAtUtc,
-    UdpQuotaConfig quotaConfig)
+    UdpQuotaConfig quotaConfig,
+    TimeProvider? timeProvider = null)
 {
     public const int MaximumQueuedAuthorityOperations = 8;
     public const int GracefulDisconnectDelayMilliseconds = 250;
@@ -22,12 +24,12 @@ internal sealed class RealtimePeerContext(
 
     public DateTime ConnectedAtUtc { get; } = connectedAtUtc;
 
-    public UdpPeerQuota Quota { get; } = new(quotaConfig);
+    public UdpPeerQuota Quota { get; } = new(quotaConfig, timeProvider);
 
     public WorldInteractionIntentLimiter WorldInteractionIntentQuota { get; } = new();
 
     // Combat intents share one budget: 8 per second with a burst of 12.
-    public TokenBucket CombatIntentQuota { get; } = new(8d, 12d);
+    public TokenBucket CombatIntentQuota { get; } = new(8d, 12d, timeProvider);
 
     public bool JoinStarted { get; set; }
 

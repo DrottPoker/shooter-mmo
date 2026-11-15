@@ -18,6 +18,12 @@ internal sealed record RealtimeMetricsInterval(
     // The Mob numbers of the interval, when the worker's combat and world actor metrics exist.
     public RealtimeMobActivity? Mobs { get; init; }
 
+    // The share of the interval that the loop thread spent in its ticks and loop steps, which
+    // the process CPU does not show: that also holds the transport's threads.
+    public double LoopBusyPercent => Seconds > 0
+        ? Performance.LoopBusyMilliseconds / (Seconds * 1000d) * 100d
+        : 0d;
+
     // The counters of current minus previous, never negative, with the gauges of current.
     public static RealtimeNetworkMetricsSnapshot Subtract(
         RealtimeNetworkMetricsSnapshot current,

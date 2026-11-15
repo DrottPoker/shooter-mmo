@@ -39,13 +39,37 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     long SnapshotPacketsSent,
     long SnapshotEntityUpdatesDeferred,
     long LoopStepFailures,
-    long LoopIsolatedFailures);
+    long LoopIsolatedFailures)
+{
+    // Every tick phase that did its work in the interval, in the order the phases were timed
+    // first, which is the tick order.
+    public IReadOnlyList<RealtimeNamedDurationSummary> TickPhases { get; init; } = [];
+
+    // Every step of a loop iteration outside the tick: network poll, completed operations, peer
+    // supervision, orphan sweep, and send flush.
+    public IReadOnlyList<RealtimeNamedDurationSummary> LoopSteps { get; init; } = [];
+
+    // The time the garbage collector paused the process in the interval.
+    public double GcPauseMilliseconds { get; init; }
+
+    // The time the loop thread spent in its timed work: every tick and every loop step.
+    public double LoopBusyMilliseconds { get; init; }
+}
+
+public sealed record RealtimeNamedDurationSummary(string Name, RealtimeDurationSummary Summary);
 
 public sealed class RealtimePerformanceMetrics : IDisposable
 {
     public const string MeterName = "Mmorpg.SimulationWorker.Performance";
+    public const string TickPhaseTag = "phase";
+    public const string LoopStepTag = "step";
 
     private readonly Meter meter = new(MeterName);
+    private readonly Histogram<double> tickPhaseHistogram;
+    private readonly Histogram<double> loopStepHistogram;
+    private readonly object timerGate = new();
+    private readonly List<DurationTimer> tickPhaseTimers = [];
+    private readonly List<DurationTimer> loopStepTimers = [];
     private readonly Histogram<double> networkPollHistogram;
     private readonly Histogram<double> completedOperationsHistogram;
     private readonly Histogram<double> joinQueueDelayHistogram;
@@ -86,6 +110,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private int previousGeneration0Collections = GC.CollectionCount(0);
     private int previousGeneration1Collections = GC.CollectionCount(1);
     private int previousGeneration2Collections = GC.CollectionCount(2);
+    private TimeSpan previousGcPause = GC.GetTotalPauseDuration();
     private long snapshotVisibilityGroups;
     private long snapshotPacketsEncoded;
     private long snapshotPacketsSent;
@@ -105,6 +130,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         movementSimulationHistogram = CreateHistogram("simulation_worker.simulation.movement.duration");
         interestRefreshHistogram = CreateHistogram("simulation_worker.simulation.interest.duration");
         snapshotBroadcastHistogram = CreateHistogram("simulation_worker.simulation.snapshot_broadcast.duration");
+        tickPhaseHistogram = CreateHistogram("simulation_worker.simulation.tick_phase.duration");
+        loopStepHistogram = CreateHistogram("simulation_worker.loop.step.duration");
         tickResynchronizationCounter = meter.CreateCounter<long>(
             "simulation_worker.simulation.tick.resynchronizations");
         tickOverrunCounter = meter.CreateCounter<long>(
@@ -217,6 +244,15 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     public void RecordSnapshotBroadcast(TimeSpan duration) =>
         Record(snapshotBroadcast, snapshotBroadcastHistogram, duration);
 
+    // The timer of one tick phase, labeled with its name; one per name, created during
+    // composition, so the loop records without allocating.
+    internal DurationTimer TickPhaseTimer(string name) =>
+        GetOrAddTimer(tickPhaseTimers, tickPhaseHistogram, TickPhaseTag, name);
+
+    // The timer of one step of a loop iteration, labeled with its name.
+    internal DurationTimer LoopStepTimer(string name) =>
+        GetOrAddTimer(loopStepTimers, loopStepHistogram, LoopStepTag, name);
+
     public void RecordTickResynchronization()
     {
         Interlocked.Increment(ref tickResynchronizations);
@@ -284,12 +320,31 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             Interlocked.Exchange(
                 ref maximumCorpseMutationBacklog,
                 currentCorpseMutationBacklog));
+        var gcPause = GC.GetTotalPauseDuration();
+        var gcPauseMilliseconds = Math.Max(0d, (gcPause - previousGcPause).TotalMilliseconds);
+        previousGcPause = gcPause;
+        var tick = simulationTick.CaptureAndReset();
+        IReadOnlyList<RealtimeNamedDurationSummary> tickPhases;
+        IReadOnlyList<RealtimeNamedDurationSummary> loopSteps;
+        lock (timerGate)
+        {
+            tickPhases = CaptureAndReset(tickPhaseTimers);
+            loopSteps = CaptureAndReset(loopStepTimers);
+        }
+
+        // A tick holds its phases, so the busy time adds ticks and loop steps only.
+        var loopBusyMilliseconds = TotalMilliseconds(tick);
+        foreach (var step in loopSteps)
+        {
+            loopBusyMilliseconds += TotalMilliseconds(step.Summary);
+        }
+
         return new RealtimePerformanceMetricsSnapshot(
             networkPoll.CaptureAndReset(),
             completedOperations.CaptureAndReset(),
             joinQueueDelay.CaptureAndReset(),
             joinFinalization.CaptureAndReset(),
-            simulationTick.CaptureAndReset(),
+            tick,
             simulationTickLag.CaptureAndReset(),
             collisionStreaming.CaptureAndReset(),
             movementSimulation.CaptureAndReset(),
@@ -326,7 +381,13 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             Interlocked.Exchange(ref snapshotPacketsSent, 0),
             Interlocked.Exchange(ref snapshotEntityUpdatesDeferred, 0),
             Interlocked.Exchange(ref loopStepFailures, 0),
-            Interlocked.Exchange(ref loopIsolatedFailures, 0));
+            Interlocked.Exchange(ref loopIsolatedFailures, 0))
+        {
+            TickPhases = tickPhases,
+            LoopSteps = loopSteps,
+            GcPauseMilliseconds = gcPauseMilliseconds,
+            LoopBusyMilliseconds = loopBusyMilliseconds
+        };
     }
 
     public void Dispose()
@@ -337,6 +398,78 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private Histogram<double> CreateHistogram(string name)
     {
         return meter.CreateHistogram<double>(name, "ms");
+    }
+
+    private DurationTimer GetOrAddTimer(
+        List<DurationTimer> timers,
+        Histogram<double> histogram,
+        string tagName,
+        string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        lock (timerGate)
+        {
+            foreach (var timer in timers)
+            {
+                if (string.Equals(timer.Name, name, StringComparison.Ordinal))
+                {
+                    return timer;
+                }
+            }
+
+            var created = new DurationTimer(name, histogram, new KeyValuePair<string, object?>(tagName, name));
+            timers.Add(created);
+            return created;
+        }
+    }
+
+    private static List<RealtimeNamedDurationSummary> CaptureAndReset(List<DurationTimer> timers)
+    {
+        var captured = new List<RealtimeNamedDurationSummary>(timers.Count);
+        foreach (var timer in timers)
+        {
+            if (timer.CaptureAndReset() is { } summary)
+            {
+                captured.Add(new RealtimeNamedDurationSummary(timer.Name, summary));
+            }
+        }
+
+        return captured;
+    }
+
+    private static double TotalMilliseconds(RealtimeDurationSummary? summary)
+    {
+        return summary is null ? 0d : summary.AverageMilliseconds * summary.Samples;
+    }
+
+    // Times one named tick phase or loop step into its own accumulator and into the shared
+    // histogram under its name tag. Recording takes the accumulator's lock and allocates nothing.
+    internal sealed class DurationTimer
+    {
+        private readonly DurationAccumulator accumulator = new();
+        private readonly Histogram<double> histogram;
+        private readonly KeyValuePair<string, object?> tag;
+
+        internal DurationTimer(string name, Histogram<double> histogram, KeyValuePair<string, object?> tag)
+        {
+            Name = name;
+            this.histogram = histogram;
+            this.tag = tag;
+        }
+
+        public string Name { get; }
+
+        public void Record(TimeSpan duration)
+        {
+            var milliseconds = Math.Max(0d, duration.TotalMilliseconds);
+            accumulator.Record(milliseconds);
+            histogram.Record(milliseconds, tag);
+        }
+
+        internal RealtimeDurationSummary? CaptureAndReset()
+        {
+            return accumulator.CaptureAndReset();
+        }
     }
 
     private static void Record(

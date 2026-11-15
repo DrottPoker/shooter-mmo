@@ -632,7 +632,8 @@ try {
                         Remove-Item -LiteralPath (Join-Path $repositoryRoot "TestResults\$name\test-results.trx") -ErrorAction SilentlyContinue
                     }
                     $arguments = @("test", $testTarget, "--configuration", "Release", "--no-build", "--logger", "trx;LogFileName=test-results.trx")
-                    if ($SkipIntegration) { $arguments += @("--filter", "Category!=Integration") }
+                    # The Benchmark category runs only from its own script, as in CI.
+                    $arguments += @("--filter", $(if ($SkipIntegration) { "Category!=Integration&Category!=Benchmark" } else { "Category!=Benchmark" }))
                     $passed = (Invoke-Native "dotnet" $arguments) -eq 0
                     # A skipped integration test means a missing service, so it fails like in CI.
                     foreach ($name in $testNames) {

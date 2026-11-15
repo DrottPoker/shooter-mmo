@@ -24,7 +24,8 @@ env:
 
 # The backend gate runs as parallel jobs that together cover the repository quality checks in
 # docs/LOCAL_DEVELOPMENT.md:
-# one job verifies, builds, and runs every test outside Category=Integration, and the
+# one job verifies, builds, and runs every test outside Category=Integration and
+# Category=Benchmark, which only tools/Measure-Replication.ps1 runs, and the
 # integration matrix runs the PostgreSQL and Redis tests, with the Items tests on their
 # own runner. Each job fails when any of its tests did not run or pass. A separate job
 # validates the monitoring stack in observability/ with its pinned images.
@@ -132,7 +133,7 @@ jobs:
           dotnet test Mmorpg.slnx
           --configuration Release
           --no-build
-          --filter "Category!=Integration"
+          --filter "Category!=Integration&Category!=Benchmark"
           --logger "trx;LogFileName=test-results.trx"
           --collect "XPlat Code Coverage"
 

@@ -441,7 +441,7 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst", "outage"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst", "outage", "workerWorstInterval"],
                 root.EnumerateObject().Select(property => property.Name));
             // A direct run names no network profile, and a run without a burst or an outage has none.
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("network").ValueKind);
@@ -678,6 +678,84 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(2, fold.Levels["mobPathQueue"].Worst);
         Assert.Equal(200, fold.Counters["mobPathPlans"].Total);
         Assert.Equal(70, fold.Counters["mobPathPlans"].WorstInterval);
+    }
+
+    // The worker's phases and loop steps fold by name over the steady intervals, the loop busy
+    // share and the GC pauses fold as levels, and the worst interval names its three costliest
+    // phases. An older worker's file without them folds to nothing, and its summary has no key
+    // numbers for them, so its baseline still compares.
+    [Fact]
+    public void ThePhasesOfTheWorkerFoldByNameAndTheWorstIntervalNamesItsCostliest()
+    {
+        static Dictionary<string, StressWorkerDuration> Phases(double snapshotsAverage) => new()
+        {
+            ["collision streaming"] = new StressWorkerDuration(300, 0.5, 1, 1, 2),
+            ["movement"] = new StressWorkerDuration(300, 1.5, 2, 4, 5),
+            ["mobs"] = new StressWorkerDuration(300, 0.25, 0.5, 1, 1.5),
+            ["snapshots"] = new StressWorkerDuration(150, snapshotsAverage, 16, 24, 30)
+        };
+        StressWorkerInterval[] intervals =
+        [
+            Interval(RunStart.AddSeconds(20), tickP99: 8) with { Phases = Phases(6), LoopSteps = new Dictionary<string, StressWorkerDuration> { ["send flush"] = new(600, 1, 2, 2, 3) }, GcPauseMs = 20, LoopBusyPercent = 30 },
+            Interval(RunStart.AddSeconds(30), tickP99: 24) with { Phases = Phases(10), GcPauseMs = 40, LoopBusyPercent = 40 },
+            Interval(RunStart.AddSeconds(40), tickP99: 8) with { Phases = Phases(8), GcPauseMs = 0, LoopBusyPercent = 35 },
+            Interval(RunStart.AddSeconds(50), tickP99: 8)
+        ];
+
+        var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
+
+        Assert.Equal(["collision streaming", "movement", "mobs", "snapshots"], fold.Phases.Keys);
+        Assert.Equal(450, fold.Phases["snapshots"].Samples);
+        Assert.Equal(8, fold.Phases["snapshots"].AverageMs, 9);
+        Assert.Equal(10, fold.Phases["snapshots"].WorstAverageMs);
+        Assert.Equal(600, Assert.Single(fold.LoopSteps).Value.Samples);
+        Assert.Equal(35, fold.LoopBusyPercent!.Average, 9);
+        Assert.Equal(40, fold.LoopBusyPercent.Worst);
+        Assert.Equal(2, fold.GcPauseMsPerSecond!.Average, 9);
+        var worst = fold.WorstInterval!;
+        Assert.Equal(RunStart.AddSeconds(30), worst.IntervalStart);
+        Assert.Equal(24, worst.TickP99Ms);
+        Assert.Equal(4, worst.GcPauseMsPerSecond);
+        Assert.Equal(["snapshots", "movement", "collision streaming"], worst.SlowestPhases.Select(phase => phase.Name));
+        Assert.Equal(150, worst.SlowestPhases[0].MsPerSecond, 9);
+
+        var older = StressWorkerPerformance.Fold(
+            [Interval(RunStart.AddSeconds(20), tickP99: 8), Interval(RunStart.AddSeconds(30), tickP99: 8)],
+            RunStart,
+            RunEnd,
+            SteadyStart,
+            SteadyEnd);
+        Assert.Empty(older.Phases);
+        Assert.Null(older.LoopBusyPercent);
+        Assert.Null(older.GcPauseMsPerSecond);
+        Assert.Empty(older.WorstInterval!.SlowestPhases);
+        var summary = StressRunSummary.Create(
+            FullStackReport() with { WorkerPerformance = older },
+            "playing-100",
+            "abc",
+            false,
+            0,
+            new StressMachine("cpu", 16, 1024, "os", ".NET"));
+        Assert.False(summary.KeyNumbers.ContainsKey("workerLoopBusyAveragePercent"));
+        Assert.False(summary.KeyNumbers.ContainsKey("workerGcPauseMsPerSecond"));
+        var current = StressRunSummary.Create(
+            FullStackReport() with { WorkerPerformance = fold },
+            "playing-100",
+            "abc",
+            false,
+            0,
+            new StressMachine("cpu", 16, 1024, "os", ".NET"));
+        Assert.Equal(35, current.KeyNumbers["workerLoopBusyAveragePercent"]!.Value, 9);
+        Assert.Equal(["snapshots", "movement", "collision streaming"], current.WorkerWorstInterval!.SlowestPhases.Select(phase => phase.Name));
+
+        // A line of the worker's file carries them by their JSON names.
+        var line = System.Text.Json.JsonSerializer.Serialize(
+            intervals[0],
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Contains("\"phases\":{\"collision streaming\":", line, StringComparison.Ordinal);
+        var parsed = Assert.Single(StressWorkerPerformance.Parse([line]));
+        Assert.Equal(30, parsed.LoopBusyPercent);
+        Assert.Equal(6, parsed.Phases!["snapshots"].AverageMs);
     }
 
     // A line of the worker's performance file carries the Mob numbers by their JSON names.

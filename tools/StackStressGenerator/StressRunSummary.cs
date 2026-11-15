@@ -85,6 +85,10 @@ public sealed record StressRunSummary(
     // The GameService outage of the run, or null for none.
     public StressOutageSummary? Outage { get; init; }
 
+    // The worker's steady interval with the worst tick and its three costliest tick phases, or
+    // null without the worker's performance file.
+    public StressWorkerWorstInterval? WorkerWorstInterval { get; init; }
+
     public const int TopTables = 10;
 
     public static StressRunSummary Create(
@@ -168,6 +172,17 @@ public sealed record StressRunSummary(
             numbers["workerWorkingSetMaximumBytes"] = worker.Levels["workingSetBytes"].Worst;
             numbers["workerLoopStepFailures"] = worker.RunLoopStepFailures;
             numbers["workerLoopIsolatedFailures"] = worker.RunLoopIsolatedFailures;
+            // Absent for an older worker's file, so a baseline without them still compares.
+            if (worker.LoopBusyPercent is { } loopBusy)
+            {
+                numbers["workerLoopBusyAveragePercent"] = loopBusy.Average;
+            }
+
+            if (worker.GcPauseMsPerSecond is { } gcPause)
+            {
+                numbers["workerGcPauseMsPerSecond"] = gcPause.Average;
+            }
+
             var players = worker.Levels["peers"].Average;
             if (players > 0 && worker.SteadySeconds > 0)
             {
@@ -199,7 +214,8 @@ public sealed record StressRunSummary(
             Soak = StressSummarySoak.Create(report),
             Network = report.Network,
             Burst = report.FullStack?.Burst,
-            Outage = report.Outage
+            Outage = report.Outage,
+            WorkerWorstInterval = report.WorkerPerformance?.WorstInterval
         };
     }
 

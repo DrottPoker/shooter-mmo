@@ -141,6 +141,7 @@ databases.
 | `Category=Integration` | `[PostgresIntegrationFact]` and `[RedisIntegrationFact]` | The test needs PostgreSQL or Redis |
 | `Infrastructure=Postgres` or `Infrastructure=Redis` | The same attributes | Which service the test needs |
 | `Category=Load` | `[Trait("Category", "Load")]` | Deterministic scalability workloads with a timing budget that is sensitive to machine load |
+| `Category=Benchmark` | `[Trait(TestCategories.Category, TestCategories.Benchmark)]` | A measurement that only its own script runs: CI and `tools/Test-Changes.ps1` filter it out with `Category!=Benchmark` |
 | Unity `Graphics` | `[Category("Graphics")]` on a Unity test | The test draws with a camera, so it needs a graphics device |
 | Unity `LiveStack` | `[Category("LiveStack")]` and `[Explicit]` on a Unity test | The test needs the running local stack; only `tools/Test-LiveStack.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
 | Unity `ClientCrowd` | `[Category("ClientCrowd")]` and `[Explicit]` on a Unity test | The test needs the stress arena with ActiveSimulationBots; only `tools/Measure-ClientCrowd.ps1` runs it, as [Live Stack Test](#live-stack-test) describes |
@@ -163,6 +164,14 @@ dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release `
 Expected result: every test passes inside its five-second regression budget,
 among them spatial selection and snapshot encoding and decoding for 25,000
 entities and 1,000 observers.
+
+The `Category=Benchmark` test is `ReplicationBenchmarkTests.MeasureTheReplicationLayouts`
+in `Mmorpg.SimulationWorker.Tests`, the
+[Replication Benchmark](../docs/STACK_STRESS_TESTING.md#replication-benchmark),
+which `tools/Measure-Replication.ps1` runs. A run of a whole test project
+without a filter runs it too, in about ten seconds; it writes nothing unless
+`MMORPG_REPLICATION_RESULT` names a file. Its fast companion,
+`ASmallLayoutKeepsItsDeterministicNumbers`, runs with every test run.
 
 ## Databases And Redis
 
@@ -266,7 +275,7 @@ as parallel jobs for every pull request, every push to `development` and
 
 | Job | Runs |
 | --- | --- |
-| `Backend checks and unit tests` | Dependency policy, art assets, the art pipeline's Python tests, the test selection rules of `tools/Test-Changes.ps1`, locked restore, format, build, the content and protocol verifiers, and every test with `Category!=Integration` |
+| `Backend checks and unit tests` | Dependency policy, art assets, the art pipeline's Python tests, the test selection rules of `tools/Test-Changes.ps1`, locked restore, format, build, the content and protocol verifiers, and every test with `Category!=Integration&Category!=Benchmark` |
 | `Integration tests (items)` | `Category=Integration` in `Mmorpg.GameService.Items.Tests` |
 | `Integration tests (other)` | `Category=Integration` in every other test project |
 | `Observability configuration` | `tools/Verify-Observability.ps1`: the collector and Prometheus configuration, the promtool alert rule tests, and the Grafana dashboard JSON, with the images pinned in `docker-compose.observability.yml` |

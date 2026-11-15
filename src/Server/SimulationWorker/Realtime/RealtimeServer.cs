@@ -13,8 +13,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // operations within a budget, runs due simulation ticks, supervises peers and hands the
 // queued packets to the transport, in that order. The loop then sleeps precisely until the
 // next tick or poll is due, so ticks and snapshots keep an even rhythm. Each step runs under
-// the loop guard: one that throws is logged and skipped for this iteration, and one that keeps
-// failing ends the loop. Every component except the completion queue and the operation tracker
+// the loop guard and is timed under its name: one that throws is logged and skipped for this
+// iteration, and one that keeps failing ends the loop. Every component except the completion queue and the operation tracker
 // is confined to this thread, so none of them needs a lock.
 internal sealed class RealtimeServer(
     SimulationWorkerConfig config,
@@ -47,6 +47,11 @@ internal sealed class RealtimeServer(
     private readonly RealtimeLoopStep peerSupervisionStep = loopGuard.LoopStep("peer supervision");
     private readonly RealtimeLoopStep orphanSweepStep = loopGuard.LoopStep("orphan sweep");
     private readonly RealtimeLoopStep sendFlushStep = loopGuard.LoopStep("send flush");
+    private readonly RealtimePerformanceMetrics.DurationTimer networkPollTimer = performanceMetrics.LoopStepTimer("network poll");
+    private readonly RealtimePerformanceMetrics.DurationTimer completedOperationsTimer = performanceMetrics.LoopStepTimer("completed operations");
+    private readonly RealtimePerformanceMetrics.DurationTimer peerSupervisionTimer = performanceMetrics.LoopStepTimer("peer supervision");
+    private readonly RealtimePerformanceMetrics.DurationTimer orphanSweepTimer = performanceMetrics.LoopStepTimer("orphan sweep");
+    private readonly RealtimePerformanceMetrics.DurationTimer sendFlushTimer = performanceMetrics.LoopStepTimer("send flush");
     private bool disposed;
 
     // What the features registered; the guard tests read it.
@@ -152,8 +157,9 @@ internal sealed class RealtimeServer(
             loopGuard.Failed(networkPollStep, exception);
         }
 
-        performanceMetrics.RecordNetworkPoll(
-            Stopwatch.GetElapsedTime(phaseStarted));
+        var elapsed = Stopwatch.GetElapsedTime(phaseStarted);
+        performanceMetrics.RecordNetworkPoll(elapsed);
+        networkPollTimer.Record(elapsed);
 
         phaseStarted = Stopwatch.GetTimestamp();
         try
@@ -166,14 +172,16 @@ internal sealed class RealtimeServer(
             loopGuard.Failed(completedOperationsStep, exception);
         }
 
-        performanceMetrics.RecordCompletedOperations(
-            Stopwatch.GetElapsedTime(phaseStarted));
+        elapsed = Stopwatch.GetElapsedTime(phaseStarted);
+        performanceMetrics.RecordCompletedOperations(elapsed);
+        completedOperationsTimer.Record(elapsed);
 
-        // Every tick phase runs under the guard inside the tick loop.
+        // Every tick phase runs under the guard inside the tick loop, which times them.
         tickLoop.ProcessDueTicks(
             simulationClock.Elapsed,
             simulationInterval,
             ref nextSimulationTick);
+        phaseStarted = Stopwatch.GetTimestamp();
         try
         {
             supervisor.EnforcePeerState();
@@ -184,6 +192,8 @@ internal sealed class RealtimeServer(
             loopGuard.Failed(peerSupervisionStep, exception);
         }
 
+        peerSupervisionTimer.Record(Stopwatch.GetElapsedTime(phaseStarted));
+        phaseStarted = Stopwatch.GetTimestamp();
         try
         {
             supervisor.ReleaseOrphanedSessions();
@@ -194,8 +204,11 @@ internal sealed class RealtimeServer(
             loopGuard.Failed(orphanSweepStep, exception);
         }
 
+        orphanSweepTimer.Record(Stopwatch.GetElapsedTime(phaseStarted));
+
         // The transport otherwise sends queued packets only on its own 15 ms update, which
         // delayed every snapshot by a random part of that period.
+        phaseStarted = Stopwatch.GetTimestamp();
         try
         {
             transport.FlushSends();
@@ -205,6 +218,8 @@ internal sealed class RealtimeServer(
         {
             loopGuard.Failed(sendFlushStep, exception);
         }
+
+        sendFlushTimer.Record(Stopwatch.GetElapsedTime(phaseStarted));
     }
 
     private void ProcessCompletedOperations(TimeSpan completedOperationBudget)

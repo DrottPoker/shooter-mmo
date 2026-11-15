@@ -145,6 +145,22 @@ internal sealed record RealtimePerformanceReportEntry(
 
     public long? MobPathPlans { get; init; }
 
+    // Every tick phase that did its work in the interval, by its name in tick order, timed only
+    // on the ticks on which it did its work.
+    public IReadOnlyDictionary<string, RealtimeDurationEntry> Phases { get; init; } =
+        new Dictionary<string, RealtimeDurationEntry>();
+
+    // Every step of a loop iteration outside the tick, by its name.
+    public IReadOnlyDictionary<string, RealtimeDurationEntry> LoopSteps { get; init; } =
+        new Dictionary<string, RealtimeDurationEntry>();
+
+    // The garbage collection pauses of the interval.
+    public double GcPauseMs { get; init; }
+
+    // The share of the interval that the loop thread spent in its ticks and loop steps; the rest
+    // it waited for the next tick or poll.
+    public double LoopBusyPercent { get; init; }
+
     public static RealtimePerformanceReportEntry From(RealtimeMetricsInterval interval)
     {
         var network = interval.Delta;
@@ -210,7 +226,24 @@ internal sealed record RealtimePerformanceReportEntry(
             EngagedMobs = mobs?.EngagedMobs,
             MovingMobs = mobs?.MovingMobs,
             MobPathQueue = mobs?.MobPathQueue,
-            MobPathPlans = mobs?.MobPathPlans
+            MobPathPlans = mobs?.MobPathPlans,
+            Phases = ToEntries(performance.TickPhases),
+            LoopSteps = ToEntries(performance.LoopSteps),
+            GcPauseMs = performance.GcPauseMilliseconds,
+            LoopBusyPercent = interval.LoopBusyPercent
         };
+    }
+
+    // In the order the worker timed them, which JSON keeps.
+    private static Dictionary<string, RealtimeDurationEntry> ToEntries(
+        IReadOnlyList<RealtimeNamedDurationSummary> durations)
+    {
+        var entries = new Dictionary<string, RealtimeDurationEntry>(durations.Count, StringComparer.Ordinal);
+        foreach (var duration in durations)
+        {
+            entries[duration.Name] = RealtimeDurationEntry.From(duration.Summary)!;
+        }
+
+        return entries;
     }
 }

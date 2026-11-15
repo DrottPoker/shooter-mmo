@@ -6,9 +6,11 @@ using Mmorpg.SimulationWorker.WorldActors;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs due fixed simulation ticks. Each tick advances the clock, fills the players of the tick
-// once in entity id order, and runs the registered phases in SimulationTickOrder. A phase that
-// throws is logged and skipped for this tick through the loop guard, and the later phases still
-// run, unless the phase is a prerequisite of them, which ends the tick. At most five ticks catch up per call before the clock resynchronizes. Loop-confined.
+// once in entity id order, and runs the registered phases in SimulationTickOrder, timing each run
+// that did its work under the phase's name. A phase that throws is logged and skipped for this
+// tick through the loop guard, and the later phases still run, unless the phase is a prerequisite
+// of them, which ends the tick. At most five ticks catch up per call before the clock
+// resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop
 {
     private readonly RealtimeSimulationClock clock;
@@ -18,6 +20,7 @@ internal sealed class SimulationTickLoop
     private readonly ILogger logger;
     private readonly SimulationTickPhase[] orderedPhases;
     private readonly RealtimeLoopStep[] phaseSteps;
+    private readonly RealtimePerformanceMetrics.DurationTimer[] phaseTimers;
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly PlayerSpatialGrid playerGrid = new();
 
@@ -36,6 +39,7 @@ internal sealed class SimulationTickLoop
         this.logger = logger;
         orderedPhases = phases.InTickOrder();
         phaseSteps = [.. orderedPhases.Select(phase => loopGuard.TickPhase(phase.Name))];
+        phaseTimers = [.. orderedPhases.Select(phase => performanceMetrics.TickPhaseTimer(phase.Name))];
     }
 
     public IReadOnlyList<SimulationTickPhase> Phases => orderedPhases;
@@ -63,9 +67,12 @@ internal sealed class SimulationTickLoop
             {
                 try
                 {
-                    // A phase that was not due did no work, so its failed runs still count.
+                    // A phase that was not due did no work: its failed runs still count, and the
+                    // tick is no sample of its duration.
+                    var phaseStarted = Stopwatch.GetTimestamp();
                     if (orderedPhases[index].Run(in tick))
                     {
+                        phaseTimers[index].Record(Stopwatch.GetElapsedTime(phaseStarted));
                         phaseSteps[index].Succeeded();
                     }
                 }

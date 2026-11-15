@@ -9,10 +9,11 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // remote snapshots of players and of the Mobs that moved, within the per-peer and
 // aggregate byte budgets. The recipient rotation keeps the remote budget fair across
 // peers in registry order. A recipient whose packets fail to build or send is disconnected
-// alone, and the others still get theirs. Loop-confined.
+// alone, and the others still get theirs. The aggregate budget refills on the time provider's
+// clock, the system's unless the replication benchmark gives it its own. Loop-confined.
 internal sealed class SnapshotReplicator(
     SimulationWorkerConfig config,
-    MobSystem mobs,
+    IMobSnapshotSource mobs,
     SimulationEntityRegistry entityRegistry,
     ConnectionEntityBindingRegistry connectionBindings,
     RealtimePeerRegistry peers,
@@ -21,7 +22,8 @@ internal sealed class SnapshotReplicator(
     RealtimeNetworkMetrics networkMetrics,
     RealtimePerformanceMetrics performanceMetrics,
     RealtimeSimulationClock clock,
-    RealtimeFailureIsolation isolation)
+    RealtimeFailureIsolation isolation,
+    TimeProvider? timeProvider = null)
 {
     public const string PhaseName = "snapshots";
 
@@ -33,7 +35,8 @@ internal sealed class SnapshotReplicator(
     private readonly SnapshotRecipientRotation snapshotRecipientRotation = new();
     private readonly TokenBucket aggregateSnapshotBytes = new(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
-        config.UdpQuotas.AggregateSnapshotByteBurst);
+        config.UdpQuotas.AggregateSnapshotByteBurst,
+        timeProvider);
     private uint snapshotSequence;
 
     // Sends the snapshots at the snapshot rate.

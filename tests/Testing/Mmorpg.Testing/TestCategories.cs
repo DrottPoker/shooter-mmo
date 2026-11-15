@@ -13,6 +13,10 @@ public static class TestCategories
     // Timing budgets that are sensitive to machine load.
     public const string Load = "Load";
 
+    // Measurements that only their own script runs, such as tools/Measure-Replication.ps1; CI
+    // and tools/Test-Changes.ps1 leave them out.
+    public const string Benchmark = "Benchmark";
+
     public const string Postgres = "Postgres";
 
     public const string Redis = "Redis";
