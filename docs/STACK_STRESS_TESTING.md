@@ -480,7 +480,7 @@ and failed when the script reported no window:
   GameService was down and how long after the stop the worker logged that it
   does not answer.
 - `outage_durable_recovery_seconds`: the first durable action of a bot, an
-  equip, item move, loot, trade, or gathering start, committed at most 15
+  equip, item move, loot, trade, or gathering yield, committed at most 15
   seconds after GameService was ready. One that committed before the script's
   readiness poll saw GameService counts as zero seconds.
 
