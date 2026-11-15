@@ -60,7 +60,8 @@ internal sealed class AppearanceFeature
             core.Teardown,
             core.CompletionTargets,
             dependencies.GameServiceClient,
-            core.Logger);
+            core.Logger,
+            core.GameServiceAvailability);
         AppearanceIntentHandler.AddRoute(core.Registries.Routes, intents.HandleIntent);
         Replicator.AddTickPhase(core.Registries.TickPhases, core.Config);
     }

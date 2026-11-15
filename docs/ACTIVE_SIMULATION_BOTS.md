@@ -125,7 +125,7 @@ The authority settings live in the `DevelopmentSimulationBots` section of
 | --- | ---: | --- | --- |
 | `Enabled` | `false` | | Maps the loopback development ticket endpoint |
 | `JoinTicketLifetimeSeconds` | `30` | 5 to 300 | Lifetime of an unconsumed one-time bot ticket |
-| `SessionLeaseLifetimeSeconds` | `30` | 10 to 300 | Worker-renewed in-memory bot session lease |
+| `SessionLeaseLifetimeSeconds` | `150` | 10 to 300 | Worker-renewed in-memory bot session lease; a worker refuses a bot whose lease does not outlast its GameService outage tolerance plus its session heartbeat interval |
 | `CharacterNamePrefix` | `Active Bot` | 1 to 32 characters | Server-owned visible bot name prefix |
 | `ReservedPlayerConnections` | `8` | 0 to 1000 | Worker connections bots never use, so real local players can still join |
 

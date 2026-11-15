@@ -13,8 +13,13 @@ using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
-public sealed class GameServiceClient(HttpClient httpClient)
+// A call that fails for a passing reason asks the availability for a registry heartbeat at once,
+// so the worker learns of an outage within about one timeout; the heartbeat itself reports
+// its outcome there.
+public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailability? availability = null)
 {
+    private const string HeartbeatOperation = "GameService.HeartbeatSimulationWorker";
+
     private const int MaximumRestoredCorpses = 4_096;
     // A death creates at most one Recovery delivery per protection source. The bound only
     // rejects malformed responses.
@@ -75,7 +80,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
             CancellationToken cancellationToken)
     {
         return PostAsync<SimulationWorkerHeartbeatRequest, SimulationWorkerHeartbeatResponse>(
-            "GameService.HeartbeatSimulationWorker",
+            HeartbeatOperation,
             $"/api/simulation-workers/{Uri.EscapeDataString(workerId)}/heartbeat",
             request,
             response => string.Equals(response.WorkerId, workerId, StringComparison.Ordinal)
@@ -410,6 +415,7 @@ public sealed class GameServiceClient(HttpClient httpClient)
     {
         using var activity = SimulationWorkerTelemetry.StartOperation(operation);
         return RecordOutcome(
+            operation,
             activity,
             await SendPostAsync(path, requestBody, responseValidator, cancellationToken));
     }
@@ -422,17 +428,25 @@ public sealed class GameServiceClient(HttpClient httpClient)
     {
         using var activity = SimulationWorkerTelemetry.StartOperation(operation);
         return RecordOutcome(
+            operation,
             activity,
             await SendGetAsync(path, responseValidator, cancellationToken));
     }
 
-    private static GameServiceResult<T> RecordOutcome<T>(
+    private GameServiceResult<T> RecordOutcome<T>(
+        string operation,
         Activity? activity,
         GameServiceResult<T> result)
     {
         if (!result.Succeeded)
         {
             SimulationWorkerTelemetry.RecordFailure(activity, result.Error!.Code);
+            if (availability is not null
+                && !string.Equals(operation, HeartbeatOperation, StringComparison.Ordinal)
+                && GameServiceOutcome.IsTransient(result.Error.Code, result.StatusCode))
+            {
+                availability.RequestProbe();
+            }
         }
 
         return result;

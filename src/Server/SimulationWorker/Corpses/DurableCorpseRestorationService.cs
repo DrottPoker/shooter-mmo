@@ -12,7 +12,8 @@ public sealed class DurableCorpseRestorationService(
     SimulationWorkerIdentity identity,
     SimulationWorkerRegistrationLease registrationLease,
     DurableCorpseStore corpseStore,
-    ILogger<DurableCorpseRestorationService> logger) : BackgroundService
+    ILogger<DurableCorpseRestorationService> logger,
+    GameServiceAvailability? availability = null) : BackgroundService
 {
     private static readonly TimeSpan AuthorityPollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(1);
@@ -27,6 +28,12 @@ public sealed class DurableCorpseRestorationService(
         var restoredOnce = false;
         while (!stoppingToken.IsCancellationRequested)
         {
+            // While GameService does not answer, a refresh would only spend its timeout.
+            if (availability is not null && !await availability.WaitUntilAvailableAsync(stoppingToken))
+            {
+                return;
+            }
+
             var result = await gameServiceClient.RestoreDurableCorpsesAsync(
                 config.SimulationWorkerId,
                 identity.RuntimeId,

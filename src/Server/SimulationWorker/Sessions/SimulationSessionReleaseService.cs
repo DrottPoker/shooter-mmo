@@ -10,7 +10,8 @@ public sealed class SimulationSessionReleaseService(
     GameServiceClient gameServiceClient,
     ActiveSimulationSessionStore sessionStore,
     CharacterSessionStores characterStores,
-    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null)
+    IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
+    GameServiceAvailability? availability = null)
 {
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
     [
@@ -32,7 +33,9 @@ public sealed class SimulationSessionReleaseService(
     // Releases a session that no connected peer owns any more. The local lease is dropped
     // first, so the heartbeat stops renewing it even when GameService stays unavailable
     // and the database lease then expires on its own. The state the join kept for the session
-    // goes with it.
+    // goes with it. While GameService does not answer, each attempt waits for it instead of
+    // spending a timeout, and goes as soon as it answers again; the session lease outlasts that
+    // wait. A worker that stops first gives the release up.
     public async Task<SimulationSessionReleaseResult> ReleaseDetachedAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)
@@ -48,11 +51,21 @@ public sealed class SimulationSessionReleaseService(
         long? sentSequence = null;
         try
         {
+            if (!await WaitForGameServiceAsync(cancellationToken))
+            {
+                return Unavailable();
+            }
+
             SimulationSessionReleaseResult result;
             (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
             for (var attempt = 0; !result.Succeeded && attempt < retryDelays.Count; attempt++)
             {
                 await Task.Delay(retryDelays[attempt], cancellationToken);
+                if (!await WaitForGameServiceAsync(cancellationToken))
+                {
+                    return result;
+                }
+
                 (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
             }
 
@@ -74,6 +87,20 @@ public sealed class SimulationSessionReleaseService(
     {
         var (result, _) = await ReleaseCoreAsync(session, cancellationToken);
         return result;
+    }
+
+    private Task<bool> WaitForGameServiceAsync(CancellationToken cancellationToken)
+    {
+        return availability is null
+            ? Task.FromResult(true)
+            : availability.WaitUntilAvailableAsync(cancellationToken);
+    }
+
+    private static SimulationSessionReleaseResult Unavailable()
+    {
+        return SimulationSessionReleaseResult.Failure(
+            GameServiceAvailability.UnavailableCode,
+            GameServiceAvailability.UnavailableMessage);
     }
 
     // Sends the final state that the store holds for the session now, and forgets it once

@@ -683,7 +683,7 @@ public sealed class RealtimeQuestCreditTests
         return Spawn()!;
     }
 
-    private static RealtimeServerHarness Create(float wolfRespawnSeconds = 30f, bool playerVersusPlayer = false)
+    internal static RealtimeServerHarness Create(float wolfRespawnSeconds = 30f, bool playerVersusPlayer = false)
     {
         return RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
@@ -814,14 +814,14 @@ public sealed class RealtimeQuestCreditTests
             "the respawned wolf to die");
     }
 
-    private static RealtimeTestCharacter AddArcher(RealtimeServerHarness harness, string name)
+    internal static RealtimeTestCharacter AddArcher(RealtimeServerHarness harness, string name)
     {
         var archer = harness.AddCharacter(name) with { Equipment = ArcherEquipment(50) };
         harness.GameService.AddCharacter(archer);
         return archer;
     }
 
-    private static SimulationActiveQuest Hunting(int progress)
+    internal static SimulationActiveQuest Hunting(int progress)
     {
         return new SimulationActiveQuest(
             Wolves,
@@ -830,7 +830,7 @@ public sealed class RealtimeQuestCreditTests
             [new SimulationQuestObjectiveProgress("wolves", progress)]);
     }
 
-    private static HttpResponseMessage KillCounted(
+    internal static HttpResponseMessage KillCounted(
         SimulationQuestOperationRequest request,
         long questLogRevision,
         int progress)
@@ -842,7 +842,7 @@ public sealed class RealtimeQuestCreditTests
             new SimulationQuestChange(Wolves, "hunt", [new SimulationQuestObjectiveProgress("wolves", progress)], 0));
     }
 
-    private static IReadOnlyList<RealtimeQuestLogChanged> QuestChanges(RealtimeRecordingClient client)
+    internal static IReadOnlyList<RealtimeQuestLogChanged> QuestChanges(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeQuestLogChanged>(
             RealtimeMessageType.QuestLogChanged,

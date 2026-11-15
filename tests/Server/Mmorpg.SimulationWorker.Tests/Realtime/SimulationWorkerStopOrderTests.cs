@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Combat;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
@@ -130,18 +131,78 @@ public sealed class SimulationWorkerStopOrderTests
         Assert.True(saved.PositionX >= 4f);
     }
 
+    // A worker whose GameService stops answering plays on for its outage tolerance, here three
+    // seconds, then tells its players why and stops in order without spending a timeout on
+    // anything but one attempt to go offline.
+    [Fact]
+    public async Task AWorkerCutOffFromGameServicePastItsToleranceTellsItsPlayersAndStopsInOrder()
+    {
+        var lease = new SimulationWorkerRegistrationLease(TimeProvider.System);
+        var itemCatalog = TestCatalog();
+        var combatRules = TestRules();
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = itemCatalog,
+            CombatRules = combatRules,
+            RegistrationLease = lease
+        });
+        var stranded = harness.AddCharacter("Cut Off Walker");
+        using var host = BuildHost(
+            harness,
+            lease,
+            itemCatalog,
+            combatRules,
+            config => config with
+            {
+                RegistryHeartbeatInterval = TimeSpan.FromMilliseconds(500),
+                RegistryHeartbeatRetryDelay = TimeSpan.FromMilliseconds(200),
+                GameServiceOutageTolerance = TimeSpan.FromSeconds(3)
+            });
+        using var timeout = RealtimeServerHarness.CreateTimeout();
+
+        await host.StartAsync(timeout.Token);
+        await harness.PollUntilAsync(() => lease.IsValid, "the worker to register");
+        var walker = await harness.JoinAsync(stranded);
+        var callsBefore = harness.GameService.Calls.Count;
+        harness.GameService.Unreachable = true;
+        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        await harness.PollUntilAsync(() => lifetime.ApplicationStopping.IsCancellationRequested, "the worker to stop itself");
+        var shutdown = host.WaitForShutdownAsync(timeout.Token);
+        while (!shutdown.IsCompleted)
+        {
+            harness.PollClients();
+            await Task.Delay(5, timeout.Token);
+        }
+
+        await shutdown;
+        Assert.False(harness.Availability.IsAvailable);
+        Assert.Equal(GameServiceAvailability.UnavailableCode, harness.StopReason.Code);
+        await harness.PollUntilAsync(() => walker.ServerDisconnect is not null, "the stop notice");
+        Assert.Equal(GameServiceAvailability.UnavailableCode, walker.ServerDisconnect!.Code);
+        Assert.Single(harness.AvailabilityLogger.Entries, entry => entry.Level == LogLevel.Warning);
+        // After the silence began, only registry heartbeats and one offline attempt went out.
+        var calls = harness.GameService.Calls.Skip(callsBefore)
+            .Select(path => path[(path.LastIndexOf('/') + 1)..])
+            .Where(call => call is not ("session-heartbeat" or "corpses"))
+            .ToArray();
+        Assert.Equal("offline", Assert.Single(calls, call => call != "heartbeat"));
+        Assert.True(calls.Count(call => call == "heartbeat") >= 3);
+    }
+
     // The worker's hosted services with the harness's collaborators; the realtime service is
     // the harness's own, composed like production, in the place the worker registers it.
     internal static IHost BuildHost(
         RealtimeServerHarness harness,
         SimulationWorkerRegistrationLease lease,
         ItemCatalogRuntimeDocument itemCatalog,
-        CombatRules combatRules)
+        CombatRules combatRules,
+        Func<SimulationWorkerConfig, SimulationWorkerConfig>? configure = null)
     {
         var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings());
         var services = builder.Services;
         // No session heartbeat runs during the test, so only the stop releases sessions.
-        services.AddSingleton(harness.Config with { SimulationSessionHeartbeatInterval = TimeSpan.FromHours(1) });
+        var config = harness.Config with { SimulationSessionHeartbeatInterval = TimeSpan.FromHours(1) };
+        services.AddSingleton(configure is null ? config : configure(config));
         services.AddSingleton(harness.GameServiceClient);
         services.AddSingleton(harness.ReleaseService);
         services.AddSingleton(harness.SessionStore);
@@ -157,6 +218,8 @@ public sealed class SimulationWorkerStopOrderTests
         services.AddSingleton(lease);
         services.AddSingleton(harness.NetworkMetrics!);
         services.AddSingleton(harness.PerformanceMetrics!);
+        services.AddSingleton(harness.Availability);
+        services.AddSingleton(harness.StopReason);
         services.AddSimulationWorkerHostedServices();
         var realtime = services.Single(descriptor =>
             descriptor.ServiceType == typeof(IHostedService)

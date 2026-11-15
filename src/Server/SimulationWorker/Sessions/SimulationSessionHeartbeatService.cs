@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,29 +11,52 @@ using Mmorpg.SimulationWorker.Telemetry;
 namespace Mmorpg.SimulationWorker.Sessions;
 
 // Renews the lease of every active session once per interval, with one GameService request per
-// batch of sessions, and releases every session when the worker stops.
+// batch of sessions, and releases every session when the worker stops. While GameService does not
+// answer, no round goes, because the session leases outlast the outage that the worker tolerates;
+// one round goes as soon as GameService answers again.
 public sealed class SimulationSessionHeartbeatService(
     GameServiceClient gameServiceClient,
     SimulationSessionReleaseService releaseService,
     ActiveSimulationSessionStore sessionStore,
     CharacterItemStateStore itemStateStore,
     SimulationWorkerConfig config,
-    ILogger<SimulationSessionHeartbeatService> logger) : BackgroundService
+    ILogger<SimulationSessionHeartbeatService> logger,
+    GameServiceAvailability? availability = null,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
+    private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(config.SimulationSessionHeartbeatInterval);
+        using var timer = new PeriodicTimer(config.SimulationSessionHeartbeatInterval, time);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            if (availability is not null
+                && !availability.IsAvailable
+                && !await availability.WaitUntilAvailableAsync(stoppingToken))
+            {
+                return;
+            }
+
             await HeartbeatRoundAsync(stoppingToken);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        // A release that cannot reach GameService would only spend its timeout; the leases
+        // expire on their own, and a runtime that replaces this one releases them at once.
+        if (availability is { IsAvailable: false })
+        {
+            logger.LogWarning(
+                "GameService does not answer, so the {Count} simulation sessions are not released at shutdown; their leases expire.",
+                sessionStore.ListActiveSessions().Count);
+            await base.StopAsync(cancellationToken);
+            return;
+        }
+
         await BoundedAsync.ForEachAsync(
             sessionStore.ListActiveSessions(),
             config.SimulationSessionHeartbeatMaxConcurrency,
@@ -85,7 +107,7 @@ public sealed class SimulationSessionHeartbeatService(
         using var activity = SimulationWorkerTelemetry.StartOperation(
             "simulation.session.heartbeat_cycle");
         activity?.SetTag("mmorpg.simulation_session.count", sessions.Count);
-        var roundStarted = Stopwatch.GetTimestamp();
+        var roundStarted = time.GetTimestamp();
         IReadOnlyList<ActiveSimulationSession[]> batches = sessions
             .GroupBy(session => session.WorkerRuntimeId, StringComparer.Ordinal)
             .SelectMany(runtime => runtime.Chunk(config.SimulationSessionHeartbeatBatchSize))
@@ -109,8 +131,9 @@ public sealed class SimulationSessionHeartbeatService(
                 return;
             }
 
-            if (Stopwatch.GetElapsedTime(roundStarted) + config.SimulationSessionHeartbeatRetryDelay
-                >= config.SimulationSessionHeartbeatInterval)
+            if (time.GetElapsedTime(roundStarted) + config.SimulationSessionHeartbeatRetryDelay
+                    >= config.SimulationSessionHeartbeatInterval
+                || availability is { IsAvailable: false })
             {
                 logger.LogWarning(
                     "Could not renew the leases of {Count} simulation sessions in this heartbeat round; the next round sends them again.",
@@ -118,7 +141,12 @@ public sealed class SimulationSessionHeartbeatService(
                 return;
             }
 
-            await Task.Delay(config.SimulationSessionHeartbeatRetryDelay, cancellationToken);
+            await Task.Delay(config.SimulationSessionHeartbeatRetryDelay, time, cancellationToken);
+            if (availability is { IsAvailable: false })
+            {
+                return;
+            }
+
             batches = failed
                 .Select(batch => batch.Where(sessionStore.IsCurrentGeneration).ToArray())
                 .Where(batch => batch.Length > 0)
@@ -144,7 +172,7 @@ public sealed class SimulationSessionHeartbeatService(
                     session.SimulationSessionToken))
                 .ToArray());
         GameServiceResult<SimulationSessionHeartbeatResponse> result;
-        var requestedAt = DateTime.UtcNow;
+        var requestedAt = time.GetUtcNow().UtcDateTime;
         try
         {
             result = await gameServiceClient.HeartbeatSimulationSessionsAsync(

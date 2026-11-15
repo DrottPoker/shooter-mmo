@@ -153,6 +153,13 @@ internal sealed class GatheringHandler(
                 continue;
             }
 
+            // GameService grants every yield, so gathering stops while it does not answer.
+            if (authorityScheduler.RefusesDurableIntent(DurableIntentKinds.Gathering))
+            {
+                Stop(activity, GameServiceAvailability.UnavailableCode, GameServiceAvailability.UnavailableMessage);
+                continue;
+            }
+
             // Every remaining charge may be reserved by other gatherers whose yields are in
             // flight; try again shortly instead of failing.
             if (!activity.Node.TryReserveResourceCharge())
@@ -523,10 +530,18 @@ internal sealed class GatheringHandler(
             Owner.StartCycle(context, Activity);
         }
 
+        public string? DurableIntentKind => DurableIntentKinds.Gathering;
+
         // A cycle that never started gives its reserved charge back.
         public void Cancel(RealtimePeerContext context, string code, string message)
         {
             Owner.Remove(Activity);
+        }
+
+        // Gathering stops, and the client is told why.
+        public void Refuse(RealtimePeerContext context, string code, string message)
+        {
+            Owner.Stop(Activity, code, message);
         }
     }
 }

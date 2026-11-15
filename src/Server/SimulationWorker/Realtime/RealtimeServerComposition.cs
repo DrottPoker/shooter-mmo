@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Realtime;
@@ -35,6 +38,8 @@ internal static class RealtimeServerComposition
         var performanceMetrics = host.PerformanceMetrics
             ?? Own(new RealtimePerformanceMetrics(), ownedResources);
         var admissionGuard = new PeerAdmissionGuard(config.Admission);
+        var availability = host.GameServiceAvailability
+            ?? new GameServiceAvailability(TimeProvider.System, NullLogger<GameServiceAvailability>.Instance);
         var clock = new RealtimeSimulationClock();
         var loopGuard = new RealtimeLoopGuard(config.TickPhaseFailureLimit, clock, performanceMetrics, logger);
         var transport = new LiteNetLibRealtimeTransport(
@@ -46,7 +51,7 @@ internal static class RealtimeServerComposition
                 networkMetrics),
             loopGuard,
             logger);
-        var core = CreateCore(host, transport, admissionGuard, networkMetrics, performanceMetrics, clock, loopGuard, logger);
+        var core = CreateCore(host, transport, admissionGuard, networkMetrics, performanceMetrics, clock, loopGuard, availability, logger);
 
         // The features, each after the features it takes.
         var appearance = new AppearanceFeature(core, dependencies.Appearance);
@@ -112,6 +117,10 @@ internal static class RealtimeServerComposition
             performanceMetrics,
             registries,
             loopGuard,
+            core.Peers,
+            core.Sender,
+            availability,
+            host.StopReason ?? new SimulationWorkerStopReason(),
             ownedResources,
             logger);
     }
@@ -124,6 +133,7 @@ internal static class RealtimeServerComposition
         RealtimePerformanceMetrics performanceMetrics,
         RealtimeSimulationClock clock,
         RealtimeLoopGuard loopGuard,
+        GameServiceAvailability availability,
         ILogger logger)
     {
         var config = host.Config;
@@ -180,6 +190,7 @@ internal static class RealtimeServerComposition
             WorkerIdentity = host.WorkerIdentity,
             ShardRules = host.ShardRules ?? new SimulationShardRules(),
             DevelopmentAdmin = host.DevelopmentAdmin ?? DevelopmentAdminOptions.Disabled,
+            GameServiceAvailability = availability,
             Clock = clock,
             Completions = completions,
             OperationTracker = operationTracker,
@@ -191,7 +202,7 @@ internal static class RealtimeServerComposition
             Peers = peers,
             Sender = sender,
             Presence = presence,
-            AuthorityScheduler = new AuthorityOperationScheduler(peers),
+            AuthorityScheduler = new AuthorityOperationScheduler(peers, availability),
             CarrySync = new CarryStateSynchronizer(
                 host.ItemStateStore,
                 host.ConnectionBindings,

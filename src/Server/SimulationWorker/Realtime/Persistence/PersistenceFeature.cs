@@ -52,7 +52,8 @@ internal static class PersistenceFeature
             finalStates,
             core.OperationTracker,
             operations,
-            core.Logger);
+            core.Logger,
+            core.GameServiceAvailability);
         var hooks = core.Registries.Hooks;
         hooks.AddPlayerPlacement(persistence.Place);
         hooks.AddPlayerJoined(persistence.OnPlayerJoined);

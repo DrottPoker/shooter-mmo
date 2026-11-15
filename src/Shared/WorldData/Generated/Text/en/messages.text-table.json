@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "dd020761b1cf80c5fe5185b64791d359c5267bbc2fcd186598dbca8bf1a2e657",
+  "revision": "5b26c1d472c1fa6a991f4a017e75db9236a0229d0adb1fad6ad8a1858d49e275",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -165,6 +165,10 @@
       "text": "You cannot hold that much Gold."
     },
     {
+      "key": "message/death_not_saved",
+      "text": "Your death could not be saved. Your character continues as it was last saved."
+    },
+    {
       "key": "message/email_already_used",
       "text": "That email is already registered."
     },
@@ -183,6 +187,10 @@
     {
       "key": "message/equipment_slot_occupied",
       "text": "That equipment slot is taken."
+    },
+    {
+      "key": "message/game_service_unavailable",
+      "text": "The game cannot save right now. Items, trade, and quests are paused; they come back by themselves."
     },
     {
       "key": "message/gathering_failed",
@@ -479,6 +487,10 @@
     {
       "key": "message/resource_node_depleted",
       "text": "Nothing is left to gather here."
+    },
+    {
+      "key": "message/server_shutdown",
+      "text": "The shard shut down. Try joining again in a moment."
     },
     {
       "key": "message/session_expired",

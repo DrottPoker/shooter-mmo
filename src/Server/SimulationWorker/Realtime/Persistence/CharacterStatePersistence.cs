@@ -3,6 +3,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldCollision;
 
@@ -31,7 +32,8 @@ internal sealed class CharacterStatePersistence(
     CharacterFinalStateStore finalStates,
     RealtimeOperationTracker operationTracker,
     CharacterStateAuthorityOperations? operations,
-    ILogger logger) : IRealtimeCompletionHandler
+    ILogger logger,
+    GameServiceAvailability availability) : IRealtimeCompletionHandler
 {
     private const float MaximumCoordinate = 1_000_000f;
     private const float MaximumYawDegrees = 360f;
@@ -181,6 +183,14 @@ internal sealed class CharacterStatePersistence(
             return;
         }
 
+        if (!availability.IsAvailable)
+        {
+            logger.LogWarning(
+                "[SIMULATION] GameService does not answer, so the place and vitals of {Count} players are not saved at shutdown; they continue from their last checkpoint.",
+                entries.Count);
+            return;
+        }
+
         var answered = await operations.SendAsync(entries);
         for (var index = 0; index < answered; index++)
         {
@@ -207,6 +217,14 @@ internal sealed class CharacterStatePersistence(
         {
             nextCheckpointTick = tick.ServerTick + checkpointIntervalTicks;
             checkpointScheduled = true;
+            return;
+        }
+
+        // While GameService does not answer, no checkpoint goes, and one is due right after it
+        // answers again.
+        if (!availability.IsAvailable)
+        {
+            nextCheckpointTick = tick.ServerTick;
             return;
         }
 

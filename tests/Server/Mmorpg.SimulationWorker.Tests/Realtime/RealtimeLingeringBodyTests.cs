@@ -280,11 +280,7 @@ public sealed class RealtimeLingeringBodyTests
     {
         await using var harness = Create();
         var observerCharacter = harness.AddCharacter("Steady Watcher");
-        var character = harness.AddCharacter("Revoked Hero") with
-        {
-            SessionLeaseDurationMilliseconds = code == "session_expired" ? 1_500 : 30_000
-        };
-        harness.GameService.AddCharacter(character);
+        var character = harness.AddCharacter("Revoked Hero");
         await harness.StartAsync();
         var observer = await harness.JoinAsync(observerCharacter);
         var client = await harness.JoinAsync(character);
@@ -295,7 +291,17 @@ public sealed class RealtimeLingeringBodyTests
             () => observer.Spawns.Any(spawn => spawn.EntityId == entityId),
             "the observer to see the body");
 
-        if (code != "session_expired")
+        // A join refuses a lease shorter than the outage tolerance, so the local deadline is
+        // moved into the past instead, as an unrenewed lease runs out.
+        if (code == "session_expired")
+        {
+            Assert.True(harness.SessionStore.Refresh(
+                character.CharacterId,
+                character.SimulationSessionId,
+                character.SimulationSessionToken,
+                DateTime.UtcNow.AddSeconds(-1)));
+        }
+        else
         {
             Assert.True(harness.SessionStore.Invalidate(
                 character.CharacterId,

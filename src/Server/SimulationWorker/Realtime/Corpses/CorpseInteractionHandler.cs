@@ -3,6 +3,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -89,6 +90,18 @@ internal sealed class CorpseInteractionHandler(
                 intent,
                 RealtimeCombatErrorCodes.CharacterDead,
                 "The character is dead.");
+            return;
+        }
+
+        if (intent.OperationKind != RealtimeCorpseInteractionKind.Close
+            && authorityScheduler.RefusesDurableIntent(DurableIntentKinds.CorpseInteraction))
+        {
+            finalizer.SendCorpseOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                GameServiceAvailability.UnavailableCode,
+                GameServiceAvailability.UnavailableMessage);
             return;
         }
 
@@ -305,6 +318,11 @@ internal sealed class CorpseInteractionHandler(
         CorpseInteractionHandler Owner,
         RealtimeCorpseInteractionIntent Intent) : IRealtimeAuthorityOperation
     {
+        // Closing a view asks GameService nothing.
+        public string? DurableIntentKind => Intent.OperationKind == RealtimeCorpseInteractionKind.Close
+            ? null
+            : DurableIntentKinds.CorpseInteraction;
+
         public void Start(
             RealtimePeerContext context,
             PlayerSimulationEntity entity,

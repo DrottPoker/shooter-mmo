@@ -676,7 +676,7 @@ public sealed class RealtimeSimulationServiceTests
                     200,
                     false)
                 {
-                    SessionLeaseDurationMilliseconds = 30_000,
+                    SessionLeaseDurationMilliseconds = 150_000,
                     IsSyntheticBot = isSyntheticBot,
                     Appearance = isSyntheticBot ? null : CharacterStateTestData.Appearance
                 }));
@@ -747,7 +747,7 @@ public sealed class RealtimeSimulationServiceTests
                         200,
                         false)
                     {
-                        SessionLeaseDurationMilliseconds = 30_000,
+                        SessionLeaseDurationMilliseconds = 150_000,
                         Appearance = CharacterStateTestData.Appearance
                     })
                 });
@@ -804,7 +804,7 @@ public sealed class RealtimeSimulationServiceTests
                     200,
                     false)
                 {
-                    SessionLeaseDurationMilliseconds = 30_000,
+                    SessionLeaseDurationMilliseconds = 150_000,
                     Appearance = CharacterStateTestData.Appearance
                 });
             }

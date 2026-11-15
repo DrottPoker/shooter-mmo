@@ -1,6 +1,7 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
@@ -108,6 +109,13 @@ internal sealed class WorldInteractionHandler(
             return;
         }
 
+        if (NeedsGameService(intent)
+            && authorityScheduler.RefusesDurableIntent(DurableIntentKinds.WorldInteraction))
+        {
+            Reject(peer, intent, GameServiceAvailability.UnavailableCode, GameServiceAvailability.UnavailableMessage);
+            return;
+        }
+
         if (context.AuthorityOperationQueue.Count
             >= RealtimePeerContext.MaximumQueuedAuthorityOperations)
         {
@@ -135,6 +143,15 @@ internal sealed class WorldInteractionHandler(
         authorityScheduler.Enqueue(
             context,
             new QueuedWorldInteractionOperation(this, intent));
+    }
+
+    // A capability action asks GameService: a vendor trade, insurance, a quest action, or the
+    // start of gathering, whose yields GameService grants. Opening, closing, and the storage and
+    // dialogue capabilities stay on the worker.
+    private static bool NeedsGameService(RealtimeWorldInteractionIntent intent)
+    {
+        return intent.OperationKind == RealtimeWorldInteractionOperationKind.CapabilityAction
+            && intent.CapabilityAction != RealtimeCapabilityActionKind.None;
     }
 
     private void Reject(
@@ -336,6 +353,8 @@ internal sealed class WorldInteractionHandler(
         WorldInteractionHandler Owner,
         RealtimeWorldInteractionIntent Intent) : IRealtimeAuthorityOperation
     {
+        public string? DurableIntentKind => NeedsGameService(Intent) ? DurableIntentKinds.WorldInteraction : null;
+
         public void Start(
             RealtimePeerContext context,
             PlayerSimulationEntity entity,

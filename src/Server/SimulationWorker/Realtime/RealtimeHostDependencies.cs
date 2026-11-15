@@ -16,7 +16,8 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // The host services that the realtime infrastructure and more than one feature take. A
 // missing optional service gets the default that RealtimeServerComposition applies: a new
 // interest manager, metrics the server owns, no registration lease, no world actors, a Shard
-// rule set without player versus player, and no admin tools.
+// rule set without player versus player, no admin tools, a GameService that always counts as
+// available, and a stop that is a normal shutdown.
 internal sealed record RealtimeHostDependencies(
     SimulationWorkerConfig Config,
     SimulationJoinService JoinService,
@@ -39,7 +40,9 @@ internal sealed record RealtimeHostDependencies(
     WorldActorStore? WorldActorStore = null,
     WorldInteractionLeaseRegistry? WorldInteractionLeases = null,
     SimulationShardRules? ShardRules = null,
-    DevelopmentAdminOptions? DevelopmentAdmin = null)
+    DevelopmentAdminOptions? DevelopmentAdmin = null,
+    GameServiceAvailability? GameServiceAvailability = null,
+    SimulationWorkerStopReason? StopReason = null)
 {
     // Registers the record from the services that Program.cs registers.
     public static void Register(IServiceCollection services)
@@ -66,6 +69,8 @@ internal sealed record RealtimeHostDependencies(
             provider.GetRequiredService<WorldActorStore>(),
             provider.GetRequiredService<WorldInteractionLeaseRegistry>(),
             provider.GetRequiredService<SimulationShardRules>(),
-            provider.GetRequiredService<DevelopmentAdminOptions>()));
+            provider.GetRequiredService<DevelopmentAdminOptions>(),
+            provider.GetRequiredService<GameServiceAvailability>(),
+            provider.GetRequiredService<SimulationWorkerStopReason>()));
     }
 }

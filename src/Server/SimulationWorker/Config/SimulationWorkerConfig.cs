@@ -53,6 +53,38 @@ public sealed record SimulationWorkerConfig(
     // is still live, before it concludes that another live runtime owns the worker id.
     public TimeSpan RegistryAcquireTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
+    // How soon a registry heartbeat that timed out, could not reach GameService, or got a server
+    // error goes again, until one succeeds.
+    public TimeSpan RegistryHeartbeatRetryDelay { get; init; } =
+        TimeSpan.FromMilliseconds(DefaultRegistryHeartbeatRetryMilliseconds);
+
+    public const int DefaultRegistryHeartbeatRetryMilliseconds = 2_000;
+
+    // How long the worker plays on without a successful registry heartbeat before it stops in
+    // order. Session leases must outlast it, so GameService still holds every session when the
+    // worker comes back within it.
+    public TimeSpan GameServiceOutageTolerance { get; init; } =
+        TimeSpan.FromSeconds(DefaultGameServiceOutageToleranceSeconds);
+
+    public const int DefaultGameServiceOutageToleranceSeconds = 120;
+    public const int MinimumGameServiceOutageToleranceSeconds = 10;
+    public const int MaximumGameServiceOutageToleranceSeconds = 600;
+
+    // How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is
+    // retried, counted only while GameService answers its registry heartbeat, before it is given up.
+    public TimeSpan UncertainOperationRetryHorizon { get; init; } =
+        TimeSpan.FromSeconds(DefaultUncertainOperationRetryHorizonSeconds);
+
+    public const int DefaultUncertainOperationRetryHorizonSeconds = 600;
+    public const int MaximumUncertainOperationRetryHorizonSeconds = 3_600;
+
+    // The horizon must leave this much more than the outage tolerance.
+    public const int MinimumUncertainOperationRetryHorizonMarginSeconds = 60;
+
+    // The shortest session lease that a join may grant: the worker must hold the session through
+    // a whole outage that it tolerates and the session heartbeat round that renews it afterwards.
+    public TimeSpan MinimumSessionLease => GameServiceOutageTolerance + SimulationSessionHeartbeatInterval;
+
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     // Optional file that the metrics reporter appends one JSON line per interval to, for the
@@ -313,6 +345,27 @@ public sealed record SimulationWorkerConfig(
                 section["RegistryAcquireTimeoutSeconds"],
                 "SimulationWorker:RegistryAcquireTimeoutSeconds",
                 errors);
+        var registryHeartbeatRetryMilliseconds = string.IsNullOrWhiteSpace(
+                section["RegistryHeartbeatRetryMilliseconds"])
+            ? DefaultRegistryHeartbeatRetryMilliseconds
+            : PositiveInt(
+                section["RegistryHeartbeatRetryMilliseconds"],
+                "SimulationWorker:RegistryHeartbeatRetryMilliseconds",
+                errors);
+        var gameServiceOutageToleranceSeconds = string.IsNullOrWhiteSpace(
+                section["GameServiceOutageToleranceSeconds"])
+            ? DefaultGameServiceOutageToleranceSeconds
+            : PositiveInt(
+                section["GameServiceOutageToleranceSeconds"],
+                "SimulationWorker:GameServiceOutageToleranceSeconds",
+                errors);
+        var uncertainOperationRetryHorizonSeconds = string.IsNullOrWhiteSpace(
+                section["UncertainOperationRetryHorizonSeconds"])
+            ? DefaultUncertainOperationRetryHorizonSeconds
+            : PositiveInt(
+                section["UncertainOperationRetryHorizonSeconds"],
+                "SimulationWorker:UncertainOperationRetryHorizonSeconds",
+                errors);
         var networkMetricsLogSeconds = PositiveInt(
             section["NetworkMetricsLogSeconds"],
             "SimulationWorker:NetworkMetricsLogSeconds",
@@ -500,6 +553,27 @@ public sealed record SimulationWorkerConfig(
                 "SimulationWorker:RegistryAcquireTimeoutSeconds must be longer than RegistryHeartbeatSeconds and must not exceed 3600.");
         }
 
+        if (registryHeartbeatRetryMilliseconds >= registryHeartbeatSeconds * 1_000L)
+        {
+            errors.Add(
+                "SimulationWorker:RegistryHeartbeatRetryMilliseconds must be shorter than RegistryHeartbeatSeconds.");
+        }
+
+        if (gameServiceOutageToleranceSeconds is < MinimumGameServiceOutageToleranceSeconds
+            or > MaximumGameServiceOutageToleranceSeconds)
+        {
+            errors.Add(
+                $"SimulationWorker:GameServiceOutageToleranceSeconds must be between {MinimumGameServiceOutageToleranceSeconds} and {MaximumGameServiceOutageToleranceSeconds}.");
+        }
+
+        if (uncertainOperationRetryHorizonSeconds
+                < gameServiceOutageToleranceSeconds + MinimumUncertainOperationRetryHorizonMarginSeconds
+            || uncertainOperationRetryHorizonSeconds > MaximumUncertainOperationRetryHorizonSeconds)
+        {
+            errors.Add(
+                $"SimulationWorker:UncertainOperationRetryHorizonSeconds must be at least GameServiceOutageToleranceSeconds plus {MinimumUncertainOperationRetryHorizonMarginSeconds} and must not exceed {MaximumUncertainOperationRetryHorizonSeconds}.");
+        }
+
         if (networkMetricsLogSeconds > 3_600)
         {
             errors.Add("SimulationWorker:NetworkMetricsLogSeconds must not exceed 3600.");
@@ -681,6 +755,9 @@ public sealed record SimulationWorkerConfig(
             SimulationSessionHeartbeatBatchSize = sessionHeartbeatBatchSize,
             SimulationSessionHeartbeatRetryDelay = TimeSpan.FromMilliseconds(sessionHeartbeatRetryMilliseconds),
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
+            RegistryHeartbeatRetryDelay = TimeSpan.FromMilliseconds(registryHeartbeatRetryMilliseconds),
+            GameServiceOutageTolerance = TimeSpan.FromSeconds(gameServiceOutageToleranceSeconds),
+            UncertainOperationRetryHorizon = TimeSpan.FromSeconds(uncertainOperationRetryHorizonSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             PerformanceReportPath = performanceReportPath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
