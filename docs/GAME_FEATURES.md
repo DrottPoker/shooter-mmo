@@ -130,7 +130,19 @@ character, progression, and statistics are not implemented.
   the cards, such as `This character connected from another client.`, `The
   character is no longer in the world.`, or `The connection sent too much at
   once and was closed.`; without an account session, or after a login on
-  another client, it returns to LoginMenu with the reason on the card.
+  another client, it returns to LoginMenu with the reason on the card. A shard
+  that shuts down says `The shard shut down. Try joining again in a moment.`
+- While the game service is away, the World goes on: the character walks and
+  fights, and Mobs live and die. Everything that the game must save, moving or
+  using items, looting, trading, insurance, quests, gathering, and changing
+  the look, is refused at once with `The game cannot save right now. Items,
+  trade, and quests are paused; they come back by themselves.` Deaths, kills
+  for quests, Mob corpses, and spent arrows wait and are saved once the game
+  service is back. When it stays away for two minutes, the shard closes and
+  the client leaves the World with the same text; the character enters again
+  where it was last saved, at most 30 seconds before. A death that could
+  never be saved ends the connection with `Your death could not be saved. Your
+  character continues as it was last saved.`
 - After a leave or a lost connection the character's body stays in the world
   for 20 seconds, and longer while it is attacked: others see it standing,
   Mobs and players can attack and kill it, and entering the same character

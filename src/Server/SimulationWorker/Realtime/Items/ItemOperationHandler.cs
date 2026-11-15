@@ -1,6 +1,7 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Sessions;
 
@@ -83,6 +84,17 @@ internal sealed class ItemOperationHandler(
                 intent,
                 RealtimeCombatErrorCodes.CharacterDead,
                 "The character is dead.");
+            return;
+        }
+
+        if (authorityScheduler.RefusesDurableIntent(DurableIntentKinds.ItemOperation))
+        {
+            SendItemOperationRejection(
+                peer,
+                playerEntity.Session,
+                intent,
+                GameServiceAvailability.UnavailableCode,
+                GameServiceAvailability.UnavailableMessage);
             return;
         }
 
@@ -323,6 +335,8 @@ internal sealed class ItemOperationHandler(
         ItemOperationHandler Owner,
         RealtimeItemOperationIntent Intent) : IRealtimeAuthorityOperation
     {
+        public string? DurableIntentKind => DurableIntentKinds.ItemOperation;
+
         public void Start(
             RealtimePeerContext context,
             PlayerSimulationEntity entity,

@@ -622,9 +622,10 @@ filter loopback traffic.
    turn the camera with the arrow keys. About 5 seconds later, resume the
    worker.
 2. Suspend the worker again and keep it suspended for at least 35 seconds, then
-   resume it. Its registration lease of 30 seconds has expired by then, so the
-   resumed worker logs `Simulation worker registration lease expired` and stops
-   itself. Start the worker again and click `Refresh` in the client.
+   resume it. GameService counted the worker as gone after 30 seconds without a
+   heartbeat, but no other runtime took its place, so the resumed worker renews
+   its registration with its next heartbeat and plays on. Click `Refresh` in the
+   client.
 3. Click `Enter World` with the same character. Press F2, click `Leave Shard`,
    choose the other character, and click `Enter World` within 20 seconds.
 
@@ -646,13 +647,61 @@ Expected result:
   CharacterSelect, which reads `The connection to the world was lost and could
   not be restored.` above the cards. The Console holds `... could not be
   restored: the 20 s to reconnect ended after <n> attempts.` `Local Shard 1`
-  reads `Offline` until the worker runs again and `Refresh` is clicked.
+  reads `Offline` while the worker is suspended and `Online` again after the
+  resume and `Refresh`; the worker log holds no `Stopping` line.
 - In step 3 the character enters where it stood. After the leave, the
   character's page counts its body down, and the other character's page reads
   `<name> is still in the world for about <n> more seconds. Another character
   can enter once it is gone.` Its `Enter World` shows `Another character on this
   account is still in the world. A character stays for a short while after it
   leaves; try again in a moment.`, and works once the count has ended.
+
+### GameService Goes Away For A Minute
+
+Needs the stack, GameService started from its own terminal with
+`dotnet run --project src/Server/GameService`, and a character with a bow and
+arrows in the World of `Local Shard 1` in the Editor, near the wolves of
+Development World 2, as [Register, Create, And Join](#register-create-and-join)
+describes. Keep the worker's console in view.
+
+1. Stop GameService with `Ctrl+C` in its terminal. Wait 15 seconds.
+2. Walk, shoot a wolf until it dies, and loot nothing yet. Then open the
+   Inventory with `I` and drag an item to another slot, open the dead wolf's
+   corpse, talk to Mira and try a quest action, start mining at an ore node, and
+   lower the hood in the character window.
+3. Start GameService again with the same command within the minute.
+4. Repeat the item move of step 2 and loot the wolf's corpse.
+5. Stop GameService again and wait two and a half minutes. Then start
+   GameService and the worker again and enter the World with the same
+   character.
+
+Expected result:
+
+- In step 1, within about 10 seconds the worker logs one warning
+  `GameService does not answer the registry heartbeat (auth_service_unavailable);
+  items, trade, and quests are paused until it answers again.`, and then
+  `Simulation worker registry heartbeat failed ... auth_service_unavailable`
+  every 2 seconds. The character stays in the World.
+- In step 2, walking and fighting work, the wolf dies and leaves its corpse, and
+  every other action is refused at once with `The game cannot save right now.
+  Items, trade, and quests are paused; they come back by themselves.` An action
+  sent in the first seconds of the outage, before the worker noticed it, may
+  take up to 5 seconds and then fail with the text of `auth_service_unavailable`
+  or `auth_service_timeout` instead.
+- In step 3, within 2 seconds after GameService is ready the worker logs
+  `GameService answers the registry heartbeat again after <time>; durable
+  actions resume.` The arrows shot during the outage leave the arrow count
+  once, a wolf that a quest asked for counts once, and the place and vitals are
+  saved right away.
+- In step 4 the item moves and the corpse opens and loots as usual.
+- In step 5, about 120 seconds after the last answered heartbeat the worker logs
+  the critical line `GameService has not answered a registry heartbeat for
+  <time>, longer than the outage tolerance of 00:02:00. Stopping the worker in
+  order.` and stops. The client leaves the World, and the next entry screen
+  shows `The shard lost its connection to the game service and shut down. Your
+  character continues as it was last saved. Try joining again in a moment.`
+  After the restart the character enters at the place of its last checkpoint,
+  which was at most 30 seconds before the outage.
 
 ### Remembered Choices And Shortcuts
 

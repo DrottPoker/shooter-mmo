@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
@@ -18,7 +19,8 @@ public sealed class SimulationJoinService(
     CharacterLookStore? lookStore = null,
     DevelopmentBotLooks? botLooks = null,
     CharacterQuestLogStore? questLogs = null,
-    QuestCatalogRuntimeDocument? questCatalog = null)
+    QuestCatalogRuntimeDocument? questCatalog = null,
+    ILogger<SimulationJoinService>? logger = null)
 {
     // One span covers the ticket consumption and any release a rejected join needs.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
@@ -76,6 +78,27 @@ public sealed class SimulationJoinService(
             return SimulationJoinResult<ActiveSimulationSession>.Conflict(
                 "wrong_simulation_assignment",
                 "Join ticket does not match this simulation worker assignment.");
+        }
+
+        // GameService does not know the worker's outage tolerance, so the worker checks that a
+        // session it grants outlasts a whole tolerated outage and the round that renews it after.
+        if (consumedTicket.Value.SessionLeaseDurationMilliseconds < config.MinimumSessionLease.TotalMilliseconds)
+        {
+            logger?.LogError(
+                "Refused the join of simulation session {SimulationSessionId}: GameService granted a session lease of {LeaseMilliseconds} ms, shorter than SimulationWorker:GameServiceOutageToleranceSeconds plus SimulationWorker:SimulationSessionHeartbeatSeconds ({MinimumMilliseconds} ms). Raise Simulation:SessionLeaseLifetimeSeconds in GameService or lower the tolerance.",
+                consumedTicket.Value.SimulationSessionId,
+                consumedTicket.Value.SessionLeaseDurationMilliseconds,
+                (long)config.MinimumSessionLease.TotalMilliseconds);
+            await gameServiceClient.ReleaseSimulationSessionAsync(
+                consumedTicket.Value.SimulationSessionId,
+                identity.RuntimeId,
+                consumedTicket.Value.SimulationSessionToken,
+                cancellationToken);
+
+            return SimulationJoinResult<ActiveSimulationSession>.Failure(
+                500,
+                "join_failed",
+                "The session lease is shorter than this worker's GameService outage tolerance.");
         }
 
         var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);

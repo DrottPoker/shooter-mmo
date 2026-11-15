@@ -297,6 +297,15 @@ contract:
 - The thread boundary is a type boundary. A feature's off-loop part is a
   `*AuthorityOperations` class whose constructor receives only synchronized
   services, the completion queue, and a logger.
+- `GameServiceAvailability` is the one host service whose state the loop reads
+  on its hot path: whether GameService answers, a version that every change
+  raises, and the available time that retry horizons count. The loop reads
+  them through one volatile reference without a lock or an allocation; the
+  registry heartbeat changes them under a lock. A feature that sends a durable
+  client action to GameService refuses it while GameService is unavailable,
+  through `AuthorityOperationScheduler.RefusesDurableIntent` or its
+  `DurableIntentKind`, and system work that must complete waits, due at once,
+  as [GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes.
 - LiteNetLib callbacks run inside `PollEvents` because `UnsyncedEvents` stays
   false. A freed peer id can only be reused after its disconnect event, which is
   what makes resolving peers by id safe. Never enable `UnsyncedEvents`.
@@ -565,24 +574,31 @@ store.
 
 `SimulationWorkerHostedServices` registers the hosted services in their start
 order: `RealtimeSimulationService`, `SimulationSessionHeartbeatService`,
-`SimulationWorkerHeartbeatService`, `SimulationWorkerRegistrationLeaseMonitor`,
+`SimulationWorkerHeartbeatService`, `GameServiceOutageMonitor`,
 `DurableCorpseRestorationService`, and `RealtimeMetricsReporterService`. The
 realtime service binds the UDP port before anything else runs, so a port it
 cannot bind fails the start before the worker registers. The worker heartbeat
 registers once the transport listens, and corpse restoration waits for the
-registration lease that the heartbeat renews.
+registration lease that the heartbeat renews. The outage monitor stops the
+worker when no registry heartbeat succeeded for the outage tolerance, as
+[Runtime Identity And Assignment Safety](#runtime-identity-and-assignment-safety)
+describes.
 
 The generic host stops hosted services in reverse order, after it called
 `StoppingAsync` on every `IHostedLifecycleService`. `RealtimeSimulationService`
 runs its whole shutdown in `StoppingAsync`, so a graceful stop runs in this
 order:
 
-1. The realtime shutdown: the transport stops, in-flight operations finish, the
+1. The realtime shutdown: every connected peer gets a `ServerDisconnect` with
+   the reason of the stop, `server_shutdown` for a normal stop and for lost
+   authority and `game_service_outage` when the outage tolerance ran out,
+   and half a second at most to acknowledge it. Then the transport stops, the
+   work that waits for GameService gives up, in-flight operations finish, the
    combat flush commits arrow shots and quest credits with the session
    credentials, and the character state flush saves the place and vitals of
    every remaining player, a lingering body like a connected one, in one last
    checkpoint, while every session and the registration still hold.
-2. The metrics reporter, corpse restoration, and the lease monitor stop.
+2. The metrics reporter, corpse restoration, and the outage monitor stop.
 3. The worker heartbeat clears the registration lease and marks the runtime
    offline through `/offline`.
 4. The session heartbeat releases every local session.
@@ -591,8 +607,11 @@ The combat work and the last state of a session are therefore committed before
 the session is released or the runtime goes offline. Going offline releases
 every session of the runtime, so a release that follows saves no final state;
 it carries one only when the last checkpoint failed, for the case that going
-offline failed too. `SimulationWorkerStopOrderTests` runs the hosted services
-in a generic host against the scripted GameService and pins this order.
+offline failed too. While GameService does not answer, the combat flush, the
+last checkpoint, and the releases send nothing, since each would only spend
+its timeout, and going offline gets one attempt.
+`SimulationWorkerStopOrderTests` runs the hosted services in a generic host
+against the scripted GameService and pins this order.
 
 ### Server Common And Telemetry
 
@@ -1173,11 +1192,37 @@ minus a safety margin of at most one second, so it always ends before the
 database lease. Simulation session leases work the same way: GameService
 returns the lease duration, and the worker sets each session deadline on its own
 clock from the request send time. Clock differences between hosts therefore
-never extend or cut short a lease. UDP joins are rejected without a valid lease.
-If the lease expires, or GameService reports that the runtime lost authority,
-the process stops. This limits split-brain behavior during network partitions
-and allows another worker to take over after the authoritative heartbeat
-timeout.
+never extend or cut short a lease. The local registration lease means that
+GameService considers this runtime fresh: UDP connection requests and joins are
+refused without it, so nobody joins a worker that GameService may already have
+replaced, and durable corpse restoration waits for it.
+
+The end of the local lease does not stop the worker. The worker plays on
+through a GameService outage of up to
+`SimulationWorker:GameServiceOutageToleranceSeconds`, 120 by default, counted
+from its last successful registry heartbeat, and stops in order once that is
+older, as [GameService Outage](SERVICE_FEATURES.md#gameservice-outage)
+describes. A heartbeat that says the runtime lost authority, such as
+`worker_runtime_changed`, still stops it at once.
+
+GameService keeps its takeover rule: another runtime may take over a worker id
+whose heartbeat is older than `Simulation:WorkerHeartbeatTimeoutSeconds`, 30 by
+default, and the takeover releases the old runtime's sessions and tickets. A
+runtime that comes back after an outage and was not replaced renews its
+registration with its next heartbeat, since the renewal accepts the same
+runtime however old its last heartbeat is; one that was replaced gets
+`worker_runtime_changed` and stops. So when the worker is cut off from
+GameService while GameService is alive and a replacement registers, the old
+runtime keeps simulating until the outage tolerance, 120 seconds by default,
+after its last answered heartbeat, while GameService allowed the takeover 30
+seconds after it, so the two can run beside each other for up to 90 seconds.
+That is accepted, because it cannot change durable state: every
+durable operation is fenced by the runtime id in GameService, so the old
+runtime's operations are refused; a join needs a ticket for the registered
+runtime, so nobody new joins the old one; and the old runtime's players lose
+only what was not saved, their position and vitals since the last checkpoint.
+Simulation session leases, 150 seconds by default, outlast the tolerance, so a
+worker that comes back within it still holds every session.
 
 ## Trust Boundaries
 
@@ -1269,7 +1314,10 @@ adds a production code path:
 4. GameService validates the World database entry and fleet boundaries, safely
    binds or rebinds the shard, creates the assignment, and returns a
    database-timed online lease with the Shard's rule set.
-5. The worker renews its local registration lease and continues heartbeats.
+5. The worker renews its local registration lease and continues heartbeats,
+   every `SimulationWorker:RegistryHeartbeatSeconds` and every
+   `RegistryHeartbeatRetryMilliseconds` after one that GameService did not
+   answer.
 
 ### Shard Discovery And Placement
 
@@ -1381,8 +1429,10 @@ comes back to it:
    `account_session_replaced` after a new login and `session_revoked`
    otherwise, and leave a body under the rules of step 2; for a body nothing
    changes.
-5. If release is unavailable, the database lease expires on its own because
-   nothing renews it. A join that is rejected during finalization releases its
+5. While GameService does not answer its registry heartbeat, a release waits
+   for it and goes as soon as it answers again. If release is unavailable, the
+   database lease expires on its own because nothing renews it. A join that is
+   rejected during finalization releases its
    session the same way. As a safety net, the worker releases any local session
    that neither a peer nor a lingering body has owned for twice the join
    handshake timeout.

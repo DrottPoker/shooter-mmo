@@ -30,7 +30,7 @@ public sealed record DevelopmentSimulationBotOptions(
         var enabled = section.GetValue("Enabled", false);
         var secret = configuration[SecretEnvironmentVariable] ?? string.Empty;
         var joinTicketLifetimeSeconds = section.GetValue("JoinTicketLifetimeSeconds", 30);
-        var sessionLeaseLifetimeSeconds = section.GetValue("SessionLeaseLifetimeSeconds", 30);
+        var sessionLeaseLifetimeSeconds = section.GetValue("SessionLeaseLifetimeSeconds", 150);
         var characterNamePrefix = section.GetValue("CharacterNamePrefix", "Active Bot")?.Trim()
             ?? string.Empty;
         var reservedPlayerConnections = section.GetValue("ReservedPlayerConnections", 8);

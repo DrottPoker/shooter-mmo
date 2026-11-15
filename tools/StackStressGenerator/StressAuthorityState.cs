@@ -12,7 +12,9 @@ public sealed class StressAuthorityState
     private const long SyntheticCarryCapacity = 200;
     private static readonly TimeSpan WorkerLeaseDuration = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TicketLifetime = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan SessionLeaseDuration = TimeSpan.FromSeconds(60);
+    // As long as GameService grants by default, which outlasts the worker's outage tolerance plus its
+    // session heartbeat interval, the shortest lease the worker accepts.
+    private static readonly TimeSpan SessionLeaseDuration = TimeSpan.FromSeconds(150);
 
     private readonly object gate = new();
     private readonly StressGeneratorOptions options;

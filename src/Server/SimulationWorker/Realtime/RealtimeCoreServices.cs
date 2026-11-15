@@ -4,6 +4,7 @@ using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
@@ -54,6 +55,10 @@ internal sealed record RealtimeCoreServices
     public required SimulationShardRules ShardRules { get; init; }
 
     public required DevelopmentAdminOptions DevelopmentAdmin { get; init; }
+
+    // Whether GameService answers; while it does not, durable client actions are refused and the
+    // work that must complete waits for it.
+    public required GameServiceAvailability GameServiceAvailability { get; init; }
 
     // Loop infrastructure.
     public required RealtimeSimulationClock Clock { get; init; }

@@ -39,10 +39,14 @@ internal sealed class MobDeathCorpse(
 
     public int Attempts { get; set; }
 
+    // While set, the creation waits for a retry, or for GameService.
     public uint? RetryAtTick { get; set; }
 
     // Created, or never to be created.
     public bool Finished { get; set; }
+
+    // GameService's available time at the death, from which the retry horizon counts.
+    public TimeSpan StartedAt { get; init; }
 }
 
 // One Mob death between its lethal hit and its despawn.
@@ -77,7 +81,10 @@ internal sealed class MobDeath(
 // durable in GameService, and its creation retries with the same corpse id until it succeeds.
 // Once every corpse exists, the actor despawns, and its spawn instance respawns after the
 // respawn profile's delay. A death whose rolls are empty, or whose quest drops its owner no
-// longer needs, leaves no corpse. Loop-confined; corpse creation runs off the loop.
+// longer needs, leaves no corpse. A creation that needs GameService waits while GameService does
+// not answer and goes as soon as it answers again, and one that does not succeed within the retry
+// horizon, counted only while GameService answers, is given up. Loop-confined; corpse creation
+// runs off the loop.
 internal sealed class MobDeathProcessor(
     SimulationWorkerConfig config,
     RealtimeSimulationClock clock,
@@ -92,8 +99,12 @@ internal sealed class MobDeathProcessor(
     RealtimeOperationTracker operationTracker,
     ICombatRandom random,
     ILogger logger,
+    GameServiceAvailability availability,
     QuestDropRoller? questDropRoller = null) : IRealtimeCompletionHandler
 {
+    // The kind of the operation that the retry horizon gives up, as logs and metrics name it.
+    public const string MobCorpseOperationKind = "mob_corpse";
+
     private readonly Dictionary<string, WorldActorLootProfileDefinition> loot = lootProfiles
         .ToDictionary(profile => profile.Id, StringComparer.Ordinal);
     private readonly Dictionary<string, WorldActorRespawnProfileDefinition> respawn = respawnProfiles
@@ -162,7 +173,8 @@ internal sealed class MobDeathProcessor(
         }
     }
 
-    // Retries durable corpses that did not commit yet.
+    // Retries durable corpses that did not commit yet; one that needs GameService waits while it
+    // does not answer.
     public void ProcessTick()
     {
         if (deaths.Count == 0)
@@ -172,13 +184,15 @@ internal sealed class MobDeathProcessor(
 
         deathBuffer.Clear();
         deathBuffer.AddRange(deaths.Values);
+        var gameServiceAvailable = availability.IsAvailable;
         foreach (var death in deathBuffer)
         {
             foreach (var corpse in death.Corpses)
             {
                 if (!corpse.Finished
                     && corpse.RetryAtTick is { } retry
-                    && CombatTicks.IsReached(clock.ServerTick, retry))
+                    && CombatTicks.IsReached(clock.ServerTick, retry)
+                    && (gameServiceAvailable || !NeedsGameService(death, corpse)))
                 {
                     corpse.RetryAtTick = null;
                     Create(death, corpse);
@@ -246,6 +260,10 @@ internal sealed class MobDeathProcessor(
             {
                 // The Mob can never get this corpse, so it leaves without it.
                 corpse.Finished = true;
+            }
+            else if (availability.AvailableTime - corpse.StartedAt >= config.UncertainOperationRetryHorizon)
+            {
+                AbandonCorpse(death, corpse, error.Code);
             }
             else
             {
@@ -330,11 +348,48 @@ internal sealed class MobDeathProcessor(
                     .ToArray();
         return loot.Count == 0 && questDrops.Count == 0
             ? null
-            : new MobDeathCorpse(corpseId, owner?.CharacterId, loot, questDrops);
+            : new MobDeathCorpse(corpseId, owner?.CharacterId, loot, questDrops)
+            {
+                StartedAt = availability.AvailableTime
+            };
     }
 
+    // A durable corpse is created in GameService, and a live one asks it which quest drops its
+    // owner still needs; a live corpse without quest drops is laid out on the worker alone.
+    private static bool NeedsGameService(MobDeath death, MobDeathCorpse corpse)
+    {
+        return corpse.QuestDrops.Count > 0
+            || !string.Equals(
+                death.Actor.Definition.CorpsePersistenceMode,
+                WorldActorCorpsePersistenceModeIds.Live,
+                StringComparison.Ordinal);
+    }
+
+    // The Mob leaves without this corpse.
+    private void AbandonCorpse(MobDeath death, MobDeathCorpse corpse, string code)
+    {
+        corpse.Finished = true;
+        availability.RecordAbandonedOperation(MobCorpseOperationKind);
+        logger.LogError(
+            "[SIMULATION] Gave up the {OperationKind} operation {OperationId} for corpse {CorpseId} of Mob {ActorDefinitionId} after {Attempts} attempts, the last with {Code}: it did not succeed within the retry horizon of {Horizon} while GameService answered, so the Mob leaves without it.",
+            MobCorpseOperationKind,
+            ScopedGuid.Create("mob-corpse-create", corpse.CorpseId),
+            corpse.CorpseId,
+            death.Actor.Definition.Id,
+            corpse.Attempts,
+            code,
+            config.UncertainOperationRetryHorizon);
+    }
+
+    // While GameService does not answer, a creation that needs it holds its place, due at once.
     private void Create(MobDeath death, MobDeathCorpse corpse)
     {
+        if (!availability.IsAvailable && NeedsGameService(death, corpse))
+        {
+            corpse.RetryAtTick = clock.ServerTick;
+            return;
+        }
+
         corpse.Attempts++;
         operationTracker.Track(CreateAsync(death, corpse));
     }

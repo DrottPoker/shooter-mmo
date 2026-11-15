@@ -292,9 +292,13 @@ in
 
 A worker is healthy while its heartbeats arrive within
 `Simulation:WorkerHeartbeatTimeoutSeconds`. It heartbeats every
-`SimulationWorker:RegistryHeartbeatSeconds`, and a new runtime keeps retrying
-for `SimulationWorker:RegistryAcquireTimeoutSeconds` while a previous runtime's
-lease is still live.
+`SimulationWorker:RegistryHeartbeatSeconds`, and after a heartbeat that timed
+out, could not reach GameService, or got a server error, every
+`SimulationWorker:RegistryHeartbeatRetryMilliseconds` until one succeeds. A new
+runtime keeps retrying for `SimulationWorker:RegistryAcquireTimeoutSeconds`
+while a previous runtime's lease is still live. A heartbeat of the same runtime
+renews its registration however long GameService did not hear from it, as long
+as no other runtime took the worker id over.
 
 Every heartbeat response also names the rule set of the Shard. SimulationWorker
 applies the rule set with that id from its combat rules and stops with
@@ -302,9 +306,77 @@ applies the rule set with that id from its combat rules and stops with
 
 SimulationWorker stores the database-issued lease duration locally, measured
 from the moment the heartbeat request was sent. It rejects new UDP joins without
-a valid registration lease. A one-second monitor stops the process after lease
-expiry. Definitive topology, assignment, runtime, or service credential
-rejection also stops the process.
+a valid registration lease. The end of that lease does not stop the worker: it
+plays on without GameService for the outage tolerance, as
+[GameService Outage](#gameservice-outage) describes. A definitive topology,
+assignment, runtime, or service credential rejection stops the process at once.
+
+## GameService Outage
+
+The worker plays on for up to `SimulationWorker:GameServiceOutageToleranceSeconds`,
+120 by default, without GameService. Walking, fighting, Mob brains, and
+replication go on; everything durable is paused.
+
+- `GameServiceAvailability` is the one place that knows whether GameService
+  answers. The registry heartbeat is the probe: one that times out, cannot reach
+  GameService, or gets a server error makes it unavailable, and the next
+  successful one available again. Any other GameService call that fails that
+  way while GameService still counts as available asks for the next registry
+  heartbeat at once, no sooner than the retry delay after the last one, so the
+  worker learns of an outage within about one timeout. The change to
+  unavailable writes one warning, the return one information line with the
+  length of the outage.
+- While GameService is unavailable, a client action that GameService must
+  commit is refused at once with the action's normal rejection and the code
+  `game_service_unavailable`, without a GameService call and without entering
+  the player's lane: item operations, corpse views and loot, live Mob loot,
+  vendor trades, insurance, quest actions at an NPC, quest intents, the start
+  of gathering, and look changes. Such an action that waited in the lane is
+  refused the same way when its turn comes, a gathering that runs stops with
+  that code at its next cycle, and opening or closing an interaction or a
+  corpse view still works. An action that was already at GameService when the
+  outage began fails as before, with `auth_service_timeout` or
+  `auth_service_unavailable`.
+- The work that must complete waits without spending a timeout and goes as soon
+  as GameService answers again, with the operation id it had: a player death,
+  a quest kill credit, an arrow batch, the creation of a Mob corpse that needs
+  GameService, a durable one or a live one with quest drops, the release of a
+  session, and the session heartbeat, whose rounds pause and one of which goes
+  right after the outage when one waited for it. The checkpoint pauses too, and
+  one goes right after the outage. A dead player stays dead and a dead Mob in
+  view until its death committed or its corpse exists.
+- A death, a quest kill credit, or a Mob corpse whose outcome stays uncertain
+  for `SimulationWorker:UncertainOperationRetryHorizonSeconds`, 600 by default,
+  counted only while GameService answers, is given up with one error line that
+  names the operation id and kind and a count in
+  `simulation_worker.game_service.abandoned_operations`, as
+  [Monitoring](MONITORING.md#simulationworker) lists. A kill credit and a Mob
+  corpse are dropped. A player death ends that player's session with
+  `death_not_saved`, without a lingering body, and releases it without a final
+  state, so the character keeps what GameService committed last and joins
+  again from its last checkpoint. An outage never uses up the horizon.
+- Joins need the local registration lease, which ends about 30 seconds after
+  the last successful heartbeat, so a worker that GameService does not answer
+  refuses connection requests from then on; before that a join fails with
+  `auth_service_timeout` or `auth_service_unavailable`, because its ticket
+  cannot be consumed.
+- When the last successful registry heartbeat is older than the tolerance,
+  `GameServiceOutageMonitor` stops the worker in order: every connected peer
+  gets `ServerDisconnect` with `game_service_outage`, the realtime
+  shutdown sends nothing that would only spend its timeout, neither arrows,
+  credits, nor the last checkpoint, the worker tries once to go offline, and
+  the sessions are not released; their leases expire, or a runtime that
+  replaces this one releases them. Players lose their place and vitals since
+  the last checkpoint. A normal stop and a lost authority tell the peers
+  `server_shutdown` instead.
+- The session leases outlast the tolerance: `Simulation:SessionLeaseLifetimeSeconds`
+  must exceed the worker's outage tolerance plus one session heartbeat interval
+  plus one retry, so GameService still holds every session when the worker
+  comes back within the tolerance. GameService does not know the worker's
+  tolerance, so the worker checks it when a join grants a lease: a lease
+  shorter than `GameServiceOutageToleranceSeconds` plus
+  `SimulationSessionHeartbeatSeconds` is refused with `join_failed` and one
+  error line that names both settings, and the session is released.
 
 ## Shard Discovery And Placement
 
@@ -391,7 +463,8 @@ Simulation session properties:
 The worker also enforces cached lease expiry locally so a GameService outage
 cannot leave a connected player or a body active forever. The local deadline is the
 request send time plus the lease duration that GameService returns, so it does
-not depend on the database clock.
+not depend on the database clock. The lease outlasts the worker's outage
+tolerance, as [GameService Outage](#gameservice-outage) describes.
 
 SimulationWorker keeps each character's item state by exact simulation-session
 identity and applies only increasing item-state revisions. A same-revision
@@ -440,8 +513,12 @@ carry state, and an error ends the session as an expired lease does. A request
 that times out, cannot reach GameService, or gets a server error goes again
 after `SimulationSessionHeartbeatRetryMilliseconds` with those of its sessions
 that are still active, as long as the retry starts within the heartbeat
-interval. Any other failed request goes no more in that round. Neither ends a
-session: a lease that is not renewed ends by the session's local deadline.
+interval and GameService still answers the registry heartbeat. Any other failed
+request goes no more in that round. Neither ends a session: a lease that is not
+renewed ends by the session's local deadline. While GameService does not answer
+the registry heartbeat, no round goes, and a round that came due meanwhile goes
+as soon as it answers again, as [GameService Outage](#gameservice-outage)
+describes.
 
 ### Account Session End
 
@@ -542,8 +619,10 @@ players whose position, yaw, health, or mana differs from what GameService
 last confirmed and sends them in one checkpoint call, in requests of at most 500
 states. At most one call is in flight; a failed call is logged, and its players
 go again with the next checkpoint; a lingering body counts like a connected
-player. When the entity of a session the worker still holds is removed, such as
-a body whose time is up or whose death committed, and at shutdown, the worker
+player. While GameService does not answer, no checkpoint goes, and one goes
+right after it answers again. When the entity of a session the worker still
+holds is removed, such as a body whose time is up or whose death committed, and
+at shutdown, the worker
 captures the final state, and the release of that session carries it, also when
 the release runs later or again. At shutdown the worker
 first saves every remaining player in one last checkpoint while the sessions
@@ -692,7 +771,11 @@ authentication, and domain failures to structured results:
   because GameService may have committed the operation before the response was
   lost. Item, corpse, and live Mob loot results with those codes always ask the
   client to refresh, and operations that the worker retries reuse their
-  operation id.
+  operation id. Such a failure, or a server error, asks for the next registry
+  heartbeat at once, which decides whether GameService is unavailable, as
+  [GameService Outage](#gameservice-outage) describes.
+- `game_service_unavailable` is the worker's own refusal while GameService does
+  not answer: the action was never sent, so nothing needs a refresh.
 - `worker_runtime_changed`, `simulation_session_invalid`,
   `auth_service_authentication_failed`, and `invalid_auth_response` end the
   player's session, and so does `wrong_simulation_worker` for an item or NPC
@@ -1055,7 +1138,9 @@ the actor catalog. The combat model is in
   released, all through the character's authority lane. A committed batch sends
   the owner `OwnerItemQuantityChanged`. An uncertain batch retries with the same
   operation id up to 8 attempts, with a backoff from 0.5 seconds that doubles up
-  to 10 seconds; after that its arrows stay with the player. A rejected batch
+  to 10 seconds; after that its arrows stay with the player. While GameService
+  does not answer, a batch makes no attempt, as
+  [GameService Outage](#gameservice-outage) describes. A rejected batch
   loses its shots, and a rejection that ends the item session disconnects the
   player. An item intent or an NPC or vendor action whose expected revision only
   arrow batches advanced is sent with the newest revision instead. Corpse
@@ -1068,7 +1153,8 @@ the actor catalog. The combat model is in
   world, and combat intents. The death commits through `player-deaths` with a
   death event id that the worker creates once, together with the shots that are
   not committed yet and the killer. It retries with the same id and a backoff
-  from 0.5 seconds that doubles up to 10 seconds until it commits, and drops the
+  from 0.5 seconds that doubles up to 10 seconds until it commits or reaches the
+  [retry horizon](#gameservice-outage), and drops the
   uncommitted shots when the arrow stack changed underneath, so they cannot
   block the death. After the respawn delay, and once the death committed, the
   character respawns at the World spawn with full health and mana, and every
@@ -1093,7 +1179,9 @@ the actor catalog. The combat model is in
   live corpse in worker memory, or for a Mob whose content selects durable
   custody a durable corpse in GameService. A creation that fails retries with
   the same corpse id and a backoff from 0.5 seconds that doubles up to 10
-  seconds until it succeeds, while the dead Mob stays in view. When the corpse
+  seconds until it succeeds or reaches the
+  [retry horizon](#gameservice-outage), while the dead Mob stays in view. When
+  the corpse
   can never be created, because its source, authority, persistence mode, or
   content is invalid, such as a quest drop that is not a protected quest item,
   or when GameService answers that its owner needs none of the quest drops that
@@ -1549,7 +1637,8 @@ Seen from outside:
   early. A request that arrives after expiry receives `corpse_expired`.
 - After obtaining a current registration lease, SimulationWorker restores only
   open, unexpired corpses for its exact runtime and Shard assignment, and checks
-  again every `ItemInteraction:DurableCorpseRefreshSeconds`. GameService returns
+  again every `ItemInteraction:DurableCorpseRefreshSeconds` while GameService
+  answers its registry heartbeat. GameService returns
   database time with the snapshot. The worker advances that time with a
   monotonic clock and keeps the presentation state without owning or copying
   item custody. A worker restart restores each corpse at its persisted
@@ -1815,10 +1904,12 @@ the quest actions of the realtime protocol through these routes:
   operation id. An uncertain answer, or a transaction that concurrent database
   work rolled back, keeps the player's lane and asks again with the same
   operation id, after 0.5 s doubling up to 10 s, until the credit commits, like
-  a death; a rejection drops the credit with a warning, and a code that ends the
+  a death, or until the [retry horizon](#gameservice-outage) drops it; a
+  rejection drops the credit with a warning, and a code that ends the
   session ends it. A leave or a disconnect waits for the pending credits, a
   player who started to leave before the kill gets none, and a stopping worker
-  gives every credit that has not committed one more attempt.
+  gives every credit that has not committed one more attempt while GameService
+  answers.
 - A Mob's death rolls its quest drops for the owner of each corpse it leaves,
   with the corpse's loot roll: once for every collect objective of a current
   step that names the Mob as a drop source, with the source's chance and
@@ -1918,8 +2009,9 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Area | Codes |
 | --- | --- |
 | Packets and dispatch | `invalid_packet`, `udp_rate_limited`, `join_required`, `unexpected_message`, `internal_error`, and per family an `invalid_*_delivery` code for a message on the wrong channel or delivery and an `invalid_*` code for a malformed intent, such as `invalid_join_request`, `invalid_movement_input`, `invalid_item_operation`, and `invalid_world_interaction` |
-| Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing` |
-| GameService calls | `auth_service_timeout`, `auth_service_unavailable`, `auth_service_rejected`, `auth_service_authentication_failed`, `invalid_auth_response` |
+| Join and session | `missing_join_ticket`, `join_timeout`, `join_failed`, `invalid_leave_request`, `worker_registry_lease_unavailable`, `session_missing`, `session_expired`, `session_revoked`, `session_reconnected`, `account_session_replaced`, `simulation_session_changed`, `wrong_simulation_assignment`, `character_already_active`, `carry_state_conflict`, `carry_state_missing`, `death_not_saved` when a death was given up at the retry horizon |
+| Worker stop | In the `ServerDisconnect` that every connected peer gets when the worker stops: `server_shutdown` for a normal stop and a lost authority, and `game_service_outage` when the outage tolerance ran out |
+| GameService calls | `auth_service_timeout`, `auth_service_unavailable`, `auth_service_rejected`, `auth_service_authentication_failed`, `invalid_auth_response`, and `game_service_unavailable` for a durable action that the worker refused because GameService does not answer |
 | Movement | `movement_unavailable`, `unknown_movement_path` |
 | Items | `item_operation_queue_full`, `item_operation_failed`, `item_operation_unavailable`, `item_state_diverged` |
 | Corpses | `corpse_out_of_range`, `corpse_view_not_open`, `corpse_interaction_active`, `corpse_interaction_invalid`, `corpse_interaction_unavailable`, `corpse_operation_failed`, `live_mob_corpse_operation_unsupported` |
@@ -2031,8 +2123,8 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |
 | `Characters:AppearancePath` | `WorldData/Characters/appearance.json` in the output | The character appearance content |
 | `Simulation:JoinTicketLifetimeSeconds` | `30` | Join ticket lifetime |
-| `Simulation:SessionLeaseLifetimeSeconds` | `30` | Simulation session lease that each heartbeat renews |
-| `Simulation:WorkerHeartbeatTimeoutSeconds` | `30` | Time after the last heartbeat until a worker counts as gone |
+| `Simulation:SessionLeaseLifetimeSeconds` | `150` | Simulation session lease that each heartbeat renews. It must exceed every worker's `GameServiceOutageToleranceSeconds` plus one session heartbeat interval plus one retry, so a worker that comes back within its tolerance still holds its sessions; a worker refuses a join whose lease is shorter, as [GameService Outage](#gameservice-outage) describes |
+| `Simulation:WorkerHeartbeatTimeoutSeconds` | `30` | Time after the last heartbeat until a worker counts as gone and another runtime may take its worker id over |
 | `Simulation:MetricsIntervalSeconds` | `15` | Refresh interval of the Shard gauges, 1 to 3,600 seconds |
 | `Simulation:Topology` | `local-fleet`, `local-node-1`, `local-shard-1`, `local-shard-2` | Fleets, Nodes, and Shards, as [Topology Bootstrap](#topology-bootstrap) describes |
 | `WorldData:WorldsPath` | `WorldData/Worlds` | The World manifests that seed the World definitions |
@@ -2049,7 +2141,7 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Items:Operations:CleanupBatchSize` | `64` | Recovery deliveries that one Recovery expiry run expires at most, 1 to 1,000 |
 | `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
 | `Items:Development:ItemPackagesPath` | `Content/Development/item-packages.json` in the output | The Development item packages |
-| `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, ticket and lease lifetimes of `30` seconds, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
+| `DevelopmentSimulationBots:*` and `ACTIVE_SIMULATION_BOTS_SECRET` | off | Development only: `Enabled`, a ticket lifetime of `30` seconds and a session lease of `150` seconds, which must outlast the worker's outage tolerance as `Simulation:SessionLeaseLifetimeSeconds` does, the `CharacterNamePrefix` `Active Bot`, and `ReservedPlayerConnections` `8` |
 | `StackStressFixtures:*` and `STACK_STRESS_FIXTURE_SECRET` | off | Development only: `Enabled`, the inventory and loot definitions that the fixtures grant, and the `Kits` of the playing load bots |
 
 ### SimulationWorker
@@ -2073,7 +2165,10 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `SimulationSessionHeartbeatBatchSize` | `250` | Sessions that one session heartbeat request names at most, 1 to 500 |
 | `SimulationSessionHeartbeatRetryMilliseconds` | `2000` | How long a session heartbeat request that timed out, could not reach GameService, or got a server error waits before it goes again, shorter than the heartbeat interval, as [Session Heartbeat](#session-heartbeat) describes |
 | `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
+| `RegistryHeartbeatRetryMilliseconds` | `2000` | How soon a worker heartbeat that timed out, could not reach GameService, or got a server error goes again, until one succeeds; shorter than the heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
+| `GameServiceOutageToleranceSeconds` | `120` | How long the worker plays on after its last successful worker heartbeat before it stops in order, 10 to 600 seconds. GameService's `Simulation:SessionLeaseLifetimeSeconds` must exceed it plus one session heartbeat interval plus one retry, as [GameService Outage](#gameservice-outage) describes |
+| `UncertainOperationRetryHorizonSeconds` | `600` | How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is retried, counted only while GameService answers, at least `GameServiceOutageToleranceSeconds` plus 60 and at most 3,600 seconds. GameService's `Retention:ItemHistory` must stay far above it |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
 | `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |

@@ -3,6 +3,7 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -86,6 +87,12 @@ internal sealed class QuestIntentHandler(
         if (combatGate is not null && combatGate.IsCharacterDead(context))
         {
             SendRejection(peer, intent, RealtimeCombatErrorCodes.CharacterDead, "The character is dead.");
+            return;
+        }
+
+        if (authorityScheduler.RefusesDurableIntent(DurableIntentKinds.QuestIntent))
+        {
+            SendRejection(peer, intent, GameServiceAvailability.UnavailableCode, GameServiceAvailability.UnavailableMessage);
             return;
         }
 
@@ -231,6 +238,8 @@ internal sealed class QuestIntentHandler(
     private sealed record QueuedQuestIntent(QuestIntentHandler Owner, RealtimeQuestIntent Intent)
         : IRealtimeAuthorityOperation
     {
+        public string? DurableIntentKind => DurableIntentKinds.QuestIntent;
+
         public void Start(RealtimePeerContext context, PlayerSimulationEntity entity, PlayerMovementState state)
         {
             Owner.Start(context, context.Session!, Intent);

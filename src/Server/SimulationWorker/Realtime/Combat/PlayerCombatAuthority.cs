@@ -24,7 +24,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // after an uncertain answer and outlive the connection: the character's lingering body commits
 // them, and what it gathers until it goes, one operation per tick without a peer, and a session
 // whose entity went is released only after they committed. A body's committed death ends the
-// body. Loop-confined; GameService calls run in PlayerCombatAuthorityOperations.
+// body. While GameService does not answer, none of them is sent: each waits, due at once, and
+// goes as soon as GameService answers again. A death or a kill credit that does not commit
+// within the retry horizon, counted only while GameService answers, is given up. Loop-confined;
+// GameService calls run in PlayerCombatAuthorityOperations.
 internal sealed class PlayerCombatAuthority(
     SimulationWorkerConfig config,
     CombatRules rules,
@@ -44,10 +47,20 @@ internal sealed class PlayerCombatAuthority(
     PlayerCombatAuthorityOperations operations,
     CombatMetrics? metrics,
     ILogger logger,
+    GameServiceAvailability availability,
     QuestOperationExecutor? questOperations = null,
     QuestProgressFilter? questProgress = null) : IRealtimeCompletionHandler, ICombatOperationGate
 {
     public const string PlayerCorpsePresentationKey = "corpse.remains";
+
+    // The disconnect of a player whose death was given up at the retry horizon. GameService keeps
+    // the character as it last committed it.
+    public const string DeathNotSavedCode = "death_not_saved";
+    public const string DeathNotSavedMessage = "The death could not be saved, so the character continues as it was last saved.";
+
+    // The kinds of the operations that the retry horizon gives up, as logs and metrics name them.
+    public const string PlayerDeathOperationKind = "player_death";
+    public const string QuestKillCreditOperationKind = "quest_kill_credit";
 
     // An uncertain batch gives up after this many attempts; its arrows stay with the player.
     private const int MaximumBatchAttempts = 8;
@@ -199,7 +212,10 @@ internal sealed class PlayerCombatAuthority(
                 continue;
             }
 
-            var questCredit = new QuestKillCredit(Guid.NewGuid(), mob.Definition.Id, mob.Definition.Tags.ToArray());
+            var questCredit = new QuestKillCredit(Guid.NewGuid(), mob.Definition.Id, mob.Definition.Tags.ToArray())
+            {
+                StartedAt = availability.AvailableTime
+            };
             combatSession.QuestCredits.Add(questCredit);
             if (!combatSession.Detached)
             {
@@ -227,7 +243,10 @@ internal sealed class PlayerCombatAuthority(
             position.PositionX,
             position.PositionY,
             position.PositionZ,
-            position.YawDegrees);
+            position.YawDegrees)
+        {
+            StartedAt = availability.AvailableTime
+        };
         if (combatSession.Detached)
         {
             return;
@@ -264,8 +283,9 @@ internal sealed class PlayerCombatAuthority(
         combatSession.Death = null;
     }
 
-    // Runs every tick: due batches and retries, and detached sessions that still commit. It
-    // allocates nothing on a tick that starts no operation.
+    // Runs every tick: due batches and retries, and detached sessions that still commit. A due
+    // retry waits while GameService does not answer. It allocates nothing on a tick that starts
+    // no operation.
     public void ProcessTick()
     {
         if (sessions.Count == 0)
@@ -283,23 +303,27 @@ internal sealed class PlayerCombatAuthority(
         var batchIntervalTicks = CombatTicks.FromSeconds(
             rules.AmmunitionBatchIntervalSeconds,
             config.MovementSimulation.TickRateHz);
+        var gameServiceAvailable = availability.IsAvailable;
         foreach (var combatSession in sessionBuffer)
         {
-            if (combatSession.InFlightBatch is { RetryAtTick: { } batchRetry }
+            if (gameServiceAvailable
+                && combatSession.InFlightBatch is { RetryAtTick: { } batchRetry }
                 && CombatTicks.IsReached(serverTick, batchRetry))
             {
                 combatSession.InFlightBatch.RetryAtTick = null;
                 SendBatch(combatSession, combatSession.InFlightBatch);
             }
 
-            if (combatSession.Death is { RetryAtTick: { } deathRetry } death
+            if (gameServiceAvailable
+                && combatSession.Death is { RetryAtTick: { } deathRetry } death
                 && CombatTicks.IsReached(serverTick, deathRetry))
             {
                 death.RetryAtTick = null;
                 SendDeath(combatSession, death);
             }
 
-            if (combatSession.InFlightQuestCredit is { RetryAtTick: { } creditRetry } credit
+            if (gameServiceAvailable
+                && combatSession.InFlightQuestCredit is { RetryAtTick: { } creditRetry } credit
                 && CombatTicks.IsReached(serverTick, creditRetry))
             {
                 credit.RetryAtTick = null;
@@ -427,10 +451,23 @@ internal sealed class PlayerCombatAuthority(
     // whose answer arrived but was never finalized is settled first, so the shots behind a
     // committed batch commit on top of its state. A batch without a committed answer is
     // left alone, and its arrows stay with the player. The quest kill credits that have not
-    // committed get one more attempt each.
+    // committed get one more attempt each. While GameService does not answer, nothing is sent,
+    // since every attempt would only spend its timeout, and the shots and credits are lost.
     public async Task FlushOnShutdownAsync(IReadOnlyList<RealtimeOperationResult> unfinalized)
     {
         ArgumentNullException.ThrowIfNull(unfinalized);
+        if (!availability.IsAvailable)
+        {
+            if (sessions.Count > 0)
+            {
+                logger.LogWarning(
+                    "[SIMULATION] GameService does not answer, so the uncommitted shots and quest kill credits of {Count} sessions are not committed at shutdown.",
+                    sessions.Count);
+            }
+
+            return;
+        }
+
         var committedStates = new Dictionary<PlayerCombatSession, CharacterItemState>();
         foreach (var completed in unfinalized.OfType<AmmunitionBatchCompleted>())
         {
@@ -584,8 +621,15 @@ internal sealed class PlayerCombatAuthority(
             || questProgress!.CountsKill(combatSession.Session, credit.MobActorId, credit.MobTags);
     }
 
+    // While GameService does not answer, the credit holds its place, due at once.
     private void SendQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
     {
+        if (!availability.IsAvailable)
+        {
+            credit.RetryAtTick = clock.ServerTick;
+            return;
+        }
+
         credit.Attempts++;
         operationTracker.Track(operations.CreditQuestKillAsync(
             this,
@@ -628,6 +672,12 @@ internal sealed class PlayerCombatAuthority(
                 outcome.Message);
             if (outcome.Uncertain)
             {
+                if (IsPastRetryHorizon(credit.StartedAt))
+                {
+                    AbandonQuestCredit(combatSession, credit);
+                    return;
+                }
+
                 credit.RetryAtTick = clock.ServerTick + Backoff(credit.Attempts);
                 return;
             }
@@ -766,8 +816,15 @@ internal sealed class PlayerCombatAuthority(
             batch.Quantity);
     }
 
+    // While GameService does not answer, the batch holds its place, due at once.
     private void SendBatch(PlayerCombatSession combatSession, AmmunitionBatch batch)
     {
+        if (!availability.IsAvailable)
+        {
+            batch.RetryAtTick = clock.ServerTick;
+            return;
+        }
+
         batch.Attempts++;
         operationTracker.Track(operations.ConsumeAmmunitionAsync(
             this,
@@ -849,8 +906,15 @@ internal sealed class PlayerCombatAuthority(
         SendDeath(combatSession, death);
     }
 
+    // While GameService does not answer, the death holds its place, due at once.
     private void SendDeath(PlayerCombatSession combatSession, PlayerDeathAttempt death)
     {
+        if (!availability.IsAvailable)
+        {
+            death.RetryAtTick = clock.ServerTick;
+            return;
+        }
+
         death.InFlight = true;
         death.Attempts++;
         operationTracker.Track(operations.ProcessDeathAsync(
@@ -964,6 +1028,12 @@ internal sealed class PlayerCombatAuthority(
             && completed.Request.AmmunitionConsumption is not null)
         {
             DropPendingShots(combatSession, "death_ammunition_conflict");
+        }
+
+        if (IsPastRetryHorizon(death.StartedAt))
+        {
+            AbandonDeath(combatSession, death, error.Code);
+            return;
         }
 
         metrics?.RecordDeathPartition(GameServiceOutcome.IsUncertain(error.Code) ? "retried" : "rejected");
@@ -1157,6 +1227,55 @@ internal sealed class PlayerCombatAuthority(
         if (!combatSession.Detached)
         {
             scheduler.StartNext(combatSession.Context);
+        }
+    }
+
+    // Whether an operation that started at this available time was retried for the whole horizon
+    // while GameService answered.
+    private bool IsPastRetryHorizon(TimeSpan startedAt)
+    {
+        return availability.AvailableTime - startedAt >= config.UncertainOperationRetryHorizon;
+    }
+
+    // The kill does not count; the credits behind it go on.
+    private void AbandonQuestCredit(PlayerCombatSession combatSession, QuestKillCredit credit)
+    {
+        availability.RecordAbandonedOperation(QuestKillCreditOperationKind);
+        logger.LogError(
+            "[SIMULATION] Gave up the {OperationKind} operation {OperationId} of simulation session {SimulationSessionId} after {Attempts} attempts: its outcome stayed uncertain for the retry horizon of {Horizon} while GameService answered, so the {MobActorId} kill does not count.",
+            QuestKillCreditOperationKind,
+            credit.OperationId,
+            combatSession.Session.SimulationSessionId,
+            credit.Attempts,
+            config.UncertainOperationRetryHorizon,
+            credit.MobActorId);
+        combatSession.InFlightQuestCredit = null;
+        ReleaseLane(combatSession);
+    }
+
+    // The death never committed: the session ends, and it is released without a final state, so
+    // the character is free at once and keeps what GameService committed last.
+    private void AbandonDeath(PlayerCombatSession combatSession, PlayerDeathAttempt death, string code)
+    {
+        availability.RecordAbandonedOperation(PlayerDeathOperationKind);
+        metrics?.RecordDeathPartition("abandoned");
+        logger.LogError(
+            "[SIMULATION] Gave up the {OperationKind} operation {OperationId} of simulation session {SimulationSessionId} after {Attempts} attempts, the last with {Code}: it did not commit within the retry horizon of {Horizon} while GameService answered, so the session ends with {DisconnectCode}.",
+            PlayerDeathOperationKind,
+            ScopedGuid.Create("player-death-operation", death.DeathEventId),
+            combatSession.Session.SimulationSessionId,
+            death.Attempts,
+            code,
+            config.UncertainOperationRetryHorizon,
+            DeathNotSavedCode);
+        death.Committed = true;
+        combatSession.PendingShots = 0;
+        var session = combatSession.Session;
+        var releasedByEnd = combatSession.AwaitingRelease;
+        EndSession(combatSession, DeathNotSavedCode, DeathNotSavedMessage);
+        if (!releasedByEnd)
+        {
+            sessionOperations.ReleaseDetachedInBackground(session);
         }
     }
 

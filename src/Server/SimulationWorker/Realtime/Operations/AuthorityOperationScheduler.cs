@@ -1,10 +1,29 @@
+using Mmorpg.SimulationWorker.GameServiceApi;
+
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Serializes item, corpse and world interaction authority per peer: at most one
 // operation runs while the rest wait in the peer's queue. Finalizers release the lane and
-// call StartNext. Loop-confined.
-internal sealed class AuthorityOperationScheduler(RealtimePeerRegistry peers)
+// call StartNext. While GameService does not answer, a client operation that it must commit
+// never enters the lane, and one that waited in it is refused instead of started, so no lane
+// waits for a timeout. Loop-confined.
+internal sealed class AuthorityOperationScheduler(
+    RealtimePeerRegistry peers,
+    GameServiceAvailability? availability = null)
 {
+    // True while GameService does not answer: the caller refuses its client operation of this
+    // kind at once with game_service_unavailable instead of queuing it. The refusal is counted.
+    public bool RefusesDurableIntent(string kind)
+    {
+        if (availability is null || availability.IsAvailable)
+        {
+            return false;
+        }
+
+        availability.RecordRefusedIntent(kind);
+        return true;
+    }
+
     public void Enqueue(RealtimePeerContext context, IRealtimeAuthorityOperation operation)
     {
         context.AuthorityOperationQueue.Enqueue(operation);
@@ -13,18 +32,26 @@ internal sealed class AuthorityOperationScheduler(RealtimePeerRegistry peers)
 
     public void StartNext(RealtimePeerContext context)
     {
-        if (context.AuthorityOperationInFlight
-            || context.AuthorityOperationQueue.Count == 0
-            || context.Session is null
-            || !peers.TryGetBoundPlayer(context, out var entity))
+        while (!context.AuthorityOperationInFlight
+            && context.AuthorityOperationQueue.Count > 0
+            && context.Session is not null
+            && peers.TryGetBoundPlayer(context, out var entity))
         {
+            var operation = context.AuthorityOperationQueue.Dequeue();
+            if (operation.DurableIntentKind is { } kind && RefusesDurableIntent(kind))
+            {
+                operation.Refuse(
+                    context,
+                    GameServiceAvailability.UnavailableCode,
+                    GameServiceAvailability.UnavailableMessage);
+                continue;
+            }
+
+            var state = entity.Movement.State;
+            context.AuthorityOperationInFlight = true;
+            operation.Start(context, entity, state);
             return;
         }
-
-        var operation = context.AuthorityOperationQueue.Dequeue();
-        var state = entity.Movement.State;
-        context.AuthorityOperationInFlight = true;
-        operation.Start(context, entity, state);
     }
 
     // A reconnect moved a session to a new peer while an operation still runs on the old

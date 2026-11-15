@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
@@ -14,6 +13,12 @@ using Mmorpg.WorldData.Quests;
 
 namespace Mmorpg.SimulationWorker.Registry;
 
+// Registers the worker runtime and renews its registration every RegistryHeartbeatInterval. The
+// heartbeat is also the probe of GameServiceAvailability: one that times out, cannot reach
+// GameService, or gets a server error goes again every RegistryHeartbeatRetryDelay until one
+// succeeds, and another GameService call that fails that way asks for the next heartbeat at once.
+// A definitive authority failure stops the worker at once; GameServiceOutageMonitor stops it when
+// no heartbeat succeeded for the outage tolerance.
 public sealed class SimulationWorkerHeartbeatService(
     GameServiceClient gameServiceClient,
     SimulationWorkerConfig config,
@@ -27,10 +32,15 @@ public sealed class SimulationWorkerHeartbeatService(
     SimulationShardRules shardRules,
     ILogger<SimulationWorkerHeartbeatService> logger,
     SimulationWorkerRegistrationLease? registrationLease = null,
-    IHostApplicationLifetime? applicationLifetime = null) : BackgroundService
+    IHostApplicationLifetime? applicationLifetime = null,
+    GameServiceAvailability? availability = null,
+    SimulationWorkerStopReason? stopReason = null,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     private const string WorkerRuntimeChangedCode = "worker_runtime_changed";
+    private const string LostAuthorityMessage = "The shard lost its authority and is shutting down.";
 
+    private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
     private volatile bool registrationAttempted;
     private volatile bool hasHeldAuthority;
     private long? acquireStartedTimestamp;
@@ -38,12 +48,16 @@ public sealed class SimulationWorkerHeartbeatService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await transportReadiness.WaitUntilListeningAsync(stoppingToken);
-        await SendHeartbeatAsync(stoppingToken);
-        using var timer = new PeriodicTimer(config.RegistryHeartbeatInterval);
-
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            await SendHeartbeatAsync(stoppingToken);
+            var started = time.GetTimestamp();
+            var outcome = await SendHeartbeatAsync(stoppingToken);
+            await WaitForNextHeartbeatAsync(
+                started,
+                outcome == HeartbeatOutcome.Transient
+                    ? config.RegistryHeartbeatRetryDelay
+                    : config.RegistryHeartbeatInterval,
+                stoppingToken);
         }
     }
 
@@ -56,6 +70,8 @@ public sealed class SimulationWorkerHeartbeatService(
             return;
         }
 
+        // Also during an outage: one attempt, which frees the Shard at once when GameService
+        // answers again by now.
         using var timeout = new CancellationTokenSource(config.GameServiceTimeout);
         var result = await gameServiceClient.MarkSimulationWorkerOfflineAsync(
             config.SimulationWorkerId,
@@ -82,9 +98,52 @@ public sealed class SimulationWorkerHeartbeatService(
             identity.RuntimeId);
     }
 
-    private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
+    // Waits out the delay from the start of the last heartbeat. A probe request ends the wait
+    // early, but no sooner than one retry delay after that start.
+    private async Task WaitForNextHeartbeatAsync(long started, TimeSpan delay, CancellationToken cancellationToken)
+    {
+        var earliest = delay < config.RegistryHeartbeatRetryDelay ? delay : config.RegistryHeartbeatRetryDelay;
+        await DelayUntilAsync(started, earliest, cancellationToken);
+        var remaining = delay - time.GetElapsedTime(started);
+        if (remaining <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (availability is null)
+        {
+            await Task.Delay(remaining, time, cancellationToken);
+            return;
+        }
+
+        using var waitEnded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var waited = Task.Delay(remaining, time, waitEnded.Token);
+        await Task.WhenAny(waited, availability.WaitForProbeRequestAsync());
+        await waitEnded.CancelAsync();
+        try
+        {
+            await waited;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A probe request ended the wait.
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private Task DelayUntilAsync(long started, TimeSpan delay, CancellationToken cancellationToken)
+    {
+        var remaining = delay - time.GetElapsedTime(started);
+        return remaining > TimeSpan.Zero
+            ? Task.Delay(remaining, time, cancellationToken)
+            : Task.CompletedTask;
+    }
+
+    private async Task<HeartbeatOutcome> SendHeartbeatAsync(CancellationToken cancellationToken)
     {
         registrationAttempted = true;
+        availability?.ProbeStarted();
         var renewalStart = registrationLease?.CaptureRenewalStart();
         var result = await gameServiceClient.HeartbeatSimulationWorkerAsync(
             config.SimulationWorkerId,
@@ -113,9 +172,15 @@ public sealed class SimulationWorkerHeartbeatService(
                 config.SimulationWorkerId,
                 identity.RuntimeId,
                 result.Error!.Code);
+            if (GameServiceOutcome.IsTransient(result.Error.Code, result.StatusCode))
+            {
+                availability?.HeartbeatFailed(result.Error.Code);
+                return HeartbeatOutcome.Transient;
+            }
+
             if (IsWaitingForPreviousRuntime(result.Error.Code))
             {
-                return;
+                return HeartbeatOutcome.Refused;
             }
 
             if (IsAuthorityFailure(result.Error.Code))
@@ -123,7 +188,7 @@ public sealed class SimulationWorkerHeartbeatService(
                 StopForLostAuthority(result.Error.Code);
             }
 
-            return;
+            return HeartbeatOutcome.Refused;
         }
 
         if (!string.Equals(result.Value!.ShardId, config.ShardId, StringComparison.Ordinal)
@@ -136,7 +201,7 @@ public sealed class SimulationWorkerHeartbeatService(
                 config.ShardId,
                 config.WorldId);
             StopForLostAuthority("simulation_assignment_mismatch");
-            return;
+            return HeartbeatOutcome.Refused;
         }
 
         // The worker can only enforce a rule set its combat rules define.
@@ -147,7 +212,7 @@ public sealed class SimulationWorkerHeartbeatService(
                 result.Value.ShardId,
                 result.Value.RuleSet);
             StopForLostAuthority("shard_rule_set_unknown");
-            return;
+            return HeartbeatOutcome.Refused;
         }
 
         shardRules.Set(ruleSet);
@@ -160,6 +225,8 @@ public sealed class SimulationWorkerHeartbeatService(
 
         hasHeldAuthority = true;
         acquireStartedTimestamp = null;
+        availability?.HeartbeatSucceeded();
+        return HeartbeatOutcome.Succeeded;
     }
 
     // A replacement runtime can start before the previous runtime's lease expires, and
@@ -175,8 +242,8 @@ public sealed class SimulationWorkerHeartbeatService(
             return false;
         }
 
-        acquireStartedTimestamp ??= Stopwatch.GetTimestamp();
-        var waited = Stopwatch.GetElapsedTime(acquireStartedTimestamp.Value);
+        acquireStartedTimestamp ??= time.GetTimestamp();
+        var waited = time.GetElapsedTime(acquireStartedTimestamp.Value);
         if (waited < config.RegistryAcquireTimeout)
         {
             logger.LogWarning(
@@ -199,6 +266,7 @@ public sealed class SimulationWorkerHeartbeatService(
     private void StopForLostAuthority(string code)
     {
         registrationLease?.Clear();
+        stopReason?.Set(SimulationWorkerStopReason.ServerShutdownCode, LostAuthorityMessage);
         logger.LogCritical(
             "Simulation worker {WorkerId} runtime {RuntimeId} lost registry authority with code {Code}. Stopping the process.",
             config.SimulationWorkerId,
@@ -224,5 +292,16 @@ public sealed class SimulationWorkerHeartbeatService(
             or "invalid_worker_revision"
             or "service_worker_mismatch"
             or "auth_service_authentication_failed";
+    }
+
+    private enum HeartbeatOutcome
+    {
+        Succeeded,
+
+        // Timed out, could not reach GameService, or got a server error: goes again soon.
+        Transient,
+
+        // Any other answer: goes again after the interval, unless it stopped the worker.
+        Refused
     }
 }

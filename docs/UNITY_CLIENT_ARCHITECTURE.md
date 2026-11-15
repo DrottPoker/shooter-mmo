@@ -813,7 +813,7 @@ by `ReconnectRules`, the one place that names which endings reconnect:
 | --- | --- | --- | --- |
 | The line dropped, which the server did not ask for | `connection_lost` (the transport timed out or closed), `udp_socket_error`, and `realtime_timeout`, of the network and timeout kinds that only the transport and the clock produce | Yes | The World stays; on giving up, CharacterSelect with `reconnect_failed` |
 | A login of the account on another client | `account_session_replaced` | No | LoginMenu with its text |
-| Anything else that the worker decided | Every other `ServerDisconnect` code, such as `session_reconnected`, `session_revoked`, `session_expired`, `udp_rate_limited`, `invalid_packet`, and `internal_error`; a server that sends a code of a dropped line decided too | No | CharacterSelect, or LoginMenu without an account session, with the text of the code |
+| Anything else that the worker decided | Every other `ServerDisconnect` code, such as `session_reconnected`, `session_revoked`, `session_expired`, `udp_rate_limited`, `invalid_packet`, `internal_error`, `death_not_saved`, and the stop of the worker, `server_shutdown` or `game_service_outage`; a server that sends a code of a dropped line decided too | No | CharacterSelect, or LoginMenu without an account session, with the text of the code |
 | A protocol or state failure that the client found | Every protocol code, such as `invalid_join_response`, `unexpected_message`, `placement_mismatch`, and `collision_stream_failed` from `DisconnectForClientFailure` | No | The same, mostly with the text for a code without one of its own |
 
 A leave and an abort raise no `UnexpectedlyDisconnected`, so they never

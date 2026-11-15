@@ -71,6 +71,7 @@ internal sealed class PlayerCombatFeature
                 core.Logger),
             dependencies.Metrics,
             core.Logger,
+            core.GameServiceAvailability,
             quests.Executor,
             quests.Progress);
         Authority = authority;
@@ -119,6 +120,7 @@ internal sealed class CombatFeature
             core.OperationTracker,
             random,
             core.Logger,
+            core.GameServiceAvailability,
             quests.DropRoller);
         var lineOfSight = new CombatLineOfSight(core.CollisionWorld);
         Mobs = new MobSystem(

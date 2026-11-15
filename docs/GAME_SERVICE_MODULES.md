@@ -1260,7 +1260,7 @@ refused by durable state:
 | Id | Why a run after its row went changes nothing |
 | --- | --- |
 | `player-death-operation` | It derives from a random death event id; the death advanced the character's revision, so a replay is refused, and the worker sends it only with the live simulation session of the death |
-| `mob-corpse-create` | It derives from a random Mob death; while the corpse exists its row refuses a second creation, and only the worker runtime that holds the Shard's lease sends it, which stops retrying once an attempt is answered or its registration lease ends |
+| `mob-corpse-create` | It derives from a random Mob death; while the corpse exists its row refuses a second creation, and only the worker runtime that holds the Shard's assignment sends it, which stops retrying once an attempt is answered for good, at its retry horizon, or when it stops |
 | `mob-corpse-expiry`, a player corpse's expiry id | The corpse stores it; expiry runs only on open corpses, a closed corpse answers a replay without a change, and a trimmed one is not found |
 | `recovery-expiry` | The expiry deleted its delivery, so a replay finds none |
 | `mob-loot-grant:<n>`, the id of a live loot grant | It derives from a random Mob death; the worker sends it only while it holds the live corpse, two minutes at most, and with the live simulation session of the looter |
@@ -1268,12 +1268,18 @@ refused by durable state:
 
 `Retention:ItemHistory` must therefore outlast every retry of a worker
 operation and every live corpse. A worker retries an uncertain operation, such
-as a quest credit whose answer was lost, for as long as its session lives, with
-no limit of its own, so outside the Development environment both windows are at
-least one day, far longer than any outage that a session survives; GameService
-refuses to start with a shorter one. The Development environment accepts
-windows down to three minutes for a soak or a test, which still outlasts a live
-corpse. A pass that runs out of its budget is followed by one that starts with
+as a quest credit whose answer was lost, until it is answered, but no longer
+than its retry horizon, `SimulationWorker:UncertainOperationRetryHorizonSeconds`,
+600 seconds by default and an hour at most, which counts only the time
+GameService answers, as
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes. The
+item history window, 14 days by default, must stay far above that horizon, so
+outside the Development environment both windows are at least one day;
+GameService refuses to start with a shorter one. The Development environment
+accepts windows down to three minutes for a soak or a test, which still
+outlasts a live corpse; with a window shorter than the horizon, a random
+operation id that stays uncertain longer than the window could run twice. A
+pass that runs out of its budget is followed by one that starts with
 the task that was cut off, so a task that uses the whole budget cannot keep the
 tasks behind it from running.
 

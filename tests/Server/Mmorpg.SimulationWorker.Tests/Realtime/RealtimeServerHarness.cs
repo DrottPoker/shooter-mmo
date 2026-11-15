@@ -88,6 +88,13 @@ internal sealed class RealtimeServerHarnessOptions
     // fails the test at dispose when the loop guard counted any failure, since the loop only
     // logs them and goes on.
     public bool ExpectLoopFailures { get; init; }
+
+    // The clock of GameService's availability, whose available time the retry horizon counts;
+    // without it the system clock.
+    public TimeProvider? AvailabilityTimeProvider { get; init; }
+
+    // Replaces the default retry horizon of 600 seconds.
+    public TimeSpan? UncertainOperationRetryHorizon { get; init; }
 }
 
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
@@ -108,7 +115,7 @@ internal sealed record RealtimeTestCharacter(string Ticket, string Name)
 
     public long CarryCapacity { get; init; } = 200;
 
-    public long SessionLeaseDurationMilliseconds { get; init; } = 30_000;
+    public long SessionLeaseDurationMilliseconds { get; init; } = 150_000;
 
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 
@@ -145,7 +152,10 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         {
             BaseAddress = new Uri("http://game-service.test")
         };
-        GameServiceClient = new GameServiceClient(httpClient);
+        Availability = new GameServiceAvailability(
+            options.AvailabilityTimeProvider ?? TimeProvider.System,
+            AvailabilityLogger);
+        GameServiceClient = new GameServiceClient(httpClient, Availability);
         Identity = new SimulationWorkerIdentity(RuntimeId, DateTime.UtcNow.AddMinutes(-1));
         StaticCollisionWorld = CollisionTestWorldFactory.Create();
         CollisionWorld = new CompositeCollisionWorld(
@@ -220,7 +230,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
             GameServiceClient,
             SessionStore,
             CharacterSessionStores.Create(CharacterItemStateStore, Looks, questLogStore),
-            options.DetachedReleaseRetryDelays);
+            options.DetachedReleaseRetryDelays,
+            Availability);
         Service = new RealtimeSimulationService(
             new RealtimeHostDependencies(
                 Config,
@@ -233,7 +244,8 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                     Looks,
                     new DevelopmentBotLooks(AppearanceCatalog, options.ItemCatalog ?? ItemCatalogTestData.CompileFixture()),
                     QuestLogs,
-                    options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null),
+                    options.EnableQuests ? options.QuestCatalog ?? QuestCatalog : null,
+                    JoinLogger),
                 ReleaseService,
                 SessionStore,
                 CharacterItemStateStore,
@@ -252,7 +264,9 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 WorldActorStore: WorldActors,
                 WorldInteractionLeases: WorldInteractionLeases,
                 ShardRules: ShardRules,
-                DevelopmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null),
+                DevelopmentAdmin: options.EnableAdminTools ? new DevelopmentAdminOptions(true) : null,
+                GameServiceAvailability: Availability,
+                StopReason: StopReason),
             new ItemDependencies(new SimulationItemInteractionService(GameServiceClient)),
             new CorpseDependencies(
                 new SimulationCorpseInteractionService(GameServiceClient),
@@ -316,6 +330,17 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
     public ScriptedGameServiceHandler GameService { get; }
 
     public GameServiceClient GameServiceClient { get; }
+
+    // Whether the worker counts GameService as answering; a test turns it, as the registry
+    // heartbeat would, with HeartbeatFailed and HeartbeatSucceeded.
+    public GameServiceAvailability Availability { get; }
+
+    public CapturingLogger<GameServiceAvailability> AvailabilityLogger { get; } = new();
+
+    public CapturingLogger<SimulationJoinService> JoinLogger { get; } = new();
+
+    // Why the worker stops, which the peers are told.
+    public SimulationWorkerStopReason StopReason { get; } = new();
 
     public SimulationWorkerIdentity Identity { get; }
 
@@ -411,6 +436,28 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
         }
 
         await Service.StopAsync(CancellationToken.None);
+    }
+
+    // Stops the realtime service while the clients keep polling, so they receive what the worker
+    // tells them before its transport stops.
+    public async Task StopWhilePollingAsync()
+    {
+        if (!started || stopped)
+        {
+            return;
+        }
+
+        stopped = true;
+        var stopping = Service.StopAsync(CancellationToken.None);
+        using var timeout = CreateTimeout();
+        while (!stopping.IsCompleted)
+        {
+            PollClients();
+            await Task.Delay(5, timeout.Token);
+        }
+
+        await stopping;
+        await PollForAsync(TimeSpan.FromMilliseconds(100));
     }
 
     public RealtimeRecordingClient Connect(string name, string? joinTicket = null)
@@ -587,7 +634,9 @@ internal sealed class RealtimeServerHarness : IAsyncDisposable
                 ?? InterestManagementConfig.Default,
             CharacterCheckpointInterval = options.CharacterCheckpointInterval ?? TimeSpan.FromSeconds(30),
             LingeringBodySeconds = options.LingeringBodySeconds ?? SimulationWorkerConfig.DefaultLingeringBodySeconds,
-            TickPhaseFailureLimit = options.TickPhaseFailureLimit ?? SimulationWorkerConfig.DefaultTickPhaseFailureLimit
+            TickPhaseFailureLimit = options.TickPhaseFailureLimit ?? SimulationWorkerConfig.DefaultTickPhaseFailureLimit,
+            UncertainOperationRetryHorizon = options.UncertainOperationRetryHorizon
+                ?? TimeSpan.FromSeconds(SimulationWorkerConfig.DefaultUncertainOperationRetryHorizonSeconds)
         };
     }
 
@@ -1111,6 +1160,61 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
         };
     }
 
+    // While set, every call fails as a GameService that cannot be reached does, and is recorded.
+    public bool Unreachable { get; set; }
+
+    // Answers the creation of a durable Mob corpse; by default GameService creates it.
+    public Func<CreatePersistentMobCorpseRequest, CancellationToken, Task<HttpResponseMessage>> OnDurableMobCorpse
+    { get; set; } = (request, _) => Task.FromResult(Json(DurableMobCorpse(request)));
+
+    // Every durable Mob corpse creation in arrival order.
+    public List<CreatePersistentMobCorpseRequest> DurableMobCorpses
+    {
+        get
+        {
+            lock (sync)
+            {
+                return [.. durableMobCorpses];
+            }
+        }
+    }
+
+    private readonly List<CreatePersistentMobCorpseRequest> durableMobCorpses = [];
+
+    public static PersistentMobCorpseResponse DurableMobCorpse(CreatePersistentMobCorpseRequest request)
+    {
+        var createdAt = DateTime.UtcNow;
+        return new PersistentMobCorpseResponse(
+            request.OperationId,
+            new DurableCorpseResponse(
+                request.CorpseId,
+                null,
+                null,
+                request.ShardId,
+                request.PositionX,
+                request.PositionY,
+                request.PositionZ,
+                request.RotationX,
+                request.RotationY,
+                request.RotationZ,
+                request.RotationW,
+                request.PresentationKey,
+                1,
+                createdAt,
+                createdAt.AddSeconds(request.LifetimeSeconds),
+                false,
+                [
+                    new CorpseSectionResponse("general_inventory", Guid.NewGuid(), 1, request.Loot.Count),
+                    new CorpseSectionResponse("equipment", Guid.NewGuid(), 1, 0),
+                    new CorpseSectionResponse("bag", Guid.NewGuid(), 1, 0)
+                ])
+            {
+                SourceActorDefinitionId = request.SourceActorDefinitionId,
+                OwnerCharacterId = request.OwnerCharacterId,
+                LootGroupId = request.LootGroupId
+            });
+    }
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -1120,8 +1224,28 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             calls.Add(request.RequestUri!.AbsolutePath);
         }
 
+        if (Unreachable)
+        {
+            throw new HttpRequestException("GameService cannot be reached.");
+        }
+
         var segments = request.RequestUri.AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 5
+            && segments[1] == "simulation-workers"
+            && segments[3] == "mob-corpses"
+            && segments[4] == "durable")
+        {
+            var creation = await request.Content!
+                .ReadFromJsonAsync<CreatePersistentMobCorpseRequest>(cancellationToken);
+            lock (sync)
+            {
+                durableMobCorpses.Add(creation!);
+            }
+
+            return await OnDurableMobCorpse(creation!, cancellationToken);
+        }
+
         if (segments.Length == 4
             && segments[0] == "api"
             && segments[1] == "simulation-workers")

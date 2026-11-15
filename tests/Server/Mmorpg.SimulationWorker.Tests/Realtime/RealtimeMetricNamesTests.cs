@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using Mmorpg.SimulationWorker.Combat;
+using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing;
@@ -172,6 +173,39 @@ public sealed class RealtimeMetricNamesTests
             published);
     }
 
+    // Monitoring documents every instrument of GameService's availability.
+    [Fact]
+    public void GameServiceMeterPublishesTheDocumentedInstrumentNames()
+    {
+        var published = new SortedSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, _) =>
+            {
+                if (instrument.Meter.Name == GameServiceAvailabilityMetrics.MeterName)
+                {
+                    lock (published)
+                    {
+                        published.Add(instrument.Name);
+                    }
+                }
+            }
+        };
+        listener.Start();
+
+        using var metrics = new GameServiceAvailabilityMetrics();
+
+        Assert.Equal(
+            [
+                "simulation_worker.game_service.abandoned_operations",
+                "simulation_worker.game_service.availability_changes",
+                "simulation_worker.game_service.available",
+                "simulation_worker.game_service.heartbeat_age",
+                "simulation_worker.game_service.refused_intents"
+            ],
+            published);
+    }
+
     [Fact]
     public void MonitoringDocumentNamesTheRealtimeMeters()
     {
@@ -186,5 +220,6 @@ public sealed class RealtimeMetricNamesTests
             document,
             StringComparison.Ordinal);
         Assert.Contains($"`{CombatMetrics.MeterName}`", document, StringComparison.Ordinal);
+        Assert.Contains($"`{GameServiceAvailabilityMetrics.MeterName}`", document, StringComparison.Ordinal);
     }
 }

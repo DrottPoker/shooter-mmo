@@ -26,7 +26,8 @@ internal sealed class AppearanceIntentHandler(
     RealtimeSessionTeardown teardown,
     OperationCompletionTargets targets,
     GameServiceClient? gameServiceClient,
-    ILogger logger) : IRealtimeCompletionHandler
+    ILogger logger,
+    GameServiceAvailability? availability = null) : IRealtimeCompletionHandler
 {
     public const string HeadwearChange = "headwear";
     public const string DevelopmentLookChange = "development_look";
@@ -62,6 +63,13 @@ internal sealed class AppearanceIntentHandler(
         if (gameServiceClient is null || session.IsSyntheticBot)
         {
             SendResult(peer, intent, "appearance_unavailable", "This worker cannot change looks.");
+            return;
+        }
+
+        if (availability is { IsAvailable: false })
+        {
+            availability.RecordRefusedIntent(DurableIntentKinds.Appearance);
+            SendResult(peer, intent, GameServiceAvailability.UnavailableCode, GameServiceAvailability.UnavailableMessage);
             return;
         }
 

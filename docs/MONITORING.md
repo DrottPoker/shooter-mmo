@@ -166,6 +166,7 @@ entity, peer, or runtime id as a label.
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
+| `Mmorpg.SimulationWorker.GameService` | Whether GameService answers the registry heartbeat, its changes, the age of the last successful registry heartbeat, the durable actions refused while it did not answer, and the operations given up at the retry horizon. |
 
 `RealtimeMetricNamesTests` pins every instrument name of these meters.
 
@@ -230,7 +231,7 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 | `simulation_worker.combat.deaths` | counter | Combatants that died, labeled `kind`. |
 | `simulation_worker.combat.ammunition_batches` | counter | Finished arrow batches, labeled `outcome`: `committed`, `retried` when the outcome was uncertain and the batch repeats with the same operation id, `rejected`, or `session_ended` when the rejection ended the item session. |
 | `simulation_worker.combat.dropped_shots` | counter | Shots that never committed because their batch was rejected, the session ended, or the arrow stack changed under a death. |
-| `simulation_worker.combat.death_partitions` | counter | Finished player death partition attempts, labeled `outcome` like the arrow batches. |
+| `simulation_worker.combat.death_partitions` | counter | Finished player death partition attempts, labeled `outcome` like the arrow batches, and `abandoned` for a death given up at the retry horizon. |
 | `simulation_worker.combat.phase.duration` | histogram, ms | Duration of the combat phase of one tick. |
 | `simulation_worker.combat.active_combatants` | gauge | Characters and Mobs that can fight. |
 | `simulation_worker.combat.pending_shots` | gauge | Shots counted against arrow stacks that GameService has not committed yet. |
@@ -239,6 +240,17 @@ The instruments of `Mmorpg.SimulationWorker.Combat`:
 | `simulation_worker.combat.moving_mobs` | gauge | Mobs whose pose changed in the latest tick. |
 | `simulation_worker.combat.mob_path_plans` | counter | Planned Mob routes, labeled `outcome`: `reached`, `closest` when the goal cannot be reached and the route ends at the closest point, or `no_path`. |
 | `simulation_worker.combat.mob_path_queue` | gauge | Mob routes that wait for the planning budget of 8 routes per tick. |
+
+The instruments of `Mmorpg.SimulationWorker.GameService`, which
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage) explains:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.game_service.available` | gauge | 1 while GameService answers the registry heartbeat, 0 while the worker counts it as unavailable. |
+| `simulation_worker.game_service.availability_changes` | counter | Changes of that state, labeled `state`: `unavailable` when an outage began, `available` when it ended. |
+| `simulation_worker.game_service.heartbeat_age` | gauge, s | Seconds since the last successful registry heartbeat; nothing before the first one. The worker stops in order once it passes `GameServiceOutageToleranceSeconds`, 120 by default. |
+| `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
+| `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `quest_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
 ### GameService
 
@@ -421,6 +433,11 @@ entries of both processes, and the trace share one id.
   messages below `Warning`. Domain failures and HTTP warnings remain visible,
   but high-frequency bot join and release requests do not drown out worker
   status, performance, lifecycle, or error logs.
+- SimulationWorker writes one warning when GameService stops answering its
+  registry heartbeat and one information line with the length of the outage
+  when it answers again; each failed registry heartbeat attempt, every two
+  seconds during an outage, also writes a warning, and the stop after the
+  outage tolerance writes one critical line.
 - Routine UDP connect and disconnect events and successful synthetic bot joins
   and leaves are logged at `Debug`. Successful real-player lifecycle events stay
   at `Information`, and every admission failure stays visible. The synthetic bot

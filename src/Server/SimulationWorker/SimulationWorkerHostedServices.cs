@@ -11,7 +11,8 @@ public static class SimulationWorkerHostedServices
     // Registers the hosted services in their start order. The realtime service starts first, so
     // the worker binds its UDP port before anything else runs, and a port it cannot bind fails
     // the start before the worker registers. The worker heartbeat registers once the transport
-    // listens, and corpse restoration waits for the registration lease that heartbeat renews.
+    // listens, and corpse restoration waits for the registration lease that heartbeat renews. The
+    // outage monitor stops the worker when no heartbeat succeeded for the outage tolerance.
     //
     // The host stops hosted services in reverse order, so the worker heartbeat sends /offline
     // and the session heartbeat then releases every session. The realtime service therefore
@@ -25,7 +26,7 @@ public static class SimulationWorkerHostedServices
         services.AddHostedService<RealtimeSimulationService>();
         services.AddHostedService<SimulationSessionHeartbeatService>();
         services.AddHostedService<SimulationWorkerHeartbeatService>();
-        services.AddHostedService<SimulationWorkerRegistrationLeaseMonitor>();
+        services.AddHostedService<GameServiceOutageMonitor>();
         services.AddHostedService<DurableCorpseRestorationService>();
         services.AddHostedService<RealtimeMetricsReporterService>();
         return services;

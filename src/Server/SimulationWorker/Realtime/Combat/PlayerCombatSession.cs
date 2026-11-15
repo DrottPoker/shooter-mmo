@@ -26,7 +26,7 @@ internal sealed class AmmunitionBatch(
 
     public int Attempts { get; set; }
 
-    // While set, the batch waits for a retry after an uncertain outcome.
+    // While set, the batch waits for a retry after an uncertain outcome, or for GameService.
     public uint? RetryAtTick { get; set; }
 }
 
@@ -60,7 +60,11 @@ internal sealed class PlayerDeathAttempt(
 
     public int Attempts { get; set; }
 
+    // While set, the death waits for a retry, or for GameService.
     public uint? RetryAtTick { get; set; }
+
+    // GameService's available time when the character died, from which the retry horizon counts.
+    public TimeSpan StartedAt { get; init; }
 }
 
 // A credited Mob kill on its way to GameService for the character's quests. A retry reuses
@@ -75,8 +79,11 @@ internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IRead
 
     public int Attempts { get; set; }
 
-    // While set, the credit waits for a retry after an uncertain outcome.
+    // While set, the credit waits for a retry after an uncertain outcome, or for GameService.
     public uint? RetryAtTick { get; set; }
+
+    // GameService's available time at the kill, from which the retry horizon counts.
+    public TimeSpan StartedAt { get; init; }
 
     public QuestOperation ToOperation()
     {

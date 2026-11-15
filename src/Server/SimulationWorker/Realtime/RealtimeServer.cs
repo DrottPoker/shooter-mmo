@@ -4,6 +4,8 @@ using Mmorpg.GameProtocol;
 using Mmorpg.Server.Common.Timing;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
+using Mmorpg.SimulationWorker.GameServiceApi;
+using Mmorpg.SimulationWorker.Registry;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -30,9 +32,16 @@ internal sealed class RealtimeServer(
     RealtimePerformanceMetrics performanceMetrics,
     RealtimeFeatureRegistries registries,
     RealtimeLoopGuard loopGuard,
+    RealtimePeerRegistry peers,
+    RealtimePeerSender sender,
+    GameServiceAvailability availability,
+    SimulationWorkerStopReason stopReason,
     IReadOnlyList<IDisposable> ownedResources,
     ILogger logger) : IDisposable
 {
+    // How long the stop notice may take to be acknowledged before the transport closes.
+    private static readonly TimeSpan StopNoticeTimeout = TimeSpan.FromMilliseconds(500);
+
     private readonly RealtimeLoopStep networkPollStep = loopGuard.LoopStep("network poll");
     private readonly RealtimeLoopStep completedOperationsStep = loopGuard.LoopStep("completed operations");
     private readonly RealtimeLoopStep peerSupervisionStep = loopGuard.LoopStep("peer supervision");
@@ -213,14 +222,17 @@ internal sealed class RealtimeServer(
             corpseMutationCoordinator.ActiveCorpseCount);
     }
 
-    // The order is part of the shutdown contract: the transport stops first, so no event
-    // can register state, and in-flight operations finish before the registered shutdown
-    // steps flush and clear, in the order of RealtimeShutdownOrder, so a late join or release
-    // cannot register state after the clear. Their completions are never finalized; only the
-    // combat flush reads its own arrow batch results.
+    // The order is part of the shutdown contract: every connected peer is told why the worker
+    // stops, then the transport stops, so no event can register state, and in-flight operations
+    // finish before the registered shutdown steps flush and clear, in the order of
+    // RealtimeShutdownOrder, so a late join or release cannot register state after the clear.
+    // Work that waits for GameService gives up first, so it keeps nothing waiting. Their
+    // completions are never finalized; only the combat flush reads its own arrow batch results.
     private async Task ShutdownAsync()
     {
+        await TellPeersAsync();
         transport.Stop();
+        availability.EndWaits();
         await operationTracker.WaitForAllAsync();
         foreach (var step in registries.ShutdownSteps.Steps)
         {
@@ -228,6 +240,51 @@ internal sealed class RealtimeServer(
         }
 
         logger.LogInformation("[SIMULATION] Realtime transport stopped.");
+    }
+
+    // Sends every connected peer a ServerDisconnect with the reason of the stop and gives the
+    // reliable packets a short time to be acknowledged; a peer that does not acknowledge in time
+    // sees only the closed connection. The loop has ended, so nothing else uses the transport.
+    private async Task TellPeersAsync()
+    {
+        var told = new List<IRealtimePeerConnection>();
+        try
+        {
+            var packet = RealtimeProtocol.EncodeServerDisconnect(stopReason.Code, stopReason.Message);
+            foreach (var context in peers.Contexts)
+            {
+                if (peers.TryGetCurrentPeer(context, out var peer))
+                {
+                    sender.SendControl(peer, packet);
+                    told.Add(peer);
+                }
+            }
+
+            if (told.Count == 0)
+            {
+                return;
+            }
+
+            logger.LogInformation(
+                "[SIMULATION] Telling {PeerCount} connected peers that the worker stops with {Code}.",
+                told.Count,
+                stopReason.Code);
+            var started = Stopwatch.GetTimestamp();
+            transport.FlushSends();
+            while (Stopwatch.GetElapsedTime(started) < StopNoticeTimeout
+                && told.Exists(peer => peer.GetPacketsCountInReliableQueue(RealtimeProtocol.ControlChannel, true) > 0))
+            {
+                await Task.Delay(10);
+                transport.FlushSends();
+            }
+        }
+        catch (Exception exception)
+        {
+            // The stop goes on without the notice.
+            logger.LogWarning(
+                exception,
+                "[SIMULATION] Could not tell the connected peers that the worker stops.");
+        }
     }
 
     // Disposes only what the composition created; provided services stay with the host.

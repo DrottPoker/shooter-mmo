@@ -322,6 +322,47 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    // The worker plays on for the outage tolerance without GameService and retries an uncertain
+    // operation for the horizon, which must leave a minute more than the tolerance.
+    [Theory]
+    [InlineData(null, null, null, 120, 600, 2000, null)]
+    [InlineData("10", "70", "500", 10, 70, 500, null)]
+    [InlineData("600", "3600", null, 600, 3600, 2000, null)]
+    [InlineData("9", null, null, 0, 0, 0, "SimulationWorker:GameServiceOutageToleranceSeconds must be between 10 and 600.")]
+    [InlineData("601", "3600", null, 0, 0, 0, "SimulationWorker:GameServiceOutageToleranceSeconds must be between 10 and 600.")]
+    [InlineData("120", "179", null, 0, 0, 0, "SimulationWorker:UncertainOperationRetryHorizonSeconds must be at least GameServiceOutageToleranceSeconds plus 60")]
+    [InlineData(null, "3601", null, 0, 0, 0, "SimulationWorker:UncertainOperationRetryHorizonSeconds must be at least GameServiceOutageToleranceSeconds plus 60 and must not exceed 3600.")]
+    [InlineData(null, null, "10000", 0, 0, 0, "SimulationWorker:RegistryHeartbeatRetryMilliseconds must be shorter than RegistryHeartbeatSeconds.")]
+    public void TheOutageToleranceRetryHorizonAndHeartbeatRetryHaveDefaultsAndBounds(
+        string? tolerance,
+        string? horizon,
+        string? retry,
+        int expectedTolerance,
+        int expectedHorizon,
+        int expectedRetryMilliseconds,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:GameServiceOutageToleranceSeconds"] = tolerance;
+        settings["SimulationWorker:UncertainOperationRetryHorizonSeconds"] = horizon;
+        settings["SimulationWorker:RegistryHeartbeatRetryMilliseconds"] = retry;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            var config = SimulationWorkerConfig.FromConfiguration(configuration);
+            Assert.Equal(TimeSpan.FromSeconds(expectedTolerance), config.GameServiceOutageTolerance);
+            Assert.Equal(TimeSpan.FromSeconds(expectedHorizon), config.UncertainOperationRetryHorizon);
+            Assert.Equal(TimeSpan.FromMilliseconds(expectedRetryMilliseconds), config.RegistryHeartbeatRetryDelay);
+            Assert.Equal(config.GameServiceOutageTolerance + config.SimulationSessionHeartbeatInterval, config.MinimumSessionLease);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     [Theory]
     [InlineData(null, 30, null)]
     [InlineData("1", 1, null)]
