@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Mmorpg.GameSimulation;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Sessions;
@@ -100,12 +101,25 @@ internal sealed class RealtimeLifecycleHooks
         }
     }
 
+    // Every hook runs, also after one of them threw: the entity is gone already, so a hook
+    // that was skipped would leave its state behind for good. The first exception is thrown
+    // again once all of them ran.
     public void RaisePlayerRemoved(RealtimePeerContext context, ActiveSimulationSession session, ulong entityId)
     {
+        ExceptionDispatchInfo? failure = null;
         for (var index = playerRemoved.Count - 1; index >= 0; index--)
         {
-            playerRemoved[index](context, session, entityId);
+            try
+            {
+                playerRemoved[index](context, session, entityId);
+            }
+            catch (Exception exception)
+            {
+                failure ??= ExceptionDispatchInfo.Capture(exception);
+            }
         }
+
+        failure?.Throw();
     }
 
     public void RaiseSpawnSent(IRealtimePeerConnection peer, ulong entityId)

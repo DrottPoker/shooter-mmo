@@ -46,9 +46,17 @@ internal sealed class RealtimeSessionTeardown(
         characterStores.Remove(session.CharacterId, session.SimulationSessionId);
         connectionBindings.UnbindConnection(context.PeerId, out _);
         presence.ForgetConnection(context.PeerId);
-        presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
-        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
-        hooks.RaisePlayerRemoved(context, session, entityId);
+        // The entity is gone from here on, so the removal hooks run also when a despawn send
+        // throws: they release what the features hold for the player.
+        try
+        {
+            presence.BroadcastEntityDespawn(entityId, reason, context.PeerId);
+        }
+        finally
+        {
+            networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
+            hooks.RaisePlayerRemoved(context, session, entityId);
+        }
     }
 
     // The connection of a joined player ended while its session goes on: by a leave, a lost or
@@ -92,9 +100,15 @@ internal sealed class RealtimeSessionTeardown(
         }
 
         characterStores.Remove(session.CharacterId, session.SimulationSessionId);
-        presence.BroadcastEntityDespawn(entityId, reason, null);
-        networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
-        hooks.RaisePlayerRemoved(RealtimePeerContext.System, session, entityId);
+        try
+        {
+            presence.BroadcastEntityDespawn(entityId, reason, null);
+        }
+        finally
+        {
+            networkMetrics.SetActiveEntities(presence.ActiveEntityCount);
+            hooks.RaisePlayerRemoved(RealtimePeerContext.System, session, entityId);
+        }
     }
 
     public void DisconnectReplacedConnection(int? replacedConnectionId)
@@ -139,14 +153,20 @@ internal sealed class RealtimeSessionTeardown(
             DisconnectReplacedConnection(connectionId);
         }
 
-        presence.BroadcastEntityDespawn(
-            replacedEntity.NetworkEntityId,
-            "entity_replaced",
-            replacedConnectionId);
-        hooks.RaisePlayerRemoved(
-            RealtimePeerContext.System,
-            replacedEntity.Session,
-            replacedEntity.NetworkEntityId);
+        try
+        {
+            presence.BroadcastEntityDespawn(
+                replacedEntity.NetworkEntityId,
+                "entity_replaced",
+                replacedConnectionId);
+        }
+        finally
+        {
+            hooks.RaisePlayerRemoved(
+                RealtimePeerContext.System,
+                replacedEntity.Session,
+                replacedEntity.NetworkEntityId);
+        }
     }
 
     // Ends the session of a completed operation whose answer says the session cannot go on, as

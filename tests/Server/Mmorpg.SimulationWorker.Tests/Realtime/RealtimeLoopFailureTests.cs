@@ -93,6 +93,82 @@ public sealed class RealtimeLoopFailureTests
         }
     }
 
+    // The despawn of a removed player cannot be sent to one of the peers that see it: the peers
+    // after it still get the despawn, and the removal hooks still run, so the session of the
+    // removed player is released. The exception leaves the supervision afterwards, where the
+    // loop guard counts it.
+    [Fact]
+    public async Task ADespawnThatFailsForOnePeerStillFinishesTheRemoval()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var blocked = fixture.ConnectPlayer(1, "Blocked Viewer");
+        var failing = fixture.ConnectPlayer(2, "Removed Player");
+        var viewer = fixture.ConnectPlayer(3, "Other Viewer");
+        var mobs = new MobSystem(
+            fixture.Config,
+            fixture.Clock,
+            fixture.CollisionWorld,
+            new CombatantRegistry(),
+            new CombatLineOfSight(fixture.CollisionWorld),
+            fixture.Presence,
+            null,
+            null);
+        var replicator = new SnapshotReplicator(
+            fixture.Config,
+            mobs,
+            fixture.Entities,
+            fixture.Bindings,
+            fixture.Registry,
+            fixture.Sender,
+            fixture.Presence,
+            fixture.Metrics,
+            fixture.PerformanceMetrics,
+            fixture.Clock,
+            fixture.FailureIsolation);
+        // Every peer sees the others once each connection had its visibility turn.
+        for (var broadcast = 0; broadcast < fixture.Config.InterestManagement.RefreshIntervalSnapshots + 1; broadcast++)
+        {
+            replicator.Broadcast();
+        }
+
+        fixture.FailureIsolation.RemovePlayer(
+            PlayerMovementTickPhase.Name,
+            failing.Entity,
+            new InvalidOperationException("The step broke."));
+        blocked.Peer.FailReliableSends = true;
+        var supervision = SupervisorService.Create(fixture);
+
+        var failure = Assert.Throws<InvalidOperationException>(() => supervision.Supervisor.EnforcePeerState());
+
+        Assert.Equal("The reliable send broke.", failure.Message);
+        Assert.False(fixture.Entities.TryGetPlayer(failing.Entity.NetworkEntityId, out _));
+        Assert.Contains(viewer.Peer.Sent, sent => sent.Type == RealtimeMessageType.EntityDespawn);
+        await fixture.OperationTracker.WaitForAllAsync();
+        var release = Assert.Single(fixture.GameService.Releases);
+        Assert.Equal(failing.Session.SimulationSessionId, release.SimulationSessionId);
+        Assert.Null(release.Request.FinalState);
+    }
+
+    // A removal hook that throws does not skip the hooks after it, and its exception still
+    // leaves the call.
+    [Fact]
+    public void ARemovalHookThatThrowsDoesNotSkipTheHooksAfterIt()
+    {
+        var hooks = new RealtimeLifecycleHooks();
+        var ran = new List<string>();
+        hooks.AddPlayerRemoved((_, _, _) => ran.Add("registered first"));
+        hooks.AddPlayerRemoved((_, _, _) => throw new InvalidOperationException("The hook broke."));
+        hooks.AddPlayerRemoved((_, _, _) => ran.Add("registered last"));
+
+        var failure = Assert.Throws<InvalidOperationException>(() => hooks.RaisePlayerRemoved(
+            RealtimePeerContext.System,
+            RealtimeTestSessions.Create("Hook Player"),
+            7));
+
+        Assert.Equal("The hook broke.", failure.Message);
+        Assert.Equal(["registered last", "registered first"], ran);
+    }
+
     // Sending to one recipient throws: only that peer is disconnected with internal_error, and
     // the recipients before and after it still get their snapshots.
     [Fact]
