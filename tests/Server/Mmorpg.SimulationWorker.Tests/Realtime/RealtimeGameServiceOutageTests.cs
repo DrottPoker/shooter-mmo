@@ -145,6 +145,49 @@ public sealed class RealtimeGameServiceOutageTests
         }
     }
 
+    // An action that reached the worker just before it noticed the outage waits behind the
+    // arrow batch, which keeps the lane until GameService returns. It is refused when the
+    // outage begins, not answered a minute later.
+    [Fact]
+    public async Task AnActionThatWaitsBehindWorkOfTheOutageIsRefusedWhenTheOutageBegins()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            ItemCatalog = TestCatalog(minimumDamage: 1, maximumDamage: 1),
+            CombatRules = TestRules(batchIntervalSeconds: 60f),
+            PlayerVersusPlayer = true,
+            CombatRandom = new LowestRoll()
+        });
+        var archer = harness.AddCharacter("Waiting Archer") with { Equipment = ArcherEquipment(50) };
+        harness.GameService.AddCharacter(archer);
+        var target = harness.AddCharacter("Waiting Target");
+        harness.GameService.OnAmmunitionConsumption = (_, _, _) => throw new HttpRequestException("The answer was lost.");
+        await harness.StartAsync();
+        var archerClient = await harness.JoinAsync(archer);
+        var targetClient = await harness.JoinAsync(target);
+        var targetEntityId = targetClient.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(() => States(archerClient).Any(value => value.EntityId == targetEntityId), "the target");
+        archerClient.SendCombatIntent(RealtimeCombatIntent.CreateAttackTarget(Guid.NewGuid(), targetEntityId));
+        await harness.PollUntilAsync(
+            () => Events(archerClient).Any(value => value.Kind == RealtimeCombatEventKind.AttackReleased),
+            "a shot");
+
+        // The item action starts the arrow batch ahead of itself, and the batch's answer is lost.
+        var intent = RealtimeProtocolRejectionTests.CreateItemIntent();
+        archerClient.SendItemIntent(intent);
+        await harness.PollUntilAsync(() => harness.GameService.AmmunitionConsumptions.Count >= 1, "the batch whose answer was lost");
+        Assert.Empty(archerClient.ItemResults);
+
+        GoDown(harness);
+
+        await harness.PollUntilAsync(() => archerClient.ItemResults.Count == 1, "the refusal of the waiting action");
+        var result = Assert.Single(archerClient.ItemResults);
+        Assert.Equal(intent.OperationId, result.OperationId);
+        Assert.Equal(Unavailable, result.Error.Code);
+        Assert.Equal(0, harness.GameService.ItemOperationCount);
+        Assert.Null(archerClient.ServerDisconnect);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

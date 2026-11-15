@@ -8,8 +8,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Tells the clients whether GameService answers, so they show while saving is paused: every
 // joined peer once per change of the availability, and a peer that joins while GameService does
 // not answer right after its JoinAccepted. A joined peer that hears nothing may take GameService
-// as answering. Loop-confined; the tick phase reads the availability without a lock and sends
-// one shared packet.
+// as answering. On the change to unavailable it also has the scheduler refuse the durable
+// client operations that still wait in a lane. Loop-confined; the tick phase reads the
+// availability without a lock and sends one shared packet.
 internal sealed class GameServiceAvailabilityNotice
 {
     private static readonly byte[] AvailablePacket = RealtimeProtocol.EncodeGameServiceAvailabilityChanged(true);
@@ -18,6 +19,7 @@ internal sealed class GameServiceAvailabilityNotice
     private readonly GameServiceAvailability availability;
     private readonly RealtimePeerRegistry peers;
     private readonly RealtimePeerSender sender;
+    private readonly AuthorityOperationScheduler scheduler;
     private readonly ILogger logger;
     private int toldVersion;
 
@@ -25,11 +27,13 @@ internal sealed class GameServiceAvailabilityNotice
         GameServiceAvailability availability,
         RealtimePeerRegistry peers,
         RealtimePeerSender sender,
+        AuthorityOperationScheduler scheduler,
         ILogger logger)
     {
         this.availability = availability;
         this.peers = peers;
         this.sender = sender;
+        this.scheduler = scheduler;
         this.logger = logger;
         toldVersion = availability.Current.Version;
     }
@@ -73,10 +77,13 @@ internal sealed class GameServiceAvailabilityNotice
             }
         }
 
+        // The notice goes first, so a client knows why its waiting action is refused.
+        var refused = isAvailable ? 0 : scheduler.RefuseQueuedDurableIntents();
         logger.LogDebug(
-            "[SIMULATION] Told {PeerCount} joined peers that GameService {State}.",
+            "[SIMULATION] Told {PeerCount} joined peers that GameService {State}, and refused {Refused} waiting actions.",
             told,
-            isAvailable ? "answers again" : "does not answer");
+            isAvailable ? "answers again" : "does not answer",
+            refused);
         return true;
     }
 }
