@@ -29,6 +29,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "appearances",
                 "snapshots",
                 "corpse presence",
+                "game service availability",
                 "character checkpoint"
             ],
             phases.Select(phase => phase.Name));
@@ -46,6 +47,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 SimulationTickOrder.Appearances,
                 SimulationTickOrder.Snapshots,
                 SimulationTickOrder.CorpsePresence,
+                SimulationTickOrder.GameServiceAvailability,
                 SimulationTickOrder.CharacterCheckpoint
             ],
             phases.Select(phase => phase.Order));
@@ -108,7 +110,12 @@ public sealed class RealtimeFeatureRegistrationTests
             [typeof(CharacterStatePersistence)],
             hooks.PlayerPlacements.Select(hook => hook.Method.DeclaringType));
         Assert.Equal(
-            [typeof(CombatSystem), typeof(AdminIntentHandler), typeof(CharacterStatePersistence)],
+            [
+                typeof(GameServiceAvailabilityNotice),
+                typeof(CombatSystem),
+                typeof(AdminIntentHandler),
+                typeof(CharacterStatePersistence)
+            ],
             hooks.PlayerJoined.Select(hook => hook.Method.DeclaringType));
         // The lists keep registration order; the hooks of a player's way out run in reverse, so
         // persistence sees a player go while combat still holds it, and the release of a player

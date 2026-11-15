@@ -233,7 +233,12 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// A quest item that a dying Mob left in its corpse for the recipient's quest, which only the recipient sees and loots. The worker sends one for every quest drop once the corpse exists.
         /// </summary>
-        QuestDropInCorpse = 45
+        QuestDropInCorpse = 45,
+
+        /// <summary>
+        /// Whether GameService answers the worker, so the client shows while saving is paused. The worker sends it to every joined peer on every change, and after JoinAccepted while GameService does not answer; its absence means GameService answers.
+        /// </summary>
+        GameServiceAvailabilityChanged = 46
     }
 
     /// <summary>
@@ -407,7 +412,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 40;
+        public const ushort Version = 41;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -547,7 +552,8 @@ namespace Mmorpg.GameProtocol
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.GameServiceAvailabilityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>

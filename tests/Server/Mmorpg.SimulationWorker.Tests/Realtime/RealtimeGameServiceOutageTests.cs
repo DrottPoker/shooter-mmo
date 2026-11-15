@@ -582,6 +582,80 @@ public sealed class RealtimeGameServiceOutageTests
         Assert.Contains(harness.Logger.Entries, entry => entry.Message.Contains("are not committed at shutdown", StringComparison.Ordinal));
     }
 
+    // Every joined peer hears each change once, so its client shows while saving is paused and
+    // stops when GameService answers again; while nothing changes, nothing is sent.
+    [Fact]
+    public async Task EveryJoinedPeerLearnsEachChangeOfTheAvailabilityOnce()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var first = harness.AddCharacter("Notice First");
+        var second = harness.AddCharacter("Notice Second");
+        await harness.StartAsync();
+        var firstClient = await harness.JoinAsync(first);
+        var secondClient = await harness.JoinAsync(second);
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(AvailabilityNotices(firstClient));
+
+        GoDown(harness);
+        await harness.PollUntilAsync(
+            () => AvailabilityNotices(firstClient).Count == 1 && AvailabilityNotices(secondClient).Count == 1,
+            "the notice that GameService does not answer");
+        // A failed heartbeat while GameService is already unavailable changes nothing.
+        GoDown(harness);
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        ComeBack(harness);
+        await harness.PollUntilAsync(
+            () => AvailabilityNotices(firstClient).Count == 2 && AvailabilityNotices(secondClient).Count == 2,
+            "the notice that GameService answers again");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal([false, true], AvailabilityNotices(firstClient));
+        Assert.Equal([false, true], AvailabilityNotices(secondClient));
+        Assert.Null(firstClient.ServerDisconnect);
+    }
+
+    // A peer that joins, or joins again after a lost connection, while GameService does not
+    // answer learns it right after its JoinAccepted; a join while it answers hears nothing.
+    [Fact]
+    public async Task APeerThatJoinsOrReconnectsWhileGameServiceIsUnavailableLearnsItRightAfterItsJoin()
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        var early = harness.AddCharacter("Early Joiner");
+        var late = harness.AddCharacter("Late Joiner");
+        await harness.StartAsync();
+        var earlyClient = await harness.JoinAsync(early);
+        GoDown(harness);
+        await harness.PollUntilAsync(() => AvailabilityNotices(earlyClient).Count == 1, "the notice of the joined peer");
+
+        var lateClient = await harness.JoinAsync(late);
+        await harness.PollUntilAsync(() => AvailabilityNotices(lateClient).Count == 1, "the notice of the new peer");
+        var reconnect = early with { Ticket = "ticket-outage-reconnect", SimulationSessionToken = "outage-reconnected-token" };
+        harness.GameService.AddCharacter(reconnect);
+        var reconnectedClient = await harness.JoinAsync(reconnect, "reconnected");
+        await harness.PollUntilAsync(() => AvailabilityNotices(reconnectedClient).Count == 1, "the notice of the reconnect");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+
+        Assert.True(reconnectedClient.JoinAccepted!.IsReconnect);
+        foreach (var client in new[] { lateClient, reconnectedClient })
+        {
+            Assert.Equal([false], AvailabilityNotices(client));
+            var reliable = client.Packets.Where(packet => packet.IsReliable).ToArray();
+            Assert.Equal(RealtimeMessageType.JoinAccepted, reliable[0].Type);
+            Assert.Equal(RealtimeMessageType.GameServiceAvailabilityChanged, reliable[1].Type);
+        }
+
+        Assert.Equal([false], AvailabilityNotices(earlyClient));
+
+        ComeBack(harness);
+        var after = harness.AddCharacter("Calm Joiner");
+        await harness.PollUntilAsync(
+            () => AvailabilityNotices(lateClient).Count == 2 && AvailabilityNotices(reconnectedClient).Count == 2,
+            "the notice that GameService answers again");
+        var afterClient = await harness.JoinAsync(after);
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(AvailabilityNotices(afterClient));
+    }
+
     private static readonly TimeSpan Horizon = TimeSpan.FromSeconds(600);
 
     // Turns GameService unavailable, as a registry heartbeat that cannot reach it does.
@@ -667,6 +741,13 @@ public sealed class RealtimeGameServiceOutageTests
     private static IReadOnlyList<RealtimeQuestIntentResult> QuestResults(RealtimeRecordingClient client)
     {
         return client.Decode<RealtimeQuestIntentResult>(RealtimeMessageType.QuestIntentResult, RealtimeProtocol.TryDecodeQuestIntentResult);
+    }
+
+    private static IReadOnlyList<bool> AvailabilityNotices(RealtimeRecordingClient client)
+    {
+        return client.Decode<bool>(
+            RealtimeMessageType.GameServiceAvailabilityChanged,
+            RealtimeProtocol.TryDecodeGameServiceAvailabilityChanged);
     }
 
     private static IReadOnlyList<RealtimeAppearanceIntentResult> AppearanceResults(RealtimeRecordingClient client)

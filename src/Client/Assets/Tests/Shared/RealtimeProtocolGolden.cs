@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 40;
+        public const ushort PinnedVersion = 41;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -310,7 +310,8 @@ namespace Mmorpg.SharedTests
                 + "GatheringState=28 CombatIntent=29 CombatIntentResult=30 CombatantState=31 CombatEventBatch=32 "
                 + "OwnerCombatState=33 OwnerItemQuantityChanged=34 OwnerItemStateChanged=35 EntityAppearanceChanged=36 "
                 + "AppearanceIntent=37 AppearanceIntentResult=38 AdminIntent=39 AdminIntentResult=40 AdminStateChanged=41 "
-                + "QuestIntent=42 QuestIntentResult=43 QuestLogChanged=44 QuestDropInCorpse=45");
+                + "QuestIntent=42 QuestIntentResult=43 QuestLogChanged=44 QuestDropInCorpse=45 "
+                + "GameServiceAvailabilityChanged=46");
             ExpectEnum<RealtimeEntityKind>(failures, "Player=1");
             ExpectEnum<RealtimeItemOperationKind>(
                 failures,
@@ -352,12 +353,13 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 28 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 29 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);
             ExpectTypeReader(failures, "type 0", Wire.Header(0).ToArray(), false, default);
-            ExpectTypeReader(failures, "type 46", Wire.Header(46).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 47", Wire.Header(47).ToArray(), false, default);
+            ExpectTypeReader(failures, "type 46", Wire.Header(46).ToArray(), true, RealtimeMessageType.GameServiceAvailabilityChanged);
             ExpectTypeReader(failures, "type 45", Wire.Header(45).ToArray(), true, RealtimeMessageType.QuestDropInCorpse);
             ExpectTypeReader(failures, "type 44", Wire.Header(44).ToArray(), true, RealtimeMessageType.QuestLogChanged);
             ExpectTypeReader(failures, "type 41", Wire.Header(41).ToArray(), true, RealtimeMessageType.AdminStateChanged);

@@ -697,6 +697,8 @@ namespace Mmorpg.Client.App
                 panel => panel.Initialize(gameMessages));
             AddSceneComponentIfMissing<ReconnectNotice>(
                 notice => notice.Initialize(uiTheme, reconnect, texts));
+            AddSceneComponentIfMissing<SavingPausedNotice>(
+                notice => notice.Initialize(uiTheme, realtime.Session, texts));
 
             var combatantViews = new CombatantViewLocator(
                 realtime.Movement,

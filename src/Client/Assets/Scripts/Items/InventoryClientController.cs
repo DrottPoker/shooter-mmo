@@ -112,6 +112,7 @@ namespace Mmorpg.Client.Items
             itemChannel.OwnerItemQuantityChanged += OnOwnerItemQuantityChanged;
             itemChannel.OwnerItemStateChanged += OnOwnerItemStateChanged;
             realtimeSession.SessionEnded += OnSessionEnded;
+            realtimeSession.GameServiceAvailabilityChanged += OnGameServiceAvailabilityChanged;
             clientSession.SignedIn += OnSessionIdentityChanged;
             clientSession.SignedOut += OnSessionIdentityChanged;
             clientSession.SelectionChanged += OnSessionIdentityChanged;
@@ -160,6 +161,7 @@ namespace Mmorpg.Client.Items
                 itemChannel.OwnerItemQuantityChanged -= OnOwnerItemQuantityChanged;
                 itemChannel.OwnerItemStateChanged -= OnOwnerItemStateChanged;
                 realtimeSession.SessionEnded -= OnSessionEnded;
+                realtimeSession.GameServiceAvailabilityChanged -= OnGameServiceAvailabilityChanged;
                 clientSession.SignedIn -= OnSessionIdentityChanged;
                 clientSession.SignedOut -= OnSessionIdentityChanged;
                 clientSession.SelectionChanged -= OnSessionIdentityChanged;
@@ -172,6 +174,15 @@ namespace Mmorpg.Client.Items
             }
 
             refreshInProgress = false;
+        }
+
+        // A refusal because GameService did not answer no longer holds once it answers again.
+        private void OnGameServiceAvailabilityChanged()
+        {
+            if (realtimeSession.IsGameServiceAvailable)
+            {
+                State.ForgetRefusal(RealtimeSession.GameServiceUnavailableCode);
+            }
         }
 
         public void EnsureFullState()

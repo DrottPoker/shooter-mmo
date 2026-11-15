@@ -298,6 +298,8 @@ of every message type, generated from the schema:
 | 42 | `QuestIntent` | Quests | Client to server | Control | Reliable ordered |
 | 43 | `QuestIntentResult` | Quests | Server to client | Control | Reliable ordered |
 | 44 | `QuestLogChanged` | Quests | Server to client | Control | Reliable ordered |
+| 45 | `QuestDropInCorpse` | Quests | Server to client | Control | Reliable ordered |
+| 46 | `GameServiceAvailabilityChanged` | Session | Server to client | Control | Reliable ordered |
 
 The control channel is 0, the movement input channel is 1, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
@@ -320,6 +322,16 @@ carry application-level tick and chunk metadata.
   stays in the world after the leave, longer while it is attacked, or 0 when it
   left the world at once. The client returns to character select either way, as
   [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) describes.
+- `GameServiceAvailabilityChanged` (46, protocol 41) carries `Available`,
+  whether GameService answers the worker. The worker sends it to every joined
+  peer once per change of its availability, and right after `JoinAccepted` to a
+  peer that joins or reconnects while GameService does not answer; a joined
+  peer that has heard nothing takes GameService as answering. While it does
+  not, the worker refuses items, trade, and quests with
+  `game_service_unavailable`, and the client shows that saving is paused, as
+  [GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes. The
+  client handles it while joined, drops it while leaving, and treats it before
+  a join as a protocol failure.
 - `JoinRejected`, `LeaveRejected`, and `ServerDisconnect` carry an `Error`: a
   code of up to `MaximumErrorCodeLength` (64) characters and a message of up to
   `MaximumErrorMessageLength` (512). Decoders accept blank text, and the

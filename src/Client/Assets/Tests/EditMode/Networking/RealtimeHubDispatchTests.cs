@@ -78,6 +78,15 @@ namespace Mmorpg.Client.Tests.EditMode
                     .BeforeTheJoin(Reaction.OwnTests)
                     .WhileLeaving(Reaction.OwnTests)
                     .Malformed("invalid_disconnect_reason", HubState.Joined);
+                // The event has no argument; the harness records the session's IsGameServiceAvailable
+                // with it. A fresh session counts GameService as available, so the change is to false.
+                yield return Feature(
+                        RealtimeMessageType.GameServiceAvailabilityChanged,
+                        () => false,
+                        RealtimeProtocol.EncodeGameServiceAvailabilityChanged,
+                        "game_service_availability",
+                        "GameServiceAvailabilityChanged unavailable")
+                    .WhileLeaving(Reaction.Ignored);
                 yield return Feature(
                         RealtimeMessageType.EntitySpawn,
                         () => EntitySpawn(PlayerEntityId),

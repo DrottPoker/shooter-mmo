@@ -50,6 +50,16 @@ public sealed class GameServiceAvailability
     // Raised by every change of the state, so the loop sees a change without comparing states.
     public int Version => state.Version;
 
+    // The state and its version from one read, so a change between two reads is never missed.
+    public (bool IsAvailable, int Version) Current
+    {
+        get
+        {
+            var current = state;
+            return (current.IsAvailable, current.Version);
+        }
+    }
+
     // How long GameService has counted as available since the worker started. It stands still
     // while GameService is unavailable, so retry horizons count only the time it answered.
     public TimeSpan AvailableTime

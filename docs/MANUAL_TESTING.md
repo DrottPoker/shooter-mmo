@@ -681,25 +681,33 @@ Expected result:
   `GameService does not answer the registry heartbeat (auth_service_unavailable);
   items, trade, and quests are paused until it answers again.`, and then
   `Simulation worker registry heartbeat failed ... auth_service_unavailable`
-  every 2 seconds. The character stays in the World.
+  every 2 seconds. The character stays in the World, and at the same moment a
+  line in a dark frame at the top of the screen reads `Saving is paused. Items,
+  trade, and quests come back by themselves.` It takes no click and lies under
+  every window you open.
 - In step 2, walking and fighting work, the wolf dies and leaves its corpse, and
   every other action is refused at once with `The game cannot save right now.
-  Items, trade, and quests are paused; they come back by themselves.` An action
-  sent in the first seconds of the outage, before the worker noticed it, may
-  take up to 5 seconds and then fail with the text of `auth_service_unavailable`
-  or `auth_service_timeout` instead.
+  Items, trade, and quests are paused; they come back by themselves.` in the
+  Inventory's status line, the corpse window, the interaction panel, and the
+  quest log. An action sent in the first seconds of the outage, before the
+  worker noticed it, may take up to 5 seconds and then fail with the text of
+  `auth_service_unavailable` or `auth_service_timeout` instead.
 - In step 3, within 2 seconds after GameService is ready the worker logs
   `GameService answers the registry heartbeat again after <time>; durable
-  actions resume.` The arrows shot during the outage leave the arrow count
-  once, a wolf that a quest asked for counts once, and the place and vitals are
-  saved right away.
-- In step 4 the item moves and the corpse opens and loots as usual.
+  actions resume.` At the same moment the line at the top goes, and so does
+  every `The game cannot save right now...` text that a window still showed;
+  any other refusal stays. The arrows shot during the outage leave the arrow
+  count once, a wolf that a quest asked for counts once, and the place and
+  vitals are saved right away.
+- In step 4 the item moves and the corpse opens and loots as usual, and the
+  Inventory's status line stays empty.
 - In step 5, about 120 seconds after the last answered heartbeat the worker logs
   the critical line `GameService has not answered a registry heartbeat for
   <time>, longer than the outage tolerance of 00:02:00. Stopping the worker in
-  order.` and stops. The client leaves the World, and the next entry screen
-  shows `The shard lost its connection to the game service and shut down. Your
-  character continues as it was last saved. Try joining again in a moment.`
+  order.` and stops. The line at the top shows until then. The client leaves
+  the World, and the next entry screen shows `The shard lost its connection to
+  the game service and shut down. Your character continues as it was last
+  saved. Try joining again in a moment.`
   After the restart the character enters at the place of its last checkpoint,
   which was at most 30 seconds before the outage.
 

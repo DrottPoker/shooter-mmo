@@ -50,6 +50,10 @@ internal static class SimulationTickOrder
     // Sends corpse presence twice a second.
     public const int CorpsePresence = 1100;
 
+    // Tells the joined players once when GameService stops or starts answering, so their clients
+    // show while saving is paused.
+    public const int GameServiceAvailability = 1150;
+
     // Collects the players whose place or vitals changed at the checkpoint interval, last, so it
     // sees this tick's movement, damage, deaths, and respawns.
     public const int CharacterCheckpoint = 1200;

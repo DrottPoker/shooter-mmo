@@ -15,6 +15,7 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType leaveAccepted = RealtimeMessageType.LeaveAccepted;
             const RealtimeMessageType leaveRejected = RealtimeMessageType.LeaveRejected;
             const RealtimeMessageType serverDisconnect = RealtimeMessageType.ServerDisconnect;
+            const RealtimeMessageType availabilityChanged = RealtimeMessageType.GameServiceAvailabilityChanged;
 
             r.Vector("Session/JoinRequest/ascii", joinRequest, () => RealtimeProtocol.EncodeJoinRequest("ticket.v1.abc-123"));
             r.Vector("Session/JoinRequest/multibyte", joinRequest, () => RealtimeProtocol.EncodeJoinRequest("biljett-åäö-✓-😀"));
@@ -44,6 +45,14 @@ namespace Mmorpg.SharedTests
                 "Session/ServerDisconnect/multibyte",
                 serverDisconnect,
                 () => RealtimeProtocol.EncodeServerDisconnect("server_shutdown", "Servern stängs för underhåll ✓"));
+            r.Vector(
+                "Session/GameServiceAvailabilityChanged/unavailable",
+                availabilityChanged,
+                () => RealtimeProtocol.EncodeGameServiceAvailabilityChanged(false));
+            r.Vector(
+                "Session/GameServiceAvailabilityChanged/available",
+                availabilityChanged,
+                () => RealtimeProtocol.EncodeGameServiceAvailabilityChanged(true));
 
             // Text fields share one reader: a declared UTF-8 byte length of at least one, at
             // most four bytes per allowed character, valid UTF-8, and at most the allowed number
@@ -70,6 +79,14 @@ namespace Mmorpg.SharedTests
             r.Accepts("Session/LeaveAccepted/3600 seconds", Wire.Message(leaveAccepted).U16(3600));
             r.Rejects("Session/LeaveAccepted/3601 seconds", Wire.Message(leaveAccepted).U16(3601));
             r.Rejects("Session/LeaveAccepted/without seconds", Wire.Message(leaveAccepted));
+            r.AcceptsAs(
+                "Session/GameServiceAvailabilityChanged/byte 2 reads as available",
+                Wire.Message(availabilityChanged).U8(2),
+                Wire.Message(availabilityChanged).Bool(true));
+            r.Rejects("Session/GameServiceAvailabilityChanged/without the state", Wire.Message(availabilityChanged));
+            r.Rejects(
+                "Session/GameServiceAvailabilityChanged/trailing byte",
+                Wire.Message(availabilityChanged).Bool(false).U8(0));
 
             foreach (var type in new[] { joinRejected, leaveRejected, serverDisconnect })
             {
