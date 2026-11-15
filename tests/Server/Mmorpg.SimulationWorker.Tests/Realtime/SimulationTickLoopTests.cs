@@ -124,6 +124,41 @@ public sealed class SimulationTickLoopTests
         Assert.Contains("tick phase flaky failed 3 runs in a row at server tick 8", critical.Message, StringComparison.Ordinal);
     }
 
+    // A prerequisite phase that throws ends its tick: the phases after it, which rely on it, do
+    // not run, the phase before it did, and the next tick runs them all again.
+    [Fact]
+    public void APrerequisitePhaseThatThrowsSkipsTheRestOfItsTick()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var logger = new CapturingLogger<RealtimeSimulationService>();
+        var phases = new SimulationTickPhases();
+        var ran = new List<string>();
+        phases.Add(SimulationTickOrder.CollisionStreaming - 1, "before", (in SimulationTick tick) => ran.Add($"before {tick.ServerTick}"));
+        phases.AddPrerequisite(SimulationTickOrder.CollisionStreaming, "prerequisite", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick == 1)
+            {
+                throw new InvalidOperationException("The prerequisite broke.");
+            }
+
+            ran.Add($"prerequisite {tick.ServerTick}");
+        });
+        phases.Add(SimulationTickOrder.Movement, "movement", (in SimulationTick tick) => ran.Add($"movement {tick.ServerTick}"));
+        phases.Add(SimulationTickOrder.CharacterCheckpoint, "checkpoint", (in SimulationTick tick) => ran.Add($"checkpoint {tick.ServerTick}"));
+        var loop = CreateLoop(fixture.Clock, fixture.Entities, phases, metrics, out var guard, logger: logger);
+        var nextTick = TimeSpan.Zero;
+
+        RunTicks(loop, ref nextTick, 2);
+
+        Assert.Equal(
+            ["before 1", "before 2", "prerequisite 2", "movement 2", "checkpoint 2"],
+            ran);
+        Assert.Equal(1, guard.TotalFailures);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.Equal(2u, fixture.Clock.ServerTick);
+    }
+
     // A phase that works on every second tick and fails each time it does: the ticks between,
     // on which it was not due, are no successful runs, so its failures still count as in a row
     // and the third ends the loop.

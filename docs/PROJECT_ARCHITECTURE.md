@@ -370,6 +370,11 @@ contract:
   that succeeds resets the count; at `SimulationWorker:TickPhaseFailureLimit`
   failures in a row the guard logs one critical line and ends the loop the way
   an unhandled exception does, so the shutdown below runs and the host stops.
+  A phase that the later phases rely on registers with `AddPrerequisite`: the
+  collision streaming does, because movement steps against the loaded chunks
+  and a chunk that is not loaded is no collision at all. When it fails, the
+  rest of that tick is skipped, so no player moves through missing geometry
+  and no such position is saved.
   A phase that works only on some ticks, such as the snapshots on every second
   tick or the character checkpoint at its interval, registers with
   `AddPeriodic` and says for each tick whether it did its work: a tick on which

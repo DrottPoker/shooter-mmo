@@ -8,7 +8,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // Runs due fixed simulation ticks. Each tick advances the clock, fills the players of the tick
 // once in entity id order, and runs the registered phases in SimulationTickOrder. A phase that
 // throws is logged and skipped for this tick through the loop guard, and the later phases still
-// run. At most five ticks catch up per call before the clock resynchronizes. Loop-confined.
+// run, unless the phase is a prerequisite of them, which ends the tick. At most five ticks catch up per call before the clock resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop
 {
     private readonly RealtimeSimulationClock clock;
@@ -72,6 +72,11 @@ internal sealed class SimulationTickLoop
                 catch (Exception exception)
                 {
                     loopGuard.Failed(phaseSteps[index], exception);
+                    if (orderedPhases[index].IsPrerequisite)
+                    {
+                        // The later phases rely on this one, so the tick ends here.
+                        break;
+                    }
                 }
             }
 
