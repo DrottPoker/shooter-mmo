@@ -838,12 +838,17 @@ public sealed class RealtimeCombatTests
         Assert.False(refilled.InCombat);
         Assert.DoesNotContain(states.Skip(empty).TakeWhile(value => value.InCombat), value => value.Mana > 0);
 
+        // The owner sees every step of its health; viewers follow it by the rule of their state,
+        // as CombatRegenerationReplicationTests proves.
         await harness.PollUntilAsync(
-            () => States(targetClient).Where(value => value.EntityId == targetEntityId).Select(value => value.Health)
-                .SkipWhile(health => health == 100).Any(health => health > 94),
+            () =>
+            {
+                var healths = OwnerStates(targetClient).Select(value => value.Health).ToArray();
+                var lowest = healths.Length > 0 ? Array.IndexOf(healths, healths.Min()) : 0;
+                return healths.Skip(lowest).Any(health => health > healths[lowest]);
+            },
             "the target to regain health after the last bolt");
-        var lowest = States(targetClient).Where(value => value.EntityId == targetEntityId).Min(value => value.Health);
-        Assert.True(lowest <= 97);
+        Assert.True(OwnerStates(targetClient).Min(value => value.Health) <= 97);
     }
 
     // An arrow leaves when the bow's windup ends: the attack starts at once and names its

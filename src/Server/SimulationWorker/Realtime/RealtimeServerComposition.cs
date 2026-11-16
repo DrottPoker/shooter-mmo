@@ -125,9 +125,11 @@ internal static class RealtimeServerComposition
             logger);
     }
 
-    private static RealtimeCoreServices CreateCore(
+    // The core services around a peer directory, which is the transport in production; tests
+    // build features on it around recording peers.
+    internal static RealtimeCoreServices CreateCore(
         RealtimeHostDependencies host,
-        LiteNetLibRealtimeTransport transport,
+        IRealtimePeerDirectory peerDirectory,
         PeerAdmissionGuard admissionGuard,
         RealtimeNetworkMetrics networkMetrics,
         RealtimePerformanceMetrics performanceMetrics,
@@ -141,7 +143,7 @@ internal static class RealtimeServerComposition
         var completions = new RealtimeCompletionQueue();
         var operationTracker = new RealtimeOperationTracker();
         var peers = new RealtimePeerRegistry(
-            transport,
+            peerDirectory,
             host.ConnectionBindings,
             host.EntityRegistry,
             networkMetrics);

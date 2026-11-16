@@ -2225,6 +2225,26 @@ lootable items appears where it fell, and the character respawns at the spawn
 after 5 seconds. Both clients stay connected. The Shard's rule set allows this
 on `local-shard-1`.
 
+### Another Player's Health After A Fight
+
+1. With the [second client](#add-a-second-client) on another character, attack
+   it with the first client's shortbow from about 9 m until it has lost about a
+   third of its health, then press Escape. Expected result: after every hit the
+   first client's target frame shows the lower health at once, and a small
+   health bar appears over the other character.
+2. Press C, move the bow from `Main Hand` to the inventory, and click the other
+   character, so it stays in the target frame without being attacked. Expected
+   result: the status reads `No weapon equipped`. About 5 seconds after the last
+   hit `In combat` leaves the target frame, and then the health rises by 1
+   every second, such as `67 / 100`, `68 / 100`, while the bar over the
+   character grows in small even steps without jumping back, until it
+   disappears at full health. The second client's own frame shows the same
+   numbers at the same moments, within a fraction of a second.
+3. While the health still rises, equip the bow again and unequip it after the
+   first hit. Expected result: the target frame and the bar show the lower
+   health and `In combat` at once, and about 5 seconds after the hit the health
+   rises again from there.
+
 ### Combat On The Playtest Dashboard
 
 1. Start the monitoring stack as [Monitoring](MONITORING.md) describes, fight

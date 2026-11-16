@@ -724,7 +724,11 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<CombatDeathPresentation>(
                 presentation => presentation.Initialize(combatController, combatantViews));
             AddSceneComponentIfMissing<WorldNameplates>(
-                nameplates => nameplates.Initialize(combatController, combatantViews));
+                nameplates => nameplates.Initialize(
+                    combatController,
+                    combatantViews,
+                    realtime.Movement,
+                    realtime.Diagnostics));
             AddSceneComponentIfMissing<WorldQuestMarkers>(
                 markers => markers.Initialize(questController, inventoryController, actorPresentation, combatantViews));
             AddSceneComponentIfMissing<TemporaryCombatHud>(

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
 
@@ -10,6 +11,8 @@ namespace Mmorpg.Client.Tests.EditMode
 {
     public sealed class CombatClientTests
     {
+        private const int TickRate = 30;
+
         [Test]
         public void CombatantStatesKeepOnlyNewerRevisions()
         {
@@ -89,6 +92,88 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(state.TryApplyCombatant(Combatant(7, 1, 50), out error), Is.True, error);
             Assert.That(state.TryGetCombatant(7, out var respawned), Is.True);
             Assert.That(respawned.StateRevision, Is.EqualTo(1));
+        }
+
+        // The shared rule as the client runs it: the amount at the named tick and every second
+        // after it, up to the maximum, across the wrap of the server tick.
+        [Test]
+        public void TheRegenerationRuleAddsTheAmountEverySecondUpToTheMaximum()
+        {
+            var regenerating = Regenerating(7, 1, 20, uint.MaxValue - 9);
+
+            Assert.That(RealtimeCombatHealth.At(regenerating, uint.MaxValue - 10, TickRate), Is.EqualTo(20));
+            Assert.That(RealtimeCombatHealth.At(regenerating, uint.MaxValue - 9, TickRate), Is.EqualTo(23));
+            Assert.That(RealtimeCombatHealth.At(regenerating, 19, TickRate), Is.EqualTo(23));
+            Assert.That(RealtimeCombatHealth.At(regenerating, 20, TickRate), Is.EqualTo(26));
+            Assert.That(RealtimeCombatHealth.At(regenerating, 1_000_000, TickRate), Is.EqualTo(50));
+            Assert.That(RealtimeCombatHealth.At(regenerating, 20, 0), Is.EqualTo(20));
+            Assert.That(RealtimeCombatHealth.At(Combatant(7, 1, 20), 1_000_000, TickRate), Is.EqualTo(20));
+        }
+
+        // A regenerating player's bar rises with the clock's estimate of the server tick without
+        // a new message, goes once the player is whole, and a hit shows at once.
+        [Test]
+        public void AHealthBarRisesWithoutANewMessage()
+        {
+            var state = new CombatClientState();
+            var changes = 0;
+            state.Changed += () => changes++;
+            Apply(state, Regenerating(7, 4, 20, 1_000));
+            Assert.That(state.TryGetCombatant(7, out var regenerating), Is.True);
+
+            Assert.That(state.HealthAt(regenerating, Clock(999)), Is.EqualTo(20));
+            Assert.That(state.HealthAt(regenerating, Clock(1_000)), Is.EqualTo(23));
+            Assert.That(state.HealthAt(regenerating, new CombatServerClock(1_000, 0.5f, TickRate)), Is.EqualTo(23));
+            Assert.That(state.HealthAt(regenerating, new CombatServerClock(1_000, 1f, TickRate)), Is.EqualTo(26));
+            var fractions = Enumerable.Range(1, 9)
+                .Select(second => CombatHudPresentation.HealthFraction(
+                    state.HealthAt(regenerating, Clock(1_000 + (uint)(second * TickRate))),
+                    50))
+                .ToArray();
+            Assert.That(fractions, Is.Ordered.Ascending);
+            Assert.That(fractions.Distinct().Count(), Is.EqualTo(9));
+            Assert.That(fractions[0], Is.EqualTo(26f / 50f).Within(0.0001f));
+            Assert.That(fractions[8], Is.EqualTo(1f));
+            Assert.That(
+                CombatHudPresentation.ShowsHealthBar(
+                    state.HealthAt(regenerating, Clock(1_270)),
+                    50,
+                    RealtimeCombatLifeState.Alive),
+                Is.False);
+            Assert.That(changes, Is.EqualTo(1));
+
+            // An estimate that steps back, as when a late owner snapshot arrives, never takes
+            // shown health back, and neither does a clock that is not known.
+            Assert.That(state.HealthAt(regenerating, Clock(1_000)), Is.EqualTo(50));
+            Assert.That(state.HealthAt(regenerating, default(CombatServerClock)), Is.EqualTo(50));
+
+            // A hit is a new state that shows at once, and the regeneration after it starts there.
+            Apply(state, Combatant(7, 5, 12));
+            Assert.That(state.TryGetCombatant(7, out var hit), Is.True);
+            Assert.That(state.HealthAt(hit, Clock(1_300)), Is.EqualTo(12));
+            Apply(state, Regenerating(7, 6, 12, 1_330));
+            Assert.That(state.TryGetCombatant(7, out var again), Is.True);
+            Assert.That(state.HealthAt(again, Clock(1_329)), Is.EqualTo(12));
+            Assert.That(state.HealthAt(again, Clock(1_330)), Is.EqualTo(15));
+            Assert.That(changes, Is.EqualTo(3));
+
+            // Without a known clock a state shows its own health.
+            Assert.That(new CombatClientState().HealthAt(again, default(CombatServerClock)), Is.EqualTo(12));
+        }
+
+        // A state of the same revision that was sent later carries the health and the next step
+        // the regeneration reached by then; it describes the same regeneration and is no conflict.
+        [Test]
+        public void ARepeatedRevisionMayCarryTheRegenerationFurtherOn()
+        {
+            var state = new CombatClientState();
+            Apply(state, Regenerating(7, 4, 20, 1_000));
+
+            Apply(state, Regenerating(7, 4, 26, 1_060));
+            Assert.That(state.TryGetCombatant(7, out var kept), Is.True);
+            Assert.That((kept.Health, kept.HealthRegenerationTick), Is.EqualTo((20, 1_000u)));
+            Assert.That(state.TryApplyCombatant(Regenerating(7, 4, 20, 1_000, amount: 5), out var error), Is.False);
+            Assert.That(error, Does.Contain("conflicts"));
         }
 
         [Test]
@@ -402,7 +487,42 @@ namespace Mmorpg.Client.Tests.EditMode
                 lifeState,
                 health < 50,
                 0,
+                0,
+                0,
                 0);
+        }
+
+        // A living player out of combat that regains the amount at the tick and every second
+        // after it.
+        private static RealtimeCombatantState Regenerating(
+            ulong entityId,
+            long revision,
+            int health,
+            uint tick,
+            int amount = 3)
+        {
+            return new RealtimeCombatantState(
+                entityId,
+                revision,
+                health,
+                50,
+                RealtimeCombatLifeState.Alive,
+                false,
+                0,
+                0,
+                amount,
+                tick);
+        }
+
+        // The worker's tick exactly at the given one.
+        private static CombatServerClock Clock(uint tick)
+        {
+            return new CombatServerClock(tick, 0f, TickRate);
+        }
+
+        private static void Apply(CombatClientState state, RealtimeCombatantState combatant)
+        {
+            Assert.That(state.TryApplyCombatant(combatant, out var error), Is.True, error);
         }
 
         private static RealtimeOwnerCombatState Owner(

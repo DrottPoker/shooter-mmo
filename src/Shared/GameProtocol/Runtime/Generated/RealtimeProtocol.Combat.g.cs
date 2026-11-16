@@ -239,7 +239,7 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
-    /// A newer health and life state of a visible combatant. It follows every spawn of a combatant.
+    /// A newer health and life state of a visible combatant, with the health it regains by itself until the next state. It follows every spawn of a combatant.
     /// </summary>
     public sealed partial class RealtimeCombatantState
     {
@@ -251,7 +251,9 @@ namespace Mmorpg.GameProtocol
             RealtimeCombatLifeState lifeState,
             bool inCombat,
             ulong targetEntityId,
-            ulong taggedByEntityId)
+            ulong taggedByEntityId,
+            int healthRegenerationAmount,
+            uint healthRegenerationTick)
         {
             EntityId = entityId;
             StateRevision = stateRevision;
@@ -261,6 +263,8 @@ namespace Mmorpg.GameProtocol
             InCombat = inCombat;
             TargetEntityId = targetEntityId;
             TaggedByEntityId = taggedByEntityId;
+            HealthRegenerationAmount = healthRegenerationAmount;
+            HealthRegenerationTick = healthRegenerationTick;
         }
 
         /// <summary>
@@ -274,7 +278,7 @@ namespace Mmorpg.GameProtocol
         public long StateRevision { get; }
 
         /// <summary>
-        /// The current health.
+        /// The health when the state was sent.
         /// </summary>
         public int Health { get; }
 
@@ -302,6 +306,16 @@ namespace Mmorpg.GameProtocol
         /// The player who tagged the Mob and alone gets its credit and loot, or 0 when no one has.
         /// </summary>
         public ulong TaggedByEntityId { get; }
+
+        /// <summary>
+        /// The health the combatant gains at HealthRegenerationTick and again every second after it, up to the maximum, while this state stands; 0 when its health does not rise by itself.
+        /// </summary>
+        public int HealthRegenerationAmount { get; }
+
+        /// <summary>
+        /// The server tick of the next regeneration step, or 0 when the amount is 0.
+        /// </summary>
+        public uint HealthRegenerationTick { get; }
     }
 
     /// <summary>
@@ -721,7 +735,7 @@ namespace Mmorpg.GameProtocol
         }
 
         /// <summary>
-        /// A newer health and life state of a visible combatant. It follows every spawn of a combatant.
+        /// A newer health and life state of a visible combatant, with the health it regains by itself until the next state. It follows every spawn of a combatant.
         /// </summary>
         public static byte[] EncodeCombatantState(RealtimeCombatantState state)
         {
@@ -730,7 +744,7 @@ namespace Mmorpg.GameProtocol
                 throw new ArgumentException("Combatant state is invalid.", nameof(state));
             }
 
-            var writer = StartPacket(RealtimeMessageType.CombatantState, 42);
+            var writer = StartPacket(RealtimeMessageType.CombatantState, 50);
             WriteCombatantState(ref writer, state);
             return writer.Finish();
         }
@@ -765,6 +779,8 @@ namespace Mmorpg.GameProtocol
             writer.WriteBoolean(value.InCombat);
             writer.WriteUInt64(value.TargetEntityId);
             writer.WriteUInt64(value.TaggedByEntityId);
+            writer.WriteInt32(value.HealthRegenerationAmount);
+            writer.WriteUInt32(value.HealthRegenerationTick);
         }
 
         private static bool TryReadCombatantState(ref PacketReader reader, out RealtimeCombatantState value, out string error)
@@ -812,7 +828,17 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            value = new RealtimeCombatantState(entityId, stateRevision, health, maximumHealth, lifeState, inCombat, targetEntityId, taggedByEntityId);
+            if (!reader.TryReadInt32(out var healthRegenerationAmount, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadUInt32(out var healthRegenerationTick, out error))
+            {
+                return false;
+            }
+
+            value = new RealtimeCombatantState(entityId, stateRevision, health, maximumHealth, lifeState, inCombat, targetEntityId, taggedByEntityId, healthRegenerationAmount, healthRegenerationTick);
             return true;
         }
 
@@ -823,7 +849,8 @@ namespace Mmorpg.GameProtocol
                 || value.StateRevision < 1
                 || value.Health < 0
                 || value.MaximumHealth < 1
-                || !IsDefined(value.LifeState))
+                || !IsDefined(value.LifeState)
+                || value.HealthRegenerationAmount < 0)
             {
                 return false;
             }

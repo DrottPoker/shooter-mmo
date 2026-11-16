@@ -96,7 +96,7 @@ schema cannot say:
 | `Items` | `Items/RealtimeProtocol.Items.cs`: cross-field rules |
 | `Corpses` | `Corpses/RealtimeProtocol.Corpses.cs`: cross-field rules, the shorter `RealtimeCorpseSlot` constructors, and the corpse view closure codes |
 | `WorldActors` | `WorldActors/RealtimeProtocol.WorldActors.cs`: cross-field rules |
-| `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules and the combat intent error codes |
+| `Combat` | `Combat/RealtimeProtocol.Combat.cs`: cross-field rules, the combat intent error codes, and `RealtimeCombatHealth`, the health rule of a combatant state |
 | `Admin` | None |
 
 `RealtimeError` is the generated `Error` struct of the `Session` family.
@@ -880,12 +880,27 @@ item-state revision that holds the yield.
   `CombatIntentResult` (30) answers it with the target afterwards and, on
   failure, one of the stable codes in `RealtimeCombatErrorCodes`.
 - `CombatantState` (31) carries the health, maximum health, life state
-  (`Alive`, `Dead`, or `Evading`), combat flag, attack target, and
-  `TaggedByEntityId` of a visible combatant with a revision that only grows.
-  `TaggedByEntityId` names the player who tagged a Mob, or is 0. It follows every
-  `EntitySpawn` and `WorldActorSpawn` of a combatant, so a client never shows a
-  combatant without health. A dead combatant has 0 health and no target, and
-  nobody targets or tags itself.
+  (`Alive`, `Dead`, or `Evading`), combat flag, attack target,
+  `TaggedByEntityId`, and health regeneration of a visible combatant with a
+  revision that only grows. `TaggedByEntityId` names the player who tagged a
+  Mob, or is 0. It follows every `EntitySpawn` and `WorldActorSpawn` of a
+  combatant, so a client never shows a combatant without health. A dead
+  combatant has 0 health, no target, and no regeneration, and nobody targets or
+  tags itself.
+  - Since protocol 44 the state describes the health between states:
+    `HealthRegenerationAmount` (i32, at least 0) is the health the combatant
+    gains at `HealthRegenerationTick` (u32, a server tick) and again every
+    second after it, up to `MaximumHealth`, while the state stands. Without a
+    regeneration both are 0; the hand-written rule rejects a tick without an
+    amount, and tick 0 with an amount is a tick like any other after the
+    server tick wrapped.
+  - `RealtimeCombatHealth.At(state, serverTick, tickRateHz)` is the one rule
+    that every receiver follows: the state's `Health` plus the amount for every
+    step whose tick `serverTick` reached, one step every `tickRateHz` ticks,
+    capped at the maximum; the state's own health when the amount is 0, the
+    combatant is not alive, or the tick rate is not positive. It compares ticks
+    across the wrap like the worker. The client reads no combat rule for it, so
+    a later rate per combatant needs no client change.
 - `CombatEventBatch` (32) carries the events of one server tick that involve a
   combatant the recipient sees or controls, in simulation order. Every
   `CombatEvent` has a kind, source, target, `Tick`, damage, damage type, health

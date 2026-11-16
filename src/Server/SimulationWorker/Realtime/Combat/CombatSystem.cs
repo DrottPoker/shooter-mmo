@@ -815,6 +815,11 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
     // A dead character respawns at the World spawn once its death committed and the
     // respawn delay passed; a living one out of combat regains health and mana every second. A
     // lingering body never respawns: its committed death ends it.
+    //
+    // Viewers follow the health regeneration by the rule of the state they hold, which names
+    // the next step's tick, so a step on that tick reaches the owner only. A step after its
+    // tick, such as the first one after vitals restored at a join or after a combat phase that
+    // failed, starts another rhythm, which viewers receive as a new state.
     private void RegenerateOrRespawn(Combatant combatant, uint serverTick)
     {
         var player = combatant.Player!;
@@ -840,11 +845,19 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
             return;
         }
 
+        var onItsTick = serverTick == combatant.NextRegenerationTick;
         combatant.NextRegenerationTick = serverTick + (uint)config.MovementSimulation.TickRateHz;
         if (healthMissing)
         {
             combatant.Health = Math.Min(combatant.MaximumHealth, combatant.Health + rules.HealthRegenerationPerSecond);
-            combatant.MarkStateChanged();
+            if (onItsTick)
+            {
+                combatant.MarkOwnerStateChanged();
+            }
+            else
+            {
+                combatant.MarkStateChanged();
+            }
         }
 
         if (manaMissing)

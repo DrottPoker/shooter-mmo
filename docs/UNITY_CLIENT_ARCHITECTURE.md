@@ -3481,9 +3481,11 @@ world actor channels. Its `CombatClientState` keeps:
 
 - One combatant state per visible player or Mob entity. A newer state revision
   replaces it, an older one is ignored, and an equal revision with different
-  values is a conflict that disconnects with `combat_state_conflict`. The state
-  of an entity or world actor is removed when it despawns, and a combatant that
-  spawns again starts from the state that follows its spawn.
+  values is a conflict that disconnects with `combat_state_conflict`, except
+  the health and the next step of a regeneration, which a state of the same
+  revision sent later carries further on. The state of an entity or world actor
+  is removed when it despawns, and a combatant that spawns again starts from
+  the state that follows its spawn.
 - The owner's combat state from `OwnerCombatState` with the same revision rules,
   where only the server tick of a repeated revision may differ.
 - The combat intents that wait for a result, keyed by operation id, at most
@@ -3498,6 +3500,17 @@ Combat event batches are forwarded through `EventsReceived` in simulation order
 for presentation; health always comes from the combatant and owner states. The
 state clears on `SessionJoined` and `SessionEnded`, so reconnect cleanup never
 compares revisions across sessions.
+
+The worker sends another combatant's state only when something other than its
+health regeneration changes, so everything that shows another combatant's
+health reads `CombatClientState.HealthAt(state, clock)`: the shared
+`RealtimeCombatHealth.At` rule on the state at the `CombatServerClock` estimate
+of the server tick, as [Combat](REALTIME_PROTOCOL.md#combat) describes, or the
+state's own health while the clock is unknown. The estimate steps back a little
+when a late owner snapshot arrives, so the health shown for one state never
+falls back; a newer state, such as a hit, shows at once. The local player's own
+health always comes from `OwnerCombatState`, which the worker still sends at
+every regeneration step.
 
 `Died` fires when an owner state says dead and the previous one did not, or
 belonged to an earlier life, so it fires once per death, also when the client
@@ -3573,8 +3586,10 @@ frame, so they follow a moving Mob; the worker never sees these positions.
 for presentation: the tick of the newest owner snapshot,
 `IRealtimeDiagnostics.LatestServerTick`, plus the time since it arrived,
 `LatestSnapshotAgeSeconds`, plus half of `RoundTripTimeMilliseconds`, at the
-movement session's tick rate. The worker keeps sending owner snapshots while the character
-is dead, so the clock keeps running for the respawn countdown.
+movement session's tick rate. `SecondsUntil` gives the time to a tick, and
+`EstimatedTick` the tick now in whole ticks, which wraps like the worker's and
+is 0 while the clock is unknown. The worker keeps sending owner snapshots while
+the character is dead, so the clock keeps running for the respawn countdown.
 `RoundTripTimeMilliseconds` reads LiteNetLib's round trip time; LiteNetLib's
 `Ping` is only half of it.
 
@@ -3594,10 +3609,14 @@ blocks a world click. It draws:
   combat. The worker's error for a rejected request shows below it for four
   seconds.
 - The target frame for the target of `CombatTargetingController`, from its
-  combatant state.
+  combatant state with the health of `HealthAt`. It compares what it shows every
+  frame, so a regenerating target's health rises without a new state.
 - Health bars over every damaged living player in view within 60 metres: the
-  local player from its owner state, other players from their combatant states.
-  Mobs show their health on their nameplates instead.
+  local player from its owner state, other players from their combatant states
+  with the health of `HealthAt` every frame, so the bar of a regenerating
+  player rises and goes once the player is whole, without a new state. A player
+  whose state arrived at full health needs no bar until its next state. Mobs
+  show their health on their nameplates instead.
 - A floating damage number at the hit target for every `Hit` event, a
   `WorldLabels` text rising and fading over 1.1 seconds. On a Mob it starts above
   the nameplate, at `WorldNameplates.AnchorLift` over the head plus
@@ -3719,7 +3738,9 @@ the final interface art.
 
 - Data: it keeps the entity ids of the combatants in view, read from
   `CombatClientState.Combatants` on `Changed` instead of every frame, and each
-  frame reads the combatant state by id. `CombatantViewLocator.TryGetMob` gives
+  frame reads the combatant state by id and shows the health of `HealthAt` at
+  the server clock, so a health that a state says rises by itself slides up
+  without a new state. `CombatantViewLocator.TryGetMob` gives
   the Mob's view, whose `Level` and `Aggression` come from the
   `WorldActorSpawn` through `WorldActorClientEntry`. A Mob without a combatant
   state, a hidden Mob, and a dead one show nothing.
