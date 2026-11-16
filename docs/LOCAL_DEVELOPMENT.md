@@ -602,8 +602,8 @@ schedules another thread, which the p99 stays clear of. Every load run under a
 profile checks the proxy again with the validity rule
 `network_proxy_lateness_p99_ms`; the `playing-100` runs of
 [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles)
-measured a lateness p99 of 0.52 to 0.54 ms at 3,000 to 3,700 packets per second
-and direction, with the proxy at about one core.
+measured a lateness p99 of 0.51 to 0.54 ms at 1,800 to 3,300 packets per second
+and direction, with the proxy at about 0.8 of a core.
 
 ### The Client On A Bad Network
 

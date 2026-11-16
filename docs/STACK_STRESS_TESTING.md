@@ -493,14 +493,16 @@ the worker in the seconds before it noticed the outage waited in the player's
 lane behind durable work, such as a bow fighter's arrow batch, that keeps the
 lane until GameService returns, and was answered a minute late. The worker now
 refuses every durable client operation that waits in a lane at the moment
-GameService stops answering. The run of 2026-11-15 after that fix, on a
-machine in use, passed every rule with 100 of 100 bots: GameService was down
-62.2 seconds, the worker noticed the outage 4.8 seconds after the stop and the
-return within 0.1 seconds of the readiness, 277 refusals and 11 calls that the
-stop cut off were expected, none fell outside the window, the 36 kills while
-saving was paused all left their corpses, and the first durable action
-committed 0.2 seconds after the return. GameService's process numbers cover
-only the process before the stop, because the sampler follows one process.
+GameService stops answering. The run of 2026-11-16 on the idle machine of
+[Measured Tiers](#measured-tiers) passed every rule with 100 of 100 bots:
+GameService was down 62.0 seconds, the worker noticed the outage 4.7 seconds
+after the stop and the return 0.04 seconds after the readiness, 297 refusals,
+7 calls that the stop cut off, and 4 failed item reads were expected, none fell
+outside the window, the 49 kills while saving was paused all left their
+corpses, and the first durable action committed 1.5 seconds after the return.
+The worker logged 28 failed registry heartbeats and its one notice of the
+outage, all inside the window. GameService's process numbers cover only the
+process before the stop, because the sampler follows one process.
 
 A variant whose outage outlasts the worker's tolerance, which must end with
 every bot disconnected with `game_service_outage` and the worker stopped in
@@ -1601,103 +1603,142 @@ baselines that are checked in.
 
 ## Measured Tiers
 
-These are the checked-in baselines in `tools/load/baselines`. The full-stack
-ones were recorded on 2026-11-15 at commit `f90564a`, after the database phase
-of the hardening plan; `worker-only-200` and `worker-only-500` are from
-2026-11-14 and do not touch the database. The machine is an AMD Ryzen 7 5800
-with 16 logical processors and 31.9 GiB of memory under Windows, with the
-generator, the worker, GameService, PostgreSQL, and Redis on that one machine.
-Beside the runs it held about twenty containers of another project, a browser,
-and chat programs, which together used 2 to 11 percent of all cores before a
-run. The worker ran 30 simulation ticks and 15 snapshots per second. Each
-baseline file names its commit.
+These are the checked-in baselines in `tools/load/baselines`, all recorded on
+2026-11-16 at commit `e5d50ea4`, after the worker and network phase of the
+hardening plan. Every summary says that the tree had changes: they were the
+baseline files that the runs before it had recorded, so every run measured
+that commit's code. The machine is an AMD Ryzen 7 5800 with 16 logical
+processors and 31.9 GiB of memory under Windows, with the generator, the
+worker, GameService, PostgreSQL, and Redis on that one machine. Beside the runs
+it held about twenty containers of another project, a browser, a game
+launcher, and chat programs, which together used 7 to 11 percent of all cores
+in the 30 seconds before every run; no game, Unity Editor, or CI job ran. The
+worker ran 30 simulation ticks and 15 snapshots per second. Each baseline file
+names its commit.
 
 | Scenario | Result | Tick p99 | Input ack p50 / p99 | Updates per second seen, p5 | Slowest operation p95 | Worker CPU, one core | Sent per player |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `smoke` | passed | 0.5 ms | 49 / 94 ms | 15.0 | corpse deposit 87 ms | 10% | 10 KiB/s |
-| `worker-only-200` | passed | 8 ms | 55 / 96 ms | 15.0 | none | 47% | 126 KiB/s |
-| `worker-only-500` | failed | 16 ms | 63 / 115 ms | **3.5** | none | 87% | 74 KiB/s |
-| `mixed-100` | passed | 4 ms | 43 / 77 ms | 15.0 | corpse deposit 115 ms | 26% | 68 KiB/s |
-| `hotspot-100` | passed | 4 ms | 40 / 74 ms | 15.0 | vendor sale 69 ms | 18% | 62 KiB/s |
-| `playing-100` | passed | 8 ms | 45 / 98 ms | 15.0 | equip 180 ms | 19% | 27 KiB/s |
-| `playing-250` | passed | 24 ms | 52 / 105 ms | 15.0 | equip 142 ms | 54% | 63 KiB/s |
-| `playing-500` | failed | **50 ms** | 63 / 115 ms | **6.5** | equip 186 ms | 123% | 77 KiB/s |
-| `mixed-250` | failed | 8 ms | 56 / 102 ms | 14.1 | **partial loot 2,246 ms** | 78% | 148 KiB/s |
-| `soak-30min` | passed | 24 ms | 51 / 103 ms | 15.0 | rejoin 372 ms | 53% | 60 KiB/s |
-| `login-burst` | passed | 1 ms | 38 / 86 ms | 15.0 | relocation 67 ms | 4% | 15 KiB/s |
-| `logout-burst` | passed | 1 ms | 41 / 75 ms | 15.0 | relocation 67 ms | 4% | 15 KiB/s |
+| `smoke` | passed | 0.5 ms | 46 / 84 ms | 15.0 | corpse open 97 ms | 8% | 4.0 KiB/s |
+| `worker-only-200` | passed | 8 ms | 48 / 82 ms | 10.6 | none | 25% | 30 KiB/s |
+| `worker-only-500` | failed | 24 ms | 59 / 97 ms | **4.2** | none | 63% | 30 KiB/s |
+| `mixed-100` | passed | 4 ms | 41 / 73 ms | 15.0 | corpse deposit 101 ms | 19% | 16 KiB/s |
+| `hotspot-100` | passed | 2 ms | 39 / 75 ms | 15.0 | item move 67 ms | 10% | 4.9 KiB/s |
+| `playing-100` | passed | 8 ms | 43 / 97 ms | 14.9 | equip 168 ms | 15% | 5.6 KiB/s |
+| `playing-250` | passed | 16 ms | 45 / 98 ms | 14.9 | equip 181 ms | 38% | 9.8 KiB/s |
+| `playing-500` | passed | 24 ms | 60 / 111 ms | 14.9 | equip 164 ms | 82% | 16 KiB/s |
+| `mixed-250` | failed | 8 ms | 46 / 84 ms | 15.0 | **corpse deposit 1,388 ms** | 43% | 30 KiB/s |
+| `soak-30min` | passed | 16 ms | 47 / 99 ms | 14.9 | rejoin 386 ms | 37% | 9.5 KiB/s |
+| `login-burst` | passed | 1 ms | 35 / 66 ms | 15.0 | relocation 68 ms | 4% | 5.9 KiB/s |
+| `logout-burst` | passed | 1 ms | 40 / 75 ms | 15.0 | relocation 66 ms | 5% | 5.9 KiB/s |
+| `outage-60s`, no baseline | passed | 8 ms | 43 / 98 ms | 14.9 | equip 153 ms | 15% | 5.5 KiB/s |
 
 The tick p99 is a bucket upper bound, and bold numbers fail their rule. No
 full-stack run had a PostgreSQL deadlock or a lock wait longer than the
-deadlock timeout, no call of the worker to GameService failed, and no service
-logged an error.
+deadlock timeout, no call of the worker to GameService failed outside the
+outage of `outage-60s`, no service logged an error, and the worker's loop
+failed no step. The runs of `playing-100` under the network profiles are in
+[Measured Under The Profiles](#measured-under-the-profiles).
 
 What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target):
 
-- **250 playing players pass a five-minute run and a 30-minute soak** on this
-  machine with every rule, at a bit more than half a core for the worker. 100
-  players in one place pass too.
-- **500 playing players fail** the tick budget and the update rate. The worker
-  process uses more than one core, but its loop thread is busy only about a
-  third of the time; entry 1 of
-  [What Limits The Next Tier](#what-limits-the-next-tier) says where the time
-  goes. Nothing else fails there: every operation stays below 200 ms at the
-  95th percentile.
+- **500 playing players pass a five-minute run** on this machine with every
+  rule: the tick p99 is 24 ms of the 33.34 ms budget, the players who see the
+  least receive 14.9 updates per second, every operation stays below 170 ms
+  at the 95th percentile, and the worker uses 82 percent of a core while its
+  loop thread is busy 26 percent of the time. The claim of the target also
+  needs a 30-minute soak at 500, which has not run, as
+  [What The Playing Scenarios Are For](#what-the-playing-scenarios-are-for)
+  says. Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
+  says what a larger tier would meet first.
+- **250 playing players pass a five-minute run and a 30-minute soak** with every
+  rule, at 37 to 38 percent of a core for the worker. 100 players in one place
+  pass too.
+- **A crowd in one place lowers its own update rate, by design.** 200 bots in
+  one place receive 10.6 updates per second at the fifth percentile, just above
+  the rule's 10, because each player's snapshot budget of 32 KiB per second
+  holds back 30 percent of their records; 500 in one place receive 4.2.
 - **250 players on one shared corpse fail** only the operation time of that
   corpse, the deliberate worst case of `mixed-250`: see entry 6 of
   [What Limits The Next Tier](#what-limits-the-next-tier).
 - **A burst of logins waits and completes.** `login-burst` sent 400 logins
-  within 40 ms: the password hashing lane refused 147 of them once with
+  within 39 ms: the password hashing lane refused 164 of them once with
   `auth_busy`, each went again by itself, and every account was logged in after
-  16.4 seconds, half of them after 7.9. `logout-burst` logged 500 accounts out
-  within 0.42 seconds.
+  16.7 seconds, half of them after 7.8. `logout-burst` logged 500 accounts out
+  within 0.33 seconds.
 
-Against the baselines of 2026-11-14, before the database phase, on the same
-machine: the 95th percentile of most item operations fell by a fifth to a half
-(at 500 players a vendor purchase from 204 to 110 ms and a loot of everything
-from 225 to 126 ms; at 100 players on the shared corpse a deposit from 416 to
-115 ms, where the corpse also became a player's own with smaller stacks). The
-exception is the equip of the soak, 153 to 208 ms. The worker's CPU at 250
-players fell from 66 to 54 percent of a core, and the join's 95th percentile
-from about 500 to 210 to 340 ms in every scenario but `playing-100`, where it
-stayed at about 320. The tick and the update rate did not move, as expected:
-they belong to the worker's loop, not to the database. Two runs on two days
-do not separate the changes from the day's noise, so read these as direction.
+Against the baselines of 2026-11-15, before the worker and network phase, on
+the same machine, and for the worker-only scenarios against those of
+2026-11-14:
+
+- **Bytes per player fell four to thirteen times.** The worker sends
+  `playing-100` 5.6 instead of 27 KiB per second and player, `playing-250` 9.8
+  instead of 63, `playing-500` 16 instead of 77, the soak 9.5 instead of 60,
+  `hotspot-100` 4.9 instead of 62, and `mixed-250` 30 instead of 148. A crowd
+  in one place now stops at each player's budget: 30 KiB per second in both
+  worker-only scenarios, against 126 and 74.
+- **`playing-500` passes where it failed.** Its tick p99 fell from 50 to 24 ms,
+  its update rate at the fifth percentile rose from 6.5 to 14.9, the worker's
+  CPU fell from 123 to 82 percent of a core, and its highest working set from
+  367 to 244 MiB. Its loop thread was busy about a third of the time before,
+  26 percent now, with 2.5 ms of garbage collection pauses per second; the
+  older baselines do not record either number.
+- **The worker's CPU fell in every tier but `logout-burst`**, which went from 4
+  to 5 percent of a core: from 54 to 38 percent in
+  `playing-250`, 19 to 15 in `playing-100`, 53 to 37 in the soak, 78 to 43 in
+  `mixed-250`, and 48 and 87 to 25 and 63 in the worker-only scenarios. The
+  tick p99 of `playing-250` and the soak fell from 24 to 16 ms.
+- **The input acknowledgement p99 fell by up to 20 ms** in most tiers, 102 to
+  84 ms in `mixed-250` and 115 to 97 in `worker-only-500`, and stayed within a
+  millisecond in `hotspot-100` and `logout-burst`.
+- **What got worse is the dense crowd of 200:** its update rate at the fifth
+  percentile fell from 15.0 to 10.6, because the per-player budget now holds
+  back what the crowd's 126 KiB per second used to carry. `worker-only-500`
+  rose from 3.5 to 4.2, and its tick p99 from 16 to 24 ms.
+- **The operations did not move beyond the noise** but on the shared corpse:
+  the slowest kind of the playing tiers is still the equip at 164 to 181 ms,
+  and the soak's rejoin went from 372 to 386 ms. The shared corpse of
+  `mixed-250` answered faster, a deposit in 1,388 instead of 2,087 ms and a
+  partial loot in 1,262 instead of 2,246 at the 95th percentile, although its
+  path did not change.
+
+Two runs on two days do not separate the changes from the day's noise, so read
+these as direction.
 
 In `playing-100` to `playing-500` every gameplay operation succeeded: no
-unexpected rejection and no timeout in 247, 728, and 1,587 kills, their loots,
-the gathering, and the vendor trades, and 0.5 to 0.8 deaths per fighter and
+unexpected rejection and no timeout in 281, 727, and 1,648 kills, their loots,
+the gathering, and the vendor trades, and 0.6 to 0.7 deaths per fighter and
 ten minutes.
 
 ### The 30 Minute Soak
 
 `soak-30min` ran 250 playing bots for 1,800 seconds with ten percent of them
-leaving and returning per minute, and passed every rule. The run of 2026-11-14
-had failed on one deadlock.
+leaving and returning per minute, and passed every rule, as the run of
+2026-11-15 did.
 
-- **Churn**: 715 leaves, half of them with an account logout, 364 returns to a
-  standing body and 351 from the saved place. Every return kept its place and
-  health; five bodies died while their players were away and came back at the
-  spawn, as designed.
+- **Churn**: 717 leaves, 359 of them with an account logout, 367 returns to a
+  standing body and 350 from the saved place; 2 leaves were skipped because no
+  safe moment came within 30 seconds. Every return kept its place and health;
+  five bodies died while their players were away and came back at the spawn,
+  as designed.
 - **Memory**: the working set levels off. Between the second and the last fifth
-  of the run the worker grew 2.1 MiB, to 172 MiB, and GameService 3.5 MiB, to
-  248 MiB. The worker's managed heap stayed at 65 MiB with 34 generation 2
-  collections per hour and 31 MiB allocated per second. The generator itself
-  grew 13 MiB.
+  of the run the worker grew 10.6 MiB, to 199 MiB, all of it before the third
+  fifth (188.3, 197.5, 199.0, and 198.9 MiB from the second fifth on), and
+  GameService 4.2 MiB, to 248 MiB. The worker's managed heap rose from 83 to
+  92 MiB by the third fifth and stayed there, with 8 generation 2 collections
+  per hour and 3.5 MiB allocated per second, against 31 MiB before the worker
+  and network phase. The generator itself shrank 24 MiB.
 - **Drift**: no session without a bot, no playing bot without a session, no
-  session within ten seconds of its lease expiry (the least headroom was 20.1
-  of 30 seconds), no pending item operation, at most 3 of 64 pooled connections
-  in use.
+  session within ten seconds of its lease expiry (the least headroom was 140.1
+  of 150 seconds), no pending item operation, at most 2 of 64 pooled
+  connections in use.
 - **Retention**: a soak sets the retention windows to four minutes, so the run
   shows whether the deletes keep up. Between 270 seconds into the steady
-  interval and its end `item_operations` grew 5.2 percent and
-  `item_operation_changes` 5.1 percent, against the 25 percent the rule
-  allows, and no row was more than 14.9 seconds past its window, against 60.
+  interval and its end `item_operations` grew 6.1 percent and
+  `item_operation_changes` 3.8 percent, against the 25 percent the rule
+  allows, and no row was more than 14.8 seconds past its window, against 60.
   With those windows the whole database grew 34 MiB per hour.
-- **Logs**: no error or critical line. The warnings were one `session_revoked`
-  line of the session heartbeat, which a heartbeat on its way logs when it
-  meets the release of the same session and which changes nothing, and the
-  start notice of the development admin tools.
+- **Logs**: no error or critical line. The one warning was the start notice of
+  the development admin tools.
 
 What the history costs without retention was measured on 2026-11-14, before
 retention existed: the database grew 184 MiB per hour, about 750 KiB per player
@@ -1935,46 +1976,49 @@ timeout; the expected conflicts rose a little with the delay.
 
 ### Measured Under The Profiles
 
-`playing-100` with `-DurationSeconds 180` on 2026-11-14 on the reference
-machine of [Measured Tiers](#measured-tiers), directly and under each profile;
-the CI runner of the same machine may have run jobs at the same time. The
-proxy used about one core in every run. A first `normal` run, with a spin of
-1 ms that kept two cores busy, passed every rule with the same latencies and a
-tick p99 of 16 ms.
+`playing-100` with `-DurationSeconds 180` under each profile on 2026-11-16 at
+commit `e5d50ea4`, on the idle reference machine of
+[Measured Tiers](#measured-tiers), with `-UpdateBaseline`, so they are the
+baselines `playing-100.normal.json`, `playing-100.poor.json`, and
+`playing-100.terrible.json`. Direct is the 300-second `playing-100` run of
+Measured Tiers, which explains its larger kill count. The proxy used about 0.8
+of a core in every run.
 
 | | Direct | `normal` | `poor` | `terrible` |
 | --- | --- | --- | --- | --- |
-| Result | passed | failed | failed | failed |
-| Failed rules | none | `bot_failures` | `gameplay_operation_p95_ms`, `bot_failures`, `deadlocks` | `input_acknowledgement_p99_ms`, `gameplay_operation_p95_ms`, `bot_failures` |
-| Input acknowledgement p50 / p99 | 46 / 101 ms | 128 / 181 ms | 249 / 377 ms | 457 / 3,029 ms |
-| Operations: p50 range; slowest p95 | 14 to 84 ms; equip 248 ms | 93 to 169 ms; loot close 425 ms | 204 to 301 ms; loot close 1,609 ms | 462 to 1,299 ms; item move 7,379 ms |
-| Remote updates per second, p5 | 15.0 | 14.8 | 14.1 | 11.9 |
-| Bots that failed | none | 2 `connection_closed` | 25 `connection_closed` | 58 `connection_closed` |
-| Join p95 | 293 ms | 468 ms | 947 ms | 1,361 ms |
-| First hit after an attack, p95 | 1.1 s | 1.2 s | 1.7 s | 3.1 s |
-| Kills, bot deaths | 171, 24 | 174, 18 | 140, 24 | 102, 38 |
-| Worker tick p99, CPU of one core | 8 ms, 22 % | 8 ms, 25 % | 16 ms, 25 % | 16 ms, 26 % |
-| Worker payload in / out per player | 0.89 / 28.8 KiB/s | 1.62 / 28.2 KiB/s | 1.58 / 29.8 KiB/s | 1.12 / 32.5 KiB/s |
-| Dropped by the proxy, to the worker / to the bots | none | 1.0 / 1.0 % | 5.0 / 5.0 % | 12.9 / 13.8 % |
-| Proxy lateness p99, its CPU of one core | none | 0.54 ms, 98 % | 0.52 ms, 99 % | 0.52 ms, 99 % |
+| Result | passed | passed | failed | failed |
+| Failed rules | none | none | `gameplay_operation_p95_ms` | `input_acknowledgement_p99_ms`, `gameplay_operation_p95_ms` |
+| Input acknowledgement p50 / p99 | 43 / 97 ms | 124 / 176 ms | 252 / 376 ms | 452 / 3,015 ms |
+| Operations: p50 range; slowest p95 | 11 to 61 ms; equip 168 ms | 94 to 145 ms; item move 329 ms | 191 to 267 ms; loot close 1,330 ms | 415 to 483 ms; gather close 3,790 ms |
+| Remote updates per second, p5 | 14.9 | 14.7 | 13.9 | 11.5 |
+| Bots that failed | none | none | none | none |
+| Join p95 | 277 ms | 482 ms | 677 ms | 1,332 ms |
+| First hit after an attack, p95 | 1.1 s | 1.2 s | 1.6 s | 3.4 s |
+| Kills, bot deaths | 281, 29 | 151, 21 | 153, 23 | 117, 44 |
+| Worker tick p99, CPU of one core | 8 ms, 15 % | 8 ms, 19 % | 8 ms, 18 % | 8 ms, 16 % |
+| Worker payload in / out per player | 0.87 / 5.6 KiB/s | 1.62 / 5.9 KiB/s | 1.58 / 5.7 KiB/s | 1.12 / 6.2 KiB/s |
+| Dropped by the proxy, to the worker / to the bots | none | 1.0 / 1.0 % | 5.0 / 5.0 % | 12.9 / 13.9 % |
+| Proxy lateness p99, its CPU of one core | none | 0.51 ms, 82 % | 0.53 ms, 83 % | 0.54 ms, 81 % |
 
 What the profiles show:
 
-- **`normal` holds every rule but the leave.** Every reliable operation answers
-  about one round trip later than directly, with its p95 below 430 ms, and the
-  input acknowledgement p99 rises by 80 ms, within its allowance of 95 ms; one
-  of the two runs lost 2 leaves, as the last point but one describes.
-- **The worker receives about 80 percent more payload per player under
+- **`normal` holds every rule.** Every reliable operation answers about one
+  round trip later than directly, with its p95 below 330 ms, and the input
+  acknowledgement p99 rises by 79 ms, within its allowance of 95 ms. No leave
+  failed, where the runs of 2026-11-14 lost 2 of 100.
+- **The worker receives about 85 percent more payload per player under
   `normal` and `poor`.** A movement batch repeats every unacknowledged input up
   to four, and with a longer round trip more of them are unacknowledged when a
-  batch leaves. It sends up to 13 percent more payload under `terrible`, which
-  these runs do not explain.
+  batch leaves. It sends 11 percent more payload under `terrible`, which these
+  runs do not explain.
 - **Reliable operations slow down with loss far beyond the round trip.** Under
-  `poor` the operations' p50 is about one round trip, 220 to 300 ms, but their
-  p95 is 0.4 to 1.6 seconds, so `gameplay_operation_p95_ms` fails; under
-  `terrible` the p50 is about 1.1 seconds and the p95 2 to 7 seconds. One
-  cause was that every control message shared one reliable ordered channel, so
-  one lost packet held back every later message until LiteNetLib resent it; under
+  `poor` the operations' p50 is about one round trip, 190 to 270 ms, but their
+  p95 is 0.4 to 1.3 seconds, so `gameplay_operation_p95_ms` fails; under
+  `terrible` the p50 is one round trip too, 415 to 483 ms, and the p95 0.6 to
+  3.8 seconds. On 2026-11-14 the p50 under `terrible` was about 1.1 seconds and
+  the p95 2 to 7 seconds. One cause was that every control message shared one
+  reliable ordered channel, so one lost packet held back every later message
+  until LiteNetLib resent it; under
   `terrible` only the operations at the start of a session, the equip and the
   teleport, before combat traffic filled the channel, kept a p50 near one round
   trip. Since the intents and their answers travel on the owner channel apart
@@ -2018,12 +2062,13 @@ What the profiles show:
   describes, `playing-100` with `-DurationSeconds 180` lost no leave: on
   2026-11-15, before the change, 29 of 100 bots failed under `poor` and 57
   under `terrible`, and on 2026-11-16, after it, 0 and 0, with a game using
-  about one and a half cores beside the runs both times. The same holds for
-  every `ServerDisconnect`, protocol rejection, and the stop notice.
+  about one and a half cores beside the runs both times. The runs of the table
+  above, on the idle machine, lost no leave under any profile either. The same
+  holds for every `ServerDisconnect`, protocol rejection, and the stop notice.
 - **An outage costs the inputs it spans.** Under `terrible` the input
   acknowledgement p99 is 3 seconds, the outage itself, so the rule fails as
   the profile predicts; the remote update rate, which the profile takes out,
-  stays at 11.9 per second at the fifth percentile.
+  stays at 11.5 per second at the fifth percentile.
 - **A bot walks on through its outage.** Since the worker walks a silent
   player's path on, as entry 11 of
   [What Limits The Next Tier](#what-limits-the-next-tier) describes, a bot's
@@ -2037,47 +2082,66 @@ What the profiles show:
   failed walk before and none after, and the kills from 104 to 78 and 89,
   which three runs do not separate from chance. The second run after had two
   `gather_open` answers `world_interaction_out_of_range`, as two runs of the
-  same day before the change had.
+  same day before the change had. The run of the table above, on the idle
+  machine, measured 3,015 ms with 1,507 route plans, no failed walk, and 117
+  kills.
 
 ## What Limits The Next Tier
 
 Each entry is a measured limit or defect with its evidence. None of them is
-tuned away in the load tooling; the run folders of 2026-11-14 and 2026-11-15
-hold the reports.
+tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
+2026-11-16 hold the reports.
 
-1. **Replication, not the loop thread.** At 500 playing players the tick p99
-   leaves the 33.34 ms budget and the update rate of the players who see the
-   least falls to 6.5 per second, although the players are spread over eight
-   hunting grounds, six node fields, and a town. The worker's performance file
-   of `playing-500` says where the time goes:
-   - The loop thread is busy only about a third of the time: 30 ticks per
-     second of 10.3 ms on average, 31 percent, and 3 percent for polling and
-     completions. The process uses 123 percent of a core, so most of its CPU
-     is outside the loop, in LiteNetLib's threads, which send 94,500 packets
-     per second: 44,000 snapshot packets and 50,000 others of 65 bytes on
-     average.
-   - The tail of the snapshot broadcast breaks the budget: it averages 9.9 ms,
-     of which interest takes 3.3, but its p99 bucket reaches 33.34 ms in 3 and
-     50 ms in 1 of the 30 intervals with all 500 players, and a single
-     broadcast took 64 ms.
-     Collision streaming and movement take 0.5 and 1.7 ms of a tick. The
-     worker allocates 78 MiB per second with 4.9 generation 0 and 2.8
-     generation 1 collections per second; how much of the tail they cause is
-     now measured as the interval's pause time.
-   - Every remote record is 42 bytes with its share of the packet header.
-     A player sees 180 entities with a state per snapshot, the aggregate
-     budget of 38 MiB per second lets 115 records through, the owner's
-     included, and so defers 36 percent of the updates; that is 77 KiB per
-     second and player.
+1. **The tick tail and the transport, now that replication fits 500.**
+   Replication set the limit at 500 spread players until the interest tiers,
+   the byte budget per recipient, and the broadcast planned over arrays: on
+   2026-11-15 the tick p99 of `playing-500` reached 50 ms and the players who
+   see the least received 6.5 updates per second, with 115 records of 42 bytes
+   per player and snapshot, 36 percent of the updates deferred, 77 KiB per
+   second and player, and a snapshot broadcast of 9.9 ms on average. On
+   2026-11-16 `playing-500` passed every rule, and its performance file says
+   what a tier above 500 meets first:
+   - The tick grows faster than the population. Its average went from 2.9 ms
+     at 250 players to 7.2 ms at 500, and its p99 bucket from 16 to 24 ms of
+     the 33.34 ms budget, with 2 ticks over budget, the longest 37.6 ms, in 29
+     intervals. The costliest tick phases of the worst interval were the
+     snapshots, 76 ms per second with a p99 of 16 ms, movement, 55 ms per
+     second, and combat, 52 ms per second. On that trend a tier of 750 would
+     reach the budget, so these three phases are the first limit above 500.
+   - The transport sends most packets for other things than snapshots. The
+     process uses 82 percent of a core while the loop thread is busy 26
+     percent of the time, so most of its CPU is still in LiteNetLib's threads,
+     which send 65,300 packets per second: 15,200 snapshot packets and 50,100
+     others of 65 bytes on average. The snapshot packets grow with the
+     players, the others with about their square: 2,500 per second at 100
+     players, 13,700 at 250, and 50,100 at 500, about 100 per second and
+     player. By the worker's counters they carry 28 percent of the bytes a
+     player receives at 100 players, 35 percent at 250, and 40 percent at
+     500, where they are 6.4 KiB per second and player. Spawns and despawns are
+     3,100 of them per second at 500; these numbers do not say which
+     messages the rest are, so a count per message kind is the next thing to
+     measure.
+   - Replication itself has room: the broadcast takes 4.7 ms on average, of
+     which interest takes 1.9, a player receives 42.9 records per snapshot,
+     the owner's included, of 15.4 bytes with their share of the packet
+     header, the budgets defer 0.003 percent of the remote updates, and the
+     worker sends 16 KiB per second and player. It allocates 9.6 MiB per
+     second, against 78 before, with 0.6 generation 0 and 0.09 generation 1
+     collections and 2.5 ms of pauses per second.
 
-   At 250 the worker uses 54 percent of a core and holds 15 updates per
-   second. The [Replication Benchmark](#replication-benchmark) measures the
-   bytes, records, and deferrals of 500 spread players in a minute.
-2. **Bandwidth per player.** The worker sends 60 to 77 KiB per second to each
-   of 250 to 500 spread players, about half a megabit, and 126 KiB per second
-   when 200 stand in one place. With 500 in one place the aggregate snapshot
-   budget of 38 MiB per second caps the rate at 3.5 updates per second
-   (`worker-only-500`). Entity state is sent unquantized and in full.
+   At 250 the worker uses 38 percent of a core with its loop thread busy 11
+   percent of the time. The [Replication Benchmark](#replication-benchmark)
+   measures the bytes, records, and deferrals of 500 spread players in a
+   minute.
+2. **Bandwidth per player.** Moved: the worker sends 5.6, 9.8, and 16 KiB per
+   second to each of 100, 250, and 500 spread players, against 27 to 77 KiB on
+   2026-11-15, and only the due records go out, at about 15 bytes each. A crowd
+   in one place now stops at each player's snapshot budget of 32 KiB per
+   second: 200 players in one place receive 10.6 updates per second at the
+   fifth percentile, with 30 percent of their records deferred, and 500 receive
+   4.2, with 72 percent deferred (`worker-only-500`), where the aggregate
+   budget capped them at 3.5 before. That is the dense case, whose cadence
+   falls by design.
 3. **A deadlock between a player death and the worker's registry heartbeat.**
    Fixed. The death's transaction held the Shard's row in
    `simulation_assignments` and needed a key-share lock on the Shard's row in
@@ -2087,16 +2151,18 @@ hold the reports.
    [Lock Order](GAME_SERVICE_MODULES.md#lock-order) now fixes which statement
    takes the Shard's row in which mode, and a heartbeat renewal only shares
    it. On 2026-11-15 `playing-500` and `soak-30min` ran without a deadlock and
-   without a lock wait longer than the deadlock timeout.
+   without a lock wait longer than the deadlock timeout, and on 2026-11-16 so
+   did every full-stack run of [Measured Tiers](#measured-tiers).
 4. **A registration or login burst waits in the password hashing lane.**
    Every password hash runs in the
    [password hashing lane](SERVICE_FEATURES.md#password-hashing-lane), at most
    eight at once on this machine, on threads of its own below normal priority,
    so a burst no longer takes GameService's thread pool or more than half the
-   cores. On the idle machine `login-burst` sent 400 logins within 40 ms: the
-   lane refused 147 of them once with `auth_busy`, each went again after its
-   `Retry-After`, and every account was logged in after 16.4 seconds, half of
-   them after 7.9. `mixed-250`, which registers and logs in its accounts 64 at
+   cores. On the idle machine on 2026-11-16 `login-burst` sent 400 logins
+   within 39 ms: the lane refused 164 of them once with `auth_busy`, each went
+   again after its `Retry-After`, and every account was logged in after 16.7
+   seconds, half of them after 7.8, as on 2026-11-15 with 147 refusals, 16.4,
+   and 7.9 seconds. `mixed-250`, which registers and logs in its accounts 64 at
    a time during the ramp, completed with 250 of 250 bots and without one
    refusal, and no registry heartbeat and no call of the worker to GameService
    failed in either. At its first refusal the lane held 242 waiting logins
@@ -2117,18 +2183,20 @@ hold the reports.
    `Redis:CommandTimeoutMilliseconds`, the tombstones of one revocation go to
    Redis together, and a transient failure is tried once more within
    `RedisAcceleration:SessionRevocationDeadlineMilliseconds`. On the idle
-   machine `logout-burst` logged 500 accounts out at once within 0.42
-   seconds, `login-burst` replaced 400 sessions, and `mixed-250` logged 250
-   accounts out, without one `session_cache_invalidation_unavailable` or Redis
-   timeout. Left to measure: a logout burst at the Scale Target's 500 players
+   machine on 2026-11-16 `logout-burst` logged 500 accounts out at once within
+   0.33 seconds, 0.42 on 2026-11-15, `login-burst` replaced 400 sessions, and
+   `mixed-250` logged 250 accounts out, without one
+   `session_cache_invalidation_unavailable` or Redis timeout. Left to measure: a logout burst at the Scale Target's 500 players
    beside a full World.
-6. **One corpse is one queue.** With 250 clients on the shared corpse of
-   `mixed-250`, the 95th percentile of a deposit is 2.1 seconds and of a
-   partial loot 2.2 seconds on the idle machine, against the 1 second the rule
-   allows; it is the only rule the scenario fails. That is the deliberate
-   worst case of the mixed workload, not a spread of corpses: `mixed-100` has
-   115 ms on its shared corpse. The worker lets one mutation of a corpse
-   through at a time, so the queue is as long as each operation's database
+6. **One corpse is one queue.** Still the limit of `mixed-250`. With 250
+   clients on its shared corpse, the 95th percentile of a deposit is 1.4
+   seconds and of a partial loot 1.3 seconds on the idle machine on
+   2026-11-16, against the 1 second the rule allows and the 2.1 and 2.2
+   seconds of 2026-11-15; it is the only rule the scenario fails. That is the
+   deliberate worst case of the mixed workload, not a spread of corpses:
+   `mixed-100` has 101 ms on its shared corpse. The worker lets one mutation
+   of a corpse through at a time, so the queue is as long as each operation's
+   database
    round trips: every statement of an item transaction was one, and a deposit
    took 4.6 seconds on 2026-11-14 on a machine that a game shared. The kernel
    now sends the statements that nothing decides between together, as
@@ -2146,21 +2214,24 @@ hold the reports.
    [Retention](GAME_SERVICE_MODULES.md#retention) describes, so the database
    levels off at about 14 days of history, roughly 110 GiB per Shard at the
    Scale Target by those numbers. `soak-30min` passed with retention on the
-   idle machine: with windows of four minutes the operation tables grew 5
-   percent between the fifth minute and the end, and no row was more than 15
-   seconds past its window. Left to measure: what a pass costs at a table that
-   holds 14 days. The gold ledger is kept on purpose and grows with trades.
+   idle machine on 2026-11-15 and again on 2026-11-16: with windows of four
+   minutes the operation tables grew 4 to 6 percent between the fifth minute
+   and the end, and no row was more than 15 seconds past its window. Left to
+   measure: what a pass costs at a table that holds 14 days. The gold ledger is kept on purpose and grows with trades.
 8. **The generator needs several poll threads** for 200 and more bots. With one
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
-   ms, was partly the generator's own lateness: with four threads it is 115 ms.
+   ms, was partly the generator's own lateness: with four threads it is 111 ms
+   in `playing-500`, whose poll rounds were late by at most 7.8 ms at the 99th
+   percentile.
 9. **A graceful leave ended as a lost connection on a lossy line.** Fixed. The
    worker disconnected the peer a quarter of a second after `LeaveAccepted`,
    so a lost or held back answer let the disconnect arrive first: 2, 25, and 58
    of 100 bots under `normal`, `poor`, and `terrible` on 2026-11-14. The worker
    now waits for the client's acknowledgement, at most 2 seconds, and puts the
    answer into the disconnect too; on 2026-11-16 no bot failed its leave under
-   `poor` or `terrible`, and the Unity client's leaves ended cleanly 100 of 100
+   `poor` or `terrible`, also in the runs on the idle machine, where `normal`
+   lost none either, and the Unity client's leaves ended cleanly 100 of 100
    times under both, as
    [Measured Under The Profiles](#measured-under-the-profiles) and
    [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
@@ -2171,9 +2242,13 @@ hold the reports.
     of it was the one reliable ordered channel that every message shared: with
     the intents on their own channel, on 2026-11-16 the p95 of most kinds fell
     to 0.3 to 0.9 seconds under `poor` and to 1.3 to 2.7 under `terrible`,
-    where every p50 fell from about 1.1 seconds to one round trip. The rest is
-    LiteNetLib's resend delay of 25 ms plus 2.1 round trips per lost packet,
-    the next thing to measure, as
+    where every p50 fell from about 1.1 seconds to one round trip. Still the
+    limit on a lossy line: the runs on the idle machine had a p95 of 0.39 to
+    1.33 seconds under `poor` and 0.61 to 3.79 seconds under `terrible`; the
+    longest were the loot close and the item move under `poor` and the gather
+    close and the vendor open under `terrible`, kinds with 13 to 74 samples.
+    The rest is LiteNetLib's resend delay of 25 ms plus 2.1 round trips per
+    lost packet, the next thing to measure, as
     [Measured Under The Profiles](#measured-under-the-profiles) shows.
 11. **An outage of the line snapped a walking character back.** Fixed for a
     character that keeps its path. The worker filled at most 15 lost inputs;
@@ -2191,21 +2266,27 @@ hold the reports.
     largest correction under `terrible` went from 9.1 and 9.7 m to 5.72 to
     5.78 m on 2026-11-16, as
     [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
-    shows.
+    shows. The load runs cannot show a correction, because the bots do not
+    predict; under `terrible` on the idle machine no walk failed.
 12. **Other players stand still when their snapshots run out**, for up to half
     a second under `poor`, and for up to half a second right after every join
     under `normal` and worse, because their presentation stops at the newest
-    state.
+    state. The load runs measure only how often the state arrives, not how the
+    client shows it: on the idle machine the players who see the least received
+    14.7, 13.9, and 11.5 updates per second under `normal`, `poor`, and
+    `terrible`.
 13. **A durable Mob corpse gave part of a stack.** Fixed: GameService now
     refuses everything but a whole-item loot for a durable creature corpse, as
     the worker does for the live ones, and the shared corpse of the loot
-    workloads became a player's corpse.
+    workloads became a player's corpse. No run of 2026-11-16 had an unexpected
+    loot rejection.
 14. **With 400 players in view, the others starve although the frame holds.**
     The built client draws 400 dressed bots at 13.1 ms per frame at the median
     and 20.3 ms at the 99th percentile, but its remote players have no new
     state to show 18.7 percent of the time, for up to 0.28 seconds; with 200 in
     view they never starve. The baseline is in
-    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
+    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). The
+    load runs do not measure the client, so they leave this entry as it was.
 
 Entries 9 to 12 are measured in
 [Measured Under The Profiles](#measured-under-the-profiles) and
@@ -2224,12 +2305,12 @@ The same measurements also say what does not need work now:
 - **The shared simulation and the protocol** give the pinned golden results
   inside an IL2CPP player, with the development and the release settings, and
   the client runs the live scenario there without a `link.xml`.
-- **Place and health** survived all 714 leaves and returns of the soak.
+- **Place and health** survived all 717 leaves and returns of the soak.
 - **Memory** of the worker and GameService levels off within 30 minutes.
 - **Leases and sessions** never drifted: no session without a player, none
   near its expiry.
 - **Operations** stay below 200 ms at the 95th percentile up to 500 players on
-  loopback; only the tick and the update rate fail there.
+  loopback, where the tick and the update rate now pass too.
 - **The database under play**: no deadlock and no long lock wait in any tier,
   a 30-minute soak with retention keeping up, and bursts of 400 logins and 500
   logouts that complete.
