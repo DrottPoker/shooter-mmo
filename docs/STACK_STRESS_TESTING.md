@@ -2024,6 +2024,20 @@ What the profiles show:
   acknowledgement p99 is 3 seconds, the outage itself, so the rule fails as
   the profile predicts; the remote update rate, which the profile takes out,
   stays at 11.9 per second at the fifth percentile.
+- **A bot walks on through its outage.** Since the worker walks a silent
+  player's path on, as entry 11 of
+  [What Limits The Next Tier](#what-limits-the-next-tier) describes, a bot's
+  character no longer stands through its outage: a bot keeps naming its path
+  while no owner snapshot tells it that the walk ended, and it does not
+  predict, so it has no correction to show. `playing-100` with
+  `-DurationSeconds 180` under `terrible` on 2026-11-16, once before at 02:43
+  and twice after at 03:17 and 03:25, with about an eighth of the machine
+  busy: the input acknowledgement p99 stayed at 3,032 against 3,019 and 3,012
+  ms, no bot failed, the route plans went from 1,518 to 1,610 and 1,538 with 1
+  failed walk before and none after, and the kills from 104 to 78 and 89,
+  which three runs do not separate from chance. The second run after had two
+  `gather_open` answers `world_interaction_out_of_range`, as two runs of the
+  same day before the change had.
 
 ## What Limits The Next Tier
 
@@ -2161,10 +2175,23 @@ hold the reports.
     LiteNetLib's resend delay of 25 ms plus 2.1 round trips per lost packet,
     the next thing to measure, as
     [Measured Under The Profiles](#measured-under-the-profiles) shows.
-11. **An outage of the line snaps a walking character back.** The worker fills
-    at most 15 lost inputs; after a longer gap the character has stood still
-    on the worker, and the client is corrected by what it walked meanwhile,
-    about 9 m after 3 seconds.
+11. **An outage of the line snapped a walking character back.** Fixed for a
+    character that keeps its path. The worker filled at most 15 lost inputs;
+    after a longer gap the character had stood still on the worker, and the
+    client was corrected by what it walked meanwhile, about 9 m after 3
+    seconds. The worker now walks the path on through a silence of up to
+    `Movement:PathContinuationSeconds`, 3 seconds, as
+    [Server-Authoritative Movement](SERVICE_FEATURES.md#server-authoritative-movement)
+    describes, so the inputs after the outage confirm the prediction. A turn
+    during the outage still corrects the client, by what it walked on the new
+    path, because the worker learns that path only with the newest inputs
+    after the outage and starts it where it is; walking it on retroactively
+    would let a player stand still for others and then cover the distance at
+    once. The live stack test's walk turns about every two seconds, so its
+    largest correction under `terrible` went from 9.1 and 9.7 m to 5.72 to
+    5.78 m on 2026-11-16, as
+    [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
+    shows.
 12. **Other players stand still when their snapshots run out**, for up to half
     a second under `poor`, and for up to half a second right after every join
     under `normal` and worse, because their presentation stops at the newest

@@ -928,10 +928,27 @@ zone interest is deferred until zones exist.
 - When the next input is late, the tick still steps along the current path, at
   most three times in a row, about 100 ms. The late input then takes over that
   step, or the steps are taken again with it when it names another path. A
-  longer gap pauses the character on the worker until the inputs arrive, and the
-  queue then catches up at two steps per tick. Inputs lost from every batch are
-  filled with the path before them, up to 15; a longer gap skips to the newest
-  input.
+  standing character then pauses on the worker until the inputs arrive, and the
+  queue then catches up at two steps per tick.
+- Path continuation: when no input arrived for longer than those three steps, a
+  character that follows a path keeps walking it ahead of its inputs,
+  `Movement:PathContinuationSeconds` long in all, 3 seconds by default, and
+  then stops; 0 keeps the pause. The client goes on predicting the same path
+  through an outage of its line, so the inputs after the outage take over these
+  steps one by one, however many were lost, and the owner sees no correction.
+  An input that names another path takes again at most the newest three of the
+  steps with it; the steps before those stand as taken along the old path. The
+  other path so starts where the worker is, the client is corrected by the
+  difference, and a client that holds its inputs back cannot return its
+  character to where it stopped sending. Once inputs arrive again, no step is
+  added until they took over all but three, so a client that stalled or whose
+  clock runs slow never falls further behind. A death, a lingering body, a
+  teleport, a respawn, and a reconnect that takes the entity over end the
+  continuation at once, and its steps wait where the collision chunks still
+  load, as every step does.
+- Inputs lost from every batch first take over the steps taken ahead for them;
+  up to 15 more are filled with the path before them, and a longer gap skips
+  to the newest input from where the character stands.
 - A step budget keeps the average at one step per tick, with 1/64 of slack for a
   client clock that runs slightly fast, so a client cannot move faster by
   sending more inputs. A client may have at most 16 inputs waiting; a client
@@ -2305,6 +2322,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Movement:Gravity`, `MaximumFallSpeed`, `GroundedVerticalVelocity` | `-24`, `55`, `-2` | Falling |
 | `Movement:CharacterRadius`, `CharacterHeight`, `StepHeight`, `MaximumSlopeDegrees`, `GroundSnapDistance` | `0.35`, `2`, `0.35`, `45`, `0.4` | Character capsule and ground handling |
 | `Movement:MaximumSubstepDistance`, `MaximumPenetrationIterations` | `0.1`, `6` | Motor substep length and collision resolution |
+| `Movement:PathContinuationSeconds` | `3` | How long in all a player whose inputs stop arriving keeps walking its path, a whole number from 0 to 5 seconds, well inside the 256 inputs the client keeps for replay; 0 pauses it after three steps, as [Server-Authoritative Movement](#server-authoritative-movement) describes |
 | `ActorCatalogPath`, `ItemCatalogPath`, `QuestCatalogPath`, `CombatRulesPath`, `CharacterAppearancePath` | `WorldData/Actors/core.actor-catalog.json`, `WorldData/Items/core.item-catalog.json`, `WorldData/Quests/core.quest-catalog.json`, `WorldData/Combat/combat-rules.json`, `WorldData/Characters/appearance.json` | Content files in the output; the World's actor spawns and collision come from the World directory |
 | `ConnectionStrings:Redis`, `HealthChecks:TimeoutMilliseconds` | `127.0.0.1:6379`, `1000` | Redis for the health check and its timeout |
 | `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess` | `true` in `appsettings.Development.json` | Development only: Bank and Recovery access from anywhere |

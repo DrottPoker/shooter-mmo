@@ -1726,7 +1726,13 @@ with the path of the newest command until an owner snapshot reports that path id
 On an authoritative owner snapshot, `ClientMovementPrediction` removes
 acknowledged commands, starts from the server state including its path progress,
 and replays the remaining commands. Client and worker follow the same waypoints,
-so a replay reaches the same result. Prediction and reconciliation replay share
+so a replay reaches the same result. The client keeps the newest 256
+unacknowledged commands, 8.5 seconds at 30 Hz, so it predicts on through an
+outage of the line and replays everything after it; the worker walks the same
+path on through such an outage, as
+[Server-Authoritative Movement](SERVICE_FEATURES.md#server-authoritative-movement)
+describes, so the commands after it confirm the prediction unless the player
+chose another path meanwhile. Prediction and reconciliation replay share
 one reusable collision-query workspace, avoiding per-step broadphase collection
 allocation without changing the deterministic movement result.
 

@@ -214,6 +214,42 @@ public sealed class RealtimeLingeringBodyTests
         AssertState(Assert.Single(harness.GameService.Releases).Request.FinalState, 0f, -1f, 0f, 100, 100);
     }
 
+    // A player whose line falls silent walks on along its path, but its body stops where the
+    // connection ended and never walks on.
+    [Fact]
+    public async Task ABodyStopsWhereItsConnectionEndedAlthoughItsPathGoesOn()
+    {
+        await using var harness = Create(bodySeconds: 5);
+        var observerCharacter = harness.AddCharacter("Path Watcher");
+        var character = harness.AddCharacter("Silent Walker");
+        await harness.StartAsync();
+        var observer = await harness.JoinAsync(observerCharacter);
+        var walker = await harness.JoinAsync(character);
+        var entityId = walker.JoinAccepted!.ControlledEntityId;
+        await harness.PollUntilAsync(
+            () => observer.Spawns.Any(spawn => spawn.EntityId == entityId),
+            "the observer to see the walker");
+
+        // One input and then silence. The plain run-ahead would stop the walker 0.67 m on, at
+        // z -0.33; the path continuation walks it on toward z 12.
+        walker.SendMoveTo(1, 0f, 12f);
+        await harness.PollUntilAsync(
+            () => PositionsZ(observer, entityId).Any(z => z > 1f),
+            "the walk to go on without inputs");
+
+        walker.Stop();
+        await harness.PollUntilAsync(
+            () => !harness.Bindings.TryGetConnectionId(entityId, out _),
+            "the body to stay without a connection");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+        var stoppedAt = PositionsZ(observer, entityId)[^1];
+
+        // The walk would have gone on for more than 5 m in this second.
+        await harness.PollForAsync(TimeSpan.FromSeconds(1));
+        Assert.True(stoppedAt < 9f, $"The body stopped at z {stoppedAt}.");
+        Assert.Equal(stoppedAt, PositionsZ(observer, entityId)[^1]);
+    }
+
     // The player comes back in time: the same entity where the body stood, with the health it had,
     // and its time ends, so the body neither goes nor is swept as an orphan.
     [Fact]
@@ -539,6 +575,16 @@ public sealed class RealtimeLingeringBodyTests
                 && combatEvent.TargetEntityId == entityId))
             .Select(value => value.Packet)
             .ToArray();
+    }
+
+    // The z of the entity in every snapshot the observer received, oldest first.
+    private static List<float> PositionsZ(RealtimeRecordingClient observer, ulong entityId)
+    {
+        return observer.Snapshots
+            .SelectMany(snapshot => snapshot.Entities)
+            .Where(value => value.EntityId == entityId)
+            .Select(value => value.PositionZ)
+            .ToList();
     }
 
     private static int BodySecondsOf(RealtimeRecordingClient client)

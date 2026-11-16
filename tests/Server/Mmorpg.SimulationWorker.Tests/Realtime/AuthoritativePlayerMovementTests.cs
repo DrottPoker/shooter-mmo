@@ -7,6 +7,9 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 public sealed class AuthoritativePlayerMovementTests
 {
+    // Three seconds at 30 Hz, the default PathContinuationSeconds.
+    private const int ContinuationSteps = 90;
+
     private static readonly MovementSimulationSettings Settings = new(
         30,
         5f,
@@ -407,6 +410,283 @@ public sealed class AuthoritativePlayerMovementTests
     }
 
     [Fact]
+    public void ASilentLineLetsTheCharacterWalkOnAlongItsPathUntilTheContinuationEnds()
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        var expected = PredictedStates(path, 1 + ContinuationSteps);
+        movement.AcceptInputs(Batch(path, Input(1, 1)));
+
+        for (var tick = 0; tick < ContinuationSteps + 30; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        // The owner still sees the state after its only input; everyone else sees the character
+        // where it stopped after the continuation.
+        Assert.Equal(1u, movement.LastProcessedInputSequence);
+        Assert.Equal(ContinuationSteps, movement.RunAheadInputCount);
+        AssertState(expected[1], movement.ConfirmedState);
+        AssertState(expected[1 + ContinuationSteps], movement.State);
+    }
+
+    // Every input sent during the outage is lost, and the first batch after it carries the newest
+    // four. The worker walked on in the meantime, so the inputs take over its steps one by one and
+    // every acknowledged state equals the prediction, up to half a second past the continuation.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    [InlineData(90)]
+    [InlineData(100)]
+    public void InputsAfterAnOutageTakeOverTheStepsTheWorkerWalkedOn(int outageTicks)
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        const int ticks = 160;
+        var expected = PredictedStates(path, ticks);
+        uint sent = 0;
+        for (var tick = 0; tick < ticks; tick++)
+        {
+            sent++;
+            if (tick < 20 || tick >= 20 + outageTicks)
+            {
+                movement.AcceptInputs(Batch(path, RedundantInputs(sent, 1)));
+            }
+
+            movement.SimulateTick();
+            var processed = (int)movement.LastProcessedInputSequence;
+            AssertState(expected[processed], movement.ConfirmedState);
+            AssertState(expected[processed + movement.RunAheadInputCount], movement.State);
+            Assert.True(movement.RunAheadInputCount <= ContinuationSteps);
+        }
+
+        // Past the continuation the step budget lets a backlog drain only slowly.
+        while (movement.QueuedInputCount > 0)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(sent, movement.LastProcessedInputSequence);
+        AssertState(expected[(int)sent], movement.ConfirmedState);
+    }
+
+    [Fact]
+    public void AnOutageLongerThanTheContinuationStopsTheCharacterAndTheNextInputSkipsAhead()
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        var expected = PredictedStates(path, 20 + ContinuationSteps);
+        for (uint sequence = 1; sequence <= 20; sequence++)
+        {
+            movement.AcceptInputs(Batch(path, RedundantInputs(sequence, 1)));
+            movement.SimulateTick();
+        }
+
+        for (var tick = 0; tick < 150; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(ContinuationSteps, movement.RunAheadInputCount);
+        AssertState(expected[20 + ContinuationSteps], movement.State);
+
+        // The oldest of the newest four inputs, 168, lies 147 inputs beyond the last received
+        // one, more than the 90 steps taken ahead and the queue together cover, so the worker
+        // continues from where it stopped.
+        movement.AcceptInputs(Batch(path, RedundantInputs(171, 1)));
+
+        Assert.Equal(167u, movement.LastProcessedInputSequence);
+        Assert.Equal(0, movement.RunAheadInputCount);
+        Assert.Equal(4, movement.QueuedInputCount);
+        AssertState(expected[20 + ContinuationSteps], movement.ConfirmedState);
+    }
+
+    [Fact]
+    public void ACharacterThatStandsTakesNoMoreThanThePlainRunAheadThroughASilence()
+    {
+        var walker = CreateMovement(ContinuationSteps);
+        var shortPath = Path(1, (0f, 1f));
+        walker.AcceptInputs(Batch(shortPath, Input(1, 1)));
+        var stander = CreateMovement(ContinuationSteps);
+        stander.AcceptInputs(Batch(null, Input(1, 0)));
+
+        for (var tick = 0; tick < 60; tick++)
+        {
+            walker.SimulateTick();
+            stander.SimulateTick();
+        }
+
+        // The walker reached the end of its 2 m path and stands there without stepping on.
+        Assert.Equal(0f, walker.State.PositionZ - 1f, 4);
+        Assert.True(walker.IsStandingStill);
+        Assert.InRange(walker.RunAheadInputCount, AuthoritativePlayerMovement.MaximumRunAheadInputs, 20);
+        Assert.Equal(AuthoritativePlayerMovement.MaximumRunAheadInputs, stander.RunAheadInputCount);
+    }
+
+    // A client whose clock runs slow sends two inputs every three ticks. No silence lasts longer
+    // than the plain run-ahead, so the worker never walks further ahead of it.
+    [Fact]
+    public void InputsThatKeepArrivingLateNeverLetTheWorkerWalkFurtherAhead()
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        const int ticks = 120;
+        var expected = PredictedStates(path, ticks);
+        uint sent = 0;
+        for (var tick = 0; tick < ticks; tick++)
+        {
+            if (tick % 3 != 2)
+            {
+                sent++;
+                movement.AcceptInputs(Batch(path, RedundantInputs(sent, 1)));
+            }
+
+            movement.SimulateTick();
+            Assert.True(movement.RunAheadInputCount <= AuthoritativePlayerMovement.MaximumRunAheadInputs);
+            AssertState(expected[(int)movement.LastProcessedInputSequence], movement.ConfirmedState);
+        }
+    }
+
+    // A client that stalled sent nothing for a second and then goes on one input per tick. Its
+    // inputs take over the steps the worker walked on; no step is added until only the plain
+    // run-ahead is left, so the character waits on the worker while the client catches up.
+    [Fact]
+    public void AfterAStalledClientResumesTheWorkerWaitsUntilItsInputsCaughtUp()
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        const int ticks = 100;
+        var expected = PredictedStates(path, ticks);
+        uint sent = 0;
+        for (var tick = 0; tick < ticks; tick++)
+        {
+            if (tick < 20 || tick >= 50)
+            {
+                sent++;
+                movement.AcceptInputs(Batch(path, RedundantInputs(sent, 1)));
+            }
+
+            var before = movement.State;
+            movement.SimulateTick();
+            var processed = (int)movement.LastProcessedInputSequence;
+            AssertState(expected[processed], movement.ConfirmedState);
+            AssertState(expected[processed + movement.RunAheadInputCount], movement.State);
+            if (tick is >= 50 and < 77)
+            {
+                AssertState(before, movement.State);
+            }
+        }
+
+        Assert.Equal(AuthoritativePlayerMovement.MaximumRunAheadInputs, movement.RunAheadInputCount);
+    }
+
+    // A client sent nothing for a second, without losing an input, and then names another path.
+    // The late input takes again at most the plain run-ahead with the new path; the steps the
+    // worker walked on before those stand, so the character does not return to where its client
+    // stopped sending, and the owner is corrected to where the worker is.
+    [Fact]
+    public void ALateInputWithAnotherPathAfterAContinuationRetakesAtMostThePlainRunAhead()
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var straight = LongPath(1);
+        var turn = Path(2, (-8f, -1f));
+        movement.AcceptInputs(Batch(straight, Input(1, 1)));
+        for (var tick = 0; tick < 31; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(30, movement.RunAheadInputCount);
+        var before = movement.State;
+        movement.AcceptInputs(Batch(turn, Input(2, 2)));
+
+        // Three steps back and two on along the new path are less than a metre at walking speed;
+        // the whole second walked ahead is five.
+        var movedX = movement.State.PositionX - before.PositionX;
+        var movedZ = movement.State.PositionZ - before.PositionZ;
+        Assert.True((movedX * movedX) + (movedZ * movedZ) < 1f);
+
+        var collisionWorld = CollisionTestWorldFactory.Create();
+        var turnPath = ToSimulationPath(turn);
+        var kept = 30 - AuthoritativePlayerMovement.MaximumRunAheadInputs;
+        var predicted = PredictedStates(straight, 1 + kept)[1 + kept];
+        var expected = new List<PlayerMovementState> { predicted };
+        for (uint sequence = 2; sequence <= 12; sequence++)
+        {
+            predicted = PlayerMovementSimulation.Step(
+                predicted,
+                new PlayerMovementInput(sequence, sequence, turnPath),
+                Settings,
+                PlayerCarryState.Default,
+                collisionWorld);
+            expected.Add(predicted);
+        }
+
+        Assert.Equal(2u, movement.LastProcessedInputSequence);
+        Assert.Equal(AuthoritativePlayerMovement.MaximumRunAheadInputs - 1, movement.RunAheadInputCount);
+        AssertState(expected[1], movement.ConfirmedState);
+        AssertState(expected[3], movement.State);
+
+        for (uint sequence = 3; sequence <= 12; sequence++)
+        {
+            movement.AcceptInputs(Batch(null, Input(sequence, 2)));
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(12u, movement.LastProcessedInputSequence);
+        AssertState(expected[11], movement.ConfirmedState);
+    }
+
+    // A death and a lingering body halt the character, an admin teleport or a respawn moves it,
+    // and a reconnect that takes the entity over resets its inputs. Each ends a continuation at
+    // once, and the character takes no further step along the path.
+    [Theory]
+    [InlineData("halt")]
+    [InlineData("teleport")]
+    [InlineData("takeover")]
+    public void AHaltATeleportOrATakeoverEndsTheContinuationAtOnce(string ending)
+    {
+        var movement = CreateMovement(ContinuationSteps);
+        var path = LongPath(1);
+        movement.AcceptInputs(Batch(path, Input(1, 1)));
+        for (var tick = 0; tick < 40; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.True(movement.RunAheadInputCount > AuthoritativePlayerMovement.MaximumRunAheadInputs);
+        switch (ending)
+        {
+            case "halt":
+                movement.Halt();
+                break;
+            case "teleport":
+                movement.Teleport(movement.State.WithPathProgress(MovementPathProgress.None));
+                break;
+            default:
+                movement.ResetInputSequence();
+                break;
+        }
+
+        var endedAt = movement.State.Position;
+        Assert.Equal(0, movement.RunAheadInputCount);
+        for (var tick = 0; tick < 30; tick++)
+        {
+            movement.SimulateTick();
+        }
+
+        Assert.Equal(endedAt.X, movement.State.PositionX, 4);
+        Assert.Equal(endedAt.Z, movement.State.PositionZ, 4);
+        Assert.Equal(0, movement.RunAheadInputCount);
+
+        // A taken-over entity takes no step at all until its new client's first input.
+        if (ending != "takeover")
+        {
+            Assert.True(movement.IsStandingStill);
+        }
+    }
+
+    [Fact]
     public void SimulationTicksReuseOneCollisionQueryBuffer()
     {
         var collisionWorld = new RecordingCollisionWorld(
@@ -451,7 +731,7 @@ public sealed class AuthoritativePlayerMovementTests
             movement.ApplyCarryState(new PlayerCarryState(1, 200, 200)));
     }
 
-    private static AuthoritativePlayerMovement CreateMovement()
+    private static AuthoritativePlayerMovement CreateMovement(int pathContinuationSteps = 0)
     {
         var collisionWorld = CollisionTestWorldFactory.Create();
         return new AuthoritativePlayerMovement(
@@ -464,7 +744,14 @@ public sealed class AuthoritativePlayerMovementTests
                 0f),
             Settings,
             PlayerCarryState.Default,
-            collisionWorld);
+            collisionWorld,
+            pathContinuationSteps);
+    }
+
+    // 73 m around the test World, about 15 s of walking.
+    private static RealtimeMovementPath LongPath(uint id)
+    {
+        return Path(id, (0f, 12f), (12f, 12f), (12f, -12f), (-12f, -12f));
     }
 
     // The client's prediction: one step per input along the path, from the same start.

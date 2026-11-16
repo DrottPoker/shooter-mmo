@@ -256,7 +256,8 @@ internal sealed class RealtimeSessionHandler(
                 initialMovementState,
                 config.MovementSimulation,
                 session.CarryState,
-                collisionWorld));
+                collisionWorld,
+                config.PathContinuationSteps));
         if (registration.ReplacedEntity is not null)
         {
             teardown.RemoveReplacedEntity(registration.ReplacedEntity);

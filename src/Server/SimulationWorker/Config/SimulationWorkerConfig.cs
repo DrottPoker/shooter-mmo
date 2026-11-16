@@ -112,6 +112,19 @@ public sealed record SimulationWorkerConfig(
 
     public const int DefaultGracefulDisconnectMaximumMilliseconds = 2_000;
 
+    // How long a player whose inputs stop arriving keeps walking its path, so a short outage of
+    // its line neither stops it for others nor snaps it back on its own screen. 0 stops it after
+    // the plain run-ahead.
+    public int PathContinuationSeconds { get; init; } = DefaultPathContinuationSeconds;
+
+    public const int DefaultPathContinuationSeconds = 3;
+
+    // Well inside the 256 inputs, 8.5 s at 30 Hz, that the client keeps for replay.
+    public const int MaximumPathContinuationSeconds = 5;
+
+    // The steps of the path continuation at the movement tick rate.
+    public int PathContinuationSteps => PathContinuationSeconds * MovementSimulation.TickRateHz;
+
     // How many runs in a row one tick phase or loop step may fail before the worker stops.
     public int TickPhaseFailureLimit { get; init; } = DefaultTickPhaseFailureLimit;
 
@@ -318,6 +331,18 @@ public sealed record SimulationWorkerConfig(
             movementSection["MaximumPenetrationIterations"],
             "SimulationWorker:Movement:MaximumPenetrationIterations",
             errors);
+        var pathContinuationSeconds = DefaultPathContinuationSeconds;
+        if (!string.IsNullOrWhiteSpace(movementSection["PathContinuationSeconds"])
+            && (!int.TryParse(
+                    movementSection["PathContinuationSeconds"],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out pathContinuationSeconds)
+                || pathContinuationSeconds is < 0 or > MaximumPathContinuationSeconds))
+        {
+            errors.Add(
+                $"SimulationWorker:Movement:PathContinuationSeconds must be a whole number from 0 to {MaximumPathContinuationSeconds}.");
+        }
         var spawnX = worldManifest?.spawn.x ?? 0f;
         var spawnY = worldManifest?.spawn.y ?? 0f;
         var spawnZ = worldManifest?.spawn.z ?? 0f;
@@ -847,6 +872,7 @@ public sealed record SimulationWorkerConfig(
             PerformanceReportPath = performanceReportPath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             LingeringBodySeconds = lingeringBodySeconds,
+            PathContinuationSeconds = pathContinuationSeconds,
             GracefulDisconnectMaximum = TimeSpan.FromMilliseconds(gracefulDisconnectMaximumMilliseconds),
             TickPhaseFailureLimit = tickPhaseFailureLimit,
             UdpQuotas = new UdpQuotaConfig(
