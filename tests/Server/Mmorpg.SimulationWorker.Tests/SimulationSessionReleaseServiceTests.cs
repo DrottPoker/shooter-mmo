@@ -253,6 +253,48 @@ public sealed class SimulationSessionReleaseServiceTests
         Assert.Equal(0, service.FinalStates.Count);
     }
 
+    // A reconnect that never completes takes the kept state of no one: it stays as long as the
+    // session's lease can last and goes with the next release after that, and a newer state of
+    // the same session is not bound by the old time.
+    [Fact]
+    public async Task AKeptFinalStateWhoseReconnectNeverCompletesIsForgotten()
+    {
+        var clock = new SteppedTimeProvider(DateTimeOffset.UtcNow);
+        var handler = new RecordingReleaseHandler(HttpStatusCode.Unauthorized, HttpStatusCode.OK, HttpStatusCode.OK);
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://game-service.test") };
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            new ActiveSimulationSessionStore(),
+            CharacterStateTestData.SessionStores(new CharacterItemStateStore()),
+            [],
+            timeProvider: clock);
+        var abandoned = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "rotated-token", PlayerCarryState.Default);
+        service.FinalStates.Capture(
+            abandoned.CharacterId,
+            abandoned.SimulationSessionId,
+            new CharacterFinalState(7, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
+        await service.ReleaseDetachedAsync(abandoned, CancellationToken.None);
+        var other = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "other-token", PlayerCarryState.Default);
+
+        clock.Advance(SimulationSessionReleaseService.DefaultReconnectStateLifetime - TimeSpan.FromSeconds(1));
+        await service.ReleaseDetachedAsync(other, CancellationToken.None);
+        Assert.True(service.FinalStates.TryGet(abandoned.CharacterId, abandoned.SimulationSessionId, out _));
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await service.ReleaseDetachedAsync(other, CancellationToken.None);
+        Assert.Equal(0, service.FinalStates.Count);
+
+        var store = new CharacterFinalStateStore();
+        var key = (CharacterId: Guid.NewGuid(), SessionId: Guid.NewGuid());
+        var now = DateTime.UtcNow;
+        store.Capture(key.CharacterId, key.SessionId, new CharacterFinalState(1, default));
+        store.KeepUntil(key.CharacterId, key.SessionId, 1, now);
+        store.Capture(key.CharacterId, key.SessionId, new CharacterFinalState(2, default));
+        Assert.Equal(0, store.RemoveExpired(now.AddHours(1)));
+        Assert.True(store.TryGet(key.CharacterId, key.SessionId, out var newer));
+        Assert.Equal(2, newer.Sequence);
+    }
+
     // The reconnect's join could not go on after it consumed its ticket, so it releases the
     // session it took over; the release carries the state that the session's body left, whose own
     // release GameService refused, so GameService keeps that state instead of an older one.

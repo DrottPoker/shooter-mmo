@@ -766,7 +766,11 @@ ended session by its own joins:
   state that GameService returned with the ticket, the new entity takes it
   over, and the next checkpoint saves it. A join that cannot go on after it
   consumed its ticket releases the session with that state, so GameService
-  keeps it instead of an older one.
+  keeps it instead of an older one. A kept state whose reconnect never
+  completes, such as one whose consume answer was lost, stays as long as the
+  session's lease can last without this worker renewing it, the outage
+  tolerance plus one session heartbeat interval, and the next release after
+  that forgets it.
 
 So a reconnect ends in one of the outcomes that
 [Lingering Bodies](#lingering-bodies) names, whatever the order of the killing

@@ -1,4 +1,5 @@
 using System.Net;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
 namespace Mmorpg.SimulationWorker.Sessions;
@@ -11,8 +12,19 @@ public sealed class SimulationSessionReleaseService(
     ActiveSimulationSessionStore sessionStore,
     CharacterSessionStores characterStores,
     IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
-    GameServiceAvailability? availability = null)
+    GameServiceAvailability? availability = null,
+    SimulationWorkerConfig? config = null,
+    TimeProvider? timeProvider = null)
 {
+    // How long a final state stays for a reconnect's join after its release was refused: as long
+    // as the session's lease can last without this worker renewing it. After that no join can
+    // take the session over any more.
+    public static readonly TimeSpan DefaultReconnectStateLifetime = TimeSpan.FromSeconds(
+        SimulationWorkerConfig.DefaultGameServiceOutageToleranceSeconds + 30);
+
+    private readonly TimeSpan reconnectStateLifetime = config?.MinimumSessionLease ?? DefaultReconnectStateLifetime;
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
     [
         TimeSpan.FromSeconds(1),
@@ -29,7 +41,9 @@ public sealed class SimulationSessionReleaseService(
     // The final states that releases send, which the realtime loop captures. A release keeps one
     // until GameService answered it for good, so a retry sends it again. A release whose
     // credentials GameService refused keeps it longer: a reconnect rotated the session's token,
-    // so the session goes on, and the reconnect's join places its new entity from the state.
+    // so the session goes on, and the reconnect's join places its new entity from the state. It
+    // stays for the reconnect state lifetime at most, and every release forgets the states whose
+    // time ran out, so a reconnect that never completes leaves nothing behind for good.
     public CharacterFinalStateStore FinalStates { get; } = new();
 
     // Releases a session that no connected peer owns any more. The local lease is dropped
@@ -126,6 +140,7 @@ public sealed class SimulationSessionReleaseService(
                 state.Mana);
         }
 
+        FinalStates.RemoveExpired(clock.GetUtcNow().UtcDateTime);
         var result = await gameServiceClient.ReleaseSimulationSessionAsync(
             session.SimulationSessionId,
             session.WorkerRuntimeId,
@@ -146,6 +161,14 @@ public sealed class SimulationSessionReleaseService(
             if (finalState is not null && !refusedCredentials)
             {
                 FinalStates.Remove(session.CharacterId, session.SimulationSessionId, finalState.Sequence);
+            }
+            else if (finalState is not null)
+            {
+                FinalStates.KeepUntil(
+                    session.CharacterId,
+                    session.SimulationSessionId,
+                    finalState.Sequence,
+                    clock.GetUtcNow().UtcDateTime + reconnectStateLifetime);
             }
 
             var removed = sessionStore.Remove(
