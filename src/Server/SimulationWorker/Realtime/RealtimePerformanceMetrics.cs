@@ -629,8 +629,11 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     }
 
     // Counts samples into buckets with Interlocked operations, so the loop never waits for the
-    // reporter. A capture takes the sample count first, so a sample recorded during it counts
-    // whole in this interval or in the next, apart from its bucket, which may land in this one.
+    // reporter, and still hands the reporter whole samples: a sample goes into the slot of the
+    // interval it was recorded in, and a capture starts the next interval and then waits until
+    // every sample that was being recorded has landed, so the count, the total, the maximum,
+    // the buckets, and the tagged samples of one capture describe the same samples. Any thread
+    // may record; one thread captures at a time.
     private sealed class DurationAccumulator
     {
         private static readonly double[] UpperBoundsMilliseconds =
@@ -652,18 +655,34 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             double.PositiveInfinity
         ];
 
-        private readonly long[] buckets = new long[UpperBoundsMilliseconds.Length];
-        private long samples;
-        private long totalMicroseconds;
-        private long maximumMicroseconds;
+        private readonly Slot[] slots = [new Slot(), new Slot()];
+        private readonly Lock captureGate = new();
+        private long interval;
+        private int recording;
 
         public void Record(double milliseconds)
         {
+            Record(milliseconds, 0);
+        }
+
+        // taggedMicroseconds above zero counts the sample as tagged and adds to the tagged total,
+        // such as the garbage collection pause inside a sample.
+        public void Record(double milliseconds, long taggedMicroseconds)
+        {
             var microseconds = (long)Math.Ceiling(milliseconds * 1000d);
-            Interlocked.Increment(ref buckets[FindBucketIndex(milliseconds)]);
-            Interlocked.Add(ref totalMicroseconds, microseconds);
-            RaiseMaximum(ref maximumMicroseconds, microseconds);
-            Interlocked.Increment(ref samples);
+            Interlocked.Increment(ref recording);
+            var slot = slots[Volatile.Read(ref interval) & 1];
+            Interlocked.Increment(ref slot.Buckets[FindBucketIndex(milliseconds)]);
+            Interlocked.Add(ref slot.TotalMicroseconds, microseconds);
+            RaiseMaximum(ref slot.MaximumMicroseconds, microseconds);
+            Interlocked.Increment(ref slot.Samples);
+            if (taggedMicroseconds > 0)
+            {
+                Interlocked.Add(ref slot.TaggedMicroseconds, taggedMicroseconds);
+                Interlocked.Increment(ref slot.TaggedSamples);
+            }
+
+            Interlocked.Decrement(ref recording);
         }
 
         // A plain loop, because a predicate lambda would capture the sample and
@@ -683,26 +702,45 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
         public RealtimeDurationSummary? CaptureAndReset()
         {
-            var capturedSamples = Interlocked.Exchange(ref samples, 0);
-            if (capturedSamples == 0)
-            {
-                return null;
-            }
+            return CaptureAndReset(out _, out _);
+        }
 
-            var capturedBuckets = new long[buckets.Length];
-            for (var index = 0; index < buckets.Length; index++)
+        public RealtimeDurationSummary? CaptureAndReset(out long taggedSamples, out long taggedMicroseconds)
+        {
+            lock (captureGate)
             {
-                capturedBuckets[index] = Interlocked.Exchange(ref buckets[index], 0);
-            }
+                // From here on new samples go into the other slot. A sample that read the old
+                // interval first is still counted as recording, so the wait covers it.
+                var slot = slots[(Interlocked.Increment(ref interval) - 1) & 1];
+                var wait = default(SpinWait);
+                while (Volatile.Read(ref recording) != 0)
+                {
+                    wait.SpinOnce();
+                }
 
-            var capturedTotalMicroseconds = Interlocked.Exchange(ref totalMicroseconds, 0);
-            var capturedMaximumMicroseconds = Interlocked.Exchange(ref maximumMicroseconds, 0);
-            return new RealtimeDurationSummary(
-                capturedSamples,
-                capturedTotalMicroseconds / 1000d / capturedSamples,
-                FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.95, capturedMaximumMicroseconds),
-                FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.99, capturedMaximumMicroseconds),
-                capturedMaximumMicroseconds / 1000d);
+                var capturedSamples = Interlocked.Exchange(ref slot.Samples, 0);
+                var capturedBuckets = new long[slot.Buckets.Length];
+                for (var index = 0; index < slot.Buckets.Length; index++)
+                {
+                    capturedBuckets[index] = Interlocked.Exchange(ref slot.Buckets[index], 0);
+                }
+
+                var capturedTotalMicroseconds = Interlocked.Exchange(ref slot.TotalMicroseconds, 0);
+                var capturedMaximumMicroseconds = Interlocked.Exchange(ref slot.MaximumMicroseconds, 0);
+                taggedSamples = Interlocked.Exchange(ref slot.TaggedSamples, 0);
+                taggedMicroseconds = Interlocked.Exchange(ref slot.TaggedMicroseconds, 0);
+                if (capturedSamples == 0)
+                {
+                    return null;
+                }
+
+                return new RealtimeDurationSummary(
+                    capturedSamples,
+                    capturedTotalMicroseconds / 1000d / capturedSamples,
+                    FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.95, capturedMaximumMicroseconds),
+                    FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.99, capturedMaximumMicroseconds),
+                    capturedMaximumMicroseconds / 1000d);
+            }
         }
 
         private static void RaiseMaximum(ref long maximum, long value)
@@ -742,6 +780,17 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
             return capturedMaximumMicroseconds / 1000d;
         }
+
+        // The samples of one interval.
+        private sealed class Slot
+        {
+            public readonly long[] Buckets = new long[UpperBoundsMilliseconds.Length];
+            public long Samples;
+            public long TotalMicroseconds;
+            public long MaximumMicroseconds;
+            public long TaggedSamples;
+            public long TaggedMicroseconds;
+        }
     }
 
     // The garbage collection pauses inside the samples of one duration: the samples a pause fell
@@ -749,29 +798,24 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private sealed class GcPauseAccumulator
     {
         private readonly DurationAccumulator withoutPauses = new();
-        private long pausedSamples;
-        private long pauseMicroseconds;
 
         // Returns the pause time counted inside the sample, at most the sample itself.
         public double Record(double milliseconds, TimeSpan gcPause)
         {
             var pause = Math.Clamp(gcPause.TotalMilliseconds, 0d, milliseconds);
-            withoutPauses.Record(milliseconds - pause);
-            if (pause > 0d)
-            {
-                Interlocked.Add(ref pauseMicroseconds, (long)Math.Ceiling(pause * 1000d));
-                Interlocked.Increment(ref pausedSamples);
-            }
-
+            withoutPauses.Record(milliseconds - pause, pause > 0d ? (long)Math.Ceiling(pause * 1000d) : 0);
             return pause;
         }
 
-        // The summary with the pauses of its interval, which starts the next interval.
+        // The summary with the pauses of its interval, which starts the next interval. The
+        // samples without their pauses and the paused samples are captured together; the
+        // summary itself comes from another accumulator, so a sample recorded between the two
+        // captures counts in this interval for one and in the next for the other.
         public RealtimeDurationSummary? Attach(RealtimeDurationSummary? summary)
         {
-            var withoutPausesSummary = withoutPauses.CaptureAndReset();
-            var capturedPausedSamples = Interlocked.Exchange(ref pausedSamples, 0);
-            var capturedPauseMicroseconds = Interlocked.Exchange(ref pauseMicroseconds, 0);
+            var withoutPausesSummary = withoutPauses.CaptureAndReset(
+                out var capturedPausedSamples,
+                out var capturedPauseMicroseconds);
             return summary is null
                 ? null
                 : summary with

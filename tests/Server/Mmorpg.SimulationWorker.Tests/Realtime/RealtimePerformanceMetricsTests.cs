@@ -176,28 +176,54 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Contains("latency mode", GcPauseMonitor.DescribeConfiguration(), StringComparison.Ordinal);
     }
 
+    // Every sample is 0.25 ms, so a capture that held a sample's duration without its count, or
+    // its count without its duration, would show another average or maximum.
     [Fact]
-    public async Task ConcurrentCaptureDoesNotLoseDurationSamples()
+    public async Task ConcurrentCaptureHandsOutWholeDurationSamples()
     {
         using var metrics = new RealtimePerformanceMetrics();
-        const int expectedSamples = 10_000;
-        var producer = Task.Run(() =>
-        {
-            for (var index = 0; index < expectedSamples; index++)
-            {
-                metrics.RecordNetworkPoll(TimeSpan.FromMilliseconds(0.25));
-            }
-        }, TestContext.Current.CancellationToken);
+        const int producers = 4;
+        const int samplesPerProducer = 200_000;
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var producing = Enumerable.Range(0, producers)
+            .Select(_ => Task.Run(
+                () =>
+                {
+                    for (var index = 0; index < samplesPerProducer; index++)
+                    {
+                        metrics.RecordNetworkPoll(TimeSpan.FromMilliseconds(0.25));
+                    }
+                },
+                cancellationToken))
+            .ToArray();
+        var all = Task.WhenAll(producing);
 
         long capturedSamples = 0;
-        while (!producer.IsCompleted)
+        var captures = 0;
+        while (!all.IsCompleted)
         {
-            capturedSamples += metrics.CaptureAndReset().NetworkPoll?.Samples ?? 0;
+            capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
+            captures++;
             await Task.Yield();
         }
 
-        await producer;
-        capturedSamples += metrics.CaptureAndReset().NetworkPoll?.Samples ?? 0;
-        Assert.Equal(expectedSamples, capturedSamples);
+        await all;
+        capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
+        Assert.Equal((long)producers * samplesPerProducer, capturedSamples);
+        Assert.True(captures > 1, "No capture ran while the samples were recorded.");
+    }
+
+    private static long AssertWholeSamples(RealtimeDurationSummary? summary)
+    {
+        if (summary is null)
+        {
+            return 0;
+        }
+
+        Assert.Equal(0.25, summary.AverageMilliseconds, 9);
+        Assert.Equal(0.25, summary.MaximumMilliseconds, 9);
+        Assert.Equal(0.25, summary.P95UpperBoundMilliseconds, 9);
+        Assert.Equal(0.25, summary.P99UpperBoundMilliseconds, 9);
+        return summary.Samples;
     }
 }
