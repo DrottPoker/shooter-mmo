@@ -1723,14 +1723,12 @@ The target counts two things separately:
   the population target does not promise that every player can stand in one
   place at the full cadence.
 
-The worker simulates the Shard on its one loop thread, but at 500 spread
-players that thread is busy only about a third of the time: what breaks the
-tick budget is the tail of the snapshot broadcast, most of the process CPU is
-the transport sending close to a hundred thousand packets per second, and the
-aggregate snapshot byte budget defers about a third of the remote updates, as
-entry 1 of [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier)
-shows. The bytes and the encoding of replication therefore set the limit
-before the loop thread does. A tier is claimed only after
+The worker simulates the Shard on its one loop thread. At 500 spread players
+it holds the tick budget and the full remote update rate, and that thread is
+busy only a small part of the time; what a larger tier meets first, the tail
+of the tick and the transport's packets, is entry 1 of
+[What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier).
+A tier is claimed only after
 stress workloads with combat, Mobs, and players spread over the World measured
 it: [Measured Tiers](STACK_STRESS_TESTING.md#measured-tiers) holds the results,
 and [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier)
