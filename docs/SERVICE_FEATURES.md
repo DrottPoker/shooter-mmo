@@ -689,7 +689,12 @@ valid, the character's entity stays in the world as a lingering body for
   player.
 - A join ticket of the same character is a reconnect of the body's session: the
   join resumes the body's entity where it stands, with its vitals, and ends its
-  time. A ticket for another character of the account is refused with
+  time. When the body already went, because its death committed or its time
+  ended, but GameService had not released the session yet, the ticket is still
+  a reconnect, and the join gives the player a new entity, placed from the state
+  that the session captured when the body went: for a body that died, the World
+  spawn with full health and mana, and otherwise where the body stood, with its
+  vitals. A ticket for another character of the account is refused with
   `account_character_already_active`, and the client tells the player that the
   previous character is still in the world for a short while.
 - The orphan sweep never releases a body's session.

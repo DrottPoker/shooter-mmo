@@ -3089,8 +3089,11 @@ What the baseline says:
   is the worker spreading the updates of a dense crowd under its snapshot
   budget, as
   [Remote Update Rate](STACK_STRESS_TESTING.md#remote-update-rate) describes,
-  while the presentation of a remote player stops at its newest state. This
-  cause is the likely one, not measured per entity.
+  while the presentation of a remote player stopped at its newest state. This
+  cause is the likely one, not measured per entity. The worker has since got
+  its interest tiers and a byte budget per recipient, and a remote player now
+  walks on past its newest state, as [Remote Players](#remote-players)
+  describes, so this row is due to be measured again.
 - **Private memory grows by about 3 MB per body in view.**
 
 Every other program used 0.6 processors and none of the graphics card while

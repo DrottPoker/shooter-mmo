@@ -1,0 +1,985 @@
+{
+  "scenario": "soak-500-30min",
+  "commit": "d0134c1eca8f40588571687b3bd5778e86c9ee0a",
+  "treeDirty": false,
+  "date": "2026-11-16T16:01:37.9150428Z",
+  "machine": {
+    "cpu": "AMD Ryzen 7 5800 8-Core Processor",
+    "logicalCores": 16,
+    "memoryBytes": 34216722432,
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "dotNet": ".NET 10.0.10"
+  },
+  "mode": "full-stack",
+  "workload": "playing",
+  "bots": 500,
+  "steadySeconds": 1800,
+  "result": "failed",
+  "verdict": [
+    {
+      "rule": "simulation_tick_p99_ms",
+      "comparison": "<=",
+      "limit": 33.34,
+      "unit": "ms",
+      "measured": 50,
+      "passed": false,
+      "note": "worst of 179 steady worker intervals; the worker's p99 is a bucket upper bound",
+      "validity": false
+    },
+    {
+      "rule": "fixed_tick_resynchronizations",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "179 steady worker intervals",
+      "validity": false
+    },
+    {
+      "rule": "input_acknowledgement_p99_ms",
+      "comparison": "<=",
+      "limit": 150,
+      "unit": "ms",
+      "measured": 107.902,
+      "passed": true,
+      "note": "the whole run",
+      "validity": false
+    },
+    {
+      "rule": "remote_update_rate_p5_hz",
+      "comparison": ">=",
+      "limit": 10,
+      "unit": "Hz",
+      "measured": 14.888909816427063,
+      "passed": true,
+      "note": "p5 over 500 bots, average 14.9 Hz, minimum 14.9 Hz",
+      "validity": false
+    },
+    {
+      "rule": "gameplay_operation_p95_ms",
+      "comparison": "<=",
+      "limit": 1000,
+      "unit": "ms",
+      "measured": 451.2477,
+      "passed": true,
+      "note": "worst kind rejoin_saved; attack 37, attack_clear 37, equip 156, gather_close 37, gather_open 37, gather_start 37, item_move 95, leave 38, loot_all 114, loot_close 36, loot_open 70, rejoin_body 444, rejoin_saved 451, teleport 32, vendor_close 36, vendor_open 37, vendor_purchase 96, vendor_sale 97",
+      "validity": false
+    },
+    {
+      "rule": "bot_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "500/500 completed, 0 not logged out",
+      "validity": false
+    },
+    {
+      "rule": "gameplay_unexpected_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "http_unexpected_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "quota_rejections",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "191 worker intervals of the run",
+      "validity": false
+    },
+    {
+      "rule": "snapshot_drops",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "191 worker intervals of the run",
+      "validity": false
+    },
+    {
+      "rule": "owner_snapshot_gaps",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "expired_unreleased_sessions",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "the most seen in one sample",
+      "validity": false
+    },
+    {
+      "rule": "deadlocks",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "both statements of every deadlock and every lock wait longer than the deadlock timeout are in C:\\Users\\drott\\AppData\\Local\\Temp\\claude\\a352523aeceec54d\\a43e9d83-6d76-43d5-93fd-70f6d602f353\\scratchpad\\wt-soak\\artifacts\\load\\20261116-162847-soak-500-30min\\postgres.log, which reports 0 deadlocks and 0 lock waits",
+      "validity": false
+    },
+    {
+      "rule": "item_invariant_violations",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "process_memory_growth",
+      "comparison": "<=",
+      "limit": 20,
+      "unit": "MiB",
+      "measured": 8.68364938531758,
+      "passed": true,
+      "note": "worst worker; worker +8.7 MiB, slope +58.7 MiB/h, gameService -2.2 MiB, slope -27.2 MiB/h, generator managed heap +6.0 MiB, slope +59.0 MiB/h, working set +6.7 MiB, slope +71.8 MiB/h",
+      "validity": false
+    },
+    {
+      "rule": "retained_table_growth",
+      "comparison": "<=",
+      "limit": 25,
+      "unit": "percent",
+      "measured": 9.25925925925926,
+      "passed": true,
+      "note": "item_operations 5292 to 5782 rows (+9.3 %), item_operation_changes 11849 to 12859 (+8.5 %), from 270 s into the steady interval to its end",
+      "validity": false
+    },
+    {
+      "rule": "retention_lag",
+      "comparison": "<=",
+      "limit": 60,
+      "unit": "s",
+      "measured": 14.991693999999995,
+      "passed": true,
+      "note": "the worst of 173 drift checks, with a retention window of 240 s and passes every 15 s",
+      "validity": false
+    },
+    {
+      "rule": "service_log_errors",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": null,
+      "validity": false
+    },
+    {
+      "rule": "worker_heartbeat_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "warning lines of the worker's registry heartbeat over the run",
+      "validity": false
+    },
+    {
+      "rule": "auth_service_timeouts",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "worker log lines that name auth_service_timeout over the run",
+      "validity": false
+    },
+    {
+      "rule": "burst_incomplete_accounts",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run has no login or logout burst.",
+      "validity": false
+    },
+    {
+      "rule": "worker_loop_failures",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": 0,
+      "passed": true,
+      "note": "0 failed loop steps and 0 failures of single players or peers in 191 worker intervals of the run",
+      "validity": false
+    },
+    {
+      "rule": "outage_notice_mismatches",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run has no GameService outage.",
+      "validity": false
+    },
+    {
+      "rule": "outage_kill_corpses_missing",
+      "comparison": "<=",
+      "limit": 0,
+      "unit": "count",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run has no GameService outage.",
+      "validity": false
+    },
+    {
+      "rule": "outage_return_seconds",
+      "comparison": "<=",
+      "limit": 5,
+      "unit": "s",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run has no GameService outage.",
+      "validity": false
+    },
+    {
+      "rule": "outage_durable_recovery_seconds",
+      "comparison": "<=",
+      "limit": 15,
+      "unit": "s",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run has no GameService outage.",
+      "validity": false
+    },
+    {
+      "rule": "generator_poll_lateness_p99_ms",
+      "comparison": "<=",
+      "limit": 16.67,
+      "unit": "ms",
+      "measured": 7.3733,
+      "passed": true,
+      "note": "1505710 poll rounds of the steady interval, worst 166.0 ms",
+      "validity": true
+    },
+    {
+      "rule": "generator_route_queue_p99_ms",
+      "comparison": "<=",
+      "limit": 1000,
+      "unit": "ms",
+      "measured": 0.0573,
+      "passed": true,
+      "note": "68602 route plans of the steady interval, worst 107.8 ms",
+      "validity": true
+    },
+    {
+      "rule": "network_proxy_lateness_p99_ms",
+      "comparison": "<=",
+      "limit": 2,
+      "unit": "ms",
+      "measured": null,
+      "passed": true,
+      "note": "Not applicable: the run went through no network proxy.",
+      "validity": true
+    }
+  ],
+  "keyNumbers": {
+    "attackFirstHitP95Ms": 1121.967,
+    "authBusyRefusals": 0,
+    "botDeaths": 379,
+    "bytesInPerBotPerSecond": 1036.2128936100999,
+    "bytesOutPerBotPerSecond": 14680.340690393943,
+    "databaseBytesPerHour": 53113021.50481037,
+    "deathsPerBotPer10Min.fighter": 0.5316664796382139,
+    "deathsPerBotPer10Min.gatherer": 0,
+    "deathsPerBotPer10Min.trader": 0,
+    "deathsPerBotPer10Min.walker": 0.108888850584211,
+    "generatorCpuAverageSingleCorePercent": 136.30001326663628,
+    "generatorPollLatenessP99Ms": 7.3733,
+    "inputAckP50Ms": 54.2151,
+    "inputAckP95Ms": 90.2955,
+    "inputAckP99Ms": 107.902,
+    "joinP95Ms": 226.592,
+    "kills": 7860,
+    "operationP95Ms.attack": 37.0726,
+    "operationP95Ms.attack_clear": 36.8144,
+    "operationP95Ms.equip": 155.8732,
+    "operationP95Ms.gather_close": 36.9976,
+    "operationP95Ms.gather_open": 37.0481,
+    "operationP95Ms.gather_start": 37.4532,
+    "operationP95Ms.item_move": 94.7077,
+    "operationP95Ms.leave": 38.1778,
+    "operationP95Ms.loot_all": 114.2019,
+    "operationP95Ms.loot_close": 36.4933,
+    "operationP95Ms.loot_open": 70.4674,
+    "operationP95Ms.rejoin_body": 443.9605,
+    "operationP95Ms.rejoin_saved": 451.2477,
+    "operationP95Ms.teleport": 32.2356,
+    "operationP95Ms.vendor_close": 36.0992,
+    "operationP95Ms.vendor_open": 36.6319,
+    "operationP95Ms.vendor_purchase": 95.7238,
+    "operationP95Ms.vendor_sale": 96.8313,
+    "redisBytesPerHour": -374004.49174107413,
+    "remoteAllEntitiesUpdateRateAverageHz": 3.220502475765253,
+    "remoteAllEntitiesUpdateRateP5Hz": 2.821051855609067,
+    "remoteUpdateRateAverageHz": 14.912475576956032,
+    "remoteUpdateRateP5Hz": 14.888909816427063,
+    "routeQueueP99Ms": 0.0573,
+    "workerCpuAverageSingleCorePercent": 82.14589088212925,
+    "workerGcPauseMsPerSecond": 1.8256992526647633,
+    "workerLoopBusyAveragePercent": 27.89558048826631,
+    "workerLoopIsolatedFailures": 0,
+    "workerLoopStepFailures": 0,
+    "workerTickP99Ms": 50,
+    "workerWorkingSetMaximumBytes": 234967040,
+    "workingSetGrowthMiB.gameService": -2.1949632663748844,
+    "workingSetGrowthMiB.generator": 6.7195293824753435,
+    "workingSetGrowthMiB.worker": 8.68364938531758,
+    "workingSetSlopeMiBPerHour.gameService": -27.24599852830804,
+    "workingSetSlopeMiBPerHour.generator": 71.78498864075931,
+    "workingSetSlopeMiBPerHour.worker": 58.73051005469576
+  },
+  "soak": {
+    "storageHours": 0.5000367753055556,
+    "topTables": [
+      {
+        "table": "item_operations",
+        "startRows": 2221,
+        "endRows": 5782,
+        "startBytes": 5832704,
+        "endBytes": 18448384,
+        "rowsPerHour": 7121.476211072662,
+        "bytesPerHour": 25229504.354536694,
+        "rowsPerPlayerHour": 14.242952422145324,
+        "bytesPerPlayerHour": 50459.00870907339
+      },
+      {
+        "table": "item_operation_changes",
+        "startRows": 4041,
+        "endRows": 12859,
+        "startBytes": 2711552,
+        "endBytes": 10911744,
+        "rowsPerHour": 17634.70295682076,
+        "bytesPerHour": 16399177.830448851,
+        "rowsPerPlayerHour": 35.26940591364153,
+        "bytesPerPlayerHour": 32798.3556608977
+      },
+      {
+        "table": "item_container_slots",
+        "startRows": 30385,
+        "endRows": 33710,
+        "startBytes": 5185536,
+        "endBytes": 7241728,
+        "rowsPerHour": 6649.510924407919,
+        "bytesPerHour": 4112081.5538887726,
+        "rowsPerPlayerHour": 13.299021848815839,
+        "bytesPerPlayerHour": 8224.163107777546
+      },
+      {
+        "table": "character_currency_ledger",
+        "startRows": 672,
+        "endRows": 7763,
+        "startBytes": 409600,
+        "endBytes": 1769472,
+        "rowsPerHour": 14180.956981947837,
+        "bytesPerHour": 2719543.9758786303,
+        "rowsPerPlayerHour": 28.361913963895674,
+        "bytesPerPlayerHour": 5439.087951757261
+      },
+      {
+        "table": "character_simulation_sessions",
+        "startRows": 500,
+        "endRows": 583,
+        "startBytes": 1204224,
+        "endBytes": 1794048,
+        "rowsPerHour": 165.98779149649843,
+        "bytesPerHour": 1179561.2425497675,
+        "rowsPerPlayerHour": 0.3319755829929969,
+        "bytesPerPlayerHour": 2359.122485099535
+      },
+      {
+        "table": "live_mob_loot_grants",
+        "startRows": 407,
+        "endRows": 1442,
+        "startBytes": 196608,
+        "endBytes": 516096,
+        "rowsPerHour": 2069.8477614322396,
+        "bytesPerHour": 638929.006381124,
+        "rowsPerPlayerHour": 4.139695522864479,
+        "bytesPerPlayerHour": 1277.858012762248
+      },
+      {
+        "table": "account_sessions",
+        "startRows": 1000,
+        "endRows": 1714,
+        "startBytes": 737280,
+        "endBytes": 1024000,
+        "rowsPerHour": 1427.894977451806,
+        "bytesPerHour": 573397.8262394703,
+        "rowsPerPlayerHour": 2.855789954903612,
+        "bytesPerPlayerHour": 1146.7956524789406
+      },
+      {
+        "table": "death_events",
+        "startRows": 11,
+        "endRows": 106,
+        "startBytes": 81920,
+        "endBytes": 352256,
+        "rowsPerHour": 189.98602641165485,
+        "bytesPerHour": 540632.2361686435,
+        "rowsPerPlayerHour": 0.3799720528233097,
+        "bytesPerPlayerHour": 1081.2644723372869
+      },
+      {
+        "table": "corpse_sections",
+        "startRows": 33,
+        "endRows": 318,
+        "startBytes": 65536,
+        "endBytes": 327680,
+        "rowsPerHour": 569.9580792349645,
+        "bytesPerHour": 524249.44113323,
+        "rowsPerPlayerHour": 1.139916158469929,
+        "bytesPerPlayerHour": 1048.49888226646
+      },
+      {
+        "table": "item_destructions",
+        "startRows": 7,
+        "endRows": 149,
+        "startBytes": 49152,
+        "endBytes": 253952,
+        "rowsPerHour": 283.9791131626841,
+        "bytesPerHour": 409569.8758853359,
+        "rowsPerPlayerHour": 0.5679582263253682,
+        "bytesPerPlayerHour": 819.1397517706719
+      }
+    ],
+    "redis": {
+      "start": {
+        "takenAt": "2026-11-16T15:31:37.1865877Z",
+        "keys": 604,
+        "usedMemoryBytes": 1710984
+      },
+      "end": {
+        "takenAt": "2026-11-16T16:01:37.3190073Z",
+        "keys": 34,
+        "usedMemoryBytes": 1523968
+      },
+      "keysPerHour": -1139.916158469929,
+      "usedMemoryBytesPerHour": -374004.49174107413
+    },
+    "memory": [
+      {
+        "process": "worker",
+        "samples": 1732,
+        "workingSetSlopeMiBPerHour": 58.73051005469576,
+        "workingSetFifthsMiB": [
+          196.3513367052023,
+          213.2150695447977,
+          216.59418903097983,
+          218.96889676661849,
+          221.89871893011528
+        ],
+        "managedHeapSlopeMiBPerHour": 49.92685004973301,
+        "managedHeapFifthsMiB": [
+          95.33089098249162,
+          110.7591970231798,
+          113.40082126193576,
+          114.7133600446913,
+          117.69895193311903
+        ],
+        "generation2CollectionsPerHour": 22.122949640900174,
+        "allocatedBytesPerSecond": 10595420.361055236,
+        "workingSetGrowthMiB": 8.68364938531758,
+        "managedHeapGrowthMiB": 6.939754909939239
+      },
+      {
+        "process": "gameService",
+        "samples": 1732,
+        "workingSetSlopeMiBPerHour": -27.24599852830804,
+        "workingSetFifthsMiB": [
+          174.01254290101156,
+          165.83194093208093,
+          159.4699882925072,
+          161.0005080382948,
+          163.63697766570604
+        ],
+        "managedHeapSlopeMiBPerHour": null,
+        "managedHeapFifthsMiB": null,
+        "generation2CollectionsPerHour": null,
+        "allocatedBytesPerSecond": null,
+        "workingSetGrowthMiB": -2.1949632663748844,
+        "managedHeapGrowthMiB": null
+      },
+      {
+        "process": "generator",
+        "samples": 1732,
+        "workingSetSlopeMiBPerHour": 71.78498864075931,
+        "workingSetFifthsMiB": [
+          321.63014812138726,
+          345.21002303106934,
+          349.58002746757927,
+          353.26935061416185,
+          351.9295524135447
+        ],
+        "managedHeapSlopeMiBPerHour": 58.96652357356566,
+        "managedHeapFifthsMiB": [
+          185.20448490649977,
+          203.9802750824504,
+          210.13611053115008,
+          211.48912540060937,
+          209.93948731436166
+        ],
+        "generation2CollectionsPerHour": 45.99998381822791,
+        "allocatedBytesPerSecond": 35226118.466012105,
+        "workingSetGrowthMiB": 6.7195293824753435,
+        "managedHeapGrowthMiB": 5.959212231911266
+      }
+    ],
+    "drift": {
+      "samples": 173,
+      "maximumSessionsWithoutBot": 0,
+      "maximumBotsWithoutSession": 0,
+      "maximumSessionsNearLeaseExpiry": 0,
+      "leaseExpiryThresholdSeconds": 10,
+      "minimumSessionLeaseHeadroomSeconds": 140.003666,
+      "maximumWorkerHeartbeatAgeSeconds": 10.005559,
+      "workerHeartbeatTimeoutSeconds": 30,
+      "maximumPendingItemOperations": 0,
+      "maximumServiceConnections": 28,
+      "maximumServiceConnectionsInUse": 7,
+      "databasePoolSize": 64,
+      "maximumIdleInTransactionSeconds": 0,
+      "maximumRetentionLagSeconds": 14.991693999999995,
+      "minimumWorkerRegistrationHeadroomSeconds": 19.994441000000002
+    },
+    "deathsPerBotPerTenMinutes": {
+      "fighter": 0.5316664796382139,
+      "gatherer": 0,
+      "trader": 0,
+      "walker": 0.108888850584211
+    },
+    "churn": {
+      "churnRequests": 1437,
+      "churnSkippedBusy": 0,
+      "churnSkippedUnsafe": 5,
+      "churnSkippedLate": 0,
+      "churnRetreats": 271,
+      "leaves": 1432,
+      "leavesFighter": 570,
+      "leavesGatherer": 291,
+      "leavesWalker": 425,
+      "leavesTrader": 146,
+      "leavesWithLogout": 714,
+      "rejoinsBody": 729,
+      "rejoinsSaved": 703,
+      "rejoinsSavedFoundBody": 13,
+      "rejoinsBodyFoundGone": 0,
+      "rejoinBodiesHit": 0,
+      "rejoinBodiesDied": 8,
+      "rejoinBodiesDiedBeforeRelease": 0,
+      "rejoinChecksFailed": 0
+    },
+    "logClasses": [
+      {
+        "service": "simulation-worker",
+        "level": "warning",
+        "category": "Mmorpg.SimulationWorker.Sessions.SimulationSessionHeartbeatService",
+        "message": "Invalidated simulation session <id> with code session_revoked after a refused heartbeat: invalid_simulation_session.",
+        "count": 2,
+        "allowed": false,
+        "allowReason": null
+      },
+      {
+        "service": "simulation-worker",
+        "level": "warning",
+        "category": "SimulationWorker",
+        "message": "Development admin tools are enabled: every player may change its walk speed, teleport, restore its health, become invuln",
+        "count": 1,
+        "allowed": false,
+        "allowReason": null
+      }
+    ],
+    "retention": {
+      "sampleOffsetSeconds": 270,
+      "operationsAtSample": 5292,
+      "operationsAtEnd": 5782,
+      "changesAtSample": 11849,
+      "changesAtEnd": 12859,
+      "maximumLagSeconds": 14.991693999999995,
+      "operationGrowthPercent": 9.25925925925926,
+      "changeGrowthPercent": 8.523926069710525
+    }
+  },
+  "network": null,
+  "burst": null,
+  "outage": null,
+  "workerWorstInterval": {
+    "intervalStart": "2026-11-16T15:57:23.3890794Z",
+    "intervalEnd": "2026-11-16T15:57:33.3959382Z",
+    "tickP99Ms": 50,
+    "tickAverageMs": 9.486338815789475,
+    "cpuSingleCorePercent": 87.44002838213383,
+    "loopBusyPercent": 35.6436634369951,
+    "gcPauseMsPerSecond": 2.131937789147935,
+    "slowestPhases": [
+      {
+        "name": "snapshots",
+        "samples": 152,
+        "averageMs": 6.991578947368422,
+        "p99Ms": 33.34,
+        "maximumMs": 30.593,
+        "msPerSecond": 106.19916224258431
+      },
+      {
+        "name": "movement",
+        "samples": 304,
+        "averageMs": 2.288029605263158,
+        "p99Ms": 8,
+        "maximumMs": 18.437,
+        "msPerSecond": 69.50842695029188
+      },
+      {
+        "name": "combat",
+        "samples": 303,
+        "averageMs": 1.539910891089109,
+        "p99Ms": 8,
+        "maximumMs": 10.565,
+        "msPerSecond": 46.627320186177116
+      }
+    ]
+  },
+  "workerSentByMessage": [
+    {
+      "name": "SimulationSnapshot",
+      "messages": 13251921,
+      "bytes": 7838891070,
+      "messagesPerSecond": 7403.3227507118045,
+      "bytesPerSecond": 4379277.585406871,
+      "messagesPerPlayerPerSecond": 15.198930753267724,
+      "bytesPerPlayerPerSecond": 8990.603140128796
+    },
+    {
+      "name": "CombatantState",
+      "messages": 20480666,
+      "bytes": 1167397962,
+      "messagesPerSecond": 11441.73592247718,
+      "bytesPerSecond": 652178.9475811993,
+      "messagesPerPlayerPerSecond": 23.48974343529551,
+      "bytesPerPlayerPerSecond": 1338.9153758118441
+    },
+    {
+      "name": "CombatEventBatch",
+      "messages": 11396468,
+      "bytes": 930959853,
+      "messagesPerSecond": 6366.754738589149,
+      "bytesPerSecond": 520090.3521620916,
+      "messagesPerPlayerPerSecond": 13.070869345193918,
+      "bytesPerPlayerPerSecond": 1067.7391104142034
+    },
+    {
+      "name": "EntityAppearanceChanged",
+      "messages": 8830211,
+      "bytes": 856983850,
+      "messagesPerSecond": 4933.088718977847,
+      "bytesPerSecond": 478762.89284380677,
+      "messagesPerPlayerPerSecond": 10.12757060095234,
+      "bytesPerPlayerPerSecond": 982.894343606393
+    },
+    {
+      "name": "OwnerSimulationSnapshot",
+      "messages": 13076008,
+      "bytes": 706104432,
+      "messagesPerSecond": 7305.04713353555,
+      "bytesPerSecond": 394472.5452109197,
+      "messagesPerPlayerPerSecond": 14.997172117248118,
+      "bytesPerPlayerPerSecond": 809.8472943313983
+    },
+    {
+      "name": "EntitySpawn",
+      "messages": 1515782,
+      "bytes": 312384384,
+      "messagesPerSecond": 846.807294257145,
+      "bytesPerSecond": 174516.76757160662,
+      "messagesPerPlayerPerSecond": 1.738484983048847,
+      "bytesPerPlayerPerSecond": 358.28078214608996
+    },
+    {
+      "name": "WorldActorState",
+      "messages": 6309958,
+      "bytes": 309187942,
+      "messagesPerSecond": 3525.1233098534135,
+      "bytesPerSecond": 172731.04218281724,
+      "messagesPerPlayerPerSecond": 7.23703489464114,
+      "bytesPerPlayerPerSecond": 354.61470983741583
+    },
+    {
+      "name": "WorldActorSpawn",
+      "messages": 1519638,
+      "bytes": 283562925,
+      "messagesPerSecond": 848.9614885454105,
+      "bytesPerSecond": 158415.36135862002,
+      "messagesPerPlayerPerSecond": 1.7429075174862767,
+      "bytesPerPlayerPerSecond": 325.2247927880833
+    },
+    {
+      "name": "CorpsePresenceSnapshotChunk",
+      "messages": 412186,
+      "bytes": 236086590,
+      "messagesPerSecond": 230.27197274454744,
+      "bytesPerSecond": 131892.21569348098,
+      "messagesPerPlayerPerSecond": 0.4727455341354971,
+      "bytesPerPlayerPerSecond": 270.7731002309106
+    },
+    {
+      "name": "WorldActorDespawn",
+      "messages": 1377953,
+      "bytes": 55186316,
+      "messagesPerSecond": 769.8076976395787,
+      "bytesPerSecond": 30830.40630643443,
+      "messagesPerPlayerPerSecond": 1.580405756135848,
+      "bytesPerPlayerPerSecond": 63.294445794836136
+    },
+    {
+      "name": "EntityDespawn",
+      "messages": 1296608,
+      "bytes": 40632876,
+      "messagesPerSecond": 724.3634719188963,
+      "bytesPerSecond": 22699.976502852052,
+      "messagesPerPlayerPerSecond": 1.4871093184250765,
+      "bytesPerPlayerPerSecond": 46.602773185118906
+    },
+    {
+      "name": "OwnerCombatState",
+      "messages": 360511,
+      "bytes": 29561902,
+      "messagesPerSecond": 201.4031994442061,
+      "bytesPerSecond": 16515.0623544249,
+      "messagesPerPlayerPerSecond": 0.41347829682891263,
+      "bytesPerPlayerPerSecond": 33.90522033997083
+    },
+    {
+      "name": "OwnerItemStateChanged",
+      "messages": 35093,
+      "bytes": 6931670,
+      "messagesPerSecond": 19.60506746838661,
+      "bytesPerSecond": 3872.44914993279,
+      "messagesPerPlayerPerSecond": 0.040248962918238367,
+      "bytesPerPlayerPerSecond": 7.950090581924182
+    },
+    {
+      "name": "CorpseViewStateChunk",
+      "messages": 26251,
+      "bytes": 5300544,
+      "messagesPerSecond": 14.66539270260784,
+      "bytesPerSecond": 2961.2037369034233,
+      "messagesPerPlayerPerSecond": 0.03010787124402802,
+      "bytesPerPlayerPerSecond": 6.07931493182375
+    },
+    {
+      "name": "GatheringState",
+      "messages": 65683,
+      "bytes": 5231431,
+      "messagesPerSecond": 36.694487405637524,
+      "bytesPerSecond": 2922.5930445162635,
+      "messagesPerPlayerPerSecond": 0.07533333232720629,
+      "bytesPerPlayerPerSecond": 6.0000476541852406
+    },
+    {
+      "name": "WorldInteractionResult",
+      "messages": 34243,
+      "bytes": 4191598,
+      "messagesPerSecond": 19.13020617558951,
+      "bytesPerSecond": 2341.679582547926,
+      "messagesPerPlayerPerSecond": 0.039274078511647235,
+      "bytesPerPlayerPerSecond": 4.807439445763032
+    },
+    {
+      "name": "WorldInteractionOpened",
+      "messages": 27062,
+      "bytes": 3992476,
+      "messagesPerSecond": 15.118466241970719,
+      "bytesPerSecond": 2230.438017436933,
+      "messagesPerPlayerPerSecond": 0.03103802566019909,
+      "bytesPerPlayerPerSecond": 4.579061877752162
+    },
+    {
+      "name": "WorldInteractionClosed",
+      "messages": 26873,
+      "bytes": 2834853,
+      "messagesPerSecond": 15.012879436866422,
+      "bytesPerSecond": 1583.7199534938075,
+      "messagesPerPlayerPerSecond": 0.030821257245086473,
+      "bytesPerPlayerPerSecond": 3.251357629033049
+    },
+    {
+      "name": "CarryStateChanged",
+      "messages": 39661,
+      "bytes": 1229491,
+      "messagesPerSecond": 22.15702792191267,
+      "bytesPerSecond": 686.8678655792928,
+      "messagesPerPlayerPerSecond": 0.04548810641154224,
+      "bytesPerPlayerPerSecond": 1.4101312987578094
+    },
+    {
+      "name": "CorpseInteractionResult",
+      "messages": 15956,
+      "bytes": 1069052,
+      "messagesPerSecond": 8.91398445631826,
+      "bytesPerSecond": 597.2369585733235,
+      "messagesPerPlayerPerSecond": 0.01830030069596248,
+      "bytesPerPlayerPerSecond": 1.2261201466294862
+    },
+    {
+      "name": "JoinAccepted",
+      "messages": 1432,
+      "bytes": 662707,
+      "messagesPerSecond": 0.8000016132769961,
+      "bytesPerSecond": 370.22812090080885,
+      "messagesPerPlayerPerSecond": 0.0016423934943982372,
+      "bytesPerPlayerPerSecond": 0.7600737887515172
+    },
+    {
+      "name": "CorpseViewClosed",
+      "messages": 7824,
+      "bytes": 480641,
+      "messagesPerSecond": 4.3709585351111855,
+      "bytesPerSecond": 268.51506662504795,
+      "messagesPerPlayerPerSecond": 0.008973524231963553,
+      "bytesPerPlayerPerSecond": 0.5512581365510217
+    },
+    {
+      "name": "CombatIntentResult",
+      "messages": 11191,
+      "bytes": 369435,
+      "messagesPerSecond": 6.251967914932167,
+      "bytesPerSecond": 206.3886843582312,
+      "messagesPerPlayerPerSecond": 0.012835213404895721,
+      "bytesPerPlayerPerSecond": 0.4237134361752882
+    },
+    {
+      "name": "OwnerItemQuantityChanged",
+      "messages": 4181,
+      "bytes": 284308,
+      "messagesPerSecond": 2.335758900217263,
+      "bytesPerSecond": 158.8316052147739,
+      "messagesPerPlayerPerSecond": 0.004795284357597088,
+      "bytesPerPlayerPerSecond": 0.32607933631660196
+    },
+    {
+      "name": "ItemOperationResult",
+      "messages": 2156,
+      "bytes": 217756,
+      "messagesPerSecond": 1.2044717026712315,
+      "bytesPerSecond": 121.6516419697944,
+      "messagesPerPlayerPerSecond": 0.002472765624247625,
+      "bytesPerPlayerPerSecond": 0.24974932804901018
+    },
+    {
+      "name": "AdminStateChanged",
+      "messages": 1432,
+      "bytes": 14320,
+      "messagesPerSecond": 0.8000016132769961,
+      "bytesPerSecond": 8.00001613276996,
+      "messagesPerPlayerPerSecond": 0.0016423934943982372,
+      "bytesPerPlayerPerSecond": 0.016423934943982373
+    },
+    {
+      "name": "LeaveAccepted",
+      "messages": 1428,
+      "bytes": 12852,
+      "messagesPerSecond": 0.7977669718991274,
+      "bytesPerSecond": 7.179902747092147,
+      "messagesPerPlayerPerSecond": 0.0016378058030731024,
+      "bytesPerPlayerPerSecond": 0.014740252227657923
+    }
+  ],
+  "workerReceivedByMessage": [
+    {
+      "name": "MovementInputBatch",
+      "messages": 26151567,
+      "bytes": 893534220,
+      "messagesPerSecond": 14609.843428576434,
+      "bytesPerSecond": 499182.1351384095,
+      "messagesPerPlayerPerSecond": 29.99382926614499,
+      "bytesPerPlayerPerSecond": 1024.8147974512592
+    },
+    {
+      "name": "WorldInteractionIntent",
+      "messages": 61305,
+      "bytes": 8523908,
+      "messagesPerSecond": 34.24867241756023,
+      "bytesPerSecond": 4761.969379486518,
+      "messagesPerPlayerPerSecond": 0.07031210417184632,
+      "bytesPerPlayerPerSecond": 9.776264696961654
+    },
+    {
+      "name": "CorpseInteractionIntent",
+      "messages": 15955,
+      "bytes": 765840,
+      "messagesPerSecond": 8.913425795973794,
+      "bytesPerSecond": 427.8444382067421,
+      "messagesPerPlayerPerSecond": 0.018299153773131197,
+      "bytesPerPlayerPerSecond": 0.8783593811102974
+    },
+    {
+      "name": "CombatIntent",
+      "messages": 11191,
+      "bytes": 345472,
+      "messagesPerSecond": 6.251967914932167,
+      "bytesPerSecond": 193.00150652376425,
+      "messagesPerPlayerPerSecond": 0.012835213404895721,
+      "bytesPerPlayerPerSecond": 0.3962297243692373
+    },
+    {
+      "name": "ItemOperationIntent",
+      "messages": 2157,
+      "bytes": 163928,
+      "messagesPerSecond": 1.2050303630156987,
+      "bytesPerSecond": 91.58007294781524,
+      "messagesPerPlayerPerSecond": 0.0024739125470789086,
+      "bytesPerPlayerPerSecond": 0.18801276588667196
+    },
+    {
+      "name": "JoinRequest",
+      "messages": 1432,
+      "bytes": 74464,
+      "messagesPerSecond": 0.8000016132769961,
+      "bytesPerSecond": 41.600083890403795,
+      "messagesPerPlayerPerSecond": 0.0016423934943982372,
+      "bytesPerPlayerPerSecond": 0.08540446170870833
+    },
+    {
+      "name": "LeaveRequest",
+      "messages": 1428,
+      "bytes": 64260,
+      "messagesPerSecond": 0.7977669718991274,
+      "bytesPerSecond": 35.89951373546074,
+      "messagesPerPlayerPerSecond": 0.0016378058030731024,
+      "bytesPerPlayerPerSecond": 0.07370126113828962
+    }
+  ]
+}

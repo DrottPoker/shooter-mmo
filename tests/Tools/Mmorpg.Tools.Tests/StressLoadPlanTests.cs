@@ -44,6 +44,7 @@ public sealed class StressLoadPlanTests
                 "hotspot-100",
                 "soak-10min",
                 "soak-30min",
+                "soak-500-30min",
                 "login-burst",
                 "logout-burst",
                 "outage-60s"

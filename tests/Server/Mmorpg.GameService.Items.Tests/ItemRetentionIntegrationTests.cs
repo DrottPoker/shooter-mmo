@@ -278,6 +278,68 @@ public sealed class ItemRetentionIntegrationTests
         Assert.InRange(operations.Lag!.Value, TimeSpan.FromMinutes(9.5), TimeSpan.FromMinutes(11));
     }
 
+    // The operation of a death becomes due only when its death event leaves with its closed
+    // corpse, long after its own window, and goes in that pass: its age is no lag. An operation
+    // that the task left behind still is one.
+    [PostgresIntegrationFact]
+    public async Task TheLagLeavesOutADeathOperationThatWaitedForItsDeathEventButNotAPlainOperationThatWaited()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var world = new ItemScenarioWorld(context);
+        var player = await world.RegisterAsync("retention_death_lag");
+        var characterId = player.Character.Id;
+        var corpseId = await world.ProcessDeathAsync(characterId);
+        await using var connection = await context.DataSource.OpenConnectionAsync();
+        var deathOperationId = await connection.QuerySingleAsync<Guid>(
+            "select operation_id from death_events where corpse_id = @CorpseId;",
+            new { CorpseId = corpseId });
+        await connection.ExecuteAsync(
+            """
+            update item_operations
+            set created_at = now() - interval '3 days',
+                completed_at = now() - interval '2 days'
+            where operation_id = @OperationId;
+
+            update corpses
+            set created_at = now() - interval '3 days',
+                expires_at = now() - interval '3 days' + interval '5 minutes'
+            where id = @CorpseId;
+            """,
+            new { OperationId = deathOperationId, CorpseId = corpseId });
+        Assert.Equal(1, await context.CorpseService.ExpireDueCorpsesAsync(8, CancellationToken.None));
+        await connection.ExecuteAsync(
+            "update corpses set closed_at = now() - interval '1 day 1 minute' where id = @CorpseId;",
+            new { CorpseId = corpseId });
+
+        var death = await RetentionPasses.RunAsync(context, Day, Day);
+
+        Assert.Equal(1, death.Task("closed_corpses").Deleted);
+        Assert.InRange(death.Task("closed_corpses").Lag!.Value, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2));
+        Assert.Equal(1, death.Task("item_operations").Deleted);
+        Assert.Equal(
+            0,
+            await connection.ExecuteScalarAsync<int>(
+                "select count(*) from item_operations where operation_id = @OperationId;",
+                new { OperationId = deathOperationId }));
+        Assert.Equal(TimeSpan.Zero, death.Task("item_operations").Lag);
+
+        var inventoryId = (await world.LoadStateAsync(characterId)).PermanentInventoryContainerId;
+        var oreId = await world.GrantAsync(characterId, "fixture.ore", 1, inventoryId, 0);
+        await connection.ExecuteAsync(
+            """
+            update item_operations
+            set created_at = now() - interval '3 days',
+                completed_at = now() - interval '1 day 10 minutes'
+            where operation_id = @OperationId;
+            """,
+            new { OperationId = await OperationOfAsync(connection, oreId, "grant") });
+
+        var plain = await RetentionPasses.RunAsync(context, Day, Day);
+
+        Assert.Equal(1, plain.Task("item_operations").Deleted);
+        Assert.InRange(plain.Task("item_operations").Lag!.Value, TimeSpan.FromMinutes(9.5), TimeSpan.FromMinutes(11));
+    }
+
     private static async Task<Guid> DestroyAsync(ItemScenarioWorld world, Guid characterId, Guid itemId)
     {
         var state = await world.LoadStateAsync(characterId);

@@ -1198,7 +1198,13 @@ or `SessionHistory`, whose window `Retention:ItemHistory` or
 [Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults) lists.
 `DeleteDueAsync` deletes up to a batch of the rows that ended longer ago than
 the window, oldest first, in the transaction that the host gives it, and
-returns how many it deleted and the age of the oldest of them.
+returns how many it deleted and the age of the oldest of them that tells the
+lag. The host's lag, the `game_service.retention.lag` metric, is that age less
+the window, from the first batch of the pass with such a row, and 0 when the
+task finished without one. Every row tells the lag except the operation of a
+death: it becomes due only when its death event leaves with its closed corpse,
+the corpse's lifetime and a window after it completed, and goes in the same
+pass, so its age is no lag. The `closed_corpses` lag covers that wait.
 
 `RetentionHostedService` runs a pass at start and then every
 `Retention:IntervalSeconds`, one pass at a time: a pass that outlasts the

@@ -277,7 +277,7 @@ public sealed record StressSummarySoak(
         "churnRequests", "churnSkippedBusy", "churnSkippedUnsafe", "churnSkippedLate", "churnRetreats",
         "leaves", "leavesFighter", "leavesGatherer", "leavesWalker", "leavesTrader", "leavesWithLogout",
         "rejoinsBody", "rejoinsSaved", "rejoinsSavedFoundBody", "rejoinsBodyFoundGone",
-        "rejoinBodiesHit", "rejoinBodiesDied", "rejoinChecksFailed"
+        "rejoinBodiesHit", "rejoinBodiesDied", "rejoinBodiesDiedBeforeRelease", "rejoinChecksFailed"
     ];
 
     public static StressSummarySoak Create(StressRunReport report)

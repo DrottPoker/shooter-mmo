@@ -516,6 +516,9 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(6, cadence.P5Hz, 3);
         Assert.Equal(6, cadence.MinimumHz, 3);
         Assert.Equal((6 + (19 * 15)) / 20d, cadence.AverageHz, 3);
+        Assert.Equal(180, cadence.Visits);
+        // The slow bot's 9 visits are the lowest 5 percent of 180.
+        Assert.Equal(6.025, cadence.VisitP5Hz, 6);
     }
 
     // Under a network profile the input acknowledgement limit grows by the profile's allowance,
@@ -652,12 +655,20 @@ public sealed class StressQualityVerdictTests
 
     private static SimulationBotRemoteCadenceSummary Cadence(double hz)
     {
+        var visits = new SimulationBotRateHistogram();
+        for (var visit = 0; visit < 9; visit++)
+        {
+            visits.Add(hz);
+        }
+
         return new SimulationBotRemoteCadenceSummary(
             9,
             (long)(hz * 40 * 9),
             40 * 9,
             0,
-            Enumerable.Range(0, 9).Select(_ => new SimulationBotEntityCadence((long)(hz * 40), 40, (long)(hz * 40), 40)).ToArray());
+            (long)(hz * 40 * 9),
+            40 * 9,
+            visits);
     }
 
     // The worker's Mob numbers fold like the other levels and counters of the steady interval.
@@ -1201,7 +1212,7 @@ public sealed class StressQualityVerdictTests
                     [
                         new StressMemoryTrend("worker", 660, 200, [100, 100, 110, 120, 140]),
                         new StressMemoryTrend("gameService", 660, 0, [200, 200, 200, 200, 200]),
-                        new StressMemoryTrend("generator", 660, 0, [300, 300, 300, 300, 300])
+                        new StressMemoryTrend("generator", 660, 0, [300, 300, 300, 300, 300], 0, [150, 150, 150, 150, 150])
                     ])
             },
             "service_log_errors" => report with

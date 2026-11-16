@@ -350,6 +350,7 @@ sets is an error.
 | `hotspot-100` | full-stack `playing` | 100 traders in the town of Development World 2 at its one vendor, steps of 20 five seconds apart, 120 s steady |
 | `soak-10min` | full-stack `playing` | The rehearsal of the soak: 100 bots of the reference mix on the reference variant with [churn](#churn) of 10 percent a minute, steps of 10 six seconds apart, 600 s steady; long enough for the [memory rule](#quality-boundary), whose limit it set, and for the [retention rules](#storage-growth) |
 | `soak-30min` | full-stack `playing` | The [Soak](#soak): 250 bots of the reference mix on the reference variant with churn of 10 percent a minute, steps of 25 six seconds apart, 1,800 s steady, 2 poll threads |
+| `soak-500-30min` | full-stack `playing` | The soak at the Scale Target: the 500 bots, variant, ramp, and 4 poll threads of `playing-500` with churn of 10 percent a minute, 1,800 s steady |
 | `login-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [login burst](#burst-scenarios) of 400 logged-in accounts 10 s into it, each with 60 s to end logged in again |
 | `logout-burst` | full-stack `inventory` | 20 bots that move items in their inventories, 90 s steady, and a [logout burst](#burst-scenarios) of 500 logged-in accounts 10 s into it, each with 60 s to end logged out |
 | `outage-60s` | full-stack `playing` | `playing-100` with a [GameService outage](#gameservice-outage-scenario): 60 s into the steady interval GameService stops, and it starts again 60 s after the stop |
@@ -521,6 +522,7 @@ own verdict, not a parameter.
 | `hotspot-100` | Local density: 100 players in one interest radius, all trading at one NPC, which loads the vendor's interactions, the Economy and Items commits behind them, and the snapshots of a crowd at once | None for the population; it checks the dense case the target sets apart, where the remote cadence may fall by design, and that the vendor path holds a crowd |
 | `soak-10min` | The rehearsal of the soak, and with `-Bots 20 -DurationSeconds 180` the tooling check of the churn | None; it sets the memory rule's limit and shows that the soak's numbers are complete |
 | `soak-30min` | What slowly goes wrong at 250 players with players coming and going: memory, table growth, drift, and log errors over 30 minutes | A tier holds only when its 30-minute soak passes too; its table growth orders the database work of phase 5 |
+| `soak-500-30min` | The same at the Scale Target's 500 players | The Scale Target is claimed only by a tier whose 30-minute soak passes |
 
 ### What The Bots Check
 
@@ -986,6 +988,17 @@ The check is what a player would notice, by `PlayingRejoinCheck`:
   after its time was hit, and then only the place and the most health it can
   have regenerated count. The join must also give the bot exactly the saved
   state, and that state must be the one the body's own session wrote.
+- A join that GameService placed as the reconnect of the body but that gives
+  the bot another entity than it had at its leave did not take the body over:
+  the body went, because it died or its time ended, before GameService released
+  its session, and the worker placed a new entity from the state the session
+  captured, as [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies)
+  describes. The generator then reads the database as for a return from the
+  saved place. When the character's latest death lies after the leave, less
+  one second, the character must stand at the World spawn of the World's
+  manifest within 5 cm on the ground plane, alive and with full health, the
+  outcome `respawned_after_death_before_release`; otherwise the return is
+  judged like one from the saved place.
 - The 5 cm cover the rounding of a float and a standing character's ground
   contact; the bot stands still before it leaves, and both the body and the
   saved state keep the simulation's floats.
@@ -1001,8 +1014,10 @@ The counters `churnRequests`, `churnSkippedBusy`, `churnSkippedUnsafe`,
 `churnSkippedLate`, `churnRetreats`, `leaves` and the leaves of every role,
 `leavesWithLogout`, `rejoinsBody`, `rejoinsSaved`, `rejoinsSavedFoundBody`
 for a saved-kind return whose body hits still kept, `rejoinsBodyFoundGone` for
-a body-kind return whose body died, `rejoinBodiesHit`, `rejoinBodiesDied`, and
-`rejoinChecksFailed` show what the churn did, and the full-stack summary counts
+a body-kind return whose body died, `rejoinBodiesHit`, `rejoinBodiesDied`,
+`rejoinBodiesDiedBeforeRelease` for a reconnect that found a new entity at the
+World spawn because its body died before its release, and `rejoinChecksFailed`
+show what the churn did, and the full-stack summary counts
 the churn's logouts and logins apart from the run's own.
 
 ## World Variant
@@ -1137,8 +1152,8 @@ the current security boundary.
 A short run shows whether the stack keeps up; a long one shows what slowly goes
 wrong: memory that grows, tables that grow without bound, sessions and leases
 that drift, and errors that appear after twenty minutes. `soak-30min` is the
-soak, `soak-10min` its rehearsal, and both play the reference workload with
-[churn](#churn). Every full-stack run reports the numbers below, and a
+soak, `soak-10min` its rehearsal, and `soak-500-30min` the soak at the Scale
+Target; all three play the reference workload with [churn](#churn). Every full-stack run reports the numbers below, and a
 worker-only run its memory and log classes; the generator keeps sums, extremes,
 and histograms for them, never one entry per sample, so a long run does not
 grow its own memory with its measurements. The remote update rate, too, adds up
@@ -1178,7 +1193,14 @@ window of operations from then on and stay level. The rule
 much they grew from the retention sample to the end of the steady interval, and
 `retention_lag` the longest that a [drift check](#drift-checks) saw a completed
 operation past the window and not held by a death event, the lag that
-GameService's own metric `game_service.retention.lag` reports. `soak.retention`
+GameService's own metric `game_service.retention.lag` reports. Both leave out
+the operations of deaths, kind `process_player_death`, the only kind a death
+event holds: such an operation becomes due only when its death event leaves with
+its closed corpse, the corpse's lifetime and a second window after it
+completed, and retention deletes it in that same pass, so its age is no lag.
+Once its death event left, `retained_table_growth` counts it like any other
+operation, so operations of deaths that retention leaves behind still show
+there. `soak.retention`
 of the report and the summary holds both counts, their growth, and the worst
 lag, and the script prints them. A run whose window and two passes leave less
 than two minutes of the planned steady interval, every scenario but the soaks,
@@ -1192,7 +1214,17 @@ hour and the average of each fifth of the interval. For the worker it adds,
 from its own performance file, the slope and fifths of its managed heap, its
 generation 2 collections per hour, and its allocation per second, and for the
 generator its own managed heap. The rule `process_memory_growth` of the
-[Quality Boundary](#quality-boundary) judges the last fifth against the second.
+[Quality Boundary](#quality-boundary) judges the last fifth against the second:
+the working set of the worker and GameService, which is what a host pays for,
+and the managed heap of the generator. The generator runs with the server
+garbage collector, whose working set follows the collector's decisions to
+commit and release memory even while the heap stays flat: a 600 s run of
+`soak-500-30min` on 2026-11-16 held the generator's heap at 161, 159, 161, 163,
+and 162 MiB while its working set went 308, 343, 300, 349, and 377 MiB. Its
+working set therefore says nothing about a leak in the generator, while its heap
+showed the one that grew it from 199 to 294 MiB in the first 30-minute soak at
+500 players. The generator samples its own heap in every mode, and the report
+and the rule's note keep its working set beside it.
 
 ### Memory Limit
 
@@ -1320,9 +1352,10 @@ Every JSON report contains:
 - The remote update rate, how often the bots received the state of the remote
   players that walked near them during the steady interval, as
   [Remote Update Rate](#remote-update-rate) describes: the average, the fifth
-  percentile, and the minimum over bots, the fifth percentile over every pair
-  of bot and remote player, the rate over every visible player for comparison,
-  and the records of entities without a player spawn.
+  percentile, and the minimum over bots, the fifth percentile over every visit
+  of a remote player to a bot in which the player walked near, the rate over
+  every visible player for comparison, and the records of entities without a
+  player spawn.
 - The steady interval's start and end.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
@@ -1498,6 +1531,21 @@ such as a moving Mob, stay apart as `untrackedRecords`. The rule judges the
 fifth percentile over bots, so the players who see the least decide, not the
 average.
 
+A visit is a remote player's stay in a bot's interest, from its spawn to its
+despawn. When a visit ends, it folds into the bot's sums and, if the player
+walked near, its rate goes into a histogram in bins of 0.05 Hz, from which the
+report takes `visitP5Hz`, the fifth percentile over every visit. A bot
+therefore keeps the players in its interest at that moment and a fixed
+histogram, nothing per player it met: at 500 players with churn, every return
+from the saved place brings a new entity, and a record per remote entity grew
+the generator's live heap by about 2.4 MiB a minute.
+
+A pair is a bot and a remote character, which the spawn names by its character
+id: a player that leaves the bot's interest and comes back, that comes back into
+the game with a new entity, or that the bot sees again after its own leave and
+return stays one pair. What a bot keeps therefore grows with the characters it
+saw, at most the population, and not with the length of the run or the churn.
+
 Until changed-only replication, the rate counted every record of every visible
 player over the seconds it saw the player, which equalled the near moving rate
 because every snapshot carried every visible player. The report keeps that
@@ -1539,7 +1587,7 @@ worker-only mode, passes and says so.
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
-| `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
+| `process_memory_growth` | Last fifth's average at most 20 MiB above the second fifth's, of the working set for the worker and GameService and of the managed heap for the generator, whose server GC working set moves on a flat heap, as [Memory And GC Trend](#memory-and-gc-trend) explains, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `retained_table_growth` | `item_operations` and `item_operation_changes`, without the operations of deaths, which stay until their corpse is gone, grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
 | `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and holds none; its entries for a GameService outage hold only inside one |
@@ -1647,6 +1695,7 @@ names its commit.
 | `playing-500` | passed | 24 ms | 60 / 111 ms | 14.9 | equip 164 ms | 82% | 16 KiB/s |
 | `mixed-250` | failed | 8 ms | 46 / 84 ms | 15.0 | **corpse deposit 1,388 ms** | 43% | 30 KiB/s |
 | `soak-30min` | passed | 16 ms | 47 / 99 ms | 14.9 | rejoin 386 ms | 37% | 9.5 KiB/s |
+| `soak-500-30min`, later that day | failed | **50 ms** | 54 / 108 ms | 14.9 | rejoin 451 ms | 82% | 14 KiB/s |
 | `login-burst` | passed | 1 ms | 35 / 66 ms | 15.0 | relocation 68 ms | 4% | 5.9 KiB/s |
 | `logout-burst` | passed | 1 ms | 40 / 75 ms | 15.0 | relocation 66 ms | 5% | 5.9 KiB/s |
 | `outage-60s`, no baseline | passed | 8 ms | 43 / 98 ms | 14.9 | equip 153 ms | 15% | 5.5 KiB/s |
@@ -1665,10 +1714,14 @@ What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target
   least receive 14.9 updates per second, every operation stays below 170 ms
   at the 95th percentile, and the worker uses 82 percent of a core while its
   loop thread is busy 26 percent of the time. The claim of the target also
-  needs a 30-minute soak at 500, which has not run, as
+  needs a 30-minute soak at 500, as
   [What The Playing Scenarios Are For](#what-the-playing-scenarios-are-for)
-  says. Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
-  says what a larger tier would meet first.
+  says, and `soak-500-30min` does not pass yet: everything held for 30
+  minutes except the tail of the tick, which passed its rule at the limit in
+  one run and failed it in the next, as
+  [The 30 Minute Soak](#the-30-minute-soak) shows. Entry 1 of
+  [What Limits The Next Tier](#what-limits-the-next-tier) says what that tail
+  is made of and what a larger tier would meet first.
 - **250 playing players pass a five-minute run and a 30-minute soak** with every
   rule, at 37 to 38 percent of a core for the worker. 100 players in one place
   pass too.
@@ -1758,6 +1811,46 @@ leaving and returning per minute, and passed every rule, as the run of
   With those windows the whole database grew 34 MiB per hour.
 - **Logs**: no error or critical line. The one warning was the start notice of
   the development admin tools.
+
+`soak-500-30min`, the same soak at the Scale Target's 500 players, ran twice
+on the afternoon of 2026-11-16, after health regeneration travelled as a rule
+and with the message counts of
+[What Limits The Next Tier](#what-limits-the-next-tier), while another
+project's containers used 17 to 24 percent of the machine. It does not pass
+yet, and the tick's tail is the reason:
+
+- **What held**, in the second run: 500 of 500 bots and none failed; 1,432
+  leaves, 729 returns to a standing body and 703 from the saved place, every
+  one with its place and health, and 8 bodies that died while their players
+  were away; no deadlock, no error or critical log line, no session within ten
+  seconds of its lease expiry (the least headroom was 140.0 of 150 seconds);
+  14.9 remote updates per second for the players who see the least;
+  operations of at most 451 ms at the 95th percentile; the worker at 82
+  percent of a core with its loop thread busy 28 percent of the time.
+- **Memory** levels off here too: the worker grew 8.7 MiB between the second
+  and the last fifth, to 222 MiB (196.4, 213.2, 216.6, 219.0, and 221.9 MiB),
+  with 10.1 MiB allocated per second, and GameService stayed at about 164 MiB.
+- **Retention** kept up: the operation tables grew 9.3 and 8.5 percent after
+  the first 270 seconds, and no row was more than 15.0 seconds past its
+  window.
+- **The tick** went over its budget in 34 of 53,700 ticks, 16 in the first
+  run. Its p99 bucket was 24 ms in 167 of the 195 intervals, 33.34 ms in 3,
+  and 50 ms in 2, so the rule failed; the first run had 33.34 ms in 2
+  intervals and passed at its limit. Among the 150 samples of each interval,
+  the snapshot phase had one of 16 ms or more in 178 of the 181 steady
+  intervals and one above 12 ms in 87, the corpse presence phase reached 10
+  to 26 ms in 72, and movement and the Mobs reached 18 ms at times. One tick
+  took 122 ms with two phases long at once, snapshots 110 ms and world actors
+  62 ms, which points at the machine and not at one phase.
+
+The first of the two runs also failed three rules that judged the tooling and
+not the server, and each is corrected: the retention lag counted the
+operation of a player's death from its completion although it becomes due
+only when its death event leaves with the closed corpse; the generator kept
+the update records of every remote entity it ever saw, which grows with
+churn, and its memory is now judged by its managed heap; and a reconnect
+whose body had died before GameService released the session was judged as a
+body in the wrong place.
 
 What the history costs without retention was measured on 2026-11-14, before
 retention existed: the database grew 184 MiB per hour, about 750 KiB per player
@@ -2127,19 +2220,38 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      snapshots, 76 ms per second with a p99 of 16 ms, movement, 55 ms per
      second, and combat, 52 ms per second. On that trend a tier of 750 would
      reach the budget, so these three phases are the first limit above 500.
-   - The transport sends most packets for other things than snapshots. The
-     process uses 82 percent of a core while the loop thread is busy 26
-     percent of the time, so most of its CPU is still in LiteNetLib's threads,
-     which send 65,300 packets per second: 15,200 snapshot packets and 50,100
-     others of 65 bytes on average. The snapshot packets grow with the
-     players, the others with about their square: 2,500 per second at 100
-     players, 13,700 at 250, and 50,100 at 500, about 100 per second and
-     player. By the worker's counters they carry 28 percent of the bytes a
-     player receives at 100 players, 35 percent at 250, and 40 percent at
-     500, where they are 6.4 KiB per second and player. Spawns and despawns are
-     3,100 of them per second at 500; these numbers do not say which
-     messages the rest are, so a count per message kind is the next thing to
-     measure.
+     Under churn for 30 minutes the tail already decides the verdict at 500:
+     `soak-500-30min` passed the tick rule at its limit in one run and failed
+     it in the next, as [The 30 Minute Soak](#the-30-minute-soak) shows, with
+     the long samples of the snapshot phase and of the corpse presence phase
+     as the first things to look at.
+   - The transport sends most messages for other things than snapshots, and
+     the count per message kind says which. On 2026-11-16 the worker handed
+     65,300 messages per second to the transport at 500 players: 15,200
+     snapshots and 50,100 others of 65 bytes on average, which grew with about
+     the square of the players, 2,500 per second at 100 players and 13,700 at
+     250, and carried 40 percent of the bytes a player receives at 500. The
+     largest kind was `CombatantState`, 13.0 per second and player at 100
+     players, and half of it was regeneration: every health step of every
+     wounded player, once a second, to every peer that sees the player. A
+     combatant state now names its regeneration and viewers follow it by
+     rule, as [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat)
+     describes, which took `CombatantState` to 6.3 per second and player at
+     100 players. At 500 players, on a machine that other work kept 27 percent
+     busy, the worker then handed 46,900 messages per second to the
+     transport, 15,200 snapshots and 31,600 others, 63 per second and player
+     with 33 percent of the bytes: 23.6 `CombatantState`, 13.4
+     `CombatEventBatch`, 12.0 `EntityAppearanceChanged`, 7.0
+     `WorldActorState`, 6.0 spawns and despawns of players and world actors,
+     and under 1 of every other kind. The process used 74 percent of a core
+     where it had used 82, with its loop thread busy 24 percent of the time,
+     so most of its CPU is still in LiteNetLib's threads. What is left are
+     real changes, a hit, a new target, a tool taken in hand, a Mob that
+     stops, each sent reliably to every peer that sees the entity within the
+     interest radius of 128 m, where 48 m is near: by the areas of the two
+     circles about six of seven such messages go to a viewer beyond the near
+     radius, an estimate that no run measured. Left to decide: what a far
+     viewer receives of them.
    - Replication itself has room: the broadcast takes 4.7 ms on average, of
      which interest takes 1.9, a player receives 42.9 records per snapshot,
      the owner's included, of 15.4 bytes with their share of the packet
@@ -2289,11 +2401,15 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
     [The Client On A Bad Network](LOCAL_DEVELOPMENT.md#the-client-on-a-bad-network)
     shows. The load runs cannot show a correction, because the bots do not
     predict; under `terrible` on the idle machine no walk failed.
-12. **Other players stand still when their snapshots run out**, for up to half
+12. **Other players stood still when their snapshots ran out**, for up to half
     a second under `poor`, and for up to half a second right after every join
-    under `normal` and worse, because their presentation stops at the newest
-    state. The load runs measure only how often the state arrives, not how the
-    client shows it: on the idle machine the players who see the least received
+    under `normal` and worse, because their presentation stopped at the newest
+    state when the client was measured on 2026-11-14. A remote entity now
+    walks on along its velocity for a quarter of a second and then eases to a
+    stop, as [Remote Players](UNITY_CLIENT_ARCHITECTURE.md#remote-players)
+    describes; the client has not been measured under the profiles since. The
+    load runs measure only how often the state arrives, not how the client
+    shows it: on the idle machine the players who see the least received
     14.7, 13.9, and 11.5 updates per second under `normal`, `poor`, and
     `terrible`.
 13. **A durable Mob corpse gave part of a stack.** Fixed: GameService now
@@ -2306,8 +2422,11 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
     and 20.3 ms at the 99th percentile, but its remote players have no new
     state to show 18.7 percent of the time, for up to 0.28 seconds; with 200 in
     view they never starve. The baseline is in
-    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). The
-    load runs do not measure the client, so they leave this entry as it was.
+    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). That
+    baseline is from 2026-11-14, before the interest tiers, the byte budget
+    per recipient, and the presentation that walks on past the newest state;
+    the load runs do not measure the client, so this entry stands until the
+    crowd is measured again.
 
 Entries 9 to 12 are measured in
 [Measured Under The Profiles](#measured-under-the-profiles) and
