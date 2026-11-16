@@ -70,7 +70,9 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal(
             "This character connected from another client.",
             first.ServerDisconnect.Message);
-        Assert.Equal(RealtimeMessageType.ServerDisconnect, first.ReliablePackets[^1].Type);
+        Assert.Equal(
+            RealtimeMessageType.ServerDisconnect,
+            first.ReliablePacketsOn(RealtimeProtocol.SessionChannel)[^1].Type);
         Assert.Equal(
             first.JoinAccepted!.ControlledEntityId,
             second.JoinAccepted!.ControlledEntityId);

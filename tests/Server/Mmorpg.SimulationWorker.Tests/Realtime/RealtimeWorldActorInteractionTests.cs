@@ -25,7 +25,9 @@ public sealed class RealtimeWorldActorInteractionTests
             () => client.WorldActorSpawns.Any(spawn => spawn.ActorDefinitionId == ServicesActorId),
             "the world actor baseline");
 
-        Assert.Equal(RealtimeMessageType.JoinAccepted, client.ReliablePackets[0].Type);
+        Assert.Equal(
+            RealtimeMessageType.JoinAccepted,
+            client.ReliablePacketsOn(RealtimeProtocol.SessionChannel)[0].Type);
         var services = client.WorldActorSpawns.Single(spawn =>
             spawn.ActorDefinitionId == ServicesActorId);
         Assert.Equal(2.5f, services.PositionX);

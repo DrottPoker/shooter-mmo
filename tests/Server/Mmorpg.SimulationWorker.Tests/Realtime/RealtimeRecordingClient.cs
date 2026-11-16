@@ -292,6 +292,11 @@ internal sealed class RealtimeRecordingClient : IDisposable
     public IReadOnlyList<RecordedRealtimePacket> ReliablePackets =>
         Packets.Where(packet => packet.IsReliable).ToArray();
 
+    // The reliable packets of one channel. Only these have an order that the protocol promises:
+    // packets of different reliable channels may arrive in either order.
+    public IReadOnlyList<RecordedRealtimePacket> ReliablePacketsOn(byte channel) =>
+        Packets.Where(packet => packet.IsReliable && packet.Channel == channel).ToArray();
+
     public string Describe()
     {
         var types = string.Join(

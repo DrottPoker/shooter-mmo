@@ -25,22 +25,26 @@ public sealed class RealtimeReplicationContractTests
         Assert.False(client.Has(RealtimeMessageType.SimulationSnapshot));
 
         var packets = client.Packets;
-        Assert.Equal(RealtimeMessageType.JoinAccepted, packets[0].Type);
+        Assert.Equal(
+            RealtimeMessageType.JoinAccepted,
+            client.ReliablePacketsOn(RealtimeProtocol.SessionChannel)[0].Type);
         var selfSpawn = client.DecodeWithPackets<RealtimeEntitySpawn>(
                 RealtimeMessageType.EntitySpawn,
                 RealtimeProtocol.TryDecodeEntitySpawn)
             .Single(value => value.Value.EntityId == entityId);
-        // Reliable and unreliable packets may overtake each other on the wire, so only the
-        // reliable order is asserted: JoinAccepted first, then the baseline spawn, which its
-        // combatant state follows, and the owner combat state after the baseline.
-        Assert.Equal(selfSpawn.Packet.Index, client.ReliablePackets[1].Index);
-        Assert.Equal(RealtimeMessageType.CombatantState, client.ReliablePackets[2].Type);
+        // Reliable and unreliable packets may overtake each other on the wire, and so may the
+        // reliable channels, so only the order of the world channel is asserted: the baseline
+        // spawn first, which its combatant state follows, and the owner combat state after the
+        // baseline.
+        var world = client.ReliablePacketsOn(RealtimeProtocol.WorldChannel);
+        Assert.Equal(selfSpawn.Packet.Index, world[0].Index);
+        Assert.Equal(RealtimeMessageType.CombatantState, world[1].Type);
         await harness.PollUntilAsync(
             () => client.Has(RealtimeMessageType.OwnerCombatState),
             "the owner combat state");
         Assert.True(
             client.ReliablePackets.First(packet => packet.Type == RealtimeMessageType.OwnerCombatState).Index
-                > client.ReliablePackets[2].Index);
+                > world[1].Index);
         Assert.All(
             packets.Where(packet => packet.Type is RealtimeMessageType.OwnerSimulationSnapshot
                 or RealtimeMessageType.SimulationSnapshot),
