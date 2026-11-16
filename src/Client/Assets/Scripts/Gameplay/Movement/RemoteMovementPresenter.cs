@@ -83,6 +83,13 @@ namespace Mmorpg.Client.Gameplay
             get { return currentDelayTicks; }
         }
 
+        // The longest gap after a first state that a moving second state walked all of, the
+        // longest render delay; a longer gap counts as a stand.
+        public long LongestWalkGapTicks
+        {
+            get { return (long)Math.Round(MaximumInterpolationDelaySeconds * tickRateHz); }
+        }
+
         // The render delay the observed interval asks for.
         public double TargetDelayTicks
         {
@@ -271,7 +278,7 @@ namespace Mmorpg.Client.Gameplay
                     serverTick,
                     state,
                     (long)Math.Round(observedIntervalTicks),
-                    (long)Math.Round(MaximumInterpolationDelaySeconds * tickRateHz),
+                    LongestWalkGapTicks,
                     firstStateStands))
             {
                 return false;

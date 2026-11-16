@@ -75,6 +75,8 @@ internal static class RealtimeServerComposition
         worldActors.Driver.Activated = combat.Combat.RegisterWorldActors;
         worldActors.Driver.RespawnMob = combat.MobDeaths.Respawn;
         worldActors.Driver.KeepActive = combat.Mobs.IsBusy;
+        // Presence spawns a walking Mob as one, and the Mob system sends its rest poses through presence.
+        core.Presence.IsActorMoving = combat.Mobs.IsMoving;
 
         // The infrastructure that runs the peers, the loop, and the shutdown.
         var supervisor = new RealtimePeerSupervisor(

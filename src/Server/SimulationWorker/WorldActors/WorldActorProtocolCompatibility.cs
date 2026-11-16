@@ -6,16 +6,19 @@ namespace Mmorpg.SimulationWorker.WorldActors;
 
 internal static class WorldActorProtocolMapper
 {
-    public static RealtimeWorldActorSpawn ToSpawn(WorldActorRuntimeState actor)
+    // The spawn of the actor with its pose at poseTick. isMoving tells whether a Mob walks then,
+    // so its pose is not a rest pose; only an active Mob walks.
+    public static RealtimeWorldActorSpawn ToSpawn(WorldActorRuntimeState actor, uint poseTick, bool isMoving)
     {
         ArgumentNullException.ThrowIfNull(actor);
         var bounds = actor.Definition.InteractionBounds;
+        var kind = ToKind(actor.Definition.Kind);
         return new RealtimeWorldActorSpawn(
             actor.NetworkEntityId,
             actor.RuntimeActorId,
             actor.Definition.Id,
             actor.Spawn.SpawnDefinitionId,
-            ToKind(actor.Definition.Kind),
+            kind,
             actor.Definition.FactionId,
             ToDisposition(actor.Definition.Disposition),
             checked((ushort)actor.Definition.Level),
@@ -29,6 +32,8 @@ internal static class WorldActorProtocolMapper
             actor.PositionZ,
             actor.YawDegrees,
             ToActivityTier(actor.ActivityTier),
+            poseTick,
+            isMoving && actor.IsActive && kind == RealtimeWorldActorKind.Mob,
             bounds.CenterX,
             bounds.CenterY,
             bounds.CenterZ,
@@ -152,7 +157,7 @@ internal static class WorldActorProtocolCompatibility
             try
             {
                 _ = RealtimeProtocol.EncodeWorldActorSpawn(
-                    WorldActorProtocolMapper.ToSpawn(actor));
+                    WorldActorProtocolMapper.ToSpawn(actor, 0, false));
                 var capabilities = actor.Definition.Capabilities
                     .Select((capability, index) =>
                         WorldActorProtocolMapper.ToCapability(actor, capability, index))

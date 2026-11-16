@@ -11,19 +11,33 @@ internal readonly record struct SnapshotEntityState(ulong EntityId, PlayerMoveme
 // The quantized remote record of every entity with a state, kept from snapshot to snapshot. Each
 // snapshot reports every such entity once: its record is quantized into its slot of one flat
 // buffer, and when the record differs from the one before, the slot gets a new version, a number
-// that no other record of any entity ever had. The reported planar position is kept beside it
-// for the distances of the budget order. An entity that a snapshot does not report loses its
-// slot. Nothing here allocates once the buffers have grown to the population. Loop-confined.
+// that no other record of any entity ever had. A quantized position that changes after it did not
+// change in the snapshot before is a start: the entity stood there, as a client judges by the
+// position alone, and moves again. A start lasts StartSnapshots snapshots. The reported planar
+// position is kept beside it for the distances of the budget order. An entity that a snapshot
+// does not report loses its slot. Nothing here allocates once the buffers have grown to the
+// population. Loop-confined.
 internal sealed class SnapshotRecords
 {
     internal const int RecordSize = RealtimeProtocol.SimulationSnapshotEntitySize;
     internal const int RecordsPerChunk = RealtimeProtocol.MaximumSnapshotEntitiesPerChunk;
+
+    // The snapshots a start lasts: the one where the entity moved off, whose record follows the
+    // start by at most one snapshot interval, and the next, whose record gives its speed.
+    internal const int StartSnapshots = 2;
 
     private readonly Dictionary<ulong, int> slotByEntityId = [];
     private byte[] records = new byte[256 * RecordSize];
     private ulong[] entityIds = new ulong[256];
     private ulong[] versions = new ulong[256];
     private uint[] reportedSequences = new uint[256];
+
+    // The quantized position of each record in one number, the snapshot that last moved it, and
+    // the snapshots its start still lasts.
+    private ulong[] quantizedPositions = new ulong[256];
+    private uint[] movedSequences = new uint[256];
+    private byte[] startSnapshotsLeft = new byte[256];
+    private bool[] starts = new bool[256];
     private float[] positionsX = new float[256];
     private float[] positionsZ = new float[256];
     private int count;
@@ -36,6 +50,11 @@ internal sealed class SnapshotRecords
     internal ReadOnlySpan<ulong> EntityIds => entityIds.AsSpan(0, count);
 
     internal ReadOnlySpan<ulong> Versions => versions.AsSpan(0, count);
+
+    // Whether this snapshot is one of the StartSnapshots of the slot's start: the snapshot where
+    // its quantized position changed after it did not change in the snapshot before, or one after
+    // it. False for a slot that is new in this snapshot.
+    internal ReadOnlySpan<bool> Starts => starts.AsSpan(0, count);
 
     // The snapshot whose reports follow.
     public uint Sequence => sequence;
@@ -66,6 +85,7 @@ internal sealed class SnapshotRecords
             quantizedZ,
             yawStep,
             state.IsGrounded);
+        var position = PackPosition(quantizedX, quantizedY, quantizedZ);
         if (!slotByEntityId.TryGetValue(entityId, out var slot))
         {
             slot = count;
@@ -74,14 +94,39 @@ internal sealed class SnapshotRecords
             slotByEntityId.Add(entityId, slot);
             entityIds[slot] = entityId;
             Store(slot, record);
+            quantizedPositions[slot] = position;
+            movedSequences[slot] = sequence;
+            startSnapshotsLeft[slot] = 0;
+            starts[slot] = false;
         }
         else if (reportedSequences[slot] == sequence)
         {
             throw new InvalidOperationException($"Entity {entityId} has a snapshot record already.");
         }
-        else if (!record.SequenceEqual(Record(slot)))
+        else
         {
-            Store(slot, record);
+            if (!record.SequenceEqual(Record(slot)))
+            {
+                Store(slot, record);
+            }
+
+            var moved = position != quantizedPositions[slot];
+            if (moved && movedSequences[slot] != unchecked(sequence - 1u))
+            {
+                startSnapshotsLeft[slot] = StartSnapshots;
+            }
+
+            if (moved)
+            {
+                quantizedPositions[slot] = position;
+                movedSequences[slot] = sequence;
+            }
+
+            starts[slot] = startSnapshotsLeft[slot] > 0;
+            if (starts[slot])
+            {
+                startSnapshotsLeft[slot]--;
+            }
         }
 
         reportedSequences[slot] = sequence;
@@ -108,6 +153,10 @@ internal sealed class SnapshotRecords
                 entityIds[slot] = entityIds[last];
                 versions[slot] = versions[last];
                 reportedSequences[slot] = reportedSequences[last];
+                quantizedPositions[slot] = quantizedPositions[last];
+                movedSequences[slot] = movedSequences[last];
+                startSnapshotsLeft[slot] = startSnapshotsLeft[last];
+                starts[slot] = starts[last];
                 positionsX[slot] = positionsX[last];
                 positionsZ[slot] = positionsZ[last];
                 slotByEntityId[entityIds[slot]] = slot;
@@ -190,6 +239,14 @@ internal sealed class SnapshotRecords
         versions[slot] = ++nextVersion;
     }
 
+    // The 24-bit x, 16-bit y, and 24-bit z steps of a record in one number.
+    private static ulong PackPosition(int quantizedX, short quantizedY, int quantizedZ)
+    {
+        return ((ulong)((uint)quantizedX & 0xFF_FFFFu) << 40)
+            | ((ulong)(ushort)quantizedY << 24)
+            | ((uint)quantizedZ & 0xFF_FFFFu);
+    }
+
     private void EnsureCapacity(int slots)
     {
         if (slots <= entityIds.Length)
@@ -202,6 +259,10 @@ internal sealed class SnapshotRecords
         Array.Resize(ref entityIds, capacity);
         Array.Resize(ref versions, capacity);
         Array.Resize(ref reportedSequences, capacity);
+        Array.Resize(ref quantizedPositions, capacity);
+        Array.Resize(ref movedSequences, capacity);
+        Array.Resize(ref startSnapshotsLeft, capacity);
+        Array.Resize(ref starts, capacity);
         Array.Resize(ref positionsX, capacity);
         Array.Resize(ref positionsZ, capacity);
     }

@@ -31,6 +31,10 @@ internal sealed class EntityPresenceReplicator(
     // The looks that player spawns carry.
     public AppearanceReplicator? Appearances { get; set; }
 
+    // Whether a world actor walks, so the pose its spawn carries is not a rest pose; without it
+    // no actor walks.
+    public Func<WorldActorRuntimeState, bool>? IsActorMoving { get; set; }
+
     public bool IsVisibleTo(int connectionId, ulong entityId)
     {
         return interestManager.GetVisible(connectionId).Contains(entityId);
@@ -338,10 +342,14 @@ internal sealed class EntityPresenceReplicator(
         IRealtimePeerConnection peer,
         WorldActorRuntimeState actor)
     {
+        // The pose is the one of the current tick, the tick that snapshots name.
         sender.SendControl(
             peer,
             RealtimeProtocol.EncodeWorldActorSpawn(
-                WorldActorProtocolMapper.ToSpawn(actor)));
+                WorldActorProtocolMapper.ToSpawn(
+                    actor,
+                    clock.ServerTick,
+                    IsActorMoving?.Invoke(actor) ?? false)));
         networkMetrics.RecordSpawnPacket();
         hooks.RaiseSpawnSent(peer, actor.NetworkEntityId);
     }

@@ -847,7 +847,18 @@ authentication, and domain failures to structured results:
      entity's tier after its last change, so one lost packet cannot leave an
      entity walking on in the client.
   5. **Far changed**: a changed entity beyond the near tier, every
-     `FarIntervalSnapshots` snapshots, 3 by default, staggered by entity id.
+     `FarIntervalSnapshots` snapshots, 3 by default, staggered by entity id,
+     and at once in the two snapshots of a start: the snapshot where its
+     quantized position changes after it did not change in the snapshot
+     before, and the next. The client starts a walk from the stand one
+     snapshot interval before its first moving record, so that record must
+     not wait up to two more snapshots for the far slot, or the client shows
+     the walk up to three times too fast for a moment. The second record
+     gives the walking speed of a walk that started between two snapshots,
+     and so starts slower, before the client would continue that slow start
+     and then catch up. A turn in place moves nothing, as the client judges
+     standing by the position alone. Mobs travel in the same records and
+     follow the same rule.
   6. **Refresh**: an unchanged entity once every `RefreshIntervalSnapshots`
      snapshots, 15 by default, one second, staggered by entity id.
 - The near tier is the visible entities within `InterestManagement:NearRadius`,
@@ -1419,6 +1430,10 @@ in `content/actors/catalog.json`:
   revision. The first tick it stands still sends one reliable `WorldActorState`
   with its rest pose, which advances the state revision but never the
   interaction revision.
+- A Mob's `WorldActorSpawn` names the server tick of its pose and whether the
+  Mob walks then: whether its pose changed in its last tick, so the pose is not
+  yet the rest pose that the worker sent reliably. The moving Mobs gauge counts
+  the same Mobs. An NPC, a resource node, and a hidden Mob never walk.
 
 ## Character Looks
 

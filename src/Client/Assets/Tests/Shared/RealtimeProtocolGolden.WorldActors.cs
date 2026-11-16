@@ -42,6 +42,18 @@ namespace Mmorpg.SharedTests
                     aggression: RealtimeWorldActorAggression.Defensive,
                     menuOptions: new RealtimeWorldActorMenuOption[0])));
             r.Vector(
+                "WorldActors/WorldActorSpawn/walking mob",
+                spawn,
+                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(
+                    kind: RealtimeWorldActorKind.Mob,
+                    disposition: RealtimeWorldActorDisposition.Hostile,
+                    level: 2,
+                    aggression: RealtimeWorldActorAggression.Aggressive,
+                    activityTier: RealtimeWorldActorActivityTier.Active,
+                    poseTick: 0x01020304,
+                    isMoving: true,
+                    menuOptions: new RealtimeWorldActorMenuOption[0])));
+            r.Vector(
                 "WorldActors/WorldActorState/typical",
                 state,
                 () => RealtimeProtocol.EncodeWorldActorState(new RealtimeWorldActorState(
@@ -389,6 +401,17 @@ namespace Mmorpg.SharedTests
             r.Rejects("WorldActors/WorldActorSpawn/activity tier 0", WorldActorSpawnWire(payload: ActorStatePayloadWire(activityTier: 0)));
             r.Rejects("WorldActors/WorldActorSpawn/activity tier 4", WorldActorSpawnWire(payload: ActorStatePayloadWire(activityTier: 4)));
             r.Rejects("WorldActors/WorldActorSpawn/NaN position", WorldActorSpawnWire(payload: ActorStatePayloadWire(positionXBits: QuietNaNBits)));
+            r.Accepts("WorldActors/WorldActorSpawn/largest pose tick", WorldActorSpawnWire(poseTick: uint.MaxValue));
+            r.Accepts("WorldActors/WorldActorSpawn/moving mob", WorldActorSpawnWire(kind: 2, isMoving: 1));
+            r.AcceptsAs(
+                "WorldActors/WorldActorSpawn/moving byte 2 reads as true",
+                WorldActorSpawnWire(kind: 2, isMoving: 2),
+                WorldActorSpawnWire(kind: 2, isMoving: 1));
+            r.Rejects("WorldActors/WorldActorSpawn/walking npc", WorldActorSpawnWire(isMoving: 1));
+            r.Rejects("WorldActors/WorldActorSpawn/walking resource node", WorldActorSpawnWire(kind: 3, isMoving: 1));
+            r.Rejects(
+                "WorldActors/WorldActorSpawn/walking hidden mob",
+                WorldActorSpawnWire(kind: 2, payload: ActorStatePayloadWire(isActive: 0), isMoving: 1));
             r.Rejects("WorldActors/WorldActorSpawn/bounds width 0", WorldActorSpawnWire(boundsSizeX: 0f));
             r.Rejects("WorldActors/WorldActorSpawn/negative bounds height", WorldActorSpawnWire(boundsSizeY: -1f));
             r.Rejects("WorldActors/WorldActorSpawn/NaN bounds depth", WorldActorSpawnWire(boundsSizeZBits: QuietNaNBits));
@@ -462,6 +485,15 @@ namespace Mmorpg.SharedTests
             r.RejectsEncode(
                 "WorldActors/WorldActorSpawn/undefined activity tier",
                 () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(activityTier: 0)));
+            r.RejectsEncode(
+                "WorldActors/WorldActorSpawn/walking npc",
+                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(isMoving: true)));
+            r.RejectsEncode(
+                "WorldActors/WorldActorSpawn/walking hidden mob",
+                () => RealtimeProtocol.EncodeWorldActorSpawn(WorldActorSpawnModel(
+                    kind: RealtimeWorldActorKind.Mob,
+                    isActive: false,
+                    isMoving: true)));
             r.RejectsEncode("WorldActors/WorldActorState/null", () => RealtimeProtocol.EncodeWorldActorState(null));
             r.RejectsEncode(
                 "WorldActors/WorldActorState/interaction revision 0",
@@ -1177,6 +1209,8 @@ namespace Mmorpg.SharedTests
             bool isActive = true,
             float boundsSizeX = 0.8f,
             RealtimeWorldActorActivityTier activityTier = RealtimeWorldActorActivityTier.EventDriven,
+            uint poseTick = 0x11121314,
+            bool isMoving = false,
             RealtimeWorldActorMenuOption[] menuOptions = null)
         {
             return new RealtimeWorldActorSpawn(
@@ -1204,6 +1238,8 @@ namespace Mmorpg.SharedTests
                 boundsSizeY: 2f,
                 boundsSizeZ: 0.75f,
                 activityTier: activityTier,
+                poseTick: poseTick,
+                isMoving: isMoving,
                 menuOptions: menuOptions ?? new[]
                 {
                     new RealtimeWorldActorMenuOption("smith.talk", RealtimeWorldActorCapabilityKind.Dialogue),
@@ -1275,6 +1311,8 @@ namespace Mmorpg.SharedTests
             byte aggression = 0,
             WireText presentationArchetypeId = null,
             Wire payload = null,
+            uint poseTick = 0x11121314,
+            byte isMoving = 0,
             float boundsCenterX = 10.5f,
             uint? boundsCenterXBits = null,
             float boundsSizeX = 0.8f,
@@ -1299,6 +1337,8 @@ namespace Mmorpg.SharedTests
                 .U8(aggression)
                 .Text(presentationArchetypeId ?? "presentation.blacksmith")
                 .Append(payload ?? ActorStatePayloadWire())
+                .U32(poseTick)
+                .U8(isMoving)
                 .F32Or(boundsCenterX, boundsCenterXBits)
                 .F32(1f)
                 .F32(-20.75f)

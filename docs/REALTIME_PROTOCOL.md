@@ -775,8 +775,11 @@ The world actor messages keep actor visibility apart from interaction state:
   carry the actor's runtime and network identity, its definition and spawn ids,
   kind, faction, disposition, level, aggression, presentation
   archetype, state and interaction revisions, active flag, position, facing,
-  activity tier, and interaction bounds. A state update goes out only when replicated state
-  changes, and a resource node's available or depleted state reuses `IsActive`.
+  activity tier, and interaction bounds; the spawn also carries the tick of its
+  pose and whether a Mob walks, as
+  [World Actor Spawn Pose](#world-actor-spawn-pose) describes. A state update
+  goes out only when replicated state changes, and a resource node's available
+  or depleted state reuses `IsActive`.
 - `WorldInteractionIntent` (23) opens, closes, or acts on an interaction. Every
   intent carries an operation id, the simulation session, the interaction
   session, the target kind, entity id, and runtime id, and the expected target
@@ -825,6 +828,24 @@ detects, `Defensive` for one that fights only once damaged, and `None` for an
 actor without a brain. Both are static for the actor's lifetime, so a changed
 value without a despawn is an identity conflict. The level limit is public, and
 `WorldActorCombatRules.MaximumLevel` in WorldData must fit it.
+
+### World Actor Spawn Pose
+
+Since protocol 45 `WorldActorSpawn` says what a client cannot know about a Mob
+that comes into view while it walks. After `ActivityTier` it carries:
+
+- `PoseTick` (`u32`): the server tick at which the worker read the pose, the
+  tick that the snapshots of that moment name, as `EntitySpawn.ServerTick` does
+  for a player.
+- `IsMoving` (`bool`): whether the Mob walks at that tick, so its pose is not a
+  rest pose. The hand-written rule accepts it only for an active Mob; an NPC, a
+  resource node, and a hidden Mob send false.
+
+A spawn that walks starts the Mob from its pose as a first state that says
+nothing about standing, as
+[Mob Movement](UNITY_CLIENT_ARCHITECTURE.md#mob-movement) describes; any other
+spawn pose is a rest pose. `WorldActorState` carries neither, because a client
+takes every newer state as a rest pose.
 
 ### Capability Actions
 

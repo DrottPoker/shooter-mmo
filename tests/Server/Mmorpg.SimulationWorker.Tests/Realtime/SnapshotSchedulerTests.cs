@@ -66,6 +66,55 @@ public sealed class SnapshotSchedulerTests
         Assert.All(far, sequence => Assert.Equal(0ul, (sequence + 5ul) % 3ul));
     }
 
+    // A client starts an entity that walks off from a stand one snapshot interval before its first
+    // moving record, and the second gives it the walking speed, so a far one comes in both
+    // snapshots of its start, off its far slot, and then on its slot again.
+    [Fact]
+    public void AFarEntityThatStartsToWalkFromAStandComesInTheNextTwoSnapshots()
+    {
+        var fixture = new Fixture();
+        fixture.Stand(5);
+        for (var snapshot = 0; snapshot < 20 || !fixture.IsFarSlot(5, fixture.Sequence + 3); snapshot++)
+        {
+            fixture.Snapshot(near: []);
+        }
+
+        for (var snapshot = 0; snapshot < 2; snapshot++)
+        {
+            fixture.Walk(5);
+            Assert.Equal([5u], fixture.Snapshot(near: []));
+            Assert.False(fixture.IsFarSlot(5, fixture.Sequence));
+        }
+
+        var sent = new List<uint>();
+        for (var snapshot = 0; snapshot < 9; snapshot++)
+        {
+            fixture.Walk(5);
+            if (fixture.Snapshot(near: []).Contains(5u))
+            {
+                sent.Add(fixture.Sequence);
+            }
+        }
+
+        Assert.Equal(3, sent.Count);
+        Assert.All(sent, sequence => Assert.True(fixture.IsFarSlot(5, sequence)));
+
+        // A stand of one snapshot is a stand too: the walk after it comes at once, twice.
+        while (!fixture.IsFarSlot(5, fixture.Sequence + 1))
+        {
+            fixture.Walk(5);
+            fixture.Snapshot(near: []);
+        }
+
+        fixture.Snapshot(near: []);
+        for (var snapshot = 0; snapshot < 2; snapshot++)
+        {
+            fixture.Walk(5);
+            Assert.Contains(5u, fixture.Snapshot(near: []));
+            Assert.False(fixture.IsFarSlot(5, fixture.Sequence));
+        }
+    }
+
     [Fact]
     public void ARecordThatStopsChangingIsRepeatedInTheNextThreeSnapshotsOfItsTier()
     {
