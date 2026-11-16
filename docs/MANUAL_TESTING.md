@@ -2917,13 +2917,22 @@ it in
   prediction, and a character that stands still stands where the worker has it.
   The client never leaves the World by itself, under `terrible` neither, and
   the Console shows no error.
-- Under `terrible` the line is down for 3 seconds once a minute. The other
-  players and the Mobs freeze where their last snapshot left them, the
-  character walks on, and when the line comes back the character jumps back by
-  about the distance it walked during the outage, about 9 m, which F2 counts as
-  one hard snap with a latest correction of that size; then it walks on. No
-  `CONNECTION LOST` notice appears, because 3 seconds stay below the 10-second
-  realtime timeout.
+- Under `terrible` the line is down for 3 seconds once a minute, the first
+  time 60 seconds after the proxy first heard from the client, which is when
+  it entered the World; the proxy's progress line counts the packets it
+  dropped in outages. To see the path continuation, click a point about 25 m
+  away about 57 seconds after you entered the World, two or three seconds
+  before the outage, and do not click again until it is over. The other
+  players and the Mobs freeze where their last snapshot left them, your
+  character walks on along its path and the camera follows it, and when the
+  line comes back nothing jumps: F2's hard snaps stay at 0 and its latest
+  correction near 0.000 m, because the worker walked the same path on. A path
+  that ends during the outage ends there on both sides. Click another point
+  during the outage instead, and when the line comes back the character moves
+  to where the worker kept walking the old path, and the new path goes on
+  from there: smoothly when that is less than 3 m away, otherwise as a jump
+  that F2 counts as a hard snap. No `CONNECTION LOST` notice appears, because
+  3 seconds stay below the 10-second realtime timeout.
 - Another player who walks moves smoothly under `good`. Under `normal` it stops
   for up to a tenth of a second now and then, under `poor` for up to about half
   a second, and under `terrible` for up to about a second besides the outage,
@@ -2944,8 +2953,9 @@ it in
   until the line is back and ends the same way. A Character Select without the
   countdown and with `connection_lost` in the Console is a defect to record
   with the profile.
-- What to look for, and to record with the profile when it shows: a jump back
-  of the character without an outage, other players or wolves jumping, an
+- What to look for, and to record with the profile when it shows: a jump of
+  the character without an outage or after an outage without a click in it,
+  other players or wolves jumping, an
   attack, a loot, or a trade that takes long to answer or answers twice, and a
   reconnect that does not come back. The live stack test plays no attack, loot,
   or trade, so only this check covers them.

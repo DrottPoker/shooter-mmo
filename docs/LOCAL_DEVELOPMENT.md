@@ -648,16 +648,24 @@ What the profiles show:
   to 15 lost inputs, half a second, with the path before it
   (`AuthoritativePlayerMovement.MaximumFilledInputGap`), which covers every
   loss of the profiles outside an outage.
-- **An outage snaps the walking player back by the walk it missed.** Under
-  `terrible` the client walks on through the 3-second outage, but none of the
-  inputs of those seconds reach the worker, and a gap that long is not filled:
-  the worker skips ahead to the first input after it, so the character stood
-  through the outage. The first owner snapshot after the outage then corrects
-  the prediction by the distance walked, 8.9 to 9.3 m in three runs, a hard
-  snap that the drawn player shows as a jump of the same size in one frame. A
-  player sees the character jump back to about where the line went down. This
-  is a finding about how the worker treats a long gap of inputs, not fixed
-  here.
+- **An outage corrects the walking player only by a turn it took meanwhile.**
+  Under `terrible` the client walks on through the 3-second outage while none
+  of its inputs reach the worker. The worker used to stand after three steps
+  and skip ahead to the first input after the outage, so the first owner
+  snapshot after it corrected the prediction by the whole walk of the outage:
+  8.9 to 9.3 m in three runs on 2026-11-14 and 9.1 and 9.7 m in two on
+  2026-11-16, a hard snap that the drawn player shows as a jump of the same
+  size in one frame. The worker now walks the path on through the outage, as
+  [Server-Authoritative Movement](SERVICE_FEATURES.md#server-authoritative-movement)
+  describes, and the inputs after it confirm every step that followed the same
+  path. The test's walk turns about every two seconds, so its outage always
+  holds a turn, which the worker learns only with the newest inputs after the
+  outage: it starts the new path where it walked the old one to, and the
+  client is corrected by what it walked on the new path meanwhile. In three
+  runs on 2026-11-16 that left one hard snap of 5.72 to 5.78 m, a jump of 5.70
+  to 5.77 m, at a quarter of the machine busy. A walk that keeps its path
+  through the outage is not corrected at all; `MovementOutageTests` pins both
+  cases.
 - **Other players freeze when their snapshots run out.** The presentation
   holds a remote entity at its newest state until the next one arrives, with a
   render delay of about 133 ms. A burst of lost snapshots longer than that
@@ -697,7 +705,7 @@ play of each profile and loopback, with the reason of each in the file:
 | --- | --- | --- |
 | Hard snaps per minute in the World | 0 | 1.5: one per outage, which comes once a minute, with margin |
 | Corrections p95 | 0.05 m | 0.05 m |
-| Largest jump of the drawn player | 0.25 m, the size the measurements count as a visible jump | 18 m: the walk over the outage and a round trip, 5 m/s for 3.5 s |
+| Largest jump of the drawn player | 0.25 m, the size the measurements count as a visible jump | 18 m: the walk over the outage and a round trip, 5 m/s for 3.5 s, for a turn right at its start |
 
 A client that misses a bound under `good` or `normal` has a defect to find,
 not a bound to raise.

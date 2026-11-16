@@ -19,13 +19,24 @@ public enum MovementInputAcceptance
 // wait in a short queue that absorbs uneven packet timing, and each tick applies the oldest
 // one, or two while a backlog drains. When the next input is late, the tick still steps
 // along the current path, at most MaximumRunAheadInputs times in a row, and a longer silence
-// pauses the character until inputs arrive; the paused ticks let the queue catch up. A late
+// pauses the character until inputs arrive, unless the path continuation below walks it on;
+// the paused ticks let the queue catch up. A late
 // input then takes over the step taken ahead for it, or replaces it when it names another
 // path. Stepping per tick with the newest input instead made the worker take more or fewer
 // steps than the client whenever packets arrived unevenly, which corrected the local player
 // back and forth by whole steps. A step budget keeps the average at one step per tick, with
 // 1/64 of slack for a client clock that runs slightly fast, so a client cannot move faster by
 // sending more inputs.
+//
+// Path continuation: once no input arrived for longer than the run-ahead covers, a character
+// that follows its path keeps stepping ahead along it, up to pathContinuationSteps steps in
+// all, and then stops. The client goes on predicting the same path through such an outage,
+// so the inputs that arrive after it take over these steps one by one, however many were
+// lost, and the owner sees no correction. Only the steps beyond the continuation, or an input
+// that named another path, correct the client. An input with another path takes back at most
+// the plain run-ahead: the steps before it stand as taken, because everyone else saw the
+// character there and a client that holds its inputs back must not be able to return its
+// character to where it stopped sending.
 public sealed class AuthoritativePlayerMovement
 {
     // Steps the worker may take ahead of late inputs, about 100 ms at 30 Hz.
@@ -44,8 +55,8 @@ public sealed class AuthoritativePlayerMovement
     // oldest.
     public const int MaximumQueuedInputs = 16;
 
-    // Lost inputs up to this many are filled with the path before them; a longer gap skips
-    // ahead to the received input.
+    // Lost inputs up to this many beyond the steps taken ahead for them are filled with the path
+    // before them; a longer gap skips ahead to the received input.
     public const int MaximumFilledInputGap = MaximumQueuedInputs - 1;
 
     private const int BudgetUnitsPerStep = 64;
@@ -56,27 +67,39 @@ public sealed class AuthoritativePlayerMovement
     private readonly ICollisionWorld collisionWorld;
     private readonly CollisionQueryBuffer collisionQueryBuffer = new();
     private readonly Queue<PlayerMovementInput> queuedInputs = new();
-    private readonly PlayerMovementState[] runAheadStates = new PlayerMovementState[MaximumRunAheadInputs];
     private readonly RealtimeMovementInput[] orderedBatch =
         new RealtimeMovementInput[RealtimeProtocol.MaximumInputBatchSize];
+
+    // The states after the steps taken ahead, oldest first from runAheadStart, wrapping.
+    private readonly PlayerMovementState[] runAheadStates;
     private PlayerMovementInput currentInput = new(0, 0, null);
     private PlayerMovementInput newestInput = new(0, 0, null);
     private bool hasReceivedInput;
     private bool holdingUntilNextInput;
     private int stepBudgetUnits = MaximumBudgetUnits;
+    private int runAheadStart;
     private int runAheadInputs;
+
+    // Ticks since the last batch that brought a new input, counting the tick of its arrival, up
+    // to one more than MaximumRunAheadInputs.
+    private int silentTicks;
     private MovementSimulationSettings settings;
 
+    // pathContinuationSteps is how many steps in all the character may take ahead of its
+    // inputs along its path while they stay away; 0 keeps the plain run-ahead.
     public AuthoritativePlayerMovement(
         PlayerMovementState initialState,
         MovementSimulationSettings settings,
         PlayerCarryState initialCarryState,
-        ICollisionWorld collisionWorld)
+        ICollisionWorld collisionWorld,
+        int pathContinuationSteps = 0)
     {
         baseSettings = settings ?? throw new ArgumentNullException(nameof(settings));
         this.settings = settings;
         this.collisionWorld = collisionWorld ?? throw new ArgumentNullException(nameof(collisionWorld));
         CarryState = initialCarryState ?? throw new ArgumentNullException(nameof(initialCarryState));
+        ArgumentOutOfRangeException.ThrowIfNegative(pathContinuationSteps);
+        runAheadStates = new PlayerMovementState[Math.Max(MaximumRunAheadInputs, pathContinuationSteps)];
         State = initialState;
         ConfirmedState = initialState;
     }
@@ -185,7 +208,8 @@ public sealed class AuthoritativePlayerMovement
         hasReceivedInput = false;
         holdingUntilNextInput = false;
         stepBudgetUnits = MaximumBudgetUnits;
-        runAheadInputs = 0;
+        silentTicks = 0;
+        ClearRunAhead();
         State = State.WithPathProgress(MovementPathProgress.None);
         ConfirmedState = State;
     }
@@ -255,12 +279,18 @@ public sealed class AuthoritativePlayerMovement
         }
 
         holdingUntilNextInput = false;
+        silentTicks = 0;
         return acceptance;
     }
 
     public void SimulateTick()
     {
         stepBudgetUnits = Math.Min(MaximumBudgetUnits, stepBudgetUnits + BudgetUnitsPerTick);
+        if (silentTicks <= MaximumRunAheadInputs)
+        {
+            silentTicks++;
+        }
+
         if (holdingUntilNextInput)
         {
             // A halted or teleported character keeps its physics while no input arrives.
@@ -290,14 +320,31 @@ public sealed class AuthoritativePlayerMovement
         }
 
         if (hasReceivedInput
-            && runAheadInputs < MaximumRunAheadInputs
+            && runAheadInputs < RunAheadLimit()
             && stepBudgetUnits >= BudgetUnitsPerStep)
         {
             Step(currentInput);
-            runAheadStates[runAheadInputs] = State;
-            runAheadInputs++;
+            PushRunAhead();
             stepBudgetUnits -= BudgetUnitsPerStep;
         }
+    }
+
+    // A character keeps walking its path ahead of its inputs only through a silence longer than
+    // the plain run-ahead. Once inputs arrive again, no step is added until they took over all
+    // but MaximumRunAheadInputs of the steps taken ahead, so a client whose clock runs slow
+    // never drifts further behind the worker than that.
+    private int RunAheadLimit()
+    {
+        return silentTicks > MaximumRunAheadInputs && IsWalking()
+            ? runAheadStates.Length
+            : MaximumRunAheadInputs;
+    }
+
+    // The character follows its path, or still moves after its last step on it.
+    private bool IsWalking()
+    {
+        return IsFollowing(currentInput.Path)
+            || (State.VelocityX * State.VelocityX) + (State.VelocityZ * State.VelocityZ) >= 0.0001f;
     }
 
     // Receives one input newer than every received one, in sequence order.
@@ -311,12 +358,14 @@ public sealed class AuthoritativePlayerMovement
         }
         else
         {
+            // The lost inputs first take over the steps taken ahead for them, which costs
+            // nothing; at most MaximumFilledInputGap more wait in the queue.
             var gap = unchecked(sequence - LastReceivedInputSequence - 1);
-            if (gap > MaximumFilledInputGap)
+            if (gap > (uint)runAheadInputs + MaximumFilledInputGap)
             {
                 // Too much was lost to replay, so the worker continues from this input.
                 queuedInputs.Clear();
-                runAheadInputs = 0;
+                ClearRunAhead();
                 ConfirmedState = State;
                 LastProcessedInputSequence = unchecked(sequence - 1);
             }
@@ -356,24 +405,33 @@ public sealed class AuthoritativePlayerMovement
         if (input.PathId == currentInput.PathId)
         {
             // The step taken ahead followed this input's path, so it stands as it is.
-            ConfirmedState = runAheadStates[0];
-            Array.Copy(runAheadStates, 1, runAheadStates, 0, runAheadInputs - 1);
+            ConfirmedState = runAheadStates[runAheadStart];
+            runAheadStart = (runAheadStart + 1) % runAheadStates.Length;
             runAheadInputs--;
             return;
         }
 
-        // The late input changed the path: the steps taken ahead are taken again with it.
-        var stepsAhead = runAheadInputs;
+        // The late input changed the path: the newest steps taken ahead are taken again with
+        // it, at most the plain run-ahead, so one input never costs more steps than that. The
+        // steps a path continuation took before those stand as taken along the old path, so
+        // the character never goes back further than the plain run-ahead, and the owner, who
+        // did not predict them, is corrected to where the worker is.
+        var stepsAhead = Math.Min(runAheadInputs, MaximumRunAheadInputs);
+        if (runAheadInputs > stepsAhead)
+        {
+            var kept = runAheadInputs - stepsAhead;
+            ConfirmedState = runAheadStates[(runAheadStart + kept - 1) % runAheadStates.Length];
+        }
+
         State = ConfirmedState;
         Apply(input);
         Step(currentInput);
         ConfirmedState = State;
-        runAheadInputs = 0;
+        ClearRunAhead();
         for (var index = 1; index < stepsAhead; index++)
         {
             Step(currentInput);
-            runAheadStates[runAheadInputs] = State;
-            runAheadInputs++;
+            PushRunAhead();
         }
     }
 
@@ -404,11 +462,23 @@ public sealed class AuthoritativePlayerMovement
             collisionQueryBuffer);
     }
 
+    private void PushRunAhead()
+    {
+        runAheadStates[(runAheadStart + runAheadInputs) % runAheadStates.Length] = State;
+        runAheadInputs++;
+    }
+
+    private void ClearRunAhead()
+    {
+        runAheadStart = 0;
+        runAheadInputs = 0;
+    }
+
     // Everything received counts as processed, and the character stands where it is now.
     private void DiscardWaitingInputs()
     {
         queuedInputs.Clear();
-        runAheadInputs = 0;
+        ClearRunAhead();
         currentInput = newestInput;
         LastProcessedInputSequence = LastReceivedInputSequence;
         holdingUntilNextInput = true;

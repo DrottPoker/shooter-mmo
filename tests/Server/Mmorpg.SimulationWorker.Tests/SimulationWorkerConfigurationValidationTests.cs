@@ -448,6 +448,37 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    // The steps follow the movement tick rate, 30 Hz here; 0 keeps the plain run-ahead.
+    [Theory]
+    [InlineData(null, 3, 90, null)]
+    [InlineData("0", 0, 0, null)]
+    [InlineData("5", 5, 150, null)]
+    [InlineData("6", 0, 0, "SimulationWorker:Movement:PathContinuationSeconds must be a whole number from 0 to 5.")]
+    [InlineData("-1", 0, 0, "SimulationWorker:Movement:PathContinuationSeconds must be a whole number from 0 to 5.")]
+    [InlineData("1.5", 0, 0, "SimulationWorker:Movement:PathContinuationSeconds must be a whole number from 0 to 5.")]
+    public void ThePathContinuationDefaultsToThreeSecondsAndStaysWithinFive(
+        string? value,
+        int expectedSeconds,
+        int expectedSteps,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:Movement:PathContinuationSeconds"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            var config = SimulationWorkerConfig.FromConfiguration(configuration);
+            Assert.Equal(expectedSeconds, config.PathContinuationSeconds);
+            Assert.Equal(expectedSteps, config.PathContinuationSteps);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     [Fact]
     public void ThePerformanceReportPathIsOptionalAndResolvedToAFullPath()
     {

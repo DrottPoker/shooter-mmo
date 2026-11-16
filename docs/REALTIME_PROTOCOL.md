@@ -486,10 +486,13 @@ the worker never received is a protocol error, `unknown_movement_path`.
 
 `OwnerSimulationSnapshot.LastProcessedInputSequence` names the newest input the
 worker processed, and the state in the same snapshot is the state right after
-it. The worker may take a few steps ahead of a late input along the current
-path; those steps never appear in the owner snapshot until their input arrived,
-so the client replays exactly the inputs after the acknowledged one. Remote
-`SimulationSnapshot` records carry the current state, including such steps.
+it. The worker may take steps ahead of a late input along the current path, a
+few or, through a silence of the line, up to its path continuation, as
+[Server-Authoritative Movement](SERVICE_FEATURES.md#server-authoritative-movement)
+describes; those steps never appear in the owner snapshot until their input
+arrived, so the client replays exactly the inputs after the acknowledged one.
+Remote `SimulationSnapshot` records carry the current state, including such
+steps.
 
 `OwnerSimulationSnapshot` ends with `MovementPathProgress`: the followed path id,
 the next waypoint index, at most 32, which equals the waypoint count once the

@@ -73,6 +73,70 @@ public sealed class RealtimeCollisionStreamingTests
         Assert.Equal(0, guard.TotalFailures);
     }
 
+    // A player whose inputs stopped walks on along its path only where its chunks are in: at the
+    // edge of the loaded chunks the continuation waits and is counted, and it walks on once they
+    // arrived.
+    [Fact]
+    public async Task APathContinuationWaitsWhereItsChunksStillLoad()
+    {
+        using var streamed = new StreamedTestCollision(Spawn);
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
+        {
+            StreamedCollision = streamed,
+            ProvideMetrics = true
+        });
+        var session = RealtimeTestSessions.Create("Silent Walker");
+        Assert.Equal(ActiveSimulationSessionRegistration.Joined, harness.SessionStore.Register(session));
+        var walker = harness.EntityRegistry.RegisterPlayer(
+                session,
+                () => new AuthoritativePlayerMovement(
+                    new PlayerMovementState(Spawn.X, 0f, Spawn.Z, 0f, 0f, 0f, 0f, true, MovementPathProgress.None),
+                    harness.Config.MovementSimulation,
+                    session.CarryState,
+                    harness.CollisionWorld,
+                    harness.Config.PathContinuationSteps))
+            .Entity;
+        var phases = new SimulationTickPhases();
+        foreach (var phase in harness.Service.Server.TickPhases.Where(phase => phase.Name is "collision streaming" or "movement"))
+        {
+            phases.AddPeriodic(phase.Order, phase.Name, phase.Run);
+        }
+
+        var loop = SimulationTickLoopTests.CreateLoop(
+            new RealtimeSimulationClock(),
+            harness.EntityRegistry,
+            phases,
+            harness.PerformanceMetrics!,
+            out var guard);
+        var nextTick = TimeSpan.Zero;
+        streamed.HoldReads();
+
+        // One input and then silence. The chunks loaded around the spawn reach to z 8, and a mover
+        // steps only while the chunks around its own are in, so the walk waits once it passed z 4,
+        // well before the 10 m of these 60 ticks.
+        walker.Movement.AcceptInputs(new RealtimeMovementInputBatch(
+            [new RealtimeMovementInput(1, 1, 1)],
+            new RealtimeMovementPath(1, [new RealtimeMovementPathWaypoint(0f, 0f, 12f)])));
+        SimulationTickLoopTests.RunTicks(loop, ref nextTick, 60);
+
+        var waitedAt = walker.Movement.State.PositionZ;
+        Assert.InRange(waitedAt, 4f, 4.5f);
+        Assert.True(walker.Movement.RunAheadInputCount > AuthoritativePlayerMovement.MaximumRunAheadInputs);
+        Assert.True(harness.PerformanceMetrics!.CaptureAndReset().CollisionPendingSteps >= 20);
+
+        streamed.ReleaseReads();
+        using var timeout = RealtimeServerHarness.CreateTimeout();
+        while (walker.Movement.State.PositionZ == waitedAt)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            Thread.Sleep(1);
+            SimulationTickLoopTests.RunTicks(loop, ref nextTick, 1);
+        }
+
+        Assert.Equal(1u, walker.Movement.LastProcessedInputSequence);
+        Assert.Equal(0, guard.TotalFailures);
+    }
+
     // A player whose saved place lies far from every player joins only once the chunks of that
     // place are in, and the loop read none of them.
     [Fact]
