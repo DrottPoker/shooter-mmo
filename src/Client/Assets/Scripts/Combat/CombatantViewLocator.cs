@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
@@ -48,6 +47,8 @@ namespace Mmorpg.Client.Combat
         private const float FallbackHeight = 1.8f;
         private static readonly Dictionary<ulong, RemotePlayerView> NoRemotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
+        private static readonly Dictionary<ulong, WorldActorView> NoWorldActors =
+            new Dictionary<ulong, WorldActorView>();
 
         private readonly IRealtimeMovementChannel realtimeMovement;
         private readonly WorldSceneContext sceneContext;
@@ -96,10 +97,11 @@ namespace Mmorpg.Client.Combat
             get { return sceneContext != null ? sceneContext.RemotePlayers : NoRemotePlayers.Values; }
         }
 
-        // The presentations of the world actors in view, such as the Mobs.
-        public IEnumerable<WorldActorView> WorldActors
+        // The presentations of the world actors in view, such as the Mobs. A collection of the
+        // dictionary's own type, so a foreach over it allocates nothing.
+        public Dictionary<ulong, WorldActorView>.ValueCollection WorldActors
         {
-            get { return actorPresentation != null ? actorPresentation.Views : (IEnumerable<WorldActorView>)Array.Empty<WorldActorView>(); }
+            get { return actorPresentation != null ? actorPresentation.Views : NoWorldActors.Values; }
         }
 
         // Whether the combatant is a Mob, visible or not.

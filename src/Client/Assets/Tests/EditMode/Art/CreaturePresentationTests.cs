@@ -182,6 +182,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(renderers, Has.Length.EqualTo(1));
             Assert.That(renderers[0], Is.InstanceOf<SkinnedMeshRenderer>());
             Assert.That(renderers[0].sharedMaterials.Select(value => value.name), Is.All.EqualTo(material));
+
+            // A Mob shows an instance, which culls its pose off screen as the prefab does.
+            instance = Object.Instantiate(prefab);
+            Assert.That(instance.GetComponent<CreatureAnimator>().Animator.cullingMode, Is.EqualTo(AnimatorCullingMode.CullUpdateTransforms));
         }
 
         [Test]

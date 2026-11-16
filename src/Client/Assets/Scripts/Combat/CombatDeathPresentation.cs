@@ -53,7 +53,7 @@ namespace Mmorpg.Client.Combat
 
             foreach (var actor in views.WorldActors)
             {
-                var creature = actor is MobView ? actor.GetComponent<CreatureAnimator>() : null;
+                var creature = actor is MobView mobView ? mobView.Creature : null;
                 if (creature != null
                     && creature.isActiveAndEnabled
                     && state.TryGetCombatant(actor.TargetEntityId, out var mob))

@@ -154,12 +154,90 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(placed.Speed, Is.Zero);
         }
 
+        // A crowd that stands in or beside the water asks the collision world nothing: a body
+        // that stands exactly where it stood keeps its depth, on the same revision of the same
+        // world, and still leaves its rings on time. A body that moves, or new chunks, ask again.
+        [Test]
+        public void ABodyThatStandsStillAsksForItsDepthOnce()
+        {
+            var tracker = new WaterWakeTracker();
+            var world = new CountingWorld(Pond);
+            var wading = new object();
+            var dry = new object();
+            var feet = new Vector3(2f, -0.6f, 3f);
+            var bank = new Vector3(15f, 0f, 0f);
+            var frames = Mathf.RoundToInt(WaterWakeTracker.StillRingSeconds / Frame) + 1;
+            var rings = 0;
+            var firstQueries = 0;
+            for (var frame = 0; frame <= frames; frame++)
+            {
+                tracker.BeginFrame();
+                Assert.That(tracker.Visit(world, 0, wading, feet, Frame, out var wake), Is.True);
+                Assert.That(tracker.Visit(world, 0, dry, bank, Frame, out _), Is.False);
+                tracker.EndFrame();
+                rings += wake.RingSize > 0f ? 1 : 0;
+                Assert.That(wake.Surface.y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(wake.BodyId, Is.EqualTo("test-pond"));
+                if (frame == 0)
+                {
+                    firstQueries = world.Queries;
+                }
+            }
+
+            Assert.That(firstQueries, Is.GreaterThan(0));
+            Assert.That(world.Queries, Is.EqualTo(firstQueries), "standing bodies ask nothing after the first frame");
+            Assert.That(rings, Is.EqualTo(2), "the first ring and the next one on time");
+
+            // Ground that loaded or unloaded may hold other water.
+            Step(tracker, world, 1, wading, feet);
+            var reloaded = world.Queries;
+            Assert.That(reloaded, Is.GreaterThan(firstQueries));
+            Step(tracker, world, 1, wading, feet);
+            Assert.That(world.Queries, Is.EqualTo(reloaded));
+
+            // A body that moves asks in every frame.
+            var asked = world.Queries;
+            for (var frame = 1; frame <= 5; frame++)
+            {
+                Step(tracker, world, 1, wading, feet + new Vector3(0.05f * frame, 0f, 0f));
+                Assert.That(world.Queries, Is.GreaterThan(asked));
+                asked = world.Queries;
+            }
+        }
+
+        private static WaterWake Step(WaterWakeTracker tracker, ICollisionWorld world, int revision, object body, Vector3 feet)
+        {
+            tracker.BeginFrame();
+            Assert.That(tracker.Visit(world, revision, body, feet, Frame, out var wake), Is.True);
+            tracker.EndFrame();
+            return wake;
+        }
+
         private static WaterWake Step(WaterWakeTracker tracker, object body, Vector3 feet)
         {
             tracker.BeginFrame();
             Assert.That(tracker.Visit(Pond, body, feet, Frame, out var wake), Is.True);
             tracker.EndFrame();
             return wake;
+        }
+
+        // The pond, counting how often it is asked for shapes.
+        private sealed class CountingWorld : ICollisionWorld
+        {
+            private readonly ICollisionWorld world;
+
+            public CountingWorld(ICollisionWorld world)
+            {
+                this.world = world;
+            }
+
+            public int Queries { get; private set; }
+
+            public void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+            {
+                Queries++;
+                world.QueryShapes(bounds, layerMask, buffer);
+            }
         }
     }
 }

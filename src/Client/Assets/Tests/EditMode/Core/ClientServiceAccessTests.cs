@@ -40,12 +40,7 @@ namespace Mmorpg.Client.Tests.EditMode
             (
                 "Ui/TemporaryUiKit.cs",
                 "FindAnyObjectByType<EventSystem>()",
-                "uGUI needs one EventSystem in the open scene, which the UI kit adds when the scene has none."),
-            (
-                "Gameplay/Cloth/ClothChainScheduler.cs",
-                "Camera.main",
-                "The cloth scheduler serves every body, also in tools and tests without the bootstrap, and measures "
-                    + "from the camera that renders the game.")
+                "uGUI needs one EventSystem in the open scene, which the UI kit adds when the scene has none.")
         };
 
         // Every type that keeps state in statics. Each resets it at subsystem registration,
@@ -63,6 +58,7 @@ namespace Mmorpg.Client.Tests.EditMode
         private static readonly (string Field, string Reason)[] AllowedStaticFields =
         {
             ("Mmorpg.Client.Combat.CombatantViewLocator.NoRemotePlayers", "An empty dictionary that nothing adds to."),
+            ("Mmorpg.Client.Combat.CombatantViewLocator.NoWorldActors", "An empty dictionary that nothing adds to."),
             ("Mmorpg.Client.Ui.EquipmentPaperDollLayout.HiddenSlots", "A constant set of slot ids."),
             (
                 "Mmorpg.Client.Worlds.WorldBuilderShape.Changed",

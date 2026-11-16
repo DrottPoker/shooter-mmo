@@ -10,9 +10,10 @@ namespace Mmorpg.Client.Gameplay
     // ClothChainSolver.FarDistance in its target pose, and swing the cloth of the bodies largest on
     // the screen on it with springs, as many as the budget holds. A body beyond rests, and a body
     // the camera does not see keeps its pose, so a crowd costs no more than the bodies in view. The
-    // enabled views besides the main camera, such as the Equipment window's character preview,
-    // count too: a body is measured from the camera it looks largest in. The scheduler puts itself
-    // in play with the first solver and owns the world. See docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // camera is the main view, the local player's camera that the World scene gives it; the
+    // enabled views besides it, such as the Equipment window's character preview, count too: a
+    // body is measured from the camera it looks largest in. The scheduler puts itself in play with
+    // the first solver and owns the world. See docs/EQUIPMENT_VISUALS_DESIGN.md.
     [DefaultExecutionOrder(PresentationExecutionOrder.Cloth)]
     public sealed class ClothChainScheduler : MonoBehaviour
     {
@@ -35,6 +36,7 @@ namespace Mmorpg.Client.Gameplay
         private static readonly List<Camera> Views = new List<Camera>();
         private static readonly ProfilerMarker StepMarker = new ProfilerMarker("ClothChainScheduler.Step");
         private static ClothChainScheduler runner;
+        private static Camera mainView;
 
         // The cameras of this frame, the main camera first, and the planes of each one's view.
         private readonly List<Camera> cameras = new List<Camera>();
@@ -152,7 +154,29 @@ namespace Mmorpg.Client.Gameplay
             Solvers.Remove(solver);
         }
 
-        // A camera besides the main camera whose view counts while it is enabled.
+        // The camera that renders the game, which measures first, as long as it is enabled; null
+        // until the World scene gives the player camera.
+        public static Camera MainView
+        {
+            get { return mainView; }
+        }
+
+        // The World scene gives the camera of its local player, which renders the game.
+        public static void UseMainView(Camera camera)
+        {
+            mainView = camera;
+        }
+
+        // The camera is gone, such as with its local player; another main view stays.
+        public static void ForgetMainView(Camera camera)
+        {
+            if (mainView == camera)
+            {
+                mainView = null;
+            }
+        }
+
+        // A camera besides the main view whose view counts while it is enabled.
         public static void AddView(Camera camera)
         {
             if (camera != null && !Views.Contains(camera))
@@ -174,6 +198,7 @@ namespace Mmorpg.Client.Gameplay
             Solvers.Clear();
             Views.Clear();
             runner = null;
+            mainView = null;
             Budget = SpringBudget;
         }
 
@@ -192,7 +217,7 @@ namespace Mmorpg.Client.Gameplay
 
         private void Step()
         {
-            var main = Camera.main;
+            var main = mainView != null && mainView.isActiveAndEnabled ? mainView : null;
             CollectCameras(main);
             var eye = main != null ? main.transform.position : Vector3.zero;
             bodies.Clear();
@@ -259,7 +284,7 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // The main camera and the enabled views, each with the planes of its view, reusing the
+        // The main view and the enabled views, each with the planes of its view, reusing the
         // plane arrays, so a frame allocates nothing.
         private void CollectCameras(Camera main)
         {
