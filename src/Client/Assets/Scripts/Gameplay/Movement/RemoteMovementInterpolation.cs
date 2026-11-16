@@ -97,7 +97,7 @@ namespace Mmorpg.Client.Gameplay
 
         public bool Push(uint serverTick, PlayerMovementState state)
         {
-            return Push(serverTick, state, long.MaxValue, 0, false);
+            return Push(serverTick, state, long.MaxValue, 0, false, 0);
         }
 
         // Buffers a newer state. A moving state that follows a standing one by more than
@@ -105,13 +105,17 @@ namespace Mmorpg.Client.Gameplay
         // then, so it neither glides from the old state nor starts late. The first state after
         // a clear stands only when firstStateStands says so, as for a reliable rest pose;
         // otherwise a moving second state at most longestWalkGapTicks after it walked the whole
-        // gap, such as an entity that came into view while it walked.
+        // gap, such as an entity that came into view while it walked. A second state fewer than
+        // firstStateRefreshTicks after such a first state takes its place instead: the worker
+        // sends a spawn one tick before the entity's first record, and that tick says where the
+        // entity is now, not how often its records come.
         public bool Push(
             uint serverTick,
             PlayerMovementState state,
             long expectedIntervalTicks,
             long longestWalkGapTicks,
-            bool firstStateStands)
+            bool firstStateStands,
+            long firstStateRefreshTicks)
         {
             if (samples.Count == 0)
             {
@@ -129,6 +133,16 @@ namespace Mmorpg.Client.Gameplay
 
             var previous = samples[samples.Count - 1];
             var tick = LatestServerTick + unchecked(serverTick - latestRawServerTick);
+            if (samples.Count == 1 && firstStateUnknown && tick - previous.ServerTick < firstStateRefreshTicks)
+            {
+                samples[0] = new Sample(tick, state, moved: false);
+                LatestServerTick = tick;
+                latestRawServerTick = serverTick;
+                LastMovingIntervalTicks = 0;
+                IsFirstMovingInterval = false;
+                return true;
+            }
+
             var moved = !IsSamePlace(previous.State, state);
             var walkedFromFirst = moved && firstStateUnknown && tick - previous.ServerTick <= longestWalkGapTicks;
             firstStateUnknown = false;

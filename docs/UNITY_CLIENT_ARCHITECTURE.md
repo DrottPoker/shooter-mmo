@@ -1859,6 +1859,10 @@ presenter follows that per entity:
   the pose stood there, goes back to it, and the delay grows by what it ran
   on, so a far walker that came into view 6 ticks and 1 m before its second
   state walks off at its own speed instead of covering the meter in two ticks.
+  The worker sends a spawn one tick before the entity's first record, so a
+  second state less than one snapshot interval after the first takes the first
+  state's place: it says where the entity is now, and the gap to the record
+  after it is the first interval.
   A longer gap counts as a stand, as above. A first state the caller knows the
   entity stands at, `RemoteMovementPresenter.PushStanding`, keeps the start
   from a stand; a Mob's rest pose is one, and the pose of a Mob whose spawn

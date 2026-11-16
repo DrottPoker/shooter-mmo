@@ -201,6 +201,89 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(presenter.Discontinuities, Is.EqualTo(1));
         }
 
+        // The worker refreshes interest on the tick before a snapshot, so a spawn leaves one tick
+        // before the first record of its entity. That record takes the spawn's place as the first
+        // state: the gap of one tick is not the entity's interval, so the far walker takes its
+        // delay of two far intervals from its next record, as when the spawn came with the record.
+        [Test]
+        public void AFarWalkerWhoseSpawnLeftOneTickBeforeItsFirstRecordIsShownAtItsWalkingSpeed()
+        {
+            const float metresPerTick = 1f / 6f;
+            var presenter = Presenter();
+            var ticks = new uint[] { 99, 100, 106, 112, 118, 124, 130, 136, 142, 148 };
+            var next = 0;
+            float? last = null;
+            var maximumStep = 0f;
+            var movedBackwards = false;
+            for (var frame = 1; frame <= 110; frame++)
+            {
+                var now = frame / 60d;
+                while (next < ticks.Length && ((ticks[next] - 99) / (double)TickRateHz) + 0.05d <= now)
+                {
+                    presenter.Push(ticks[next], State(metresPerTick * ((int)ticks[next] - 100), 0f));
+                    next++;
+                    if (next == 2)
+                    {
+                        Assert.That(presenter.TargetDelayTicks, Is.EqualTo(presenter.DelayTicks), "One tick is no interval.");
+                    }
+                    else if (next == 3)
+                    {
+                        Assert.That(presenter.TargetDelayTicks, Is.EqualTo(12d));
+                    }
+                }
+
+                if (next == 0)
+                {
+                    continue;
+                }
+
+                presenter.Advance(FrameSeconds, FrameSeconds);
+                var x = presenter.Position.x;
+                if (last is { } previous)
+                {
+                    maximumStep = Math.Max(maximumStep, Math.Abs(x - previous));
+                    movedBackwards |= x - previous < -0.00001f;
+                }
+
+                last = x;
+            }
+
+            var walkingStep = metresPerTick * TickRateHz * FrameSeconds;
+            Assert.That(next, Is.EqualTo(ticks.Length));
+            Assert.That(maximumStep, Is.LessThanOrEqualTo(walkingStep * 1.2f), "No dash.");
+            Assert.That(movedBackwards, Is.False);
+            Assert.That(last, Is.GreaterThan(6f), "It walks.");
+            Assert.That(presenter.Discontinuities, Is.EqualTo(1));
+        }
+
+        // A second state one tick after a first state of unknown standing takes its place, and one
+        // a whole snapshot interval after it is the second state as before.
+        [Test]
+        public void ASecondStateWithinOneSnapshotIntervalOfTheFirstTakesItsPlace()
+        {
+            var refreshed = new RemoteMovementInterpolation();
+            refreshed.Push(99, State(-0.1f, 0f), 2, 15, false, 2);
+            Assert.That(refreshed.Push(100, State(0f, 0f), 2, 15, false, 2), Is.True);
+            Assert.That(refreshed.Count, Is.EqualTo(1));
+            Assert.That(refreshed.LastMovingIntervalTicks, Is.Zero);
+            refreshed.Push(106, State(0.6f, 0f), 2, 15, false, 2);
+            Assert.That(refreshed.LastMovingIntervalTicks, Is.EqualTo(6));
+            Assert.That(refreshed.IsFirstMovingInterval, Is.True);
+            Assert.That(refreshed.TrySample(103d, out var walking), Is.True);
+            Assert.That(walking.PositionX, Is.EqualTo(0.3f).Within(0.0001f));
+
+            var second = new RemoteMovementInterpolation();
+            second.Push(100, State(0f, 0f), 2, 15, false, 2);
+            second.Push(102, State(0.2f, 0f), 2, 15, false, 2);
+            Assert.That(second.Count, Is.EqualTo(2));
+            Assert.That(second.LastMovingIntervalTicks, Is.EqualTo(2));
+
+            var standing = new RemoteMovementInterpolation();
+            standing.Push(99, State(0f, 0f), 2, 15, true, 2);
+            standing.Push(100, State(0.1f, 0f), 2, 15, true, 2);
+            Assert.That(standing.Count, Is.EqualTo(2), "A first state that stands is kept.");
+        }
+
         // A near walker comes into view: its first two states are 2 ticks apart, the interval a
         // new presenter expects, so it is shown as before: it stands at its first state for the
         // render delay and then walks a whole frame step in every frame.
@@ -229,8 +312,8 @@ namespace Mmorpg.Client.Tests.EditMode
         public void AnEntityWhoseSecondStateComesLateStoodUntilOneIntervalBeforeIt()
         {
             var late = new RemoteMovementInterpolation();
-            late.Push(100, State(0f, 0f), 2, 15, false);
-            late.Push(130, State(0.3f, 0f), 2, 15, false);
+            late.Push(100, State(0f, 0f), 2, 15, false, 0);
+            late.Push(130, State(0.3f, 0f), 2, 15, false, 0);
             Assert.That(late.LastMovingIntervalTicks, Is.Zero);
             Assert.That(late.TrySample(127.9d, out var stood), Is.True);
             Assert.That(stood.PositionX, Is.Zero);
@@ -238,16 +321,16 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(walking.PositionX, Is.EqualTo(0.15f).Within(0.0001f));
 
             var longest = new RemoteMovementInterpolation();
-            longest.Push(100, State(0f, 0f), 2, 15, false);
-            longest.Push(115, State(1.5f, 0f), 2, 15, false);
+            longest.Push(100, State(0f, 0f), 2, 15, false, 0);
+            longest.Push(115, State(1.5f, 0f), 2, 15, false, 0);
             Assert.That(longest.LastMovingIntervalTicks, Is.EqualTo(15));
             Assert.That(longest.IsFirstMovingInterval, Is.True);
             Assert.That(longest.TrySample(101d, out var walked), Is.True);
             Assert.That(walked.PositionX, Is.EqualTo(0.1f).Within(0.0001f));
 
             var beyond = new RemoteMovementInterpolation();
-            beyond.Push(100, State(0f, 0f), 2, 15, false);
-            beyond.Push(116, State(0.3f, 0f), 2, 15, false);
+            beyond.Push(100, State(0f, 0f), 2, 15, false, 0);
+            beyond.Push(116, State(0.3f, 0f), 2, 15, false, 0);
             Assert.That(beyond.LastMovingIntervalTicks, Is.Zero);
             Assert.That(beyond.TrySample(113.9d, out var stoodBeyond), Is.True);
             Assert.That(stoodBeyond.PositionX, Is.Zero);
