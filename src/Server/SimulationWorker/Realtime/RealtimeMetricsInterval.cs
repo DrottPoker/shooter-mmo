@@ -3,7 +3,7 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // One reporting interval of the realtime metrics. The periodic log lines and the optional
 // performance file are both written from it, so they always carry the same values.
 // Totals holds the counters since the worker started; Delta holds the counters of this
-// interval and the current gauges.
+// interval, the messages of every kind among them, and the current gauges.
 internal sealed record RealtimeMetricsInterval(
     DateTime StartedAtUtc,
     DateTime EndedAtUtc,
@@ -45,8 +45,40 @@ internal sealed record RealtimeMetricsInterval(
             SpawnPackets = NonNegative(current.SpawnPackets, previous.SpawnPackets),
             DespawnPackets = NonNegative(current.DespawnPackets, previous.DespawnPackets),
             SnapshotEntityRecords = NonNegative(current.SnapshotEntityRecords, previous.SnapshotEntityRecords),
-            SnapshotBytes = NonNegative(current.SnapshotBytes, previous.SnapshotBytes)
+            SnapshotBytes = NonNegative(current.SnapshotBytes, previous.SnapshotBytes),
+            SentByMessage = SubtractKinds(current.SentByMessage, previous.SentByMessage),
+            ReceivedByMessage = SubtractKinds(current.ReceivedByMessage, previous.ReceivedByMessage)
         };
+    }
+
+    // Both lists ascend by type byte; a kind without a message in the interval is left out.
+    private static RealtimeMessageKindTraffic[] SubtractKinds(
+        IReadOnlyList<RealtimeMessageKindTraffic> current,
+        IReadOnlyList<RealtimeMessageKindTraffic> previous)
+    {
+        var deltas = new List<RealtimeMessageKindTraffic>(current.Count);
+        var previousIndex = 0;
+        foreach (var kind in current)
+        {
+            while (previousIndex < previous.Count && previous[previousIndex].MessageType < kind.MessageType)
+            {
+                previousIndex++;
+            }
+
+            var before = previousIndex < previous.Count && previous[previousIndex].MessageType == kind.MessageType
+                ? previous[previousIndex]
+                : default;
+            var messages = NonNegative(kind.Messages, before.Messages);
+            if (messages > 0)
+            {
+                deltas.Add(new RealtimeMessageKindTraffic(
+                    kind.MessageType,
+                    messages,
+                    NonNegative(kind.Bytes, before.Bytes)));
+            }
+        }
+
+        return [.. deltas];
     }
 
     private static long NonNegative(long current, long previous)

@@ -434,6 +434,10 @@ public static class Program
         WriteProcessSummary("Worker", report.WorkerProcess);
         WriteProcessSummary("GameService", report.GameServiceProcess);
         WriteProcessSummary("Generator", report.GeneratorProcess);
+        if (report.WorkerPerformance is { } workerPerformance)
+        {
+            StressWorkerPerformance.WriteMessageTables(Console.Out, workerPerformance);
+        }
 
         if (report.FullStack is not null)
         {

@@ -1,3 +1,4 @@
+using Mmorpg.GameProtocol;
 using Mmorpg.Server.Telemetry;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Telemetry;
@@ -12,6 +13,10 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 public sealed class RealtimeMetricsAllocationTests
 {
     private static readonly TimeSpan TickBudget = TimeSpan.FromMilliseconds(1000d / 30d);
+
+    // A sent message whose kind is read from its header, and a received packet without one.
+    private static readonly byte[] SentPacket = RealtimeProtocol.EncodeServerDisconnect("code", "message");
+    private static readonly byte[] ReceivedPacket = new byte[64];
 
     [Fact]
     public void HotPathRecordingDoesNotAllocateWithExportAttached()
@@ -55,6 +60,7 @@ public sealed class RealtimeMetricsAllocationTests
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.loop.step.duration");
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.simulation.tick.overruns");
         Assert.Contains(exported, metric => metric.Name == "simulation_worker.realtime.snapshot.bytes");
+        Assert.Contains(exported, metric => metric.Name == "simulation_worker.realtime.sent.messages");
     }
 
     private static void RecordHotPath(
@@ -82,8 +88,8 @@ public sealed class RealtimeMetricsAllocationTests
             performance.RecordSnapshotBroadcast(duration);
             performance.RecordSnapshotSends(2, 4, 8, 0);
             performance.RecordSimulationTick(duration, TickBudget);
-            network.RecordSent(120);
-            network.RecordReceived(64);
+            network.RecordSent(SentPacket);
+            network.RecordReceived(ReceivedPacket);
             network.RecordSnapshotEntities(3);
             network.RecordSnapshotBytes(240);
         }

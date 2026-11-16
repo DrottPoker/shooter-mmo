@@ -59,7 +59,7 @@ public sealed class RealtimeServiceDisposalTests
 
         harness.Service.Dispose();
 
-        harness.NetworkMetrics!.RecordSent(10);
+        harness.NetworkMetrics!.RecordSent(new byte[10]);
         Assert.Equal(1, harness.NetworkMetrics.Capture().SentPackets);
     }
 }

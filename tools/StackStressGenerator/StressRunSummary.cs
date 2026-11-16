@@ -89,6 +89,12 @@ public sealed record StressRunSummary(
     // null without the worker's performance file.
     public StressWorkerWorstInterval? WorkerWorstInterval { get; init; }
 
+    // The worker's sent and received messages by kind over the steady intervals, the most bytes
+    // first, or null without the worker's performance file. Diagnostics: no key numbers.
+    public IReadOnlyList<StressWorkerMessageKind>? WorkerSentByMessage { get; init; }
+
+    public IReadOnlyList<StressWorkerMessageKind>? WorkerReceivedByMessage { get; init; }
+
     public const int TopTables = 10;
 
     public static StressRunSummary Create(
@@ -217,7 +223,9 @@ public sealed record StressRunSummary(
             Network = report.Network,
             Burst = report.FullStack?.Burst,
             Outage = report.Outage,
-            WorkerWorstInterval = report.WorkerPerformance?.WorstInterval
+            WorkerWorstInterval = report.WorkerPerformance?.WorstInterval,
+            WorkerSentByMessage = report.WorkerPerformance?.SentByMessage,
+            WorkerReceivedByMessage = report.WorkerPerformance?.ReceivedByMessage
         };
     }
 

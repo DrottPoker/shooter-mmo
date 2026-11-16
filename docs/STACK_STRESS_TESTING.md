@@ -1435,6 +1435,15 @@ seconds, and adds a `workerPerformance` section to the report:
 - `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
   resynchronizations, allocation, and GC collections, each as its total and its
   largest interval.
+- `sentByMessage` and `receivedByMessage`: every message kind that the worker
+  sent or received in the steady intervals, by its `RealtimeMessageType` name,
+  the most bytes first, with its messages and bytes, both per second, and both
+  per second and player, over the same average peers as
+  `bytesOutPerBotPerSecond`. A packet without a readable type counts under
+  `0`. Both are empty for a file of a worker that does not write them. The
+  generator prints them as the tables "Sent messages by kind" and "Received
+  messages by kind", every kind and a total row; they are diagnostics that no
+  rule judges.
 - `levels`: players, peers, entities, CPU, working set, backlogs, the managed
   heap, and the worker's Mob numbers, `mobs`, `engagedMobs` that chase,
   attack, or evade, `movingMobs` that moved in the interval's last tick, and
@@ -1454,6 +1463,14 @@ seconds, and adds a `workerPerformance` section to the report:
   partial measurement fails the rule as not evaluated, never as zero.
 - `note`: why a part is missing, such as no interval inside a short steady
   interval.
+
+The worker's traffic counters count messages: `packetsIn`, `packetsOut`, and
+the other names with "packets" in the worker's file, its log lines, and its
+metrics count the messages that the worker received or handed to the
+transport, one per realtime message. LiteNetLib may merge several of them into
+one UDP datagram, so they are not datagrams on the wire; under a network
+profile, the [network proxy](LOCAL_DEVELOPMENT.md#what-the-proxy-counts)
+counts those.
 
 ### Remote Update Rate
 
@@ -1587,8 +1604,10 @@ so an older baseline still compares, in full-stack mode `authBusyRefusals`, ever
 `auth_busy` answer of the run, and for a burst its refusals and its median and
 longest seconds; the summary also carries the burst itself as `burst`, a
 [GameService outage](#gameservice-outage-scenario) as `outage`, and the
-worker's `worstInterval` as `workerWorstInterval`. `tools/Test-Load.ps1`
-prints that interval with its three costliest tick phases before the verdict.
+worker's `worstInterval` as `workerWorstInterval`, and its messages by kind as
+`workerSentByMessage` and `workerReceivedByMessage`, which no key number holds.
+`tools/Test-Load.ps1` prints that interval with its three costliest tick phases
+before the verdict.
 
 `-UpdateBaseline` copies the summary to `tools/load/baselines/<scenario>.json`,
 or under a network profile to `<scenario>.<profile>.json`, such as

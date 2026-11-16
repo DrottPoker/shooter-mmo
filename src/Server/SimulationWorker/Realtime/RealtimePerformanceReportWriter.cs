@@ -75,6 +75,9 @@ internal sealed record RealtimeDurationEntry(
     }
 }
 
+// The messages of one kind in an interval and their bytes.
+internal sealed record RealtimeMessageCountEntry(long Messages, long Bytes);
+
 // One line of the performance file. The p95 and p99 values are the upper bounds of the
 // histogram buckets the worker counts in, as in the log line. Traffic, drop, rejection, GC, loop
 // failure, and Mob route plan values count this interval only; the other Mob numbers are the
@@ -165,6 +168,14 @@ internal sealed record RealtimePerformanceReportEntry(
     // it waited for the next tick or poll.
     public double LoopBusyPercent { get; init; }
 
+    // The messages handed to the transport and the messages received in the interval, by their
+    // RealtimeMessageType name, only kinds with a message, in ascending type byte order.
+    public IReadOnlyDictionary<string, RealtimeMessageCountEntry> SentByMessage { get; init; } =
+        new Dictionary<string, RealtimeMessageCountEntry>();
+
+    public IReadOnlyDictionary<string, RealtimeMessageCountEntry> ReceivedByMessage { get; init; } =
+        new Dictionary<string, RealtimeMessageCountEntry>();
+
     public static RealtimePerformanceReportEntry From(RealtimeMetricsInterval interval)
     {
         var network = interval.Delta;
@@ -235,8 +246,23 @@ internal sealed record RealtimePerformanceReportEntry(
             LoopSteps = ToEntries(performance.LoopSteps),
             GcPauseMs = performance.GcPauseMilliseconds,
             CollisionPendingSteps = performance.CollisionPendingSteps,
-            LoopBusyPercent = interval.LoopBusyPercent
+            LoopBusyPercent = interval.LoopBusyPercent,
+            SentByMessage = ToEntries(network.SentByMessage),
+            ReceivedByMessage = ToEntries(network.ReceivedByMessage)
         };
+    }
+
+    // In the order of the list, ascending by type byte, which JSON keeps.
+    private static Dictionary<string, RealtimeMessageCountEntry> ToEntries(
+        IReadOnlyList<RealtimeMessageKindTraffic> kinds)
+    {
+        var entries = new Dictionary<string, RealtimeMessageCountEntry>(kinds.Count, StringComparer.Ordinal);
+        foreach (var kind in kinds)
+        {
+            entries[kind.Name] = new RealtimeMessageCountEntry(kind.Messages, kind.Bytes);
+        }
+
+        return entries;
     }
 
     // In the order the worker timed them, which JSON keeps.
