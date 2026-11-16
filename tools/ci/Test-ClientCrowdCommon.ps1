@@ -75,11 +75,11 @@ try {
     Assert-Equal "An answered request" 0 @(Get-PendingCrowdRequests $requests).Count
     Assert-Equal "No results folder yet" 0 @(Get-PendingCrowdRequests (Join-Path $root "missing")).Count
 
-    # Load samples every 2 s from 10:00:02 on, one without the graphics card's use.
+    # Load samples every 2 s from 10:00:00 on, one without the graphics card's use.
     $invariant = [Globalization.CultureInfo]::InvariantCulture
     $start = [DateTime]::new(2026, 11, 16, 10, 0, 0, [DateTimeKind]::Utc)
     $csv = @("utc,foreignProcessors,foreignGpuPercent,processorPercent,playerPrivateMegabytes,playerWorkingSetMegabytes,foreign")
-    for ($second = 2; $second -le 20; $second += 2) {
+    for ($second = 0; $second -le 20; $second += 2) {
         $busy = if ($second -eq 12) { "3.50" } else { "0.50" }
         $gpu = if ($second -eq 14) { "" } else { "1.0" }
         $csv += [string]::Format($invariant, "{0:o},{1},{2},60,{3},{4},chrome", $start.AddSeconds($second), $busy, $gpu, 1000 + $second, 1200 + $second)
@@ -89,13 +89,27 @@ try {
     [IO.File]::WriteAllLines($loadPath, [string[]]$csv)
     $quiet = Measure-Load $loadPath $start.AddSeconds(1) $start.AddSeconds(9)
     Assert-Equal "Samples of a recording" 5 $quiet.Samples
-    Assert-Equal "Largest gap of a recording" 2 $quiet.LargestGapSeconds
+    Assert-Equal "A covered recording has no gap" 0 $quiet.LargestGapSeconds
+    $first = Measure-Load $loadPath $start.AddSeconds(-1) $start.AddSeconds(1)
+    Assert-Equal "The first row's own interval is unknown" "1 1" "$($first.Samples) $($first.UncoveredSeconds)"
+    $hole = Measure-Load $loadPath $start.AddSeconds(11) $start.AddSeconds(17)
+    Assert-Equal "A row that measured nothing leaves its interval uncovered" "3 2 2 6" "$($hole.Samples) $($hole.LargestGapSeconds) $($hole.UncoveredSeconds) $($hole.Seconds)"
+    $afterHole = Measure-Load $loadPath $start.AddSeconds(12.5) $start.AddSeconds(13.5) 10
+    Assert-Equal "A later sample does not stand in for the one that measured nothing" 0 $afterHole.Samples
+    $halfCovered = Measure-Load $loadPath $start.AddSeconds(11) $start.AddSeconds(14)
+    Assert-True "A recording that is mostly uncovered proves nothing" ("$(Get-LoadProblem @([pscustomobject]@{ Name = 'arrival'; Load = $halfCovered }) 10 2.5 10)" -match "do not cover the arrival")
     Assert-Equal "Foreign processors of a recording" "0.50" (Format-Number $quiet.ForeignProcessors "0.00")
     Assert-Equal "Largest private memory of a recording" 1010 $quiet.PlayerPrivateMegabytes
     $short = Measure-Load $loadPath $start.AddSeconds(16.5) $start.AddSeconds(17.0) 0
     Assert-Equal "A short recording between samples" 0 $short.Samples
     $covered = Measure-Load $loadPath $start.AddSeconds(16.5) $start.AddSeconds(17.0) 10
-    Assert-Equal "A short recording with the sample after it" 2 $covered.Samples
+    Assert-Equal "A short recording takes only the first sample after it" 1 $covered.Samples
+    $disturbed = Measure-Load $loadPath $start.AddSeconds(10.5) $start.AddSeconds(11.5) 10
+    Assert-Equal "Later idle samples do not dilute a disturbed short recording" "3.50" (Format-Number $disturbed.ForeignProcessors "0.00")
+    $before = Measure-Load $loadPath $start.AddSeconds(8.5) $start.AddSeconds(9.5) 10
+    Assert-Equal "A disturbance after a short recording is not its own" "0.50" (Format-Number $before.ForeignProcessors "0.00")
+    $atStart = Measure-Load $loadPath $start.AddSeconds(12) $start.AddSeconds(13) 0
+    Assert-Equal "A sample at the start measured the time before it" 0 $atStart.Samples
     $withoutGpu = Measure-Load $loadPath $start.AddSeconds(13) $start.AddSeconds(15) 0
     Assert-Equal "A sample without the graphics card's use is none" 0 $withoutGpu.Samples
     $busyLoad = Measure-Load $loadPath $start.AddSeconds(11) $start.AddSeconds(13) 0

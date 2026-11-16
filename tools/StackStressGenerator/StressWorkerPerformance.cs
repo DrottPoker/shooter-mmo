@@ -96,6 +96,15 @@ public sealed record StressWorkerInterval(
 
     public IReadOnlyDictionary<string, StressWorkerDuration>? LoopSteps { get; init; }
 
+    // The parts of the tick phases that time themselves, by "<phase>: <part>"; the longest single
+    // garbage collection pause; and the overruns that stay over the tick interval without their
+    // pauses. Null in a file of an older worker.
+    public IReadOnlyDictionary<string, StressWorkerDuration>? PhaseParts { get; init; }
+
+    public double? GcLongestPauseMs { get; init; }
+
+    public long? TickOverrunsWithoutGcPauses { get; init; }
+
     public double? GcPauseMs { get; init; }
 
     public double? LoopBusyPercent { get; init; }
@@ -189,11 +198,19 @@ public sealed record StressWorkerPerformanceSummary(
     public IReadOnlyDictionary<string, StressWorkerDurationFold> LoopSteps { get; init; } =
         new Dictionary<string, StressWorkerDurationFold>(StringComparer.Ordinal);
 
-    // The loop thread's busy share in percent and the garbage collection pauses in milliseconds
-    // per second, over the steady intervals that carry them; null for an older worker's file.
+    // Every part of a tick phase that times itself over the steady intervals, by name; empty for
+    // an older worker's file.
+    public IReadOnlyDictionary<string, StressWorkerDurationFold> PhaseParts { get; init; } =
+        new Dictionary<string, StressWorkerDurationFold>(StringComparer.Ordinal);
+
+    // The loop thread's busy share in percent, the garbage collection pauses in milliseconds per
+    // second, and the longest single pause of an interval, over the steady intervals that carry
+    // them; null for an older worker's file.
     public StressWorkerLevelFold? LoopBusyPercent { get; init; }
 
     public StressWorkerLevelFold? GcPauseMsPerSecond { get; init; }
+
+    public StressWorkerLevelFold? GcLongestPauseMs { get; init; }
 
     public StressWorkerWorstInterval? WorstInterval { get; init; }
 
@@ -226,6 +243,7 @@ public static class StressWorkerPerformance
     private static readonly (string Name, Func<StressWorkerInterval, long> Value)[] CounterFields =
     [
         ("tickOverruns", interval => interval.TickOverruns),
+        ("tickOverrunsWithoutGcPauses", interval => interval.TickOverrunsWithoutGcPauses ?? 0),
         ("tickResynchronizations", interval => interval.TickResynchronizations),
         ("snapshotDrops", interval => interval.SnapshotDrops),
         ("snapshotBackpressureDrops", interval => interval.SnapshotBackpressureDrops),
@@ -394,11 +412,13 @@ public static class StressWorkerPerformance
             RunLoopIsolatedFailures = run.Sum(interval => interval.LoopIsolatedFailures ?? 0),
             Phases = FoldNamed(steady, interval => interval.Phases),
             LoopSteps = FoldNamed(steady, interval => interval.LoopSteps),
+            PhaseParts = FoldNamed(steady, interval => interval.PhaseParts),
             LoopBusyPercent = FoldLevel(steady.Select(interval => interval.LoopBusyPercent)),
             GcPauseMsPerSecond = FoldLevel(steady.Select(interval =>
                 interval.GcPauseMs is { } pause && interval.IntervalSeconds > 0
                     ? pause / interval.IntervalSeconds
                     : (double?)null)),
+            GcLongestPauseMs = FoldLevel(steady.Select(interval => interval.GcLongestPauseMs)),
             WorstInterval = FindWorstInterval(steady),
             SentByMessage = FoldMessages(steady, interval => interval.SentByMessage),
             ReceivedByMessage = FoldMessages(steady, interval => interval.ReceivedByMessage)

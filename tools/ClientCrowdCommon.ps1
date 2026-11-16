@@ -156,8 +156,10 @@ function Complete-CrowdRequest($Request) {
     [IO.File]::WriteAllText($Request.DonePath, [DateTime]::UtcNow.ToString("o", [Globalization.CultureInfo]::InvariantCulture))
 }
 
-# The rows of the load monitor's file, without a row that the monitor could not complete, also
-# one without the graphics card's use.
+# The rows of the load monitor's file in the order of their times. A row that the monitor could
+# not complete, also one without the graphics card's use, is kept with Measured false: it
+# measured nothing, but it still ends the interval of the row before it and starts the interval
+# of the row after it.
 function Read-LoadSamples([string]$Path) {
     $invariant = [Globalization.CultureInfo]::InvariantCulture
     $rows = @()
@@ -169,14 +171,15 @@ function Read-LoadSamples([string]$Path) {
         $time = [DateTime]::MinValue
         $processors = 0.0
         $gpu = 0.0
-        if (-not [DateTime]::TryParse($row.utc, $invariant, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$time) -or
-            -not [double]::TryParse($row.foreignProcessors, [Globalization.NumberStyles]::Float, $invariant, [ref]$processors) -or
-            -not [double]::TryParse($row.foreignGpuPercent, [Globalization.NumberStyles]::Float, $invariant, [ref]$gpu)) {
+        if (-not [DateTime]::TryParse($row.utc, $invariant, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$time)) {
             continue
         }
 
+        $measured = [double]::TryParse($row.foreignProcessors, [Globalization.NumberStyles]::Float, $invariant, [ref]$processors) -and
+            [double]::TryParse($row.foreignGpuPercent, [Globalization.NumberStyles]::Float, $invariant, [ref]$gpu)
         $rows += [pscustomobject]@{
             Time = $time.ToUniversalTime()
+            Measured = $measured
             foreignProcessors = $processors
             foreignGpuPercent = $gpu
             processorPercent = $row.processorPercent
@@ -186,28 +189,54 @@ function Read-LoadSamples([string]$Path) {
         }
     }
 
-    $rows
+    @($rows | Sort-Object Time)
 }
 
 # What other processes used on average within a recording, the average processor use of the
-# machine, and the test player's largest memory, from the samples between its start and
-# AfterSeconds after its end. A sample measures the seconds since the one before it, so a
-# recording shorter than the sampling gap needs the first sample after its end, which a longer
-# AfterSeconds takes in. LargestGapSeconds is the longest time within the recording without a
-# sample, the whole recording when it has none; without a sample the averages are missing, not
-# zero.
+# machine, and the test player's largest memory, from the measured samples whose own interval
+# overlaps the recording. A sample measures the time since the row before it, whether that row
+# measured anything or not, so the first row of the file, whose interval nobody knows, counts
+# for nothing. The sample after the recording's end counts when its interval began before the
+# end and it came within AfterSeconds; no later sample does, because it measures only what
+# happened afterwards and would dilute a disturbance inside a short recording or blame the
+# recording for one that started later. LargestGapSeconds is the longest stretch of the
+# recording that no measured interval covers, UncoveredSeconds all of them together, and
+# Seconds the recording's length; without a sample the averages are missing, not zero.
 function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End, [double]$AfterSeconds = 2.0) {
     $start = $Start.ToUniversalTime()
     $end = $End.ToUniversalTime()
-    $rows = @(Read-LoadSamples $Path | Where-Object { $_.Time -ge $start -and $_.Time -le $end.AddSeconds($AfterSeconds) })
+    $rows = @()
     $largestGap = 0.0
-    $last = $start
-    foreach ($row in $rows) {
-        $largestGap = [Math]::Max($largestGap, ($row.Time - $last).TotalSeconds)
-        $last = $row.Time
+    $uncovered = 0.0
+    $coveredUntil = $start
+    $previous = $null
+    foreach ($sample in @(Read-LoadSamples $Path)) {
+        if ($null -ne $previous -and $sample.Measured -and
+            $sample.Time -gt $start -and $previous.Time -lt $end -and
+            $sample.Time -le $end.AddSeconds($AfterSeconds)) {
+            $rows += $sample
+            $from = if ($previous.Time -gt $start) { $previous.Time } else { $start }
+            if ($from -gt $coveredUntil) {
+                $gap = ($from - $coveredUntil).TotalSeconds
+                $largestGap = [Math]::Max($largestGap, $gap)
+                $uncovered += $gap
+            }
+
+            $until = if ($sample.Time -lt $end) { $sample.Time } else { $end }
+            if ($until -gt $coveredUntil) {
+                $coveredUntil = $until
+            }
+        }
+
+        $previous = $sample
     }
 
-    $largestGap = [Math]::Max($largestGap, ($end - $last).TotalSeconds)
+    if ($end -gt $coveredUntil) {
+        $gap = ($end - $coveredUntil).TotalSeconds
+        $largestGap = [Math]::Max($largestGap, $gap)
+        $uncovered += $gap
+    }
+
     $processors = ($rows | Measure-Object -Property foreignProcessors -Average).Average
     $gpu = ($rows | Measure-Object -Property foreignGpuPercent -Average).Average
     $processor = ($rows | Where-Object { $_.processorPercent } | Measure-Object -Property processorPercent -Average).Average
@@ -216,7 +245,9 @@ function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End, [double]$
     $names = @($rows | ForEach-Object { $_.foreign -split ' ' } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 5 | ForEach-Object { $_.Name })
     [pscustomobject]@{
         Samples = $rows.Count
+        Seconds = ($end - $start).TotalSeconds
         LargestGapSeconds = $largestGap
+        UncoveredSeconds = $uncovered
         ForeignProcessors = $processors
         ForeignGpuPercent = $gpu
         ForeignNames = $names
@@ -230,7 +261,7 @@ function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End, [double]$
 # null.
 function Get-PrivateMemoryNear([string]$Path, [DateTime]$Time, [double]$WithinSeconds = 5.0) {
     $time = $Time.ToUniversalTime()
-    $nearest = Read-LoadSamples $Path | Where-Object { $_.playerPrivateMegabytes } |
+    $nearest = Read-LoadSamples $Path | Where-Object { $_.Measured -and $_.playerPrivateMegabytes } |
         Sort-Object { [Math]::Abs(($_.Time - $time).TotalSeconds) } | Select-Object -First 1
     if ($null -eq $nearest -or [Math]::Abs(($nearest.Time - $time).TotalSeconds) -gt $WithinSeconds) {
         return $null
@@ -244,9 +275,9 @@ function Get-PrivateMemoryNear([string]$Path, [DateTime]$Time, [double]$WithinSe
 function Get-LoadProblem($Windows, [double]$GapSeconds, [double]$Processors, [double]$GpuPercent) {
     foreach ($window in $Windows) {
         $load = $window.Load
-        if ($load.Samples -eq 0 -or $load.LargestGapSeconds -gt $GapSeconds) {
-            return ("the samples of what other programs used do not cover the {0} ({1} samples, {2:N0} s without one), so nothing shows that it was undisturbed" -f
-                $window.Name, $load.Samples, $load.LargestGapSeconds)
+        if ($load.Samples -eq 0 -or $load.LargestGapSeconds -gt $GapSeconds -or $load.UncoveredSeconds * 2 -gt $load.Seconds) {
+            return ("the samples of what other programs used do not cover the {0} ({1} samples, {2:N1} of its {3:N1} s without one), so nothing shows that it was undisturbed" -f
+                $window.Name, $load.Samples, $load.UncoveredSeconds, $load.Seconds)
         }
 
         if ($load.ForeignProcessors -gt $Processors -or $load.ForeignGpuPercent -gt $GpuPercent) {

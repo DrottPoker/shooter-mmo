@@ -148,6 +148,19 @@ public sealed class ReplicationBenchmarkTests
         Assert.Equal(1.0388821385176186, numbers.FarMovingUpdateRateHz, 9);
         Assert.Contains("snapshots", first.Timing.PhaseAverageMs.Keys);
         Assert.Contains("benchmark motion", first.Timing.PhaseAverageMs.Keys);
+        // Every part of the snapshot phase is timed in every measured snapshot.
+        Assert.Equal(
+            [
+                "snapshots: records",
+                "snapshots: interest index",
+                "snapshots: interest refresh",
+                "snapshots: owner snapshots",
+                "snapshots: remote plans",
+                "snapshots: remote encoding",
+                "snapshots: remote sends"
+            ],
+            first.Timing.PhasePartAverageMs.Keys);
+        Assert.Equal(first.Timing.PhasePartAverageMs.Keys, first.Timing.PhasePartP99Ms.Keys);
     }
 
     internal static string Fingerprint(IReadOnlyList<ReplicationLayoutResult> results)

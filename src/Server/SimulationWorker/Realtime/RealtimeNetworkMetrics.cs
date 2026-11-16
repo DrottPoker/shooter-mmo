@@ -150,6 +150,12 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     public void RecordDespawnPacket() => Interlocked.Increment(ref despawnPackets);
 
+    // The spawn and despawn packets since the worker started, which the tick loop reads around
+    // each tick.
+    internal long SpawnPackets => Volatile.Read(ref spawnPackets);
+
+    internal long DespawnPackets => Volatile.Read(ref despawnPackets);
+
     public void RecordSnapshotEntities(int count) => Interlocked.Add(ref snapshotEntityRecords, count);
 
     // Payload bytes of snapshot packets handed to the transport, a subset of sent bytes.

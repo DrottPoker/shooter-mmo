@@ -410,7 +410,14 @@ internal sealed record ReplicationTimingNumbers(
     double Generation1PerSecond,
     double Generation2PerSecond,
     double GcPauseMsPerSecond,
-    IReadOnlyDictionary<string, double> PhaseAverageMs);
+    IReadOnlyDictionary<string, double> PhaseAverageMs)
+{
+    // The average and the exact 99th percentile of every part of the snapshot phase, such as its
+    // interest refresh or its remote plans, by "<phase>: <part>".
+    public IReadOnlyDictionary<string, double> PhasePartAverageMs { get; init; } = new Dictionary<string, double>();
+
+    public IReadOnlyDictionary<string, double> PhasePartP99Ms { get; init; } = new Dictionary<string, double>();
+}
 
 internal sealed record ReplicationLayoutResult(
     string Name,
@@ -601,8 +608,8 @@ internal sealed class ReplicationBenchmark : IDisposable
             RunTick();
         }
 
-        // Only the measured ticks count.
-        performanceMetrics.CaptureAndReset();
+        // Only the measured ticks count. The warm-up named every part the snapshots time.
+        var warmUp = performanceMetrics.CaptureAndReset();
         var networkBefore = networkMetrics.Capture();
         foreach (var recipient in recipients)
         {
@@ -618,7 +625,9 @@ internal sealed class ReplicationBenchmark : IDisposable
         var nearestRadiusSquared = NearestRadius * NearestRadius;
         var nearest = new MovingSightings();
         var far = new MovingSightings();
-        using var timings = new TimingRecorder(layout.MeasuredTicks);
+        using var timings = new TimingRecorder(
+            layout.MeasuredTicks,
+            warmUp.TickPhaseParts.Select(part => part.Name));
         var generation0 = GC.CollectionCount(0);
         var generation1 = GC.CollectionCount(1);
         var generation2 = GC.CollectionCount(2);
@@ -725,7 +734,11 @@ internal sealed class ReplicationBenchmark : IDisposable
                 performance.TickPhases.ToDictionary(
                     phase => phase.Name,
                     phase => phase.Summary.AverageMilliseconds,
-                    StringComparer.Ordinal)));
+                    StringComparer.Ordinal))
+            {
+                PhasePartAverageMs = timings.Parts.ToDictionary(part => part.Key, part => part.Value.Average, StringComparer.Ordinal),
+                PhasePartP99Ms = timings.Parts.ToDictionary(part => part.Key, part => part.Value.P99, StringComparer.Ordinal)
+            });
     }
 
     public void Dispose()
@@ -1114,26 +1127,48 @@ internal sealed class ReplicationBenchmark : IDisposable
         }
     }
 
-    // Exact tick, interest, and broadcast durations of the measured ticks, from the worker's own
-    // histograms, so the benchmark adds no timer of its own to the path it measures.
+    // Exact tick, interest, broadcast, and phase part durations of the measured ticks, from the
+    // worker's own histograms, so the benchmark adds no timer of its own to the path it measures.
+    // The parts' lists exist before the first measured tick, so recording allocates nothing.
     private sealed class TimingRecorder : IDisposable
     {
-        private readonly MeterListener listener = new();
+        private const string PartInstrument = "simulation_worker.simulation.tick_phase_part.duration";
 
-        public TimingRecorder(int ticks)
+        private readonly MeterListener listener = new();
+        private readonly Dictionary<string, Samples> parts = new(StringComparer.Ordinal);
+
+        public TimingRecorder(int ticks, IEnumerable<string> partNames)
         {
             Tick = new Samples(ticks);
             Interest = new Samples(ticks);
             Broadcast = new Samples(ticks);
+            foreach (var name in partNames)
+            {
+                parts[name] = new Samples(ticks);
+            }
+
             listener.InstrumentPublished = (instrument, meterListener) =>
             {
                 if (instrument.Meter.Name == RealtimePerformanceMetrics.MeterName
-                    && Select(instrument.Name) is not null)
+                    && Select(instrument.Name) is { } state)
                 {
-                    meterListener.EnableMeasurementEvents(instrument, Select(instrument.Name));
+                    meterListener.EnableMeasurementEvents(instrument, state);
                 }
             };
-            listener.SetMeasurementEventCallback<double>(static (_, value, _, state) => ((Samples)state!).Add(value));
+            listener.SetMeasurementEventCallback<double>(static (_, value, tags, state) =>
+            {
+                if (state is Samples samples)
+                {
+                    samples.Add(value);
+                }
+                else if (state is Dictionary<string, Samples> byPart
+                    && tags.Length > 0
+                    && tags[0].Value is string part
+                    && byPart.TryGetValue(part, out var partSamples))
+                {
+                    partSamples.Add(value);
+                }
+            });
             listener.Start();
         }
 
@@ -1143,18 +1178,21 @@ internal sealed class ReplicationBenchmark : IDisposable
 
         public Samples Broadcast { get; }
 
+        public IReadOnlyDictionary<string, Samples> Parts => parts;
+
         public void Dispose()
         {
             listener.Dispose();
         }
 
-        private Samples? Select(string instrument)
+        private object? Select(string instrument)
         {
             return instrument switch
             {
                 "simulation_worker.simulation.tick.duration" => Tick,
                 "simulation_worker.simulation.interest.duration" => Interest,
                 "simulation_worker.simulation.snapshot_broadcast.duration" => Broadcast,
+                PartInstrument => parts,
                 _ => null
             };
         }

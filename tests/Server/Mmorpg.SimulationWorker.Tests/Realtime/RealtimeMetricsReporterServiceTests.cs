@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Combat;
+using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
 
@@ -198,6 +199,62 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         using var second = JsonDocument.Parse(lines[1]);
         Assert.Equal(0, second.RootElement.GetProperty("engagedMobs").GetInt64());
         Assert.Equal(0, second.RootElement.GetProperty("mobPathPlans").GetInt64());
+    }
+
+    // Where the tick's time went: the phase parts, the slowest tick with its phases and parts,
+    // the garbage collection pauses inside the ticks and phases, and the active corpses.
+    [Fact]
+    public void TheFileCarriesThePhasePartsTheSlowestTickTheGcPausesInsideTicksAndTheCorpses()
+    {
+        var path = Path.Combine(directory, "worker-performance.jsonl");
+        using var network = new RealtimeNetworkMetrics();
+        using var performance = new RealtimePerformanceMetrics();
+        using var corpses = new CorpseRuntimeMetrics();
+        var config = RealtimeServerHarness.CreateConfig(27_999, new RealtimeServerHarnessOptions()) with
+        {
+            PerformanceReportPath = path
+        };
+        var reporter = new RealtimeMetricsReporterService(
+            network,
+            performance,
+            config,
+            new RecordingLogger(),
+            corpseMetrics: corpses);
+        var tickBudget = TimeSpan.FromMilliseconds(1000d / 30d);
+        corpses.Observe(3, 7);
+        performance.TickPhaseTimer("snapshots").Record(TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(12));
+        performance.TickPhasePartTimer("snapshots", "remote plans").Record(TimeSpan.FromMilliseconds(9));
+        performance.LoopStepTimer("send flush").Record(TimeSpan.FromMilliseconds(5));
+        performance.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget, TimeSpan.FromMilliseconds(12), spawnPackets: 140, despawnPackets: 90);
+
+        reporter.ReportInterval();
+
+        using var entry = JsonDocument.Parse(Assert.Single(File.ReadAllLines(path)));
+        var root = entry.RootElement;
+        var tick = root.GetProperty("tick");
+        Assert.Equal(1, tick.GetProperty("gcPausedSamples").GetInt64());
+        Assert.Equal(12, tick.GetProperty("gcPauseMs").GetDouble());
+        Assert.Equal(28, tick.GetProperty("maximumWithoutGcPausesMs").GetDouble());
+        Assert.Equal(33.34, tick.GetProperty("p99WithoutGcPausesMs").GetDouble());
+        Assert.Equal(1, root.GetProperty("tickOverruns").GetInt64());
+        Assert.Equal(0, root.GetProperty("tickOverrunsWithoutGcPauses").GetInt64());
+        var snapshots = root.GetProperty("phases").GetProperty("snapshots");
+        Assert.Equal(18, snapshots.GetProperty("maximumWithoutGcPausesMs").GetDouble());
+        // A loop step is not watched for pauses, so it carries no pause fields.
+        Assert.False(root.GetProperty("loopSteps").GetProperty("send flush").TryGetProperty("gcPausedSamples", out _));
+        Assert.Equal(9, root.GetProperty("phaseParts").GetProperty("snapshots: remote plans").GetProperty("maximumMs").GetDouble());
+        var slowest = root.GetProperty("slowestTick");
+        Assert.Equal(40, slowest.GetProperty("ms").GetDouble());
+        Assert.Equal(12, slowest.GetProperty("gcPauseMs").GetDouble());
+        Assert.Equal(140, slowest.GetProperty("spawnPackets").GetInt64());
+        Assert.Equal(90, slowest.GetProperty("despawnPackets").GetInt64());
+        Assert.Equal(30, slowest.GetProperty("phases").GetProperty("snapshots").GetDouble());
+        Assert.Equal(9, slowest.GetProperty("phaseParts").GetProperty("snapshots: remote plans").GetDouble());
+        // Without a GC pause monitor the single pauses are not counted.
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("gcPauses").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("gcLongestPauseMs").ValueKind);
+        Assert.Equal(3, root.GetProperty("durableCorpses").GetInt64());
+        Assert.Equal(7, root.GetProperty("liveCorpses").GetInt64());
     }
 
     [Fact]

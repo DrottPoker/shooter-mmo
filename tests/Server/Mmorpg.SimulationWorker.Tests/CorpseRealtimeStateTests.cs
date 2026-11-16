@@ -425,4 +425,123 @@ public sealed class CorpseRealtimeStateTests
             ],
             Array.Empty<CorpsePresentationSnapshotResponse>());
     }
+
+    // The presence chunks are cut by adding the lengths of their entries. They are the chunks
+    // that encoding every candidate chunk to see whether it fits cut, as the builder did before,
+    // also around the packet limit and with looks too large for any packet.
+    [Fact]
+    public void PresenceChunksAreTheOnesThatEncodingEveryCandidateChunkCuts()
+    {
+        var random = new Random(20261116);
+        string[] visible = ["head", "body", "legs", "hands", "feet", "back"];
+        var withoutLook = 0;
+        var multiChunk = 0;
+        for (var round = 0; round < 400; round++)
+        {
+            var viewer = Guid.NewGuid();
+            var corpses = Enumerable.Range(0, random.Next(0, 40))
+                .Select(_ => RandomPlayerCorpse(random, viewer))
+                .ToArray();
+
+            var built = CorpseRealtimePacketBuilder.BuildPresence(7, corpses, viewer, visible);
+
+            // Each entry as the builder makes it for its corpse alone, with the default body
+            // when its look does not fit a packet.
+            var entries = corpses
+                .OrderBy(corpse => corpse.CorpseId)
+                .Select(corpse => CorpseRealtimePacketBuilder.BuildPresence(7, [corpse], viewer, visible).Single().Corpses.Single())
+                .ToArray();
+            withoutLook += entries.Count(entry => entry.Appearance is null);
+            multiChunk += built.Count > 1 ? 1 : 0;
+            Assert.Equal(
+                CutByEncoding(7, entries).Select(chunk => Convert.ToHexString(RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(chunk))),
+                built.Select(chunk => Convert.ToHexString(RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(chunk))));
+        }
+
+        // The rounds covered both edges.
+        Assert.True(withoutLook > 0);
+        Assert.True(multiChunk > 0);
+    }
+
+    // The cut of the builder before it added lengths: every candidate chunk encoded.
+    private static RealtimeCorpsePresenceSnapshotChunk[] CutByEncoding(uint sequence, RealtimeCorpsePresence[] entries)
+    {
+        static bool Fits(uint sequence, IReadOnlyCollection<RealtimeCorpsePresence> chunk)
+        {
+            try
+            {
+                RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(new RealtimeCorpsePresenceSnapshotChunk(sequence, 0, 1, chunk.ToArray()));
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        var batches = new List<RealtimeCorpsePresence[]>();
+        var current = new List<RealtimeCorpsePresence>();
+        foreach (var entry in entries)
+        {
+            var candidate = current.Append(entry).ToArray();
+            if (current.Count > 0 && (candidate.Length > 6 || !Fits(sequence, candidate)))
+            {
+                batches.Add([.. current]);
+                current.Clear();
+            }
+
+            current.Add(entry);
+            Assert.True(Fits(sequence, current));
+        }
+
+        if (current.Count > 0 || batches.Count == 0)
+        {
+            batches.Add([.. current]);
+        }
+
+        return [.. batches.Select((batch, index) => new RealtimeCorpsePresenceSnapshotChunk(sequence, (ushort)index, (ushort)batches.Count, batch))];
+    }
+
+    // A player corpse with a look of random size, from none to more than one packet holds, that
+    // the viewer may or may not loot.
+    private static DurableCorpseState RandomPlayerCorpse(Random random, Guid viewer)
+    {
+        static string Text(Random random, int length) =>
+            new(Enumerable.Range(0, Math.Max(1, length)).Select(_ => (char)('a' + random.Next(26))).ToArray());
+
+        var now = DateTime.UtcNow;
+        var size = random.Next(4);
+        var look = size == 0
+            ? null
+            : new CorpseLook(
+                Text(random, random.Next(4, 64)),
+                [.. Enumerable.Range(0, random.Next(0, size * 6))
+                    .Select(_ => new SimulationAppearanceChoice(Text(random, random.Next(1, 33)), Text(random, random.Next(1, 33)), Text(random, random.Next(1, 65))))],
+                [.. new[] { "head", "body", "legs", "hands", "feet", "back", "main_hand" }
+                    .Where(_ => random.Next(2) == 0)
+                    .Select(slot => new CharacterLookItem(slot, Text(random, random.Next(1, 65))))],
+                random.Next(2) == 0);
+        return new DurableCorpseState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            RealtimeCorpseSource.Character(Text(random, random.Next(3, 24))),
+            "local-shard-1",
+            random.NextDouble() * 100d,
+            0,
+            random.NextDouble() * 100d,
+            0,
+            0,
+            0,
+            1,
+            "corpse.player",
+            1,
+            now,
+            now.AddMinutes(5),
+            random.Next(4) == 0,
+            Array.Empty<CorpseSectionState>())
+        {
+            Look = look,
+            OwnerCharacterId = random.Next(3) == 0 ? viewer : null
+        };
+    }
 }

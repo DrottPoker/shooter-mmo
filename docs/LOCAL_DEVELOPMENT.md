@@ -1441,9 +1441,13 @@ while it recorded, or saw no bot come and go in the churn, does not count
 although it wrote a result, and neither does one after which the bots or the
 worker no longer run or not every bot of a crowd is joined, or one whose
 samples leave more than `-LoadSampleGapSeconds` of a recording uncovered,
-because nothing then shows that it was undisturbed. A recording shorter than
-the gap between two samples, such as an arrival of two seconds, also counts
-the first sample after its end, which measures its last seconds. Part of the
+because nothing then shows that it was undisturbed. A sample measures the
+time since the sample before it, so a recording counts the samples whose own
+interval overlaps it: those taken within it and the first one after its end,
+which measures its last seconds, and no later one. A sample that could not
+be completed, such as one without the graphics card's use, measured nothing,
+so its interval is uncovered, and a recording whose larger part is uncovered
+does not count either, however short it is. Part of the
 measurement are only the processes that the script started itself, directly
 or through another one (the services, the bots, the Unity Editor that builds
 the test player, and the player), the project's own Unity Editor, Docker, and

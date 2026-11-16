@@ -1,3 +1,5 @@
+using Mmorpg.SimulationWorker.Corpses;
+
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // One reporting interval of the realtime metrics. The periodic log lines and the optional
@@ -17,6 +19,9 @@ internal sealed record RealtimeMetricsInterval(
 {
     // The Mob numbers of the interval, when the worker's combat and world actor metrics exist.
     public RealtimeMobActivity? Mobs { get; init; }
+
+    // The active corpses at the end of the interval, when the worker's corpse metrics exist.
+    public CorpseRuntimeMetricsSnapshot? Corpses { get; init; }
 
     // The share of the interval that the loop thread spent in its ticks and loop steps, which
     // the process CPU does not show: that also holds the transport's threads.

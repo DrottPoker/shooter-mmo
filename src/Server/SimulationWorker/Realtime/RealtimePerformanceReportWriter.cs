@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace Mmorpg.SimulationWorker.Realtime;
@@ -62,6 +63,21 @@ internal sealed record RealtimeDurationEntry(
     double P99Ms,
     double MaximumMs)
 {
+    // For a duration watched for garbage collection pauses, the tick and every tick phase: the
+    // samples a pause fell into, the pause time inside them, and the p99 bucket and the longest
+    // sample once each sample's pauses are taken out.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? GcPausedSamples { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GcPauseMs { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? P99WithoutGcPausesMs { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? MaximumWithoutGcPausesMs { get; init; }
+
     public static RealtimeDurationEntry? From(RealtimeDurationSummary? summary)
     {
         return summary is null
@@ -71,7 +87,50 @@ internal sealed record RealtimeDurationEntry(
                 summary.AverageMilliseconds,
                 summary.P95UpperBoundMilliseconds,
                 summary.P99UpperBoundMilliseconds,
-                summary.MaximumMilliseconds);
+                summary.MaximumMilliseconds)
+            {
+                GcPausedSamples = summary.GcPauses?.PausedSamples,
+                GcPauseMs = summary.GcPauses?.PauseMilliseconds,
+                P99WithoutGcPausesMs = summary.GcPauses?.P99UpperBoundWithoutPausesMilliseconds,
+                MaximumWithoutGcPausesMs = summary.GcPauses?.MaximumWithoutPausesMilliseconds
+            };
+    }
+}
+
+// The slowest tick of an interval: its duration, the garbage collection pause inside it, the
+// spawn and despawn packets it sent, and the milliseconds of every tick phase and phase part that
+// ran in it, by name.
+internal sealed record RealtimeSlowestTickEntry(
+    double Ms,
+    double GcPauseMs,
+    long SpawnPackets,
+    long DespawnPackets,
+    IReadOnlyDictionary<string, double> Phases,
+    IReadOnlyDictionary<string, double> PhaseParts)
+{
+    public static RealtimeSlowestTickEntry? From(RealtimeSlowestTick? tick)
+    {
+        return tick is null
+            ? null
+            : new RealtimeSlowestTickEntry(
+                tick.Milliseconds,
+                tick.GcPauseMilliseconds,
+                tick.SpawnPackets,
+                tick.DespawnPackets,
+                ToEntries(tick.Phases),
+                ToEntries(tick.PhaseParts));
+    }
+
+    // In the order the worker timed them, which JSON keeps.
+    private static Dictionary<string, double> ToEntries(IReadOnlyList<RealtimeNamedMilliseconds> timings)
+    {
+        var entries = new Dictionary<string, double>(timings.Count, StringComparer.Ordinal);
+        foreach (var timing in timings)
+        {
+            entries[timing.Name] = timing.Milliseconds;
+        }
+
+        return entries;
     }
 }
 
@@ -157,8 +216,37 @@ internal sealed record RealtimePerformanceReportEntry(
     public IReadOnlyDictionary<string, RealtimeDurationEntry> LoopSteps { get; init; } =
         new Dictionary<string, RealtimeDurationEntry>();
 
+    // The parts of tick phases that time themselves, by "<phase>: <part>", in the order the
+    // worker timed them first.
+    public IReadOnlyDictionary<string, RealtimeDurationEntry> PhaseParts { get; init; } =
+        new Dictionary<string, RealtimeDurationEntry>();
+
+    // The slowest tick of the interval with its phases and parts; null without a tick.
+    public RealtimeSlowestTickEntry? SlowestTick { get; init; }
+
     // The garbage collection pauses of the interval.
     public double GcPauseMs { get; init; }
+
+    // The pauses one by one, from the runtime's GC events: their number, by the generation of the
+    // collection that paused, and the longest; null when the worker does not watch them.
+    public long? GcPauses { get; init; }
+
+    public long? GcGeneration0Pauses { get; init; }
+
+    public long? GcGeneration1Pauses { get; init; }
+
+    public long? GcGeneration2Pauses { get; init; }
+
+    public double? GcLongestPauseMs { get; init; }
+
+    // Tick overruns that stay longer than the tick interval without their GC pauses.
+    public long TickOverrunsWithoutGcPauses { get; init; }
+
+    // The active durable and live corpses at the end of the interval; null without corpse
+    // metrics.
+    public long? DurableCorpses { get; init; }
+
+    public long? LiveCorpses { get; init; }
 
     // The steps that players and Mobs skipped in the interval because their collision chunks
     // still loaded.
@@ -244,7 +332,17 @@ internal sealed record RealtimePerformanceReportEntry(
             MobPathPlans = mobs?.MobPathPlans,
             Phases = ToEntries(performance.TickPhases),
             LoopSteps = ToEntries(performance.LoopSteps),
+            PhaseParts = ToEntries(performance.TickPhaseParts),
+            SlowestTick = RealtimeSlowestTickEntry.From(performance.SlowestTick),
             GcPauseMs = performance.GcPauseMilliseconds,
+            GcPauses = performance.GcPauses?.Pauses,
+            GcGeneration0Pauses = performance.GcPauses?.Generation0Pauses,
+            GcGeneration1Pauses = performance.GcPauses?.Generation1Pauses,
+            GcGeneration2Pauses = performance.GcPauses?.Generation2Pauses,
+            GcLongestPauseMs = performance.GcPauses?.LongestPauseMilliseconds,
+            TickOverrunsWithoutGcPauses = performance.TickOverrunsWithoutGcPauses,
+            DurableCorpses = interval.Corpses?.DurableCorpses,
+            LiveCorpses = interval.Corpses?.LiveCorpses,
             CollisionPendingSteps = performance.CollisionPendingSteps,
             LoopBusyPercent = interval.LoopBusyPercent,
             SentByMessage = ToEntries(network.SentByMessage),
