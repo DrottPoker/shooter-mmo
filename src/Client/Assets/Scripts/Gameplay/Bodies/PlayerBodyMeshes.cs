@@ -88,6 +88,12 @@ namespace Mmorpg.Client.Gameplay
             this.releaseCpuCopies = releaseCpuCopies;
         }
 
+        // How many source meshes the builds hold the data of.
+        internal int SourceCount
+        {
+            get { return sources.Count; }
+        }
+
         // How many combined meshes exist, used or kept for their grace time.
         public int Count
         {
@@ -214,11 +220,18 @@ namespace Mmorpg.Client.Gameplay
             }
 
             Trim(Time.realtimeSinceStartup, frame);
+            ReleaseBuildData(Time.realtimeSinceStartup);
+        }
 
-            // The buffers of the builds go a grace time after the last build, as when a crowd came.
-            if (spareBuffers.Count > 0 && queued.Count == 0 && running.Count == 0
-                && Time.realtimeSinceStartup - lastBuildTime >= GraceSeconds)
+        // What the builds read of the source meshes and the buffers they join meshes in go a
+        // grace time after the last build, as when a crowd came: the next build reads its sources
+        // again. A build that runs keeps what it reads, so nothing goes while one is queued or runs.
+        internal void ReleaseBuildData(float now)
+        {
+            if ((sources.Count > 0 || spareBuffers.Count > 0) && queued.Count == 0 && running.Count == 0
+                && now - lastBuildTime >= GraceSeconds)
             {
+                sources.Clear();
                 spareBuffers.Clear();
             }
         }

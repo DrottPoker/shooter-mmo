@@ -273,6 +273,44 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // What the builds read of the source meshes stays while builds come and goes a grace time
+        // after the last one, also while the meshes built from it are still shown; the next build
+        // reads its sources again.
+        [Test]
+        public void TheSourceDataOfTheBuildsGoesAGraceTimeAfterTheLastBuild()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                {
+                    var first = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                    first.CombineParts(meshes);
+                    var now = Time.realtimeSinceStartup;
+                    Assert.That(meshes.SourceCount, Is.GreaterThan(0));
+
+                    meshes.ReleaseBuildData(now);
+                    Assert.That(meshes.SourceCount, Is.GreaterThan(0), "it stays its grace time");
+
+                    meshes.ReleaseBuildData(now + PlayerBodyMeshes.GraceSeconds + 1f);
+                    Assert.That(meshes.SourceCount, Is.EqualTo(0));
+                    Assert.That(first.CombinedRenderer.sharedMesh, Is.Not.Null, "the built mesh stays");
+
+                    first.ReleaseShared();
+                    meshes.ReleaseUnused();
+                    Assert.That(meshes.Count, Is.EqualTo(0));
+                    var second = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                    second.CombineParts(meshes);
+                    Assert.That(meshes.SourceCount, Is.GreaterThan(0), "the next build read them again");
+                    Assert.That(second.CombinedRenderer.sharedMesh, Is.Not.Null);
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
         // A mesh no body uses stays its grace time, at most UnusedCap of them, and then goes; a
         // body that takes it again keeps it.
         [Test]
