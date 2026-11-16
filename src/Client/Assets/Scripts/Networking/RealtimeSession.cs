@@ -84,6 +84,7 @@ namespace Mmorpg.Client.Networking
         private readonly RealtimeDiagnostics diagnostics;
         private readonly RealtimePresenceRegistry presence;
         private readonly List<IRealtimeSessionScoped> scopedParts = new List<IRealtimeSessionScoped>();
+        private RealtimeMessageTable messages;
         private RealtimeClientError operationError;
         private RealtimeClientError pendingUnexpectedDisconnect;
         private string pendingJoinTicket = string.Empty;
@@ -144,6 +145,7 @@ namespace Mmorpg.Client.Networking
 
         internal void RegisterMessages(RealtimeMessageTable messages)
         {
+            this.messages = messages;
             messages.Register(
                 RealtimeMessageType.JoinAccepted,
                 HandleJoinAccepted,
@@ -372,7 +374,7 @@ namespace Mmorpg.Client.Networking
                 ClientLogCategory.Client,
                 "Requesting a graceful leave for simulation session '" + simulationSessionId.Trim() + "'.");
             var leavePacket = RealtimeProtocol.EncodeLeaveRequest(simulationSessionId.Trim());
-            connection.Send(leavePacket, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+            SendReliable(RealtimeMessageType.LeaveRequest, leavePacket);
             diagnostics.RecordSentPacket(leavePacket.Length);
 
             while (State == RealtimeConnectionState.Leaving)
@@ -475,7 +477,7 @@ namespace Mmorpg.Client.Networking
                 "UDP transport connected to " + connection.Host + ":" + connection.Port
                 + "/udp. Sending the short-lived join ticket to SimulationWorker.");
             var joinPacket = RealtimeProtocol.EncodeJoinRequest(pendingJoinTicket);
-            connection.Send(joinPacket, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+            SendReliable(RealtimeMessageType.JoinRequest, joinPacket);
             diagnostics.RecordSentPacket(joinPacket.Length);
         }
 
@@ -747,9 +749,18 @@ namespace Mmorpg.Client.Networking
             }
         }
 
+        // The channel that the message's descriptor names, so the leave request travels behind
+        // the requests the player sent before it.
+        private void SendReliable(RealtimeMessageType type, byte[] packet)
+        {
+            RealtimeProtocol.TryGetDescriptor(type, out var descriptor);
+            connection.Send(packet, descriptor.Channel, DeliveryMethod.ReliableOrdered);
+        }
+
         // A join starts after FinishPendingEnd, so no end of an earlier session is pending.
         private void ResetOperation()
         {
+            messages?.DropHeldMessages();
             operationError = null;
             presence.Clear("session_reset");
             ReleaseSession();

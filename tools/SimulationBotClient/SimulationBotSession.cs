@@ -15,6 +15,9 @@ public sealed class SimulationBotSession
     private const int MaximumTrackedUnacknowledgedInputs = 256;
     private const int MaximumInputsPerUpdate = 3;
 
+    // The most reliable messages of other channels that wait for the join acceptance.
+    private const int MaximumHeldBeforeJoin = 8192;
+
     private readonly SimulationBotIdentity identity;
     private readonly TimeSpan joinAndLeaveTimeout;
     private readonly ISimulationBotInputSource inputSource;
@@ -22,6 +25,7 @@ public sealed class SimulationBotSession
     private readonly ISimulationBotRealtimeObserver? realtimeObserver;
     private readonly SimulationBotWorldView? world;
     private readonly List<PendingInput> pendingInputs = [];
+    private readonly List<byte[]> heldBeforeJoin = [];
     private readonly SimulationBotRemoteCadence remoteCadence = new();
     private ISimulationBotTransport? transport;
     private RealtimeJoinAccepted? joinedSession;
@@ -125,8 +129,8 @@ public sealed class SimulationBotSession
     }
 
     // The worker puts the message that ends the session into its disconnect too, so a session
-    // whose reliable copy the line lost or held back handles it from there, as on the control
-    // channel. Other data counts as none.
+    // whose reliable copy the line lost or held back handles it from there, as on the channel
+    // its descriptor names. Other data counts as none.
     public void OnDisconnected(string reason, byte[] data, long nowTimestamp)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -134,9 +138,10 @@ public sealed class SimulationBotSession
             && RealtimeProtocol.TryReadMessageType(data, out var messageType)
             && messageType is RealtimeMessageType.LeaveAccepted
                 or RealtimeMessageType.ServerDisconnect
-                or RealtimeMessageType.JoinRejected)
+                or RealtimeMessageType.JoinRejected
+            && RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor))
         {
-            Receive(data, RealtimeProtocol.ControlChannel, RealtimeDelivery.ReliableOrdered, nowTimestamp);
+            Receive(data, descriptor.Channel, RealtimeDelivery.ReliableOrdered, nowTimestamp);
         }
 
         Fail(
@@ -278,6 +283,7 @@ public sealed class SimulationBotSession
         {
             case RealtimeMessageType.JoinAccepted:
                 HandleJoinAccepted(packet, nowTimestamp);
+                ReleaseHeldMessages(nowTimestamp);
                 return;
             case RealtimeMessageType.JoinRejected:
                 HandleJoinRejected(packet);
@@ -295,21 +301,48 @@ public sealed class SimulationBotSession
 
         if (State is not (SimulationBotClientState.Joined or SimulationBotClientState.Leaving))
         {
-            // A snapshot can overtake the reliable join acceptance, so one that arrives
-            // early is dropped. Every other message must follow the acceptance.
-            if (descriptor.Delivery != RealtimeDelivery.Unreliable)
+            // A snapshot can overtake the reliable join acceptance, so one that arrives early is
+            // dropped. A reliable message of another channel can overtake it too and waits for
+            // it; every other message must follow the acceptance.
+            if (descriptor.Delivery == RealtimeDelivery.Unreliable)
             {
-                Fail(
-                    "unexpected_message",
-                    $"SimulationWorker sent {messageType} before it accepted the join.");
+                return;
             }
 
+            if (State == SimulationBotClientState.Joining
+                && descriptor.Channel != RealtimeProtocol.SessionChannel
+                && heldBeforeJoin.Count < MaximumHeldBeforeJoin)
+            {
+                heldBeforeJoin.Add(packet);
+                return;
+            }
+
+            Fail(
+                "unexpected_message",
+                $"SimulationWorker sent {messageType} before it accepted the join.");
             return;
         }
 
         // The worker keeps sending until it has released the session, so every message
         // of a joined session is also valid while a leave is pending.
         HandleSessionMessage(messageType, packet, nowTimestamp);
+    }
+
+    // Handles what waited for the join acceptance in the order it arrived.
+    private void ReleaseHeldMessages(long nowTimestamp)
+    {
+        var held = heldBeforeJoin.ToArray();
+        heldBeforeJoin.Clear();
+        foreach (var packet in held)
+        {
+            if (State != SimulationBotClientState.Joined)
+            {
+                return;
+            }
+
+            RealtimeProtocol.TryReadMessageType(packet, out var messageType);
+            HandleSessionMessage(messageType, packet, nowTimestamp);
+        }
     }
 
     // Only plain counters, so another thread may read them while the session runs.

@@ -17,7 +17,7 @@ namespace Mmorpg.SharedTests
     // the list is empty and the message names every broken case.
     public static partial class RealtimeProtocolGolden
     {
-        public const ushort PinnedVersion = 42;
+        public const ushort PinnedVersion = 43;
         public const uint PinnedMagic = 0x4F4D4D53;
         private const int HeaderSize = 7;
         private const int PinnedMaximumPacketSize = 1200;
@@ -269,10 +269,12 @@ namespace Mmorpg.SharedTests
             Expect(failures, "ConnectionKey", RealtimeProtocol.ConnectionKey, "Mmorpg.Realtime.v8");
             Expect(failures, "MaximumPacketSize", RealtimeProtocol.MaximumPacketSize, PinnedMaximumPacketSize);
             Expect(failures, "MaximumUnreliablePacketSize", RealtimeProtocol.MaximumUnreliablePacketSize, 1023);
-            Expect(failures, "ControlChannel", RealtimeProtocol.ControlChannel, (byte)0);
+            Expect(failures, "SessionChannel", RealtimeProtocol.SessionChannel, (byte)0);
             Expect(failures, "MovementInputChannel", RealtimeProtocol.MovementInputChannel, (byte)1);
+            Expect(failures, "WorldChannel", RealtimeProtocol.WorldChannel, (byte)2);
+            Expect(failures, "OwnerChannel", RealtimeProtocol.OwnerChannel, (byte)3);
             Expect(failures, "UnreliableReceiveChannel", RealtimeProtocol.UnreliableReceiveChannel, (byte)0);
-            Expect(failures, "ChannelCount", RealtimeProtocol.ChannelCount, (byte)2);
+            Expect(failures, "ChannelCount", RealtimeProtocol.ChannelCount, (byte)4);
             Expect(failures, "MaximumInputBatchSize", RealtimeProtocol.MaximumInputBatchSize, 4);
             Expect(failures, "OwnerSimulationSnapshotPacketSize", RealtimeProtocol.OwnerSimulationSnapshotPacketSize, 54);
             Expect(failures, "MaximumSnapshotEntitiesPerChunk", RealtimeProtocol.MaximumSnapshotEntitiesPerChunk, 71);
@@ -353,7 +355,7 @@ namespace Mmorpg.SharedTests
             ExpectEnum<RealtimeItemQuantityChangeReason>(failures, "AmmunitionConsumed=1");
 
             var minimal = Wire.Message(RealtimeMessageType.LeaveAccepted).ToArray();
-            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2a 00 05");
+            Expect(failures, "LeaveAccepted header", Hex(minimal), "53 4d 4d 4f 2b 00 05");
             ExpectTypeReader(failures, "null packet", null, false, default);
             ExpectTypeReader(failures, "six bytes", minimal.Take(6).ToArray(), false, default);
             ExpectTypeReader(failures, "header only", minimal, true, RealtimeMessageType.LeaveAccepted);

@@ -295,17 +295,19 @@ internal sealed class RealtimeLoopFixture : IDisposable
             NullLogger.Instance);
     }
 
+    // An inbound reliable message on the channel that its descriptor names.
     public static RealtimeInboundMessage Message(
         ConnectedPlayer player,
         RealtimeMessageType type,
         byte[] packet)
     {
+        Assert.True(RealtimeProtocol.TryGetDescriptor(type, out var descriptor));
         return new RealtimeInboundMessage(
             player.Peer,
             player.Context,
             type,
             packet,
-            RealtimeProtocol.ControlChannel,
+            descriptor.Channel,
             LiteNetLib.DeliveryMethod.ReliableOrdered);
     }
 

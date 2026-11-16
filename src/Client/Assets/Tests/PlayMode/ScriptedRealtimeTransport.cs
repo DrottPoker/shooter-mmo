@@ -72,7 +72,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             {
                 var answer = RealtimeProtocol.EncodeJoinAccepted(NextJoinAccepted);
                 NextJoinAccepted = null;
-                pending.Add(() => Received?.Invoke(answer, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered));
+                pending.Add(() => Received?.Invoke(answer, RealtimeProtocol.SessionChannel, DeliveryMethod.ReliableOrdered));
             }
         }
 

@@ -17,14 +17,26 @@ internal sealed class RealtimePeerSender(
 {
     public const string SendStepName = "send";
 
+    // Sends a reliable message, ordered on the channel that its protocol descriptor names.
     public void SendControl(IRealtimePeerConnection peer, byte[] packet)
     {
-        Send(peer, packet, DeliveryMethod.ReliableOrdered);
+        byte channel;
+        try
+        {
+            channel = RealtimeReliableChannels.Of(packet);
+        }
+        catch (ArgumentException exception)
+        {
+            DisconnectAfterFailedSend(peer, exception);
+            return;
+        }
+
+        Send(peer, packet, channel, DeliveryMethod.ReliableOrdered);
     }
 
     public void SendUnreliable(IRealtimePeerConnection peer, byte[] packet)
     {
-        Send(peer, packet, DeliveryMethod.Unreliable);
+        Send(peer, packet, RealtimeProtocol.UnreliableReceiveChannel, DeliveryMethod.Unreliable);
     }
 
     // Sends a packet that a reusable buffer holds; the transport copies it.
@@ -43,11 +55,11 @@ internal sealed class RealtimePeerSender(
         networkMetrics.RecordSent(packet.Length);
     }
 
-    private void Send(IRealtimePeerConnection peer, byte[] packet, DeliveryMethod deliveryMethod)
+    private void Send(IRealtimePeerConnection peer, byte[] packet, byte channel, DeliveryMethod deliveryMethod)
     {
         try
         {
-            peer.Send(packet, deliveryMethod);
+            peer.Send(packet, channel, deliveryMethod);
         }
         catch (Exception exception)
         {
@@ -83,7 +95,7 @@ internal sealed class RealtimePeerSender(
 
         try
         {
-            peer.SendDisconnectReason(packet, disconnect);
+            peer.SendDisconnectReason(packet, RealtimeReliableChannels.Of(packet), disconnect);
         }
         catch (Exception exception)
         {

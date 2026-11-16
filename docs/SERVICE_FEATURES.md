@@ -719,14 +719,17 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   65,536, about 6,200 with the default settings, because one snapshot broadcast
   queues an owner packet for every connection and the remote chunks the budget
   allows before they are sent.
-- Control messages use reliable ordered delivery, movement input uses sequenced
-  delivery, and simulation snapshots use unreliable delivery.
+- Reliable messages travel ordered on three channels, the session, world, and
+  owner channels, so a lost packet holds back only its own stream, as
+  [Channels](REALTIME_PROTOCOL.md#channels) describes; movement input uses
+  sequenced delivery, and simulation snapshots use unreliable delivery. The
+  worker sends every message on the channel its descriptor names.
 - Packet magic, version, type, bounds, lengths, and finite numeric values are
   validated. Protocol violations receive a stable error where possible and are
   then disconnected.
 - A connection that the worker ends gets the message that says why, a
   `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected`, on the reliable
-  control channel and again as the data of the disconnect, as
+  session channel and again as the data of the disconnect, as
   [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
   describes. The worker disconnects once the client acknowledged that reliable
   message, which LiteNetLib reports with a delivery event, no sooner than the
@@ -745,8 +748,8 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - A peer with more than `MaxReliableQueuedPackets` reliable control packets
   waiting to be sent is disconnected, so a client that never acknowledges cannot
   grow server memory without bound. LiteNetLib sends at most 64 unacknowledged
-  reliable packets per channel and queues the rest, and the limit counts that
-  queue.
+  reliable packets per channel and queues the rest, and the limit counts those
+  queues of every reliable channel together.
 - An unexpected exception costs as little of the Shard as possible. A packet,
   a completed operation, or a connection, disconnection, or connection request
   that fails costs only its own peer. A player whose own movement step or look
@@ -1680,7 +1683,7 @@ Seen from outside:
 ### Live Item Operations
 
 - SimulationWorker accepts item intents only from an exact joined player on the
-  control channel, runs at most one per peer at a time in the character's
+  owner channel, runs at most one per peer at a time in the character's
   authority lane, and bounds each pending queue to eight operations; more return
   `item_operation_queue_full`. Synthetic development bots cannot mutate durable
   items.
@@ -2286,7 +2289,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `UdpQuotas:AggregateSnapshotBytesPerSecond`, `AggregateSnapshotByteBurst` | 38 MiB, 4 MiB | Unreliable snapshot bytes of the whole worker, with fair recipient rotation |
 | `Admission:MaxUnauthenticatedPeers`, `MaxUnauthenticatedPeersPerAddress` | `256`, `8` | Remote peers that have not joined yet |
 | `Admission:ConnectionAttemptsPerAddressPerSecond`, `ConnectionAttemptBurstPerAddress` | `5`, `20` | New connections per remote address |
-| `Admission:MaxReliableQueuedPackets` | `1024` | Reliable control packets that wait behind the 64 unacknowledged ones LiteNetLib sends, before a disconnect |
+| `Admission:MaxReliableQueuedPackets` | `1024` | Reliable packets that wait behind the 64 unacknowledged ones LiteNetLib sends per channel, of every reliable channel together, before a disconnect |
 | `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; a positive cell size of at most 4,096 m, a positive enter radius, an exit radius from the enter radius to 10,000 m, and at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
 | `InterestManagement:NearRadius`, `NearExitRadius` | `48`, `56` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |

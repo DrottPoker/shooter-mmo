@@ -87,9 +87,14 @@ public sealed class RealtimeItemOperationTests
         Assert.Equal("simulation_session_invalid", result.Error.Code);
         Assert.Equal("simulation_session_invalid", client.ServerDisconnect!.Code);
         Assert.Equal("The simulation session is no longer valid.", client.ServerDisconnect.Message);
-        var reliable = client.ReliablePackets;
-        Assert.Equal(RealtimeMessageType.ServerDisconnect, reliable[^1].Type);
-        Assert.Equal(RealtimeMessageType.ItemOperationResult, reliable[^2].Type);
+        // The answer and the disconnect travel on different channels, so each is the last of its
+        // own, in no order between them.
+        Assert.Equal(
+            RealtimeMessageType.ServerDisconnect,
+            client.ReliablePacketsOn(RealtimeProtocol.SessionChannel)[^1].Type);
+        Assert.Equal(
+            RealtimeMessageType.ItemOperationResult,
+            client.ReliablePacketsOn(RealtimeProtocol.OwnerChannel)[^1].Type);
         Assert.Empty(harness.SessionStore.ListActiveSessions());
         Assert.Equal(0, harness.EntityRegistry.PlayerCount);
         Assert.False(harness.CharacterItemStateStore.TryGet(
@@ -118,7 +123,9 @@ public sealed class RealtimeItemOperationTests
         Assert.Equal(
             "Committed item and carry revisions diverged from the active simulation state.",
             client.ServerDisconnect.Message);
-        Assert.Equal(RealtimeMessageType.ServerDisconnect, client.ReliablePackets[^1].Type);
+        Assert.Equal(
+            RealtimeMessageType.ServerDisconnect,
+            client.ReliablePacketsOn(RealtimeProtocol.SessionChannel)[^1].Type);
         Assert.Empty(harness.SessionStore.ListActiveSessions());
     }
 

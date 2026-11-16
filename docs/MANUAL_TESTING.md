@@ -2940,7 +2940,7 @@ it in
   up to about a second under `terrible`, or up to the worker's 2 seconds, after
   which the answer comes with the disconnect: the Console then shows `The
   realtime connection closed with LeaveAccepted in its data before it arrived
-  on the control channel`. A leave that meets the outage of `terrible` takes
+  on its channel`. A leave that meets the outage of `terrible` takes
   until the line is back and ends the same way. A Character Select without the
   countdown and with `connection_lost` in the Console is a defect to record
   with the profile.

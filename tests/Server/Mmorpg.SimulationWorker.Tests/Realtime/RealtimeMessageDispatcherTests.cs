@@ -55,7 +55,7 @@ public sealed class RealtimeMessageDispatcherTests
         {
             for (var type = 0; type <= 30; type++)
             {
-                for (byte channel = 0; channel <= 1; channel++)
+                for (byte channel = 0; channel < RealtimeProtocol.ChannelCount; channel++)
                 {
                     foreach (var delivery in DeliveryMethods)
                     {
@@ -173,7 +173,7 @@ public sealed class RealtimeMessageDispatcherTests
         fixture.Dispatcher.Dispatch(
             peer,
             Header(RealtimeMessageType.LeaveRequest),
-            0,
+            RealtimeProtocol.OwnerChannel,
             DeliveryMethod.ReliableOrdered);
 
         Assert.Equal("reject:internal_error", fixture.Outcome(peer));
@@ -241,7 +241,7 @@ public sealed class RealtimeMessageDispatcherTests
         if (state is "unauthenticated" or "join_started")
         {
             if (messageType != RealtimeMessageType.JoinRequest
-                || channel != RealtimeProtocol.ControlChannel
+                || channel != RealtimeProtocol.SessionChannel
                 || delivery != DeliveryMethod.ReliableOrdered
                 || state == "join_started")
             {
@@ -261,7 +261,7 @@ public sealed class RealtimeMessageDispatcherTests
 
         if (messageType == RealtimeMessageType.ItemOperationIntent)
         {
-            return channel != RealtimeProtocol.ControlChannel
+            return channel != RealtimeProtocol.OwnerChannel
                 || delivery != DeliveryMethod.ReliableOrdered
                 ? "reject:invalid_item_operation_delivery"
                 : "handle:item";
@@ -269,7 +269,7 @@ public sealed class RealtimeMessageDispatcherTests
 
         if (messageType == RealtimeMessageType.CorpseInteractionIntent)
         {
-            return channel != RealtimeProtocol.ControlChannel
+            return channel != RealtimeProtocol.OwnerChannel
                 || delivery != DeliveryMethod.ReliableOrdered
                 ? "reject:invalid_corpse_operation_delivery"
                 : "handle:corpse";
@@ -277,7 +277,7 @@ public sealed class RealtimeMessageDispatcherTests
 
         if (messageType == RealtimeMessageType.WorldInteractionIntent)
         {
-            return channel != RealtimeProtocol.ControlChannel
+            return channel != RealtimeProtocol.OwnerChannel
                 || delivery != DeliveryMethod.ReliableOrdered
                 ? "reject:invalid_world_interaction_delivery"
                 : "handle:world";
@@ -285,14 +285,14 @@ public sealed class RealtimeMessageDispatcherTests
 
         if (messageType == RealtimeMessageType.CombatIntent)
         {
-            return channel != RealtimeProtocol.ControlChannel
+            return channel != RealtimeProtocol.OwnerChannel
                 || delivery != DeliveryMethod.ReliableOrdered
                 ? "reject:invalid_combat_delivery"
                 : "handle:combat";
         }
 
         if (messageType != RealtimeMessageType.LeaveRequest
-            || channel != RealtimeProtocol.ControlChannel
+            || channel != RealtimeProtocol.OwnerChannel
             || delivery != DeliveryMethod.ReliableOrdered)
         {
             return "reject:unexpected_message";

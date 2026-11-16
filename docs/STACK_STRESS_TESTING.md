@@ -1972,12 +1972,40 @@ What the profiles show:
 - **Reliable operations slow down with loss far beyond the round trip.** Under
   `poor` the operations' p50 is about one round trip, 220 to 300 ms, but their
   p95 is 0.4 to 1.6 seconds, so `gameplay_operation_p95_ms` fails; under
-  `terrible` the p50 is about 1.1 seconds and the p95 2 to 7 seconds. The
-  likely cause, not yet proven: every control message shares the one reliable
-  ordered channel, so one lost packet holds back every later message until
-  LiteNetLib resends it, and under `terrible` only the operations at the start
-  of a session, the equip and the teleport, before combat traffic fills the
-  channel, keep a p50 near one round trip.
+  `terrible` the p50 is about 1.1 seconds and the p95 2 to 7 seconds. One
+  cause was that every control message shared one reliable ordered channel, so
+  one lost packet held back every later message until LiteNetLib resent it; under
+  `terrible` only the operations at the start of a session, the equip and the
+  teleport, before combat traffic filled the channel, kept a p50 near one round
+  trip. Since the intents and their answers travel on the owner channel apart
+  from the world state, as [Channels](REALTIME_PROTOCOL.md#channels) describes,
+  `playing-100` with `-DurationSeconds 180` answered as follows, before on
+  2026-11-16 at 00:30 and 00:36 with a game using about 1.3 cores beside it, after
+  at 01:48 and 01:53 on the otherwise idle machine, p50 / p95 in ms:
+
+  | Operation | `poor` before | `poor` after | `terrible` before | `terrible` after |
+  | --- | --- | --- | --- | --- |
+  | attack | 225 / 1,085 | 219 / 672 | 943 / 2,958 | 436 / 2,143 |
+  | attack_clear | 234 / 1,032 | 220 / 710 | 1,054 / 3,151 | 422 / 1,748 |
+  | equip | 280 / 381 | 257 / 363 | 466 / 2,320 | 443 / 1,346 |
+  | gather_open | 229 / 1,054 | 218 / 757 | 1,066 / 2,886 | 434 / 2,039 |
+  | gather_start | 221 / 811 | 219 / 685 | 852 / 2,574 | 427 / 1,811 |
+  | item_move | 264 / 784 | 249 / 1,133 | 1,247 / 3,728 | 475 / 2,214 |
+  | loot_all | 281 / 1,272 | 267 / 754 | 1,240 / 3,881 | 481 / 1,908 |
+  | loot_open | 239 / 849 | 225 / 738 | 1,272 / 3,438 | 447 / 1,864 |
+  | teleport | 219 / 678 | 215 / 300 | 461 / 2,086 | 423 / 1,368 |
+  | vendor_open | 229 / 1,146 | 222 / 715 | 1,070 / 3,037 | 420 / 1,987 |
+  | vendor_sale | 271 / 1,133 | 250 / 698 | 1,166 / 5,750 | 471 / 2,739 |
+  | input acknowledgement | 254 / 307 | 253 / 306 | 453 / 829 | 453 / 853 |
+
+  Under `terrible` every p50 is now about one round trip. The p95 shrank for
+  most kinds, but `gameplay_operation_p95_ms` still fails under both profiles,
+  led by the kinds with 9 to 16 samples, whose p95 is their largest sample.
+  What remains is LiteNetLib's resend delay: a packet that is lost goes again
+  only after 25 ms plus 2.1 times the measured round trip, about 0.45 seconds
+  under `poor` and 0.9 under `terrible`, so an answer whose own intent or
+  answer was lost once takes about 0.7 and 1.4 seconds; that matches most p95
+  values after the split.
 - **A graceful leave failed as a lost connection on a lossy network.** Fixed.
   2 of 100 bots in one of two `normal` runs, 25 under `poor`, and 58 under
   `terrible` failed with `connection_closed` at their leave after the steady
@@ -2125,9 +2153,14 @@ hold the reports.
    show. Every disconnect with a reason and the stop notice work the same way.
 10. **Reliable intents get a long tail as soon as packets are lost.** Under
     `poor` the median answer takes about one round trip, but one answer in
-    twenty takes 0.4 to 1.6 seconds, and 2 to 7 seconds under `terrible`. The
-    likely cause, not proven, is that every intent shares one reliable ordered
-    channel, so one lost packet holds back everything behind it.
+    twenty took 0.4 to 1.6 seconds, and 2 to 7 seconds under `terrible`. Part
+    of it was the one reliable ordered channel that every message shared: with
+    the intents on their own channel, on 2026-11-16 the p95 of most kinds fell
+    to 0.3 to 0.9 seconds under `poor` and to 1.3 to 2.7 under `terrible`,
+    where every p50 fell from about 1.1 seconds to one round trip. The rest is
+    LiteNetLib's resend delay of 25 ms plus 2.1 round trips per lost packet,
+    the next thing to measure, as
+    [Measured Under The Profiles](#measured-under-the-profiles) shows.
 11. **An outage of the line snaps a walking character back.** The worker fills
     at most 15 lost inputs; after a longer gap the character has stood still
     on the worker, and the client is corrected by what it walked meanwhile,

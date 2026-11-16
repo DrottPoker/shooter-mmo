@@ -483,7 +483,7 @@ public sealed class SimulationTickLoopTests
                 context,
                 RealtimeMessageType.LeaveRequest,
                 RealtimeProtocol.EncodeLeaveRequest(session.SimulationSessionId.ToString("D")),
-                RealtimeProtocol.ControlChannel,
+                RealtimeProtocol.OwnerChannel,
                 DeliveryMethod.ReliableOrdered));
             Assert.Null(context.Session);
             Assert.False(harness.Bindings.TryGetConnectionId(entity.NetworkEntityId, out _));

@@ -55,7 +55,7 @@ public sealed class LiteNetLibRealtimeTransportTests
         await using var loopback = await LoopbackPeer.ConnectAsync("Acknowledging Listener");
         var disconnect = new RealtimePendingDisconnect(null, DateTime.UtcNow);
 
-        loopback.Peer.SendDisconnectReason(RealtimeProtocol.EncodeLeaveAccepted(20), disconnect);
+        loopback.Peer.SendDisconnectReason(RealtimeProtocol.EncodeLeaveAccepted(20), RealtimeProtocol.SessionChannel, disconnect);
         await loopback.PollUntilAsync(() => disconnect.Acknowledged, "the acknowledgement");
 
         Assert.True(loopback.Client.Has(RealtimeMessageType.LeaveAccepted));

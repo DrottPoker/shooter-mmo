@@ -52,7 +52,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         [Test]
-        public void TheConnectionSendsTheTrimmedJoinTicketOnTheReliableControlChannel()
+        public void TheConnectionSendsTheTrimmedJoinTicketOnTheReliableSessionChannel()
         {
             harness.Transport.ReportedRoundTripTime = 40;
             harness.BeginJoin(RealtimeHubHarness.Placement(joinTicket: " ticket-1 "));
@@ -464,7 +464,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.BeginLeave(" " + SessionId.ToString("D") + " "), Is.True);
 
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Leaving));
-            Assert.That(harness.Timeline, Is.EqualTo(new[] { "Send LeaveRequest on 0 ReliableOrdered" }));
+            Assert.That(harness.Timeline, Is.EqualTo(new[] { "Send LeaveRequest on 3 ReliableOrdered" }));
             Assert.That(
                 harness.Transport.Sent.Single().Packet,
                 Is.EqualTo(RealtimeProtocol.EncodeLeaveRequest(SessionId.ToString("D"))));
@@ -624,6 +624,76 @@ namespace Mmorpg.Client.Tests.EditMode
                 (harness.LeaveError.Kind, harness.LeaveError.Code),
                 Is.EqualTo((RealtimeClientErrorKind.Server, "server_shutdown")));
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION server_shutdown" }));
+        }
+
+        // The world and owner channels are not ordered against the session channel, so a lost
+        // JoinAccepted lets their first messages arrive before it. They wait for it and follow it
+        // in the order they arrived, after SessionJoined reset the session's parts.
+        [Test]
+        public void MessagesOfOtherChannelsThatOvertakeTheJoinAnswerWaitForIt()
+        {
+            harness.BeginJoinAndConnect();
+            harness.Clear();
+            harness.Queue(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId)));
+            harness.Queue(RealtimeProtocol.EncodeGameServiceAvailabilityChanged(false));
+            harness.Queue(RealtimeProtocol.EncodeCombatantState(CombatantState(PlayerEntityId)));
+            harness.Frame();
+            Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
+
+            harness.Deliver(RealtimeProtocol.EncodeJoinAccepted(RealtimeHubHarness.JoinAccepted()));
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "frame",
+                    "SessionJoined",
+                    "EntitySpawned " + PlayerEntityId,
+                    "GameServiceAvailabilityChanged unavailable",
+                    "CombatantStateReceived " + PlayerEntityId
+                }));
+            Assert.That(harness.StepJoin(), Is.False);
+            Assert.That(harness.JoinError, Is.Null);
+            Assert.That(harness.TakeFailures(), Is.Empty);
+        }
+
+        // What waited for the answer of a join that failed never reaches the next session.
+        [Test]
+        public void MessagesThatWaitedForAFailedJoinNeverReachTheNextSession()
+        {
+            harness.BeginJoinAndConnect();
+            harness.Queue(RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId)));
+            harness.Deliver(RealtimeProtocol.EncodeJoinRejected("join_ticket_consumed", "The join ticket was already used."));
+            Assert.That(harness.StepJoin(), Is.False);
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION join_ticket_consumed" }));
+
+            harness.JoinSession();
+
+            Assert.That(harness.Hub.Players.SpawnedEntityCount, Is.Zero);
+            Assert.That(harness.TakeFailures(), Is.Empty);
+        }
+
+        // A join that collects more waiting messages than the client holds fails instead of
+        // growing without bound.
+        [Test]
+        public void AJoinAnswerThatTooManyMessagesOvertakeFailsTheJoin()
+        {
+            harness.BeginJoinAndConnect();
+            harness.Clear();
+            var spawn = RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId));
+            for (var index = 0; index <= RealtimeMessageTable.MaximumHeldBeforeJoin; index++)
+            {
+                harness.Queue(spawn);
+            }
+
+            harness.Frame();
+
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.StepJoin(), Is.False);
+            Assert.That(harness.JoinError.Code, Is.EqualTo("join_backlog_overflow"));
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT join_backlog_overflow" }));
         }
 
         // A lossy line can lose the leave's answer while the disconnect after it arrives. The
@@ -1137,7 +1207,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 case "an unreadable packet":
                     // Three bytes of a valid packet are too short for its header.
                     var packet = RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(OtherPlayerEntityId));
-                    harness.Deliver(packet.Take(3).ToArray(), RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+                    harness.Deliver(packet.Take(3).ToArray(), RealtimeProtocol.SessionChannel, DeliveryMethod.ReliableOrdered);
                     break;
                 case "a client failure":
                     harness.Hub.Session.DisconnectForClientFailure("combat_state_conflict", "The combat state conflicts.");

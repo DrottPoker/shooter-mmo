@@ -199,21 +199,22 @@ namespace Mmorpg.Client.Networking
 
         // The worker puts the message that ends the session into its disconnect too, because a
         // lossy line can lose its reliable copy or hold it back behind a lost packet. While the
-        // session has not ended, that message is handled as if it had arrived on the control
-        // channel, and then the disconnect itself; other data counts as none.
+        // session has not ended, that message is handled as if it had arrived on the channel its
+        // descriptor names, and then the disconnect itself; other data counts as none.
         private void OnTransportDisconnected(DisconnectReason reason, byte[] data)
         {
             if (session.State != RealtimeConnectionState.Disconnected
                 && RealtimeProtocol.TryReadMessageType(data, out var messageType)
                 && (messageType == RealtimeMessageType.LeaveAccepted
                     || messageType == RealtimeMessageType.ServerDisconnect
-                    || messageType == RealtimeMessageType.JoinRejected))
+                    || messageType == RealtimeMessageType.JoinRejected)
+                && RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor))
             {
                 ClientLog.Info(
                     ClientLogCategory.Client,
                     "The realtime connection closed with " + messageType
-                    + " in its data before it arrived on the control channel; handling it from there.");
-                OnTransportReceived(data, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+                    + " in its data before it arrived on its channel; handling it from there.");
+                OnTransportReceived(data, descriptor.Channel, DeliveryMethod.ReliableOrdered);
             }
 
             session.OnTransportDisconnected(reason);

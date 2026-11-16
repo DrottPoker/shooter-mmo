@@ -293,10 +293,13 @@ internal sealed class RealtimeServer(
             var started = Stopwatch.GetTimestamp();
             transport.FlushSends();
 
-            // An empty outgoing queue means that LiteNetLib sent the notice once, not that the
-            // client acknowledged it; a disconnect stops the resends of its reliable packets.
+            // An empty outgoing queue of the notice's channel means that LiteNetLib sent the notice
+            // once, not that the client acknowledged it; a disconnect stops the resends of the
+            // reliable packets of every channel. The other channels need not wait: the session
+            // ends with the notice.
+            var noticeChannel = RealtimeReliableChannels.Of(packet);
             while (Stopwatch.GetElapsedTime(started) < StopNoticeTimeout
-                && told.Exists(entry => entry.Peer.GetPacketsCountInReliableQueue(RealtimeProtocol.ControlChannel, true) > 0))
+                && told.Exists(entry => entry.Peer.GetPacketsCountInReliableQueue(noticeChannel, true) > 0))
             {
                 await Task.Delay(10);
                 transport.FlushSends();

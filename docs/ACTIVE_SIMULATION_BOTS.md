@@ -35,13 +35,15 @@ without a network.
   descriptor in the protocol schema names, and must decode. The bot also sends
   every message with the channel and delivery of its descriptor.
 - A snapshot can overtake the reliable join acceptance, so one that arrives
-  before it is dropped. Any other session message before the acceptance fails
-  the bot.
+  before it is dropped. A reliable message of the world or owner channel can
+  overtake it too, as [Channels](REALTIME_PROTOCOL.md#channels) describes, so
+  it waits for the acceptance and follows it in the order it arrived. Any other
+  message before the acceptance fails the bot.
 - While a leave is pending, the bot accepts every message of a joined session,
   because the worker keeps sending until it has released the session.
 - A disconnect whose data holds a `LeaveAccepted`, `ServerDisconnect`, or
   `JoinRejected` that the bot has not handled yet is handled as that message
-  on the control channel, as
+  on its channel, as
   [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
   describes, so a leave whose answer the line lost still completes. A
   disconnect without such data fails the bot with `connection_closed`.

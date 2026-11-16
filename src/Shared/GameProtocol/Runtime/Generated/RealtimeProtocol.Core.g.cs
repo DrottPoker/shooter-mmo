@@ -412,7 +412,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 42;
+        public const ushort Version = 43;
 
         /// <summary>
         /// The LiteNetLib connection key.
@@ -432,17 +432,27 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The number of LiteNetLib channels both peers configure.
         /// </summary>
-        public const byte ChannelCount = 2;
+        public const byte ChannelCount = 4;
 
         /// <summary>
-        /// Reliable ordered control messages in both directions.
+        /// Reliable ordered session control: the join, the leave's answers, and the message that says why a connection ends.
         /// </summary>
-        public const byte ControlChannel = 0;
+        public const byte SessionChannel = 0;
 
         /// <summary>
         /// Sequenced movement input from the client.
         /// </summary>
         public const byte MovementInputChannel = 1;
+
+        /// <summary>
+        /// Reliable ordered world state that the client builds its picture of the World from, in order: players, World Actors, looks, corpse presence, and combat.
+        /// </summary>
+        public const byte WorldChannel = 2;
+
+        /// <summary>
+        /// Reliable ordered requests of the player and their answers, with the owner's item, interaction, corpse view, quest, and admin state that they change, and the leave request behind them.
+        /// </summary>
+        public const byte OwnerChannel = 3;
 
         /// <summary>
         /// The channel on which the client receives unreliable snapshots.
@@ -508,52 +518,52 @@ namespace Mmorpg.GameProtocol
         private static readonly RealtimeMessageDescriptor[] Descriptors =
         {
             null,
-            new RealtimeMessageDescriptor(RealtimeMessageType.JoinRequest, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.JoinAccepted, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.JoinRejected, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveRequest, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveAccepted, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveRejected, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.ServerDisconnect, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.JoinRequest, RealtimeMessageDirection.ClientToServer, SessionChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.JoinAccepted, RealtimeMessageDirection.ServerToClient, SessionChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.JoinRejected, RealtimeMessageDirection.ServerToClient, SessionChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveRequest, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveAccepted, RealtimeMessageDirection.ServerToClient, SessionChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.LeaveRejected, RealtimeMessageDirection.ServerToClient, SessionChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.ServerDisconnect, RealtimeMessageDirection.ServerToClient, SessionChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.MovementInputBatch, RealtimeMessageDirection.ClientToServer, MovementInputChannel, RealtimeDelivery.Sequenced),
             new RealtimeMessageDescriptor(RealtimeMessageType.SimulationSnapshot, RealtimeMessageDirection.ServerToClient, UnreliableReceiveChannel, RealtimeDelivery.Unreliable),
-            new RealtimeMessageDescriptor(RealtimeMessageType.EntitySpawn, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.EntityDespawn, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CarryStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.ItemOperationIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.ItemOperationResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CorpsePresenceSnapshotChunk, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseInteractionIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseInteractionResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseViewStateChunk, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseViewClosed, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorSpawn, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorDespawn, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionOpened, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionClosed, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.EntitySpawn, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.EntityDespawn, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CarryStateChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.ItemOperationIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.ItemOperationResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CorpsePresenceSnapshotChunk, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseInteractionIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseInteractionResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseViewStateChunk, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CorpseViewClosed, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorSpawn, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorState, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldActorDespawn, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionOpened, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.WorldInteractionClosed, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
             new RealtimeMessageDescriptor(RealtimeMessageType.OwnerSimulationSnapshot, RealtimeMessageDirection.ServerToClient, UnreliableReceiveChannel, RealtimeDelivery.Unreliable),
-            new RealtimeMessageDescriptor(RealtimeMessageType.GatheringState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CombatantState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.CombatEventBatch, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerCombatState, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.EntityAppearanceChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntent, RealtimeMessageDirection.ClientToServer, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered),
-            new RealtimeMessageDescriptor(RealtimeMessageType.GameServiceAvailabilityChanged, RealtimeMessageDirection.ServerToClient, ControlChannel, RealtimeDelivery.ReliableOrdered)
+            new RealtimeMessageDescriptor(RealtimeMessageType.GatheringState, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatIntentResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatantState, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.CombatEventBatch, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerCombatState, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemQuantityChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.OwnerItemStateChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.EntityAppearanceChanged, RealtimeMessageDirection.ServerToClient, WorldChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AppearanceIntentResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminIntentResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.AdminStateChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntent, RealtimeMessageDirection.ClientToServer, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestIntentResult, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestLogChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.QuestDropInCorpse, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered),
+            new RealtimeMessageDescriptor(RealtimeMessageType.GameServiceAvailabilityChanged, RealtimeMessageDirection.ServerToClient, OwnerChannel, RealtimeDelivery.ReliableOrdered)
         };
 
         /// <summary>
