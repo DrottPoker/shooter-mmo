@@ -33,6 +33,10 @@ namespace Mmorpg.Client.Gameplay
         public const string IntervalKind = "interval";
         public const string SummaryKind = "summary";
 
+        // The frame time of 60 frames a second, and of 30, from which a player sees a hitch.
+        public const float SlowFrameMilliseconds = 1000f / 60f;
+        public const float HitchFrameMilliseconds = 1000f / 30f;
+
         public string kind;
         public string label;
         public float startSeconds;
@@ -41,8 +45,11 @@ namespace Mmorpg.Client.Gameplay
         // How long of it the local player was in the World, which the rates per minute count.
         public float worldSeconds;
 
-        // How long frames took.
+        // How long frames took, and the frames longer than SlowFrameMilliseconds and
+        // HitchFrameMilliseconds.
         public ClientMeasurementStatistics frameMilliseconds;
+        public int slowFrames;
+        public int hitchFrames;
 
         // The round trip that the transport reported, once a frame in the World.
         public ClientMeasurementStatistics roundTripMilliseconds;
@@ -123,6 +130,21 @@ namespace Mmorpg.Client.Gameplay
             values.Clear();
             sum = 0d;
             maximum = 0f;
+        }
+
+        // How many values are larger than the threshold.
+        public int CountAbove(float threshold)
+        {
+            var count = 0;
+            for (var index = 0; index < values.Count; index++)
+            {
+                if (values[index] > threshold)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         public float Percentile(float fraction)

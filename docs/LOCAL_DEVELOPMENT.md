@@ -732,6 +732,7 @@ repository root:
 ```powershell
 & .\tools\Test-Changes.ps1 -VerifyRules
 & .\tools\ci\Test-UnityCommon.ps1
+& .\tools\ci\Test-ClientCrowdCommon.ps1
 & .\tools\Verify-DependencyPolicy.ps1
 & .\tools\art\Verify-ArtAssets.ps1
 python -m unittest discover -s tools/art/blender/tests
@@ -754,6 +755,11 @@ Expected result:
 
 - The test selection rules find a rule for every tracked file; see
   [Checks For A Change](#checks-for-a-change).
+- `Result: the Unity file restore helpers hold in every case` and `Result: the
+  client crowd helpers hold in every case`: the helpers that put a working tree
+  back after a Unity run, and those that decide what
+  [the crowd measurement](#measure-the-client-with-a-crowd) measures and
+  reports.
 - `Dependency policy verification passed.`: exact Unity and NuGet versions in
   project, props, and targets files, one `xunit.v3` version across the test
   projects, local package paths, Unity lock coverage, one LiteNetLib version as
@@ -828,14 +834,16 @@ ends with a summary:
   `tools/art/blender/tests`, and both Unity suites, because the Editor reads the
   art manifests and a test reads the clip speeds in the animation script.
   Exported art runs the art verification and both Unity suites, and the art
-  pipeline scripts in `tools/art` run the art verification. Monitoring
-  configuration runs `tools/Verify-Observability.ps1` and every test project,
-  and the test containers' Compose file runs every test project. Documentation
-  runs nothing, except `docs/MONITORING.md`, which a test reads. Shared build,
-  format, and test settings and the script itself run the full gate, and so
-  does a file that no rule matches. A content compiler's verifier runs whenever
-  its tool project is selected, and every changed PowerShell script gets a
-  syntax check.
+  pipeline scripts in `tools/art` run the art verification. The client crowd
+  measurement, its helpers, and its Mob variant run
+  `tools/ci/Test-ClientCrowdCommon.ps1`, the Mob variant also the tool tests.
+  Monitoring configuration runs `tools/Verify-Observability.ps1` and every test
+  project, and the test containers' Compose file runs every test project.
+  Documentation runs nothing, except `docs/MONITORING.md`, which a test reads.
+  Shared build, format, and test settings and the script itself run the full
+  gate, and so does a file that no rule matches. A content compiler's verifier
+  runs whenever its tool project is selected, and every changed PowerShell
+  script gets a syntax check.
 - Integration tests run when a selected test project has any. When
   `MMORPG_TEST_POSTGRES` and `MMORPG_TEST_REDIS` are not set, the script reads
   them from `.env`, in a worktree from the `.env` of the main checkout, starts the
@@ -1357,71 +1365,112 @@ cannot clean up: stop the two processes whose ids it printed, and run
 ### Measure The Client With A Crowd
 
 `tools/Measure-ClientCrowd.ps1` measures how the client copes with a crowd of
-dressed players, the baseline of
+dressed players and of Mobs, the baseline of
 [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). It starts
 PostgreSQL and Redis when they do not run, GameService with the development bot
 endpoint, and the stress arena worker, `local-shard-2` with Development World 1
 on UDP 27016, where every player stays inside one interest radius. Both
 services and the bots run from Release builds, so they take as little of the
-machine as they can. For each
-crowd size it starts that many
-[ActiveSimulationBots](ACTIVE_SIMULATION_BOTS.md), which stay online, waits
-until all have joined, and runs the PlayMode test
-`LiveStackCrowdPlayModeTests`, category `ClientCrowd`, in an IL2CPP test
-player that compiles like a release build: it enters the arena as a player
-does, waits until the client shows a body for every bot, and records the
-[client measurements](UNITY_CLIENT_ARCHITECTURE.md#client-measurements) for
-60 seconds with the default camera at the spawn. Then it stops the bots and
-waits until their bodies are gone.
+machine as they can. Each measurement runs the PlayMode test
+`LiveStackCrowdPlayModeTests`, category `ClientCrowd`, in an IL2CPP test player
+that compiles like a release build: it enters the arena as a player does and
+records the
+[client measurements](UNITY_CLIENT_ARCHITECTURE.md#client-measurements) with
+the default camera at the spawn. The script makes four kinds of measurement, in
+this order; [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance)
+says what each reports:
+
+| Kind | What the script and the test do |
+| --- | --- |
+| `Standing` | For each size of `-Bots`, that many [ActiveSimulationBots](ACTIVE_SIMULATION_BOTS.md) that stay online. Once all have joined, the test waits until the client shows a body for every bot and records 60 seconds |
+| `Arrival` | In the same runs, the test records the frames from standing in the arena until the whole crowd is shown. After the standing recording it asks the script to stop the bots, waits until their bodies are gone, lets the client settle for 5 seconds, and reads the memory, then asks for the same number of bots again and records their arrival, from the first bot it knows until all are shown, and the memory a third time |
+| `Churn` | `-ChurnBots` bot slots, 200 by default, that log in and out at about three players a second while the test records 60 seconds |
+| `Mobs` | For each size of `-Mobs`, 100 and 200 by default, a worker on a World variant with that many walking Grey Wolves and no bots. The test records their arrival and 60 seconds with all of them shown |
+
+The test asks for the departure and the return through files in the run's
+folder, `crowd-<label>-depart.request` and `crowd-<label>-return.request`,
+which the script answers with a `.done` file of the same name once it has
+stopped or started the bots; it runs the Unity test in a runspace of its own
+process, so it can answer while the test runs. The Mob variant comes from
+`tools/load/client-crowd-mobs.json` through `StackStressGenerator world-variant`,
+as [World Variant](STACK_STRESS_TESTING.md#world-variant) describes, written
+into the run's folder; the script refuses a variant that changes the collision
+revision, which the client would refuse at the join. After each crowd size the
+script stops the bots and waits until their bodies are gone.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1 -Only Mobs -Mobs 100
 ```
 
 | Parameter | Meaning |
 | --- | --- |
-| `-Bots <sizes>` | The crowd sizes, `100,200,400` by default |
-| `-Seconds <n>` | How long each recording lasts, 60 by default |
+| `-Only <kinds>` | The kinds of measurement, `Standing`, `Arrival`, `Churn`, and `Mobs`, every kind by default. `Standing` alone leaves out the departure and the return, `Arrival` alone the standing recording |
+| `-Bots <sizes>` | The crowd sizes of `Standing` and `Arrival`, `100,200,400` by default |
+| `-ChurnBots <n>` | The bot slots of `Churn`, 200 by default |
+| `-Mobs <sizes>` | The Mob counts of `Mobs`, `100,200` by default |
+| `-Seconds <n>` | How long each standing, churn, and Mob recording lasts, 60 by default |
 | `-PlayerBuild <Release\|Development>` | How the test player compiles, like a release build by default |
-| `-Attempts <n>` | How many attempts each size gets when one does not count, 3 by default |
+| `-Attempts <n>` | How many attempts each measurement gets when one does not count, 3 by default |
 | `-QuietTimeoutMinutes <n>` | How long a measurement waits for other programs to leave the machine alone, 30 by default |
 | `-DisturbedProcessors <n>`, `-DisturbedGpuPercent <n>` | What other programs may use on average, 2.5 processors and 10 % of the 3D engine by default |
 | `-LoadSampleGapSeconds <n>` | The longest time within a recording that may pass without a sample of what other programs use, 10 by default |
 | `-Platform <Player\|Editor>` | `Editor` measures nothing itself; it keeps the stack and the bots of the first size up for `-HoldMinutes` |
 
+Several sizes or kinds are separated by commas, such as `-Bots 100,200`, also
+through `powershell -File`. Every run of the test builds the test player again:
+a release-like player takes about 20 minutes after a change of the client and
+about 4 minutes without one, as [Build Kinds](#build-kinds) and
+[The Live Stack Test In A Player](#the-live-stack-test-in-a-player) measured.
+The default run makes six runs of the test, and one kind with one size, such
+as `-Only Churn` or `-Only Mobs -Mobs 100`, makes one.
+
 The player opens a 1920 by 1080 window on the desktop for a few minutes per
-size, because frame times without a window say nothing about rendering; leave
+run, because frame times without a window say nothing about rendering; leave
 the machine alone while it runs. Every program that is not part of the
 measurement counts against it: another Unity Editor, such as the CI runner's,
 a build, a browser, or a game. Before each measurement the script waits up to
 `-QuietTimeoutMinutes`, 30 by default, until those programs have used at most
 two and a half processors, the background of an ordinary desktop, and 10 % of
-the graphics card's 3D engine for thirty seconds; it samples them every few
-seconds while the test runs and repeats a measurement during whose recording
-they used more. An attempt counts only with proof: one whose test failed, for
-example because the client lost its connection or showed fewer bots while it
-recorded, does not count although it wrote a result, and neither does one after
-which not every bot is still joined, or one whose samples leave more
-than `-LoadSampleGapSeconds` of the recording uncovered, because nothing then
-shows that it was undisturbed. Part of the measurement are only the processes
-that the script started itself, directly or through another one (the services,
-the bots, the Unity Editor that builds the test player, and the player), the
-project's own Unity Editor, Docker, and the desktop compositor. Another .NET
-program or PowerShell script, such as a load run, counts against the
-measurement like every other program. The bots get a secret that the script
-makes for the run; it neither reads nor changes `.env`.
-Expected result: one line per attempt with what other processes used, a table
-with the frame times, the time until the crowd was shown, the snapshot rate,
-starvation, and memory per size, `Client crowd measured`, and exit code 0. Each
-run keeps its logs, the test results, the per-second load samples, and
-`crowd-summary.md` in a new folder below `%TEMP%\shooter-mmo-client-crowd`.
+the graphics card's 3D engine for thirty seconds. It samples them every few
+seconds while the test runs and repeats a measurement during any of whose
+recordings they used more: the arrival, the standing, churn, or Mob recording,
+and the return. An attempt counts only with proof: one whose test failed, for
+example because the client lost its connection, showed fewer bots or Mobs
+while it recorded, or saw no bot come and go in the churn, does not count
+although it wrote a result, and neither does one after which the bots or the
+worker no longer run or not every bot of a crowd is joined, or one whose
+samples leave more than `-LoadSampleGapSeconds` of a recording uncovered,
+because nothing then shows that it was undisturbed. A recording shorter than
+the gap between two samples, such as an arrival of two seconds, also counts
+the first sample after its end, which measures its last seconds. Part of the
+measurement are only the processes that the script started itself, directly
+or through another one (the services, the bots, the Unity Editor that builds
+the test player, and the player), the project's own Unity Editor, Docker, and
+the desktop compositor. Another .NET program or PowerShell script, such as a
+load run, counts against the measurement like every other program. The bots
+get a secret that the script makes for the run; it neither reads nor changes
+`.env`.
+
+Expected result: one line per recording of each attempt with what other
+processes used, one table per kind of measurement, `Client crowd measured`, and
+exit code 0. The tables are those of
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance): the
+standing table with the time until the crowd was shown, the frame times, the
+snapshot rate, starvation, and memory per size; the arrivals, the first and the
+return, per size; the memory with the crowd, once it left, and with it back;
+the churn; and the Mobs. Each run keeps its logs, the test results, the
+per-second load samples, the Mob variants, and `crowd-summary.md` in a new
+folder below `%TEMP%\shooter-mmo-client-crowd`.
 
 The headless Editor draws nothing, so its frame times say nothing; the Editor's
 numbers need an open Editor. `-Platform Editor -Bots <n>` starts the stack and
 `n` bots and keeps them up; then run `LiveStackCrowdPlayModeTests` from
 `Window > General > Test Runner` in the open Editor, where it measures the
-crowd it finds, prints `[CROWD]` lines to the Console, and writes its result
-file below the Editor's temporary cache path.
+arrival and the standing crowd it finds, prints `[CROWD]` lines to the
+Console, and writes its result file below the Editor's temporary cache path.
+The departure and the return, the churn, and the Mobs need the script's
+answers or its variant, so they run in the test player only.
 
 ## Upgrade The Unity Editor
 

@@ -393,6 +393,8 @@ namespace Mmorpg.Client.Gameplay
                     durationSeconds = duration,
                     worldSeconds = WorldSeconds,
                     frameMilliseconds = Frames.ToStatistics(),
+                    slowFrames = Frames.CountAbove(ClientMeasurementRecord.SlowFrameMilliseconds),
+                    hitchFrames = Frames.CountAbove(ClientMeasurementRecord.HitchFrameMilliseconds),
                     roundTripMilliseconds = RoundTrips.ToStatistics(),
                     largestSnapshotAgeSeconds = LargestSnapshotAge,
                     ownerSnapshotFrames = OwnerFrames,

@@ -994,7 +994,7 @@ or costs time without a recording:
 
 | Value | How |
 | --- | --- |
-| Frame times and the round trip | Every frame as distributions, the round trip only while the local player is in the World |
+| Frame times and the round trip | Every frame as distributions, the round trip only while the local player is in the World, and the frames longer than the budget of 60 frames a second, 16.7 ms (`slowFrames`), and of 30, 33.3 ms (`hitchFrames`) |
 | Time in the World | The seconds the local player was in the World, which the rates per minute count, so time at the entry screens dilutes none |
 | Owner snapshots | The frames received and missing, the largest age, and the silences: a newest snapshot older than 1 s that a new one ends, with their longest |
 | Corrections | Every correction of the prediction, which `LocalPlayerController.PositionCorrected` reports, as a distribution of meters, and the hard snaps per minute |
@@ -3051,17 +3051,62 @@ garment texture arrays that
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
 plans for fewer draw calls.
 
-`tools/Measure-ClientCrowd.ps1` measures the client with 100, 200, and 400
-dressed bots in the stress arena, where every bot is in interest, in an IL2CPP
-test player that compiles like a release build: the time until the whole crowd
-is shown, frame times, owner snapshots, starvation of the remote players, and
-memory, as
+`tools/Measure-ClientCrowd.ps1` measures the client in the stress arena, where
+every player is in interest, in an IL2CPP test player that compiles like a
+release build, as
 [Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
-describes. The bots, the worker, and GameService run on the same machine as the
-client, so a large crowd measures that machine as a whole: when the worker
-falls behind its ticks or drops snapshots, which its log in the run's folder
-says, the client sees fewer owner snapshots and starves its remote players for
-reasons outside the client.
+describes. It makes four kinds of measurement, each with a table of its own in
+`crowd-summary.md`:
+
+- **Standing.** 100, 200, and 400 dressed bots, 60 seconds once the whole crowd
+  is shown: the time until it was shown, the frame times, the owner snapshots
+  per second, the starvation of the remote players, and the memory, allocated,
+  reserved, and managed as Unity's profiler counts them, and the test player's
+  private memory, the largest of the load samples. The baseline below is this
+  table.
+- **Arrival.** The frames from standing in the arena until the whole crowd is
+  shown, in a recording of their own: how long it took, the longest frame, the
+  frames over 33.3 and 16.7 ms, and the frame p50, p95, and p99. After the
+  standing recording the bots stop, and once their bodies are gone and the
+  client settled for 5 seconds the memory is read again, with the entries of
+  the shared body caches, `PlayerBodyMeshes` and `PlayerBodyMaterials`, which
+  `WorldSceneContext` counts for it (`BodyMeshCount`, `BodyMaterialCount`) and
+  nothing reads per frame. Then the same number of bots joins again, 20 a
+  second, and their arrival, from the first bot the client knows, and the
+  memory a third time are recorded. The three memory rows of a size show
+  whether memory comes back when a crowd leaves and whether a second crowd
+  costs more than the first; the private memory of each row is the load sample
+  nearest to it.
+- **Churn.** 200 bot slots of ActiveSimulationBots that come and go while the
+  client stands, 60 seconds: the spawns and despawns of bots per second as the
+  client saw them, the fewest and the most bots it knew, the frame p50, p95,
+  and p99, the longest frame, the frames over 33.3 ms, and the starvation. The
+  population's minimum is 120 of the 200, its target is drawn every 10 seconds
+  between 120 and 200, and a bot stays 30 to 60 seconds and, after its clean
+  logout, offline at least while its body stays, 22 seconds. ActiveSimulationBots
+  logs a bot out only while more than the minimum are joined, so a minimum
+  below the slots is what lets bots go at all, and the slots above the target
+  replace the bots that wait out their bodies. A simulation of the
+  coordinator's rules gives about 3 spawns and 3 despawns a second with 160 to
+  200 players in view, the bodies of bots that left included. That is the aim:
+  2 to 4 players a second, about 180 in a minute's recording, enough to see
+  what a spawn and a despawn cost, from a crowd near the 200 of the standing
+  table. The client measurements count no managed allocation per frame, so the
+  churn reports none.
+- **Mobs.** 100 and 200 walking Grey Wolves and no bots: a World variant from
+  `tools/load/client-crowd-mobs.json` with a quarter of the Mobs in each corner
+  of the arena, each quarter on a patrol around its corner, written with
+  `StackStressGenerator world-variant`. Mobs have no collision, so the variant
+  keeps the collision revision that the client checks at the join, and a Grey
+  Wolf never attacks, so the player stands undisturbed. The arrival of the
+  Mobs, and 60 seconds with all of them shown: the frame times, the frames over
+  33.3 ms, the starvation, and the memory.
+
+The bots, the worker, and GameService run on the same machine as the client,
+so a large crowd measures that machine as a whole: when the worker falls behind
+its ticks or drops snapshots, which its log in the run's folder says, the
+client sees fewer owner snapshots and starves its remote players for reasons
+outside the client.
 
 The baseline, measured on 2026-11-14 on an AMD Ryzen 7 5800 with an NVIDIA
 GeForce RTX 3070 (Direct3D 12), at 1920 by 1080 with the quality level `PC`,
@@ -3078,9 +3123,9 @@ What the baseline says:
 - **The frame grows by about 3 ms per 100 dressed bodies in view**, and the
   built client holds 60 frames per second with 400 of them on this machine,
   with about 3 ms to spare at the median and none at the 95th percentile.
-- **No recorded frame was longer than 36 ms.** The recording starts when the
-  whole crowd is shown, so the frames while the bodies come into view are not
-  part of it and are not measured.
+- **No recorded frame was longer than 36 ms.** The standing recording starts
+  when the whole crowd is shown, so the frames while the bodies come into view
+  are not part of it; the arrival measures them.
 - **The whole crowd is shown about 1.7 s per 100 bodies** after the World
   scene has loaded.
 - **Remote players starve at 400 in view, and not at 200.** The owner
@@ -3098,8 +3143,9 @@ the client recorded; the bots, the worker, and GameService on the same machine
 kept it 64 to 71 percent busy. The test runner marks its player as a
 development build (`Debug.isDebugBuild`), although it compiles with the release
 settings and the `Release` code variant; a shipped release build is not
-measured. The baseline of the Editor's Play Mode is not recorded either; it
-needs an open Editor, as
+measured. The arrival, the departure and the return, the churn, and the Mobs
+have no baseline yet. The baseline of the Editor's Play Mode is not recorded
+either; it needs an open Editor, as
 [Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
 describes.
 

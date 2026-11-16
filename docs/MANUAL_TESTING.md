@@ -2992,6 +2992,45 @@ it in
   reconnect that does not come back. The live stack test plays no attack, loot,
   or trade, so only this check covers them.
 
+## Client Under A Crowd
+
+The crowd measurement judges a change of how the client copes with many players
+and Mobs in view and over a long session by numbers, as
+[Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes. Run it after a change to bodies, looks, the body caches, remote
+players, Mob presentation, or anything that spawns and destroys their objects,
+and compare its tables with the baselines of
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). Close the
+Unity Editor of this checkout, games, browsers with video, and other heavy
+programs first, and leave the machine alone while it runs.
+
+1. Measure every kind, or one kind while iterating:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1 -Only Arrival -Bots 200
+   ```
+
+2. Watch the test player's window during a run.
+
+Expected result:
+
+- A 1920 by 1080 window shows the arena from the spawn: the bots appear around
+  the player, stand and walk for a minute, leave, and come back; in the churn
+  bots keep appearing and vanishing; in the Mob runs Grey Wolves walk around
+  the four corners of the arena and never attack the player.
+- The script prints one table per kind and `Client crowd measured`, and exits
+  with code 0. In the standing table every size keeps the columns of the
+  baseline; the arrival table has a `first` and a `return` row per size; the
+  memory table has three rows per size, `with the crowd`, `crowd gone`, and
+  `crowd back`, with the bots the client knew, 0 once the crowd left; the churn
+  shows spawns and despawns of about 3 a second; and the Mob table shows every
+  Mob shown.
+- What to look for, and to record with the run's folder: frames over 33.3 ms
+  in an arrival, memory or body cache entries that stay up once the crowd left
+  or grow with the crowd that came back, and an attempt that the script
+  repeats again and again because other programs disturbed it.
+
 ## Load Tooling
 
 Needs Docker Desktop running and no local stack on TCP 5500 and UDP 27025, and

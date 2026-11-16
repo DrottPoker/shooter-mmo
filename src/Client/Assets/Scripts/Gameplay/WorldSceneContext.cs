@@ -82,6 +82,18 @@ namespace Mmorpg.Client.Gameplay
             get { return remotePlayers.Values; }
         }
 
+        // The combined meshes and the material copies that the shared body caches hold, which the
+        // crowd measurement reads after a crowd left; nothing reads them a frame.
+        internal int BodyMeshCount
+        {
+            get { return bodyMeshes.Count; }
+        }
+
+        internal int BodyMaterialCount
+        {
+            get { return bodyMaterials.Count; }
+        }
+
         // The lying body of a player corpse in the dead character's body model and look, dressed in
         // the garments of the items still in the corpse, or of the default model and look without
         // one; the key names the body for KeepCorpseBodies.
