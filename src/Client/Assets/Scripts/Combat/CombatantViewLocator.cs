@@ -126,7 +126,7 @@ namespace Mmorpg.Client.Combat
         }
 
         // A visible presentation of the combatant, or false when it has none right now,
-        // such as a hidden dead Mob or an actor whose prefab still loads.
+        // such as a hidden dead Mob or an actor whose view waits to be made.
         public bool TryGetView(ulong entityId, out CombatantView view)
         {
             view = default(CombatantView);

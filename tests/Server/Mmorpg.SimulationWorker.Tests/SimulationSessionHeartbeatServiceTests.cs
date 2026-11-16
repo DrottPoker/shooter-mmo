@@ -87,6 +87,39 @@ public sealed class SimulationSessionHeartbeatServiceTests
         Assert.Equal("carry_state_conflict", conflict!.Code);
     }
 
+    // A reconnect's join consumed its ticket, which rotated the session's token at GameService, so
+    // GameService refuses the heartbeat of the old token before the join registered the new one.
+    // The refusal waits for the join: the session goes on under the new token with its item state.
+    // A refusal that a join ending without the session's new generation leaves ends the session.
+    [Fact]
+    public async Task ARefusalThatComesWhileAJoinIsInFlightWaitsForTheJoin()
+    {
+        var gameService = new SessionHeartbeatHandler();
+        using var worker = new HeartbeatWorker(gameService, batchSize: 250);
+        var reconnecting = worker.AddSession();
+        var ended = worker.AddSession();
+        gameService.Answer = (entry, _) => new SimulationSessionHeartbeatResult(
+            entry.SimulationSessionId,
+            null,
+            new SimulationWorkerErrorResponse("invalid_simulation_session", "Gone."));
+        var join = worker.Sessions.BeginJoin();
+
+        await worker.Service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(worker.Sessions.IsCurrent(reconnecting, DateTime.UtcNow));
+        Assert.True(worker.Sessions.IsCurrent(ended, DateTime.UtcNow));
+        var reconnected = reconnecting with { SimulationSessionToken = "reconnected-token" };
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, worker.Sessions.Register(reconnected));
+        worker.Sessions.EndJoin(join);
+
+        Assert.True(worker.Sessions.IsCurrent(reconnected, DateTime.UtcNow));
+        Assert.True(worker.ItemStates.TryGet(reconnecting.CharacterId, reconnecting.SimulationSessionId, out _));
+        Assert.False(worker.Sessions.IsCurrentGeneration(ended));
+        Assert.True(worker.Sessions.TryTakeInvalidation(ended.SimulationSessionId, out var refusal));
+        Assert.Equal("session_revoked", refusal!.Code);
+        Assert.False(worker.ItemStates.TryGet(ended.CharacterId, ended.SimulationSessionId, out _));
+    }
+
     // GameService could not be reached: the request goes again after the retry delay, and the
     // lease is renewed once GameService answers.
     [Fact]

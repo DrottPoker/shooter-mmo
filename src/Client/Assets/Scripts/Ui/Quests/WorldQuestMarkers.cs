@@ -48,6 +48,7 @@ namespace Mmorpg.Client.Ui
         private InventoryClientController inventory;
         private WorldActorPresentationController actors;
         private CombatantViewLocator views;
+        private PresentationBudget presentationBudget;
         private Func<string, int> carriedCount;
         private Func<string, int> ownedCount;
         private RectTransform layer;
@@ -59,13 +60,17 @@ namespace Mmorpg.Client.Ui
             get { return labels.Count; }
         }
 
-        // Called by the composition root before the component is activated.
+        // Called by the composition root before the component is activated. The frame's
+        // presentation budget is charged with the markers of the NPCs that came into view, which
+        // it shares with their views and the players' bodies.
         public void Initialize(
             QuestClientController questController,
             InventoryClientController inventoryController,
             WorldActorPresentationController actorPresentation,
-            CombatantViewLocator combatantViews)
+            CombatantViewLocator combatantViews,
+            PresentationBudget budget = null)
         {
+            presentationBudget = budget;
             quests = questController;
             inventory = inventoryController;
             actors = actorPresentation;
@@ -203,8 +208,10 @@ namespace Mmorpg.Client.Ui
 
             if (!labels.TryGetValue(view.TargetEntityId, out var label))
             {
+                presentationBudget?.Begin();
                 label = idle.Count > 0 ? idle.Pop() : CreateLabel();
                 labels.Add(view.TargetEntityId, label);
+                presentationBudget?.End();
             }
 
             label.Show(marker, local, ScaleAt(Mathf.Sqrt(sqrDistance)));

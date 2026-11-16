@@ -355,6 +355,13 @@ replication go on; everything durable is paused.
   right after the outage when one waited for it. The checkpoint pauses too, and
   one goes right after the outage. A dead player stays dead and a dead Mob in
   view until its death committed or its corpse exists.
+- A session whose body went while its spent arrows or kill credits had not
+  committed is released by the combat work once they did. The orphan sweep,
+  which releases a session that neither a peer nor a body has owned for twice
+  `SimulationWorker:JoinHandshakeTimeoutSeconds`, leaves such a session: it
+  counts the session's time only while GameService answers and releases it
+  only once that work stayed pending for the retry horizon below, when the
+  work itself is given up.
 - A death, a quest kill credit, or a Mob corpse whose outcome stays uncertain
   for `SimulationWorker:UncertainOperationRetryHorizonSeconds`, 600 by default,
   counted only while GameService answers, is given up with one error line that
@@ -519,7 +526,9 @@ SimulationWorker sends every active session once per
 `SimulationSessionHeartbeatMaxConcurrency` requests at a time. It applies every
 entry on its own: a lease moves the session's local deadline to the request's
 send time plus the lease duration and carries the account session end and the
-carry state, and an error ends the session as an expired lease does. A request
+carry state, and an error ends the session as an expired lease does; while a
+join is in flight, the error first waits for it, as
+[Reconnect Token Rotation](#reconnect-token-rotation) describes. A request
 that times out, cannot reach GameService, or gets a server error goes again
 after `SimulationSessionHeartbeatRetryMilliseconds` with those of its sessions
 that are still active, as long as the retry starts within the heartbeat
@@ -634,7 +643,10 @@ right after it answers again. When the entity of a session the worker still
 holds is removed, such as a body whose time is up or whose death committed, and
 at shutdown, the worker
 captures the final state, and the release of that session carries it, also when
-the release runs later or again. At shutdown the worker
+the release runs later or again. A release whose token GameService refused
+keeps the state for the reconnect that rotated the token, whose new entity is
+placed from it, as [Reconnect Token Rotation](#reconnect-token-rotation)
+describes. At shutdown the worker
 first saves every remaining player in one last checkpoint while the sessions
 still hold, because going offline releases them. A dead player is saved as its
 respawn leaves it: at the World spawn with full health and mana. A worker crash
@@ -665,8 +677,10 @@ valid, the character's entity stays in the world as a lingering body for
   arrows and death then build on that revision. Only the operation's result
   needs the peer that sent it; a player who came back in the meantime gets the
   item and quest log changes and the carry state. An answer that ends the
-  session invalidates the body's session, so the body goes without a release;
-  an answer that says the account session ended changes nothing for a body.
+  session invalidates the body's session, so the body goes without a release,
+  except that a refusal of the body's token waits for the joins in flight, as
+  [Reconnect Token Rotation](#reconnect-token-rotation) describes; an answer
+  that says the account session ended changes nothing for a body.
 - The time is counted in simulation ticks from the end of the connection. Every
   hit that the body takes moves its end to the full time after the hit when
   that is later, without an upper limit. A body whose time is up or whose death
@@ -689,17 +703,82 @@ valid, the character's entity stays in the world as a lingering body for
   player.
 - A join ticket of the same character is a reconnect of the body's session: the
   join resumes the body's entity where it stands, with its vitals, and ends its
-  time. When the body already went, because its death committed or its time
-  ended, but GameService had not released the session yet, the ticket is still
-  a reconnect, and the join gives the player a new entity, placed from the state
-  that the session captured when the body went: for a body that died, the World
-  spawn with full health and mana, and otherwise where the body stood, with its
-  vitals. A ticket for another character of the account is refused with
+  time. A body that died and has not gone yet is resumed dead, and respawns at
+  the World spawn once its death committed and the respawn delay passed, as any
+  character does. When the body already went, because its death committed or
+  its time ended, but GameService had not released the session yet, the ticket
+  is still a reconnect, and the join gives the player a new entity, placed from
+  the state that the session captured when the body went: for a body that died,
+  the World spawn with full health and mana, and otherwise where the body
+  stood, with its vitals. This holds also when GameService refused the body's
+  release, its death, or its heartbeat because the reconnect had rotated the
+  session's token, as
+  [Reconnect Token Rotation](#reconnect-token-rotation) describes. A ticket for
+  another character of the account is refused with
   `account_character_already_active`, and the client tells the player that the
   previous character is still in the world for a short while.
-- The orphan sweep never releases a body's session.
+- The orphan sweep never releases a body's session, and leaves the session of
+  a body that went with uncommitted work, as
+  [GameService Outage](#gameservice-outage) describes.
 - Development bots leave bodies too; while its body stands, a bot's ticket
   request is refused with `development_bot_already_active`.
+
+### Reconnect Token Rotation
+
+GameService rotates a session's token when it consumes the ticket of a
+reconnect, before the reconnect's join reaches the worker and registers the new
+token there. Until then GameService refuses what the worker sends with the old
+token: the heartbeat with `invalid_simulation_session`, the release with `401`,
+and an item transaction, such as a body's death, its spent arrows, or a kill
+credit, with `simulation_session_invalid`. Only a join of the worker that holds
+the session consumes such a ticket, so the worker tells a rotated token from an
+ended session by its own joins:
+
+- A join counts as in flight from before it consumes its ticket until it
+  registered its session or failed. A refusal of a session's credentials by
+  the heartbeat, by an operation of the player or of its lingering body, or by
+  the session's combat work that comes while a join is in flight waits until
+  every join that was in flight then has ended. When one of them registered a
+  newer generation of the session, the session goes on and the refusal ends
+  nothing; otherwise the session ends as the refusal says. A refusal of a
+  token that a newer generation already replaced ends nothing. A join that
+  fails unexpectedly after it consumed its ticket releases that session, with
+  the local state it registered.
+- A reconnect from another client takes over the session of a connected
+  player the same way. When an operation of the first client is refused while
+  the takeover's join is in flight, the first client gets its
+  `ServerDisconnect` at once, but its entity stays as a lingering body until
+  the refusal is decided, so the join resumes the entity where it stands with
+  its vitals instead of placing a new one from the last checkpoint.
+- The death, the spent arrows, and the kill credits of a session belong to the
+  session, not to one token of it. Each attempt remembers the generation it
+  went with. When GameService refuses its credentials and the session goes on,
+  or may go on because a join is in flight, the attempt keeps its place and
+  goes again after its backoff, with the reconnect's token once the reconnect's
+  join attached the session. So a death commits exactly once, with its corpse,
+  whichever token it commits with, and it neither disconnects the returning
+  player nor ends the session it goes on with.
+- A body that went before the reconnect's join arrived, because its death
+  committed or its time ended, left its final state, which its release carries.
+  When GameService refused that release because the reconnect had rotated the
+  token, the release saved nothing, so the worker keeps the state: the
+  reconnect's join places its new entity from it, instead of from the older
+  state that GameService returned with the ticket, the new entity takes it
+  over, and the next checkpoint saves it. A join that cannot go on after it
+  consumed its ticket releases the session with that state, so GameService
+  keeps it instead of an older one. A kept state whose reconnect never
+  completes, such as one whose consume answer was lost, stays as long as the
+  session's lease can last without this worker renewing it, the outage
+  tolerance plus one session heartbeat interval, and the next release after
+  that forgets it.
+
+So a reconnect ends in one of the outcomes that
+[Lingering Bodies](#lingering-bodies) names, whatever the order of the killing
+hit, the death's commit, the body's end, the release, the heartbeat, and the
+reconnect's join: the join resumes the body's entity; or the body died and went,
+and the join gives a new entity at the World spawn with full health and mana
+while the corpse lies where the body fell; or the body's time ended, and the
+join gives a new entity where the body stood, with its vitals.
 
 ## Realtime UDP Transport
 
@@ -1295,9 +1374,11 @@ the actor catalog. The combat model is in
   from 0.5 seconds that doubles up to 10 seconds until it commits or reaches the
   [retry horizon](#gameservice-outage), and drops the
   uncommitted shots when the arrow stack changed underneath, so they cannot
-  block the death. After the respawn delay, and once the death committed, the
-  character respawns at the World spawn with full health and mana, and every
-  viewer receives its respawn.
+  block the death. A refusal of the session's token that a reconnect caused
+  retries too, with the reconnect's token, as
+  [Reconnect Token Rotation](#reconnect-token-rotation) describes. After the
+  respawn delay, and once the death committed, the character respawns at the
+  World spawn with full health and mana, and every viewer receives its respawn.
 - A combatant is in combat until the combat timeout after its last attack or
   hit. A living character out of combat regenerates health and mana every
   second up to its maximum. Mana is owner state: only `OwnerCombatState`

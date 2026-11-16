@@ -53,6 +53,7 @@ namespace Mmorpg.Client.Ui
         private readonly List<ulong> retired = new List<ulong>();
         private CombatClientController combatController;
         private CombatantViewLocator views;
+        private PresentationBudget presentationBudget;
         private IRealtimeMovementChannel realtimeMovement;
         private IRealtimeDiagnostics realtimeDiagnostics;
         private RectTransform layer;
@@ -66,16 +67,20 @@ namespace Mmorpg.Client.Ui
 
         // Called by the composition root before the component is activated. The movement session
         // and the diagnostics give the server clock that a regenerating health follows.
+        // The frame's presentation budget is charged with the nameplates of the Mobs that came
+        // into view, which it shares with their views and the players' bodies.
         public void Initialize(
             CombatClientController combat,
             CombatantViewLocator combatantViews,
             IRealtimeMovementChannel movement,
-            IRealtimeDiagnostics diagnostics)
+            IRealtimeDiagnostics diagnostics,
+            PresentationBudget budget = null)
         {
             combatController = combat;
             views = combatantViews;
             realtimeMovement = movement;
             realtimeDiagnostics = diagnostics;
+            presentationBudget = budget;
         }
 
         // The nameplate of a Mob, while it shows.
@@ -240,9 +245,14 @@ namespace Mmorpg.Client.Ui
         {
             if (!nameplates.TryGetValue(entityId, out var nameplate))
             {
+                // A Mob that came into view: its nameplate is part of its coming into view, which
+                // the frame's presentation budget is charged with, so the next frame makes fewer
+                // views when many came at once.
+                presentationBudget?.Begin();
                 nameplate = idle.Count > 0 ? idle.Pop() : CreateNameplate();
                 nameplate.Bind(displayName, level, aggression);
                 nameplates.Add(entityId, nameplate);
+                presentationBudget?.End();
             }
 
             nameplate.Root.gameObject.SetActive(true);

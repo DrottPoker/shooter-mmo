@@ -20,14 +20,21 @@ internal sealed class RealtimePeerSupervisor(
     LingeringBodies bodies,
     SessionAuthorityOperations sessionOperations,
     RealtimeNetworkMetrics networkMetrics,
-    ILogger logger)
+    ILogger logger,
+    GameServiceAvailability? availability = null,
+    Func<Guid, bool>? holdsDurableWork = null)
 {
     private readonly Dictionary<Guid, DateTime> unboundSessionsSinceUtc = [];
+
+    // The sessions without a peer or a body whose durable combat work has not committed, since
+    // GameService's available time when the sweep found them so.
+    private readonly Dictionary<Guid, TimeSpan> waitingForWorkSinceAvailable = [];
     private DateTime nextOrphanSweepUtc = DateTime.MinValue;
 
     public void ClearUnboundSessions()
     {
         unboundSessionsSinceUtc.Clear();
+        waitingForWorkSinceAvailable.Clear();
     }
 
     public void EnforcePeerState()
@@ -128,7 +135,11 @@ internal sealed class RealtimePeerSupervisor(
 
     // Safety net: a local session that no peer has owned for a while is released, so a
     // missed cleanup path can never keep renewing a lease for a player who is gone. A lingering
-    // body owns its session without a peer on purpose, and its own time ends it.
+    // body owns its session without a peer on purpose, and its own time ends it. A session whose
+    // body went while its spent arrows or kill credits had not committed belongs to the combat
+    // authority, which releases it once they did; that work waits while GameService does not
+    // answer, so the sweep counts such a session's time only while GameService answers, and
+    // leaves it for the outage tolerance, as long as the worker itself goes on without GameService.
     public void ReleaseOrphanedSessions()
     {
         var now = DateTime.UtcNow;
@@ -150,8 +161,18 @@ internal sealed class RealtimePeerSupervisor(
             if (boundSessionIds.Contains(session.SimulationSessionId) || bodies.Holds(session))
             {
                 unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
+                waitingForWorkSinceAvailable.Remove(session.SimulationSessionId);
                 continue;
             }
+
+            if (availability is not null && holdsDurableWork?.Invoke(session.SimulationSessionId) == true)
+            {
+                unboundSessionsSinceUtc.Remove(session.SimulationSessionId);
+                ReleaseIfWorkOutlastedRetryHorizon(availability, session);
+                continue;
+            }
+
+            waitingForWorkSinceAvailable.Remove(session.SimulationSessionId);
 
             if (!unboundSessionsSinceUtc.TryGetValue(session.SimulationSessionId, out var since))
             {
@@ -179,6 +200,38 @@ internal sealed class RealtimePeerSupervisor(
                 unboundSessionsSinceUtc.Remove(sessionId);
             }
         }
+
+        foreach (var sessionId in waitingForWorkSinceAvailable.Keys.ToArray())
+        {
+            if (!activeSessionIds.Contains(sessionId))
+            {
+                waitingForWorkSinceAvailable.Remove(sessionId);
+            }
+        }
+    }
+
+    // A session whose combat work stayed pending for the whole retry horizon of the time that
+    // GameService answered is released as any orphan is: the work itself is given up then.
+    private void ReleaseIfWorkOutlastedRetryHorizon(GameServiceAvailability gameService, ActiveSimulationSession session)
+    {
+        var availableTime = gameService.AvailableTime;
+        if (!waitingForWorkSinceAvailable.TryGetValue(session.SimulationSessionId, out var since))
+        {
+            waitingForWorkSinceAvailable[session.SimulationSessionId] = availableTime;
+            return;
+        }
+
+        if (availableTime - since < config.UncertainOperationRetryHorizon)
+        {
+            return;
+        }
+
+        waitingForWorkSinceAvailable.Remove(session.SimulationSessionId);
+        logger.LogWarning(
+            "[SIMULATION] Releasing simulation session {SimulationSessionId}, whose combat work did not commit while no peer owned it for {Seconds:F0} seconds in which GameService answered.",
+            session.SimulationSessionId,
+            (availableTime - since).TotalSeconds);
+        sessionOperations.ReleaseDetachedInBackground(session);
     }
 
     private bool IsCurrentSession(ActiveSimulationSession session)

@@ -46,6 +46,11 @@ namespace Mmorpg.Client.Gameplay
         private string wornKey = string.Empty;
         private SkinnedMeshRenderer combinedRenderer;
         private PlayerBodyMaterials materials;
+        // The shared mesh and the material copies the body shows, which count it as a user.
+        private PlayerBodyMeshes.Combined shownMesh;
+        private PlayerBodyMaterials materialsTakenFrom;
+        private readonly List<Material> shownMaterials = new List<Material>();
+        private readonly List<Material> shownMaterialsBefore = new List<Material>();
         private BodyLook look = BodyLook.Default;
         private bool gripPending;
         private bool tinted;
@@ -248,9 +253,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             RestoreOwnMaterials();
-            parts = GetComponentsInChildren<SkinnedMeshRenderer>(false)
-                .Where(part => part.enabled && part.sharedMesh != null)
-                .ToArray();
+            parts = PlayerBodyMeshes.PartsOf(this);
             if (parts.Length == 0)
             {
                 return;
@@ -334,22 +337,8 @@ namespace Mmorpg.Client.Gameplay
         private bool WearLook()
         {
             worn.Clear();
-            held = new List<BodyAppearanceCatalog.Attachment>();
-            if (catalog != null)
-            {
-                var slots = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var garment in catalog.Garments)
-                {
-                    if (garment != null && look.HasGarment(garment.Name) && slots.Add(garment.Slot))
-                    {
-                        worn.Add(garment);
-                    }
-                }
-
-                held = PlayerBodyMeshes.Held(catalog.Attachments.Where(attachment =>
-                    attachment != null && look.HasAttachment(attachment.Name)).ToList());
-            }
-
+            worn.AddRange(WornBy(catalog, look));
+            held = HeldBy(catalog, look);
             tool = held.FirstOrDefault(attachment => attachment.IsTool);
             var heldWeapon = held.FirstOrDefault(attachment => !attachment.IsTool
                     && string.Equals(attachment.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal))
@@ -370,11 +359,50 @@ namespace Mmorpg.Client.Gameplay
             return changed;
         }
 
+        // The garments of the catalog that a look names, as a body in it wears them: one per visual
+        // slot, the first in the catalog.
+        public static List<BodyAppearanceCatalog.Garment> WornBy(BodyAppearanceCatalog catalog, BodyLook look)
+        {
+            var found = new List<BodyAppearanceCatalog.Garment>();
+            if (catalog == null)
+            {
+                return found;
+            }
+
+            look = look ?? BodyLook.Default;
+            var slots = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var garment in catalog.Garments)
+            {
+                if (garment != null && look.HasGarment(garment.Name) && slots.Add(garment.Slot))
+                {
+                    found.Add(garment);
+                }
+            }
+
+            return found;
+        }
+
+        // The attachments of the catalog that a look names, one per socket, as a body in it holds
+        // them.
+        public static List<BodyAppearanceCatalog.Attachment> HeldBy(BodyAppearanceCatalog catalog, BodyLook look)
+        {
+            if (catalog == null)
+            {
+                return new List<BodyAppearanceCatalog.Attachment>();
+            }
+
+            look = look ?? BodyLook.Default;
+            return PlayerBodyMeshes.Held(catalog.Attachments.Where(attachment =>
+                attachment != null && look.HasAttachment(attachment.Name)).ToList());
+        }
+
         // The combined renderer draws the shared mesh of the parts, the worn garments, and the held
-        // attachments.
+        // attachments, which the body uses until it shows another or is destroyed.
         private void Assemble()
         {
-            var combined = meshes.For(parts, transform, catalog, worn, held);
+            var combined = meshes.Acquire(parts, transform, catalog, worn, held);
+            meshes.Release(shownMesh);
+            shownMesh = combined;
             HoldSkinnedBones();
             var transforms = new Dictionary<string, Transform>();
             foreach (var child in GetComponentsInChildren<Transform>(true))
@@ -678,6 +706,13 @@ namespace Mmorpg.Client.Gameplay
         private void Refresh()
         {
             CaptureOwnMaterials();
+            // The copies shown before stay taken until the new ones are, so none of them goes and
+            // comes back between.
+            shownMaterialsBefore.Clear();
+            shownMaterialsBefore.AddRange(shownMaterials);
+            shownMaterials.Clear();
+            var takenBefore = materialsTakenFrom;
+            materialsTakenFrom = null;
             var tint = tinted ? TintFor(tintColor) : Color.white;
             // Garments show only on the combined renderer, and only those drawn hide underwear.
             var drawn = combinedRenderer != null ? PlayerBodyMeshes.Drawn(worn) : (IReadOnlyList<BodyAppearanceCatalog.Garment>)NoGarments;
@@ -693,6 +728,8 @@ namespace Mmorpg.Client.Gameplay
                     entry.Key.sharedMaterials = entry.Value;
                     continue;
                 }
+
+                materialsTakenFrom = materials;
 
                 var applied = (Material[])entry.Value.Clone();
                 for (var index = 0; index < applied.Length; index++)
@@ -715,10 +752,49 @@ namespace Mmorpg.Client.Gameplay
                     var garment = worn.FirstOrDefault(candidate => candidate.Material == own);
                     var dyes = garment != null ? look.DyesFor(garment.Name) : null;
                     applied[index] = materials.For(own, baseMap, skinTint, paints, dyes);
+                    materials.AddUser(applied[index]);
+                    shownMaterials.Add(applied[index]);
                 }
 
                 entry.Key.sharedMaterials = applied;
             }
+
+            ReleaseMaterials(takenBefore, shownMaterialsBefore);
+        }
+
+        // The materials of the shared set that the body showed no longer count it as a user.
+        private static void ReleaseMaterials(PlayerBodyMaterials set, List<Material> released)
+        {
+            if (set != null)
+            {
+                foreach (var material in released)
+                {
+                    set.Release(material);
+                }
+            }
+
+            released.Clear();
+        }
+
+        // A destroyed body uses its shared mesh and material copies no more, so they go once no
+        // other body shows them.
+        private void OnDestroy()
+        {
+            ReleaseShared();
+        }
+
+        // The body counts no longer as a user of the shared mesh and the material copies it shows,
+        // as when it is destroyed; it shows them until it is given others.
+        public void ReleaseShared()
+        {
+            if (meshes != null)
+            {
+                meshes.Release(shownMesh);
+            }
+
+            shownMesh = null;
+            ReleaseMaterials(materialsTakenFrom, shownMaterials);
+            materialsTakenFrom = null;
         }
 
         private void CaptureOwnMaterials()

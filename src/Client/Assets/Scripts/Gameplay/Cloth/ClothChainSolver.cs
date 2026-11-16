@@ -449,16 +449,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            if (shape == null)
-            {
-                shape = ShapeOf(bones);
-                capsules.Clear();
-                foreach (var capsuleShape in shape.Capsules)
-                {
-                    capsules.Add(new Capsule(bones[capsuleShape.Bone], capsuleShape));
-                }
-            }
-
+            MeasureShape(bones);
             var description = Description(bones);
             if (world == null)
             {
@@ -472,6 +463,44 @@ namespace Mmorpg.Client.Gameplay
             else
             {
                 world.Replace(handle, description);
+            }
+        }
+
+        private void MeasureShape(Dictionary<string, Transform> bones)
+        {
+            if (shape != null)
+            {
+                return;
+            }
+
+            shape = ShapeOf(bones);
+            capsules.Clear();
+            foreach (var capsuleShape in shape.Capsules)
+            {
+                capsules.Add(new Capsule(bones[capsuleShape.Bone], capsuleShape));
+            }
+        }
+
+        // Measures the body and the cloth of the garments with loose parts as a body that wears
+        // them would. In play the measures are shared per model and garment, so a World measures
+        // every model and garment once while it loads, and the first body that wears them in view
+        // measures nothing.
+        public void PrepareMeasures(IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+        {
+            var bones = BonesByName();
+            MeasureShape(bones);
+            if (garments == null)
+            {
+                return;
+            }
+
+            foreach (var garment in garments)
+            {
+                var kind = garment != null && garment.Model != null ? PlayerBodyAppearance.ChainsOf(garment.Cloth) : null;
+                if (kind.HasValue && HasChains(kind.Value, bones))
+                {
+                    ReachesOf(garment.Model, kind.Value);
+                }
             }
         }
 

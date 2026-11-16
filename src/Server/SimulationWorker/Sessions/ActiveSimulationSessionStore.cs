@@ -19,6 +19,12 @@ public sealed class ActiveSimulationSessionStore
     private int accountSessionEndCount;
     private DateTime nextInvalidationPruneUtc = DateTime.MinValue;
 
+    // The joins that consume a ticket now, by the order they began, and the refusals of a
+    // session generation's credentials that wait for them.
+    private readonly SortedSet<long> joinsInFlight = [];
+    private readonly List<WaitingRefusal> waitingRefusals = [];
+    private long lastJoin;
+
     public int PendingInvalidationCount
     {
         get
@@ -247,23 +253,126 @@ public sealed class ActiveSimulationSessionStore
     {
         lock (syncRoot)
         {
-            if (!sessionsByCharacterId.TryGetValue(characterId, out var session)
-                || session.SimulationSessionId != simulationSessionId
-                || !string.Equals(
-                    session.SimulationSessionToken,
-                    simulationSessionToken,
-                    StringComparison.Ordinal))
+            return InvalidateLocked(characterId, simulationSessionId, simulationSessionToken, code, message);
+        }
+    }
+
+    // A join consumes a ticket from now on until EndJoin. Consuming the ticket of a reconnect
+    // rotates the token of its session at GameService before the join registers the new token
+    // here, so GameService may refuse the old token of a session that goes on.
+    public long BeginJoin()
+    {
+        lock (syncRoot)
+        {
+            var join = ++lastJoin;
+            joinsInFlight.Add(join);
+            return join;
+        }
+    }
+
+    // The join registered its session or failed. A refused generation that waited only for joins
+    // that ended now ends, unless one of them registered a newer generation of its session.
+    public void EndJoin(long join)
+    {
+        List<WaitingRefusal>? ended = null;
+        lock (syncRoot)
+        {
+            if (!joinsInFlight.Remove(join))
             {
-                return false;
+                return;
             }
 
-            sessionsByCharacterId.Remove(characterId);
-            ForgetAccountSessionEndLocked(simulationSessionId);
-            StoreInvalidation(
-                simulationSessionId,
-                new ActiveSimulationSessionInvalidation(code, message));
-            return true;
+            var oldestInFlight = joinsInFlight.Count == 0 ? long.MaxValue : joinsInFlight.Min;
+            for (var index = waitingRefusals.Count - 1; index >= 0; index--)
+            {
+                var refusal = waitingRefusals[index];
+                if (refusal.LastJoinBefore >= oldestInFlight)
+                {
+                    continue;
+                }
+
+                waitingRefusals.RemoveAt(index);
+                if (InvalidateLocked(
+                        refusal.CharacterId,
+                        refusal.SimulationSessionId,
+                        refusal.SimulationSessionToken,
+                        refusal.Code,
+                        refusal.Message))
+                {
+                    (ended ??= []).Add(refusal);
+                }
+            }
         }
+
+        if (ended is not null)
+        {
+            foreach (var refusal in ended)
+            {
+                refusal.Ended?.Invoke();
+            }
+        }
+    }
+
+    // GameService refused the credentials of the session generation: it ended the session, or a
+    // reconnect consumed its ticket, which rotated the token there before the reconnect's join
+    // registers the new token here. Only a join of this worker consumes a ticket of a session that
+    // it holds, so the generation ends at once while no join is in flight, and otherwise once
+    // every join that was in flight has ended, unless one of them registered a newer generation
+    // of the session, which goes on. Ended runs when the generation ends this way, outside the
+    // store's lock.
+    public SessionCredentialsRefusal RefuseCredentials(
+        Guid characterId,
+        Guid simulationSessionId,
+        string simulationSessionToken,
+        string code,
+        string message,
+        Action? ended = null)
+    {
+        lock (syncRoot)
+        {
+            if (!IsCurrentGenerationLocked(characterId, simulationSessionId, simulationSessionToken))
+            {
+                return SessionCredentialsRefusal.EarlierGeneration;
+            }
+
+            if (joinsInFlight.Count > 0)
+            {
+                waitingRefusals.Add(new WaitingRefusal(
+                    characterId,
+                    simulationSessionId,
+                    simulationSessionToken,
+                    code,
+                    message,
+                    lastJoin,
+                    ended));
+                return SessionCredentialsRefusal.WaitsForJoins;
+            }
+
+            InvalidateLocked(characterId, simulationSessionId, simulationSessionToken, code, message);
+        }
+
+        ended?.Invoke();
+        return SessionCredentialsRefusal.Ended;
+    }
+
+    private bool InvalidateLocked(
+        Guid characterId,
+        Guid simulationSessionId,
+        string simulationSessionToken,
+        string code,
+        string message)
+    {
+        if (!IsCurrentGenerationLocked(characterId, simulationSessionId, simulationSessionToken))
+        {
+            return false;
+        }
+
+        sessionsByCharacterId.Remove(characterId);
+        ForgetAccountSessionEndLocked(simulationSessionId);
+        StoreInvalidation(
+            simulationSessionId,
+            new ActiveSimulationSessionInvalidation(code, message));
+        return true;
     }
 
     public bool TryTakeInvalidation(
@@ -366,6 +475,26 @@ public sealed class ActiveSimulationSessionStore
     private readonly record struct StoredInvalidation(
         ActiveSimulationSessionInvalidation Invalidation,
         DateTime RecordedAtUtc);
+
+    // A refused generation that waits for the joins up to LastJoinBefore, the last join that
+    // began before the refusal came.
+    private sealed record WaitingRefusal(
+        Guid CharacterId,
+        Guid SimulationSessionId,
+        string SimulationSessionToken,
+        string Code,
+        string Message,
+        long LastJoinBefore,
+        Action? Ended);
+}
+
+// What a refusal of a session generation's credentials did: the generation ended, it waits for
+// the joins in flight, or a newer generation of the session already replaced it.
+public enum SessionCredentialsRefusal
+{
+    Ended,
+    WaitsForJoins,
+    EarlierGeneration
 }
 
 public enum ActiveSimulationSessionRegistration

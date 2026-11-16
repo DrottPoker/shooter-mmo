@@ -24,10 +24,12 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // after an uncertain answer and outlive the connection: the character's lingering body commits
 // them, and what it gathers until it goes, one operation per tick without a peer, and a session
 // whose entity went is released only after they committed. A body's committed death ends the
-// body. While GameService does not answer, none of them is sent: each waits, due at once, and
-// goes as soon as GameService answers again. A death or a kill credit that does not commit
-// within the retry horizon, counted only while GameService answers, is given up. Loop-confined;
-// GameService calls run in PlayerCombatAuthorityOperations.
+// body. They belong to the session, not to one token of it: a refusal of the credentials that a
+// reconnect caused, by rotating the token at GameService, ends nothing, and the work goes again
+// with the reconnect's token. While GameService does not answer, none of them is sent: each
+// waits, due at once, and goes as soon as GameService answers again. A death or a kill credit
+// that does not commit within the retry horizon, counted only while GameService answers, is
+// given up. Loop-confined; GameService calls run in PlayerCombatAuthorityOperations.
 internal sealed class PlayerCombatAuthority(
     SimulationWorkerConfig config,
     CombatRules rules,
@@ -102,6 +104,13 @@ internal sealed class PlayerCombatAuthority(
     public bool TryGet(Guid simulationSessionId, out PlayerCombatSession combatSession)
     {
         return sessions.TryGetValue(simulationSessionId, out combatSession!);
+    }
+
+    // Whether spent arrows, a death, or kill credits of the session have not committed yet; a
+    // session whose entity went is released by this authority once they did.
+    public bool HoldsDurableWork(Guid simulationSessionId)
+    {
+        return sessions.TryGetValue(simulationSessionId, out var combatSession) && combatSession.HasDurableWork;
     }
 
     public bool IsCharacterDead(RealtimePeerContext context)
@@ -631,6 +640,7 @@ internal sealed class PlayerCombatAuthority(
         }
 
         credit.Attempts++;
+        credit.SentWith = combatSession.Session;
         operationTracker.Track(operations.CreditQuestKillAsync(
             this,
             combatSession.Context,
@@ -653,7 +663,10 @@ internal sealed class PlayerCombatAuthority(
 
         var outcome = completed.Outcome;
         SendQuestLogChange(combatSession, outcome.QuestLogChange);
-        if (!outcome.Succeeded && outcome.ShouldDisconnect)
+        var waitsForReconnect = !outcome.Succeeded
+            && outcome.ShouldDisconnect
+            && WaitsForReconnect(credit.SentWith, outcome.Code, outcome.Message);
+        if (!outcome.Succeeded && outcome.ShouldDisconnect && !waitsForReconnect)
         {
             combatSession.InFlightQuestCredit = null;
             combatSession.QuestCredits.Clear();
@@ -670,7 +683,7 @@ internal sealed class PlayerCombatAuthority(
                 credit.Attempts,
                 outcome.Code,
                 outcome.Message);
-            if (outcome.Uncertain)
+            if (outcome.Uncertain || waitsForReconnect)
             {
                 if (IsPastRetryHorizon(credit.StartedAt))
                 {
@@ -826,6 +839,7 @@ internal sealed class PlayerCombatAuthority(
         }
 
         batch.Attempts++;
+        batch.SentWith = combatSession.Session;
         operationTracker.Track(operations.ConsumeAmmunitionAsync(
             this,
             combatSession.Context,
@@ -862,7 +876,9 @@ internal sealed class PlayerCombatAuthority(
         }
 
         var error = result.Error!;
-        if (GameServiceOutcome.IsUncertain(error.Code) && batch.Attempts < MaximumBatchAttempts)
+        if (batch.Attempts < MaximumBatchAttempts
+            && (GameServiceOutcome.IsUncertain(error.Code)
+                || WaitsForReconnect(batch.SentWith, error.Code, error.Message)))
         {
             metrics?.RecordAmmunitionBatch("retried");
             batch.RetryAtTick = clock.ServerTick + Backoff(batch.Attempts);
@@ -917,6 +933,7 @@ internal sealed class PlayerCombatAuthority(
 
         death.InFlight = true;
         death.Attempts++;
+        death.SentWith = combatSession.Session;
         operationTracker.Track(operations.ProcessDeathAsync(
             this,
             combatSession.Context,
@@ -1013,7 +1030,8 @@ internal sealed class PlayerCombatAuthority(
         }
 
         var error = result.Error!;
-        if (GameServiceOutcome.EndsSession(error.Code))
+        var waitsForReconnect = WaitsForReconnect(death.SentWith, error.Code, error.Message);
+        if (GameServiceOutcome.EndsSession(error.Code) && !waitsForReconnect)
         {
             metrics?.RecordDeathPartition("session_ended");
             death.Committed = true;
@@ -1036,7 +1054,8 @@ internal sealed class PlayerCombatAuthority(
             return;
         }
 
-        metrics?.RecordDeathPartition(GameServiceOutcome.IsUncertain(error.Code) ? "retried" : "rejected");
+        metrics?.RecordDeathPartition(
+            GameServiceOutcome.IsUncertain(error.Code) || waitsForReconnect ? "retried" : "rejected");
         logger.LogWarning(
             "[SIMULATION] The death of simulation session {SimulationSessionId} did not commit on attempt {Attempt} with {Code}: {Message}",
             combatSession.Session.SimulationSessionId,
@@ -1228,6 +1247,26 @@ internal sealed class PlayerCombatAuthority(
         {
             scheduler.StartNext(combatSession.Context);
         }
+    }
+
+    // GameService refused the credentials of the generation that the attempt was sent with. That
+    // ends the session, unless the refusal came from a reconnect, whose ticket consumption
+    // rotated the token at GameService: the store holds the reconnect's generation already, or a
+    // join that may register it is in flight. Then the work keeps its place in the session and
+    // goes again after its backoff, with the reconnect's token once its join attached the session;
+    // a session that ends after all takes its work with it, as any ended session does.
+    private bool WaitsForReconnect(ActiveSimulationSession? sentWith, string code, string message)
+    {
+        return sentWith is not null
+            && GameServiceOutcome.RefusesSessionCredentials(code)
+            && sessionStore.TryGet(sentWith.CharacterId, out var current)
+            && current!.SimulationSessionId == sentWith.SimulationSessionId
+            && sessionStore.RefuseCredentials(
+                sentWith.CharacterId,
+                sentWith.SimulationSessionId,
+                sentWith.SimulationSessionToken,
+                code,
+                message) != SessionCredentialsRefusal.Ended;
     }
 
     // Whether an operation that started at this available time was retried for the whole horizon

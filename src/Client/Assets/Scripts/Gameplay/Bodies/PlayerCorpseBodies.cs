@@ -7,8 +7,10 @@ namespace Mmorpg.Client.Gameplay
     // The remains a player leaves: the dead character's body in the last pose of the Death clip, in
     // its look and the garments still in the corpse's equipment, baked once per body model and look
     // into a static mesh that every corpse that looks the same shares, so a field of corpses costs
-    // no animation or skinning. The owner destroys the meshes; the materials come from the shared
-    // set.
+    // no animation or skinning. A bake reads the combined mesh of a hidden body back, so it takes
+    // it from a set of readable meshes, which the hidden body releases when it goes. The owner
+    // destroys the lying meshes; their materials come from the shared set, which counts every
+    // lying body as a user until it goes.
     public sealed class PlayerCorpseBodies : IDisposable
     {
         // The presentation key of every player corpse, as the worker sends it.
@@ -40,7 +42,8 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The lying body of the body prefab in the look and its materials from the shared set, baked
-        // on the first call for the key.
+        // on the first call for the key from readable meshes, which a set that keeps no copy of its
+        // uploaded meshes cannot give.
         public bool TryGet(string key, PlayerBodyAppearance bodyPrefab, BodyLook look, PlayerBodyMeshes meshes,
             PlayerBodyMaterials bodyMaterials, out Mesh lyingMesh, out Material[] lyingMaterials)
         {
@@ -73,7 +76,7 @@ namespace Mmorpg.Client.Gameplay
 
             foreach (var key in unused)
             {
-                DestroyMesh(baked[key].Mesh);
+                Forget(baked[key]);
                 baked.Remove(key);
             }
         }
@@ -82,10 +85,22 @@ namespace Mmorpg.Client.Gameplay
         {
             foreach (var body in baked.Values)
             {
-                DestroyMesh(body.Mesh);
+                Forget(body);
             }
 
             baked.Clear();
+        }
+
+        private static void Forget(Baked body)
+        {
+            DestroyMesh(body.Mesh);
+            if (body.MaterialSet != null && body.Materials != null)
+            {
+                foreach (var material in body.Materials)
+                {
+                    body.MaterialSet.Release(material);
+                }
+            }
         }
 
         // A hidden copy of the body plays the end of Death, and its combined renderer is baked in
@@ -113,7 +128,13 @@ namespace Mmorpg.Client.Gameplay
                 var mesh = new Mesh { name = "PlayerCorpseBody" };
                 appearance.CombinedRenderer.BakeMesh(mesh, true);
                 mesh.RecalculateBounds();
-                return new Baked(mesh, appearance.CombinedRenderer.sharedMaterials);
+                var materials = appearance.CombinedRenderer.sharedMaterials;
+                foreach (var material in materials)
+                {
+                    bodyMaterials.AddUser(material);
+                }
+
+                return new Baked(mesh, materials, bodyMaterials);
             }
             finally
             {
@@ -149,15 +170,19 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly struct Baked
         {
-            public Baked(Mesh mesh, Material[] materials)
+            public Baked(Mesh mesh, Material[] materials, PlayerBodyMaterials materialSet)
             {
                 Mesh = mesh;
                 Materials = materials;
+                MaterialSet = materialSet;
             }
 
             public Mesh Mesh { get; }
 
             public Material[] Materials { get; }
+
+            // The shared set the materials come from, which counts the lying body as their user.
+            public PlayerBodyMaterials MaterialSet { get; }
         }
     }
 }

@@ -173,7 +173,9 @@ internal sealed class RealtimeSessionTeardown(
     // TerminateForAuthorityFailure does for the peer that plays it. A lingering body has no peer:
     // its session is invalidated, so the body goes at the next tick without a release. The answer
     // to an operation of an earlier generation, which a reconnect replaced, ends nothing, since
-    // the session went on with what GameService held at the reconnect. An answer that says the
+    // the session went on with what GameService held at the reconnect; a refusal of the body's
+    // credentials that comes while a join is in flight waits for it, since that join may be the
+    // reconnect that rotated the token. An answer that says the
     // account session ended keeps the session and the entity: it ends the connection of the peer
     // that plays the session, and a body without a peer stays as it is.
     public void EndForAuthorityFailure(in OperationCompletionTarget target, string code, string message)
@@ -215,6 +217,17 @@ internal sealed class RealtimeSessionTeardown(
             return;
         }
 
+        if (GameServiceOutcome.RefusesSessionCredentials(code))
+        {
+            sessionStore.RefuseCredentials(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code,
+                message);
+            return;
+        }
+
         sessionStore.Invalidate(
             session.CharacterId,
             session.SimulationSessionId,
@@ -224,7 +237,12 @@ internal sealed class RealtimeSessionTeardown(
     }
 
     // Ends a session whose authoritative state can no longer be trusted. An answer that says the
-    // account session ended ends only the connection.
+    // account session ended ends only the connection. A refusal of the session's credentials that
+    // comes while a join is in flight may only say that a reconnect from another client rotated
+    // the token at GameService before its join registered here: it ends the connection, and the
+    // entity stays as a lingering body until the refusal is decided, so the reconnect's join
+    // resumes the entity where it stands with its vitals, or the session ends and the body goes
+    // with it.
     public void TerminateForAuthorityFailure(
         IRealtimePeerConnection peer,
         RealtimePeerContext context,
@@ -244,6 +262,18 @@ internal sealed class RealtimeSessionTeardown(
         }
 
         sender.SendAndDisconnect(peer, context, RealtimeProtocol.EncodeServerDisconnect(code, message));
+        if (GameServiceOutcome.RefusesSessionCredentials(code)
+            && sessionStore.RefuseCredentials(
+                session.CharacterId,
+                session.SimulationSessionId,
+                session.SimulationSessionToken,
+                code,
+                message) != SessionCredentialsRefusal.Ended)
+        {
+            LeaveBody(context, session);
+            return;
+        }
+
         sessionStore.Invalidate(
             session.CharacterId,
             session.SimulationSessionId,

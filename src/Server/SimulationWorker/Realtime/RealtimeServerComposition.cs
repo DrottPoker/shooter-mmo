@@ -89,7 +89,9 @@ internal static class RealtimeServerComposition
             core.Bodies,
             core.SessionOperations,
             networkMetrics,
-            logger);
+            logger,
+            availability,
+            playerCombat.Authority.HoldsDurableWork);
         var lifecycle = new RealtimePeerLifecycle(
             config,
             core.Peers,

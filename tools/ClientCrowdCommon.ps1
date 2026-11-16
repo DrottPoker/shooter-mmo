@@ -316,7 +316,9 @@ function Format-Memory($Memory) {
 # Standing, Arrival with a second table of the memory at the departure and the return, Churn,
 # and Mobs. Each entry has the Kind (crowd, churn, or mobs), its Count, the test's Result, the
 # Loads of its recordings by name (Arrival, Standing, Return), and the PrivateMemory of each
-# memory row. The standing table is the baseline's table, unchanged.
+# memory row. The standing table is the baseline's table, unchanged. The arrival and Mob tables
+# give the frame in which the World scene became active, its load, a column of its own; the
+# arrivals start with the frame after it.
 function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     $lines = @()
     $crowds = @($Entries | Where-Object { $_.Kind -eq "crowd" })
@@ -345,17 +347,19 @@ function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     if ($arrivals.Count -gt 0) {
         if ($lines.Count -gt 0) { $lines += "" }
         $lines += Get-MachineLine "Crowd arrival, from standing in the arena until the whole crowd is shown, and again when it comes back" $arrivals[0].Result
-        $lines += "| Bots | Arrival | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |"
-        $lines += "| ---: | --- | ---: | ---: | ---: | ---: | --- | ---: |"
+        $lines += "| Bots | Arrival | World activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |"
+        $lines += "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
         foreach ($entry in $arrivals) {
-            foreach ($stretch in @(@("first", $entry.Result.arrival, $entry.Loads['Arrival']), @("return", $entry.Result.returnArrival, $entry.Loads['Return']))) {
+            # Only the first arrival follows a World scene's activation.
+            foreach ($stretch in @(@("first", $entry.Result.arrival, $entry.Loads['Arrival'], $entry.Result.activationFrameMilliseconds), @("return", $entry.Result.returnArrival, $entry.Loads['Return'], $null))) {
                 if ($null -eq $stretch[1] -or -not $stretch[1].measured) {
                     continue
                 }
 
                 $s = $stretch[1].summary
-                $lines += ("| {0} | {1} | {2} s | {3} ms | {4} | {5} | {6} / {7} / {8} ms | {9} % |" -f
-                    $entry.Count, $stretch[0],
+                $activation = if ($null -eq $stretch[3]) { "-" } else { "$(Format-Number $stretch[3] "0.0") ms" }
+                $lines += ("| {0} | {1} | {2} | {3} s | {4} ms | {5} | {6} | {7} / {8} / {9} ms | {10} % |" -f
+                    $entry.Count, $stretch[0], $activation,
                     (Format-Number $stretch[1].shownSeconds "0.0"),
                     (Format-Number $s.frameMilliseconds.maximum "0.0"),
                     $s.hitchFrames, $s.slowFrames,
@@ -406,14 +410,16 @@ function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     if ($mobs.Count -gt 0) {
         if ($lines.Count -gt 0) { $lines += "" }
         $lines += Get-MachineLine "Walking Mobs in view, without bots" $mobs[0].Result
-        $lines += "| Mobs | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |"
-        $lines += "| ---: | ---: | --- | --- | ---: | --- | --- | ---: | ---: |"
+        $lines += "| Mobs | World activation frame | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |"
+        $lines += "| ---: | ---: | ---: | --- | --- | ---: | --- | --- | ---: | ---: |"
         foreach ($entry in $mobs) {
             $r = $entry.Result
             $s = $r.summary
             $a = $r.arrival.summary
-            $lines += ("| {0} | {1} s | {2} ms / {3} | {4} / {5} / {6} / {7} ms | {8} | {9} | {10} | {11} MB | {12} % |" -f
+            $activation = if ($null -eq $r.activationFrameMilliseconds) { "-" } else { "$(Format-Number $r.activationFrameMilliseconds "0.0") ms" }
+            $lines += ("| {0} | {1} | {2} s | {3} ms / {4} | {5} / {6} / {7} / {8} ms | {9} | {10} | {11} | {12} MB | {13} % |" -f
                 $entry.Count,
+                $activation,
                 (Format-Number $r.crowdShownSeconds "0.0"),
                 (Format-Number $a.frameMilliseconds.maximum "0.0"), $a.hitchFrames,
                 (Format-Number $s.frameMilliseconds.p50 "0.0"), (Format-Number $s.frameMilliseconds.p95 "0.0"),

@@ -253,6 +253,84 @@ public sealed class ActiveSimulationSessionStoreTests
         Assert.False(store.TryGetAccountSessionEnd(invalidated, out _));
     }
 
+    // Without a join in flight, a refusal of the session's credentials ends the session at once;
+    // a refusal of a token that a reconnect already replaced ends nothing.
+    [Fact]
+    public void ARefusalOfTheCredentialsEndsTheSessionWhileNoJoinIsInFlight()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var session = CreateSession();
+        var reconnected = session with { SimulationSessionToken = "reconnected-token" };
+        store.Register(session);
+        var ended = 0;
+
+        Assert.Equal(
+            SessionCredentialsRefusal.Ended,
+            store.RefuseCredentials(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, "session_revoked", "Refused.", () => ended++));
+
+        Assert.Equal(1, ended);
+        Assert.False(store.IsCurrentGeneration(session));
+        Assert.True(store.TryTakeInvalidation(session.SimulationSessionId, out var invalidation));
+        Assert.Equal("session_revoked", invalidation!.Code);
+        store.Register(reconnected);
+        Assert.Equal(
+            SessionCredentialsRefusal.EarlierGeneration,
+            store.RefuseCredentials(session.CharacterId, session.SimulationSessionId, session.SimulationSessionToken, "session_revoked", "Refused.", () => ended++));
+        Assert.True(store.IsCurrentGeneration(reconnected));
+        Assert.Equal(1, ended);
+    }
+
+    // A reconnect's join rotates the token at GameService before it registers the new one, so a
+    // refusal that comes while joins are in flight waits for every one of them. The session goes
+    // on when one of them registered a newer generation of it, and ends once the last of them
+    // ended without one; a join that began after the refusal does not hold it.
+    [Fact]
+    public void ARefusalWaitsForTheJoinsInFlightAndEndsNothingWhenOneRegisteredTheSessionAgain()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var reconnecting = CreateSession();
+        var ending = CreateSession();
+        store.Register(reconnecting);
+        store.Register(ending);
+        var endedSessions = new List<Guid>();
+        var first = store.BeginJoin();
+        var second = store.BeginJoin();
+
+        foreach (var session in new[] { reconnecting, ending })
+        {
+            Assert.Equal(
+                SessionCredentialsRefusal.WaitsForJoins,
+                store.RefuseCredentials(
+                    session.CharacterId,
+                    session.SimulationSessionId,
+                    session.SimulationSessionToken,
+                    "session_revoked",
+                    "Refused.",
+                    () => endedSessions.Add(session.SimulationSessionId)));
+        }
+
+        var later = store.BeginJoin();
+        Assert.True(store.IsCurrent(reconnecting, DateTime.UtcNow));
+        Assert.True(store.IsCurrent(ending, DateTime.UtcNow));
+
+        var reconnected = reconnecting with { SimulationSessionToken = "reconnected-token" };
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(reconnected));
+        store.EndJoin(first);
+        Assert.Empty(endedSessions);
+        Assert.True(store.IsCurrent(ending, DateTime.UtcNow));
+
+        store.EndJoin(second);
+        Assert.Equal([ending.SimulationSessionId], endedSessions);
+        Assert.False(store.IsCurrentGeneration(ending));
+        Assert.True(store.TryTakeInvalidation(ending.SimulationSessionId, out _));
+        Assert.True(store.IsCurrent(reconnected, DateTime.UtcNow));
+        Assert.False(store.TryTakeInvalidation(reconnecting.SimulationSessionId, out _));
+
+        store.EndJoin(later);
+        store.EndJoin(later);
+        Assert.Single(endedSessions);
+    }
+
     private static ActiveSimulationSession CreateSession(
         Guid? simulationSessionId = null,
         string sessionToken = "session-token",
