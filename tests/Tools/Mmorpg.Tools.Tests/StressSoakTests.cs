@@ -93,13 +93,21 @@ public sealed class StressSoakTests
     [Fact]
     public void TheSoakScenariosChurnTheReferenceMix()
     {
-        var ten = StressLoadScenario.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "scenarios", "soak-10min.json"));
-        var thirty = StressLoadScenario.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "scenarios", "soak-30min.json"));
-        var reference = StressLoadScenario.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "scenarios", "playing-250.json"));
+        var ten = LoadScenario("soak-10min");
+        var thirty = LoadScenario("soak-30min");
+        var target = LoadScenario("soak-500-30min");
 
         Assert.Equal((100, 600), (ten.Generator["bots"], ten.Generator["duration-seconds"]));
         Assert.Equal((250, 1800), (thirty.Generator["bots"], thirty.Generator["duration-seconds"]));
-        foreach (var soak in new[] { ten, thirty })
+        Assert.Equal((500, 1800), (target.Generator["bots"], target.Generator["duration-seconds"]));
+        // The soak at the Scale Target is playing-500 with churn; the others play playing-250's variant.
+        Assert.Equal(LoadScenario("playing-500").Generator["poll-threads"], target.Generator["poll-threads"]);
+        foreach (var (soak, reference) in new[]
+                 {
+                     (ten, LoadScenario("playing-250")),
+                     (thirty, LoadScenario("playing-250")),
+                     (target, LoadScenario("playing-500"))
+                 })
         {
             Assert.NotNull(soak.Playing!.Churn);
             Assert.Equal(reference.Playing!.RoleShares, soak.Playing.RoleShares);
@@ -107,6 +115,11 @@ public sealed class StressSoakTests
             Assert.Equal(reference.WorldVariant!.Areas, soak.WorldVariant!.Areas);
             Assert.Equal(reference.WorldVariant.Groups, soak.WorldVariant.Groups);
         }
+    }
+
+    private static StressLoadScenario LoadScenario(string name)
+    {
+        return StressLoadScenario.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "scenarios", name + ".json"));
     }
 
     [Fact]
