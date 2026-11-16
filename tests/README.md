@@ -385,14 +385,30 @@ under IL2CPP and stripping in real use, as
 describes.
 
 `LiveStackCrowdPlayModeTests`, in the category `ClientCrowd` only, measures
-the client with a crowd of ActiveSimulationBots in the stress arena,
-`local-shard-2`: it enters the arena, waits up to two minutes until every bot
-the client knows has a body and the client knows as many bots as
-`MMORPG_CROWD_BOTS` names, or, without it, as many as stayed the same for three
-seconds, records the client measurements for `MMORPG_CROWD_SECONDS`, and writes
-`crowd-<label>.json` below `MMORPG_CROWD_RESULTS`. In a player it first sets a
-1920 by 1080 window. It asserts only that the crowd appears and the client
-stays in the arena; no rule judges the numbers.
+the client in the stress arena, `local-shard-2`. It enters the arena and
+measures the kind that `MMORPG_CROWD_MODE` names:
+
+- `crowd`, the default: it records the arrival, from the moment it stands in
+  the arena until every bot the client knows has a body and the client knows as
+  many bots as `MMORPG_CROWD_BOTS` names, or, without it, as many as stayed the
+  same for three seconds, waiting up to two minutes. Unless
+  `MMORPG_CROWD_STANDING` is `0`, it then records the client measurements for
+  `MMORPG_CROWD_SECONDS`. With `MMORPG_CROWD_RETURN` set to `1` it asks the
+  script to stop the bots, waits until their bodies are gone, asks for them
+  again, and records their arrival, reading the memory and the body cache
+  entries each time.
+- `churn`: once the client shows `MMORPG_CROWD_BOTS` bots, it records for
+  `MMORPG_CROWD_SECONDS` and counts the bots that the client saw spawn and
+  despawn.
+- `mobs`: it records the arrival of `MMORPG_CROWD_MOBS` Mobs of the actor
+  `MMORPG_CROWD_MOB_ACTOR`, `mob.grey_wolf` by default, and
+  `MMORPG_CROWD_SECONDS` with all of them shown.
+
+It writes `crowd-<label>.json` below `MMORPG_CROWD_RESULTS`, and asks the
+script through request files there. In a player it first sets a 1920 by 1080
+window. It asserts only that the crowd appears, stays, and comes back as asked,
+that bots come and go in the churn, and that the client stays in the arena; no
+rule judges the numbers.
 `tools/Measure-ClientCrowd.ps1` runs it, as
 [Measure The Client With A Crowd](../docs/LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
 describes.

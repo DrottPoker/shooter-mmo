@@ -61,6 +61,11 @@ jobs:
         shell: pwsh
         run: ./tools/ci/Test-UnityCommon.ps1
 
+      # The helpers of the client crowd measurement decide what it measures and reports.
+      - name: Verify the client crowd helpers
+        shell: pwsh
+        run: ./tools/ci/Test-ClientCrowdCommon.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:

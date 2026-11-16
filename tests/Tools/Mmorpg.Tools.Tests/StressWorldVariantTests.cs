@@ -103,6 +103,70 @@ public sealed class StressWorldVariantTests
         }
     }
 
+    // The walking Mobs of tools/Measure-ClientCrowd.ps1: every area walks its own patrol, and
+    // Mobs leave the collision alone, so a Unity client can join the variant and watch them.
+    [Fact]
+    public void TheClientCrowdMobsWalkTheirPatrolsAndKeepTheCollisionRevision()
+    {
+        var scenario = StressLoadScenario.Load(Path.Combine(RepositoryPaths.Root, "tools", "load", "client-crowd-mobs.json"));
+        var areas = scenario.WorldVariant!.Areas;
+        var folder = TemporaryFolder();
+        try
+        {
+            var result = StressWorldVariant.Write(scenario, Path.Combine(folder, "world-variant"), RepositoryPaths.Root, TextWriter.Null);
+
+            Assert.Equal(areas.Sum(area => area.Count), result.AddedInstances);
+            Assert.True(result.KeepsCollisionRevision);
+            var spawns = WorldActorJson.DeserializeSpawnRuntime(File.ReadAllText(Path.Combine(
+                result.WorkerWorldDataPath,
+                "development-world-1",
+                "world-actor-spawns.json")));
+            foreach (var area in areas)
+            {
+                var patrolId = StressWorldVariant.VariantPatrolId("development-world-1", area.Name);
+                var patrol = Assert.Single(spawns.PatrolPaths, path => path.Id == patrolId);
+                Assert.True(area.Patrol.Count >= 2, area.Name);
+                Assert.Equal(
+                    area.Patrol.Select(point => (point.X, point.Z, point.WaitSeconds)),
+                    patrol.Points.Select(point => (point.X, point.Z, point.WaitSeconds)));
+                var instances = spawns.SpawnInstances
+                    .Where(instance => instance.SpawnDefinitionId == StressWorldVariant.VariantId("development-world-1", area.Name))
+                    .ToArray();
+                Assert.Equal(area.Count, instances.Length);
+                Assert.All(instances, instance => Assert.Equal(patrolId, instance.PatrolPathId));
+            }
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("[ { \"x\": -140, \"z\": -40, \"waitSeconds\": 1 } ]", "must be an array of 2 to 256 points")]
+    [InlineData("[ { \"x\": -140, \"z\": -40, \"waitSeconds\": -1 }, { \"x\": -130, \"z\": -30, \"waitSeconds\": 1 } ]", "'waitSeconds' of at least 0")]
+    [InlineData("[ { \"x\": -140, \"z\": -40, \"waitSeconds\": 1 }, { \"x\": 300, \"z\": 300, \"waitSeconds\": 1 } ]", "patrol of the variant area 'patrolled' has a point at (300, 300)")]
+    public void APatrolNeedsTwoPointsOnWalkableGroundFailingByName(string patrol, string expected)
+    {
+        var folder = TemporaryFolder();
+        try
+        {
+            var exception = Assert.Throws<StressGeneratorOptionException>(() =>
+            {
+                var scenario = VariantScenario(
+                    "\"areas\": [ { \"name\": \"patrolled\", \"actorId\": \"mob.grey_wolf\", \"minimumX\": -148, \"minimumZ\": -48, \"maximumX\": -122, \"maximumZ\": -22, \"count\": 2, \"patrol\": "
+                    + patrol + " } ]");
+                StressWorldVariant.Write(scenario, Path.Combine(folder, "world-variant"), RepositoryPaths.Root, TextWriter.Null);
+            });
+
+            Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("\"name\": \"out-of-world\", \"actorId\": \"mob.feral_wolf\", \"minimumX\": 300, \"minimumZ\": 300, \"maximumX\": 320, \"maximumZ\": 320, \"count\": 3", "'out-of-world'")]
     [InlineData("\"name\": \"at-the-spawn\", \"actorId\": \"mob.feral_wolf\", \"minimumX\": -4, \"minimumZ\": -16, \"maximumX\": 4, \"maximumZ\": -8, \"count\": 3", "closer than 12 m to the World spawn")]
