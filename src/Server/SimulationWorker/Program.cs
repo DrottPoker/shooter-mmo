@@ -168,7 +168,8 @@ builder.Services.AddSingleton<GameServiceAvailability>();
 builder.Services.AddSingleton<SimulationWorkerStopReason>();
 builder.Services.AddSingleton(new SimulationInterestManager(config.InterestManagement));
 builder.Services.AddSingleton<RealtimeNetworkMetrics>();
-builder.Services.AddSingleton<RealtimePerformanceMetrics>();
+// The worker also counts its garbage collection pauses one by one from the runtime's events.
+builder.Services.AddSingleton(_ => new RealtimePerformanceMetrics(new GcPauseMonitor()));
 builder.Services.AddSingleton(workerIdentity);
 builder.Services.AddTransient<GameServiceAuthenticationHandler>();
 builder.Services.AddHttpClient<GameServiceClient>(httpClient =>
@@ -238,6 +239,10 @@ logger.LogInformation(
     staticCollisionWorld.Revision,
     collisionStreamingStore.LoadedChunkCount,
     collisionStreamingStore.AvailableChunkCount);
+
+logger.LogInformation(
+    "Garbage collector: {GarbageCollector}.",
+    GcPauseMonitor.DescribeConfiguration());
 
 logger.LogInformation(
     "Loaded world actor catalog revision {ActorCatalogRevision} with {ActorDefinitionCount} definitions and spawn revision {ActorSpawnRevision} with {ActorInstanceCount} assignment instances.",

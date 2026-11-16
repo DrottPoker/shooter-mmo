@@ -1457,15 +1457,18 @@ seconds, and adds a `workerPerformance` section to the report:
 - `durations`: every timed phase over those intervals, with its samples, the
   sample-weighted average, the worst interval average, p95, and p99, and the
   longest sample. The p95 and p99 are bucket upper bounds, as in the log.
-  `phases` and `loopSteps` fold every tick phase and every loop step by name
-  the same way, in tick order.
-- `loopBusyPercent` and `gcPauseMsPerSecond`: the loop thread's busy share and
-  the garbage collection pauses per second, each as its average and highest
+  `phases`, `loopSteps`, and `phaseParts` fold every tick phase, every loop
+  step, and every part of a phase that times itself, such as
+  `snapshots: remote plans`, by name the same way, in tick order.
+- `loopBusyPercent`, `gcPauseMsPerSecond`, and `gcLongestPauseMs`: the loop
+  thread's busy share, the garbage collection pauses per second, and the
+  longest single pause of an interval, each as its average and highest
   interval; null for a file of a worker that does not write them.
 - `worstInterval`: the steady interval with the highest tick p99, the higher
   tick average breaking a tie, with its loop busy share, process CPU, pauses,
   and its three costliest tick phases by milliseconds per second.
-- `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
+- `counters`: traffic, drops, deferrals, quota rejections, ticks over budget
+  and those still over it without their garbage collection pauses,
   resynchronizations, allocation, and GC collections, each as its total and its
   largest interval.
 - `sentByMessage` and `receivedByMessage`: every message kind that the worker
@@ -1943,7 +1946,11 @@ Per layout, over the measured ticks:
 - Informative: the average and the exact 99th percentile of the tick, the
   interest refresh, and the snapshot broadcast, the bytes allocated per tick,
   the garbage collections and pause milliseconds per second of the World, the
-  average of every tick phase, and the wall time.
+  average of every tick phase, and the wall time; and the average and the
+  exact 99th percentile of every part of the snapshot phase, as
+  [Monitoring](MONITORING.md#simulationworker) names them under
+  `simulation_worker.simulation.tick_phase_part.duration`, which the script
+  prints in a second table.
 
 The deterministic numbers depend only on the code and the layout: one source
 state gives the same numbers on every run and machine. `result.json` holds

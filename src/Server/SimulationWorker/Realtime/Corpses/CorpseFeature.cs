@@ -46,7 +46,8 @@ internal sealed class CorpseFeature
             dependencies.Metrics,
             views,
             core.Peers,
-            core.Sender)
+            core.Sender,
+            core.PerformanceMetrics)
         {
             VisibleEquipmentSlots = appearance.Settings.VisibleEquipmentSlots
         };
