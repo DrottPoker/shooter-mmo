@@ -2186,8 +2186,9 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
    machine on 2026-11-16 `logout-burst` logged 500 accounts out at once within
    0.33 seconds, 0.42 on 2026-11-15, `login-burst` replaced 400 sessions, and
    `mixed-250` logged 250 accounts out, without one
-   `session_cache_invalidation_unavailable` or Redis timeout. Left to measure: a logout burst at the Scale Target's 500 players
-   beside a full World.
+   `session_cache_invalidation_unavailable` or Redis timeout. Left to
+   measure: a logout burst at the Scale Target's 500 players beside a full
+   World.
 6. **One corpse is one queue.** Still the limit of `mixed-250`. With 250
    clients on its shared corpse, the 95th percentile of a deposit is 1.4
    seconds and of a partial loot 1.3 seconds on the idle machine on
@@ -2217,7 +2218,8 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
    idle machine on 2026-11-15 and again on 2026-11-16: with windows of four
    minutes the operation tables grew 4 to 6 percent between the fifth minute
    and the end, and no row was more than 15 seconds past its window. Left to
-   measure: what a pass costs at a table that holds 14 days. The gold ledger is kept on purpose and grows with trades.
+   measure: what a pass costs at a table that holds 14 days. The gold ledger
+   is kept on purpose and grows with trades.
 8. **The generator needs several poll threads** for 200 and more bots. With one
    thread `worker-only-500` and `mixed-250` could not be measured, and the
    input acknowledgement p99 that earlier runs reported at 500 bots, 140 to 170
