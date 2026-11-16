@@ -22,35 +22,51 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // around recording peers and driven one tick at a time, so a test reads every combatant and
 // every message after every tick without sockets or loop timing. Players join directly, without
 // the join handshake, and see each other once ShowEveryoneToEveryone sent their spawns. With
-// world actors, their runtime is activated and the Mobs think and walk in the ticks.
+// world actors, their runtime is activated and the Mobs think and walk in the ticks. With
+// sessions, the join handler, the lingering bodies, the item operations, and the persistence of
+// place and vitals take part too: a peer joins through the join handshake against the scripted
+// GameService, and the test decides when the loop processes the completed operations.
 internal sealed class CombatTickFixture : IDisposable
 {
     private readonly HttpClient httpClient;
     private readonly RealtimeNetworkMetrics networkMetrics = new();
     private readonly RealtimePerformanceMetrics performanceMetrics = new();
     private readonly SimulationTickLoop loop;
+    private readonly RealtimeCompletionProcessor completionProcessor;
+    private readonly RealtimePeerSupervisor supervisor;
     private readonly List<CombatTickPlayer> players = [];
     private TimeSpan nextTick = TimeSpan.Zero;
 
     public CombatTickFixture(
         CombatRules rules,
         ItemCatalogRuntimeDocument itemCatalog,
-        WorldActorRuntime? worldActors = null)
+        WorldActorRuntime? worldActors = null,
+        bool sessions = false,
+        TimeProvider? availabilityClock = null,
+        TimeSpan? joinHandshakeTimeout = null)
     {
-        Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions());
+        Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions
+        {
+            JoinHandshakeTimeout = joinHandshakeTimeout ?? TimeSpan.FromSeconds(2)
+        });
         var staticCollision = CollisionTestWorldFactory.Create();
         CollisionWorld = new CompositeCollisionWorld(
             staticCollision,
             new DynamicCollisionWorld(staticCollision.ChunkSize));
         httpClient = new HttpClient(GameService) { BaseAddress = new Uri("http://game-service.test") };
         var availability = new GameServiceAvailability(
-            TimeProvider.System,
+            availabilityClock ?? TimeProvider.System,
             NullLogger<GameServiceAvailability>.Instance);
+        Availability = availability;
         var client = new GameServiceClient(httpClient, availability);
         var shardRules = new SimulationShardRules();
         shardRules.Set(new ShardRuleSet("test", PlayerVersusPlayer: true));
         var identity = new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow);
         WorldActors = worldActors is null ? null : new WorldActorStore(worldActors, Entities);
+        ReleaseService = new SimulationSessionReleaseService(
+            client,
+            SessionStore,
+            CharacterStateTestData.SessionStores(ItemStates));
         var host = new RealtimeHostDependencies(
             Config,
             new SimulationJoinService(
@@ -58,11 +74,9 @@ internal sealed class CombatTickFixture : IDisposable
                 SessionStore,
                 ItemStates,
                 Config,
-                identity),
-            new SimulationSessionReleaseService(
-                client,
-                SessionStore,
-                CharacterStateTestData.SessionStores(ItemStates)),
+                identity,
+                releaseService: ReleaseService),
+            ReleaseService,
             SessionStore,
             ItemStates,
             Entities,
@@ -104,6 +118,12 @@ internal sealed class CombatTickFixture : IDisposable
         var appearance = new AppearanceFeature(Core, AppearanceDependencies.CreateDefault());
         var quests = new QuestProgressFeature(QuestDependencies.CreateDefault());
         var playerCombat = new PlayerCombatFeature(Core, dependencies, quests);
+        PlayerCombat = playerCombat.Authority;
+        if (sessions)
+        {
+            ItemFeature.Add(Core, new ItemDependencies(new SimulationItemInteractionService(client)), playerCombat);
+        }
+
         var corpses = new CorpseFeature(
             Core,
             new CorpseDependencies(new SimulationCorpseInteractionService(client)),
@@ -114,7 +134,17 @@ internal sealed class CombatTickFixture : IDisposable
             new WorldActorDependencies(WorldActors is null ? null : new WorldActorActivityScheduler(WorldActors)),
             quests,
             playerCombat);
+        if (sessions)
+        {
+            SessionFeature.Add(Core, playerCombat);
+        }
+
         var combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActorFeature);
+        if (sessions)
+        {
+            PersistenceFeature.Add(Core, PersistenceDependencies.CreateDefault(), ReleaseService.FinalStates, combat);
+        }
+
         Combat = combat.Combat;
         Mobs = combat.Mobs;
         Core.Presence.Appearances = appearance.Replicator;
@@ -136,15 +166,39 @@ internal sealed class CombatTickFixture : IDisposable
             performanceMetrics,
             LoopGuard,
             NullLogger.Instance);
+        completionProcessor = new RealtimeCompletionProcessor(
+            Core.Completions,
+            Core.Peers,
+            Core.Sender,
+            NullLogger.Instance);
+        supervisor = new RealtimePeerSupervisor(
+            Config,
+            Core.Peers,
+            Directory,
+            Core.Sender,
+            SessionStore,
+            Core.Teardown,
+            Core.Bodies,
+            Core.SessionOperations,
+            networkMetrics,
+            NullLogger.Instance,
+            availability,
+            playerCombat.Authority.HoldsDurableWork);
     }
 
     public SimulationWorkerConfig Config { get; }
+
+    public GameServiceAvailability Availability { get; }
+
+    public PlayerCombatAuthority PlayerCombat { get; }
 
     public ICollisionWorld CollisionWorld { get; }
 
     public ScriptedGameServiceHandler GameService { get; } = new();
 
     public RecordingPeerDirectory Directory { get; } = new();
+
+    public SimulationSessionReleaseService ReleaseService { get; }
 
     public ActiveSimulationSessionStore SessionStore { get; } = new();
 
@@ -244,6 +298,79 @@ internal sealed class CombatTickFixture : IDisposable
     public void RunTick()
     {
         loop.ProcessDueTicks(nextTick, TimeSpan.FromSeconds(1d / TickRateHz), ref nextTick);
+    }
+
+    // Puts the player where it stands still at the given place on the ground.
+    public void Teleport(CombatTickPlayer player, float x, float z, float yawDegrees)
+    {
+        player.Entity.Movement.Teleport(PlayerMovementSimulation.CreateInitialState(
+            Config.MovementSimulation,
+            CollisionWorld,
+            x,
+            0f,
+            z,
+            yawDegrees));
+    }
+
+    // The player's connection ends while its session goes on, so it stays as a lingering body.
+    public void Leave(CombatTickPlayer player)
+    {
+        Assert.True(Core.Teardown.LeaveBody(player.Context, player.Context.Session!));
+    }
+
+    // A new peer that has not joined yet.
+    public (RealtimePeerContext Context, RecordingPeerConnection Peer) Connect(int peerId)
+    {
+        var peer = new RecordingPeerConnection(peerId);
+        Directory.Peers[peerId] = peer;
+        var context = new RealtimePeerContext(peerId, DateTime.UtcNow, Config.UdpQuotas);
+        Core.Peers.Register(context);
+        return (context, peer);
+    }
+
+    // The peer sends its join request; GameService answers the ticket off the loop, and the loop
+    // finalizes the join when the test processes the completions.
+    public void RequestJoin(RealtimePeerContext context, RecordingPeerConnection peer, string ticket)
+    {
+        var route = Core.Registries.Routes.Unauthenticated.Single(value => value.Type == RealtimeMessageType.JoinRequest);
+        route.Handler(new RealtimeInboundMessage(
+            peer,
+            context,
+            RealtimeMessageType.JoinRequest,
+            RealtimeProtocol.EncodeJoinRequest(ticket),
+            route.Channel,
+            route.Delivery));
+    }
+
+    // A joined player sends an item operation through its route.
+    public void SendItemIntent(CombatTickPlayer player, RealtimeItemOperationIntent intent)
+    {
+        var route = Core.Registries.Routes.Authenticated.Single(value => value.Type == RealtimeMessageType.ItemOperationIntent);
+        route.Handler(new RealtimeInboundMessage(
+            player.Peer,
+            player.Context,
+            RealtimeMessageType.ItemOperationIntent,
+            RealtimeProtocol.EncodeItemOperationIntent(intent),
+            route.Channel,
+            route.Delivery));
+    }
+
+    // Waits for every GameService call that the loop started so far.
+    public Task WaitForOperationsAsync()
+    {
+        return Core.OperationTracker.WaitForAllAsync();
+    }
+
+    // Finalizes the completed operations on the loop, in the order they completed.
+    public void ProcessCompletions()
+    {
+        completionProcessor.ProcessCompleted(TimeSpan.FromSeconds(10));
+    }
+
+    // Runs the orphan sweep of the peer supervisor, which looks at most once a second.
+    public void SweepOrphans()
+    {
+        supervisor.ReleaseOrphanedSessions();
     }
 
     public Combatant CombatantOf(CombatTickPlayer player)

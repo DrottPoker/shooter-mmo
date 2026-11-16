@@ -26,6 +26,9 @@ internal sealed class AmmunitionBatch(
 
     public int Attempts { get; set; }
 
+    // The session generation whose token the last attempt carried.
+    public ActiveSimulationSession? SentWith { get; set; }
+
     // While set, the batch waits for a retry after an uncertain outcome, or for GameService.
     public uint? RetryAtTick { get; set; }
 }
@@ -60,6 +63,9 @@ internal sealed class PlayerDeathAttempt(
 
     public int Attempts { get; set; }
 
+    // The session generation whose token the last attempt carried.
+    public ActiveSimulationSession? SentWith { get; set; }
+
     // While set, the death waits for a retry, or for GameService.
     public uint? RetryAtTick { get; set; }
 
@@ -78,6 +84,9 @@ internal sealed class QuestKillCredit(Guid operationId, string mobActorId, IRead
     public IReadOnlyList<string> MobTags { get; } = mobTags;
 
     public int Attempts { get; set; }
+
+    // The session generation whose token the last attempt carried.
+    public ActiveSimulationSession? SentWith { get; set; }
 
     // While set, the credit waits for a retry after an uncertain outcome, or for GameService.
     public uint? RetryAtTick { get; set; }
