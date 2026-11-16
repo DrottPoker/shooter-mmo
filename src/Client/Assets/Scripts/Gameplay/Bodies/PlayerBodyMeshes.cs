@@ -181,9 +181,9 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Makes the meshes of the builds that finished, starts the waiting builds for which a
-        // worker thread is free while the watch is under the budget, and destroys the meshes past
-        // their grace time. Allocates nothing unless a build starts or ends.
-        public void Update(System.Diagnostics.Stopwatch watch, double budgetMilliseconds)
+        // worker thread is free while the frame's presentation budget lasts, and destroys the
+        // meshes past their grace time. Allocates nothing unless a build starts or ends.
+        public void Update(PresentationBudget budget = null)
         {
             for (var index = running.Count - 1; index >= 0; index--)
             {
@@ -198,8 +198,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var frame = Time.frameCount;
-            while (running.Count < ConcurrentBuilds && queued.Count > 0
-                && (watch == null || watch.Elapsed.TotalMilliseconds < budgetMilliseconds))
+            while (running.Count < ConcurrentBuilds && queued.Count > 0 && (budget == null || !budget.IsSpent))
             {
                 var next = queued[0];
                 queued.RemoveAt(0);

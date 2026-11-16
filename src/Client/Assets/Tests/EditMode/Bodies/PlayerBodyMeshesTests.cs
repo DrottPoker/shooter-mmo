@@ -261,7 +261,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var deadline = System.DateTime.UtcNow.AddSeconds(30);
                 while (!wanted.IsReady && System.DateTime.UtcNow < deadline)
                 {
-                    meshes.Update(null, 0.0);
+                    meshes.Update();
                     System.Threading.Thread.Sleep(1);
                 }
 

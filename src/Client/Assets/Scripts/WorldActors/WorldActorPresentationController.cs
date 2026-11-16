@@ -13,11 +13,14 @@ namespace Mmorpg.Client.WorldActors
     // Presents replicated world actors. The registry and each archetype prefab are
     // Addressables: the registry loads when the World scene opens, a prefab loads the first
     // time an actor of its archetype appears, and every handle is released when the World
-    // scene closes. An actor whose prefab is still loading is presented once it is ready.
-    // Snapshot entities that name a presented Mob move its view; WorldSceneContext moves the
-    // remote players of the same snapshots. A snapshot of a Mob whose prefab still loads is
-    // lost, so one that showed the Mob away from its pose is noted, and its view starts at its
-    // next snapshot instead of sliding from that pose.
+    // scene closes. An actor without a view waits for it, also while its prefab loads, and the
+    // views are made a few a frame, the nearest to the camera first, while the frame's
+    // presentation budget lasts and at least one a frame, so a hundred Mobs that come into view
+    // at once spread over the frames that follow. An actor that waits has no view: every
+    // consumer that asks for it is told it has none yet. Snapshot entities that name a presented
+    // Mob move its view; WorldSceneContext moves the remote players of the same snapshots. A
+    // snapshot of a Mob without a view is lost, so one that showed the Mob away from its pose is
+    // noted, and its view starts at its next snapshot instead of sliding from that pose.
     [DisallowMultipleComponent]
     public sealed class WorldActorPresentationController : MonoBehaviour, IRemoteMotionSource
     {
@@ -34,6 +37,10 @@ namespace Mmorpg.Client.WorldActors
         private readonly Dictionary<ulong, long> missedMoves = new Dictionary<ulong, long>();
         // The actors a full rebuild found gone, reused so a rebuild allocates nothing.
         private readonly List<ulong> goneIds = new List<ulong>();
+        // The actors whose view waits to be made.
+        private readonly WaitingActors waiting = new WaitingActors();
+        private PresentationBudget presentationBudget = new PresentationBudget();
+        private LocalPlayerSource localPlayers;
         private Action<RealtimeEntitySnapshot> noteUnrouted;
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
@@ -167,18 +174,35 @@ namespace Mmorpg.Client.WorldActors
             return false;
         }
 
-        // Called by the composition root before the component is activated.
+        // Called by the composition root before the component is activated, with the local
+        // player, whose camera the nearest actors are measured from, and the frame's presentation
+        // budget, which the views share with the players' bodies and the nameplates.
         public void Initialize(
             WorldActorClientController worldActors,
             IRealtimeMovementChannel movement,
-            Material runtimePrimitiveMaterial)
+            Material runtimePrimitiveMaterial,
+            LocalPlayerSource localPlayerSource = null,
+            PresentationBudget budget = null)
         {
             actorController = worldActors;
             realtimeMovement = movement;
             primitiveMaterial = runtimePrimitiveMaterial;
+            localPlayers = localPlayerSource;
+            if (budget != null)
+            {
+                presentationBudget = budget;
+            }
         }
 
-        // The presentation of an actor by its network entity id, once its prefab is ready.
+        // Whether an actor's view waits to be made, as one does for a few frames after many came
+        // into view at once.
+        public bool IsWaiting(ulong entityId)
+        {
+            return waiting.Contains(entityId);
+        }
+
+        // The presentation of an actor by its network entity id, once its view is made; false
+        // while it waits, also while its prefab loads.
         public bool TryGetView(ulong entityId, out WorldActorView view)
         {
             return presentations.TryGetValue(entityId, out view) && view != null;
@@ -317,6 +341,8 @@ namespace Mmorpg.Client.WorldActors
                 DestroyPresentation(entityId);
             }
 
+            waiting.Clear();
+
             foreach (var load in prefabLoads.Values)
             {
                 ClientAssets.Release(load);
@@ -449,29 +475,75 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        // Creates the view of an actor once its prefab is ready, and applies the actor to it.
+        // Applies the actor to its view, or lets it wait for one.
         private void Present(WorldActorClientEntry actor)
         {
-            if (!presentations.TryGetValue(actor.EntityId, out var view))
+            if (presentations.TryGetValue(actor.EntityId, out var view))
+            {
+                view.Apply(actor);
+                return;
+            }
+
+            waiting.Wait(actor.EntityId);
+        }
+
+        // An actor that left: its view goes, or its wait, and a move it missed while it had none.
+        private void Forget(ulong entityId)
+        {
+            DestroyPresentation(entityId);
+            waiting.Remove(entityId);
+            missedMoves.Remove(entityId);
+        }
+
+        private void Update()
+        {
+            if (waiting.Count == 0 || actorController == null || !registryResolved)
+            {
+                return;
+            }
+
+            presentationBudget.Begin();
+            try
+            {
+                PresentWaitingActors();
+            }
+            finally
+            {
+                presentationBudget.End();
+            }
+        }
+
+        // Makes the views of the waiting actors, the nearest to the camera first, while the frame's
+        // presentation budget lasts and at least one a frame; an actor whose prefab still loads
+        // waits on.
+        private void PresentWaitingActors()
+        {
+            var camera = localPlayers != null && localPlayers.Controller != null && localPlayers.Controller.PlayerCamera != null
+                ? localPlayers.Controller.PlayerCamera.Camera
+                : null;
+            waiting.OrderFrom(actorController.State, camera != null ? camera.transform.position : Vector3.zero);
+            var made = 0;
+            while (waiting.TryTakeNext(out var actor))
             {
                 var prefabState = ResolvePrefab(actor.PresentationArchetypeId, out var prefab);
                 if (prefabState == PrefabState.Loading)
                 {
+                    waiting.Wait(actor.EntityId);
+                    continue;
+                }
+
+                if (made > 0 && presentationBudget.IsSpent)
+                {
+                    // The farther actors keep waiting for the next frame.
+                    waiting.Wait(actor.EntityId);
                     return;
                 }
 
-                view = CreatePresentation(actor, prefab);
+                var view = CreatePresentation(actor, prefab);
                 presentations.Add(actor.EntityId, view);
+                view.Apply(actor);
+                made++;
             }
-
-            view.Apply(actor);
-        }
-
-        // An actor that left: its view goes, and a move it missed while it had none.
-        private void Forget(ulong entityId)
-        {
-            DestroyPresentation(entityId);
-            missedMoves.Remove(entityId);
         }
 
         private PrefabState ResolvePrefab(string presentationArchetypeId, out GameObject prefab)

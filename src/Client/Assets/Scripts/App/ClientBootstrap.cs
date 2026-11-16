@@ -578,6 +578,9 @@ namespace Mmorpg.Client.App
                 return;
             }
 
+            // The frame's time for putting things into view, shared by the players' bodies, the
+            // world actors' views, and the nameplates and quest markers of what came into view.
+            var presentationBudget = new PresentationBudget();
             WorldSceneContext sceneContext = null;
             foreach (var root in scene.GetRootGameObjects())
             {
@@ -594,7 +597,8 @@ namespace Mmorpg.Client.App
                         pointerFocus,
                         bodyTint,
                         bodyLook,
-                        playerEquipment);
+                        playerEquipment,
+                        presentationBudget);
                     sceneContext = sceneContext != null ? sceneContext : context;
                 }
             }
@@ -665,7 +669,9 @@ namespace Mmorpg.Client.App
                 presentation => presentation.Initialize(
                     worldActorController,
                     realtime.Movement,
-                    runtimePrimitiveMaterial));
+                    runtimePrimitiveMaterial,
+                    localPlayer,
+                    presentationBudget));
             measurements.SetRemoteSources(sceneContext, actorPresentation);
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(
@@ -728,9 +734,10 @@ namespace Mmorpg.Client.App
                     combatController,
                     combatantViews,
                     realtime.Movement,
-                    realtime.Diagnostics));
+                    realtime.Diagnostics,
+                    presentationBudget));
             AddSceneComponentIfMissing<WorldQuestMarkers>(
-                markers => markers.Initialize(questController, inventoryController, actorPresentation, combatantViews));
+                markers => markers.Initialize(questController, inventoryController, actorPresentation, combatantViews, presentationBudget));
             AddSceneComponentIfMissing<TemporaryCombatHud>(
                 hud => hud.Initialize(
                     combatController,

@@ -3018,10 +3018,15 @@ Expected result:
 - A 1920 by 1080 window shows the arena from the spawn: the bots appear around
   the player, stand and walk for a minute, leave, and come back; in the churn
   bots keep appearing and vanishing; in the Mob runs Grey Wolves walk around
-  the four corners of the arena and never attack the player.
+  the four corners of the arena and never attack the player, and when they
+  first come into view they appear a few a frame, the nearest first, each with
+  its nameplate.
 - The script prints one table per kind and `Client crowd measured`, and exits
   with code 0. In the standing table every size keeps the columns of the
-  baseline; the arrival table has a `first` and a `return` row per size; the
+  baseline; the arrival and Mob tables have a `World activation frame` column,
+  the length of the frame in which the World scene became active, which the
+  arrival does not count; the arrival table has a `first` and a `return` row
+  per size, the `return` row without an activation frame; the
   memory table has three rows per size, `with the crowd`, `crowd gone`, and
   `crowd back`, with the bots the client knew, 0 once the crowd left; the churn
   shows spawns and despawns of about 3 a second; and the Mob table shows every

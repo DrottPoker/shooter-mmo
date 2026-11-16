@@ -3113,7 +3113,7 @@ bounded:
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   takes about 1.75 ms, since the cloth measures are shared per model, and several
   players often come into interest in one frame, so `WorldSceneContext` puts
-  bodies on for at most `BodyMillisecondsPerFrame` (3 ms) a frame, the nearest to
+  bodies on while the frame's `PresentationBudget` (3 ms) lasts, the nearest to
   the camera first and at least one. The budget also covers making the meshes of
   the builds that finished, starting builds, and finding which combination each
   waiting look needs. `WaitingBodies` measures every waiting player once a frame
@@ -3131,6 +3131,26 @@ bounded:
 - **Memory comes back when a crowd leaves.** The meshes and material copies that
   no body shows go after their grace time, as [Combined Bodies](#combined-bodies)
   describes.
+- **One budget for what comes into view.** `PresentationBudget`, which
+  `ClientBootstrap` makes for every World scene it composes, is the time a frame
+  gives to putting things into view, 3 ms, and the players' bodies, the world
+  actors' views, as
+  [World Actor And Interaction Client](#world-actor-and-interaction-client)
+  describes, and the nameplates and quest markers of what came into view share
+  it. The bodies and the actors pace themselves: each puts at least one thing
+  into view a frame and stops once the frame's budget is spent, so a join among a
+  crowd and a hundred Mobs spends the one budget a frame, not one for each, and
+  both come into view, the one that runs later in a frame at least one a frame.
+  The nameplates and quest markers follow the actors that came into view and
+  never wait, since a Mob in view must not show without its nameplate; the
+  budget is charged with making them, and what a frame spends beyond its budget,
+  at most one budget, the next frame has less of, so fewer views are made after
+  a frame whose nameplates overran it. The nameplates move with the Mobs and the
+  camera, so Unity batches their canvas again every frame they change, and that
+  batching grows with the nameplates shown, not with those that came; it is no
+  longer paid for a hundred new nameplates in one frame, and bounding it further
+  would take a canvas of its own for each group of nameplates or nameplates
+  drawn without uGUI.
 - **Work per entity in view grows only with what changed.** A standing remote
   player or a settled Mob does no work per frame, as
   [Remote Players](#remote-players) and [Mob Movement](#mob-movement) describe.
@@ -3196,15 +3216,24 @@ describes. It makes four kinds of measurement, each with a table of its own in
   table.
 - **Arrival.** The frames from standing in the arena until the whole crowd is
   shown, in a recording of their own: how long it took, the longest frame, the
-  frames over 33.3 and 16.7 ms, and the frame p50, p95, and p99. After the
-  standing recording the bots stop, and once their bodies are gone and the
-  client settled for 5 seconds the memory is read again, with the entries of
-  the shared body caches, `PlayerBodyMeshes` and `PlayerBodyMaterials`, which
-  `WorldSceneContext` counts for it (`BodyMeshCount`, `BodyMaterialCount`, the
-  corpse bakes' readable meshes included) and nothing reads per frame. Then the same number of bots joins again, 20 a
-  second, and their arrival, from the first bot the client knows, and the
-  memory a third time are recorded. The three memory rows of a size show
-  whether memory comes back when a crowd leaves and whether a second crowd
+  frames over 33.3 and 16.7 ms, and the frame p50, p95, and p99. The frame in
+  which the World scene became active is its load, not its arrival, so the
+  recording starts with the first frame that began after it, and the length of
+  the activation frame is a value of its own, the `World activation frame`
+  column of the arrival and Mob tables. That frame holds the scene's
+  activation, the `Start` of its components with the panels that the
+  composition root builds, the local player's spawn with its body and look, the
+  body warm-up described above, the views of the players already in view,
+  without their bodies, and the frame's drawing with the warm-up's camera.
+  After the standing recording the bots stop, and once their bodies are gone
+  and the client settled for 5 seconds the memory is read again, with the
+  entries of the shared body caches, `PlayerBodyMeshes` and
+  `PlayerBodyMaterials`, which `WorldSceneContext` counts for it
+  (`BodyMeshCount`, `BodyMaterialCount`, the corpse bakes' readable meshes
+  included) and nothing reads per frame. Then the same number of bots joins
+  again, 20 a second, and their arrival, from the first bot the client knows,
+  and the memory a third time are recorded. The three memory rows of a size
+  show whether memory comes back when a crowd leaves and whether a second crowd
   costs more than the first; the private memory of each row is the load sample
   nearest to it.
 - **Churn.** 200 bot slots of ActiveSimulationBots that come and go while the
@@ -3229,8 +3258,9 @@ describes. It makes four kinds of measurement, each with a table of its own in
   `StackStressGenerator world-variant`. Mobs have no collision, so the variant
   keeps the collision revision that the client checks at the join, and a Grey
   Wolf never attacks, so the player stands undisturbed. The arrival of the
-  Mobs, and 60 seconds with all of them shown: the frame times, the frames over
-  33.3 ms, the starvation, and the memory.
+  Mobs, from the first frame after the World's activation frame as above, and
+  60 seconds with all of them shown: the frame times, the frames over 33.3 ms,
+  the starvation, and the memory.
 
 The bots, the worker, and GameService run on the same machine as the client,
 so a large crowd measures that machine as a whole: when the worker falls behind
@@ -3400,7 +3430,23 @@ meters, and its `Model` child carries the creature's Animator, driven by a
 describes. A resource node prefab has the roots `Available` and `Depleted`. The
 registry loads when a World scene opens, a prefab loads the first time an actor of
 its archetype appears, and the actor is presented once its prefab is ready. All
-handles are released when the World scene closes. An authored prefab keeps its
+handles are released when the World scene closes.
+
+An actor without a view waits for one, also while its prefab loads, and
+`WorldActorPresentationController` makes the views of the waiting actors in its
+`Update` the way [Crowd Performance](#crowd-performance) puts players' bodies on:
+the nearest to the local player's camera first, while the frame's
+`PresentationBudget` lasts and at least one a frame, so a hundred Mobs whose
+prefab finished loading in one frame come into view over the frames that
+follow instead of in that frame with all their nameplates. `WaitingActors`
+measures every waiting actor once a frame and takes them from a heap. An actor
+that waits has no view, so every consumer asks for one and is told there is none
+yet, as it already was while a prefab loaded: `TryGetView` and the views of
+`Views` and `CombatantViewLocator` leave it out, the pointer cannot pick it, the
+nameplates, health bars, and quest markers do not show it, a combat event that
+names it finds no view, and `IsWaiting` says that it waits. Its snapshots reach
+no view and are noted for the Late view rule of [Mob Movement](#mob-movement);
+an actor that leaves while it waits is forgotten. An authored prefab keeps its
 own look. Only an unmapped archetype or a prefab that fails to load falls back to
 a tinted primitive, with one warning per archetype, and a missing registry logs
 one warning instead. An EditMode test fails when an authored archetype has no
@@ -3569,8 +3615,9 @@ stands keeps its reliable pose and costs nothing per frame.
 `WorldActorPresentationController` subscribes to the snapshots of its realtime
 client and hands every entity that names a presented `MobView` to that view
 through `RouteSnapshot`. Players, NPCs, resource nodes, and ids without a
-presentation, such as a Mob whose prefab still loads, are ignored, except that a
-lost snapshot of such a Mob is noted for the Late view rule below. Each
+presentation, such as a Mob whose prefab still loads or whose view waits for its
+frame, are ignored, except that a lost snapshot of such a Mob is noted for the
+Late view rule below. Each
 `MobView` owns a `RemoteActorMovement` in `Mmorpg.Client.Gameplay`, configured
 from the joined `NetworkMovementSession`. It keeps the Mob rules on top of the
 shared `RemoteMovementPresenter`, so a Mob uses exactly the remote player
@@ -3593,14 +3640,15 @@ interpolation, render clock, and render delay:
   covering it in the render delay. `WorldActorClientEntry` keeps both until a
   newer state, which is a rest pose, so a view that appears only after its
   prefab loaded starts from the same spawn, or rests at the newer pose.
-- **Late view.** The view of a Mob appears only once its prefab loaded, and the
-  snapshots before reach no view, so after a slow load the Mob may be far from
-  the pose its view starts at, and the rules above would slide it there many
-  times faster than it walks: 13 times after 0.42 s at 4.5 m/s, more after a
-  longer load of a slower Mob. The view shows it at its first snapshot instead,
-  a first state that says nothing about standing, as the Jump rule does for a
-  snapshot more than 3 m away: the view has only just appeared, so the step is
-  hard to see, and the Mob walks on from there at its own speed. This applies
+- **Late view.** The view of a Mob appears only once its prefab loaded and a
+  frame's presentation budget made it, and the snapshots before reach no view,
+  so after a slow load the Mob may be far from the pose its view starts at, and
+  the rules above would slide it there many times faster than it walks: 13
+  times after 0.42 s at 4.5 m/s, more after a longer load of a slower Mob. The
+  view shows it at its first snapshot instead, a first state that says nothing
+  about standing, as the Jump rule does for a snapshot more than 3 m away: the
+  view has only just appeared, so the step is hard to see, and the Mob walks on
+  from there at its own speed. This applies
   when the view started from a spawn that walked and its first snapshot comes
   more than the 15 ticks of the longest render delay after `PoseTick`, the gap
   that the first-states rule counts as a stand, and when the view started from

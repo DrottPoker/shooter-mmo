@@ -12,13 +12,6 @@ namespace Mmorpg.Client.Gameplay
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour, IRemoteMotionSource
     {
-        // At most this long a frame goes to making the meshes of the combinations whose build
-        // finished, starting builds, and putting bodies on players that came into view, the nearest
-        // first and at least one a frame whose combination is built, so a crowd that comes into
-        // view at once, as at a join, takes a few frames instead of stalling one: a body takes
-        // about 2 ms.
-        public const double BodyMillisecondsPerFrame = 3.0;
-
         [SerializeField] private LocalPlayerController localPlayerPrefab;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
@@ -38,7 +31,12 @@ namespace Mmorpg.Client.Gameplay
         private readonly List<ulong> revivedEntities = new List<ulong>();
         // Players in view whose body waits to be put on, with the look to show.
         private readonly WaitingBodies waitingBodies = new WaitingBodies();
-        private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
+        // The frame's time for putting things into view, which the bodies share with the world
+        // actors and the nameplates: making the meshes of the finished builds, starting builds, and
+        // putting bodies on players that came into view, the nearest first and at least one a frame
+        // whose combination is built, so a crowd that comes into view at once, as at a join, takes
+        // a few frames instead of stalling one: a body takes about 2 ms.
+        private PresentationBudget presentationBudget = new PresentationBudget();
         private bool localLookDeferred;
         // The local body's look, or the preview's, waits for the build of its combination.
         private bool localLookWaiting;
@@ -188,7 +186,8 @@ namespace Mmorpg.Client.Gameplay
             WorldPointerFocus focus,
             PlayerBodyTintSetting tintSetting,
             PlayerBodyLookSetting lookSetting,
-            PlayerEquipment playerEquipment = null)
+            PlayerEquipment playerEquipment = null,
+            PresentationBudget budget = null)
         {
             clientSession = accountSession;
             realtimeSession = session;
@@ -201,6 +200,11 @@ namespace Mmorpg.Client.Gameplay
             bodyTint = tintSetting;
             bodyLook = lookSetting;
             equipment = playerEquipment;
+            if (budget != null)
+            {
+                presentationBudget = budget;
+            }
+
             if (preview == null)
             {
                 preview = CharacterPreview.Create(transform);
@@ -504,20 +508,30 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Makes the meshes of the finished builds and starts more, then puts bodies on the players
-        // that wait for one, the nearest to the camera first, for at most BodyMillisecondsPerFrame
-        // and at least one body a frame. A body whose combination is not built yet waits for it:
-        // its build runs on a worker thread meanwhile, so no frame builds a mesh.
+        // that wait for one, the nearest to the camera first, while the frame's presentation
+        // budget lasts and at least one body a frame. A body whose combination is not built yet
+        // waits for it: its build runs on a worker thread meanwhile, so no frame builds a mesh.
         private void PresentWaitingBodies()
         {
-            bodyWatch.Restart();
-            bodyMeshes.Update(bodyWatch, BodyMillisecondsPerFrame);
-            corpseMeshes.Update(null, 0.0);
-            bodyMaterials.Update();
-            if (waitingBodies.Count == 0)
+            presentationBudget.Begin();
+            try
             {
-                return;
+                bodyMeshes.Update(presentationBudget);
+                corpseMeshes.Update();
+                bodyMaterials.Update();
+                if (waitingBodies.Count > 0)
+                {
+                    PresentNearestBodies();
+                }
             }
+            finally
+            {
+                presentationBudget.End();
+            }
+        }
 
+        private void PresentNearestBodies()
+        {
             // The local player's camera, which renders the World.
             var camera = localPlayer != null && localPlayer.PlayerCamera != null
                 ? localPlayer.PlayerCamera.Camera
@@ -525,15 +539,18 @@ namespace Mmorpg.Client.Gameplay
             var eye = camera != null ? camera.transform.position : Vector3.zero;
             waitingBodies.Touch(bodyMeshes);
             waitingBodies.OrderFrom(remotePlayers, eye);
+            var asked = false;
             while (waitingBodies.TryTakeNext(out var nearest, out var appearance, out var wanted))
             {
-                // Finding which mesh a look needs costs too; the farther players ask next frame.
-                if (wanted == null && bodyWatch.Elapsed.TotalMilliseconds >= BodyMillisecondsPerFrame)
+                // Finding which mesh a look needs costs too; once a frame asked once and the budget
+                // is spent, the farther players ask next frame.
+                if (wanted == null && asked && presentationBudget.IsSpent)
                 {
                     waitingBodies.Wait(nearest.NetworkEntityId, appearance, null);
                     return;
                 }
 
+                asked |= wanted == null;
                 if (!IsBuilt(nearest, appearance, ref wanted))
                 {
                     waitingBodies.Wait(nearest.NetworkEntityId, appearance, wanted);
@@ -541,7 +558,7 @@ namespace Mmorpg.Client.Gameplay
                 }
 
                 PresentAppearance(nearest, appearance);
-                if (bodyWatch.Elapsed.TotalMilliseconds >= BodyMillisecondsPerFrame)
+                if (presentationBudget.IsSpent)
                 {
                     return;
                 }
