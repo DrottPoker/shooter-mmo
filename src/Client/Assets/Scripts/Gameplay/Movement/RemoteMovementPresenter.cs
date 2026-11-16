@@ -59,6 +59,7 @@ namespace Mmorpg.Client.Gameplay
 
         private int tickRateHz = 1;
         private int interpolationDelayTicks = 1;
+        private int snapshotIntervalTicks = 1;
         private double currentDelayTicks = 1d;
         private double observedIntervalTicks = 1d;
         private ICollisionWorld collisionWorld;
@@ -89,15 +90,16 @@ namespace Mmorpg.Client.Gameplay
             get { return currentDelayTicks; }
         }
 
-        // The longest gap after a first state that a moving second state walked all of, the
-        // longest render delay; a longer gap counts as a stand.
         // A second state closer than this to a first state of unknown standing takes its place:
-        // one snapshot interval, the shortest gap between two records of an entity.
+        // the session's snapshot interval, the shortest gap between two records of an entity, so
+        // only a state that is no record of its own, such as a spawn's pose, is ever replaced.
         public long FirstStateRefreshTicks
         {
-            get { return Math.Max(1L, (long)Math.Round(interpolationDelayTicks / (double)InterpolationDelaySnapshotIntervals)); }
+            get { return snapshotIntervalTicks; }
         }
 
+        // The longest gap after a first state that a moving second state walked all of, the
+        // longest render delay; a longer gap counts as a stand.
         public long LongestWalkGapTicks
         {
             get { return (long)Math.Round(MaximumInterpolationDelaySeconds * tickRateHz); }
@@ -196,12 +198,16 @@ namespace Mmorpg.Client.Gameplay
         public static int InterpolationDelayTicks(int tickRateHz, int snapshotRateHz)
         {
             var ticks = Mathf.Max(1, tickRateHz);
-            var snapshotIntervalTicks = Mathf.Max(
-                1,
-                Mathf.RoundToInt(ticks / (float)Mathf.Clamp(snapshotRateHz, 1, ticks)));
             return Mathf.Max(
                 Mathf.Max(MinimumInterpolationDelayTicks, Mathf.CeilToInt(ticks * MinimumInterpolationDelaySeconds)),
-                snapshotIntervalTicks * InterpolationDelaySnapshotIntervals);
+                SnapshotIntervalTicks(ticks, snapshotRateHz) * InterpolationDelaySnapshotIntervals);
+        }
+
+        // The ticks between two snapshots, at least one.
+        public static int SnapshotIntervalTicks(int tickRateHz, int snapshotRateHz)
+        {
+            var ticks = Mathf.Max(1, tickRateHz);
+            return Mathf.Max(1, Mathf.RoundToInt(ticks / (float)Mathf.Clamp(snapshotRateHz, 1, ticks)));
         }
 
         // The state of a remote record. The record carries no velocity: the presenter derives it
@@ -250,15 +256,17 @@ namespace Mmorpg.Client.Gameplay
             return ExtrapolationSeconds + easing - (easing * easing / (2f * ExtrapolationEaseSeconds));
         }
 
-        // Sets the timing and collision of the presentation and forgets every state.
+        // Sets the timing and collision of the presentation and forgets every state. The render
+        // delay and the snapshot interval follow from the session's two rates.
         public void Configure(
             int simulationTickRateHz,
-            int delayTicks,
+            int snapshotRateHz,
             ICollisionWorld worldCollision,
             CharacterCollisionSettings characterCollision)
         {
             tickRateHz = Mathf.Max(1, simulationTickRateHz);
-            interpolationDelayTicks = Mathf.Max(1, delayTicks);
+            interpolationDelayTicks = InterpolationDelayTicks(tickRateHz, snapshotRateHz);
+            snapshotIntervalTicks = SnapshotIntervalTicks(tickRateHz, snapshotRateHz);
             collisionWorld = worldCollision;
             collisionSettings = characterCollision;
             Clear();
@@ -270,7 +278,7 @@ namespace Mmorpg.Client.Gameplay
             renderClock.Clear();
             groundedVerticalPresentation.Clear();
             currentDelayTicks = interpolationDelayTicks;
-            observedIntervalTicks = interpolationDelayTicks / (double)InterpolationDelaySnapshotIntervals;
+            observedIntervalTicks = snapshotIntervalTicks;
             correction = Vector2.zero;
             StopResting();
         }

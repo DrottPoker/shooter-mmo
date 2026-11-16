@@ -69,7 +69,7 @@ namespace Mmorpg.Client.Gameplay
             string displayName,
             string archetypeId,
             int simulationTickRateHz,
-            int delayTicks,
+            int snapshotRateHz,
             UnityWorldCollisionStream worldCollisionStream,
             CharacterCollisionSettings characterCollision)
         {
@@ -80,7 +80,7 @@ namespace Mmorpg.Client.Gameplay
             collisionStream = worldCollisionStream;
             movement.Configure(
                 simulationTickRateHz,
-                delayTicks,
+                snapshotRateHz,
                 collisionStream != null ? collisionStream.CollisionWorld : null,
                 characterCollision);
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;

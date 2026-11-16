@@ -342,9 +342,7 @@ namespace Mmorpg.Client.Editor
             StressTime = 0f;
             animator.Rebind();
             animator.Update(0f);
-            network.Configure(ClothStressMotion.NetworkTickRateHz,
-                RemoteMovementPresenter.InterpolationDelayTicks(ClothStressMotion.NetworkTickRateHz, ClothStressMotion.NetworkSnapshotRateHz),
-                null, null);
+            network.Configure(ClothStressMotion.NetworkTickRateHz, ClothStressMotion.NetworkSnapshotRateHz, null, null);
             networkTick = 0;
             Place(motion.At(0f));
             // Every run of a motion starts its springs again from the target, so runs compare.

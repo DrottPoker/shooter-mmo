@@ -284,6 +284,27 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(standing.Count, Is.EqualTo(2), "A first state that stands is kept.");
         }
 
+        // With a snapshot every tick, the render delay of 100 ms is three ticks, more than two
+        // snapshot intervals: the records of a walking entity, one tick apart, are states of their
+        // own and none takes the place of the one before it.
+        [Test]
+        public void RecordsOneTickApartAreStatesOfTheirOwnWhenEveryTickHasASnapshot()
+        {
+            var presenter = new RemoteMovementPresenter();
+            presenter.Configure(TickRateHz, TickRateHz, null, new CharacterCollisionSettings(0.4f, 1.8f, 0.35f, 45f, 0.2f, 0.25f, 4));
+            Assert.That(presenter.DelayTicks, Is.EqualTo(3));
+            Assert.That(presenter.FirstStateRefreshTicks, Is.EqualTo(1));
+
+            presenter.Push(100, State(0f, 0f));
+            presenter.Push(101, State(0.15f, 0f));
+            Assert.That(presenter.TryGetDerivedVelocity(out var velocityX, out _), Is.True, "Two states.");
+            Assert.That(velocityX, Is.EqualTo(4.5f).Within(0.001f));
+
+            presenter.Push(102, State(0.3f, 0f));
+            Assert.That(presenter.TryGetDerivedVelocity(out velocityX, out _), Is.True);
+            Assert.That(velocityX, Is.EqualTo(4.5f).Within(0.001f));
+        }
+
         // A near walker comes into view: its first two states are 2 ticks apart, the interval a
         // new presenter expects, so it is shown as before: it stands at its first state for the
         // render delay and then walks a whole frame step in every frame.
@@ -466,7 +487,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var settings = new CharacterCollisionSettings(0.4f, 1.8f, 0.35f, 45f, 0.2f, 0.25f, 4);
             var ground = new LoadingWorld(SlopeWorld(30f));
             var presenter = new RemoteMovementPresenter();
-            presenter.Configure(TickRateHz, RemoteMovementPresenter.InterpolationDelayTicks(TickRateHz, 15), ground, settings);
+            presenter.Configure(TickRateHz, 15, ground, settings);
 
             // The worker's capsule stands on the slope with its feet above the surface by its
             // support height.
@@ -607,7 +628,7 @@ namespace Mmorpg.Client.Tests.EditMode
             var presenter = new RemoteMovementPresenter();
             presenter.Configure(
                 TickRateHz,
-                RemoteMovementPresenter.InterpolationDelayTicks(TickRateHz, 15),
+                15,
                 null,
                 new CharacterCollisionSettings(0.4f, 1.8f, 0.35f, 45f, 0.2f, 0.25f, 4));
             return presenter;
