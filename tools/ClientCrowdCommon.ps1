@@ -190,16 +190,24 @@ function Read-LoadSamples([string]$Path) {
 }
 
 # What other processes used on average within a recording, the average processor use of the
-# machine, and the test player's largest memory, from the samples between its start and
-# AfterSeconds after its end. A sample measures the seconds since the one before it, so a
-# recording shorter than the sampling gap needs the first sample after its end, which a longer
-# AfterSeconds takes in. LargestGapSeconds is the longest time within the recording without a
-# sample, the whole recording when it has none; without a sample the averages are missing, not
-# zero.
+# machine, and the test player's largest memory, from the samples whose own interval overlaps
+# the recording. A sample measures the seconds since the one before it, so those are the
+# samples taken after the recording's start up to its end and the first one after its end,
+# which covers the last stretch, when it comes within AfterSeconds. No later sample counts:
+# it measures only what happened after the recording, and it would dilute a disturbance
+# inside a short recording or blame the recording for one that started afterwards.
+# LargestGapSeconds is the longest time within the recording without a sample, the whole
+# recording when it has none; without a sample the averages are missing, not zero.
 function Measure-Load([string]$Path, [DateTime]$Start, [DateTime]$End, [double]$AfterSeconds = 2.0) {
     $start = $Start.ToUniversalTime()
     $end = $End.ToUniversalTime()
-    $rows = @(Read-LoadSamples $Path | Where-Object { $_.Time -ge $start -and $_.Time -le $end.AddSeconds($AfterSeconds) })
+    $samples = @(Read-LoadSamples $Path | Sort-Object Time)
+    $rows = @($samples | Where-Object { $_.Time -gt $start -and $_.Time -le $end })
+    $covering = $samples | Where-Object { $_.Time -gt $end -and $_.Time -le $end.AddSeconds($AfterSeconds) } | Select-Object -First 1
+    if ($null -ne $covering) {
+        $rows += $covering
+    }
+
     $largestGap = 0.0
     $last = $start
     foreach ($row in $rows) {

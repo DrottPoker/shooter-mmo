@@ -95,7 +95,13 @@ try {
     $short = Measure-Load $loadPath $start.AddSeconds(16.5) $start.AddSeconds(17.0) 0
     Assert-Equal "A short recording between samples" 0 $short.Samples
     $covered = Measure-Load $loadPath $start.AddSeconds(16.5) $start.AddSeconds(17.0) 10
-    Assert-Equal "A short recording with the sample after it" 2 $covered.Samples
+    Assert-Equal "A short recording takes only the first sample after it" 1 $covered.Samples
+    $disturbed = Measure-Load $loadPath $start.AddSeconds(10.5) $start.AddSeconds(11.5) 10
+    Assert-Equal "Later idle samples do not dilute a disturbed short recording" "3.50" (Format-Number $disturbed.ForeignProcessors "0.00")
+    $before = Measure-Load $loadPath $start.AddSeconds(8.5) $start.AddSeconds(9.5) 10
+    Assert-Equal "A disturbance after a short recording is not its own" "0.50" (Format-Number $before.ForeignProcessors "0.00")
+    $atStart = Measure-Load $loadPath $start.AddSeconds(12) $start.AddSeconds(13) 0
+    Assert-Equal "A sample at the start measured the time before it" 0 $atStart.Samples
     $withoutGpu = Measure-Load $loadPath $start.AddSeconds(13) $start.AddSeconds(15) 0
     Assert-Equal "A sample without the graphics card's use is none" 0 $withoutGpu.Samples
     $busyLoad = Measure-Load $loadPath $start.AddSeconds(11) $start.AddSeconds(13) 0
