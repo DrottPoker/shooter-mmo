@@ -3158,47 +3158,108 @@ its ticks or drops snapshots, which its log in the run's folder says, the
 client sees fewer owner snapshots and starves its remote players for reasons
 outside the client.
 
-The baseline, measured on 2026-11-14 on an AMD Ryzen 7 5800 with an NVIDIA
+The baseline, measured on 2026-11-16 on an AMD Ryzen 7 5800 with an NVIDIA
 GeForce RTX 3070 (Direct3D 12), at 1920 by 1080 with the quality level `PC`,
-no VSync, and no frame rate limit, 60 seconds per size:
+no VSync, and no frame rate limit, after the worker's interest tiers, its byte
+budget per recipient, and the removal of the per-frame work that
+[Crowd Performance](#crowd-performance) lists above. Every other program used
+0.8 to 1.7 processors and at most 1 percent of the graphics card while the
+client recorded; the bots, the worker, and GameService on the same machine kept
+it 48 to 72 percent busy.
+
+Standing, 60 seconds per size:
 
 | Bots in view | Whole crowd shown after | Frame p50 | p95 | p99 | Longest | Owner snapshots per s | Remote players starved | Allocated / reserved / managed memory | Player private memory |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
-| 100 | 1.7 s | 4.5 ms | 7.2 ms | 9.6 ms | 14.6 ms | 15.0 | never | 312 / 809 / 14 MB | 1842 MB |
-| 200 | 3.4 s | 7.9 ms | 11.0 ms | 13.9 ms | 26.4 ms | 15.0 | never | 420 / 1067 / 18 MB | 2174 MB |
-| 400 | 6.7 s | 13.1 ms | 17.3 ms | 20.3 ms | 35.7 ms | 15.0 | 18.7 % of the time, 0.28 s at the longest | 615 / 1330 / 26 MB | 2653 MB |
+| 100 | 2.0 s | 4.7 ms | 7.5 ms | 9.7 ms | 15.3 ms | 15.0 | never | 312 / 809 / 14 MB | 1835 MB |
+| 200 | 3.3 s | 7.7 ms | 10.5 ms | 12.1 ms | 25.7 ms | 15.0 | 2.7 % of the time, 0.45 s at the longest | 420 / 1068 / 19 MB | 2173 MB |
+| 400 | 6.9 s | 13.5 ms | 17.6 ms | 20.2 ms | 32.8 ms | 15.0 | 1.4 % of the time, 0.48 s at the longest | 608 / 1325 / 27 MB | 2660 MB |
+
+Arrival, from standing in the arena until the whole crowd is shown, the first
+time and when the same number of bots comes back:
+
+| Bots | Arrival | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 100 | first | 2.0 s | 329.3 ms | 4 | 37 | 15.3 / 25.5 / 156.7 ms |
+| 100 | return | 4.7 s | 25.9 ms | 0 | 28 | 4.3 / 15.1 / 19.3 ms |
+| 200 | first | 3.3 s | 180.6 ms | 4 | 92 | 16.8 / 26.8 / 165.5 ms |
+| 200 | return | 9.8 s | 30.1 ms | 0 | 61 | 5.4 / 15.5 / 21.3 ms |
+| 400 | first | 6.9 s | 156.7 ms | 10 | 255 | 20.8 / 31.7 / 45.8 ms |
+| 400 | return | 20.0 s | 37.0 ms | 4 | 203 | 7.6 / 20.4 / 29.2 ms |
+
+Memory with the crowd, once it left, and with it back:
+
+| Bots | Moment | Allocated / reserved / managed memory | Player private memory | Body meshes / materials |
+| ---: | --- | --- | ---: | --- |
+| 100 | with the crowd | 312 / 809 / 14 MB | 1827 MB | 94 / 18 |
+| 100 | crowd gone | 279 / 809 / 12 MB | 1782 MB | 94 / 18 |
+| 100 | crowd back | 379 / 809 / 19 MB | 1949 MB | 165 / 18 |
+| 200 | with the crowd | 420 / 1068 / 19 MB | 2171 MB | 164 / 18 |
+| 200 | crowd gone | 354 / 1068 / 14 MB | 2098 MB | 164 / 18 |
+| 200 | crowd back | 523 / 1068 / 23 MB | 2442 MB | 271 / 18 |
+| 400 | with the crowd | 608 / 1325 / 27 MB | 2633 MB | 280 / 18 |
+| 400 | crowd gone | 477 / 1325 / 27 MB | 2455 MB | 280 / 18 |
+| 400 | crowd back | 755 / 1581 / 34 MB | 3033 MB | 433 / 18 |
+
+Churn, 200 bot slots that come and go, 60 seconds:
+
+| Bots known | Spawns per s | Despawns per s | Frame p50 / p95 / p99 | Longest frame | Frames over 33.3 ms | Remote players starved |
+| --- | ---: | ---: | --- | ---: | ---: | --- |
+| 181 to 197 | 2.8 | 2.9 | 8.0 / 11.3 / 13.4 ms | 23.1 ms | 0 | never |
+
+Walking Mobs and no bots, 60 seconds per size:
+
+| Mobs | Shown after | Arrival, longest frame | Frame p50 / p95 / p99 | Longest | Frames over 33.3 ms | Allocated / reserved / managed memory | Player private memory |
+| ---: | ---: | ---: | --- | ---: | ---: | --- | ---: |
+| 100 | 0.2 s | 138.5 ms | 3.2 / 5.6 / 9.0 ms | 49.1 ms | 27 | 168 / 553 / 14 MB | 1483 MB |
+| 200 | 0.1 s | 130.9 ms | 5.4 / 7.7 / 9.6 ms | 119.0 ms | 3 | 181 / 559 / 18 MB | 1575 MB |
 
 What the baseline says:
 
-- **The frame grows by about 3 ms per 100 dressed bodies in view**, and the
-  built client holds 60 frames per second with 400 of them on this machine,
-  with about 3 ms to spare at the median and none at the 95th percentile.
-- **No recorded frame was longer than 36 ms.** The standing recording starts
-  when the whole crowd is shown, so the frames while the bodies come into view
-  are not part of it; the arrival measures them.
-- **The whole crowd is shown about 1.7 s per 100 bodies** after the World
-  scene has loaded.
-- **Remote players starve at 400 in view, and not at 200.** The owner
-  snapshots kept their 15 per second, the worker held its tick (p99 at most
-  16 ms) and dropped no snapshot while the client recorded, so the starvation
-  is the worker spreading the updates of a dense crowd under its snapshot
-  budget, as
+- **The standing frame grows by about 3 ms per 100 dressed bodies in view** and
+  is where it was on 2026-11-14 (4.5, 7.9, and 13.1 ms at the median, 7.2,
+  11.0, and 17.3 ms at the 95th percentile): the built client holds 60 frames
+  per second with 400 of them at the median and misses it by about 1 ms at the
+  95th percentile. The same measurement on the commit before the per-frame
+  work was removed gave 13.4, 17.6, and 20.2 ms at 400, so that work does not
+  show with a crowd that always walks; it was the work of standing players, of
+  events, and of the local player's own changes.
+- **The first crowd of a session costs frames of 150 to 330 ms**, and the same
+  crowd coming back costs at most 37 ms, with no frame over 33.3 ms at 100 and
+  200 and 4 at 400. So the long frames belong to the first bodies the client
+  shows, not to a body as such; which first-time work they are, the first
+  instance of a prefab, the first use of a shader variant, the first combined
+  mesh, is not measured yet.
+- **While a first crowd arrives, the frame is slow for seconds**: its median
+  is 15 to 21 ms against 4 to 8 ms when the crowd comes back, because almost
+  every body is the first of its combination of garments and builds its
+  combined mesh, 94 meshes for 100 bots.
+- **Memory does not come back.** The shared body caches keep every combined
+  mesh until the World scene ends: 280 meshes with 400 bots, the same 280 once
+  they left, and 433 with them back, because the bots come back in other
+  outfits. A combined mesh is about 1 MB of allocated memory, so the client
+  allocated 608 MB with the crowd, 477 MB once it left, and 755 MB with it
+  back. The material copies stay at 18.
+- **Players that come and go one at a time cost no hitch**: at 2.8 spawns and
+  2.9 despawns a second with about 190 in view, the frame is that of 200
+  standing bots and the longest frame was 23 ms.
+- **A walking Mob costs about 2.2 ms per 100 at the median.** The Mob runs had
+  frames over 33.3 ms that the bot runs did not, 27 at 100 Mobs and one of 119
+  ms at 200; their cause is not measured.
+- **Remote players starve a little at 200 in view and at 400**, where they
+  never starved at 200 and starved 18.7 percent of the time at 400 on
+  2026-11-14. The owner snapshots kept their 15 per second. A crowd in one
+  place now meets each recipient's byte budget, as
   [Remote Update Rate](STACK_STRESS_TESTING.md#remote-update-rate) describes,
-  while the presentation of a remote player stopped at its newest state. This
-  cause is the likely one, not measured per entity. The worker has since got
-  its interest tiers and a byte budget per recipient, and a remote player now
-  walks on past its newest state, as [Remote Players](#remote-players)
-  describes, so this row is due to be measured again.
+  so some records are deferred already at 200, and a remote player walks on
+  past its newest state before it counts as starved, as
+  [Remote Players](#remote-players) describes.
 - **Private memory grows by about 3 MB per body in view.**
 
-Every other program used 0.6 processors and none of the graphics card while
-the client recorded; the bots, the worker, and GameService on the same machine
-kept it 64 to 71 percent busy. The test runner marks its player as a
-development build (`Debug.isDebugBuild`), although it compiles with the release
-settings and the `Release` code variant; a shipped release build is not
-measured. The arrival, the departure and the return, the churn, and the Mobs
-have no baseline yet. The baseline of the Editor's Play Mode is not recorded
-either; it needs an open Editor, as
+The test runner marks its player as a development build
+(`Debug.isDebugBuild`), although it compiles with the release settings and the
+`Release` code variant; a shipped release build is not measured. The baseline
+of the Editor's Play Mode is not recorded either; it needs an open Editor, as
 [Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
 describes.
 

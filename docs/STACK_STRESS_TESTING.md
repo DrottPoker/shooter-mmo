@@ -2429,16 +2429,16 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
     the worker does for the live ones, and the shared corpse of the loot
     workloads became a player's corpse. No run of 2026-11-16 had an unexpected
     loot rejection.
-14. **With 400 players in view, the others starve although the frame holds.**
-    The built client draws 400 dressed bots at 13.1 ms per frame at the median
-    and 20.3 ms at the 99th percentile, but its remote players have no new
-    state to show 18.7 percent of the time, for up to 0.28 seconds; with 200 in
-    view they never starve. The baseline is in
-    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). That
-    baseline is from 2026-11-14, before the interest tiers, the byte budget
-    per recipient, and the presentation that walks on past the newest state;
-    the load runs do not measure the client, so this entry stands until the
-    crowd is measured again.
+14. **With 400 players in view, the others starved although the frame held.**
+    Moved. On 2026-11-14 the built client drew 400 dressed bots at 13.1 ms per
+    frame at the median, but its remote players had no new state to show 18.7
+    percent of the time. On 2026-11-16, with the interest tiers, the byte
+    budget per recipient, and a presentation that walks on past the newest
+    state, they starve 1.4 percent of the time at 400 in view, and 2.7 percent
+    at 200, where each recipient's budget now defers records too; the frame is
+    unchanged. What the client itself still lacks, the frames of a first
+    crowd's arrival and memory that comes back, is in
+    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
 
 Entries 9 to 12 are measured in
 [Measured Under The Profiles](#measured-under-the-profiles) and
