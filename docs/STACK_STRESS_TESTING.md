@@ -1152,8 +1152,8 @@ the current security boundary.
 A short run shows whether the stack keeps up; a long one shows what slowly goes
 wrong: memory that grows, tables that grow without bound, sessions and leases
 that drift, and errors that appear after twenty minutes. `soak-30min` is the
-soak, `soak-10min` its rehearsal, and both play the reference workload with
-[churn](#churn). Every full-stack run reports the numbers below, and a
+soak, `soak-10min` its rehearsal, and `soak-500-30min` the soak at the Scale
+Target; all three play the reference workload with [churn](#churn). Every full-stack run reports the numbers below, and a
 worker-only run its memory and log classes; the generator keeps sums, extremes,
 and histograms for them, never one entry per sample, so a long run does not
 grow its own memory with its measurements. The remote update rate, too, adds up
@@ -1695,6 +1695,7 @@ names its commit.
 | `playing-500` | passed | 24 ms | 60 / 111 ms | 14.9 | equip 164 ms | 82% | 16 KiB/s |
 | `mixed-250` | failed | 8 ms | 46 / 84 ms | 15.0 | **corpse deposit 1,388 ms** | 43% | 30 KiB/s |
 | `soak-30min` | passed | 16 ms | 47 / 99 ms | 14.9 | rejoin 386 ms | 37% | 9.5 KiB/s |
+| `soak-500-30min`, later that day | failed | **50 ms** | 54 / 108 ms | 14.9 | rejoin 451 ms | 82% | 14 KiB/s |
 | `login-burst` | passed | 1 ms | 35 / 66 ms | 15.0 | relocation 68 ms | 4% | 5.9 KiB/s |
 | `logout-burst` | passed | 1 ms | 40 / 75 ms | 15.0 | relocation 66 ms | 5% | 5.9 KiB/s |
 | `outage-60s`, no baseline | passed | 8 ms | 43 / 98 ms | 14.9 | equip 153 ms | 15% | 5.5 KiB/s |
@@ -1713,10 +1714,14 @@ What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target
   least receive 14.9 updates per second, every operation stays below 170 ms
   at the 95th percentile, and the worker uses 82 percent of a core while its
   loop thread is busy 26 percent of the time. The claim of the target also
-  needs a 30-minute soak at 500, which has not run, as
+  needs a 30-minute soak at 500, as
   [What The Playing Scenarios Are For](#what-the-playing-scenarios-are-for)
-  says. Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
-  says what a larger tier would meet first.
+  says, and `soak-500-30min` does not pass yet: everything held for 30
+  minutes except the tail of the tick, which passed its rule at the limit in
+  one run and failed it in the next, as
+  [The 30 Minute Soak](#the-30-minute-soak) shows. Entry 1 of
+  [What Limits The Next Tier](#what-limits-the-next-tier) says what that tail
+  is made of and what a larger tier would meet first.
 - **250 playing players pass a five-minute run and a 30-minute soak** with every
   rule, at 37 to 38 percent of a core for the worker. 100 players in one place
   pass too.
@@ -1806,6 +1811,46 @@ leaving and returning per minute, and passed every rule, as the run of
   With those windows the whole database grew 34 MiB per hour.
 - **Logs**: no error or critical line. The one warning was the start notice of
   the development admin tools.
+
+`soak-500-30min`, the same soak at the Scale Target's 500 players, ran twice
+on the afternoon of 2026-11-16, after health regeneration travelled as a rule
+and with the message counts of
+[What Limits The Next Tier](#what-limits-the-next-tier), while another
+project's containers used 17 to 24 percent of the machine. It does not pass
+yet, and the tick's tail is the reason:
+
+- **What held**, in the second run: 500 of 500 bots and none failed; 1,432
+  leaves, 729 returns to a standing body and 703 from the saved place, every
+  one with its place and health, and 8 bodies that died while their players
+  were away; no deadlock, no error or critical log line, no session within ten
+  seconds of its lease expiry (the least headroom was 140.0 of 150 seconds);
+  14.9 remote updates per second for the players who see the least;
+  operations of at most 451 ms at the 95th percentile; the worker at 82
+  percent of a core with its loop thread busy 28 percent of the time.
+- **Memory** levels off here too: the worker grew 8.7 MiB between the second
+  and the last fifth, to 222 MiB (196.4, 213.2, 216.6, 219.0, and 221.9 MiB),
+  with 10.1 MiB allocated per second, and GameService stayed at about 164 MiB.
+- **Retention** kept up: the operation tables grew 9.3 and 8.5 percent after
+  the first 270 seconds, and no row was more than 15.0 seconds past its
+  window.
+- **The tick** went over its budget in 34 of 53,700 ticks, 16 in the first
+  run. Its p99 bucket was 24 ms in 167 of the 195 intervals, 33.34 ms in 3,
+  and 50 ms in 2, so the rule failed; the first run had 33.34 ms in 2
+  intervals and passed at its limit. Among the 150 samples of each interval,
+  the snapshot phase had one of 16 ms or more in 178 of the 181 steady
+  intervals and one above 12 ms in 87, the corpse presence phase reached 10
+  to 26 ms in 72, and movement and the Mobs reached 18 ms at times. One tick
+  took 122 ms with two phases long at once, snapshots 110 ms and world actors
+  62 ms, which points at the machine and not at one phase.
+
+The first of the two runs also failed three rules that judged the tooling and
+not the server, and each is corrected: the retention lag counted the
+operation of a player's death from its completion although it becomes due
+only when its death event leaves with the closed corpse; the generator kept
+the update records of every remote entity it ever saw, which grows with
+churn, and its memory is now judged by its managed heap; and a reconnect
+whose body had died before GameService released the session was judged as a
+body in the wrong place.
 
 What the history costs without retention was measured on 2026-11-14, before
 retention existed: the database grew 184 MiB per hour, about 750 KiB per player
@@ -2175,6 +2220,11 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      snapshots, 76 ms per second with a p99 of 16 ms, movement, 55 ms per
      second, and combat, 52 ms per second. On that trend a tier of 750 would
      reach the budget, so these three phases are the first limit above 500.
+     Under churn for 30 minutes the tail already decides the verdict at 500:
+     `soak-500-30min` passed the tick rule at its limit in one run and failed
+     it in the next, as [The 30 Minute Soak](#the-30-minute-soak) shows, with
+     the long samples of the snapshot phase and of the corpse presence phase
+     as the first things to look at.
    - The transport sends most messages for other things than snapshots, and
      the count per message kind says which. On 2026-11-16 the worker handed
      65,300 messages per second to the transport at 500 players: 15,200
