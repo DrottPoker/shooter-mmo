@@ -1830,7 +1830,8 @@ The worker sends an entity's record only when it is due, as
 [Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication)
 describes, so the states of one entity arrive at uneven intervals: every
 snapshot near the player, every third farther away, and once a second while it
-stands. The presenter follows that per entity:
+stands, but the first two after a stand always in the next two snapshots. The
+presenter follows that per entity:
 
 - **Delay**: the interval between two moving states, smoothed so that one late
   state moves the estimate a quarter of the way, sets the delay the entity asks
@@ -1842,7 +1843,14 @@ stands. The presenter follows that per entity:
   the entity stands there now. A walking state after a stand starts from the
   standing place one interval before it, so the entity neither glides there
   from the last refresh a second before nor starts late, and the second between
-  two refreshes of a standing entity is no starvation.
+  two refreshes of a standing entity is no starvation. The worker sends that
+  walking state in the snapshot after the walk started, also far away, so the
+  walk started at most one interval before it and its start is never shown
+  faster than the entity walks. It also sends the state of the snapshot after
+  that one, before the far cadence takes over, so a walk that started between
+  two snapshots, and so starts slower than the entity walks, gets its walking
+  speed before the render time passes the first walking state: the pose never
+  continues at the slow start and never has to catch up.
 - **First states**: the first state of an entity, such as the spawn of one that
   came into view, says nothing about standing. When the second state moved and
   follows it by at most the 15 ticks of the longest delay, the entity walked
@@ -1853,8 +1861,9 @@ stands. The presenter follows that per entity:
   state walks off at its own speed instead of covering the meter in two ticks.
   A longer gap counts as a stand, as above. A first state the caller knows the
   entity stands at, `RemoteMovementPresenter.PushStanding`, keeps the start
-  from a stand; a Mob's rest pose is one, as [Mob Movement](#mob-movement)
-  describes.
+  from a stand; a Mob's rest pose is one, and the pose of a Mob whose spawn
+  says that it walks is a first state like a player's, as
+  [Mob Movement](#mob-movement) describes.
 - **Extrapolation**: the render time runs on past the newest state. While the
   newest state of a walking entity is older than the render time, the pose
   continues along the velocity of the two newest states for 0.25 s and then
@@ -3320,16 +3329,47 @@ stands keeps its reliable pose and costs nothing per frame.
 `WorldActorPresentationController` subscribes to the snapshots of its realtime
 client and hands every entity that names a presented `MobView` to that view
 through `RouteSnapshot`. Players, NPCs, resource nodes, and ids without a
-presentation, such as a Mob whose prefab still loads, are ignored. Each `MobView`
-owns a `RemoteActorMovement` in `Mmorpg.Client.Gameplay`, configured from the
-joined `NetworkMovementSession`. It keeps the Mob rules on top of the shared
-`RemoteMovementPresenter`, so a Mob uses exactly the remote player
+presentation, such as a Mob whose prefab still loads, are ignored, except that a
+lost snapshot of such a Mob is noted for the Late view rule below. Each
+`MobView` owns a `RemoteActorMovement` in `Mmorpg.Client.Gameplay`, configured
+from the joined `NetworkMovementSession`. It keeps the Mob rules on top of the
+shared `RemoteMovementPresenter`, so a Mob uses exactly the remote player
 interpolation, render clock, and render delay:
 
 - **Start.** The first snapshot after a rest anchors the reliable pose one render
   delay before it, as a state the Mob stands at, and restarts the render clock at
   the anchor, so the Mob stands where it was and then walks into the snapshot
   instead of jumping ahead.
+- **Walking spawn.** A Mob that walks when it comes into view has no rest pose
+  yet. Its `WorldActorSpawn` says so with `IsMoving` and names the server tick
+  of its pose, `PoseTick`, as
+  [World Actor Spawn Pose](REALTIME_PROTOCOL.md#world-actor-spawn-pose)
+  describes. `RemoteActorMovement.StartMovingFrom` then starts the movement
+  with that pose as a first state at that tick that says nothing about
+  standing, `RemoteMovementPresenter.Push` instead of `PushStanding`, so its
+  first snapshot follows the remote player rule for first states in
+  [Remote Players](#remote-players): a far Mob whose first record comes 13 ticks
+  after its spawn walked the whole gap and walks on at its own speed instead of
+  covering it in the render delay. `WorldActorClientEntry` keeps both until a
+  newer state, which is a rest pose, so a view that appears only after its
+  prefab loaded starts from the same spawn, or rests at the newer pose.
+- **Late view.** The view of a Mob appears only once its prefab loaded, and the
+  snapshots before reach no view, so after a slow load the Mob may be far from
+  the pose its view starts at, and the rules above would slide it there many
+  times faster than it walks: 13 times after 0.42 s at 4.5 m/s, more after a
+  longer load of a slower Mob. The view shows it at its first snapshot instead,
+  a first state that says nothing about standing, as the Jump rule does for a
+  snapshot more than 3 m away: the view has only just appeared, so the step is
+  hard to see, and the Mob walks on from there at its own speed. This applies
+  when the view started from a spawn that walked and its first snapshot comes
+  more than the 15 ticks of the longest render delay after `PoseTick`, the gap
+  that the first-states rule counts as a stand, and when the view started from
+  a rest pose while a lost snapshot showed the Mob away from that pose.
+  `WorldActorPresentationController` notes such a lost snapshot by the state
+  revision of the rest pose, so a newer rest pose that arrives before the view
+  starts the Mob from that pose as usual, and a lost refresh at the rest pose is
+  no move. `RemoteActorMovement.StartAtNextSnapshot` carries the second case,
+  and `StartMovingFrom` the first.
 - **Settle.** A `WorldActorState` becomes the final state of the snapshots, one
   snapshot interval after the newest snapshot, followed by a repeat of it, so
   the Mob walks onto its rest pose and stands there without a jump, also when
@@ -3342,9 +3382,7 @@ interpolation, render clock, and render delay:
   far away restarts the interpolation at the snapshot, a first state that says
   nothing about standing, so a Mob that walked more than 3 m from its reliable
   pose before its first snapshot, such as one whose view appeared only after
-  its prefab loaded, walks on as a remote player does. A Mob that comes into
-  view while it walks has its current pose in its spawn and starts from it as
-  from a rest pose, by the Start rule above.
+  its prefab loaded, walks on as a remote player does.
 - **Restart.** A Mob that settled at its rest pose does no work per frame, and
   its next snapshot starts again from the rest pose.
 - **Cleanup.** A hidden Mob, such as a dead one, clears its interpolation and

@@ -21,7 +21,8 @@ internal enum SnapshotRecordClass : byte
     // A record that stopped changing, repeated so that a lost packet leaves nothing walking on.
     StopRepeat,
 
-    // A far entity whose record differs from the one the recipient last got, on its far slot.
+    // A far entity whose record differs from the one the recipient last got, on its far slot, or
+    // in the two snapshots of a start from a stand.
     FarChanged,
 
     // An entity sent again at least once per refresh interval, on its refresh slot.
@@ -82,7 +83,8 @@ internal sealed class SnapshotRecipientState(RealtimePeerContext context, ulong 
 // Decides which records each recipient gets in a snapshot and builds its chunks. A record is due
 // when the entity is new in view, when its record differs from the one the recipient last got (a
 // near entity at once, a far one on its far slot, every FarIntervalSnapshots snapshots staggered
-// by entity id), for StopRepeats tier slots after it stopped changing, and on its refresh slot,
+// by entity id, or at once in the two snapshots of a start from a stand), for
+// StopRepeats tier slots after it stopped changing, and on its refresh slot,
 // every RefreshIntervalSnapshots snapshots staggered by entity id. The recipient's byte budget
 // takes the due records class by class in that order, after the new ones the overdue ones: the
 // due records of entities the recipient got nothing of for longer than the refresh interval.
@@ -196,6 +198,7 @@ internal sealed class SnapshotScheduler
         var ownSlot = state.OwnRecordSlot = ResolveRecordSlot(records, controlledEntityId, state.OwnRecordSlot);
         var recordEntityIds = records.EntityIds;
         var recordVersions = records.Versions;
+        var recordStarts = records.Starts;
         var entities = CollectionsMarshal.AsSpan(state.Entities);
         for (var index = 0; index < entities.Length; index++)
         {
@@ -219,7 +222,7 @@ internal sealed class SnapshotScheduler
                 }
             }
 
-            if (!TryClassify(ref entry, recordVersions[slot], orderedNear[index], sequence, farSlotPhase, refreshSlotPhase, out var recordClass))
+            if (!TryClassify(ref entry, recordVersions[slot], recordStarts[slot], orderedNear[index], sequence, farSlotPhase, refreshSlotPhase, out var recordClass))
             {
                 entry.NearPriority = 0f;
                 continue;
@@ -395,6 +398,7 @@ internal sealed class SnapshotScheduler
     private bool TryClassify(
         ref SnapshotRecipientEntity entry,
         ulong version,
+        bool started,
         bool near,
         uint sequence,
         uint farSlotPhase,
@@ -410,8 +414,12 @@ internal sealed class SnapshotScheduler
         bool isDue;
         if (version != entry.SentVersion)
         {
+            // An entity that starts to move from a stand is due at once in the snapshots of its
+            // start, whatever its tier: its first moving record follows the start by at most one
+            // snapshot interval, as a client that starts it from the stand one interval before
+            // that record assumes, and the second gives its speed before the far slot takes over.
             recordClass = near ? SnapshotRecordClass.NearChanged : SnapshotRecordClass.FarChanged;
-            isDue = near || entry.Deferred || Modulo(entry.EntityId, farMultiplier, farInterval) == farSlotPhase;
+            isDue = near || started || entry.Deferred || Modulo(entry.EntityId, farMultiplier, farInterval) == farSlotPhase;
         }
         else if (entry.RepeatsLeft > 0)
         {

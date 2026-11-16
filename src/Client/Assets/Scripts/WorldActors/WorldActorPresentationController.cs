@@ -15,7 +15,9 @@ namespace Mmorpg.Client.WorldActors
     // time an actor of its archetype appears, and every handle is released when the World
     // scene closes. An actor whose prefab is still loading is presented once it is ready.
     // Snapshot entities that name a presented Mob move its view; WorldSceneContext moves the
-    // remote players of the same snapshots.
+    // remote players of the same snapshots. A snapshot of a Mob whose prefab still loads is
+    // lost, so one that showed the Mob away from its pose is noted, and its view starts at its
+    // next snapshot instead of sliding from that pose.
     [DisallowMultipleComponent]
     public sealed class WorldActorPresentationController : MonoBehaviour, IRemoteMotionSource
     {
@@ -27,6 +29,10 @@ namespace Mmorpg.Client.WorldActors
             new HashSet<string>(StringComparer.Ordinal);
         // Mobs that left while falling dead, so the corpse that replaces each can play on the fall.
         private readonly List<CreatureFall> falls = new List<CreatureFall>();
+        // Mobs without a view yet, such as while their prefab loads, whose lost records showed
+        // them away from the pose of their actor, by the state revision of that pose.
+        private readonly Dictionary<ulong, long> missedMoves = new Dictionary<ulong, long>();
+        private Action<RealtimeEntitySnapshot> noteUnrouted;
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
         private IRealtimeMovementChannel realtimeMovement;
@@ -183,6 +189,15 @@ namespace Mmorpg.Client.WorldActors
             RealtimeSimulationSnapshot snapshot,
             IReadOnlyDictionary<ulong, WorldActorView> views)
         {
+            return RouteSnapshot(snapshot, views, null);
+        }
+
+        // As above, and hands every entity that names no presented Mob to unrouted.
+        public static int RouteSnapshot(
+            RealtimeSimulationSnapshot snapshot,
+            IReadOnlyDictionary<ulong, WorldActorView> views,
+            Action<RealtimeEntitySnapshot> unrouted)
+        {
             if (snapshot == null || snapshot.Entities == null || views == null)
             {
                 return 0;
@@ -192,11 +207,16 @@ namespace Mmorpg.Client.WorldActors
             for (var index = 0; index < snapshot.Entities.Length; index++)
             {
                 var entity = snapshot.Entities[index];
-                if (entity == null
-                    || !views.TryGetValue(entity.EntityId, out var view)
+                if (entity == null)
+                {
+                    continue;
+                }
+
+                if (!views.TryGetValue(entity.EntityId, out var view)
                     || !(view is MobView mob)
                     || mob == null)
                 {
+                    unrouted?.Invoke(entity);
                     continue;
                 }
 
@@ -207,9 +227,36 @@ namespace Mmorpg.Client.WorldActors
             return routed;
         }
 
+        // Whether a record shows a Mob away from the pose of its actor, as one does once the Mob
+        // walked off its rest pose; within the record's precision is the same place.
+        public static bool ShowsAwayFromPose(WorldActorClientEntry actor, RealtimeEntitySnapshot record)
+        {
+            return actor != null
+                && record != null
+                && Vector3.Distance(
+                    new Vector3(actor.PositionX, actor.PositionY, actor.PositionZ),
+                    new Vector3(record.PositionX, record.PositionY, record.PositionZ))
+                    > RemoteActorMovement.SamePositionTolerance;
+        }
+
+        // Whether a Mob view created now must start at its next snapshot: a record that showed
+        // the Mob away from its resting pose was lost while it had no view, and no newer state
+        // came since. A Mob whose spawn walked starts by its own rule.
+        public static bool MissedAMove(
+            WorldActorClientEntry actor,
+            IReadOnlyDictionary<ulong, long> missedMoves)
+        {
+            return actor != null
+                && !actor.IsMoving
+                && missedMoves != null
+                && missedMoves.TryGetValue(actor.EntityId, out var revision)
+                && revision == actor.StateRevision;
+        }
+
         private void Awake()
         {
             materialProperties = new MaterialPropertyBlock();
+            noteUnrouted = NoteUnrouted;
         }
 
         private void Start()
@@ -272,6 +319,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             prefabLoads.Clear();
+            missedMoves.Clear();
             ClientAssets.Release(registryLoad);
             registryLoad = default;
             presentationRegistry = null;
@@ -279,7 +327,24 @@ namespace Mmorpg.Client.WorldActors
 
         private void OnSimulationSnapshotReceived(RealtimeSimulationSnapshot snapshot)
         {
-            RouteSnapshot(snapshot, presentations);
+            RouteSnapshot(snapshot, presentations, noteUnrouted);
+        }
+
+        // Remembers a lost record of a Mob without a view that shows it away from its pose, so
+        // the view that appears later does not slide it from there.
+        private void NoteUnrouted(RealtimeEntitySnapshot record)
+        {
+            if (actorController == null
+                || presentations.ContainsKey(record.EntityId)
+                || !actorController.State.TryGet(record.EntityId, out var actor)
+                || actor.Kind != RealtimeWorldActorKind.Mob
+                || !actor.IsActive
+                || !ShowsAwayFromPose(actor, record))
+            {
+                return;
+            }
+
+            missedMoves[record.EntityId] = actor.StateRevision;
         }
 
         private void OnRegistryLoaded()
@@ -334,6 +399,13 @@ namespace Mmorpg.Client.WorldActors
                          .ToArray())
             {
                 DestroyPresentation(staleId);
+            }
+
+            foreach (var goneId in missedMoves.Keys
+                         .Where(entityId => !currentIds.Contains(entityId))
+                         .ToArray())
+            {
+                missedMoves.Remove(goneId);
             }
 
             foreach (var actor in actorController.State.Actors)
@@ -468,6 +540,14 @@ namespace Mmorpg.Client.WorldActors
             }
 
             view.Initialize(actor);
+
+            // A Mob that walked off its pose while its prefab loaded is shown where it is next.
+            if (view is MobView created && MissedAMove(actor, missedMoves))
+            {
+                created.StartAtNextSnapshot();
+            }
+
+            missedMoves.Remove(actor.EntityId);
             return view;
         }
 

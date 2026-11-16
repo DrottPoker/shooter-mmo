@@ -6,6 +6,13 @@ namespace Mmorpg.GameProtocol
     // messages, and the generator writes their models and codecs.
     public static partial class RealtimeProtocol
     {
+        // Only a Mob walks, and a hidden one, such as a dead one, does not.
+        private static bool SatisfiesRules(RealtimeWorldActorSpawn spawn)
+        {
+            return !spawn.IsMoving
+                || (spawn.Kind == RealtimeWorldActorKind.Mob && spawn.IsActive);
+        }
+
         // A capability action carries the payload its action needs, and nothing else.
         private static bool SatisfiesRules(RealtimeWorldInteractionIntent intent)
         {

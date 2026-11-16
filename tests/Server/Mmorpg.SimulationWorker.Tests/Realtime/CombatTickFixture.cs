@@ -11,7 +11,9 @@ using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing.Content;
+using Mmorpg.WorldData.Actors;
 using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
@@ -19,7 +21,8 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // The production core and combat features, composed as RealtimeServerComposition composes them,
 // around recording peers and driven one tick at a time, so a test reads every combatant and
 // every message after every tick without sockets or loop timing. Players join directly, without
-// the join handshake, and see each other once ShowEveryoneToEveryone sent their spawns.
+// the join handshake, and see each other once ShowEveryoneToEveryone sent their spawns. With
+// world actors, their runtime is activated and the Mobs think and walk in the ticks.
 internal sealed class CombatTickFixture : IDisposable
 {
     private readonly HttpClient httpClient;
@@ -29,7 +32,10 @@ internal sealed class CombatTickFixture : IDisposable
     private readonly List<CombatTickPlayer> players = [];
     private TimeSpan nextTick = TimeSpan.Zero;
 
-    public CombatTickFixture(CombatRules rules, ItemCatalogRuntimeDocument itemCatalog)
+    public CombatTickFixture(
+        CombatRules rules,
+        ItemCatalogRuntimeDocument itemCatalog,
+        WorldActorRuntime? worldActors = null)
     {
         Config = RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions());
         var staticCollision = CollisionTestWorldFactory.Create();
@@ -43,6 +49,8 @@ internal sealed class CombatTickFixture : IDisposable
         var client = new GameServiceClient(httpClient, availability);
         var shardRules = new SimulationShardRules();
         shardRules.Set(new ShardRuleSet("test", PlayerVersusPlayer: true));
+        var identity = new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow);
+        WorldActors = worldActors is null ? null : new WorldActorStore(worldActors, Entities);
         var host = new RealtimeHostDependencies(
             Config,
             new SimulationJoinService(
@@ -50,7 +58,7 @@ internal sealed class CombatTickFixture : IDisposable
                 SessionStore,
                 ItemStates,
                 Config,
-                new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow)),
+                identity),
             new SimulationSessionReleaseService(
                 client,
                 SessionStore,
@@ -64,6 +72,8 @@ internal sealed class CombatTickFixture : IDisposable
             new CorpseViewerRegistry(),
             staticCollision,
             CollisionWorld,
+            WorkerIdentity: WorldActors is null ? null : identity,
+            WorldActorStore: WorldActors,
             ShardRules: shardRules,
             GameServiceAvailability: availability);
         var clock = new RealtimeSimulationClock();
@@ -86,7 +96,7 @@ internal sealed class CombatTickFixture : IDisposable
         var dependencies = new CombatDependencies(
             rules,
             itemCatalog,
-            null,
+            worldActors,
             client,
             null,
             null,
@@ -99,9 +109,26 @@ internal sealed class CombatTickFixture : IDisposable
             new CorpseDependencies(new SimulationCorpseInteractionService(client)),
             appearance,
             playerCombat);
-        var worldActors = new WorldActorFeature(Core, new WorldActorDependencies(), quests, playerCombat);
-        Combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActors).Combat;
+        var worldActorFeature = new WorldActorFeature(
+            Core,
+            new WorldActorDependencies(WorldActors is null ? null : new WorldActorActivityScheduler(WorldActors)),
+            quests,
+            playerCombat);
+        var combat = new CombatFeature(Core, dependencies, playerCombat, quests, corpses, worldActorFeature);
+        Combat = combat.Combat;
+        Mobs = combat.Mobs;
         Core.Presence.Appearances = appearance.Replicator;
+        Core.Presence.IsActorMoving = Mobs.IsMoving;
+        if (WorldActors is not null)
+        {
+            // The Mobs find the players in the grid that the movement feature builds every tick.
+            MovementFeature.Add(Core, combat);
+            worldActorFeature.Driver.Activated = Combat.RegisterWorldActors;
+            worldActorFeature.Driver.RespawnMob = combat.MobDeaths.Respawn;
+            worldActorFeature.Driver.KeepActive = Mobs.IsBusy;
+            worldActorFeature.Driver.Activate();
+        }
+
         loop = new SimulationTickLoop(
             Core.Clock,
             Entities,
@@ -132,6 +159,11 @@ internal sealed class CombatTickFixture : IDisposable
     public RealtimeCoreServices Core { get; }
 
     public CombatSystem Combat { get; }
+
+    public MobSystem Mobs { get; }
+
+    // The world actors, or null without them.
+    public WorldActorStore? WorldActors { get; }
 
     public uint ServerTick => Core.Clock.ServerTick;
 

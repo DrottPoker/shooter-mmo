@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 44,
+    "version": 45,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -2176,6 +2176,7 @@
       "delivery": "reliableOrdered",
       "description": "A world actor entered the recipient's interest.",
       "parameter": "spawn",
+      "rules": true,
       "runtimeSizeCheck": true,
       "fields": [
         { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the actor." },
@@ -2234,6 +2235,16 @@
           "name": "ActivityTier",
           "type": "WorldActorActivityTier",
           "description": "How often the worker updates the actor."
+        },
+        {
+          "name": "PoseTick",
+          "type": "u32",
+          "description": "The server tick at which the worker read the pose."
+        },
+        {
+          "name": "IsMoving",
+          "type": "bool",
+          "description": "Whether a Mob walks at the pose tick, so its pose is not a rest pose; false for every other actor."
         },
         {
           "name": "BoundsCenterX",
