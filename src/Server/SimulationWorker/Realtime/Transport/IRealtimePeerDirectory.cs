@@ -9,5 +9,7 @@ internal interface IRealtimePeerDirectory
         int peerId,
         [NotNullWhen(true)] out IRealtimePeerConnection? peer);
 
-    void DisconnectPeer(IRealtimePeerConnection peer);
+    // Disconnects the peer; data, at most RealtimeDisconnectData.MaximumBytes, travels with the
+    // disconnect and tells the client why.
+    void DisconnectPeer(IRealtimePeerConnection peer, byte[]? data);
 }

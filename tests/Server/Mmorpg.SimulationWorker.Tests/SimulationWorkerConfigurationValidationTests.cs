@@ -392,6 +392,36 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    // The wait for an acknowledged reason ends in the disconnect only within LiteNetLib's
+    // disconnect timeout, the join handshake timeout of 10 seconds here.
+    [Theory]
+    [InlineData(null, 2000, null)]
+    [InlineData("1", 1, null)]
+    [InlineData("10000", 10000, null)]
+    [InlineData("0", 0, "SimulationWorker:GracefulDisconnectMaximumMilliseconds must be a positive integer.")]
+    [InlineData("10001", 0, "SimulationWorker:GracefulDisconnectMaximumMilliseconds must not exceed JoinHandshakeTimeoutSeconds.")]
+    public void TheGracefulDisconnectMaximumDefaultsToTwoSecondsAndStaysWithinTheDisconnectTimeout(
+        string? value,
+        int expectedMilliseconds,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:GracefulDisconnectMaximumMilliseconds"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            Assert.Equal(
+                TimeSpan.FromMilliseconds(expectedMilliseconds),
+                SimulationWorkerConfig.FromConfiguration(configuration).GracefulDisconnectMaximum);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     [Theory]
     [InlineData(null, 30, null)]
     [InlineData("1", 1, null)]

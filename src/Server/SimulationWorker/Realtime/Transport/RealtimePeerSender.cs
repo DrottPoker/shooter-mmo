@@ -58,16 +58,75 @@ internal sealed class RealtimePeerSender(
         networkMetrics.RecordSent(packet.Length);
     }
 
-    // Counts and logs the first failed send of a peer and schedules its disconnect; the sends
-    // that still follow before the peer is gone fail quietly.
-    private void DisconnectAfterFailedSend(IRealtimePeerConnection peer, Exception exception)
+    // Sends the reliable LeaveAccepted, ServerDisconnect, or JoinRejected that says why the
+    // connection ends, and starts the peer's disconnect, which RealtimePeerSupervisor carries out
+    // once the client acknowledged the message or the wait reached
+    // GracefulDisconnectMaximumMilliseconds. The disconnect carries the message as its data, so a
+    // client whose reliable copy was lost or held back still learns why. A peer that already goes
+    // keeps its first reason and gets no second message.
+    public void SendAndDisconnect(IRealtimePeerConnection peer, RealtimePeerContext context, byte[] packet)
     {
-        RealtimePeerContext? context = null;
-        if (peers is not null && peers.TryGetContext(peer.Id, out context) && context.DisconnectAfterUtc is not null)
+        SendReason(peer, context, packet, reportFailure: true);
+    }
+
+    private void SendReason(
+        IRealtimePeerConnection peer,
+        RealtimePeerContext context,
+        byte[] packet,
+        bool reportFailure)
+    {
+        var disconnect = context.BeginDisconnect(RealtimeDisconnectData.Fit(packet), DateTime.UtcNow);
+        if (disconnect is null)
         {
             return;
         }
 
+        try
+        {
+            peer.SendDisconnectReason(packet, disconnect);
+        }
+        catch (Exception exception)
+        {
+            // Nothing acknowledges a message that was not sent; the disconnect carries it alone.
+            disconnect.MarkAcknowledged();
+            if (reportFailure)
+            {
+                ReportFailedSend(peer, exception);
+            }
+
+            return;
+        }
+
+        networkMetrics.RecordSent(packet.Length);
+    }
+
+    // Counts and logs the first failed send of a peer and starts its disconnect; the sends that
+    // still follow before the peer is gone fail quietly.
+    private void DisconnectAfterFailedSend(IRealtimePeerConnection peer, Exception exception)
+    {
+        RealtimePeerContext? context = null;
+        if (peers is not null && peers.TryGetContext(peer.Id, out context) && context.PendingDisconnect is not null)
+        {
+            return;
+        }
+
+        ReportFailedSend(peer, exception);
+        if (context is null)
+        {
+            return;
+        }
+
+        // The reliable channel may still work when an unreliable send failed, and the disconnect
+        // carries the reason either way.
+        SendReason(
+            peer,
+            context,
+            RealtimeProtocol.EncodeServerDisconnect(RealtimeFailureIsolation.Code, RealtimeFailureIsolation.Message),
+            reportFailure: false);
+    }
+
+    private void ReportFailedSend(IRealtimePeerConnection peer, Exception exception)
+    {
         if (loopGuard is not null)
         {
             loopGuard.PeerFailed(SendStepName, peer.Id, exception);
@@ -75,24 +134,6 @@ internal sealed class RealtimePeerSender(
         else
         {
             logger.LogError(exception, "[SIMULATION] A send to UDP peer {PeerId} failed.", peer.Id);
-        }
-
-        if (context is null)
-        {
-            return;
-        }
-
-        context.ScheduleDisconnect(DateTime.UtcNow);
-        try
-        {
-            // The reliable channel may still work when an unreliable send failed.
-            peer.Send(
-                RealtimeProtocol.EncodeServerDisconnect(RealtimeFailureIsolation.Code, RealtimeFailureIsolation.Message),
-                DeliveryMethod.ReliableOrdered);
-        }
-        catch (Exception)
-        {
-            // The peer goes without the message.
         }
     }
 
@@ -107,7 +148,6 @@ internal sealed class RealtimePeerSender(
             context.PeerId,
             code,
             message);
-        SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
-        context.ScheduleDisconnect(DateTime.UtcNow);
+        SendAndDisconnect(peer, context, RealtimeProtocol.EncodeServerDisconnect(code, message));
     }
 }

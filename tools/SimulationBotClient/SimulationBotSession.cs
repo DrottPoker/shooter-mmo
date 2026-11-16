@@ -121,6 +121,24 @@ public sealed class SimulationBotSession
 
     public void OnDisconnected(string reason)
     {
+        OnDisconnected(reason, [], 0);
+    }
+
+    // The worker puts the message that ends the session into its disconnect too, so a session
+    // whose reliable copy the line lost or held back handles it from there, as on the control
+    // channel. Other data counts as none.
+    public void OnDisconnected(string reason, byte[] data, long nowTimestamp)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (State is not (SimulationBotClientState.Completed or SimulationBotClientState.Failed)
+            && RealtimeProtocol.TryReadMessageType(data, out var messageType)
+            && messageType is RealtimeMessageType.LeaveAccepted
+                or RealtimeMessageType.ServerDisconnect
+                or RealtimeMessageType.JoinRejected)
+        {
+            Receive(data, RealtimeProtocol.ControlChannel, RealtimeDelivery.ReliableOrdered, nowTimestamp);
+        }
+
         Fail(
             "connection_closed",
             $"SimulationWorker closed the simulation bot connection with reason {reason}.");

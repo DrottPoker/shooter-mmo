@@ -93,6 +93,9 @@ internal sealed class LiteNetLibRealtimeTransport(
                 reader.Recycle();
             }
         };
+        // UnsyncedDeliveryEvent stays false too, so the acknowledgement of a disconnect reason
+        // arrives inside PollEvents on the loop.
+        listener.DeliveryEvent += (_, userData) => (userData as RealtimePendingDisconnect)?.MarkAcknowledged();
         listener.NetworkErrorEvent += (endPoint, socketError) =>
         {
             logger.LogWarning(
@@ -157,8 +160,30 @@ internal sealed class LiteNetLibRealtimeTransport(
         return true;
     }
 
-    public void DisconnectPeer(IRealtimePeerConnection peer)
+    public void DisconnectPeer(IRealtimePeerConnection peer, byte[]? data)
     {
-        server!.DisconnectPeer(((LiteNetLibPeerConnection)peer).Peer);
+        var netPeer = ((LiteNetLibPeerConnection)peer).Peer;
+        if (data is null)
+        {
+            server!.DisconnectPeer(netPeer);
+            return;
+        }
+
+        // LiteNetLib would send zeros of that length instead of longer data.
+        if (data.Length > RealtimeDisconnectData.MaximumBytes)
+        {
+            throw new ArgumentException(
+                $"Disconnect data of {data.Length} bytes exceeds the {RealtimeDisconnectData.MaximumBytes} bytes that LiteNetLib delivers.",
+                nameof(data));
+        }
+
+        server!.DisconnectPeer(netPeer, data);
+    }
+
+    // Whether a disconnected peer still waits for its client to confirm the disconnect, while
+    // LiteNetLib sends the disconnect again every 300 ms.
+    public bool AwaitsDisconnectConfirmation(IRealtimePeerConnection peer)
+    {
+        return ((LiteNetLibPeerConnection)peer).Peer.ConnectionState == ConnectionState.ShutdownRequested;
     }
 }

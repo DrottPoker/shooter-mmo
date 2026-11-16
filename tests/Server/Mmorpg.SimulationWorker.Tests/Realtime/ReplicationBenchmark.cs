@@ -323,6 +323,11 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
         receivedLength = 0;
     }
 
+    public void SendDisconnectReason(byte[] data, RealtimePendingDisconnect disconnect)
+    {
+        Send(data, DeliveryMethod.ReliableOrdered);
+    }
+
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
         return 0;
@@ -350,7 +355,7 @@ internal sealed class CountingPeerDirectory : IRealtimePeerDirectory
         return peer is not null;
     }
 
-    public void DisconnectPeer(IRealtimePeerConnection peer)
+    public void DisconnectPeer(IRealtimePeerConnection peer, byte[]? data)
     {
         throw new InvalidOperationException($"The benchmark disconnected peer {peer.Id}; a recipient failed.");
     }

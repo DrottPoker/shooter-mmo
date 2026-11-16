@@ -626,6 +626,150 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION server_shutdown" }));
         }
 
+        // A lossy line can lose the leave's answer while the disconnect after it arrives. The
+        // disconnect carries the answer as its data, and the leave ends as cleanly as with the
+        // answer on the channel, with the body's seconds.
+        [Test]
+        public void ALeaveAnsweredOnlyByTheDisconnectDataEndsCleanly()
+        {
+            JoinWithPresence();
+            Assert.That(harness.BeginLeave(), Is.True);
+            harness.Clear();
+
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                RealtimeProtocol.EncodeLeaveAccepted(20));
+            harness.Frame();
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "EntityDespawned 11 left_shard",
+                    "WorldActorDespawned 21 left_shard",
+                    "Stop",
+                    "SessionEnded null"
+                }));
+            Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Disconnected));
+            Assert.That(harness.StepLeave(), Is.False);
+            Assert.That(harness.LeaveSucceeded, Is.True);
+            Assert.That(harness.LeaveBodySeconds, Is.EqualTo(20));
+            Assert.That(harness.LeaveError, Is.Null);
+            Assert.That(harness.TakeFailures(), Is.Empty);
+        }
+
+        // The answer that came on the channel ends the leave first, so the same answer in the
+        // disconnect after it is not handled again.
+        [Test]
+        public void ALeaveAnswerInTheDisconnectDataAfterTheChannelOneIsNotHandledTwice()
+        {
+            JoinWithPresence();
+            Assert.That(harness.BeginLeave(), Is.True);
+            harness.Clear();
+
+            harness.Queue(RealtimeProtocol.EncodeLeaveAccepted(20));
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                RealtimeProtocol.EncodeLeaveAccepted(20));
+            harness.Frame();
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "EntityDespawned 11 left_shard",
+                    "WorldActorDespawned 21 left_shard",
+                    "Stop",
+                    "SessionEnded null"
+                }));
+            Assert.That(harness.StepLeave(), Is.False);
+            Assert.That(harness.LeaveSucceeded, Is.True);
+            Assert.That(harness.TakeFailures(), Is.Empty);
+        }
+
+        // A worker that ends the connection, such as for a protocol violation or a session that
+        // GameService revoked, tells the client why in the disconnect too, so a client that lost
+        // the reliable message still shows the reason.
+        [TestCase("session_revoked")]
+        [TestCase("udp_rate_limited")]
+        public void AServerDisconnectOnlyInTheDisconnectDataEndsTheSessionWithItsCode(string code)
+        {
+            JoinWithPresence();
+
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                RealtimeProtocol.EncodeServerDisconnect(code, "The worker ends the connection."));
+            harness.Frame();
+
+            AssertEndedByTheServer(code);
+        }
+
+        // The stop notice of a stopping worker is a ServerDisconnect that also travels as the data
+        // of the disconnect that every peer gets before the transport stops.
+        [TestCase("server_shutdown")]
+        [TestCase("game_service_outage")]
+        public void AStopNoticeOnlyInTheDisconnectDataEndsTheSessionLikeTheReliableNotice(string code)
+        {
+            JoinWithPresence();
+
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                RealtimeProtocol.EncodeServerDisconnect(code, "The worker stops."));
+            harness.Frame();
+
+            AssertEndedByTheServer(code);
+        }
+
+        [Test]
+        public void AJoinRejectionOnlyInTheDisconnectDataFailsTheJoinWithItsCode()
+        {
+            harness.BeginJoinAndConnect();
+            harness.Clear();
+
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                RealtimeProtocol.EncodeJoinRejected("join_ticket_consumed", "The join ticket was already used."));
+            harness.Frame();
+
+            Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame", "Stop" }));
+            Assert.That(harness.StepJoin(), Is.False);
+            Assert.That(
+                (harness.JoinError.Kind, harness.JoinError.Code),
+                Is.EqualTo((RealtimeClientErrorKind.Server, "join_ticket_consumed")));
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION join_ticket_consumed" }));
+        }
+
+        // Data that is no session end, such as the zeros LiteNetLib sends for data above its limit,
+        // or another message, leaves the disconnect a lost connection, as without data.
+        [TestCase("zeros")]
+        [TestCase("an entity spawn")]
+        public void ADisconnectWithOtherDataIsALostConnection(string data)
+        {
+            JoinWithPresence();
+
+            harness.Transport.QueueDisconnected(
+                DisconnectReason.RemoteConnectionClose,
+                data == "zeros"
+                    ? new byte[1015]
+                    : RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(OtherPlayerEntityId)));
+            harness.Frame();
+
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "EntityDespawned 11 connection_lost",
+                    "WorldActorDespawned 21 connection_lost",
+                    "Stop",
+                    "UnexpectedlyDisconnected connection_lost",
+                    "SessionEnded connection_lost"
+                }));
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT connection_lost" }));
+        }
+
         // A failure that the frame's poll finds clears the registries at once, with their despawn
         // events; the session events follow at the end of the same frame, after the transport stops.
         [TestCase("a server disconnect", "server_shutdown", "SIMULATION")]
@@ -943,6 +1087,25 @@ namespace Mmorpg.Client.Tests.EditMode
 
             Assert.That(seen, Is.EqualTo(new[] { (0, 0, false) }));
             harness.TakeFailures();
+        }
+
+        // The session that JoinWithPresence joined ended in this frame as a ServerDisconnect does.
+        private void AssertEndedByTheServer(string code)
+        {
+            Assert.That(
+                harness.Timeline,
+                Is.EqualTo(new[]
+                {
+                    "frame",
+                    "EntityDespawned 11 " + code,
+                    "WorldActorDespawned 21 " + code,
+                    "Stop",
+                    "UnexpectedlyDisconnected " + code,
+                    "SessionEnded " + code
+                }));
+            var error = (RealtimeClientError)harness.LastPayload("UnexpectedlyDisconnected");
+            Assert.That((error.Kind, error.Code), Is.EqualTo((RealtimeClientErrorKind.Server, code)));
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "SIMULATION " + code }));
         }
 
         // Joins with one spawned player and one spawned world actor, then clears the timeline.

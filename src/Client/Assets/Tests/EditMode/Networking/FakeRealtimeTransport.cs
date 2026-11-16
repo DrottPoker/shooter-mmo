@@ -22,7 +22,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public event Action Connected;
 
-        public event Action<DisconnectReason> Disconnected;
+        public event Action<DisconnectReason, byte[]> Disconnected;
 
         public event Action<byte[], byte, DeliveryMethod> Received;
 
@@ -114,9 +114,10 @@ namespace Mmorpg.Client.Tests.EditMode
             pending.Add(() => Connected?.Invoke());
         }
 
-        public void QueueDisconnected(DisconnectReason reason)
+        // Data is what the server put into its disconnect; none by default.
+        public void QueueDisconnected(DisconnectReason reason, byte[] data = null)
         {
-            pending.Add(() => Disconnected?.Invoke(reason));
+            pending.Add(() => Disconnected?.Invoke(reason, data ?? Array.Empty<byte>()));
         }
 
         public void QueueNetworkError(SocketError error)

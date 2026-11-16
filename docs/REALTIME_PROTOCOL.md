@@ -382,6 +382,34 @@ carry application-level tick and chunk metadata.
   `EntityDespawn.Reason` and `WorldActorDespawn.Reason` are informational, such
   as `out_of_interest`, `left_shard`, `teleported`, or `died`.
 
+### The Reason In The Disconnect
+
+A connection that the worker ends carries the message that says why twice: as a
+reliable message on the control channel, and as the data of LiteNetLib's
+disconnect (`NetManager.DisconnectPeer(peer, data)`, which the client reads as
+`DisconnectInfo.AdditionalData`). The data is one whole encoded packet, frame
+header included, of `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected`, the
+message the worker sent reliably just before, and the stop notice of a stopping
+worker is such a `ServerDisconnect`. LiteNetLib sends the disconnect again every
+300 ms until the client confirms it, and stops resending the reliable packets
+that still wait for their acknowledgement, so the data is what reaches the
+client when the reliable copy was lost or held back behind a lost packet. How
+long the worker waits before it disconnects is in
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport).
+
+The data is at most 1,014 bytes: LiteNetLib puts it into one disconnect packet
+behind a 9-byte header, and attaches it only while that packet stays below the
+MTU of 1,024 bytes, which never grows because MTU discovery is off. Above the
+limit it would deliver zero bytes of the same length instead. `LeaveAccepted`
+always fits; a `ServerDisconnect` or `JoinRejected` that does not fit travels in
+the data with its code whole and its log message cut to fit, while the reliable
+copy keeps the whole message.
+
+A client that gets a disconnect with data handles the data exactly as if the
+message had arrived on the control channel, but only while it has not handled
+that message yet; the client and the bots accept only the three message types
+there and treat any other data as a disconnect without data.
+
 ## Movement Input And Paths
 
 Every `MovementInput` names the path the player follows with `PathId`, or 0 to

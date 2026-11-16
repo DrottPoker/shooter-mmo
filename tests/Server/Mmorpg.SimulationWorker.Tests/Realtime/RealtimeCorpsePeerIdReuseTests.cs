@@ -48,7 +48,7 @@ public sealed class RealtimeCorpsePeerIdReuseTests
         Assert.Equal(corpseId, lease!.TargetRuntimeId);
         Assert.Empty(fixture.Peers[ReusedPeerId].Sent);
         Assert.False(staleContext.AuthorityOperationInFlight);
-        Assert.Null(currentContext.DisconnectAfterUtc);
+        Assert.Null(currentContext.PendingDisconnect);
     }
 
     [Fact]

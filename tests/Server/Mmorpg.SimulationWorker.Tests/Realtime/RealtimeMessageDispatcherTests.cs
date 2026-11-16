@@ -104,7 +104,7 @@ public sealed class RealtimeMessageDispatcherTests
         fixture.Dispatcher.Dispatch(peer, [0x53, 0x4D], 0, DeliveryMethod.ReliableOrdered);
 
         Assert.Equal("reject:invalid_packet", fixture.Outcome(peer));
-        Assert.NotNull(context.DisconnectAfterUtc);
+        Assert.NotNull(context.PendingDisconnect);
     }
 
     [Fact]
@@ -394,7 +394,7 @@ public sealed class RealtimeMessageDispatcherTests
 
             if (state == "disconnect_pending")
             {
-                context.ScheduleDisconnect(DateTime.UtcNow);
+                context.BeginDisconnect(null, DateTime.UtcNow);
             }
 
             Registry.Register(context);

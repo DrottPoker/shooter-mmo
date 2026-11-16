@@ -26,7 +26,7 @@ namespace Mmorpg.Client.Networking
 
         public event Action Connected;
 
-        public event Action<DisconnectReason> Disconnected;
+        public event Action<DisconnectReason, byte[]> Disconnected;
 
         public event Action<byte[], byte, DeliveryMethod> Received;
 
@@ -87,7 +87,27 @@ namespace Mmorpg.Client.Networking
         private void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
         {
             serverPeer = null;
-            Disconnected?.Invoke(disconnectInfo.Reason);
+            Disconnected?.Invoke(disconnectInfo.Reason, ReadDisconnectData(disconnectInfo.AdditionalData));
+        }
+
+        // LiteNetLib returns the event of an empty reader, as of a local disconnect, to its pool by
+        // itself; recycling that reader as well would hand the same event out twice. Only a reader
+        // that holds the server's disconnect packet goes back here.
+        private static byte[] ReadDisconnectData(NetPacketReader reader)
+        {
+            if (reader == null || reader.IsNull)
+            {
+                return Array.Empty<byte>();
+            }
+
+            try
+            {
+                return reader.GetRemainingBytes();
+            }
+            finally
+            {
+                reader.Recycle();
+            }
         }
 
         // The reader returns to LiteNetLib's packet pool once the packet was handled.

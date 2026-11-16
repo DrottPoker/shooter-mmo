@@ -1030,8 +1030,9 @@ needs through `Initialize`, usually its channel and `IRealtimeSession`.
 The hub reaches the network only through `IRealtimeTransport`: start and stop,
 connect, send bytes on a channel with a delivery method, poll, wake the send
 thread, the round trip time, and the four events it handles: connected,
-disconnected with the reason, received bytes with their channel and delivery,
-and socket error. `LiteNetLibRealtimeTransport` implements it with one
+disconnected with the reason and the data the server put into the disconnect,
+received bytes with their channel and delivery, and socket error.
+`LiteNetLibRealtimeTransport` implements it with one
 LiteNetLib `NetManager` on the protocol's channels with synchronized events, so
 every event fires inside the poll that the hub's `Update` runs on Unity's main
 thread, and it returns each packet's reader to LiteNetLib's pool once the hub
@@ -1096,7 +1097,12 @@ One `Update` polls the transport. Every connection event and packet of the poll
 is handled in the order it arrived, and every handler raises its events at once,
 so the events of a poll keep the order of their packets across channels:
 
-1. A connection event goes to the session.
+1. A connection event goes to the session. The data of a disconnect that holds
+   a `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected` first goes through
+   the steps below as that message on the control channel; the disconnect then
+   reaches the session, which counts it as a lost connection only when the
+   session has not ended, as
+   [A Disconnect With Its Reason](#a-disconnect-with-its-reason) describes.
 2. A packet is counted by the diagnostics and dropped when the session already
    ended in this poll, so the first failure reason is the one shown to the
    player.
@@ -1166,6 +1172,33 @@ error, and loads LoginMenu, whose card says why. The periodic GameService
 validation provides the same recovery when the displaced client is not
 connected to a shard.
 
+### A Disconnect With Its Reason
+
+The worker puts the message that ends a connection into the disconnect's data
+too, as [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
+describes, because on a lossy line its reliable copy can be lost or wait behind
+a lost packet when the disconnect arrives. `LiteNetLibRealtimeTransport` copies
+the data out of LiteNetLib's reader and returns the reader to the pool only when
+it holds data: LiteNetLib returns an empty reader's event to its pool by itself,
+and recycling it a second time would hand one event out twice. The hub then
+handles a disconnect with data in the same poll, while the session is not
+disconnected yet:
+
+| Data | What the player sees |
+| --- | --- |
+| `LeaveAccepted` | A clean leave, as if the answer had arrived: CharacterSelect with the body's seconds |
+| `ServerDisconnect` | The end that the code names, as for the reliable message; the stop notice of a stopping worker is one, such as `server_shutdown` |
+| `JoinRejected` | The join fails with the server's code |
+| None, or anything else | A lost connection, `connection_lost` |
+
+The message goes through the message table on the control channel with
+reliable ordered delivery, so the state rules of its entry hold: a
+`LeaveAccepted` that is not answering a leave fails the session with
+`unexpected_leave_response`, as on the channel. A message that already arrived
+on the channel ended the session first, so the disconnect after it changes
+nothing and the message is never handled twice. The client logs every message
+it takes from a disconnect's data.
+
 ### Adding A Message Type Or A Channel
 
 A new server message type costs its generated protocol code, one handler in the
@@ -1227,7 +1260,9 @@ snapshot delivery:
   into a protocol disconnect. A carry state still advances the movement session
   while leaving, without its event. The worker answers the leave at once with
   `LeaveAccepted`, and `Leave` hands its `BodySeconds` to the caller, which
-  CharacterSelect counts down.
+  CharacterSelect counts down; an answer that arrives only as the data of the
+  disconnect counts the same, as
+  [A Disconnect With Its Reason](#a-disconnect-with-its-reason) describes.
 
 ### Presence And The Movement Session
 
@@ -3830,8 +3865,11 @@ namespace rule are in [Folder Layout](#folder-layout).
   parts; a test reads a part through `harness.Hub`, such as
   `harness.Hub.Session.State`. The packets come from the generated encoders, with
   the samples in `RealtimeHubMessages`. The connection tests pin the join, leave,
-  timeouts, every way a session ends, and the two rules of
-  [How A Session Ends](#how-a-session-ends); the dispatch tests pin, for every
+  timeouts, every way a session ends, a disconnect that carries its reason, and
+  the two rules of [How A Session Ends](#how-a-session-ends);
+  `LiteNetLibRealtimeTransportTests` drives the real transport against a
+  LiteNetLib server over loopback for the data a disconnect carries; the
+  dispatch tests pin, for every
   message type, the event it raises with its decoded content while joined, the
   failure code before the join and of a malformed payload, what the `Leaving`
   state does with it, and the channel and delivery it needs; the ordering tests

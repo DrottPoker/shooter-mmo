@@ -55,6 +55,9 @@ internal sealed class RealtimeRecordingClient : IDisposable
 
     public DisconnectReason? DisconnectReason { get; private set; }
 
+    // The data the worker put into its disconnect, empty when it sent none.
+    public byte[]? DisconnectData { get; private set; }
+
     public IReadOnlyList<RecordedRealtimePacket> Packets
     {
         get
@@ -312,6 +315,25 @@ internal sealed class RealtimeRecordingClient : IDisposable
 
     private void OnPeerDisconnected(NetPeer disconnectedPeer, DisconnectInfo disconnectInfo)
     {
+        // LiteNetLib recycles the event of an empty reader itself, so only one with data is
+        // handed back.
+        var reader = disconnectInfo.AdditionalData;
+        if (reader is not null && !reader.IsNull)
+        {
+            try
+            {
+                DisconnectData = reader.GetRemainingBytes();
+            }
+            finally
+            {
+                reader.Recycle();
+            }
+        }
+        else
+        {
+            DisconnectData = [];
+        }
+
         IsConnected = false;
         IsDisconnected = true;
         DisconnectedAtUtc = DateTime.UtcNow;

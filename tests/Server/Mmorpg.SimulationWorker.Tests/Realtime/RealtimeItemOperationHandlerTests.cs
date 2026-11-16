@@ -51,7 +51,7 @@ public sealed class RealtimeItemOperationHandlerTests
             "The item transaction returned no committed character state.",
             reason.Message);
         Assert.Null(player.Context.Session);
-        Assert.NotNull(player.Context.DisconnectAfterUtc);
+        Assert.NotNull(player.Context.PendingDisconnect);
         Assert.Empty(fixture.SessionStore.ListActiveSessions());
         Assert.False(fixture.CharacterItemStateStore.TryGet(
             player.Session.CharacterId,

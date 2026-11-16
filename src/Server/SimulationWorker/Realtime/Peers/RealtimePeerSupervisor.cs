@@ -40,14 +40,18 @@ internal sealed class RealtimePeerSupervisor(
                 continue;
             }
 
-            if (context.DisconnectAfterUtc is not null && context.DisconnectAfterUtc <= now)
+            var pendingDisconnect = context.PendingDisconnect;
+            if (pendingDisconnect is not null
+                && pendingDisconnect.IsDue(now, config.GracefulDisconnectMaximum))
             {
-                directory.DisconnectPeer(peer);
+                directory.DisconnectPeer(peer, pendingDisconnect.Data);
                 continue;
             }
 
-            // A client that never acknowledges reliable packets would grow this queue
-            // without bound, so it is disconnected without another reliable message.
+            // A client that never acknowledges reliable packets fills LiteNetLib's send window of
+            // 64 packets and then grows the outgoing queue behind it without bound, so it is
+            // disconnected without another reliable message. The count is that queue, not an
+            // acknowledgement.
             var queuedReliablePackets = peer.GetPacketsCountInReliableQueue(
                 RealtimeProtocol.ControlChannel,
                 true);
@@ -58,11 +62,11 @@ internal sealed class RealtimePeerSupervisor(
                     context.PeerId,
                     queuedReliablePackets);
                 networkMetrics.RecordConnectionRejected();
-                directory.DisconnectPeer(peer);
+                directory.DisconnectPeer(peer, null);
                 continue;
             }
 
-            if (context.DisconnectAfterUtc is not null)
+            if (pendingDisconnect is not null)
             {
                 continue;
             }
@@ -84,13 +88,13 @@ internal sealed class RealtimePeerSupervisor(
                 {
                     // The reconnecting client takes the entity and carry state over; until its
                     // join binds them, the entity stands as a lingering body.
-                    sender.SendControl(
+                    sender.SendAndDisconnect(
                         peer,
+                        context,
                         RealtimeProtocol.EncodeServerDisconnect(
                             "session_reconnected",
                             "This character connected from another client."));
                     teardown.LeaveBody(context, activeSession);
-                    context.ScheduleDisconnect(now);
                     continue;
                 }
 
@@ -101,15 +105,15 @@ internal sealed class RealtimePeerSupervisor(
                     : new ActiveSimulationSessionInvalidation(
                         "session_revoked",
                         "The simulation session is no longer active.");
-                sender.SendControl(
+                sender.SendAndDisconnect(
                     peer,
+                    context,
                     RealtimeProtocol.EncodeServerDisconnect(
                         reason.Code,
                         reason.Message));
                 teardown.RemoveBoundEntity(context, activeSession, reason.Code);
                 context.Session = null;
                 peers.RefreshPopulationMetrics();
-                context.ScheduleDisconnect(now);
                 continue;
             }
 
@@ -118,9 +122,8 @@ internal sealed class RealtimePeerSupervisor(
             if (sessionStore.TryGetAccountSessionEnd(activeSession, out var accountSessionEnd))
             {
                 var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(accountSessionEnd);
-                sender.SendControl(peer, RealtimeProtocol.EncodeServerDisconnect(code, message));
+                sender.SendAndDisconnect(peer, context, RealtimeProtocol.EncodeServerDisconnect(code, message));
                 teardown.LeaveBody(context, activeSession);
-                context.ScheduleDisconnect(now);
             }
         }
     }

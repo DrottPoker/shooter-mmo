@@ -213,7 +213,7 @@ public sealed class RealtimeAccountSessionEndTests
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(player.Peer.Sent[^1].Data, out var disconnect, out var error), error);
         Assert.Equal(disconnectCode, disconnect.Code);
         Assert.Null(player.Context.Session);
-        Assert.NotNull(player.Context.DisconnectAfterUtc);
+        Assert.NotNull(player.Context.PendingDisconnect);
         Assert.True(fixture.Bodies.IsBody(player.Entity.NetworkEntityId));
         Assert.Equal(1, fixture.Entities.PlayerCount);
         Assert.True(fixture.SessionStore.IsCurrent(player.Session, DateTime.UtcNow));

@@ -39,6 +39,12 @@ without a network.
   the bot.
 - While a leave is pending, the bot accepts every message of a joined session,
   because the worker keeps sending until it has released the session.
+- A disconnect whose data holds a `LeaveAccepted`, `ServerDisconnect`, or
+  `JoinRejected` that the bot has not handled yet is handled as that message
+  on the control channel, as
+  [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
+  describes, so a leave whose answer the line lost still completes. A
+  disconnect without such data fails the bot with `connection_closed`.
 - The bot acts only on owner snapshots and on the results of its own item and
   corpse operations. It decodes and drops everything else, such as the look the
   worker sends every player when it joins, and the looks of other players. The

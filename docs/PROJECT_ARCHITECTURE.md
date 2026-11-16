@@ -612,8 +612,13 @@ order:
 
 1. The realtime shutdown: every connected peer gets a `ServerDisconnect` with
    the reason of the stop, `server_shutdown` for a normal stop and for lost
-   authority and `game_service_outage` when the outage tolerance ran out,
-   and half a second at most to acknowledge it. Then the transport stops, the
+   authority and `game_service_outage` when the outage tolerance ran out. Once
+   LiteNetLib sent it, the worker disconnects every peer with the same message
+   as the disconnect's data, as
+   [The Reason In The Disconnect](REALTIME_PROTOCOL.md#the-reason-in-the-disconnect)
+   describes, and waits until every client confirmed its disconnect, half a
+   second at most, while LiteNetLib sends the disconnect again every 300 ms.
+   Then the transport stops, the
    work that waits for GameService gives up, in-flight operations finish, the
    combat flush commits arrow shots and quest credits with the session
    credentials, and the character state flush saves the place and vitals of
@@ -1449,7 +1454,10 @@ comes back to it:
 
 1. Unity requests leave with the exact simulation-session id. The worker
    answers at once with `LeaveAccepted`, which says how many seconds the body
-   stays, and disconnects the peer after the answer.
+   stays, and disconnects the peer once the client acknowledged the answer,
+   with the answer as the disconnect's data, as
+   [Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport)
+   describes.
 2. A leave, a lost or timed-out connection, and a connection that the worker
    ends because the client broke the protocol, exceeded a quota, overflowed
    its reliable queue, or failed a packet or completion all end the connection

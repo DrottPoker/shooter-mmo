@@ -134,10 +134,10 @@ internal sealed class RealtimeSessionHandler(
         }
 
         LogLeave(context, session, lingers);
-        sender.SendControl(
+        sender.SendAndDisconnect(
             peer,
+            context,
             RealtimeProtocol.EncodeLeaveAccepted((ushort)(lingers ? bodies.Seconds : 0)));
-        context.ScheduleDisconnect(DateTime.UtcNow);
     }
 
     public void Complete(RealtimeOperationResult operation)
@@ -195,13 +195,13 @@ internal sealed class RealtimeSessionHandler(
                 completed.Context.PeerId,
                 completed.Result.Error!.Code,
                 completed.Result.Error.Message);
-            sender.SendControl(
+            sender.SendAndDisconnect(
                 peer,
+                completed.Context,
                 RealtimeProtocol.EncodeJoinRejected(
                     completed.Result.Error!.Code,
                     completed.Result.Error.Message));
             networkMetrics.RecordJoinRejected();
-            completed.Context.ScheduleDisconnect(DateTime.UtcNow);
             return;
         }
 

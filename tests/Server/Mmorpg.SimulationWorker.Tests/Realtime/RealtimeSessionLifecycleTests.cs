@@ -12,7 +12,7 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 public sealed class RealtimeSessionLifecycleTests
 {
     [Fact]
-    public async Task JoinRejectedByGameServiceDisconnectsAfterTheGracePeriod()
+    public async Task JoinRejectedByGameServiceDisconnectsOnceTheClientAcknowledgedTheRejection()
     {
         await using var harness = RealtimeServerHarness.Create();
         harness.GameService.OnConsume = (_, _) => Task.FromResult(
@@ -31,21 +31,20 @@ public sealed class RealtimeSessionLifecycleTests
         Assert.Equal("join_ticket_consumed", rejection.Code);
         Assert.Equal("The join ticket was already used.", rejection.Message);
         var reliable = client.ReliablePackets;
-        Assert.Equal(RealtimeMessageType.JoinRejected, Assert.Single(reliable).Type);
+        var answer = Assert.Single(reliable);
+        Assert.Equal(RealtimeMessageType.JoinRejected, answer.Type);
         var metrics = harness.NetworkMetrics!.Capture();
         Assert.Equal(1, metrics.RejectedJoins);
         Assert.Equal(0, metrics.AcceptedJoins);
-        var denial = Assert.Single(
+        Assert.Single(
             harness.Logger.Entries,
             entry => entry.Level == LogLevel.Warning
                 && entry.Template == "[SIMULATION] UDP peer {PeerId} was denied shard access with code {Code}: {Message}");
 
-        // The worker logs the denial before it sends JoinRejected and schedules the delayed
-        // disconnect, and a late client poll only records the disconnect later, so this
-        // bound holds under any machine load.
-        Assert.True(
-            client.DisconnectedAtUtc!.Value - denial.LoggedAtUtc >= TimeSpan.FromMilliseconds(150),
-            "The server must keep the peer for the graceful disconnect delay.");
+        // The rejection came first on the reliable channel, and the disconnect carries it too.
+        Assert.True(client.DisconnectedAtUtc >= answer.ReceivedAtUtc);
+        Assert.Equal(answer.Data, client.DisconnectData);
+        Assert.Equal(LiteNetLib.DisconnectReason.RemoteConnectionClose, client.DisconnectReason);
     }
 
     [Fact]

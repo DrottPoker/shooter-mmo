@@ -670,20 +670,22 @@ What the profiles show:
   resends it, so over three runs the p95 rose to 1.0 to 1.7 seconds under
   `poor` and 0.7 to 2.6 seconds under `terrible`, as for the bots of
   [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles).
-- **The client's leave meets the leave finding only under `terrible`.** Over
-  every run of the day 60 of 60 leaves ended cleanly under `good` and
-  `normal`, 220 of 220 under `poor`, and 217 of 220 under `terrible`. The 3
-  that failed, all in one run, ended within 0.8 seconds with `Realtime
-  operation failed: The realtime connection closed: RemoteConnectionClose.
-  [connection_lost]` and went to Character Select: the worker's disconnect
-  overtook a lost `LeaveAccepted`, the finding of
-  [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles)
-  that fails 25 and 58 percent of the load bots' leaves under `poor` and
-  `terrible`. Every leave but the first came about a second after a join, with
-  the reliable channel otherwise quiet, and each join opens a new socket, so
-  the proxy's outage count starts again and only the first leave can meet an
-  outage. A leave after a longer play, with more in flight, can fail more
-  often, as the load bots show.
+- **Every leave ends cleanly.** Over every run of the day 60 of 60 leaves
+  ended cleanly under `good` and `normal`, 220 of 220 under `poor`, and 217 of
+  220 under `terrible`; the 3 that failed ended with `Realtime operation
+  failed: The realtime connection closed: RemoteConnectionClose.
+  [connection_lost]`, because the worker disconnected a quarter of a second
+  after `LeaveAccepted` and so overtook a lost answer. On 2026-11-15 the same
+  test failed 0 of 100 leaves under `poor` and 2 of 100 under `terrible`. The
+  worker now disconnects only once the client acknowledged the answer and
+  carries the answer in the disconnect too, as
+  [Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport)
+  describes: on 2026-11-16 100 of 100 leaves ended cleanly under `poor` and
+  under `terrible`, every answer on the reliable channel, with a median of 0.3
+  and 0.5 seconds and at most 1.4 and 0.83 seconds. These leaves come about a
+  second after a join, with the reliable channel otherwise quiet; the load bots
+  of [Measured Under The Profiles](STACK_STRESS_TESTING.md#measured-under-the-profiles)
+  leave after minutes of play.
 - **The round trip reads above the profile under loss.** Its p95 lies 75 to
   430 ms above the profile's round trip under `normal` and worse, more than
   the jitter explains; these runs do not show why.

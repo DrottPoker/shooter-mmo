@@ -39,7 +39,8 @@ internal sealed class RealtimeServer(
     IReadOnlyList<IDisposable> ownedResources,
     ILogger logger) : IDisposable
 {
-    // How long the stop notice may take to be acknowledged before the transport closes.
+    // How long the stop notice and the disconnects that carry it may take before the transport
+    // closes.
     private static readonly TimeSpan StopNoticeTimeout = TimeSpan.FromMilliseconds(500);
 
     private readonly RealtimeLoopStep networkPollStep = loopGuard.LoopStep("network poll");
@@ -257,21 +258,26 @@ internal sealed class RealtimeServer(
         logger.LogInformation("[SIMULATION] Realtime transport stopped.");
     }
 
-    // Sends every connected peer a ServerDisconnect with the reason of the stop and gives the
-    // reliable packets a short time to be acknowledged; a peer that does not acknowledge in time
-    // sees only the closed connection. The loop has ended, so nothing else uses the transport.
+    // Sends every connected peer a ServerDisconnect with the reason of the stop, then, once
+    // LiteNetLib sent it, disconnects every peer with the same notice as the disconnect's data,
+    // or with the reason the peer was already going for, and waits until every client confirmed
+    // its disconnect. LiteNetLib sends a disconnect again every 300 ms until then, so a peer that
+    // lost the reliable notice still learns why. All of it takes at most StopNoticeTimeout; a peer
+    // whose disconnect is not confirmed by then sees only the closed connection. The loop has
+    // ended, so nothing else uses the transport.
     private async Task TellPeersAsync()
     {
-        var told = new List<IRealtimePeerConnection>();
+        var told = new List<(IRealtimePeerConnection Peer, byte[] Data)>();
         try
         {
             var packet = RealtimeProtocol.EncodeServerDisconnect(stopReason.Code, stopReason.Message);
+            var notice = RealtimeDisconnectData.Fit(packet);
             foreach (var context in peers.Contexts)
             {
                 if (peers.TryGetCurrentPeer(context, out var peer))
                 {
                     sender.SendControl(peer, packet);
-                    told.Add(peer);
+                    told.Add((peer, context.PendingDisconnect?.Data ?? notice));
                 }
             }
 
@@ -286,11 +292,25 @@ internal sealed class RealtimeServer(
                 stopReason.Code);
             var started = Stopwatch.GetTimestamp();
             transport.FlushSends();
+
+            // An empty outgoing queue means that LiteNetLib sent the notice once, not that the
+            // client acknowledged it; a disconnect stops the resends of its reliable packets.
             while (Stopwatch.GetElapsedTime(started) < StopNoticeTimeout
-                && told.Exists(peer => peer.GetPacketsCountInReliableQueue(RealtimeProtocol.ControlChannel, true) > 0))
+                && told.Exists(entry => entry.Peer.GetPacketsCountInReliableQueue(RealtimeProtocol.ControlChannel, true) > 0))
             {
                 await Task.Delay(10);
                 transport.FlushSends();
+            }
+
+            foreach (var (peer, data) in told)
+            {
+                transport.DisconnectPeer(peer, data);
+            }
+
+            while (Stopwatch.GetElapsedTime(started) < StopNoticeTimeout
+                && told.Exists(entry => transport.AwaitsDisconnectConfirmation(entry.Peer)))
+            {
+                await Task.Delay(10);
             }
         }
         catch (Exception exception)

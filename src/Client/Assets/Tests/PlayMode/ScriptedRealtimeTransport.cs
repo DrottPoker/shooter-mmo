@@ -17,7 +17,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
         public event Action Connected;
 
-        public event Action<DisconnectReason> Disconnected;
+        public event Action<DisconnectReason, byte[]> Disconnected;
 
         public event Action<byte[], byte, DeliveryMethod> Received;
 
@@ -99,7 +99,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         // The line drops: the next poll reports the timeout, as LiteNetLib does.
         public void LoseLine()
         {
-            pending.Add(() => Disconnected?.Invoke(DisconnectReason.Timeout));
+            pending.Add(() => Disconnected?.Invoke(DisconnectReason.Timeout, Array.Empty<byte>()));
         }
     }
 }
