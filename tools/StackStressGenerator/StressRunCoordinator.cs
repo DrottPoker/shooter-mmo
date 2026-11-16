@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Worlds;
 using Mmorpg.Tools.SimulationBotClient;
 
 namespace Mmorpg.Tools.StackStressGenerator;
@@ -495,8 +496,28 @@ public sealed class StressRunCoordinator(
             Rejoin = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.RejoinAsync(plan, token), token),
             ReadRejoinFacts = rejoin is null ? null : (plan, token) => Task.Run(() => rejoin.ReadRejoinFactsAsync(plan, token), token),
             Regeneration = rejoin is null ? new PlayingRegeneration(1, 1) : PlayingRegeneration.Load(options.CombatRulesPath),
+            WorldSpawn = rejoin is null ? default : LoadWorldSpawn(),
             Outage = outage
         };
+    }
+
+    // The World spawn from the manifest of the World data the worker runs, where a body that died
+    // brings its character back.
+    private SimulationVector3 LoadWorldSpawn()
+    {
+        try
+        {
+            var spawn = WorldManifestFileStore.Load(options.WorldDataPath, options.WorldId).spawn;
+            return new SimulationVector3(spawn.x, spawn.y, spawn.z);
+        }
+        catch (Exception exception) when (exception is IOException
+            or InvalidDataException
+            or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException(
+                $"The churn's rejoin check needs the manifest of World {options.WorldId} below '{options.WorldDataPath}': {exception.Message}",
+                exception);
+        }
     }
 
     // Fires the login or logout burst once its time in the steady interval came. It runs on a pool

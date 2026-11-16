@@ -106,9 +106,12 @@ public enum PlayingCounter
     RejoinsSavedFoundBody,
     RejoinsBodyFoundGone,
 
-    // Bodies that a Mob hit or killed while they stood, as the saved-place returns show it.
+    // Bodies that a Mob hit or killed while they stood, as the saved-place returns show it, and
+    // bodies that died and went before their session was released, so a reconnect found a new
+    // entity at the World spawn.
     RejoinBodiesHit,
     RejoinBodiesDied,
+    RejoinBodiesDiedBeforeRelease,
 
     // Returns whose place or health check failed.
     RejoinChecksFailed

@@ -84,6 +84,9 @@ public sealed class StressQualityBoundary
         "network_proxy_lateness_p99_ms"
     };
 
+    // The process name of the generator's own memory trend.
+    private const string GeneratorProcess = "generator";
+
     // The memory rule judges only a steady interval at least this long; a shorter one is too
     // short for its fifths to tell growth from warm-up and garbage collection.
     public static readonly TimeSpan MemoryRuleMinimumSteady = TimeSpan.FromMinutes(10);
@@ -461,9 +464,12 @@ public sealed class StressQualityBoundary
         };
     }
 
-    // The last fifth's average working set over the second fifth's, of the worst process; only a
-    // planned steady interval of ten minutes or more is judged. The plan decides, not the measured
-    // interval, so scheduling jitter at either end cannot take the rule away from a run.
+    // The last fifth's average over the second fifth's, of the worst process; only a planned
+    // steady interval of ten minutes or more is judged. The plan decides, not the measured
+    // interval, so scheduling jitter at either end cannot take the rule away from a run. The
+    // worker and GameService are judged by their working set, which a host pays for. The generator
+    // runs with server GC, whose working set follows the collector's commit decisions on a flat
+    // heap, so it is judged by its managed heap, which it samples itself in every mode.
     private static Measurement MeasureMemoryGrowth(StressRunReport report)
     {
         var planned = TimeSpan.FromSeconds(report.Configuration.SteadyDurationSeconds);
@@ -477,20 +483,28 @@ public sealed class StressQualityBoundary
             : ["worker", "generator"];
         var trends = report.Soak?.Memory ?? [];
         var missing = required
-            .Where(process => trends.All(trend => trend.Process != process || trend.WorkingSetGrowthMiB is null))
+            .Where(process => trends.All(trend => trend.Process != process || JudgedMemoryGrowth(trend) is null))
+            .Select(process => (process == GeneratorProcess ? "the managed heap of " : "the working set of ") + process)
             .ToArray();
         if (missing.Length > 0)
         {
-            return Measurement.Missing($"the working set of {string.Join(", ", missing)} was not sampled in every fifth of the steady interval.");
+            return Measurement.Missing($"{string.Join(", ", missing)} was not sampled in every fifth of the steady interval.");
         }
 
-        var measured = trends.Where(trend => trend.WorkingSetGrowthMiB is not null).ToArray();
-        var worst = measured.MaxBy(trend => trend.WorkingSetGrowthMiB!.Value)!;
+        var measured = trends.Where(trend => JudgedMemoryGrowth(trend) is not null).ToArray();
+        var worst = measured.MaxBy(trend => JudgedMemoryGrowth(trend)!.Value)!;
         return Measurement.Of(
-            worst.WorkingSetGrowthMiB!.Value,
+            JudgedMemoryGrowth(worst)!.Value,
             "worst " + worst.Process + "; " + string.Join(
                 ", ",
-                measured.Select(trend => Invariant($"{trend.Process} {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h"))));
+                measured.Select(trend => trend.Process == GeneratorProcess
+                    ? Invariant($"{trend.Process} managed heap {trend.ManagedHeapGrowthMiB:+0.0;-0.0} MiB, slope {trend.ManagedHeapSlopeMiBPerHour:+0.0;-0.0} MiB/h, working set {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h")
+                    : Invariant($"{trend.Process} {trend.WorkingSetGrowthMiB:+0.0;-0.0} MiB, slope {trend.WorkingSetSlopeMiBPerHour:+0.0;-0.0} MiB/h"))));
+    }
+
+    private static double? JudgedMemoryGrowth(StressMemoryTrend trend)
+    {
+        return trend.Process == GeneratorProcess ? trend.ManagedHeapGrowthMiB : trend.WorkingSetGrowthMiB;
     }
 
     // How much the two operation tables grew from the retention sample, taken once GameService's

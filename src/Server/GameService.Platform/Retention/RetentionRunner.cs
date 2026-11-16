@@ -201,22 +201,21 @@ internal sealed class RetentionRunner
         private int deleted;
         private TimeSpan duration;
         private TimeSpan? lag;
+        private bool lagMeasured;
         private bool failed;
         private bool finished;
 
         public IRetentionTask Task { get; } = task;
 
-        // The first batch takes the oldest due rows, so its oldest row tells how long rows had
-        // been due when the pass began; a first batch that found nothing due means no lag.
+        // The batches take the oldest due rows first, so the first batch with a row that tells the
+        // lag holds the oldest such row, which tells how long rows had been due when the pass
+        // began. A task that finished without one had no such row due, so no lag.
         public void Add(RetentionBatchResult result, TimeSpan window, TimeSpan elapsed, bool full)
         {
-            if (batches == 0)
+            if (!lagMeasured && (result.OldestDueAge is not null || !full))
             {
-                lag = result.Deleted == 0
-                    ? TimeSpan.Zero
-                    : result.OldestDueAge is { } age
-                        ? age > window ? age - window : TimeSpan.Zero
-                        : null;
+                lagMeasured = true;
+                lag = result.OldestDueAge is { } age && age > window ? age - window : TimeSpan.Zero;
             }
 
             batches++;

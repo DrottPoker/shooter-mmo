@@ -238,7 +238,8 @@ public static class PlayingLeaveSafety
 }
 
 // What the bot knew when it left: where it stood, its vitals, when the leave was accepted, its
-// simulation session, and how long the worker said its body stays.
+// simulation session, how long the worker said its body stays, and its entity, which the body
+// keeps.
 public sealed record PlayingLeaveSnapshot(
     SimulationVector3 Position,
     int Health,
@@ -246,17 +247,19 @@ public sealed record PlayingLeaveSnapshot(
     int MaximumHealth,
     DateTime LeftAt,
     string SimulationSessionId,
-    int BodySeconds);
+    int BodySeconds,
+    ulong EntityId);
 
 // What the bot sees after its join: whether GameService placed it as the reconnect of its body,
-// the place of the join, and its first owner combat state.
+// the place of the join, its first owner combat state, and the entity the join gave it.
 public sealed record PlayingRejoinObservation(
     bool IsReconnect,
     SimulationVector3 Position,
     int Health,
     int MaximumHealth,
     RealtimeCombatLifeState LifeState,
-    DateTime ObservedAt);
+    DateTime ObservedAt,
+    ulong EntityId);
 
 // The character's saved place and vitals as GameService stores them, and the session that wrote
 // them.
@@ -274,6 +277,8 @@ public sealed record PlayingRejoinVerdict(bool Passed, string Outcome, string? C
     public bool BodyWasHit => Outcome == PlayingRejoinCheck.RestoredAfterHit;
 
     public bool BodyDied => Outcome == PlayingRejoinCheck.RespawnedAfterDeath;
+
+    public bool BodyDiedBeforeRelease => Outcome == PlayingRejoinCheck.RespawnedAfterDeathBeforeRelease;
 }
 
 // What a player sees when it comes back, checked like a player would notice it:
@@ -287,6 +292,11 @@ public sealed record PlayingRejoinVerdict(bool Passed, string Outcome, string? C
 //   and only the place and the most it can have regenerated count then. The join must also give
 //   the bot exactly the state that GameService saved, and that state must be the one the body's
 //   session wrote.
+// - A reconnect whose join gives another entity than the bot had at its leave did not take its
+//   body over: the body went, because it died or its time ended, before GameService released its
+//   session, and the join placed a new entity from the state the session captured. When the
+//   character died after the leave, that is the World spawn with full health; otherwise the
+//   return is judged like one from the saved place.
 public static class PlayingRejoinCheck
 {
     public const string Resumed = "resumed";
@@ -294,6 +304,7 @@ public static class PlayingRejoinCheck
     public const string Restored = "restored";
     public const string RestoredAfterHit = "restored_after_hit";
     public const string RespawnedAfterDeath = "respawned_after_death";
+    public const string RespawnedAfterDeathBeforeRelease = "respawned_after_death_before_release";
 
     // The bot stands, on the ground and without speed, before it leaves, so its body stays
     // exactly where the owner snapshot showed it, and the saved state keeps the simulation's
@@ -309,19 +320,51 @@ public static class PlayingRejoinCheck
     // combat, so any death before that is an earlier one.
     private static readonly TimeSpan DeathSlack = TimeSpan.FromSeconds(1);
 
+    // Whether a reconnect found its body gone, so the bot must read what the database says.
+    public static bool FoundBodyGone(PlayingLeaveSnapshot leave, PlayingRejoinObservation rejoin)
+    {
+        ArgumentNullException.ThrowIfNull(leave);
+        ArgumentNullException.ThrowIfNull(rejoin);
+        return rejoin.IsReconnect && rejoin.EntityId != leave.EntityId;
+    }
+
     public static PlayingRejoinVerdict Judge(
         PlayingLeaveSnapshot leave,
         PlayingRejoinObservation rejoin,
         PlayingRejoinFacts? facts,
-        int healthPerSecond)
+        int healthPerSecond,
+        SimulationVector3 worldSpawn)
     {
         ArgumentNullException.ThrowIfNull(leave);
         ArgumentNullException.ThrowIfNull(rejoin);
         var evidence = Invariant(
             $"left at {Format(leave.Position)} with health {leave.Health}/{leave.MaximumHealth}; came back {(rejoin.ObservedAt - leave.LeftAt).TotalSeconds:0.0} s later at {Format(rejoin.Position)} with health {rejoin.Health}/{rejoin.MaximumHealth}");
-        return rejoin.IsReconnect
-            ? JudgeBody(leave, rejoin, healthPerSecond, evidence)
-            : JudgeSaved(leave, rejoin, facts, healthPerSecond, evidence);
+        if (!rejoin.IsReconnect)
+        {
+            return JudgeSaved(leave, rejoin, facts, healthPerSecond, evidence);
+        }
+
+        if (!FoundBodyGone(leave, rejoin))
+        {
+            return JudgeBody(leave, rejoin, healthPerSecond, evidence);
+        }
+
+        evidence += Invariant($"; the join gave entity {rejoin.EntityId} instead of the body's {leave.EntityId}, so the body went before the session was released");
+        if (facts?.LastDeathAt is { } died && died >= leave.LeftAt - DeathSlack)
+        {
+            evidence += Invariant($"; the character died {(died - leave.LeftAt).TotalSeconds:0.0} s after the leave");
+            if (rejoin.LifeState != RealtimeCombatLifeState.Alive || rejoin.Health != rejoin.MaximumHealth)
+            {
+                return Fail("rejoin_health_mismatch", "the body died, but the character did not come back alive with full health", evidence);
+            }
+
+            // The spawn's height is where the movement puts the character on the ground.
+            return HorizontalDistance(rejoin.Position, worldSpawn) > PositionTolerance
+                ? Fail("rejoin_place_mismatch", Invariant($"the body died, but the character did not come back at the World spawn {Format(worldSpawn)}"), evidence)
+                : new PlayingRejoinVerdict(true, RespawnedAfterDeathBeforeRelease, null, evidence);
+        }
+
+        return JudgeSaved(leave, rejoin, facts, healthPerSecond, evidence);
     }
 
     // The most health a character can have after regenerating for a while from a start.
@@ -419,6 +462,13 @@ public static class PlayingRejoinCheck
         var dy = left.Y - right.Y;
         var dz = left.Z - right.Z;
         return MathF.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+    }
+
+    private static float HorizontalDistance(SimulationVector3 left, SimulationVector3 right)
+    {
+        var dx = left.X - right.X;
+        var dz = left.Z - right.Z;
+        return MathF.Sqrt((dx * dx) + (dz * dz));
     }
 
     private static string Format(SimulationVector3 position)

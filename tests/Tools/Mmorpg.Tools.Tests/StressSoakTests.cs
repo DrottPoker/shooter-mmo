@@ -17,6 +17,8 @@ public sealed class StressSoakTests
     private static readonly DateTime LeftAt = new(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
     private static readonly SimulationVector3 Spot = new(10f, 2f, -30f);
     private static readonly Guid Session = Guid.Parse("8c1f9e0d-0000-4000-8000-000000000001");
+    private static readonly SimulationVector3 WorldSpawn = new(0f, 0f, -12f);
+    private const ulong BodyEntity = 5982;
 
     private static string BoundaryPath => Path.Combine(RepositoryPaths.Root, "tools", "load", "quality-boundary.json");
 
@@ -199,6 +201,68 @@ public sealed class StressSoakTests
         Assert.Equal("rejoin_health_mismatch", wounded.Code);
     }
 
+    // A reconnect that keeps the body's entity took the body over and is judged as one.
+    [Fact]
+    public void AReconnectThatKeepsItsEntityIsJudgedAsTheBodyTakenOver()
+    {
+        var leave = Leave(health: 60);
+
+        Assert.False(PlayingRejoinCheck.FoundBodyGone(leave, Rejoin(reconnect: true, health: 62, after: 5)));
+        Assert.Equal(PlayingRejoinCheck.Resumed, Judge(leave, Rejoin(reconnect: true, health: 62, after: 5)).Outcome);
+        Assert.Equal(
+            "rejoin_place_mismatch",
+            Judge(leave, Rejoin(reconnect: true, health: 100, after: 30, at: WorldSpawn)).Code);
+    }
+
+    // Bot 121 of the first 30-minute soak at 500 players: its body died and went before
+    // GameService released its session, so the reconnect got a new entity at the World spawn with
+    // full health, as designed.
+    [Fact]
+    public void AReconnectWithANewEntityAfterADeathComesBackAtTheWorldSpawnWithFullHealth()
+    {
+        var leave = new PlayingLeaveSnapshot(
+            new SimulationVector3(-135.682f, 0f, -44.618f), 96, 100, 100, LeftAt, Session.ToString("D"), 20, BodyEntity);
+        var rejoin = new PlayingRejoinObservation(
+            true, WorldSpawn, 100, 100, RealtimeCombatLifeState.Alive, LeftAt.AddSeconds(29.8), 8668);
+        var died = new PlayingRejoinFacts(null, LeftAt.AddSeconds(27), null);
+
+        var verdict = Judge(leave, rejoin, died);
+        var wounded = Judge(leave, rejoin with { Health = 70 }, died);
+        var elsewhere = Judge(leave, rejoin with { Position = new SimulationVector3(5f, 0f, -12f) }, died);
+
+        Assert.True(PlayingRejoinCheck.FoundBodyGone(leave, rejoin));
+        Assert.True(verdict.Passed, verdict.Detail);
+        Assert.Equal(PlayingRejoinCheck.RespawnedAfterDeathBeforeRelease, verdict.Outcome);
+        Assert.True(verdict.BodyDiedBeforeRelease);
+        Assert.False(verdict.BodyDied);
+        Assert.Contains("entity 8668 instead of the body's 5982", verdict.Detail, StringComparison.Ordinal);
+        Assert.Equal("rejoin_health_mismatch", wounded.Code);
+        Assert.Equal("rejoin_place_mismatch", elsewhere.Code);
+    }
+
+    // A body whose time ended before its release, without a death, brings the character back from
+    // the state its session saved, judged like any return from the saved place.
+    [Fact]
+    public void AReconnectWithANewEntityWithoutADeathIsJudgedByTheSavedState()
+    {
+        var leave = Leave(health: 60);
+        var rejoin = Rejoin(reconnect: true, health: 80, after: 30, entityId: 8668);
+
+        var restored = Judge(leave, rejoin, Facts(health: 80, standing: 20.4) with { ReleasedAt = null });
+        var earlierDeath = Judge(
+            leave,
+            rejoin,
+            Facts(health: 80, standing: 20.4) with { ReleasedAt = null, LastDeathAt = LeftAt.AddMinutes(-5) });
+        var moved = Judge(leave, rejoin, Facts(health: 80, standing: 20.4, x: 0f) with { ReleasedAt = null });
+
+        Assert.True(restored.Passed, restored.Detail);
+        Assert.Equal(PlayingRejoinCheck.RestoredAfterHit, restored.Outcome);
+        Assert.True(earlierDeath.Passed, earlierDeath.Detail);
+        Assert.False(earlierDeath.BodyDiedBeforeRelease);
+        Assert.Equal("rejoin_restore_mismatch", moved.Code);
+        Assert.Equal("rejoin_state_not_saved", Judge(leave, rejoin, null).Code);
+    }
+
     [Fact]
     public void ABotLeavesOnlyCalmAndAwayFromAggressiveMobsAndWalksAwayFromThemFirst()
     {
@@ -362,6 +426,57 @@ public sealed class StressSoakTests
         Assert.True(clean.Passed);
         Assert.False(unmeasured.Passed);
         Assert.Null(unmeasured.Measured);
+    }
+
+    // The generator runs with server GC, whose working set follows the collector's commit
+    // decisions on a flat heap, so its managed heap is judged; the worker and GameService keep
+    // their working set.
+    [Fact]
+    public void TheMemoryRuleJudgesTheGeneratorByItsManagedHeap()
+    {
+        var boundary = StressQualityBoundary.Load(BoundaryPath);
+        var limit = boundary.Rules.Single(rule => rule.Rule == "process_memory_growth").Limit;
+        StressRunReport WithGenerator(double workingSetGrowth, double heapGrowth, double gameServiceGrowth = 0)
+        {
+            var report = SoakReport(minutes: 30, workerGrowth: 0);
+            return report with
+            {
+                Soak = report.Soak! with
+                {
+                    Memory =
+                    [
+                        report.Soak.Memory[0],
+                        new StressMemoryTrend("gameService", 100, 0, [300, 300, 300, 300, 300 + gameServiceGrowth]),
+                        new StressMemoryTrend("generator", 100, 0, [300, 300, 340, 300, 300 + workingSetGrowth], 0, [160, 160, 160, 160, 160 + heapGrowth])
+                    ]
+                }
+            };
+        }
+
+        var flatHeap = Rule(boundary, WithGenerator(workingSetGrowth: limit + 60, heapGrowth: 1), "process_memory_growth");
+        var growingHeap = Rule(boundary, WithGenerator(workingSetGrowth: 0, heapGrowth: limit + 5), "process_memory_growth");
+        var gameService = Rule(boundary, WithGenerator(workingSetGrowth: 0, heapGrowth: 0, gameServiceGrowth: limit + 1), "process_memory_growth");
+        var noHeap = SoakReport(minutes: 30, workerGrowth: 0);
+        noHeap = noHeap with
+        {
+            Soak = noHeap.Soak! with
+            {
+                Memory = [noHeap.Soak.Memory[0], noHeap.Soak.Memory[1], new StressMemoryTrend("generator", 100, 0, [300, 300, 300, 300, 300])]
+            }
+        };
+        var unmeasured = Rule(boundary, noHeap, "process_memory_growth");
+
+        Assert.True(flatHeap.Passed);
+        Assert.Equal(1, flatHeap.Measured!.Value, 6);
+        Assert.Contains("generator managed heap +1.0 MiB", flatHeap.Note, StringComparison.Ordinal);
+        Assert.Contains(FormattableString.Invariant($"working set +{limit + 60:0.0} MiB"), flatHeap.Note, StringComparison.Ordinal);
+        Assert.False(growingHeap.Passed);
+        Assert.Equal(limit + 5, growingHeap.Measured!.Value, 6);
+        Assert.Contains("worst generator", growingHeap.Note, StringComparison.Ordinal);
+        Assert.False(gameService.Passed);
+        Assert.Contains("worst gameService", gameService.Note, StringComparison.Ordinal);
+        Assert.False(unmeasured.Passed);
+        Assert.Contains("the managed heap of generator", unmeasured.Note, StringComparison.Ordinal);
     }
 
     // The sample comes once the window and two passes went by, and only when two minutes of the
@@ -658,10 +773,11 @@ public sealed class StressSoakTests
         Assert.Equal(56379, StressRedisSampler.ParseEndpoint("127.0.0.1:56379").Port);
     }
 
-    // A remote player that leaves the bot's interest and comes back is one pair, so what a bot
-    // keeps does not grow with the length of the run.
+    // Every stay of a remote player in the bot's interest folds into the bot's totals when it
+    // ends, so what a bot keeps does not grow with the length of the run, the players it meets,
+    // or the churn that gives a player a new entity.
     [Fact]
-    public void ARemotePlayerSeenTwiceIsOnePair()
+    public void VisitsFoldIntoTheTotalsWhenTheyEnd()
     {
         var second = Stopwatch.Frequency;
         var cadence = new SimulationBotRemoteCadence();
@@ -676,12 +792,13 @@ public sealed class StressSoakTests
         cadence.EndWindow(40 * second);
 
         var summary = cadence.Capture()!;
-        Assert.Equal(1, summary.Entities);
-        Assert.Equal(3, summary.PerEntity.Single().Updates);
-        Assert.Equal(6d, summary.PerEntity.Single().VisibleSeconds, 6);
+        Assert.Equal(3, summary.Visits);
+        Assert.Equal(3, summary.Updates);
+        Assert.Equal(6d, summary.VisibleSeconds, 6);
         var combined = SimulationBotRemoteCadenceSummary.Combine(summary, summary)!;
-        Assert.Equal(2, combined.Entities);
+        Assert.Equal(6, combined.Visits);
         Assert.Equal(6, combined.Updates);
+        Assert.Equal(12d, combined.VisibleSeconds, 6);
     }
 
     [Fact]
@@ -704,23 +821,30 @@ public sealed class StressSoakTests
         PlayingRejoinObservation rejoin,
         PlayingRejoinFacts? facts = null)
     {
-        return PlayingRejoinCheck.Judge(leave, rejoin, facts, healthPerSecond: 1);
+        return PlayingRejoinCheck.Judge(leave, rejoin, facts, healthPerSecond: 1, WorldSpawn);
     }
 
     private static PlayingLeaveSnapshot Leave(int health)
     {
-        return new PlayingLeaveSnapshot(Spot, health, 100, 100, LeftAt, Session.ToString("D"), 20);
+        return new PlayingLeaveSnapshot(Spot, health, 100, 100, LeftAt, Session.ToString("D"), 20, BodyEntity);
     }
 
-    private static PlayingRejoinObservation Rejoin(bool reconnect, int health, double after, float x = 10f)
+    private static PlayingRejoinObservation Rejoin(
+        bool reconnect,
+        int health,
+        double after,
+        float x = 10f,
+        ulong entityId = BodyEntity,
+        SimulationVector3? at = null)
     {
         return new PlayingRejoinObservation(
             reconnect,
-            new SimulationVector3(x, Spot.Y, Spot.Z),
+            at ?? new SimulationVector3(x, Spot.Y, Spot.Z),
             health,
             100,
             RealtimeCombatLifeState.Alive,
-            LeftAt.AddSeconds(after));
+            LeftAt.AddSeconds(after),
+            entityId);
     }
 
     private static PlayingRejoinFacts Facts(int health, double standing, float x = 10f)

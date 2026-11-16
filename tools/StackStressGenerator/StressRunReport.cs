@@ -78,17 +78,18 @@ public sealed record StressBotAggregate(
 // How often the bots received the state of the remote players that walked near them during the
 // steady interval. Each bot's rate is its updates per second of the remote players while they
 // walked within the near radius, over the time between those updates; the average, p5, and
-// minimum are over the bots that saw one walk near. PairP5Hz is the fifth percentile over every
-// bot and remote player pair that walked near. The all-entities numbers are the received states
+// minimum are over the bots that saw one walk near. VisitP5Hz is the fifth percentile, to 0.05 Hz,
+// over every visit, a remote player's stay in a bot's interest, in which it walked near. The
+// all-entities numbers are the received states
 // per second over every remote player a bot saw, standing or walking, near or far, weighted by
 // how long it saw each, which the worker no longer sends at the snapshot rate.
 public sealed record StressRemoteCadenceSummary(
     int Bots,
-    int Pairs,
+    long Visits,
     double AverageHz,
     double P5Hz,
     double MinimumHz,
-    double PairP5Hz,
+    double VisitP5Hz,
     long UntrackedRecords,
     double AllEntitiesAverageHz = 0,
     double AllEntitiesP5Hz = 0)
@@ -106,12 +107,12 @@ public sealed record StressRemoteCadenceSummary(
         }
 
         var rates = measured.Select(bot => bot.UpdatesPerSecond!.Value).Order().ToArray();
-        var pairs = measured
-            .SelectMany(bot => bot.PerEntity)
-            .Where(pair => pair.NearMovingSeconds > 0)
-            .Select(pair => pair.NearMovingUpdates / pair.NearMovingSeconds)
-            .Order()
-            .ToArray();
+        var visits = new Mmorpg.Tools.SimulationBotClient.SimulationBotRateHistogram();
+        foreach (var bot in measured)
+        {
+            visits.Add(bot.VisitRates);
+        }
+
         var allRates = all
             .Where(bot => bot.AllEntitiesUpdatesPerSecond is not null)
             .Select(bot => bot.AllEntitiesUpdatesPerSecond!.Value)
@@ -119,11 +120,11 @@ public sealed record StressRemoteCadenceSummary(
             .ToArray();
         return new StressRemoteCadenceSummary(
             measured.Length,
-            pairs.Length,
+            visits.Count,
             rates.Average(),
             Percentile(rates, 0.05),
             rates[0],
-            pairs.Length == 0 ? 0 : Percentile(pairs, 0.05),
+            visits.Percentile(0.05) ?? 0,
             all.Sum(bot => bot.UntrackedRecords),
             allRates.Length == 0 ? 0 : allRates.Average(),
             allRates.Length == 0 ? 0 : Percentile(allRates, 0.05));

@@ -97,7 +97,7 @@ public sealed class SimulationBotSessionTests
 
         var cadence = bot.Session.Capture().RemoteCadence;
         Assert.NotNull(cadence);
-        Assert.Equal(1, cadence.Entities);
+        Assert.Equal(1, cadence.Visits);
         Assert.Equal(10, cadence.Updates);
         Assert.Equal(1d, cadence.VisibleSeconds, 6);
         Assert.Equal(10d, cadence.AllEntitiesUpdatesPerSecond!.Value, 6);

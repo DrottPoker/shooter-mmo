@@ -988,6 +988,17 @@ The check is what a player would notice, by `PlayingRejoinCheck`:
   after its time was hit, and then only the place and the most health it can
   have regenerated count. The join must also give the bot exactly the saved
   state, and that state must be the one the body's own session wrote.
+- A join that GameService placed as the reconnect of the body but that gives
+  the bot another entity than it had at its leave did not take the body over:
+  the body went, because it died or its time ended, before GameService released
+  its session, and the worker placed a new entity from the state the session
+  captured, as [Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies)
+  describes. The generator then reads the database as for a return from the
+  saved place. When the character's latest death lies after the leave, less
+  one second, the character must stand at the World spawn of the World's
+  manifest within 5 cm on the ground plane, alive and with full health, the
+  outcome `respawned_after_death_before_release`; otherwise the return is
+  judged like one from the saved place.
 - The 5 cm cover the rounding of a float and a standing character's ground
   contact; the bot stands still before it leaves, and both the body and the
   saved state keep the simulation's floats.
@@ -1003,8 +1014,10 @@ The counters `churnRequests`, `churnSkippedBusy`, `churnSkippedUnsafe`,
 `churnSkippedLate`, `churnRetreats`, `leaves` and the leaves of every role,
 `leavesWithLogout`, `rejoinsBody`, `rejoinsSaved`, `rejoinsSavedFoundBody`
 for a saved-kind return whose body hits still kept, `rejoinsBodyFoundGone` for
-a body-kind return whose body died, `rejoinBodiesHit`, `rejoinBodiesDied`, and
-`rejoinChecksFailed` show what the churn did, and the full-stack summary counts
+a body-kind return whose body died, `rejoinBodiesHit`, `rejoinBodiesDied`,
+`rejoinBodiesDiedBeforeRelease` for a reconnect that found a new entity at the
+World spawn because its body died before its release, and `rejoinChecksFailed`
+show what the churn did, and the full-stack summary counts
 the churn's logouts and logins apart from the run's own.
 
 ## World Variant
@@ -1180,7 +1193,14 @@ window of operations from then on and stay level. The rule
 much they grew from the retention sample to the end of the steady interval, and
 `retention_lag` the longest that a [drift check](#drift-checks) saw a completed
 operation past the window and not held by a death event, the lag that
-GameService's own metric `game_service.retention.lag` reports. `soak.retention`
+GameService's own metric `game_service.retention.lag` reports. Both leave out
+the operations of deaths, kind `process_player_death`, the only kind a death
+event holds: such an operation becomes due only when its death event leaves with
+its closed corpse, the corpse's lifetime and a second window after it
+completed, and retention deletes it in that same pass, so its age is no lag.
+Once its death event left, `retained_table_growth` counts it like any other
+operation, so operations of deaths that retention leaves behind still show
+there. `soak.retention`
 of the report and the summary holds both counts, their growth, and the worst
 lag, and the script prints them. A run whose window and two passes leave less
 than two minutes of the planned steady interval, every scenario but the soaks,
@@ -1194,7 +1214,17 @@ hour and the average of each fifth of the interval. For the worker it adds,
 from its own performance file, the slope and fifths of its managed heap, its
 generation 2 collections per hour, and its allocation per second, and for the
 generator its own managed heap. The rule `process_memory_growth` of the
-[Quality Boundary](#quality-boundary) judges the last fifth against the second.
+[Quality Boundary](#quality-boundary) judges the last fifth against the second:
+the working set of the worker and GameService, which is what a host pays for,
+and the managed heap of the generator. The generator runs with the server
+garbage collector, whose working set follows the collector's decisions to
+commit and release memory even while the heap stays flat: a 600 s run of
+`soak-500-30min` on 2026-11-16 held the generator's heap at 161, 159, 161, 163,
+and 162 MiB while its working set went 308, 343, 300, 349, and 377 MiB. Its
+working set therefore says nothing about a leak in the generator, while its heap
+showed the one that grew it from 199 to 294 MiB in the first 30-minute soak at
+500 players. The generator samples its own heap in every mode, and the report
+and the rule's note keep its working set beside it.
 
 ### Memory Limit
 
@@ -1322,9 +1352,10 @@ Every JSON report contains:
 - The remote update rate, how often the bots received the state of the remote
   players that walked near them during the steady interval, as
   [Remote Update Rate](#remote-update-rate) describes: the average, the fifth
-  percentile, and the minimum over bots, the fifth percentile over every pair
-  of bot and remote player, the rate over every visible player for comparison,
-  and the records of entities without a player spawn.
+  percentile, and the minimum over bots, the fifth percentile over every visit
+  of a remote player to a bot in which the player walked near, the rate over
+  every visible player for comparison, and the records of entities without a
+  player spawn.
 - The steady interval's start and end.
 - Reliable spawn and despawn counts.
 - SimulationWorker and generator CPU, working set, private memory, and thread
@@ -1500,6 +1531,21 @@ such as a moving Mob, stay apart as `untrackedRecords`. The rule judges the
 fifth percentile over bots, so the players who see the least decide, not the
 average.
 
+A visit is a remote player's stay in a bot's interest, from its spawn to its
+despawn. When a visit ends, it folds into the bot's sums and, if the player
+walked near, its rate goes into a histogram in bins of 0.05 Hz, from which the
+report takes `visitP5Hz`, the fifth percentile over every visit. A bot
+therefore keeps the players in its interest at that moment and a fixed
+histogram, nothing per player it met: at 500 players with churn, every return
+from the saved place brings a new entity, and a record per remote entity grew
+the generator's live heap by about 2.4 MiB a minute.
+
+A pair is a bot and a remote character, which the spawn names by its character
+id: a player that leaves the bot's interest and comes back, that comes back into
+the game with a new entity, or that the bot sees again after its own leave and
+return stays one pair. What a bot keeps therefore grows with the characters it
+saw, at most the population, and not with the length of the run or the churn.
+
 Until changed-only replication, the rate counted every record of every visible
 player over the seconds it saw the player, which equalled the near moving rate
 because every snapshot carried every visible player. The report keeps that
@@ -1541,7 +1587,7 @@ worker-only mode, passes and says so.
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
 | `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
-| `process_memory_growth` | Last fifth's average working set at most 20 MiB above the second fifth's, for the worker, GameService, and the generator, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
+| `process_memory_growth` | Last fifth's average at most 20 MiB above the second fifth's, of the working set for the worker and GameService and of the managed heap for the generator, whose server GC working set moves on a flat heap, as [Memory And GC Trend](#memory-and-gc-trend) explains, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `retained_table_growth` | `item_operations` and `item_operation_changes`, without the operations of deaths, which stay until their corpse is gone, grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
 | `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
 | `service_log_errors` | 0 error and critical lines outside the allow list | An error line is something an operator must look at; the allow list in the boundary file names every class that is expected in every run, with its reason, and holds none; its entries for a GameService outage hold only inside one |
