@@ -131,8 +131,9 @@ namespace Mmorpg.Client.WorldActors
     }
 
     // A Mob travels in the snapshots while its pose changes and rests at the pose of its
-    // newest reliable state. RemoteActorMovement interpolates the snapshots like a remote
-    // player's and settles on the rest pose without a jump.
+    // newest reliable state, unless its spawn says that it walked. RemoteActorMovement
+    // interpolates the snapshots like a remote player's and settles on the rest pose without a
+    // jump.
     public sealed class MobView : WorldActorView
     {
         private readonly RemoteActorMovement movement = new RemoteActorMovement();
@@ -151,6 +152,14 @@ namespace Mmorpg.Client.WorldActors
         public void ConfigureMovement(NetworkMovementSession session)
         {
             movement.ConfigureForSession(session);
+        }
+
+        // Records of this Mob that showed it away from its pose were lost before this view
+        // existed, such as while its prefab loaded: its next snapshot away from that pose shows
+        // it where it is instead of sliding there.
+        public void StartAtNextSnapshot()
+        {
+            movement.StartAtNextSnapshot();
         }
 
         // Buffers a snapshot record of this Mob. A hidden Mob, such as a dead one, ignores it.
@@ -190,6 +199,15 @@ namespace Mmorpg.Client.WorldActors
             }
 
             appliedStateRevision = actor.StateRevision;
+
+            // A Mob that walked when its spawn was sent walks on from the spawn's pose, also when
+            // its view appears only after its prefab loaded; any other pose is a rest pose.
+            if (actor.IsMoving && movement.StartMovingFrom(actor.PoseTick, restPosition, restYawDegrees))
+            {
+                ApplyMovementPose();
+                return;
+            }
+
             if (!movement.TrySettle(restPosition, restYawDegrees))
             {
                 base.ApplyPose(actor);

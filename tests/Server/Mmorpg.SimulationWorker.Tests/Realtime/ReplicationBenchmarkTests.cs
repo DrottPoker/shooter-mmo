@@ -122,7 +122,7 @@ public sealed class ReplicationBenchmarkTests
         var numbers = first.Deterministic;
         TestContext.Current.TestOutputHelper?.WriteLine(JsonSerializer.Serialize(numbers, SerializerOptions));
         Assert.Equal(
-            [45L, 410_400L, 3_206L, 413_606L, 3_600L, 41L, 21_600L, 1_800L, 19_800L, 19_623L, 1_800L, 3_600L, 18L, 23L, 0L, 25_470L, 18_266L],
+            [45L, 410_400L, 3_216L, 413_616L, 3_600L, 41L, 21_600L, 1_800L, 19_800L, 19_623L, 1_800L, 3_600L, 18L, 23L, 0L, 25_470L, 18_266L],
             [
                 numbers.Snapshots, numbers.SnapshotBytes, numbers.ReliableBytes, numbers.AllBytes, numbers.UnreliablePackets,
                 numbers.ReliablePackets, numbers.SnapshotRecords, numbers.OwnerRecords, numbers.RemoteRecords,
@@ -130,7 +130,7 @@ public sealed class ReplicationBenchmarkTests
                 numbers.DespawnPackets, numbers.DroppedSnapshotPackets, numbers.NearMovingSightings, numbers.NearMovingRecords
             ]);
         Assert.Equal(3_420d, numbers.SnapshotBytesPerPlayerPerSecond, 9);
-        Assert.Equal(3_446.7166666666662, numbers.AllBytesPerPlayerPerSecond, 9);
+        Assert.Equal(3_446.8, numbers.AllBytesPerPlayerPerSecond, 9);
         Assert.Equal(1_213.6666666666667, numbers.PacketsPerSecond, 9);
         Assert.Equal(12d, numbers.RecordsPerPlayerPerSnapshot, 9);
         Assert.Equal(19d, numbers.BytesPerRecord, 9);

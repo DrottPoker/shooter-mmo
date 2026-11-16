@@ -202,6 +202,8 @@ namespace Mmorpg.GameProtocol
             float positionZ,
             float yawDegrees,
             RealtimeWorldActorActivityTier activityTier,
+            uint poseTick,
+            bool isMoving,
             float boundsCenterX,
             float boundsCenterY,
             float boundsCenterZ,
@@ -228,6 +230,8 @@ namespace Mmorpg.GameProtocol
             PositionZ = positionZ;
             YawDegrees = yawDegrees;
             ActivityTier = activityTier;
+            PoseTick = poseTick;
+            IsMoving = isMoving;
             BoundsCenterX = boundsCenterX;
             BoundsCenterY = boundsCenterY;
             BoundsCenterZ = boundsCenterZ;
@@ -326,6 +330,16 @@ namespace Mmorpg.GameProtocol
         /// How often the worker updates the actor.
         /// </summary>
         public RealtimeWorldActorActivityTier ActivityTier { get; }
+
+        /// <summary>
+        /// The server tick at which the worker read the pose.
+        /// </summary>
+        public uint PoseTick { get; }
+
+        /// <summary>
+        /// Whether a Mob walks at the pose tick, so its pose is not a rest pose; false for every other actor.
+        /// </summary>
+        public bool IsMoving { get; }
 
         /// <summary>
         /// The center of the interaction bounds on the x axis.
@@ -1158,6 +1172,8 @@ namespace Mmorpg.GameProtocol
             writer.WriteSingle(value.PositionZ);
             writer.WriteSingle(value.YawDegrees);
             writer.WriteByte((byte)value.ActivityTier);
+            writer.WriteUInt32(value.PoseTick);
+            writer.WriteBoolean(value.IsMoving);
             writer.WriteSingle(value.BoundsCenterX);
             writer.WriteSingle(value.BoundsCenterY);
             writer.WriteSingle(value.BoundsCenterZ);
@@ -1173,7 +1189,7 @@ namespace Mmorpg.GameProtocol
 
         private static int SizeOfWorldActorSpawn(RealtimeWorldActorSpawn value)
         {
-            var size = 87;
+            var size = 92;
             size += StringSize(value.ActorDefinitionId);
             size += StringSize(value.SpawnDefinitionId);
             size += StringSize(value.FactionId);
@@ -1288,6 +1304,16 @@ namespace Mmorpg.GameProtocol
 
             var activityTier = (RealtimeWorldActorActivityTier)activityTierByte;
 
+            if (!reader.TryReadUInt32(out var poseTick, out error))
+            {
+                return false;
+            }
+
+            if (!reader.TryReadBoolean(out var isMoving, out error))
+            {
+                return false;
+            }
+
             if (!reader.TryReadSingle(out var boundsCenterX, out error))
             {
                 return false;
@@ -1340,7 +1366,7 @@ namespace Mmorpg.GameProtocol
                 menuOptions[index] = element;
             }
 
-            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, kind, factionId, disposition, level, aggression, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ, menuOptions);
+            value = new RealtimeWorldActorSpawn(entityId, runtimeActorId, actorDefinitionId, spawnDefinitionId, kind, factionId, disposition, level, aggression, presentationArchetypeId, stateRevision, interactionRevision, isActive, positionX, positionY, positionZ, yawDegrees, activityTier, poseTick, isMoving, boundsCenterX, boundsCenterY, boundsCenterZ, boundsSizeX, boundsSizeY, boundsSizeZ, menuOptions);
             return true;
         }
 
@@ -1402,7 +1428,7 @@ namespace Mmorpg.GameProtocol
                 }
             }
 
-            return true;
+            return SatisfiesRules(value);
         }
 
         /// <summary>

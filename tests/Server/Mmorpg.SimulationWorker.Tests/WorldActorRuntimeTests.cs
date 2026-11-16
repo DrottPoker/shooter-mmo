@@ -283,8 +283,8 @@ public sealed class WorldActorRuntimeTests
         var mira = actors.First(value => value.Definition.Id == "npc.city_services");
         var wolf = actors.First(value => value.Definition.Id == "mob.feral_wolf");
 
-        var miraSpawn = WorldActorProtocolMapper.ToSpawn(mira);
-        var wolfSpawn = WorldActorProtocolMapper.ToSpawn(wolf);
+        var miraSpawn = WorldActorProtocolMapper.ToSpawn(mira, 0, false);
+        var wolfSpawn = WorldActorProtocolMapper.ToSpawn(wolf, 0, false);
 
         Assert.Equal(
             [
@@ -327,7 +327,7 @@ public sealed class WorldActorRuntimeTests
             "test-runtime");
 
         RealtimeWorldActorSpawn SpawnOf(string actorId) =>
-            WorldActorProtocolMapper.ToSpawn(actors.First(value => value.Definition.Id == actorId));
+            WorldActorProtocolMapper.ToSpawn(actors.First(value => value.Definition.Id == actorId), 0, false);
 
         var feralWolf = SpawnOf("mob.feral_wolf");
         var alpha = SpawnOf("mob.feral_alpha");
@@ -342,7 +342,7 @@ public sealed class WorldActorRuntimeTests
 
         var dead = actors.First(value => value.Definition.Id == "mob.grey_wolf");
         Assert.True(store.TryDespawn(dead.NetworkEntityId, out _));
-        var respawned = WorldActorProtocolMapper.ToSpawn(store.Respawn(dead));
+        var respawned = WorldActorProtocolMapper.ToSpawn(store.Respawn(dead), 0, false);
         Assert.Equal((1, RealtimeWorldActorAggression.Defensive), (respawned.Level, respawned.Aggression));
         WorldActorProtocolCompatibility.Validate(actors);
     }

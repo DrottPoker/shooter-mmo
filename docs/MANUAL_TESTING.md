@@ -2173,6 +2173,10 @@ the town, around `(-12, 0, -92)`. Give the character the Equipment Test Pack.
 2. Walk away about 35 m. Expected result: the wolf turns back, the target frame
    shows `Returning home`, arrows do no damage while it runs, and it arrives at
    its place with full health.
+3. Walk more than 150 m away from the wolf woods and back toward them while the
+   pack patrols, so that the wolves come into view at about 128 m while they
+   walk. Expected result: each wolf appears where it is and walks on at its own
+   speed; none rushes ahead for a moment to catch up.
 
 The wolves of Development World 2 share one patrol path and move as a pack, so
 three or four of them kill a lone archer in about 10 seconds.
@@ -2634,6 +2638,10 @@ describes.
    at about 128 m while they walk. Expected result: such a bot appears, stands
    for about a fifth of a second, and then walks on at its own speed; it never
    rushes ahead to catch up.
+6. Watch a bot more than 56 m away that stands for a while and then walks off.
+   Expected result: it starts at its own speed or a little slower and never
+   walks faster than it does afterwards, neither at the start nor a moment
+   later.
 
 ## Art In The Game
 

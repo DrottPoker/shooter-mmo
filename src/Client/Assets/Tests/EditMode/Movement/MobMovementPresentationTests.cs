@@ -10,8 +10,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // Mob snapshot routing, the shared remote interpolation, the settle onto the reliable rest
-    // pose, records where the Mob stands, the direct jump for a teleport, and the cleanup on
-    // hide and respawn.
+    // pose, records where the Mob stands, the direct jump for a teleport, the cleanup on hide and
+    // respawn, and the start of a Mob whose spawn says that it walked.
     public sealed class MobMovementPresentationTests
     {
         private const ulong MobId = 11;
@@ -26,6 +26,9 @@ namespace Mmorpg.Client.Tests.EditMode
         // jump onto the rest pose would cover the four ticks of the render delay.
         private const float MetresPerTick = 0.15f;
         private const float MaximumFrameStep = MetresPerTick;
+
+        // How far the Mob walks in one frame at 60 frames per second.
+        private const float WalkingFrameStep = MetresPerTick * TickRateHz * FrameSeconds;
 
         [Test]
         public void MobsShareTheRemotePlayerDelayAndTheSnapshotInterval()
@@ -253,6 +256,285 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(movement.Discontinuities, Is.EqualTo(1), "Only its appearance.");
         }
 
+        // A Mob that walked when its spawn was sent starts from the spawn's pose as a remote
+        // player does: its first record, however far behind the spawn within the longest render
+        // delay, walked the whole gap, so the Mob walks on at its own speed without a dash.
+        [TestCase(6u)]
+        [TestCase(9u)]
+        [TestCase(13u)]
+        public void AMobThatComesIntoViewWalkingWalksOnAtItsOwnSpeed(uint firstRecordTicks)
+        {
+            var actors = FixtureTexts.ActorState();
+            Assert.That(
+                actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100, isMoving: true), out var error),
+                Is.True,
+                error);
+            actors.TryGet(MobId, out var entry);
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var run = new SpawnRun(entry, 100 + firstRecordTicks);
+                run.Present(mobObject.AddComponent<MobView>());
+                Assert.That(run.Mob.Movement.IsDriven, Is.True, "It walks from its spawn.");
+                Assert.That(run.Mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)));
+
+                run.Play(120);
+
+                Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(WalkingFrameStep * 1.2f), "No dash.");
+                Assert.That(run.MovedBackwards, Is.False);
+                Assert.That(run.Mob.Movement.Discontinuities, Is.EqualTo(1), "Only its appearance.");
+                Assert.That(run.Mob.Movement.Position.x, Is.GreaterThan(8f), "It walks.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+            }
+        }
+
+        // A Mob whose spawn names a rest pose starts from it as before, one render delay before
+        // its first snapshot.
+        [Test]
+        public void AMobThatSpawnsRestingStartsFromItsRestPoseAsBefore()
+        {
+            var actors = FixtureTexts.ActorState();
+            Assert.That(actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100), out var error), Is.True, error);
+            actors.TryGet(MobId, out var entry);
+            Assert.That(entry.IsMoving, Is.False);
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var mob = mobObject.AddComponent<MobView>();
+                mob.Movement.Configure(TickRateHz, SnapshotRateHz, null, CollisionSettings());
+                mob.Initialize(entry);
+                Assert.That(mob.Movement.IsDriven, Is.False);
+                Assert.That(mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)));
+
+                // Seconds later the Mob walks off; its first snapshot is already 0.3 m along.
+                var views = new Dictionary<ulong, WorldActorView> { [MobId] = mob };
+                Assert.That(WorldActorPresentationController.RouteSnapshot(Snapshot(160, Entity(MobId, 2.8f)), views), Is.EqualTo(1));
+                Assert.That(mob.Movement.IsDriven, Is.True);
+                Assert.That(mob.Movement.IsResting, Is.False);
+                Assert.That(mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)), "It stands where it rested.");
+                var walk = new WalkSimulation(mob.Movement, mob.transform.position);
+                walk.Frames(8);
+                Assert.That(walk.MaximumStep, Is.LessThanOrEqualTo(MaximumFrameStep));
+                Assert.That(walk.MovedBackwards, Is.False);
+                Assert.That(mob.Movement.Position.x, Is.GreaterThan(2.6f), "It walks into its snapshot.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+            }
+        }
+
+        // The view of a Mob appears only once its prefab loaded, and the snapshots before reach
+        // nothing. A Mob that walked in its spawn still starts from that spawn and walks on at its
+        // own speed; one whose rest pose arrived first rests there.
+        [Test]
+        public void AMobWhoseViewAppearsAfterItsPrefabLoadedStartsFromTheSpawnItGotEarlier()
+        {
+            var actors = FixtureTexts.ActorState();
+            Assert.That(
+                actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100, isMoving: true), out var error),
+                Is.True,
+                error);
+            actors.TryGet(MobId, out var entry);
+            var mobObject = new GameObject("Mob");
+            var restingObject = new GameObject("RestingMob");
+            try
+            {
+                // The prefab loads for a quarter of a second, while the record of tick 106 arrives.
+                var run = new SpawnRun(entry, 106);
+                run.Play(15);
+                Assert.That(run.Routed, Is.Zero);
+                run.Present(mobObject.AddComponent<MobView>());
+                Assert.That(run.Mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)), "It appears at its spawn.");
+
+                run.Play(105);
+
+                Assert.That(run.Routed, Is.GreaterThan(0));
+                Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(WalkingFrameStep * 1.2f), "No dash.");
+                Assert.That(run.MovedBackwards, Is.False);
+                Assert.That(run.Mob.Movement.Discontinuities, Is.EqualTo(1), "Only its appearance.");
+                Assert.That(run.Mob.Movement.Position.x, Is.GreaterThan(6f), "It walks.");
+
+                // The Mob came to rest before its view appeared: the newer state is a rest pose.
+                var resting = FixtureTexts.ActorState();
+                Assert.That(
+                    resting.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100, isMoving: true), out error),
+                    Is.True,
+                    error);
+                Assert.That(
+                    resting.TryApplyState(
+                        new RealtimeWorldActorState(MobId, 2, 1, true, 3.1f, 0f, -1f, 90f, RealtimeWorldActorActivityTier.Active),
+                        out error),
+                    Is.True,
+                    error);
+                resting.TryGet(MobId, out var restingEntry);
+                Assert.That(restingEntry.IsMoving, Is.False);
+                var restingMob = restingObject.AddComponent<MobView>();
+                restingMob.Movement.Configure(TickRateHz, SnapshotRateHz, null, CollisionSettings());
+                restingMob.Initialize(restingEntry);
+                Assert.That(restingMob.Movement.IsDriven, Is.False);
+                Assert.That(restingMob.transform.position, Is.EqualTo(new Vector3(3.1f, 0f, -1f)));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+                UnityEngine.Object.DestroyImmediate(restingObject);
+            }
+        }
+
+        // The view of a Mob appears only long after its spawn, after a slow prefab load, so its
+        // first snapshot comes later than a walk from the spawn's pose could have lasted, or shows
+        // it away from the rest pose of a spawn that stood. The view shows the Mob at that
+        // snapshot, as it does for a teleport, and the Mob walks on from there at its own speed
+        // instead of sliding the gap many times too fast. The 2 s load is of a slow walker, so
+        // the gap stays below the teleport distance and this rule, not the jump, places it.
+        [TestCase(25, 4.5f, true)]
+        [TestCase(120, 1.2f, true)]
+        [TestCase(25, 4.5f, false)]
+        [TestCase(120, 1.2f, false)]
+        public void AMobWhoseViewAppearsLongAfterItsSpawnStartsAtItsFirstSnapshot(
+            int loadFrames,
+            float metresPerSecond,
+            bool spawnWalked)
+        {
+            var metresPerTick = metresPerSecond / TickRateHz;
+            var actors = FixtureTexts.ActorState();
+            Assert.That(
+                actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100, isMoving: spawnWalked), out var error),
+                Is.True,
+                error);
+            actors.TryGet(MobId, out var entry);
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var run = new SpawnRun(entry, 106, metresPerTick);
+                run.Play(loadFrames);
+                Assert.That(run.Routed, Is.Zero);
+                run.Present(mobObject.AddComponent<MobView>());
+                Assert.That(run.Mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)), "It appears at its spawn.");
+
+                run.Play(120);
+
+                // The first record after the load, of the first record tick past it.
+                var firstRouted = 106u + (6u * (uint)((((loadFrames / 2) + 100 - 106) / 6) + 1));
+                Assert.That(run.Jumps, Is.EqualTo(1), "It is shown at its first snapshot.");
+                Assert.That(run.JumpedToX, Is.EqualTo(SpawnRun.WalkX(firstRouted, metresPerTick)).Within(0.01f));
+                Assert.That(run.JumpedToX - 2.5f, Is.LessThan(RemoteActorMovement.TeleportDistance));
+                Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(metresPerTick * TickRateHz * FrameSeconds * 1.2f), "No slide.");
+                Assert.That(run.MovedBackwards, Is.False);
+                Assert.That(run.Mob.Movement.Position.x, Is.GreaterThan(run.JumpedToX + 0.5f), "It walks on.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+            }
+        }
+
+        // A lost record matters only when it showed the Mob away from the pose its view starts
+        // at: a Mob that stood while its prefab loaded starts from its rest pose as before, and so
+        // does one whose newer rest pose arrived after the lost records.
+        [Test]
+        public void AMobThatRestedWhileItsPrefabLoadedStartsFromItsRestPoseAsBefore()
+        {
+            var actors = FixtureTexts.ActorState();
+            Assert.That(actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100), out var error), Is.True, error);
+            actors.TryGet(MobId, out var entry);
+            var missed = new Dictionary<ulong, long>();
+            Action<RealtimeEntitySnapshot> note = record =>
+            {
+                if (WorldActorPresentationController.ShowsAwayFromPose(entry, record))
+                {
+                    missed[record.EntityId] = entry.StateRevision;
+                }
+            };
+            var noViews = new Dictionary<ulong, WorldActorView>();
+
+            // A refresh where it rests is no move.
+            WorldActorPresentationController.RouteSnapshot(Snapshot(130, Entity(MobId, 2.5f)), noViews, note);
+            Assert.That(WorldActorPresentationController.MissedAMove(entry, missed), Is.False);
+
+            // A move followed by its newer rest pose is no move from that pose.
+            WorldActorPresentationController.RouteSnapshot(Snapshot(136, Entity(MobId, 3.4f)), noViews, note);
+            Assert.That(WorldActorPresentationController.MissedAMove(entry, missed), Is.True);
+            Assert.That(
+                actors.TryApplyState(
+                    new RealtimeWorldActorState(MobId, 2, 1, true, 3.4f, 0f, -1f, 90f, RealtimeWorldActorActivityTier.Active),
+                    out error),
+                Is.True,
+                error);
+            Assert.That(WorldActorPresentationController.MissedAMove(entry, missed), Is.False);
+
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var mob = mobObject.AddComponent<MobView>();
+                mob.Movement.Configure(TickRateHz, SnapshotRateHz, null, CollisionSettings());
+                mob.Initialize(entry);
+
+                // Seconds later it walks off: it starts from its rest pose as before.
+                var views = new Dictionary<ulong, WorldActorView> { [MobId] = mob };
+                Assert.That(WorldActorPresentationController.RouteSnapshot(Snapshot(300, Entity(MobId, 3.7f)), views, note), Is.EqualTo(1));
+                Assert.That(mob.Movement.IsDriven, Is.True);
+                Assert.That(mob.transform.position, Is.EqualTo(new Vector3(3.4f, 0f, -1f)), "It stands where it rested.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+            }
+        }
+
+        // A Mob that came into view walking keeps every Mob rule: the record of its spawn's own
+        // snapshot changes nothing, a rest pose settles it without a jump and then costs nothing,
+        // and a hidden Mob forgets its movement and returns at its reliable pose.
+        [Test]
+        public void AMobThatCameIntoViewWalkingSettlesAndHidesAsEveryMob()
+        {
+            var actors = FixtureTexts.ActorState();
+            Assert.That(
+                actors.TryApplySpawn(Spawn(MobId, RealtimeWorldActorKind.Mob, poseTick: 100, isMoving: true), out var error),
+                Is.True,
+                error);
+            actors.TryGet(MobId, out var entry);
+            var mobObject = new GameObject("Mob");
+            try
+            {
+                var run = new SpawnRun(entry, 102);
+                run.Present(mobObject.AddComponent<MobView>());
+                var mob = run.Mob;
+
+                // The record of the spawn's own snapshot is not newer than the spawn.
+                var views = new Dictionary<ulong, WorldActorView> { [MobId] = mob };
+                Assert.That(WorldActorPresentationController.RouteSnapshot(Snapshot(100, Entity(MobId, 2.5f)), views), Is.EqualTo(1));
+                Assert.That(mob.Movement.Discontinuities, Is.EqualTo(1));
+
+                // It walks through the records of ticks 102, 108, and 114 and stops a tick later.
+                run.Play(30);
+                ApplyState(actors, mob, entry, 2, true, SpawnRun.WalkX(115));
+                Assert.That(entry.IsMoving, Is.False);
+                Assert.That(mob.Movement.IsResting, Is.True);
+                var settle = new WalkSimulation(mob.Movement, mob.Movement.Position);
+                settle.Frames(90);
+                Assert.That(settle.MaximumStep, Is.LessThanOrEqualTo(MaximumFrameStep));
+                Assert.That(settle.MovedBackwards, Is.False);
+                Assert.That(mob.Movement.Position.x, Is.EqualTo(SpawnRun.WalkX(115)).Within(0.01f));
+                Assert.That(mob.Movement.Advance(FrameSeconds, FrameSeconds), Is.False, "A settled rest pose costs nothing.");
+
+                // A hidden Mob forgets its movement and returns at its reliable pose.
+                ApplyState(actors, mob, entry, 3, false, SpawnRun.WalkX(115));
+                Assert.That(mob.Movement.IsDriven, Is.False);
+                ApplyState(actors, mob, entry, 4, true, 2.5f);
+                Assert.That(mob.Movement.IsDriven, Is.False);
+                Assert.That(mob.transform.position, Is.EqualTo(new Vector3(2.5f, 0f, -1f)));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mobObject);
+            }
+        }
+
         [Test]
         public void ATeleportIsShownAtOnce()
         {
@@ -378,7 +660,11 @@ namespace Mmorpg.Client.Tests.EditMode
             return new CharacterCollisionSettings(0.4f, 1.8f, 0.35f, 45f, 0.2f, 0.25f, 4);
         }
 
-        private static RealtimeWorldActorSpawn Spawn(ulong entityId, RealtimeWorldActorKind kind)
+        private static RealtimeWorldActorSpawn Spawn(
+            ulong entityId,
+            RealtimeWorldActorKind kind,
+            uint poseTick = 0,
+            bool isMoving = false)
         {
             var mob = kind == RealtimeWorldActorKind.Mob;
             return new RealtimeWorldActorSpawn(
@@ -400,6 +686,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 -1f,
                 270f,
                 RealtimeWorldActorActivityTier.Active,
+                poseTick,
+                isMoving,
                 0f,
                 0.5f,
                 0f,
@@ -409,6 +697,119 @@ namespace Mmorpg.Client.Tests.EditMode
                 mob
                     ? new RealtimeWorldActorMenuOption[0]
                     : new[] { new RealtimeWorldActorMenuOption("services.dialogue", RealtimeWorldActorCapabilityKind.Dialogue) });
+        }
+
+        // Plays a Mob that walks along +x and passed x 2.5, the pose of its spawn, at tick 100, at
+        // 60 frames per second from the moment its spawn arrived: every later tick arrives
+        // (tick - 100) / 30 s after it. Its records start at the first record tick and come every
+        // six ticks, as far away. One that arrives before the view exists, as while the prefab
+        // loads, reaches no view, and the run remembers it as WorldActorPresentationController
+        // does. Records how the presented pose moves once the view exists; a jump, a start at a
+        // snapshot, is counted apart from the steps.
+        private sealed class SpawnRun
+        {
+            private readonly Dictionary<ulong, WorldActorView> views = new Dictionary<ulong, WorldActorView>();
+            private readonly Dictionary<ulong, long> missedMoves = new Dictionary<ulong, long>();
+            private readonly WorldActorClientEntry entry;
+            private readonly uint firstRecordTick;
+            private readonly float metresPerTick;
+            private readonly Action<RealtimeEntitySnapshot> noteUnrouted;
+            private uint nextTick = 101;
+            private int frame;
+            private float? lastX;
+
+            public SpawnRun(WorldActorClientEntry entry, uint firstRecordTick, float metresPerTick = MetresPerTick)
+            {
+                this.entry = entry;
+                this.firstRecordTick = firstRecordTick;
+                this.metresPerTick = metresPerTick;
+                noteUnrouted = record =>
+                {
+                    if (WorldActorPresentationController.ShowsAwayFromPose(entry, record))
+                    {
+                        missedMoves[record.EntityId] = entry.StateRevision;
+                    }
+                };
+            }
+
+            public MobView Mob { get; private set; }
+
+            public int Routed { get; private set; }
+
+            public float MaximumStep { get; private set; }
+
+            public bool MovedBackwards { get; private set; }
+
+            public int Jumps { get; private set; }
+
+            // Where the Mob was shown right after its last jump.
+            public float JumpedToX { get; private set; }
+
+            public static float WalkX(uint tick)
+            {
+                return WalkX(tick, MetresPerTick);
+            }
+
+            public static float WalkX(uint tick, float metresPerTick)
+            {
+                return 2.5f + (metresPerTick * (tick - 100));
+            }
+
+            // The view appears with the session's snapshot movement, as when its prefab is ready.
+            public void Present(MobView mob)
+            {
+                mob.Movement.Configure(TickRateHz, SnapshotRateHz, null, CollisionSettings());
+                mob.Initialize(entry);
+                if (WorldActorPresentationController.MissedAMove(entry, missedMoves))
+                {
+                    mob.StartAtNextSnapshot();
+                }
+
+                missedMoves.Remove(entry.EntityId);
+                views[MobId] = mob;
+                Mob = mob;
+                lastX = mob.transform.position.x;
+            }
+
+            public void Play(int frames)
+            {
+                for (var index = 0; index < frames; index++)
+                {
+                    frame++;
+                    var jumpsBefore = Mob != null ? Mob.Movement.Discontinuities : 0;
+                    while ((nextTick - 100) / (double)TickRateHz <= frame / 60d)
+                    {
+                        if (nextTick >= firstRecordTick && (nextTick - firstRecordTick) % 6 == 0)
+                        {
+                            Routed += WorldActorPresentationController.RouteSnapshot(
+                                Snapshot(nextTick, Entity(MobId, WalkX(nextTick, metresPerTick))),
+                                views,
+                                noteUnrouted);
+                        }
+
+                        nextTick++;
+                    }
+
+                    if (Mob == null || !Mob.Movement.Advance(FrameSeconds, FrameSeconds))
+                    {
+                        continue;
+                    }
+
+                    var x = Mob.Movement.Position.x;
+                    if (Mob.Movement.Discontinuities != jumpsBefore)
+                    {
+                        Jumps += Mob.Movement.Discontinuities - jumpsBefore;
+                        JumpedToX = x;
+                    }
+                    else if (lastX is { } previous)
+                    {
+                        MaximumStep = Mathf.Max(MaximumStep, Mathf.Abs(x - previous));
+                        MovedBackwards |= x < previous - 0.00001f;
+                    }
+
+                    lastX = x;
+                }
+            }
         }
 
         // Plays a Mob that started walking along +x at tick 100 at 60 frames per second, with

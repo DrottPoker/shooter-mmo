@@ -52,6 +52,8 @@ namespace Mmorpg.Client.WorldActors
                 ? texts.GetOrEmpty(TextKeys.ActorExamine(spawn.ActorDefinitionId))
                 : string.Empty;
             MenuOptions = spawn.MenuOptions;
+            PoseTick = spawn.PoseTick;
+            IsMoving = spawn.IsMoving;
             ApplyValues(
                 spawn.StateRevision,
                 spawn.InteractionRevision,
@@ -99,6 +101,11 @@ namespace Mmorpg.Client.WorldActors
         public float YawDegrees { get; private set; }
         public RealtimeWorldActorActivityTier ActivityTier { get; private set; }
 
+        // The server tick of the spawn's pose, and whether the Mob walked then, so that pose is
+        // no rest pose. A newer state is a rest pose, so it ends IsMoving.
+        public uint PoseTick { get; }
+        public bool IsMoving { get; private set; }
+
         internal WorldActorStateApplyResult Apply(RealtimeWorldActorState state)
         {
             if (state == null || state.EntityId != EntityId)
@@ -132,6 +139,7 @@ namespace Mmorpg.Client.WorldActors
                 state.PositionZ,
                 state.YawDegrees,
                 state.ActivityTier);
+            IsMoving = false;
             return WorldActorStateApplyResult.Applied;
         }
 

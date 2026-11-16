@@ -146,6 +146,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 -20.75f,
                 90f,
                 RealtimeWorldActorActivityTier.EventDriven,
+                0,
+                false,
                 10.5f,
                 1f,
                 -20.75f,

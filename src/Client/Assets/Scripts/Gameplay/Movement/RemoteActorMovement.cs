@@ -8,9 +8,13 @@ namespace Mmorpg.Client.Gameplay
     // Mob. Snapshots move it through the remote player presentation, with the same render clock
     // and delay. A movement starts from the reliable pose the actor stands at, and a snapshot
     // record at the pose it stands at changes nothing, so an actor that stands costs nothing.
-    // A rest pose that arrives while snapshots play, or after they played out, becomes their
-    // final state, so the actor settles without a jump. A rest pose without any snapshot, or a
-    // teleport, is the caller's to apply directly.
+    // An actor that walked when it came into view starts from that pose instead as a remote
+    // player does, from a first state that says nothing about standing. An actor whose records
+    // were lost before it was presented, such as while its prefab loaded, starts at its first
+    // snapshot instead of sliding from a pose that it left long ago. A rest pose that arrives
+    // while snapshots play, or after they played out, becomes their final state, so the actor
+    // settles without a jump. A rest pose without any snapshot, or a teleport, is the caller's
+    // to apply directly.
     public sealed class RemoteActorMovement
     {
         // A pose this far from the newest state is a teleport, such as an evading Mob that the
@@ -24,6 +28,12 @@ namespace Mmorpg.Client.Gameplay
         private readonly RemoteMovementPresenter presenter = new RemoteMovementPresenter();
         private int snapshotIntervalTicks = 1;
         private bool resting;
+
+        // The only state is the pose of a spawn that walked, and no snapshot followed it yet.
+        private bool walkingSpawnUnconfirmed;
+
+        // Records were lost before the actor was presented, so its rest pose may be stale.
+        private bool restPoseStale;
 
         public bool IsConfigured { get; private set; }
 
@@ -112,6 +122,7 @@ namespace Mmorpg.Client.Gameplay
                 collisionWorld,
                 collisionSettings);
             resting = false;
+            ForgetStart();
             IsConfigured = true;
         }
 
@@ -119,6 +130,42 @@ namespace Mmorpg.Client.Gameplay
         {
             presenter.Clear();
             resting = false;
+            ForgetStart();
+        }
+
+        // Starts the actor at a pose it walked through at serverTick, such as the pose of a Mob
+        // that came into view while it walked. The pose is a first state that says nothing about
+        // standing, so the actor walked the whole gap to a moving snapshot that follows it
+        // within the longest render delay, as a remote player that came into view does. A first
+        // snapshot later than that, such as the first after a slow prefab load, starts the
+        // movement at itself instead. Returns false, and starts nothing, without snapshot
+        // movement.
+        public bool StartMovingFrom(uint serverTick, Vector3 position, float yawDegrees)
+        {
+            if (!IsConfigured)
+            {
+                return false;
+            }
+
+            presenter.Clear();
+            presenter.Push(serverTick, PoseState(position, yawDegrees));
+            resting = false;
+            restPoseStale = false;
+            walkingSpawnUnconfirmed = true;
+            return true;
+        }
+
+        // Records of the actor were lost before it was presented, such as while its prefab
+        // loaded, so it may have walked off its rest pose meanwhile: the next snapshot away from
+        // that pose starts the movement at itself, a first state that says nothing about
+        // standing, instead of from the rest pose. A snapshot at the rest pose, or a newer rest
+        // pose, makes the rest pose current again.
+        public void StartAtNextSnapshot()
+        {
+            if (!presenter.HasPose)
+            {
+                restPoseStale = true;
+            }
         }
 
         // Buffers a snapshot state of the actor. restPosition and restYawDegrees are its
@@ -138,10 +185,18 @@ namespace Mmorpg.Client.Gameplay
                 || !presenter.TryGetNewestState(out var newestTick, out var newest))
             {
                 // A record of the actor where it stands, such as a refresh, starts nothing.
-                var rest = RestState(restPosition, restYawDegrees);
+                var rest = PoseState(restPosition, restYawDegrees);
                 if (IsSamePose(rest, sample))
                 {
+                    restPoseStale = false;
                     return false;
+                }
+
+                // The actor left a rest pose whose records were lost: it is shown where it is.
+                if (restPoseStale)
+                {
+                    StartAt(serverTick, sample);
+                    return true;
                 }
 
                 StartFrom(rest, serverTick, sample);
@@ -151,6 +206,19 @@ namespace Mmorpg.Client.Gameplay
             if (!MovementSequence.IsNewer(serverTick, newestTick))
             {
                 return false;
+            }
+
+            // The first snapshot after a spawn that walked comes later than a walk from it could
+            // have lasted, such as after a slow prefab load: the actor is shown where it is now
+            // instead of sliding the gap.
+            if (walkingSpawnUnconfirmed)
+            {
+                walkingSpawnUnconfirmed = false;
+                if (unchecked(serverTick - newestTick) > presenter.LongestWalkGapTicks)
+                {
+                    StartAt(serverTick, sample);
+                    return true;
+                }
             }
 
             // The actor stands where it rested; the record says so again.
@@ -187,10 +255,14 @@ namespace Mmorpg.Client.Gameplay
             if (!presenter.HasPose
                 || !presenter.TryGetNewestState(out var newestTick, out var newest))
             {
+                // The caller applies the newer rest pose, which is current.
+                restPoseStale = false;
                 return false;
             }
 
-            var rest = RestState(position, yawDegrees);
+            walkingSpawnUnconfirmed = false;
+
+            var rest = PoseState(position, yawDegrees);
             if (Distance(newest, rest) > TeleportDistance)
             {
                 Clear();
@@ -236,10 +308,11 @@ namespace Mmorpg.Client.Gameplay
             presenter.Clear();
             presenter.PushStanding(
                 unchecked(serverTick - StartTicks()),
-                RestState(new Vector3(anchor.PositionX, anchor.PositionY, anchor.PositionZ), anchor.YawDegrees));
+                PoseState(new Vector3(anchor.PositionX, anchor.PositionY, anchor.PositionZ), anchor.YawDegrees));
             presenter.Push(serverTick, sample);
             presenter.RestartClock();
             resting = false;
+            ForgetStart();
         }
 
         private void StartAt(uint serverTick, PlayerMovementState sample)
@@ -247,6 +320,13 @@ namespace Mmorpg.Client.Gameplay
             presenter.Clear();
             presenter.Push(serverTick, sample);
             resting = false;
+            ForgetStart();
+        }
+
+        private void ForgetStart()
+        {
+            walkingSpawnUnconfirmed = false;
+            restPoseStale = false;
         }
 
         // The anchor lies one render delay before the first snapshot, where the restarted
@@ -256,7 +336,8 @@ namespace Mmorpg.Client.Gameplay
             return (uint)presenter.DelayTicks;
         }
 
-        private static PlayerMovementState RestState(Vector3 position, float yawDegrees)
+        // A grounded state at the pose; the presenter derives a velocity from the states.
+        private static PlayerMovementState PoseState(Vector3 position, float yawDegrees)
         {
             return new PlayerMovementState(
                 position.x,

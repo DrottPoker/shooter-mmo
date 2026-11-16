@@ -154,6 +154,13 @@ internal sealed class MobSystem : IMobSnapshotSource
             && (agent.IsEngaged || agent.State == MobBrainState.Dead);
     }
 
+    // Whether the Mob walks: its pose changed in its last tick, so the pose is not yet a rest
+    // pose that the worker sent reliably. The moving Mobs gauge counts the same Mobs.
+    public bool IsMoving(WorldActorRuntimeState actor)
+    {
+        return agents.TryGetValue(actor.NetworkEntityId, out var agent) && !agent.RestPublished;
+    }
+
     // The brain stands in attack range and waits for its cooldown; combat checks range,
     // line of sight, and the cooldown again before every attack.
     public bool IsReadyToAttack(Combatant mob)

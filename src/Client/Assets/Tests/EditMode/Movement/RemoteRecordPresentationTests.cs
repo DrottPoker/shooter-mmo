@@ -263,6 +263,48 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(run.MovedBackwards, Is.False);
         }
 
+        // A far entity stands, refreshed once a second, and walks off at the start tick. The worker
+        // sends its records of the two snapshots after the start, whatever its tier, and then one
+        // on its far slot, the next of which comes one to three snapshots after the first record.
+        // The walk starts from the stand one snapshot interval before the first record, and the
+        // second gives the walking speed before the render time passes the first, so the entity is
+        // never shown faster than it walks, also when it walked off between two snapshots.
+        [TestCase(201u, 1u)]
+        [TestCase(201u, 2u)]
+        [TestCase(201u, 3u)]
+        [TestCase(202u, 1u)]
+        [TestCase(202u, 2u)]
+        [TestCase(202u, 3u)]
+        public void AFarEntityThatWalksOffFromAStandIsShownAtItsOwnSpeed(uint startTick, uint snapshotsToFarSlot)
+        {
+            var firstRecord = startTick + 2 - (startTick % 2);
+            var farSlot = firstRecord + (2 * snapshotsToFarSlot);
+            Func<uint, float?> far = tick =>
+            {
+                if (tick <= startTick)
+                {
+                    return tick % 30 == 0 ? 1f : (float?)null;
+                }
+
+                if (tick != firstRecord && tick != firstRecord + 2 && (tick < farSlot || (tick - farSlot) % 6 != 0))
+                {
+                    return null;
+                }
+
+                return 1f + (MetresPerTick * (tick - startTick));
+            };
+
+            var presenter = Presenter();
+            var run = new Run(presenter);
+            run.Play(600, far);
+
+            Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(FrameStep * 1.2f), "Never faster than it walks.");
+            Assert.That(run.MovedBackwards, Is.False);
+            Assert.That(run.Starved.Any(starved => starved), Is.False);
+            Assert.That(presenter.Discontinuities, Is.EqualTo(1));
+            Assert.That(run.X[run.X.Count - 1], Is.GreaterThan(20f), "It walks.");
+        }
+
         // A first state that the caller knows the entity stands at, such as a Mob's rest pose,
         // keeps the start from a stand.
         [Test]

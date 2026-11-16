@@ -33,6 +33,48 @@ public sealed class SnapshotRecordsTests
         Assert.Equal(Quantized(3, State(3f)), records.Record(third).ToArray());
     }
 
+    // A start is a position that moves after it stood for a snapshot, as a client judges standing
+    // by the position, and it lasts that snapshot and the next: a new entity, a walk that goes on,
+    // and a turn in place start nothing.
+    [Fact]
+    public void APositionThatMovesAfterItStoodStartsForTwoSnapshots()
+    {
+        var records = new SnapshotRecords();
+        Snapshot(records, 1, (1, State(1f)), (2, State(2f)));
+        Assert.Equal((false, false), (StartOf(records, 1), StartOf(records, 2)));
+
+        // Entity 1 walks off at once, and entity 2 turns where it stands.
+        Snapshot(records, 2, (1, State(1.15f)), (2, State(2f, yawDegrees: 90f)));
+        Assert.Equal((false, false), (StartOf(records, 1), StartOf(records, 2)));
+
+        // Entity 1 walks on, and entity 2 walks off after it stood.
+        Snapshot(records, 3, (1, State(1.3f)), (2, State(2.15f, yawDegrees: 90f)));
+        Assert.Equal((false, true), (StartOf(records, 1), StartOf(records, 2)));
+
+        // Entity 1 stands for one snapshot; entity 2 walks on in the second snapshot of its start.
+        Snapshot(records, 4, (1, State(1.3f)), (2, State(2.3f, yawDegrees: 90f)));
+        Assert.Equal((false, true), (StartOf(records, 1), StartOf(records, 2)));
+
+        // Entity 1 walks off again; entity 2 walks on, its start over.
+        Snapshot(records, 5, (1, State(1.45f)), (2, State(2.45f, yawDegrees: 90f)));
+        Assert.Equal((true, false), (StartOf(records, 1), StartOf(records, 2)));
+
+        // A start lasts its second snapshot also when the entity stopped in it.
+        Snapshot(records, 6, (1, State(1.45f)), (2, State(2.6f, yawDegrees: 90f)));
+        Assert.Equal((true, false), (StartOf(records, 1), StartOf(records, 2)));
+        Snapshot(records, 7, (1, State(1.45f)), (2, State(2.75f, yawDegrees: 90f)));
+        Assert.Equal((false, false), (StartOf(records, 1), StartOf(records, 2)));
+
+        // When entity 1's slot goes, entity 2 takes it with its own past: it stands and walks off.
+        Snapshot(records, 8, (2, State(2.75f, yawDegrees: 90f)));
+        Snapshot(records, 9, (2, State(2.9f, yawDegrees: 90f)));
+        Assert.True(StartOf(records, 2));
+        Snapshot(records, 10, (2, State(3.05f, yawDegrees: 90f)));
+        Assert.True(StartOf(records, 2));
+        Snapshot(records, 11, (2, State(3.2f, yawDegrees: 90f)));
+        Assert.False(StartOf(records, 2));
+    }
+
     [Fact]
     public void AStateThatIsNotFiniteGetsNoRecordAndAnEntityIsReportedOnce()
     {
@@ -138,6 +180,12 @@ public sealed class SnapshotRecordsTests
         }
 
         records.EndReports();
+    }
+
+    private static bool StartOf(SnapshotRecords records, ulong entityId)
+    {
+        Assert.True(records.TryGetSlot(entityId, out var slot));
+        return records.Starts[slot];
     }
 
     private static byte[] Quantized(uint entityId, PlayerMovementState state)

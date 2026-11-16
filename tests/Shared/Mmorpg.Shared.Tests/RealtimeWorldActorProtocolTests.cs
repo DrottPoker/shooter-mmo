@@ -314,6 +314,8 @@ public sealed class RealtimeWorldActorProtocolTests
             -1f,
             270f,
             RealtimeWorldActorActivityTier.EventDriven,
+            0,
+            false,
             0f,
             1f,
             0f,
