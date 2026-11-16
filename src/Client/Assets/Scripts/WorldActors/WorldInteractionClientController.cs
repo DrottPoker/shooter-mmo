@@ -59,6 +59,19 @@ namespace Mmorpg.Client.WorldActors
             Changed?.Invoke();
         }
 
+        // Ends the pending operation without an answer to show, as for an opening whose actor
+        // already left the client's view.
+        public void AbandonPending()
+        {
+            if (PendingOperationId == Guid.Empty)
+            {
+                return;
+            }
+
+            PendingOperationId = Guid.Empty;
+            Changed?.Invoke();
+        }
+
         public bool TryOpen(
             RealtimeWorldInteractionOpened opened,
             WorldActorClientEntry target,
@@ -820,15 +833,25 @@ namespace Mmorpg.Client.WorldActors
             return messageTexts.Get(key);
         }
 
+        // The world channel carries the actor and the owner channel the interaction, so the actor's
+        // newer state or its despawn can arrive before the opening. An opening for an actor the
+        // client no longer sees opens nothing; one older than the actor's interaction revision
+        // opens. The worker closes both in order on the owner channel, as it closes every
+        // interaction whose actor went, stopped, or changed.
         private void OnOpened(RealtimeWorldInteractionOpened opened)
         {
             if (!actorController.State.TryGet(opened.TargetEntityId, out var actor)
-                || actor.RuntimeActorId != opened.TargetRuntimeId
-                || opened.TargetRevision < actor.InteractionRevision)
+                || actor.RuntimeActorId != opened.TargetRuntimeId)
             {
-                realtimeSession.DisconnectForClientFailure(
-                    "world_interaction_state_conflict",
-                    "World interaction open conflicts with actor presence.");
+                if (opened.OperationId == State.PendingOperationId)
+                {
+                    State.AbandonPending();
+                }
+
+                ClearPendingOpen();
+                ClientLog.Info(
+                    ClientLogCategory.Client,
+                    "A world interaction opened for an actor that already left the client's view; it stays closed.");
                 return;
             }
 

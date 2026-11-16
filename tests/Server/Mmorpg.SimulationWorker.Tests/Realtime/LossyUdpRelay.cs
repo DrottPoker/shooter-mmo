@@ -14,7 +14,8 @@ internal sealed class LossyUdpRelay : IDisposable
     private const byte ReliableMerged = 2;
     private const byte Merged = 13;
 
-    // A channeled packet names its channel at byte 3 as channel times four plus the delivery.
+    // A channeled packet names its channel at byte 3 as channel times four plus the delivery, so
+    // the delivery is the same rest for every channel of the protocol.
     private const int ChannelIdOffset = 3;
     private const int DeliveryKinds = 4;
 

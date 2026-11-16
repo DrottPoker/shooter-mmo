@@ -29,7 +29,7 @@ public sealed class RealtimeCorpseInteractionTests
         var corpse = Assert.Single(chunk.Corpses);
         Assert.Equal(nearCorpseId, corpse.CorpseId);
         Assert.Equal(1f, corpse.PositionX);
-        Assert.Equal(RealtimeProtocol.ControlChannel, client.Packets.First(packet =>
+        Assert.Equal(RealtimeProtocol.WorldChannel, client.Packets.First(packet =>
             packet.Type == RealtimeMessageType.CorpsePresenceSnapshotChunk).Channel);
     }
 

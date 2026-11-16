@@ -120,18 +120,18 @@ public sealed class RealtimeSimulationServiceTests
                     var intentPacket = RealtimeProtocol.EncodeItemOperationIntent(intent);
                     peer.Send(
                         intentPacket,
-                        RealtimeProtocol.ControlChannel,
+                        RealtimeProtocol.OwnerChannel,
                         DeliveryMethod.ReliableOrdered);
                     peer.Send(
                         intentPacket,
-                        RealtimeProtocol.ControlChannel,
+                        RealtimeProtocol.OwnerChannel,
                         DeliveryMethod.ReliableOrdered);
                     return;
                 }
 
                 if (messageType == RealtimeMessageType.ItemOperationResult)
                 {
-                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(RealtimeProtocol.OwnerChannel, channel);
                     Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
                     Assert.True(RealtimeProtocol.TryDecodeItemOperationResult(
                         packet,
@@ -143,6 +143,7 @@ public sealed class RealtimeSimulationServiceTests
                         peer.Send(
                             RealtimeProtocol.EncodeLeaveRequest(
                                 authHandler.SimulationSessionId.ToString("D")),
+                            RealtimeProtocol.OwnerChannel,
                             DeliveryMethod.ReliableOrdered);
                     }
 
@@ -319,7 +320,7 @@ public sealed class RealtimeSimulationServiceTests
 
                 if (messageType == RealtimeMessageType.CarryStateChanged)
                 {
-                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(RealtimeProtocol.OwnerChannel, channel);
                     Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
                     Assert.True(RealtimeProtocol.TryDecodeCarryStateChanged(
                         packet,
@@ -357,6 +358,7 @@ public sealed class RealtimeSimulationServiceTests
                         {
                             peer.Send(
                                 RealtimeProtocol.EncodeLeaveRequest(joined.SimulationSessionId),
+                                RealtimeProtocol.OwnerChannel,
                                 DeliveryMethod.ReliableOrdered);
                         }
                     }
@@ -366,7 +368,7 @@ public sealed class RealtimeSimulationServiceTests
 
                 if (messageType == RealtimeMessageType.EntitySpawn)
                 {
-                    Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                    Assert.Equal(RealtimeProtocol.WorldChannel, channel);
                     Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
                     Assert.True(RealtimeProtocol.TryDecodeEntitySpawn(
                         packet,

@@ -273,6 +273,7 @@ public sealed class RealtimeEntityLifecycleTests
             Assert.NotNull(peer);
             peer.Send(
                 RealtimeProtocol.EncodeLeaveRequest(simulationSessionId),
+                RealtimeProtocol.OwnerChannel,
                 DeliveryMethod.ReliableOrdered);
         }
 
@@ -323,7 +324,8 @@ public sealed class RealtimeEntityLifecycleTests
                     return;
                 }
 
-                Assert.Equal(RealtimeProtocol.ControlChannel, channel);
+                Assert.True(RealtimeProtocol.TryGetDescriptor(messageType, out var descriptor));
+                Assert.Equal(descriptor.Channel, channel);
                 Assert.Equal(DeliveryMethod.ReliableOrdered, deliveryMethod);
                 switch (messageType)
                 {

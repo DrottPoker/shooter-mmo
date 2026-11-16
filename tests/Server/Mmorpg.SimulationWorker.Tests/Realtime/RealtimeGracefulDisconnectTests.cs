@@ -119,16 +119,21 @@ public sealed class RealtimeGracefulDisconnectTests
         Assert.Equal("invalid_packet", reason.Code);
     }
 
-    // A client that never acknowledges grows LiteNetLib's outgoing queue; beyond the limit the
-    // peer goes at once and without a reason, as no reliable message would arrive anyway.
+    // A client that never acknowledges grows LiteNetLib's outgoing queues; beyond the limit,
+    // which counts every reliable channel together, the peer goes at once and without a reason,
+    // as no reliable message would arrive anyway.
     [Fact]
     public void APeerBeyondTheReliableBacklogGoesAtOnceWithoutData()
     {
         using var fixture = new RealtimeLoopFixture();
         var supervisor = Supervisor(fixture, TimeSpan.FromHours(1));
         var player = fixture.ConnectPlayer(1);
-        player.Peer.QueuedReliablePackets = fixture.Config.Admission.MaxReliableQueuedPackets + 1;
+        var half = (fixture.Config.Admission.MaxReliableQueuedPackets / 2) + 1;
+        player.Peer.QueuedReliablePackets[RealtimeProtocol.WorldChannel] = half;
+        supervisor.EnforcePeerState();
+        Assert.Empty(fixture.Directory.Disconnected);
 
+        player.Peer.QueuedReliablePackets[RealtimeProtocol.OwnerChannel] = half;
         supervisor.EnforcePeerState();
 
         var disconnect = Assert.Single(fixture.Directory.Disconnected);
@@ -206,6 +211,21 @@ public sealed class RealtimeGracefulDisconnectTests
         Assert.Equal("server_shutdown", steadyClient.ServerDisconnect!.Code);
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(steadyClient.DisconnectData!, out var notice, out _));
         Assert.Equal(steadyClient.ServerDisconnect.Code, notice.Code);
+    }
+
+    // The relay loses reliable data on every reliable channel and lets the sequenced input pass.
+    [Theory]
+    [InlineData(RealtimeProtocol.SessionChannel, LiteNetLib.DeliveryMethod.ReliableOrdered, true)]
+    [InlineData(RealtimeProtocol.WorldChannel, LiteNetLib.DeliveryMethod.ReliableOrdered, true)]
+    [InlineData(RealtimeProtocol.OwnerChannel, LiteNetLib.DeliveryMethod.ReliableOrdered, true)]
+    [InlineData(RealtimeProtocol.MovementInputChannel, LiteNetLib.DeliveryMethod.Sequenced, false)]
+    public void TheRelayFindsReliableDataOnEveryChannel(byte channel, LiteNetLib.DeliveryMethod delivery, bool reliable)
+    {
+        var packet = new byte[8];
+        packet[0] = 1;
+        packet[3] = (byte)((channel * 4) + (byte)delivery);
+
+        Assert.Equal(reliable, LossyUdpRelay.CarriesReliableData(packet));
     }
 
     private static RealtimePeerSupervisor Supervisor(RealtimeLoopFixture fixture, TimeSpan maximum)

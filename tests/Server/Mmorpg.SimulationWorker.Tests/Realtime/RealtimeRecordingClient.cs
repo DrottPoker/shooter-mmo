@@ -86,14 +86,21 @@ internal sealed class RealtimeRecordingClient : IDisposable
         }
     }
 
+    // Sends on the given channel, or on the one that the message's descriptor names; a packet
+    // without a readable type goes on the session channel.
     public void Send(
         byte[] packet,
         DeliveryMethod deliveryMethod = DeliveryMethod.ReliableOrdered,
-        byte channel = RealtimeProtocol.ControlChannel)
+        byte? channel = null)
     {
         var connectedPeer = peer
             ?? throw new InvalidOperationException($"Client {Name} is not connected.");
-        connectedPeer.Send(packet, channel, deliveryMethod);
+        var resolved = channel
+            ?? (RealtimeProtocol.TryReadMessageType(packet, out var type)
+                && RealtimeProtocol.TryGetDescriptor(type, out var descriptor)
+                    ? descriptor.Channel
+                    : RealtimeProtocol.SessionChannel);
+        connectedPeer.Send(packet, resolved, deliveryMethod);
     }
 
     public void SendJoin(string ticket)

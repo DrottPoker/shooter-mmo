@@ -55,7 +55,11 @@ public sealed class RealtimeReplicationContractTests
             packet =>
             {
                 Assert.Equal(DeliveryMethod.ReliableOrdered, packet.Delivery);
-                Assert.Equal(RealtimeProtocol.ControlChannel, packet.Channel);
+                Assert.Equal(
+                    packet.Type == RealtimeMessageType.JoinAccepted
+                        ? RealtimeProtocol.SessionChannel
+                        : RealtimeProtocol.WorldChannel,
+                    packet.Channel);
             });
         // Every packet travels exactly as the schema's message descriptor says.
         Assert.All(

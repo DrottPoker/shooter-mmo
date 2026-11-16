@@ -49,12 +49,10 @@ internal sealed class RealtimePeerSupervisor(
             }
 
             // A client that never acknowledges reliable packets fills LiteNetLib's send window of
-            // 64 packets and then grows the outgoing queue behind it without bound, so it is
-            // disconnected without another reliable message. The count is that queue, not an
-            // acknowledgement.
-            var queuedReliablePackets = peer.GetPacketsCountInReliableQueue(
-                RealtimeProtocol.ControlChannel,
-                true);
+            // 64 packets per channel and then grows the outgoing queues behind them without bound,
+            // so it is disconnected without another reliable message. The count is those queues of
+            // every reliable channel together, not an acknowledgement.
+            var queuedReliablePackets = RealtimeReliableChannels.QueuedPackets(peer);
             if (queuedReliablePackets > config.Admission.MaxReliableQueuedPackets)
             {
                 logger.LogWarning(

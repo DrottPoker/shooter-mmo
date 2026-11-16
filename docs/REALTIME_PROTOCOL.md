@@ -284,60 +284,123 @@ of every message type, generated from the schema:
 
 | Id | Message | Family | Direction | Channel | Delivery |
 | ---: | --- | --- | --- | --- | --- |
-| 1 | `JoinRequest` | Session | Client to server | Control | Reliable ordered |
-| 2 | `JoinAccepted` | Session | Server to client | Control | Reliable ordered |
-| 3 | `JoinRejected` | Session | Server to client | Control | Reliable ordered |
-| 4 | `LeaveRequest` | Session | Client to server | Control | Reliable ordered |
-| 5 | `LeaveAccepted` | Session | Server to client | Control | Reliable ordered |
-| 6 | `LeaveRejected` | Session | Server to client | Control | Reliable ordered |
-| 7 | `ServerDisconnect` | Session | Server to client | Control | Reliable ordered |
+| 1 | `JoinRequest` | Session | Client to server | Session | Reliable ordered |
+| 2 | `JoinAccepted` | Session | Server to client | Session | Reliable ordered |
+| 3 | `JoinRejected` | Session | Server to client | Session | Reliable ordered |
+| 4 | `LeaveRequest` | Session | Client to server | Owner | Reliable ordered |
+| 5 | `LeaveAccepted` | Session | Server to client | Session | Reliable ordered |
+| 6 | `LeaveRejected` | Session | Server to client | Session | Reliable ordered |
+| 7 | `ServerDisconnect` | Session | Server to client | Session | Reliable ordered |
 | 8 | `MovementInputBatch` | Movement | Client to server | Movement input | Sequenced |
 | 9 | `SimulationSnapshot` | Replication | Server to client | Unreliable receive | Unreliable |
-| 10 | `EntitySpawn` | Replication | Server to client | Control | Reliable ordered |
-| 11 | `EntityDespawn` | Replication | Server to client | Control | Reliable ordered |
-| 12 | `CarryStateChanged` | Items | Server to client | Control | Reliable ordered |
-| 13 | `ItemOperationIntent` | Items | Client to server | Control | Reliable ordered |
-| 14 | `ItemOperationResult` | Items | Server to client | Control | Reliable ordered |
-| 15 | `CorpsePresenceSnapshotChunk` | Corpses | Server to client | Control | Reliable ordered |
-| 16 | `CorpseInteractionIntent` | Corpses | Client to server | Control | Reliable ordered |
-| 17 | `CorpseInteractionResult` | Corpses | Server to client | Control | Reliable ordered |
-| 18 | `CorpseViewStateChunk` | Corpses | Server to client | Control | Reliable ordered |
-| 19 | `CorpseViewClosed` | Corpses | Server to client | Control | Reliable ordered |
-| 20 | `WorldActorSpawn` | WorldActors | Server to client | Control | Reliable ordered |
-| 21 | `WorldActorState` | WorldActors | Server to client | Control | Reliable ordered |
-| 22 | `WorldActorDespawn` | WorldActors | Server to client | Control | Reliable ordered |
-| 23 | `WorldInteractionIntent` | WorldActors | Client to server | Control | Reliable ordered |
-| 24 | `WorldInteractionOpened` | WorldActors | Server to client | Control | Reliable ordered |
-| 25 | `WorldInteractionResult` | WorldActors | Server to client | Control | Reliable ordered |
-| 26 | `WorldInteractionClosed` | WorldActors | Server to client | Control | Reliable ordered |
+| 10 | `EntitySpawn` | Replication | Server to client | World | Reliable ordered |
+| 11 | `EntityDespawn` | Replication | Server to client | World | Reliable ordered |
+| 12 | `CarryStateChanged` | Items | Server to client | Owner | Reliable ordered |
+| 13 | `ItemOperationIntent` | Items | Client to server | Owner | Reliable ordered |
+| 14 | `ItemOperationResult` | Items | Server to client | Owner | Reliable ordered |
+| 15 | `CorpsePresenceSnapshotChunk` | Corpses | Server to client | World | Reliable ordered |
+| 16 | `CorpseInteractionIntent` | Corpses | Client to server | Owner | Reliable ordered |
+| 17 | `CorpseInteractionResult` | Corpses | Server to client | Owner | Reliable ordered |
+| 18 | `CorpseViewStateChunk` | Corpses | Server to client | Owner | Reliable ordered |
+| 19 | `CorpseViewClosed` | Corpses | Server to client | Owner | Reliable ordered |
+| 20 | `WorldActorSpawn` | WorldActors | Server to client | World | Reliable ordered |
+| 21 | `WorldActorState` | WorldActors | Server to client | World | Reliable ordered |
+| 22 | `WorldActorDespawn` | WorldActors | Server to client | World | Reliable ordered |
+| 23 | `WorldInteractionIntent` | WorldActors | Client to server | Owner | Reliable ordered |
+| 24 | `WorldInteractionOpened` | WorldActors | Server to client | Owner | Reliable ordered |
+| 25 | `WorldInteractionResult` | WorldActors | Server to client | Owner | Reliable ordered |
+| 26 | `WorldInteractionClosed` | WorldActors | Server to client | Owner | Reliable ordered |
 | 27 | `OwnerSimulationSnapshot` | Movement | Server to client | Unreliable receive | Unreliable |
-| 28 | `GatheringState` | WorldActors | Server to client | Control | Reliable ordered |
-| 29 | `CombatIntent` | Combat | Client to server | Control | Reliable ordered |
-| 30 | `CombatIntentResult` | Combat | Server to client | Control | Reliable ordered |
-| 31 | `CombatantState` | Combat | Server to client | Control | Reliable ordered |
-| 32 | `CombatEventBatch` | Combat | Server to client | Control | Reliable ordered |
-| 33 | `OwnerCombatState` | Combat | Server to client | Control | Reliable ordered |
-| 34 | `OwnerItemQuantityChanged` | Items | Server to client | Control | Reliable ordered |
-| 35 | `OwnerItemStateChanged` | Items | Server to client | Control | Reliable ordered |
-| 36 | `EntityAppearanceChanged` | Replication | Server to client | Control | Reliable ordered |
-| 37 | `AppearanceIntent` | Replication | Client to server | Control | Reliable ordered |
-| 38 | `AppearanceIntentResult` | Replication | Server to client | Control | Reliable ordered |
-| 39 | `AdminIntent` | Admin | Client to server | Control | Reliable ordered |
-| 40 | `AdminIntentResult` | Admin | Server to client | Control | Reliable ordered |
-| 41 | `AdminStateChanged` | Admin | Server to client | Control | Reliable ordered |
-| 42 | `QuestIntent` | Quests | Client to server | Control | Reliable ordered |
-| 43 | `QuestIntentResult` | Quests | Server to client | Control | Reliable ordered |
-| 44 | `QuestLogChanged` | Quests | Server to client | Control | Reliable ordered |
-| 45 | `QuestDropInCorpse` | Quests | Server to client | Control | Reliable ordered |
-| 46 | `GameServiceAvailabilityChanged` | Session | Server to client | Control | Reliable ordered |
+| 28 | `GatheringState` | WorldActors | Server to client | Owner | Reliable ordered |
+| 29 | `CombatIntent` | Combat | Client to server | Owner | Reliable ordered |
+| 30 | `CombatIntentResult` | Combat | Server to client | Owner | Reliable ordered |
+| 31 | `CombatantState` | Combat | Server to client | World | Reliable ordered |
+| 32 | `CombatEventBatch` | Combat | Server to client | World | Reliable ordered |
+| 33 | `OwnerCombatState` | Combat | Server to client | World | Reliable ordered |
+| 34 | `OwnerItemQuantityChanged` | Items | Server to client | Owner | Reliable ordered |
+| 35 | `OwnerItemStateChanged` | Items | Server to client | Owner | Reliable ordered |
+| 36 | `EntityAppearanceChanged` | Replication | Server to client | World | Reliable ordered |
+| 37 | `AppearanceIntent` | Replication | Client to server | Owner | Reliable ordered |
+| 38 | `AppearanceIntentResult` | Replication | Server to client | Owner | Reliable ordered |
+| 39 | `AdminIntent` | Admin | Client to server | Owner | Reliable ordered |
+| 40 | `AdminIntentResult` | Admin | Server to client | Owner | Reliable ordered |
+| 41 | `AdminStateChanged` | Admin | Server to client | Owner | Reliable ordered |
+| 42 | `QuestIntent` | Quests | Client to server | Owner | Reliable ordered |
+| 43 | `QuestIntentResult` | Quests | Server to client | Owner | Reliable ordered |
+| 44 | `QuestLogChanged` | Quests | Server to client | Owner | Reliable ordered |
+| 45 | `QuestDropInCorpse` | Quests | Server to client | Owner | Reliable ordered |
+| 46 | `GameServiceAvailabilityChanged` | Session | Server to client | Owner | Reliable ordered |
 
-The control channel is 0, the movement input channel is 1, and the client
+The session channel is 0, the movement input channel 1, the world channel 2,
+and the owner channel 3, as [Channels](#channels) describes, and the client
 receives unreliable packets on channel 0. SimulationWorker builds its route
-table from the descriptors, the Unity client recognizes snapshots by their
-unreliable delivery, and `RealtimeReplicationContractTests` checks that every
-packet the worker sends travels as its descriptor says. The owner snapshot is
-small enough to stay prioritized at the snapshot rate, while remote snapshots
-carry application-level tick and chunk metadata.
+table from the descriptors and sends every reliable message on the channel its
+descriptor names, the Unity client and the bots check the channel and delivery
+of every message against its descriptor, and
+`RealtimeReplicationContractTests` checks that every packet the worker sends
+travels as its descriptor says. The owner snapshot is small enough to stay
+prioritized at the snapshot rate, while remote snapshots carry
+application-level tick and chunk metadata.
+
+## Channels
+
+LiteNetLib orders a reliable channel only within itself, and one lost packet
+holds back everything behind it on its channel until its resend arrives. The
+reliable messages therefore travel on three reliable ordered channels, so that
+a lost packet of one stream never holds back the others:
+
+| Channel | Id | Carries |
+| --- | ---: | --- |
+| Session | 0 | `JoinRequest`, `JoinAccepted`, `JoinRejected`, `LeaveAccepted`, `LeaveRejected`, and `ServerDisconnect`: the join, the answers to a leave, and the message that says why a connection ends, which [The Reason In The Disconnect](#the-reason-in-the-disconnect) also puts into the disconnect |
+| World | 2 | `EntitySpawn`, `EntityDespawn`, `EntityAppearanceChanged`, `WorldActorSpawn`, `WorldActorState`, `WorldActorDespawn`, `CorpsePresenceSnapshotChunk`, `CombatantState`, `CombatEventBatch`, and `OwnerCombatState`: what the client builds its picture of the World from, in order |
+| Owner | 3 | Every intent and its answer, of items, corpses, world interaction, combat, looks, admin tools, and quests; the owner's state that they and the World change: `CarryStateChanged`, `OwnerItemStateChanged`, `OwnerItemQuantityChanged`, `CorpseViewStateChunk`, `CorpseViewClosed`, `WorldInteractionOpened`, `WorldInteractionClosed`, `GatheringState`, `QuestLogChanged`, `QuestDropInCorpse`, and `AdminStateChanged`; `GameServiceAvailabilityChanged`; and from the client `LeaveRequest` |
+
+The rule for choosing a channel: a message goes on the channel of every
+message that its receiver needs to have handled before it, so that a lost
+packet can delay it but never put it before them. Messages without such a need
+between them go on different channels. The dependencies are:
+
+| Message | Needs before it, so on one channel with it |
+| --- | --- |
+| `CombatantState` | The `EntitySpawn` or `WorldActorSpawn` of its combatant: the client fails a state without presence |
+| `EntityAppearanceChanged` | The `EntitySpawn` of its player: the client drops a look of a player it does not see, so a newer look must not arrive before an older spawn |
+| `WorldActorState`, `WorldActorDespawn` | The spawn and the earlier states of the actor, by revision |
+| `CombatEventBatch`, `OwnerCombatState` | The combatants and the combat they show, in simulation order |
+| `CorpsePresenceSnapshotChunk` | The chunks of its own snapshot |
+| `ItemOperationResult`, `CorpseInteractionResult`, `OwnerItemStateChanged`, `OwnerItemQuantityChanged`, `CarryStateChanged` | Each other: they carry the carry state, whose revision the client takes only ascending and fails when it goes back, and a result whose committed change has not arrived makes the client read its inventory again over HTTP |
+| `WorldInteractionResult`, `GatheringState` | The `OwnerItemStateChanged` of the item-state revision they name, for the same reason, and the `WorldInteractionOpened` of their interaction |
+| `WorldInteractionClosed` | The `WorldInteractionOpened` of its interaction, or the client would keep an interaction open that the worker closed |
+| `QuestLogChanged`, `QuestIntentResult` | The `OwnerItemStateChanged` of the same operation, and the earlier quest log changes by revision |
+| `CorpseViewStateChunk`, `CorpseViewClosed` | The `CorpseInteractionResult` that opened or changed the view, and the earlier chunks of the view |
+| Every intent result | Its intent, and the answers to the intents sent before it |
+| `GameServiceAvailabilityChanged` | The refusals with `game_service_unavailable` sent before it, which the client forgets when GameService answers again |
+| `LeaveRequest` | The intents that the player sent before it, so the worker handles them before the leave |
+| `LeaveAccepted`, `ServerDisconnect`, `JoinRejected` | Nothing: they end the session, so whatever the other channels still carry is dropped and never shown as a failure |
+
+Three dependencies cross the channels and are resolved where the message
+arrives instead:
+
+- Every message of the world and owner channels needs `JoinAccepted`. Since
+  a lost `JoinAccepted` lets them arrive first, the client and the bots hold
+  such a message while the join waits for its answer and handle the held
+  messages in the order they arrived right after it; at most 8,192, beyond
+  which the join fails with `join_backlog_overflow`.
+- `WorldInteractionOpened` names its actor and the actor's interaction
+  revision, but the actor's newer state or its despawn can arrive first on the
+  world channel. The client opens an interaction whose revision is older than
+  the actor's, and opens nothing for an actor it no longer sees, without a
+  failure; the worker closes such an interaction in order on the owner channel,
+  because it closes every interaction whose actor went, stopped, or changed.
+- Some owner messages name entities of the world channel, such as a combat
+  target, a corpse of `QuestDropInCorpse`, or the look after an equip. The
+  client shows them as they come and never fails on an entity it does not see.
+
+At the end of a session, `LeaveAccepted` or `ServerDisconnect` can arrive
+before world state or answers that the worker sent before it. The client drops
+them, as it drops every message in the `Leaving` state and after the end, and
+the worker disconnects once the session channel's message is acknowledged, so
+LiteNetLib does not resend what the other channels still hold. Nothing durable
+is lost: what GameService committed is read again on the next join.
 
 ## Session Messages
 
@@ -360,8 +423,8 @@ carry application-level tick and chunk metadata.
   not, the worker refuses items, trade, and quests with
   `game_service_unavailable`, and the client shows that saving is paused, as
   [GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes. The
-  client handles it while joined, drops it while leaving, and treats it before
-  a join as a protocol failure.
+  client handles it while joined, drops it while leaving, and holds it while a
+  join waits for its answer, as [Channels](#channels) describes.
 - `JoinRejected`, `LeaveRejected`, and `ServerDisconnect` carry an `Error`: a
   code of up to `MaximumErrorCodeLength` (64) characters and a message of up to
   `MaximumErrorMessageLength` (512). Decoders accept blank text, and the
@@ -385,7 +448,7 @@ carry application-level tick and chunk metadata.
 ### The Reason In The Disconnect
 
 A connection that the worker ends carries the message that says why twice: as a
-reliable message on the control channel, and as the data of LiteNetLib's
+reliable message on the session channel, and as the data of LiteNetLib's
 disconnect (`NetManager.DisconnectPeer(peer, data)`, which the client reads as
 `DisconnectInfo.AdditionalData`). The data is one whole encoded packet, frame
 header included, of `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected`, the
@@ -406,7 +469,7 @@ the data with its code whole and its log message cut to fit, while the reliable
 copy keeps the whole message.
 
 A client that gets a disconnect with data handles the data exactly as if the
-message had arrived on the control channel, but only while it has not handled
+message had arrived on its channel, but only while it has not handled
 that message yet; the client and the bots accept only the three message types
 there and treat any other data as a disconnect without data.
 

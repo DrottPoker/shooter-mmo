@@ -266,7 +266,7 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
 
     public long RemoteRecords { get; private set; }
 
-    public void Send(byte[] data, DeliveryMethod deliveryMethod)
+    public void Send(byte[] data, byte channel, DeliveryMethod deliveryMethod)
     {
         Send(new ReadOnlySpan<byte>(data), deliveryMethod);
     }
@@ -323,9 +323,9 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
         receivedLength = 0;
     }
 
-    public void SendDisconnectReason(byte[] data, RealtimePendingDisconnect disconnect)
+    public void SendDisconnectReason(byte[] data, byte channel, RealtimePendingDisconnect disconnect)
     {
-        Send(data, DeliveryMethod.ReliableOrdered);
+        Send(data, channel, DeliveryMethod.ReliableOrdered);
     }
 
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)

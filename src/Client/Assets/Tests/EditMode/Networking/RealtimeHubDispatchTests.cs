@@ -28,6 +28,9 @@ namespace Mmorpg.Client.Tests.EditMode
             Fails,
             // Drops the message without a failure.
             Ignored,
+            // Waits for JoinAccepted, as a message of another channel than the session's may
+            // overtake it; RealtimeHubConnectionTests pins that it follows the answer.
+            Held,
             // Has tests of its own in RealtimeHubConnectionTests.
             OwnTests
         }
@@ -107,7 +110,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         () => RealtimeProtocol.EncodeCarryStateChanged(Carry(1)),
                         payload => RealtimeProtocol.EncodeCarryStateChanged(ToRealtime((PlayerCarryState)payload)))
                     .WhileJoined(Reaction.Raises, "CarryStateChanged 1")
-                    .BeforeTheJoin(Reaction.Fails, "unexpected_carry_state")
+                    .BeforeTheJoin(Reaction.Held)
                     .WhileLeaving(Reaction.Ignored)
                     .Malformed("invalid_carry_state", HubState.Joined);
                 yield return Feature(
@@ -360,7 +363,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     else
                     {
                         yield return new TestCaseData(item, RealtimeProtocol.MovementInputChannel, DeliveryMethod.ReliableOrdered);
-                        yield return new TestCaseData(item, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableUnordered);
+                        yield return new TestCaseData(item, ChannelOf(item.Type), DeliveryMethod.ReliableUnordered);
                     }
                 }
             }
@@ -432,11 +435,15 @@ namespace Mmorpg.Client.Tests.EditMode
 
             harness.Deliver(item.Packet());
 
-            if (item.BeforeJoin == Reaction.Ignored)
+            if (item.BeforeJoin == Reaction.Ignored || item.BeforeJoin == Reaction.Held)
             {
                 Assert.That(harness.Timeline, Is.EqualTo(new[] { "frame" }));
                 Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
                 Assert.That(harness.StepJoin(), Is.True);
+                Assert.That(
+                    ChannelOf(item.Type) == RealtimeProtocol.SessionChannel || item.IsSnapshot,
+                    Is.EqualTo(item.BeforeJoin == Reaction.Ignored),
+                    "Only a message of another channel than the session's waits for the join answer.");
                 return;
             }
 
@@ -528,8 +535,9 @@ namespace Mmorpg.Client.Tests.EditMode
         public void AClientMessageFromTheServerIsUnexpected(byte[] packet)
         {
             harness.JoinSession();
+            RealtimeProtocol.TryReadMessageType(packet, out var type);
 
-            harness.Deliver(packet, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+            harness.Deliver(packet, ChannelOf(type), DeliveryMethod.ReliableOrdered);
 
             AssertSessionFailed("unexpected_message");
         }
@@ -543,7 +551,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
             harness.Deliver(
                 RealtimeProtocol.EncodeCombatIntent(CombatIntent()),
-                RealtimeProtocol.ControlChannel,
+                RealtimeProtocol.OwnerChannel,
                 DeliveryMethod.ReliableOrdered);
 
             AssertLeaveFailed("unexpected_message");
@@ -557,9 +565,16 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.Clear();
             var packet = RealtimeProtocol.EncodeEntitySpawn(EntitySpawn(PlayerEntityId)).Take(3).ToArray();
 
-            harness.Deliver(packet, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+            harness.Deliver(packet, RealtimeProtocol.SessionChannel, DeliveryMethod.ReliableOrdered);
 
             AssertJoinFailed("invalid_packet");
+        }
+
+        // The channel that the message's descriptor names.
+        private static byte ChannelOf(RealtimeMessageType type)
+        {
+            RealtimeProtocol.TryGetDescriptor(type, out var descriptor);
+            return descriptor.Channel;
         }
 
         private static ServerMessageCase Feature<T>(
@@ -571,7 +586,7 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             return new ServerMessageCase(type, () => encode(model()), payload => encode((T)payload))
                 .WhileJoined(Reaction.Raises, joinedEvents)
-                .BeforeTheJoin(Reaction.Fails, "unexpected_" + codeSuffix)
+                .BeforeTheJoin(Reaction.Held)
                 .Malformed("invalid_" + codeSuffix, HubState.Joined);
         }
 

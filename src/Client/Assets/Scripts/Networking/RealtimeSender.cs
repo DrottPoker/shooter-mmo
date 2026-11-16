@@ -6,8 +6,9 @@ using Mmorpg.GameProtocol;
 namespace Mmorpg.Client.Networking
 {
     // The one send path of the channels. A send needs a joined session with a connected server;
-    // an intent goes reliable ordered on the control channel, and one that its encoder refuses
-    // is logged and not sent. Movement input has its own channel and wakes the transport.
+    // an intent goes reliable ordered on the channel its descriptor names, the owner channel,
+    // and one that its encoder refuses is logged and not sent. Movement input has its own
+    // channel and wakes the transport.
     internal sealed class RealtimeSender
     {
         private readonly RealtimeConnection connection;
@@ -49,7 +50,9 @@ namespace Mmorpg.Client.Networking
             try
             {
                 var packet = encode(intent);
-                connection.Send(packet, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+                RealtimeProtocol.TryReadMessageType(packet, out var type);
+                RealtimeProtocol.TryGetDescriptor(type, out var descriptor);
+                connection.Send(packet, descriptor.Channel, DeliveryMethod.ReliableOrdered);
                 diagnostics.RecordSentPacket(packet.Length);
                 diagnostics.RecordIntentSent(operationId, kind);
                 return true;

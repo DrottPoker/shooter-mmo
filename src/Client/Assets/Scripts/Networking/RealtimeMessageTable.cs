@@ -60,10 +60,16 @@ namespace Mmorpg.Client.Networking
     // the state whether the handler runs, the message is dropped, or it fails the session. A
     // client message, or a type without an entry, is unexpected. The hub seals the table once
     // every part registered, and a server message type without an entry fails that composition.
+    // The reliable channels are ordered only within themselves, so a message of another channel
+    // that overtakes JoinAccepted on the session channel waits for it here.
     internal sealed class RealtimeMessageTable
     {
+        // The most messages that may wait for JoinAccepted; a join that collects more fails.
+        public const int MaximumHeldBeforeJoin = 8192;
+
         private readonly RealtimeSession session;
         private readonly RealtimeMessageRoute[] routes = new RealtimeMessageRoute[byte.MaxValue + 1];
+        private readonly List<byte[]> heldBeforeJoin = new List<byte[]>();
         private bool isSealed;
 
         public RealtimeMessageTable(RealtimeSession session)
@@ -164,6 +170,12 @@ namespace Mmorpg.Client.Networking
             return route != null && (route.DroppedIn & StatesOf(state)) != 0;
         }
 
+        // Forgets the messages that waited for the answer of an earlier join.
+        public void DropHeldMessages()
+        {
+            heldBeforeJoin.Clear();
+        }
+
         public void Dispatch(byte[] packet, byte channel, DeliveryMethod deliveryMethod)
         {
             // The session already ended in this poll; later packets must not replace the first
@@ -192,15 +204,68 @@ namespace Mmorpg.Client.Networking
                     return;
                 }
             }
-            else if (channel != RealtimeProtocol.ControlChannel
+            else if (channel != descriptor.Channel
                 || deliveryMethod != DeliveryMethod.ReliableOrdered)
             {
                 session.FailProtocol(
                     "invalid_control_delivery",
-                    "SimulationWorker control messages require the reliable ordered control channel.");
+                    "SimulationWorker control messages require reliable ordered delivery on their channel.");
+                return;
+            }
+            else if (session.State == RealtimeConnectionState.Joining
+                && descriptor.Channel != RealtimeProtocol.SessionChannel
+                && routes[(int)messageType] != null)
+            {
+                Hold(packet);
                 return;
             }
 
+            Route(packet, messageType);
+            if (messageType == RealtimeMessageType.JoinAccepted)
+            {
+                ReleaseHeldMessages();
+            }
+        }
+
+        private void Hold(byte[] packet)
+        {
+            if (heldBeforeJoin.Count >= MaximumHeldBeforeJoin)
+            {
+                heldBeforeJoin.Clear();
+                session.FailProtocol(
+                    "join_backlog_overflow",
+                    "SimulationWorker sent too many messages before it accepted the join.");
+                return;
+            }
+
+            heldBeforeJoin.Add(packet);
+        }
+
+        // Handles what waited for JoinAccepted in the order it arrived, once the session is joined
+        // and SessionJoined reset the session-scoped parts.
+        private void ReleaseHeldMessages()
+        {
+            if (heldBeforeJoin.Count == 0)
+            {
+                return;
+            }
+
+            var held = heldBeforeJoin.ToArray();
+            heldBeforeJoin.Clear();
+            for (var index = 0; index < held.Length; index++)
+            {
+                if (session.State == RealtimeConnectionState.Disconnected)
+                {
+                    return;
+                }
+
+                RealtimeProtocol.TryReadMessageType(held[index], out var messageType);
+                Route(held[index], messageType);
+            }
+        }
+
+        private void Route(byte[] packet, RealtimeMessageType messageType)
+        {
             var route = routes[(int)messageType];
             if (route == null)
             {

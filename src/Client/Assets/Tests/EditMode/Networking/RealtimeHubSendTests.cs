@@ -288,9 +288,10 @@ namespace Mmorpg.Client.Tests.EditMode
             harness.TakeFailures();
         }
 
+        // Every intent travels on the owner channel, in order with the answers it gets.
         private static SendCase Control(string name, Func<RealtimeSimulationClient, bool> send, Func<byte[]> expected)
         {
-            return new SendCase(name, send, expected, RealtimeProtocol.ControlChannel, DeliveryMethod.ReliableOrdered);
+            return new SendCase(name, send, expected, RealtimeProtocol.OwnerChannel, DeliveryMethod.ReliableOrdered);
         }
 
         private static TestCaseData Invalid(string name, Func<RealtimeSimulationClient, bool> send)

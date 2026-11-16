@@ -106,7 +106,7 @@ public sealed class SimulationBotSessionTests
     }
 
     [Fact]
-    public void JoinsWithItsTicketOnTheControlChannel()
+    public void JoinsWithItsTicketOnTheSessionChannel()
     {
         var transport = new RecordingTransport();
         var session = NewSession();
@@ -116,7 +116,7 @@ public sealed class SimulationBotSessionTests
 
         Assert.Equal(SimulationBotClientState.Joining, session.State);
         var sent = Assert.Single(transport.Sent);
-        Assert.Equal(RealtimeProtocol.ControlChannel, sent.Channel);
+        Assert.Equal(RealtimeProtocol.SessionChannel, sent.Channel);
         Assert.Equal(RealtimeDelivery.ReliableOrdered, sent.Delivery);
         Assert.True(RealtimeProtocol.TryDecodeJoinRequest(sent.Packet, out var ticket, out _));
         Assert.Equal(Identity.Ticket, ticket);
@@ -130,7 +130,7 @@ public sealed class SimulationBotSessionTests
 
         session.Receive(
             RealtimeProtocol.EncodeJoinAccepted(accepted),
-            RealtimeProtocol.ControlChannel,
+            RealtimeProtocol.SessionChannel,
             RealtimeDelivery.ReliableOrdered,
             JoinedTimestamp);
 
@@ -180,17 +180,47 @@ public sealed class SimulationBotSessionTests
     }
 
     [Fact]
-    public void FailsOnAReliableSessionMessageBeforeTheJoinAcceptance()
+    public void FailsOnAReliableSessionMessageBeforeItConnected()
     {
-        var session = ConnectedSession(out _);
+        var session = NewSession();
+        session.Start(StartTimestamp);
 
         session.Receive(
             VectorOf(RealtimeMessageType.EntitySpawn),
-            RealtimeProtocol.ControlChannel,
+            RealtimeProtocol.WorldChannel,
             RealtimeDelivery.ReliableOrdered,
             JoinedTimestamp);
 
         AssertFailed(session, "unexpected_message");
+    }
+
+    // The world and owner channels are not ordered against the session channel, so their
+    // messages can overtake the join acceptance; they wait for it and follow it in order.
+    [Fact]
+    public void HoldsMessagesThatOvertakeTheJoinAcceptanceUntilIt()
+    {
+        var session = ConnectedSession(out _);
+        session.Receive(
+            VectorOf(RealtimeMessageType.EntitySpawn),
+            RealtimeProtocol.WorldChannel,
+            RealtimeDelivery.ReliableOrdered,
+            JoinedTimestamp);
+        session.Receive(
+            VectorOf(RealtimeMessageType.GameServiceAvailabilityChanged),
+            RealtimeProtocol.OwnerChannel,
+            RealtimeDelivery.ReliableOrdered,
+            JoinedTimestamp);
+        Assert.Equal(SimulationBotClientState.Joining, session.State);
+        Assert.Equal(0, session.Capture().SpawnPackets);
+
+        session.Receive(
+            RealtimeProtocol.EncodeJoinAccepted(JoinAcceptance()),
+            RealtimeProtocol.SessionChannel,
+            RealtimeDelivery.ReliableOrdered,
+            JoinedTimestamp);
+
+        AssertState(session, SimulationBotClientState.Joined);
+        Assert.Equal(1, session.Capture().SpawnPackets);
     }
 
     [Fact]
@@ -227,14 +257,14 @@ public sealed class SimulationBotSessionTests
         var session = ConnectedSession(out _);
         session.Receive(
             VectorOf(RealtimeMessageType.JoinRejected),
-            RealtimeProtocol.ControlChannel,
+            RealtimeProtocol.SessionChannel,
             RealtimeDelivery.ReliableOrdered,
             JoinedTimestamp);
         var firstCode = session.Capture().FailureCode;
 
         session.Receive(
             VectorOf(RealtimeMessageType.ServerDisconnect),
-            RealtimeProtocol.ControlChannel,
+            RealtimeProtocol.SessionChannel,
             RealtimeDelivery.ReliableOrdered,
             JoinedTimestamp);
         session.OnDisconnected("RemoteConnectionClose");
@@ -324,7 +354,7 @@ public sealed class SimulationBotSessionTests
         bot.Session.Update(JoinedTimestamp + TickInterval());
 
         var sent = Assert.Single(bot.Transport.Sent);
-        Assert.Equal(RealtimeProtocol.ControlChannel, sent.Channel);
+        Assert.Equal(RealtimeProtocol.OwnerChannel, sent.Channel);
         Assert.Equal(RealtimeDelivery.ReliableOrdered, sent.Delivery);
         Assert.True(RealtimeProtocol.TryDecodeLeaveRequest(sent.Packet, out var sessionId, out _));
         Assert.Equal(JoinAcceptance().SimulationSessionId, sessionId);
@@ -479,7 +509,7 @@ public sealed class SimulationBotSessionTests
         session.OnConnected(transport);
         session.Receive(
             RealtimeProtocol.EncodeJoinAccepted(JoinAcceptance()),
-            RealtimeProtocol.ControlChannel,
+            RealtimeProtocol.SessionChannel,
             RealtimeDelivery.ReliableOrdered,
             JoinedTimestamp);
         AssertState(session, SimulationBotClientState.Joined);
@@ -587,7 +617,9 @@ public sealed class SimulationBotSessionTests
     {
         public void Receive(byte[] packet)
         {
-            Session.Receive(packet, RealtimeProtocol.ControlChannel, RealtimeDelivery.ReliableOrdered, JoinedTimestamp);
+            Assert.True(RealtimeProtocol.TryReadMessageType(packet, out var type));
+            Assert.True(RealtimeProtocol.TryGetDescriptor(type, out var descriptor));
+            Session.Receive(packet, descriptor.Channel, RealtimeDelivery.ReliableOrdered, JoinedTimestamp);
         }
 
         public void ReceiveSnapshot(byte[] packet, long timestamp)

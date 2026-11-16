@@ -1050,7 +1050,7 @@ clock to the internal `Initialize`. A part read before `Initialize` throws.
 | `RealtimePresenceRegistry` | The spawned players with the latest look of each and of the controlled player, the spawned world actors with their newest state revision, the checks between them, the copies handed to late readers, and the clearing at the end of a session with its despawn events | The player, look, world actor, and combat channels |
 | A channel per feature in `Networking/Channels` | The handlers of the feature's message types: decode, checks, and its events, and the feature's send | Its interface, in the table below |
 | `RealtimeDiagnostics` | The packet and byte counters, the owner snapshot sequence and its loss estimate, the newest server tick, the snapshot age, the round trip time, the endpoint, and, while a measurement asks for it, the timing of reliable intents to their results | `IRealtimeDiagnostics`, which the [client measurements](#client-measurements) and `CombatServerClock` read |
-| `RealtimeSender` | The one send path: a joined session with a connected server, the intent's cached encoder, and reliable ordered delivery on the control channel; movement input has its own channel and wakes the transport | The channels |
+| `RealtimeSender` | The one send path: a joined session with a connected server, the intent's cached encoder, and reliable ordered delivery on the channel the intent's descriptor names, the owner channel; movement input has its own channel and wakes the transport | The channels |
 | `RealtimeConnection` | The transport and what is known of its one connection: whether it runs, whether the server connected, and the endpoint | The session, the sender, and the diagnostics |
 
 | Channel interface | Server messages | Events and reads | Send |
@@ -1099,7 +1099,7 @@ so the events of a poll keep the order of their packets across channels:
 
 1. A connection event goes to the session. The data of a disconnect that holds
    a `LeaveAccepted`, `ServerDisconnect`, or `JoinRejected` first goes through
-   the steps below as that message on the control channel; the disconnect then
+   the steps below as that message on its channel; the disconnect then
    reaches the session, which counts it as a lost connection only when the
    session has not ended, as
    [A Disconnect With Its Reason](#a-disconnect-with-its-reason) describes.
@@ -1110,11 +1110,18 @@ so the events of a poll keep the order of their packets across channels:
    generated descriptor names, before anything else, so even a message that the
    state would drop fails on the wrong channel. A snapshot needs unreliable
    delivery on its descriptor's channel, every other message reliable ordered
-   delivery on channel 0.
-4. The table's entry decides by the state: the handler runs, the message is
+   delivery on its descriptor's channel.
+4. While a join waits for its answer, a reliable message of the world or owner
+   channel waits in the table, because it can overtake `JoinAccepted` on the
+   session channel; right after `JoinAccepted` and its `SessionJoined`, the
+   table handles the held messages in the order they arrived, as
+   [Channels](REALTIME_PROTOCOL.md#channels) describes. A join that collects
+   more than `MaximumHeldBeforeJoin` (8,192) fails with
+   `join_backlog_overflow`, and a new join forgets what an earlier one held.
+5. The table's entry decides by the state: the handler runs, the message is
    dropped, or it fails the session with the entry's code. A client message, or a
    type without an entry, is `unexpected_message`.
-5. The handler of the message's channel decodes it, runs its checks, changes the
+6. The handler of the message's channel decodes it, runs its checks, changes the
    state it owns, and raises its events. A message that carries a carry state
    advances the movement session first, and raises `CarryStateChanged` before its
    own event.
@@ -1191,8 +1198,8 @@ disconnected yet:
 | `JoinRejected` | The join fails with the server's code |
 | None, or anything else | A lost connection, `connection_lost` |
 
-The message goes through the message table on the control channel with
-reliable ordered delivery, so the state rules of its entry hold: a
+The message goes through the message table on the channel its descriptor names
+with reliable ordered delivery, so the state rules of its entry hold: a
 `LeaveAccepted` that is not answering a leave fails the session with
 `unexpected_leave_response`, as on the channel. A message that already arrived
 on the channel ended the session first, so the disconnect after it changes
@@ -1222,12 +1229,17 @@ to the feature's controller through `Initialize`.
 
 ### Delivery
 
-The realtime protocol uses two explicit LiteNetLib channels plus unchanneled
-snapshot delivery:
+The realtime protocol uses four explicit LiteNetLib channels plus unchanneled
+snapshot delivery, as [Channels](REALTIME_PROTOCOL.md#channels) describes:
 
-- Channel 0 uses reliable ordered delivery for join, leave, disconnect, entity
-  lifecycle, carry-state updates, item-operation intent and result, combat, and
-  the other control messages.
+- The session channel 0, the world channel 2, and the owner channel 3 use
+  reliable ordered delivery: the session channel for the join, the answers to
+  a leave, and the message that ends a connection; the world channel for the
+  presence of players and world actors, their looks, corpse presence, and
+  combat; the owner channel for every intent with its answer and the owner's
+  state that they change. `RealtimeSender` sends every message on the channel
+  its descriptor names, so the leave request travels on the owner channel
+  behind the intents sent before it.
 - Channel 1 uses sequenced delivery for redundant movement input batches. A
   batch also carries the path of its newest input until an owner snapshot
   confirms that path, so a path can never arrive after the inputs that name it.
@@ -1239,7 +1251,7 @@ snapshot delivery:
   reliable control messages. The client recognizes them by the unreliable
   delivery in their generated message descriptor, see
   [Message Descriptors](REALTIME_PROTOCOL.md#message-descriptors), while reliable
-  control messages still validate channel 0 explicitly.
+  control messages still validate their descriptor's channel explicitly.
 - The owner snapshot is the only source for local input acknowledgement,
   prediction reconciliation, and collision-streaming anchors. It carries the
   worker's state after the acknowledged input, and the worker steps once per
@@ -3080,7 +3092,13 @@ The client keeps permanent state below replaceable presentation:
   replicated state across scene transitions and reconnect cleanup.
 - `WorldInteractionClientController` owns correlated operations, the active
   authoritative interaction session, capability summaries, server closure, and
-  uncertain-state cleanup.
+  uncertain-state cleanup. The actor travels on the world channel and the
+  interaction on the owner channel, so an opening can arrive after the actor's
+  newer state or its despawn: an opening older than the actor's interaction
+  revision opens, and one for an actor the client no longer sees opens nothing
+  and ends the pending opening quietly, with an info line in the log. The
+  worker closes both on the owner channel, as
+  [Channels](REALTIME_PROTOCOL.md#channels) describes.
 - `WorldMenuController` owns the right-click world menu and the left-click
   default option, described in [World Menu](#world-menu).
 - `WorldInteractionTargetingController` offers the menu options of registered
@@ -3429,7 +3447,7 @@ the protocol like every other control message, and so does a `CombatantState` fo
 an entity without reliable presence, because the worker sends it right after
 every spawn of a combatant. `TrySendCombatIntent` sends a typed `CombatIntent`,
 built with `RealtimeCombatIntent.CreateAttackTarget` or `CreateClearTarget`, on
-the reliable ordered control channel. The messages are in
+the reliable ordered owner channel. The messages are in
 [Combat](REALTIME_PROTOCOL.md#combat), and what the worker decides is in
 [Target-Based Combat](SERVICE_FEATURES.md#target-based-combat).
 

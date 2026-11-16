@@ -13,7 +13,7 @@ public sealed class SimulationBotClientTests
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(10);
 
     [Fact]
-    public void JoinsOnTheControlChannelAndReleasesTheConnectionAsSoonAsTheSessionFails()
+    public void JoinsOnTheSessionChannelAndReleasesTheConnectionAsSoonAsTheSessionFails()
     {
         var worker = new LoopbackWorker();
         try
@@ -36,14 +36,14 @@ public sealed class SimulationBotClientTests
 
             PollUntil(bot, worker, () => worker.Received is not null);
             Assert.Equal(SimulationBotClientState.Joining, bot.State);
-            Assert.Equal(RealtimeProtocol.ControlChannel, worker.ReceivedChannel);
+            Assert.Equal(RealtimeProtocol.SessionChannel, worker.ReceivedChannel);
             Assert.Equal(DeliveryMethod.ReliableOrdered, worker.ReceivedDelivery);
             Assert.True(RealtimeProtocol.TryDecodeJoinRequest(worker.Received!, out var ticket, out _));
             Assert.Equal("ticket-1", ticket);
 
             worker.Peer!.Send(
                 RealtimeProtocol.EncodeServerDisconnect("worker_stopping", "The worker stops."),
-                RealtimeProtocol.ControlChannel,
+                RealtimeProtocol.SessionChannel,
                 DeliveryMethod.ReliableOrdered);
             PollUntil(bot, worker, () => worker.Disconnected);
 

@@ -7,7 +7,7 @@ using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
-internal sealed record RecordedPeerSend(byte[] Data, DeliveryMethod Delivery)
+internal sealed record RecordedPeerSend(byte[] Data, byte Channel, DeliveryMethod Delivery)
 {
     public RealtimeMessageType Type
     {
@@ -28,7 +28,8 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
 
     public List<RecordedPeerSend> Sent { get; } = [];
 
-    public int QueuedReliablePackets { get; set; }
+    // LiteNetLib's outgoing queue of each reliable channel.
+    public Dictionary<byte, int> QueuedReliablePackets { get; } = [];
 
     // Makes every unreliable send throw, as a broken connection might.
     public bool FailUnreliableSends { get; set; }
@@ -36,7 +37,7 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
     // Makes every reliable send throw.
     public bool FailReliableSends { get; set; }
 
-    public void Send(byte[] data, DeliveryMethod deliveryMethod)
+    public void Send(byte[] data, byte channel, DeliveryMethod deliveryMethod)
     {
         if (FailUnreliableSends && deliveryMethod == DeliveryMethod.Unreliable)
         {
@@ -48,20 +49,20 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
             throw new InvalidOperationException("The reliable send broke.");
         }
 
-        Sent.Add(new RecordedPeerSend(data, deliveryMethod));
+        Sent.Add(new RecordedPeerSend(data, channel, deliveryMethod));
     }
 
     // Keeps a copy, since the sender reuses its buffer.
     public void Send(ReadOnlySpan<byte> data, DeliveryMethod deliveryMethod)
     {
-        Send(data.ToArray(), deliveryMethod);
+        Send(data.ToArray(), RealtimeProtocol.UnreliableReceiveChannel, deliveryMethod);
     }
 
     // Records the reason like any reliable send; AcknowledgeReasons plays the client's
     // acknowledgement.
-    public void SendDisconnectReason(byte[] data, RealtimePendingDisconnect disconnect)
+    public void SendDisconnectReason(byte[] data, byte channel, RealtimePendingDisconnect disconnect)
     {
-        Send(data, DeliveryMethod.ReliableOrdered);
+        Send(data, channel, DeliveryMethod.ReliableOrdered);
         unacknowledgedReasons.Add(disconnect);
     }
 
@@ -77,7 +78,7 @@ internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
 
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
-        return QueuedReliablePackets;
+        return QueuedReliablePackets.GetValueOrDefault(channelNumber);
     }
 }
 
