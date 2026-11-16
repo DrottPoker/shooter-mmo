@@ -18,11 +18,14 @@ public readonly record struct CharacterFinalState(long Sequence, CharacterStateS
 // simulation session. The realtime loop captures it when it removes a player entity whose
 // session it still holds, such as a lingering body that goes, and at shutdown; whichever path
 // then releases the session sends it with the release, which may run later, off the loop, and
-// again after a failure. Synchronized; any thread may use it.
+// again after a failure. A state that stays for a reconnect's join after a refused release has a
+// time until which it is kept, so one whose reconnect never comes does not stay for good.
+// Synchronized; any thread may use it.
 public sealed class CharacterFinalStateStore
 {
     private readonly object syncRoot = new();
     private readonly Dictionary<(Guid CharacterId, Guid SimulationSessionId), CharacterFinalState> states = [];
+    private readonly Dictionary<(Guid CharacterId, Guid SimulationSessionId), DateTime> keptUntilUtc = [];
 
     public int Count
     {
@@ -43,8 +46,53 @@ public sealed class CharacterFinalStateStore
             var key = (characterId, simulationSessionId);
             if (!states.TryGetValue(key, out var current) || current.Sequence < state.Sequence)
             {
+                // A newer state belongs to a release that is still to run.
                 states[key] = state;
+                keptUntilUtc.Remove(key);
             }
+        }
+    }
+
+    // Keeps the state with the sequence only until the time: its release was refused, and only a
+    // reconnect's join can still take it.
+    public void KeepUntil(Guid characterId, Guid simulationSessionId, long sequence, DateTime untilUtc)
+    {
+        lock (syncRoot)
+        {
+            var key = (characterId, simulationSessionId);
+            if (states.TryGetValue(key, out var current) && current.Sequence == sequence)
+            {
+                keptUntilUtc[key] = untilUtc;
+            }
+        }
+    }
+
+    // Forgets every state whose time ran out and returns how many.
+    public int RemoveExpired(DateTime utcNow)
+    {
+        lock (syncRoot)
+        {
+            List<(Guid CharacterId, Guid SimulationSessionId)>? expired = null;
+            foreach (var (key, until) in keptUntilUtc)
+            {
+                if (until <= utcNow)
+                {
+                    (expired ??= []).Add(key);
+                }
+            }
+
+            if (expired is null)
+            {
+                return 0;
+            }
+
+            foreach (var key in expired)
+            {
+                states.Remove(key);
+                keptUntilUtc.Remove(key);
+            }
+
+            return expired.Count;
         }
     }
 
@@ -61,6 +109,7 @@ public sealed class CharacterFinalStateStore
         lock (syncRoot)
         {
             states.Remove((characterId, simulationSessionId));
+            keptUntilUtc.Remove((characterId, simulationSessionId));
         }
     }
 
@@ -74,6 +123,7 @@ public sealed class CharacterFinalStateStore
             if (states.TryGetValue(key, out var current) && current.Sequence == sequence)
             {
                 states.Remove(key);
+                keptUntilUtc.Remove(key);
             }
         }
     }

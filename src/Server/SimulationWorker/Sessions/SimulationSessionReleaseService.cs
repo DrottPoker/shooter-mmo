@@ -1,4 +1,5 @@
 using System.Net;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
 namespace Mmorpg.SimulationWorker.Sessions;
@@ -11,8 +12,19 @@ public sealed class SimulationSessionReleaseService(
     ActiveSimulationSessionStore sessionStore,
     CharacterSessionStores characterStores,
     IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
-    GameServiceAvailability? availability = null)
+    GameServiceAvailability? availability = null,
+    SimulationWorkerConfig? config = null,
+    TimeProvider? timeProvider = null)
 {
+    // How long a final state stays for a reconnect's join after its release was refused: as long
+    // as the session's lease can last without this worker renewing it. After that no join can
+    // take the session over any more.
+    public static readonly TimeSpan DefaultReconnectStateLifetime = TimeSpan.FromSeconds(
+        SimulationWorkerConfig.DefaultGameServiceOutageToleranceSeconds + 30);
+
+    private readonly TimeSpan reconnectStateLifetime = config?.MinimumSessionLease ?? DefaultReconnectStateLifetime;
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+
     private static readonly TimeSpan[] DefaultDetachedReleaseRetryDelays =
     [
         TimeSpan.FromSeconds(1),
@@ -27,7 +39,11 @@ public sealed class SimulationSessionReleaseService(
     public CharacterSessionStores CharacterStores => characterStores;
 
     // The final states that releases send, which the realtime loop captures. A release keeps one
-    // until GameService answered it for good, so a retry sends it again.
+    // until GameService answered it for good, so a retry sends it again. A release whose
+    // credentials GameService refused keeps it longer: a reconnect rotated the session's token,
+    // so the session goes on, and the reconnect's join places its new entity from the state. It
+    // stays for the reconnect state lifetime at most, and every release forgets the states whose
+    // time ran out, so a reconnect that never completes leaves nothing behind for good.
     public CharacterFinalStateStore FinalStates { get; } = new();
 
     // Releases a session that no connected peer owns any more. The local lease is dropped
@@ -48,7 +64,7 @@ public sealed class SimulationSessionReleaseService(
             characterStores.Remove(session.CharacterId, session.SimulationSessionId);
         }
 
-        long? sentSequence = null;
+        long? doneSequence = null;
         try
         {
             if (!await WaitForGameServiceAsync(cancellationToken))
@@ -57,7 +73,7 @@ public sealed class SimulationSessionReleaseService(
             }
 
             SimulationSessionReleaseResult result;
-            (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
+            (result, doneSequence) = await ReleaseCoreAsync(session, cancellationToken);
             for (var attempt = 0; !result.Succeeded && attempt < retryDelays.Count; attempt++)
             {
                 await Task.Delay(retryDelays[attempt], cancellationToken);
@@ -66,7 +82,7 @@ public sealed class SimulationSessionReleaseService(
                     return result;
                 }
 
-                (result, sentSequence) = await ReleaseCoreAsync(session, cancellationToken);
+                (result, doneSequence) = await ReleaseCoreAsync(session, cancellationToken);
             }
 
             return result;
@@ -74,7 +90,7 @@ public sealed class SimulationSessionReleaseService(
         finally
         {
             // No later attempt sends it; a newer state that the loop captured since stays.
-            if (sentSequence is { } sequence)
+            if (doneSequence is { } sequence)
             {
                 FinalStates.Remove(session.CharacterId, session.SimulationSessionId, sequence);
             }
@@ -104,8 +120,9 @@ public sealed class SimulationSessionReleaseService(
     }
 
     // Sends the final state that the store holds for the session now, and forgets it once
-    // GameService answered for good. Returns the sequence of the state it sent.
-    private async Task<(SimulationSessionReleaseResult Result, long? SentSequence)> ReleaseCoreAsync(
+    // GameService answered for good, unless GameService refused the credentials. Returns the
+    // sequence of the state that no later attempt needs, or null when none was sent or it stays.
+    private async Task<(SimulationSessionReleaseResult Result, long? DoneSequence)> ReleaseCoreAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)
     {
@@ -123,6 +140,7 @@ public sealed class SimulationSessionReleaseService(
                 state.Mana);
         }
 
+        FinalStates.RemoveExpired(clock.GetUtcNow().UtcDateTime);
         var result = await gameServiceClient.ReleaseSimulationSessionAsync(
             session.SimulationSessionId,
             session.WorkerRuntimeId,
@@ -135,9 +153,22 @@ public sealed class SimulationSessionReleaseService(
                 or (int)HttpStatusCode.NotFound
                 or (int)HttpStatusCode.Conflict)
         {
-            if (finalState is not null)
+            // GameService refuses the token of a session whose reconnect consumed its ticket, which
+            // rotated the token there before the join told this worker. Such a release ended
+            // nothing and saved nothing, and the session goes on, so its state stays for the
+            // reconnect's join.
+            var refusedCredentials = result.StatusCode == (int)HttpStatusCode.Unauthorized;
+            if (finalState is not null && !refusedCredentials)
             {
                 FinalStates.Remove(session.CharacterId, session.SimulationSessionId, finalState.Sequence);
+            }
+            else if (finalState is not null)
+            {
+                FinalStates.KeepUntil(
+                    session.CharacterId,
+                    session.SimulationSessionId,
+                    finalState.Sequence,
+                    clock.GetUtcNow().UtcDateTime + reconnectStateLifetime);
             }
 
             var removed = sessionStore.Remove(
@@ -152,7 +183,7 @@ public sealed class SimulationSessionReleaseService(
                     session.SimulationSessionId);
             }
 
-            return (SimulationSessionReleaseResult.Success(), finalState?.Sequence);
+            return (SimulationSessionReleaseResult.Success(), refusedCredentials ? null : finalState?.Sequence);
         }
 
         return (
