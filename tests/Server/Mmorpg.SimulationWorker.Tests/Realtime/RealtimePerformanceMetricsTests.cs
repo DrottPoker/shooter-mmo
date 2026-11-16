@@ -176,6 +176,63 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Contains("latency mode", GcPauseMonitor.DescribeConfiguration(), StringComparison.Ordinal);
     }
 
+    // Each tick is slower than every tick before it, and the loop ends the next one only after
+    // the reporter took two more intervals, so every tick is the slowest of the interval it
+    // falls into and must come back from exactly one of them.
+    [Fact]
+    public async Task NoIntervalLosesATickThatEndsWhileItIsTaken()
+    {
+        var recorder = new RealtimePerformanceMetrics.SlowestTickRecorder();
+        var phases = new List<RealtimePerformanceMetrics.DurationTimer>();
+        var parts = new List<RealtimePerformanceMetrics.DurationTimer>();
+        const int ticks = 20_000;
+        long taken = 0;
+        var stop = 0;
+        var seen = new bool[ticks + 1];
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var reporter = Task.Run(
+            () =>
+            {
+                while (Volatile.Read(ref stop) == 0)
+                {
+                    if (recorder.TakeInterval(phases, parts) is { } slowest)
+                    {
+                        var index = (int)slowest.Milliseconds;
+                        Assert.False(seen[index], $"Tick {index} came back twice.");
+                        seen[index] = true;
+                    }
+
+                    Interlocked.Increment(ref taken);
+                }
+            },
+            cancellationToken);
+
+        try
+        {
+            for (var tick = 1; tick <= ticks; tick++)
+            {
+                recorder.EndTick(tick, 0d, 0, 0);
+                var after = Volatile.Read(ref taken) + 2;
+                var wait = default(SpinWait);
+                while (Volatile.Read(ref taken) < after)
+                {
+                    Assert.False(reporter.IsCompleted, "The reporter stopped early.");
+                    wait.SpinOnce();
+                }
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref stop, 1);
+            await reporter;
+        }
+
+        for (var tick = 1; tick <= ticks; tick++)
+        {
+            Assert.True(seen[tick], $"Tick {tick} was lost.");
+        }
+    }
+
     // Every sample is 0.25 ms, so a capture that held a sample's duration without its count, or
     // its count without its duration, would show another average or maximum.
     [Fact]

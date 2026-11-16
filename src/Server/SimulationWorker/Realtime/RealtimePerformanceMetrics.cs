@@ -396,6 +396,10 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 }));
     }
 
+    // Each fact is captured whole: a duration with its count, total, maximum, and buckets, and the
+    // slowest tick with its phases. The facts of one tick are captured one after another, though,
+    // so a tick that ends while this runs may count in this interval for its duration and in the
+    // next for its overrun or as the slowest tick.
     public RealtimePerformanceMetricsSnapshot CaptureAndReset()
     {
         var allocatedBytes = GC.GetTotalAllocatedBytes(false);
@@ -831,9 +835,11 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
     // The slowest tick of each metrics interval, with how long each tick phase and phase part took
     // in it. The loop sums what the timers record into the running tick and, at the tick's end,
-    // keeps the tick when it is the slowest of the interval so far. Each interval has its own slot
-    // whose version is odd while the loop writes it, so the reporter copies a slot without a lock
-    // and copies again when the loop wrote meanwhile; the loop never waits.
+    // keeps the tick when it is the slowest of the interval so far. Each interval has its own slot,
+    // and the loop says that it is ending a tick before it reads which interval runs, so the
+    // reporter, which starts the next interval first, waits for a tick that still belongs to the
+    // interval it takes and then reads a slot that the loop no longer writes. The loop never
+    // waits.
     internal sealed class SlowestTickRecorder
     {
         // Timers beyond it stay out of the breakdown.
@@ -843,6 +849,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         private readonly IntervalSlot[] slots = [new(), new()];
         private int assignedSlots;
         private long interval;
+        private int endingTick;
 
         // A place for one more timer, during composition and under the metrics' timer gate.
         public int AddSlot()
@@ -863,6 +870,10 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
         public void EndTick(double milliseconds, double gcPauseMilliseconds, long spawnPackets, long despawnPackets)
         {
+            // Said with a full fence before the interval is read: the reporter either sees it and
+            // waits, or has started the next interval already, which this tick then reads.
+            Interlocked.Exchange(ref endingTick, 1);
+
             // Slot intervals count from 1, so a slot that was never written matches none.
             var stamp = Volatile.Read(ref interval) + 1;
             var slot = slots[stamp & 1];
@@ -878,6 +889,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 Interlocked.Increment(ref slot.Version);
             }
 
+            Volatile.Write(ref endingTick, 0);
             Array.Fill(running, double.NaN);
         }
 
@@ -887,6 +899,14 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         {
             var stamp = Interlocked.Increment(ref interval);
             var slot = slots[stamp & 1];
+
+            // A tick that read the interval before it advanced is still being kept in this slot.
+            var ending = default(SpinWait);
+            while (Volatile.Read(ref endingTick) != 0)
+            {
+                ending.SpinOnce();
+            }
+
             var timings = new double[Capacity];
             long slotInterval;
             double milliseconds;
