@@ -174,6 +174,111 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(run.Starved.Any(starved => starved), Is.False);
         }
 
+        // A far walker comes into view: its first two states are 6 ticks and 1 m apart. The first
+        // says nothing about standing, so the walker walked the whole gap; it is shown at its
+        // walking speed, and the delay aims at two far intervals from the second state on.
+        [Test]
+        public void AFarWalkerThatComesIntoViewIsShownAtItsWalkingSpeed()
+        {
+            const float metresPerTick = 1f / 6f;
+            var presenter = Presenter();
+            var run = new Run(presenter);
+            Func<uint, float?> farWalk = tick => (tick - 100) % 6 == 0 ? metresPerTick * (tick - 100) : (float?)null;
+
+            // The second state arrives 6 ticks and 50 ms after the first, within the 16th frame.
+            run.Play(16, farWalk);
+            Assert.That(run.LastPushedX, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(presenter.TargetDelayTicks, Is.EqualTo(12d));
+
+            // The following second.
+            run.Play(60, farWalk);
+            var walkingStep = metresPerTick * TickRateHz * FrameSeconds;
+            Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(walkingStep * 1.2f), "No dash.");
+            Assert.That(run.MovedBackwards, Is.False);
+            Assert.That(run.X[run.X.Count - 1], Is.GreaterThan(2f), "It walks.");
+            Assert.That(presenter.Discontinuities, Is.EqualTo(1));
+        }
+
+        // A near walker comes into view: its first two states are 2 ticks apart, the interval a
+        // new presenter expects, so it is shown as before: it stands at its first state for the
+        // render delay and then walks a whole frame step in every frame.
+        [Test]
+        public void ANearWalkerThatComesIntoViewStartsAsBefore()
+        {
+            var presenter = Presenter();
+            var run = new Run(presenter);
+            run.Play(90, Walk);
+
+            Assert.That(presenter.TargetDelayTicks, Is.EqualTo(presenter.DelayTicks));
+            Assert.That(presenter.CurrentDelayTicks, Is.EqualTo(presenter.DelayTicks));
+            Assert.That(presenter.Discontinuities, Is.EqualTo(1));
+            var moving = run.Steps.SkipWhile(step => step < 0.001f).ToArray();
+            Assert.That(run.Steps.Count - moving.Length, Is.LessThanOrEqualTo(8), "It stands at most the render delay.");
+            Assert.That(moving.Skip(1).Min(), Is.GreaterThan(FrameStep * 0.9f));
+            Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(FrameStep * 1.1f));
+            Assert.That(run.MovedBackwards, Is.False);
+        }
+
+        // An entity whose second state comes a second after its first, as the refresh of one
+        // that stands does, stood: it starts to walk only one expected interval before that state.
+        // A second state at most 15 ticks after the first, the longest render delay, walked the
+        // whole gap.
+        [Test]
+        public void AnEntityWhoseSecondStateComesLateStoodUntilOneIntervalBeforeIt()
+        {
+            var late = new RemoteMovementInterpolation();
+            late.Push(100, State(0f, 0f), 2, 15, false);
+            late.Push(130, State(0.3f, 0f), 2, 15, false);
+            Assert.That(late.LastMovingIntervalTicks, Is.Zero);
+            Assert.That(late.TrySample(127.9d, out var stood), Is.True);
+            Assert.That(stood.PositionX, Is.Zero);
+            Assert.That(late.TrySample(129d, out var walking), Is.True);
+            Assert.That(walking.PositionX, Is.EqualTo(0.15f).Within(0.0001f));
+
+            var longest = new RemoteMovementInterpolation();
+            longest.Push(100, State(0f, 0f), 2, 15, false);
+            longest.Push(115, State(1.5f, 0f), 2, 15, false);
+            Assert.That(longest.LastMovingIntervalTicks, Is.EqualTo(15));
+            Assert.That(longest.IsFirstMovingInterval, Is.True);
+            Assert.That(longest.TrySample(101d, out var walked), Is.True);
+            Assert.That(walked.PositionX, Is.EqualTo(0.1f).Within(0.0001f));
+
+            var beyond = new RemoteMovementInterpolation();
+            beyond.Push(100, State(0f, 0f), 2, 15, false);
+            beyond.Push(116, State(0.3f, 0f), 2, 15, false);
+            Assert.That(beyond.LastMovingIntervalTicks, Is.Zero);
+            Assert.That(beyond.TrySample(113.9d, out var stoodBeyond), Is.True);
+            Assert.That(stoodBeyond.PositionX, Is.Zero);
+
+            // Shown: the pose stands at the first state until the late state arrived, and then
+            // walks from it at the walking speed.
+            var presenter = Presenter();
+            var run = new Run(presenter);
+            run.Play(90, tick => tick == 100 ? 0f : tick >= 130 ? MetresPerTick * (tick - 128) : (float?)null);
+
+            // The first pose is the third frame's and the late state arrives in the 63rd.
+            Assert.That(run.X.Take(60).All(x => x == 0f), Is.True);
+            Assert.That(run.X[run.X.Count - 1], Is.GreaterThan(1f));
+            Assert.That(run.MaximumStep, Is.LessThanOrEqualTo(FrameStep * 1.5f));
+            Assert.That(run.MovedBackwards, Is.False);
+        }
+
+        // A first state that the caller knows the entity stands at, such as a Mob's rest pose,
+        // keeps the start from a stand.
+        [Test]
+        public void AFirstStateKnownToStandStartsTheWalkFromAStand()
+        {
+            var presenter = Presenter();
+            presenter.PushStanding(100, State(0f, 0f));
+            presenter.Push(106, State(0.3f, 0f));
+            Assert.That(presenter.TargetDelayTicks, Is.EqualTo(presenter.DelayTicks), "No interval was observed.");
+
+            var unknown = Presenter();
+            unknown.Push(100, State(0f, 0f));
+            unknown.Push(106, State(1f, 0f));
+            Assert.That(unknown.TargetDelayTicks, Is.EqualTo(12d), "The first interval counts at once.");
+        }
+
         private static RemoteMovementPresenter Presenter()
         {
             var presenter = new RemoteMovementPresenter();

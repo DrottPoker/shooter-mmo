@@ -2610,6 +2610,10 @@ describes.
 4. Watch a bot walk across 48 m toward the spawn or across 56 m away from it.
    Expected result: no jump and no pause at the border; at most its walk looks
    an eighth slower or faster for about a second.
+5. Walk about 140 m away from the bots and back, so that bots come into view
+   at about 128 m while they walk. Expected result: such a bot appears, stands
+   for about a fifth of a second, and then walks on at its own speed; it never
+   rushes ahead to catch up.
 
 ## Art In The Game
 

@@ -234,7 +234,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             presenter.Clear();
-            presenter.Push(
+            presenter.PushStanding(
                 unchecked(serverTick - StartTicks()),
                 RestState(new Vector3(anchor.PositionX, anchor.PositionY, anchor.PositionZ), anchor.YawDegrees));
             presenter.Push(serverTick, sample);

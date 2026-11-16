@@ -243,16 +243,36 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Buffers a server state and returns false for one that is not newer than the newest.
-        // The first state after a clear starts the render clock and is presented at once. A
-        // newer state keeps the shown pose where it was, also when the pose was extrapolated;
-        // the difference is blended out.
+        // The first state after a clear starts the render clock and is presented at once; it
+        // says nothing about standing, so a moving second state at most
+        // MaximumInterpolationDelaySeconds after it walked the whole gap. A newer state keeps
+        // the shown pose where it was, also when the pose was extrapolated; the difference is
+        // blended out.
         public bool Push(uint serverTick, PlayerMovementState state)
+        {
+            return Push(serverTick, state, false);
+        }
+
+        // Buffers a state that the entity is known to stand at, such as a reliable rest pose. As
+        // the first state after a clear, a moving state after it starts from a stand, as between
+        // later states.
+        public bool PushStanding(uint serverTick, PlayerMovementState state)
+        {
+            return Push(serverTick, state, true);
+        }
+
+        private bool Push(uint serverTick, PlayerMovementState state, bool firstStateStands)
         {
             var wasEmpty = interpolation.Count == 0;
             var renderTick = renderClock.RenderTick;
             var shown = Vector2.zero;
             var keepShown = !wasEmpty && HasPose && TrySampleShown(renderTick, out shown);
-            if (!interpolation.Push(serverTick, state, (long)Math.Round(observedIntervalTicks)))
+            if (!interpolation.Push(
+                    serverTick,
+                    state,
+                    (long)Math.Round(observedIntervalTicks),
+                    (long)Math.Round(MaximumInterpolationDelaySeconds * tickRateHz),
+                    firstStateStands))
             {
                 return false;
             }
@@ -265,10 +285,24 @@ namespace Mmorpg.Client.Gameplay
             }
 
             // A moving state after a moving one tells the interval; one late state moves the
-            // estimate only a quarter of the way.
+            // estimate only a quarter of the way. The first interval an entity walked is all
+            // there is to go by, so it is the estimate at once.
             if (interpolation.LastMovingIntervalTicks > 0)
             {
-                observedIntervalTicks += IntervalSmoothing * (interpolation.LastMovingIntervalTicks - observedIntervalTicks);
+                observedIntervalTicks = interpolation.IsFirstMovingInterval
+                    ? interpolation.LastMovingIntervalTicks
+                    : observedIntervalTicks + (IntervalSmoothing * (interpolation.LastMovingIntervalTicks - observedIntervalTicks));
+            }
+
+            // The first state was shown standing while the render time ran on past it, because
+            // nothing said that the entity walked. The render time goes back to it, and the delay
+            // grows to at least the gap, so the walk starts from the shown pose at the entity's
+            // own speed instead of blending the lag out on top of it.
+            var firstTick = interpolation.LatestServerTick - interpolation.LastMovingIntervalTicks;
+            if (interpolation.IsFirstMovingInterval && renderTick > firstTick)
+            {
+                currentDelayTicks = Math.Max(currentDelayTicks, interpolation.LastMovingIntervalTicks);
+                renderTick = renderClock.Reset(interpolation.LatestServerTick, currentDelayTicks);
             }
 
             if (keepShown && TrySampleShown(renderTick, out var next))
