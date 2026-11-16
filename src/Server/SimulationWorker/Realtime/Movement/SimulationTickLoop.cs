@@ -7,10 +7,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs due fixed simulation ticks. Each tick advances the clock, fills the players of the tick
 // once in entity id order, and runs the registered phases in SimulationTickOrder, timing each run
-// that did its work under the phase's name. A phase that throws is logged and skipped for this
-// tick through the loop guard, and the later phases still run, unless the phase is a prerequisite
-// of them, which ends the tick. At most five ticks catch up per call before the clock
-// resynchronizes. Loop-confined.
+// that did its work under the phase's name with the garbage collection pause time inside it. A
+// phase that throws is logged and skipped for this tick through the loop guard, and the later
+// phases still run, unless the phase is a prerequisite of them, which ends the tick. At most five
+// ticks catch up per call before the clock resynchronizes. Loop-confined.
 internal sealed class SimulationTickLoop
 {
     private readonly RealtimeSimulationClock clock;
@@ -18,25 +18,30 @@ internal sealed class SimulationTickLoop
     private readonly RealtimePerformanceMetrics performanceMetrics;
     private readonly RealtimeLoopGuard loopGuard;
     private readonly ILogger logger;
+    private readonly RealtimeNetworkMetrics? networkMetrics;
     private readonly SimulationTickPhase[] orderedPhases;
     private readonly RealtimeLoopStep[] phaseSteps;
     private readonly RealtimePerformanceMetrics.DurationTimer[] phaseTimers;
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly PlayerSpatialGrid playerGrid = new();
 
+    // With network metrics, every tick also counts the spawn and despawn packets it sent, for the
+    // slowest tick's breakdown.
     public SimulationTickLoop(
         RealtimeSimulationClock clock,
         SimulationEntityRegistry entityRegistry,
         SimulationTickPhases phases,
         RealtimePerformanceMetrics performanceMetrics,
         RealtimeLoopGuard loopGuard,
-        ILogger logger)
+        ILogger logger,
+        RealtimeNetworkMetrics? networkMetrics = null)
     {
         this.clock = clock;
         this.entityRegistry = entityRegistry;
         this.performanceMetrics = performanceMetrics;
         this.loopGuard = loopGuard;
         this.logger = logger;
+        this.networkMetrics = networkMetrics;
         orderedPhases = phases.InTickOrder();
         phaseSteps = [.. orderedPhases.Select(phase => loopGuard.TickPhase(phase.Name))];
         phaseTimers = [.. orderedPhases.Select(phase => performanceMetrics.TickPhaseTimer(phase.Name))];
@@ -55,6 +60,11 @@ internal sealed class SimulationTickLoop
         while (elapsed >= nextSimulationTick && processedTicks < maximumCatchUpTicks)
         {
             var tickStarted = Stopwatch.GetTimestamp();
+            // The process's total garbage collection pause time, read around the tick and each
+            // phase, tells which samples a pause fell into.
+            var tickPausesBefore = GC.GetTotalPauseDuration();
+            var spawnsBefore = networkMetrics?.SpawnPackets ?? 0;
+            var despawnsBefore = networkMetrics?.DespawnPackets ?? 0;
             performanceMetrics.RecordSimulationTickLag(elapsed - nextSimulationTick);
             clock.Advance();
 
@@ -70,9 +80,12 @@ internal sealed class SimulationTickLoop
                     // A phase that was not due did no work: its failed runs still count, and the
                     // tick is no sample of its duration.
                     var phaseStarted = Stopwatch.GetTimestamp();
+                    var phasePausesBefore = GC.GetTotalPauseDuration();
                     if (orderedPhases[index].Run(in tick))
                     {
-                        phaseTimers[index].Record(Stopwatch.GetElapsedTime(phaseStarted));
+                        phaseTimers[index].Record(
+                            Stopwatch.GetElapsedTime(phaseStarted),
+                            GC.GetTotalPauseDuration() - phasePausesBefore);
                         phaseSteps[index].Succeeded();
                     }
                 }
@@ -89,7 +102,10 @@ internal sealed class SimulationTickLoop
 
             performanceMetrics.RecordSimulationTick(
                 Stopwatch.GetElapsedTime(tickStarted),
-                simulationInterval);
+                simulationInterval,
+                GC.GetTotalPauseDuration() - tickPausesBefore,
+                (networkMetrics?.SpawnPackets ?? 0) - spawnsBefore,
+                (networkMetrics?.DespawnPackets ?? 0) - despawnsBefore);
             nextSimulationTick += simulationInterval;
             processedTicks++;
         }

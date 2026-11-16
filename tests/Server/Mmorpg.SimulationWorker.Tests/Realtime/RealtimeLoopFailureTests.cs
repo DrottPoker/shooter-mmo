@@ -300,11 +300,13 @@ public sealed class RealtimeLoopFailureTests
             await PollUntilAsync(transport, [refused], () => refused.IsDisconnected, "the refused client to be disconnected");
             Assert.Equal(1, fixture.LoopGuard.TotalFailures);
 
+            // Only the second peer's disconnect callback fails: the disconnect of the refused
+            // peer may reach the lifecycle at any time from here on and must not count.
             lifecycle.FailConnect = false;
-            lifecycle.FailDisconnect = true;
             accepted.Connect(config.UdpPort);
             await PollUntilAsync(transport, [accepted], () => accepted.IsConnected && lifecycle.Connected.Count == 1, "the second client to connect");
             var acceptedPeerId = lifecycle.Connected[0];
+            lifecycle.FailDisconnectOf = acceptedPeerId;
 
             accepted.Stop();
             await PollUntilAsync(transport, [], () => lifecycle.Disconnected.Contains(acceptedPeerId), "the disconnect callback");
@@ -410,7 +412,8 @@ public sealed class RealtimeLoopFailureTests
     {
         public bool FailConnect { get; set; }
 
-        public bool FailDisconnect { get; set; }
+        // The peer whose disconnect callback throws, or null for none.
+        public int? FailDisconnectOf { get; set; }
 
         public List<int> Connected { get; } = [];
 
@@ -429,7 +432,7 @@ public sealed class RealtimeLoopFailureTests
         public void OnPeerDisconnected(int peerId, DisconnectReason reason)
         {
             Disconnected.Add(peerId);
-            if (FailDisconnect)
+            if (FailDisconnectOf == peerId)
             {
                 throw new InvalidOperationException("The disconnect callback broke.");
             }

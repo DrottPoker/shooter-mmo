@@ -710,8 +710,8 @@ public sealed class StressQualityVerdictTests
         };
         StressWorkerInterval[] intervals =
         [
-            Interval(RunStart.AddSeconds(20), tickP99: 8) with { Phases = Phases(6), LoopSteps = new Dictionary<string, StressWorkerDuration> { ["send flush"] = new(600, 1, 2, 2, 3) }, GcPauseMs = 20, LoopBusyPercent = 30 },
-            Interval(RunStart.AddSeconds(30), tickP99: 24) with { Phases = Phases(10), GcPauseMs = 40, LoopBusyPercent = 40 },
+            Interval(RunStart.AddSeconds(20), tickP99: 8) with { Phases = Phases(6), LoopSteps = new Dictionary<string, StressWorkerDuration> { ["send flush"] = new(600, 1, 2, 2, 3) }, PhaseParts = new Dictionary<string, StressWorkerDuration> { ["snapshots: remote plans"] = new(150, 2, 4, 8, 9) }, GcPauseMs = 20, GcLongestPauseMs = 3, TickOverrunsWithoutGcPauses = 1, LoopBusyPercent = 30 },
+            Interval(RunStart.AddSeconds(30), tickP99: 24) with { Phases = Phases(10), PhaseParts = new Dictionary<string, StressWorkerDuration> { ["snapshots: remote plans"] = new(150, 4, 8, 16, 12) }, GcPauseMs = 40, GcLongestPauseMs = 7, LoopBusyPercent = 40 },
             Interval(RunStart.AddSeconds(40), tickP99: 8) with { Phases = Phases(8), GcPauseMs = 0, LoopBusyPercent = 35 },
             Interval(RunStart.AddSeconds(50), tickP99: 8)
         ];
@@ -723,6 +723,14 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(8, fold.Phases["snapshots"].AverageMs, 9);
         Assert.Equal(10, fold.Phases["snapshots"].WorstAverageMs);
         Assert.Equal(600, Assert.Single(fold.LoopSteps).Value.Samples);
+        var plans = Assert.Single(fold.PhaseParts);
+        Assert.Equal("snapshots: remote plans", plans.Key);
+        Assert.Equal(300, plans.Value.Samples);
+        Assert.Equal(16, plans.Value.WorstP99Ms);
+        Assert.Equal(12, plans.Value.MaximumMs);
+        Assert.Equal(5, fold.GcLongestPauseMs!.Average, 9);
+        Assert.Equal(7, fold.GcLongestPauseMs.Worst);
+        Assert.Equal(1, fold.Counters["tickOverrunsWithoutGcPauses"].Total);
         Assert.Equal(35, fold.LoopBusyPercent!.Average, 9);
         Assert.Equal(40, fold.LoopBusyPercent.Worst);
         Assert.Equal(2, fold.GcPauseMsPerSecond!.Average, 9);
@@ -740,8 +748,10 @@ public sealed class StressQualityVerdictTests
             SteadyStart,
             SteadyEnd);
         Assert.Empty(older.Phases);
+        Assert.Empty(older.PhaseParts);
         Assert.Null(older.LoopBusyPercent);
         Assert.Null(older.GcPauseMsPerSecond);
+        Assert.Null(older.GcLongestPauseMs);
         Assert.Empty(older.WorstInterval!.SlowestPhases);
         var summary = StressRunSummary.Create(
             FullStackReport() with { WorkerPerformance = older },

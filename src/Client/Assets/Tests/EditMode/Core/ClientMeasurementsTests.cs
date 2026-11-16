@@ -51,6 +51,29 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(statistics.maximum, Is.EqualTo(100f));
             Assert.That(statistics.average, Is.EqualTo(50.5f).Within(0.001f));
             Assert.That(new MeasurementSamples().ToStatistics().count, Is.Zero);
+            Assert.That(samples.CountAbove(95f), Is.EqualTo(5), "Only values above the threshold count.");
+            Assert.That(samples.CountAbove(100f), Is.Zero);
+        }
+
+        // A frame longer than the budget of 60 frames a second is slow, and one longer than the
+        // budget of 30 a hitch; a frame of exactly a budget is within it.
+        [Test]
+        public void ARecordingCountsTheFramesOverTheBudgetsOfSixtyAndThirtyFramesASecond()
+        {
+            var measurements = new ClientMeasurements(new FakeDiagnostics(), null, new LocalPlayerSource(), folder);
+            measurements.StartRecording("budgets", 60f);
+            var time = 0f;
+            foreach (var milliseconds in new[] { 8f, 16.6f, 16.7f, 20f, 33.3f, 33.4f, 50f, 10f })
+            {
+                time += milliseconds / 1000f;
+                measurements.Frame(time, milliseconds / 1000f, milliseconds / 1000f);
+            }
+
+            var summary = measurements.StopRecording();
+
+            Assert.That(summary.frameMilliseconds.count, Is.EqualTo(8));
+            Assert.That(summary.slowFrames, Is.EqualTo(5));
+            Assert.That(summary.hitchFrames, Is.EqualTo(2));
         }
 
         // A walk at its speed explains every frame's movement; a snap of 3 m in one frame does not,

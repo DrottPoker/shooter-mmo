@@ -24,10 +24,11 @@ public sealed record StressWorldVariantResult(
 
 // Writes a load variant of a World into a run folder: it copies the World's authoring data and
 // the actor definitions from content/, adds the scenario's Mob areas and node groups to the
-// spawn authoring, and runs the real World actor and World collision compilers into a
-// generated root inside the run folder. The worker and the bots then read the variant's World
-// data folder. content/ and the checked-in generated data are only read. Every added actor
-// must stand on walkable ground; otherwise the variant fails with the area's name.
+// spawn authoring, each area with its patrol, and runs the real World actor and World collision
+// compilers into a generated root inside the run folder. The worker and the bots then read the
+// variant's World data folder. content/ and the checked-in generated data are only read. Every
+// added actor and patrol point must stand on walkable ground; otherwise the variant fails with
+// the area's name.
 public static class StressWorldVariant
 {
     public const string VariantIdPrefix = "load_";
@@ -126,15 +127,17 @@ public static class StressWorldVariant
         var added = 0;
         foreach (var area in variant.Areas)
         {
+            var center = new SimulationVector3(area.Area.CenterX, 0f, area.Area.CenterZ);
             added += ValidateInstances(
                 area.Name,
                 VariantId(worldId, area.Name),
-                new SimulationVector3(area.Area.CenterX, 0f, area.Area.CenterZ),
+                center,
                 compiled,
                 collision,
                 settings,
                 spawn,
                 checkSpawnDistance: true);
+            ValidatePatrol(area, center, collision, settings);
         }
 
         foreach (var group in variant.Groups)
@@ -175,6 +178,14 @@ public static class StressWorldVariant
         return worldId.Replace('-', '_') + "." + VariantIdPrefix + name.Replace('-', '_');
     }
 
+    // The id of the patrol of a variant area.
+    public static string VariantPatrolId(string worldId, string name)
+    {
+        return VariantId(worldId, name) + PatrolIdSuffix;
+    }
+
+    private const string PatrolIdSuffix = ".patrol";
+
     // The id of one node of a variant group. A name holds no '.', so no area's id starts
     // like it.
     public static string VariantNodeId(string worldId, string name, int index)
@@ -194,9 +205,34 @@ public static class StressWorldVariant
         PlayingGroundProbe nodeGround)
     {
         var areas = (spawns.SpawnAreas ?? []).ToList();
+        var patrols = (spawns.PatrolPaths ?? []).ToList();
         for (var index = 0; index < variant.Areas.Count; index++)
         {
             var area = variant.Areas[index];
+            var patrolPathId = string.Empty;
+            if (area.Patrol.Count > 0)
+            {
+                // The worker walks a Mob to the ground it finds below a point's height, so each
+                // point gets the height of the highest ground under it.
+                patrolPathId = VariantPatrolId(spawns.WorldId, area.Name);
+                patrols.Add(new WorldActorPatrolPathAuthoringEntry
+                {
+                    Id = patrolPathId,
+                    Points = area.Patrol
+                        .Select(point => new WorldActorPatrolPointAuthoringEntry
+                        {
+                            X = point.X,
+                            Y = nodeGround.TryFindGroundFromAbove(point.X, point.Z, out var ground)
+                                ? ground.Y
+                                : throw new StressGeneratorOptionException(
+                                    $"The patrol of the variant area '{area.Name}' has a point at ({Format(point.X)}, {Format(point.Z)}), where no walkable ground is."),
+                            Z = point.Z,
+                            WaitSeconds = point.WaitSeconds
+                        })
+                        .ToArray()
+                });
+            }
+
             areas.Add(new WorldActorSpawnAreaAuthoringEntry
             {
                 Id = VariantId(spawns.WorldId, area.Name),
@@ -209,9 +245,11 @@ public static class StressWorldVariant
                 YawDegrees = 0f,
                 Count = area.Count,
                 Seed = 9000 + index,
-                PatrolPathId = string.Empty
+                PatrolPathId = patrolPathId
             });
         }
+
+        spawns.PatrolPaths = patrols.ToArray();
 
         // A Mob is put on the ground by the worker, a resource node is not: it stands at the
         // height of its spawn. A spawn group has one height for all its instances, so each node
@@ -319,6 +357,53 @@ public static class StressWorldVariant
         }
 
         return instances.Length;
+    }
+
+    // Every point of an area's patrol stands on walkable ground that a walk from the area's
+    // center reaches, as the worker walks a Mob to the ground under each point; the variant
+    // gives each point the height of the highest ground there.
+    private static void ValidatePatrol(
+        WorldVariantArea area,
+        SimulationVector3 center,
+        ICollisionWorld collision,
+        MovementSimulationSettings settings)
+    {
+        if (area.Patrol.Count == 0)
+        {
+            return;
+        }
+
+        var probe = new PlayingGroundProbe(collision, settings);
+        if (!probe.TryFindGround(center.X, center.Y, center.Z, out var centerGround))
+        {
+            throw new StressGeneratorOptionException(
+                $"The variant area '{area.Name}' has no walkable ground at its center ({Format(center.X)}, {Format(center.Z)}).");
+        }
+
+        var planner = new MovementPathPlanner(collision, settings, MovementPathPlannerSettings.Default);
+        foreach (var point in area.Patrol)
+        {
+            var at = $"({Format(point.X)}, {Format(point.Z)})";
+            if (!probe.TryFindGroundFromAbove(point.X, point.Z, out var ground))
+            {
+                throw new StressGeneratorOptionException(
+                    $"The patrol of the variant area '{area.Name}' has a point at {at}, where no walkable ground is.");
+            }
+
+            if (PlanarDistance(ground.X, ground.Z, centerGround.X, centerGround.Z) <= ReachTolerance)
+            {
+                continue;
+            }
+
+            var plan = planner.Plan(centerGround, ground);
+            var end = plan.Waypoints.Count == 0 ? centerGround : plan.Waypoints[^1];
+            if (plan.Status == MovementPathPlanStatus.NoPath
+                || PlanarDistance(end.X, end.Z, ground.X, ground.Z) > ReachTolerance)
+            {
+                throw new StressGeneratorOptionException(
+                    $"The patrol of the variant area '{area.Name}' has a point at {at}, which no walk from the area's center reaches.");
+            }
+        }
     }
 
     // Runs a content compiler's own entry point, so the variant is exactly what the compiler

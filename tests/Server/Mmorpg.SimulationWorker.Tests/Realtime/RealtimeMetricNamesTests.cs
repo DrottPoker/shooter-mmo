@@ -60,7 +60,8 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.simulation.tick.lag",
         "simulation_worker.simulation.tick.overruns",
         "simulation_worker.simulation.tick.resynchronizations",
-        "simulation_worker.simulation.tick_phase.duration"
+        "simulation_worker.simulation.tick_phase.duration",
+        "simulation_worker.simulation.tick_phase_part.duration"
     ];
 
     [Fact]

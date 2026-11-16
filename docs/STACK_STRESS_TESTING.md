@@ -1031,7 +1031,9 @@ which `tools/Test-Load.ps1` runs before the worker starts, writes it into
 1. It copies the actor definitions and the World's `world.json`,
    `collision.json`, and `actor-spawns.json` from `content/` into
    `world-variant/content`, and adds the scenario's areas and groups to the
-   spawn authoring, with the spawn ids `<world>.load_<name>`. A Mob is put on
+   spawn authoring, with the spawn ids `<world>.load_<name>`, and the patrol of
+   an area as the patrol path `<world>.load_<name>.patrol`, each point at the
+   height of the highest ground under it. A Mob is put on
    the ground by the worker, but a resource node stands at the height of its
    spawn and its collision is baked there. So each node of a group becomes its
    own spawn point, `<world>.load_<name>.node<n>`, at the height of the ground
@@ -1044,10 +1046,12 @@ which `tools/Test-Load.ps1` runs before the worker starts, writes it into
 4. It checks every added actor: an actor of an area must stand on walkable
    ground that a route from the area's center reaches, as the worker places a
    Mob on the ground under its spawn, and a Mob must be at least 12 m from the
-   World spawn; a node of a group is checked on the World without the
-   variant's nodes, because a node blocks movement where it stands, and its
-   compiled height must be the ground's. A failure names the area and the
-   point.
+   World spawn. Every point of an area's patrol must stand on walkable ground
+   that a route from the area's center reaches too, as the worker walks a Mob
+   to the ground under each point. A node of a group is checked on the World
+   without the variant's nodes, because a node blocks movement where it stands,
+   and its compiled height must be the ground's. A failure names the area and
+   the point.
 
 `content/` and `src/Shared/WorldData/Generated` are only read, and a test proves
 that both are unchanged after a variant. The variant's actor catalog must equal
@@ -1055,7 +1059,7 @@ the checked-in one, because the worker keeps loading its own.
 
 | Property | Meaning |
 | --- | --- |
-| `areas` | Rectangles with a `name`, an `actorId`, `minimumX`, `minimumZ`, `maximumX`, `maximumZ`, and a `count` of 1 to 256, placed by the compiler's seeded area spawns |
+| `areas` | Rectangles with a `name`, an `actorId`, `minimumX`, `minimumZ`, `maximumX`, `maximumZ`, and a `count` of 1 to 256, placed by the compiler's seeded area spawns, and an optional `patrol` of 2 to 256 points with `x`, `z`, and `waitSeconds`, which every Mob of the area walks in order and around again; without a patrol the Mobs stand |
 | `groups` | Grids with a `name`, an `actorId`, `centerX`, `centerZ`, `rows` and `columns` of 1 to 16, and a `spacing` of at least 2 m |
 
 Mobs do not change the collision, so a variant that adds only Mobs keeps the
@@ -1063,6 +1067,14 @@ checked-in collision revision, and a Unity client can join the run and watch
 it. Resource nodes block movement with their collision boxes, so a variant with
 nodes has another collision revision, and a Unity client refuses it. The script
 prints which applies.
+
+`tools/load/client-crowd-mobs.json` is no load run: it holds the walking Grey
+Wolves that `tools/Measure-ClientCrowd.ps1` writes as a variant of the stress
+arena to measure the client with Mobs, as
+[Measure The Client With A Crowd](LOCAL_DEVELOPMENT.md#measure-the-client-with-a-crowd)
+describes, and lies outside `tools/load/scenarios`, so `tools/Test-Load.ps1`
+does not offer it. A tool test writes it and checks that every area walks its
+patrol and that the collision revision stays.
 
 ## Redis Session-cache A/B Baseline
 
@@ -1457,15 +1469,18 @@ seconds, and adds a `workerPerformance` section to the report:
 - `durations`: every timed phase over those intervals, with its samples, the
   sample-weighted average, the worst interval average, p95, and p99, and the
   longest sample. The p95 and p99 are bucket upper bounds, as in the log.
-  `phases` and `loopSteps` fold every tick phase and every loop step by name
-  the same way, in tick order.
-- `loopBusyPercent` and `gcPauseMsPerSecond`: the loop thread's busy share and
-  the garbage collection pauses per second, each as its average and highest
+  `phases`, `loopSteps`, and `phaseParts` fold every tick phase, every loop
+  step, and every part of a phase that times itself, such as
+  `snapshots: remote plans`, by name the same way, in tick order.
+- `loopBusyPercent`, `gcPauseMsPerSecond`, and `gcLongestPauseMs`: the loop
+  thread's busy share, the garbage collection pauses per second, and the
+  longest single pause of an interval, each as its average and highest
   interval; null for a file of a worker that does not write them.
 - `worstInterval`: the steady interval with the highest tick p99, the higher
   tick average breaking a tie, with its loop busy share, process CPU, pauses,
   and its three costliest tick phases by milliseconds per second.
-- `counters`: traffic, drops, deferrals, quota rejections, ticks over budget,
+- `counters`: traffic, drops, deferrals, quota rejections, ticks over budget
+  and those still over it without their garbage collection pauses,
   resynchronizations, allocation, and GC collections, each as its total and its
   largest interval.
 - `sentByMessage` and `receivedByMessage`: every message kind that the worker
@@ -1943,7 +1958,11 @@ Per layout, over the measured ticks:
 - Informative: the average and the exact 99th percentile of the tick, the
   interest refresh, and the snapshot broadcast, the bytes allocated per tick,
   the garbage collections and pause milliseconds per second of the World, the
-  average of every tick phase, and the wall time.
+  average of every tick phase, and the wall time; and the average and the
+  exact 99th percentile of every part of the snapshot phase, as
+  [Monitoring](MONITORING.md#simulationworker) names them under
+  `simulation_worker.simulation.tick_phase_part.duration`, which the script
+  prints in a second table.
 
 The deterministic numbers depend only on the code and the layout: one source
 state gives the same numbers on every run and machine. `result.json` holds
@@ -2417,16 +2436,16 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
     the worker does for the live ones, and the shared corpse of the loot
     workloads became a player's corpse. No run of 2026-11-16 had an unexpected
     loot rejection.
-14. **With 400 players in view, the others starve although the frame holds.**
-    The built client draws 400 dressed bots at 13.1 ms per frame at the median
-    and 20.3 ms at the 99th percentile, but its remote players have no new
-    state to show 18.7 percent of the time, for up to 0.28 seconds; with 200 in
-    view they never starve. The baseline is in
-    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance). That
-    baseline is from 2026-11-14, before the interest tiers, the byte budget
-    per recipient, and the presentation that walks on past the newest state;
-    the load runs do not measure the client, so this entry stands until the
-    crowd is measured again.
+14. **With 400 players in view, the others starved although the frame held.**
+    Moved. On 2026-11-14 the built client drew 400 dressed bots at 13.1 ms per
+    frame at the median, but its remote players had no new state to show 18.7
+    percent of the time. On 2026-11-16, with the interest tiers, the byte
+    budget per recipient, and a presentation that walks on past the newest
+    state, they starve 1.4 percent of the time at 400 in view, and 2.7 percent
+    at 200, where each recipient's budget now defers records too; the frame is
+    unchanged. What the client itself still lacks, the frames of a first
+    crowd's arrival and memory that comes back, is in
+    [Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance).
 
 Entries 9 to 12 are measured in
 [Measured Under The Profiles](#measured-under-the-profiles) and

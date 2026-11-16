@@ -9,9 +9,18 @@ public static class CorpseRealtimePacketBuilder
     private const int SlotsPerChunk = 4;
     private const int MaximumTargetedSlots = 8;
 
+    // The encoded length of a presence chunk without entries: the packet header and the chunk's
+    // own fields.
+    private static readonly int PresenceChunkFixedLength = RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(
+        new RealtimeCorpsePresenceSnapshotChunk(0, 0, 1, [])).Length;
+
     // A player corpse carries its look with the items of its visible equipment slots, in their
     // order; without visible slots it wears nothing. Every corpse says whether the viewer may
-    // loot it.
+    // loot it. A corpse whose look would not fit one packet shows the default body. The corpses go
+    // in corpse id order into chunks of at most PresencePerChunk that each fit one packet. A chunk
+    // is as long as its fixed part plus the length of each of its entries, so every entry is
+    // encoded once alone to learn its length, and the chunks are cut by adding lengths instead of
+    // encoding every candidate chunk again.
     public static IReadOnlyList<RealtimeCorpsePresenceSnapshotChunk> BuildPresence(
         uint sequence,
         IReadOnlyList<ICorpseRuntimePresence> corpses,
@@ -20,51 +29,72 @@ public static class CorpseRealtimePacketBuilder
     {
         ArgumentNullException.ThrowIfNull(corpses);
         var visible = visibleEquipmentSlots ?? [];
-        var entries = corpses
-            .OrderBy(corpse => corpse.CorpseId)
-            .Select(corpse => Presence(
+        var batches = new List<RealtimeCorpsePresence[]>();
+        var current = new List<RealtimeCorpsePresence>(PresencePerChunk);
+        var currentLength = PresenceChunkFixedLength;
+        foreach (var corpse in corpses.OrderBy(corpse => corpse.CorpseId))
+        {
+            var entry = Presence(
                 corpse,
                 AppearanceOf(corpse.Look, visible),
-                CorpseLootRights.CanLoot(corpse, viewerCharacterId)))
-            .Select(entry => FitsPresencePacket(sequence, [entry])
-                ? entry
-                : WithoutAppearance(entry))
-            .ToArray();
-        var batches = new List<IReadOnlyList<RealtimeCorpsePresence>>();
-        var current = new List<RealtimeCorpsePresence>();
-        foreach (var entry in entries)
-        {
-            var candidate = current.Append(entry).ToArray();
-            if (current.Count > 0
-                && (candidate.Length > PresencePerChunk
-                    || !FitsPresencePacket(sequence, candidate)))
+                CorpseLootRights.CanLoot(corpse, viewerCharacterId));
+            if (!TryMeasurePresence(sequence, entry, out var entryLength))
             {
-                batches.Add(current.ToArray());
+                entry = WithoutAppearance(entry);
+                if (!TryMeasurePresence(sequence, entry, out entryLength))
+                {
+                    throw new InvalidOperationException(
+                        "One corpse presence entry exceeds the realtime packet limit.");
+                }
+            }
+
+            if (current.Count > 0
+                && (current.Count + 1 > PresencePerChunk
+                    || currentLength + entryLength > RealtimeProtocol.MaximumPacketSize))
+            {
+                batches.Add([.. current]);
                 current.Clear();
+                currentLength = PresenceChunkFixedLength;
             }
 
             current.Add(entry);
-            if (!FitsPresencePacket(sequence, current))
-            {
-                throw new InvalidOperationException(
-                    "One corpse presence entry exceeds the realtime packet limit.");
-            }
+            currentLength += entryLength;
         }
 
         if (current.Count > 0 || batches.Count == 0)
         {
-            batches.Add(current.ToArray());
+            batches.Add([.. current]);
         }
 
         var chunkCount = batches.Count;
-        var chunks = batches.Select((batch, index) =>
-            new RealtimeCorpsePresenceSnapshotChunk(
+        var chunks = new RealtimeCorpsePresenceSnapshotChunk[chunkCount];
+        for (var index = 0; index < chunkCount; index++)
+        {
+            chunks[index] = new RealtimeCorpsePresenceSnapshotChunk(
                 sequence,
                 checked((ushort)index),
                 checked((ushort)chunkCount),
-                batch.ToArray())).ToArray();
+                batches[index]);
+        }
 
         return chunks;
+    }
+
+    // How many bytes the entry adds to a presence chunk, from one chunk that holds it alone;
+    // false when that chunk exceeds the packet limit.
+    private static bool TryMeasurePresence(uint sequence, RealtimeCorpsePresence entry, out int length)
+    {
+        try
+        {
+            length = RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(
+                new RealtimeCorpsePresenceSnapshotChunk(sequence, 0, 1, [entry])).Length - PresenceChunkFixedLength;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     private static RealtimeCorpsePresence Presence(
@@ -127,25 +157,6 @@ public static class CorpseRealtimePacketBuilder
             string.Empty);
     }
 
-    private static bool FitsPresencePacket(
-        uint sequence,
-        IReadOnlyCollection<RealtimeCorpsePresence> entries)
-    {
-        try
-        {
-            RealtimeProtocol.EncodeCorpsePresenceSnapshotChunk(
-                new RealtimeCorpsePresenceSnapshotChunk(
-                    sequence,
-                    0,
-                    1,
-                    entries.ToArray()));
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-    }
 
     public static IReadOnlyList<RealtimeCorpseViewStateChunk> BuildSnapshot(
         CorpseViewSnapshotResponse snapshot)

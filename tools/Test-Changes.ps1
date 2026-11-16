@@ -46,6 +46,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 #   blender-python   the art pipeline's Python tests in tools/art/blender/tests, without Blender
 #   deps             tools/Verify-DependencyPolicy.ps1
 #   unity-restore    tools/ci/Test-UnityCommon.ps1
+#   crowd            tools/ci/Test-ClientCrowdCommon.ps1
 #   observability    tools/Verify-Observability.ps1
 #   verify-content   the item catalog, world collision, world actor, quest catalog, and text table verifiers
 #   verify-protocol  the realtime protocol verifier
@@ -84,10 +85,14 @@ $rules = @(
         Checks = @("art"); Reason = "the art pipeline" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'
         Checks = @("deps"); Reason = "the dependency policy" },
+    @{ Pattern = '^tools/load/client-crowd-mobs\.json$'
+        Checks = @("crowd", "test:Mmorpg.Tools.Tests"); Reason = "the Mob variant of the client crowd measurement, which a tools test writes" },
     @{ Pattern = '^tools/load/'
         Checks = @("test:Mmorpg.Tools.Tests"); Reason = "load scenarios, the quality boundary, and baselines, which a tools test loads" },
     @{ Pattern = '^tools/(UnityCommon|ci/Test-UnityCommon)\.ps1$'
         Checks = @("unity", "unity-restore"); Reason = "the helpers that put the working tree back after a Unity run, and their check" },
+    @{ Pattern = '^tools/(Measure-ClientCrowd|ClientCrowdCommon|ci/Test-ClientCrowdCommon)\.ps1$'
+        Checks = @("crowd"); Reason = "the client crowd measurement, its helpers, and their check" },
     @{ Pattern = '^tools/Run-Unity(Editor)?Tests\.ps1$'
         Checks = @("unity"); Reason = "a Unity test runner" },
     @{ Pattern = '^tools/[^/]+\.ps1$'
@@ -530,6 +535,7 @@ try {
     if ($full) { Write-Host "  PowerShell syntax of every script" }
     elseif ($scripts.Count -gt 0) { Write-Host "  PowerShell syntax of the changed scripts: $($scripts -join ', ')" }
     if ($full -or $tokens.Contains("unity-restore")) { Write-Host "  Unity file restore" }
+    if ($full -or $tokens.Contains("crowd")) { Write-Host "  client crowd helpers" }
     if ($full -or $tokens.Contains("deps")) { Write-Host "  dependency policy" }
     if ($full -or $tokens.Contains("art")) { Write-Host "  art assets" }
     if ($full -or $tokens.Contains("blender-python")) { Write-Host "  art pipeline Python tests" }
@@ -554,7 +560,7 @@ try {
         Write-Host "  Unity tests that hold in batchmode, as CI runs them"
         Write-Host "  Unity EditMode and PlayMode tests$unityScope"
     }
-    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability"))) {
+    if (-not ($full -or $scripts.Count -gt 0 -or $runDotNet -or $runUnity -or $tokens.Contains("deps") -or $tokens.Contains("art") -or $tokens.Contains("blender-python") -or $tokens.Contains("observability") -or $tokens.Contains("crowd"))) {
         Write-Host "  none; no change can affect a check"
     }
     if ($Plan) {
@@ -581,6 +587,9 @@ try {
     }
     if ($full -or $tokens.Contains("unity-restore")) {
         $null = Invoke-Check "Unity file restore" { (Invoke-Script "ci/Test-UnityCommon.ps1") -eq 0 }
+    }
+    if ($full -or $tokens.Contains("crowd")) {
+        $null = Invoke-Check "Client crowd helpers" { (Invoke-Script "ci/Test-ClientCrowdCommon.ps1") -eq 0 }
     }
     if ($full -or $tokens.Contains("deps")) {
         $null = Invoke-Check "Dependency policy" { (Invoke-Script "Verify-DependencyPolicy.ps1") -eq 0 }

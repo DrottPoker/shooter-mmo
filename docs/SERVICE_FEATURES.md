@@ -1883,7 +1883,11 @@ Seen from outside:
 ### Corpse Interaction
 
 - SimulationWorker exposes corpse presence within
-  `ItemInteraction:CorpseDiscoveryRadius` of the player, twice per second. One
+  `ItemInteraction:CorpseDiscoveryRadius` of the player, twice per second, and
+  sends a player its presence again only when it changed. Each pass puts the
+  active corpses into cells of the discovery radius, so a player is tested
+  only against the corpses around it, and a changed presence is cut into
+  chunks by the length of each corpse's entry, which it encodes once. One
   player can inspect one corpse at a time, within
   `ItemInteraction:CorpseInteractionRadius`, while any number of players may
   inspect the same corpse. The worker revalidates its authoritative
