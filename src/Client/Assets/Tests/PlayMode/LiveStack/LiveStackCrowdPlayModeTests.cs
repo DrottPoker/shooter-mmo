@@ -15,6 +15,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
@@ -42,6 +43,10 @@ namespace Mmorpg.Client.Tests.PlayMode
     // only that the crowd appears, stays, and comes back as asked, and that the client stays
     // joined; no rule judges the numbers, which it writes to a result file and prints as [CROWD]
     // lines.
+    //
+    // The frame in which the World scene became active is its load, not its arrival: the arrival
+    // records from the first frame that began after it, and the activation frame's own length is a
+    // value of the result.
     //
     // Its category holds no other category's name, because the test runner matches a category
     // filter as a regular expression: LiveStack would select a LiveStackCrowd test.
@@ -138,7 +143,9 @@ namespace Mmorpg.Client.Tests.PlayMode
                     shard = joinedShard;
                     character = created;
                 });
-                yield return EnterWorld(hub, shard, character);
+                // Every kind but the churn records the arrival from the frame after the activation.
+                var activation = new Activation(mode != ChurnMode ? measurements : null, label);
+                yield return EnterWorld(hub, shard, character, activation);
                 var result = new CrowdResult
                 {
                     label = label,
@@ -168,7 +175,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     Measurements = measurements,
                     Result = result,
                     Results = results,
-                    Label = label
+                    Label = label,
+                    Activation = activation
                 };
 
                 if (mode == ChurnMode)
@@ -244,7 +252,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             var result = run.Result;
             var crowd = 0;
-            yield return RecordArrival(run, "arrival", result.arrival, WaitForTheWholeCrowd(run.Context, expected, value => crowd = value));
+            yield return RecordFirstArrival(run, result.arrival, WaitForTheWholeCrowd(run.Context, expected, value => crowd = value));
             result.shownBots = crowd;
             result.crowdShownSeconds = result.arrival.shownSeconds;
             Report(run.Label + ": " + crowd + " bots shown " + Seconds(result.crowdShownSeconds) + " s after the World scene loaded.");
@@ -393,7 +401,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             var result = run.Result;
             Assert.That(run.Actors, Is.Not.Null, "The World scene has no world actor presentation.");
             var shown = 0;
-            yield return RecordArrival(run, "arrival", result.arrival, WaitForTheMobs(run, expected, value => shown = value));
+            yield return RecordFirstArrival(run, result.arrival, WaitForTheMobs(run, expected, value => shown = value));
             result.shownMobs = shown;
             result.crowdShownSeconds = result.arrival.shownSeconds;
             Report(run.Label + ": " + shown + " Mobs shown " + Seconds(result.crowdShownSeconds) + " s after the World scene loaded.");
@@ -402,6 +410,28 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return RecordStanding(run, "mobs", seconds, () => ShownMobs(run), value => fewest = value);
             result.fewestShownMobs = Mathf.Min(shown, Mathf.Min(fewest, ShownMobs(run)));
             ReadMemory(run, "with the Mobs", true);
+        }
+
+        // The first arrival records from the first frame that began after the World scene became
+        // active, which the activation's watch started the recording at, until the wait ends.
+        private static IEnumerator RecordFirstArrival(Run run, CrowdStretch stretch, IEnumerator wait)
+        {
+            var activation = run.Activation;
+            var deadline = Time.realtimeSinceStartup + 15f;
+            while (!activation.Recording)
+            {
+                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The arrival's recording never started after the World scene became active.");
+                yield return null;
+            }
+
+            run.Result.activationFrameMilliseconds = activation.Milliseconds;
+            stretch.recording = activation.RecordingPath;
+            stretch.startUtc = activation.StartUtc;
+            yield return wait;
+            stretch.summary = run.Measurements.StopRecording();
+            stretch.endUtc = Utc();
+            stretch.shownSeconds = Time.realtimeSinceStartup - activation.StartTime;
+            stretch.measured = true;
         }
 
         // Records from now until the wait ends.
@@ -514,11 +544,37 @@ namespace Mmorpg.Client.Tests.PlayMode
             signedIn(shard, character);
         }
 
-        // Joins as CharacterSelect does, through the client's own hub, and loads the World scene.
-        private IEnumerator EnterWorld(RealtimeSimulationClient hub, ShardResponse shard, CharacterResponse character)
+        // Joins as CharacterSelect does, through the client's own hub, and loads the World scene,
+        // whose activation the watch measures.
+        private IEnumerator EnterWorld(RealtimeSimulationClient hub, ShardResponse shard, CharacterResponse character, Activation activation)
         {
             var session = PlayModeClient.Session;
             Assert.That(WorldSceneCatalog.TryResolveScene(shard.worldId, out var sceneName, out var sceneError), Is.True, sceneError);
+            UnityEngine.Events.UnityAction<Scene, LoadSceneMode> loaded = (scene, mode) =>
+            {
+                if (scene.name == sceneName && activation.Frame < 0)
+                {
+                    activation.Frame = Time.frameCount;
+                    hub.StartCoroutine(activation.Watch());
+                }
+            };
+            SceneManager.sceneLoaded += loaded;
+            try
+            {
+                yield return Join(hub, shard, character, session, sceneName);
+            }
+            finally
+            {
+                SceneManager.sceneLoaded -= loaded;
+            }
+
+            Assert.That(activation.Frame, Is.GreaterThanOrEqualTo(0), "The World scene never became active.");
+        }
+
+        // The join through the client's own hub and the load of the World scene, until the local
+        // player stands in it.
+        private IEnumerator Join(RealtimeSimulationClient hub, ShardResponse shard, CharacterResponse character, ClientSession session, string sceneName)
+        {
             session.Select(character, shard);
             WorldJoinResult join = null;
             yield return new WorldJoin(session, api, hub.Session).Run(
@@ -665,6 +721,11 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             var invariant = CultureInfo.InvariantCulture;
             Report(string.Format(invariant, "{0} {1}, {2} by {3}, {4}, {5}, {6}", result.runtime, result.platform, result.screenWidth, result.screenHeight, result.graphicsDevice, result.processor, result.mode));
+            if (result.arrival.measured)
+            {
+                Report(string.Format(invariant, "  World activation frame {0:0.0} ms, the load before the arrival", result.activationFrameMilliseconds));
+            }
+
             ReportStretch("arrival", result.arrival);
             if (result.standing)
             {
@@ -735,6 +796,50 @@ namespace Mmorpg.Client.Tests.PlayMode
             public CrowdResult Result;
             public string Results;
             public string Label;
+            public Activation Activation;
+        }
+
+        // The frame in which the World scene became active: its length, the time that frame takes
+        // as the next one begins, and the arrival's recording, which starts in the frame after
+        // that, so its first frame is the first that began after the activation.
+        private sealed class Activation
+        {
+            private readonly ClientMeasurements measurements;
+            private readonly string label;
+
+            public Activation(ClientMeasurements arrivalMeasurements, string runLabel)
+            {
+                measurements = arrivalMeasurements;
+                label = runLabel;
+            }
+
+            public int Frame { get; set; } = -1;
+
+            public float Milliseconds { get; private set; }
+
+            public bool Recording { get; private set; }
+
+            public string RecordingPath { get; private set; }
+
+            public string StartUtc { get; private set; }
+
+            public float StartTime { get; private set; }
+
+            public IEnumerator Watch()
+            {
+                yield return null;
+                Milliseconds = Time.unscaledDeltaTime * 1000f;
+                yield return null;
+                if (measurements == null)
+                {
+                    yield break;
+                }
+
+                RecordingPath = measurements.StartRecording("arrival-" + label, 5f);
+                StartUtc = Utc();
+                StartTime = Time.realtimeSinceStartup;
+                Recording = true;
+            }
         }
 
         // The result file. The fields of the standing recording, recording to summary, are those
@@ -751,6 +856,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             public int expectedBots;
             public int shownBots;
             public float crowdShownSeconds;
+            // The length of the frame in which the World scene became active, its load, which the
+            // arrival does not count.
+            public float activationFrameMilliseconds;
             public int shownBotsAtEnd;
             public int knownBotsAtEnd;
             public int fewestShownBots;

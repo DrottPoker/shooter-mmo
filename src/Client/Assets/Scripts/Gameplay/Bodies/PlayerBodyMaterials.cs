@@ -9,9 +9,14 @@ namespace Mmorpg.Client.Gameplay
     // its skin, such as a tattoo or underwear, a tint, a garment's dye colors, or any of them
     // together, shared by every body that looks the same. A property block on each body kept every
     // body out of the SRP Batcher, so a dense crowd paid a full draw call setup per player. The
-    // owner destroys the copies.
+    // bodies and corpses that show a copy count as its users; a copy nobody uses stays
+    // PlayerBodyMeshes.GraceSeconds, at most UnusedCap of them, and is then destroyed. The owner
+    // destroys the rest.
     public sealed class PlayerBodyMaterials : IDisposable
     {
+        // Copies are small, so more of them stay unused than meshes do.
+        public const int UnusedCap = 64;
+
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int ColorId = Shader.PropertyToID("_Color");
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
@@ -30,6 +35,12 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes), Material> materials =
             new Dictionary<(Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes), Material>();
+
+        // Every copy with its key and users, and the copies without users in the order they lost
+        // their last one.
+        private readonly Dictionary<Material, Copy> copies = new Dictionary<Material, Copy>();
+        private readonly List<Copy> unused = new List<Copy>();
+        private bool disposed;
 
         // The dye channels the garment shader, Mmorpg/Garment, has.
         public const int MaximumDyes = 3;
@@ -103,13 +114,106 @@ namespace Mmorpg.Client.Gameplay
                 MultiplyColor(material, source, BaseColorId, tint);
                 MultiplyColor(material, source, ColorId, tint);
                 materials[key] = material;
+                var copy = new Copy(key, material) { UnusedSince = Time.realtimeSinceStartup };
+                copies[material] = copy;
+                unused.Add(copy);
             }
 
             return material;
         }
 
+        // A body or corpse shows the material until it releases it; a material that is no copy of
+        // this set, such as a body's own, is not counted.
+        public void AddUser(Material material)
+        {
+            if (material == null || !copies.TryGetValue(material, out var copy))
+            {
+                return;
+            }
+
+            if (copy.Users == 0)
+            {
+                unused.Remove(copy);
+            }
+
+            copy.Users++;
+        }
+
+        public void Release(Material material)
+        {
+            if (disposed || material == null || !copies.TryGetValue(material, out var copy) || copy.Users == 0)
+            {
+                return;
+            }
+
+            copy.Users--;
+            if (copy.Users == 0)
+            {
+                copy.UnusedSince = Time.realtimeSinceStartup;
+                unused.Add(copy);
+            }
+        }
+
+        // Destroys the copies without users past the grace time and the oldest beyond the cap.
+        // Allocates nothing.
+        public void Update()
+        {
+            Trim(Time.realtimeSinceStartup);
+        }
+
+        // Destroys every copy without a user at once.
+        public void ReleaseUnused()
+        {
+            Trim(float.PositiveInfinity);
+        }
+
+        internal void Trim(float now)
+        {
+            for (var index = unused.Count - 1; index >= 0; index--)
+            {
+                if (now - unused[index].UnusedSince >= PlayerBodyMeshes.GraceSeconds)
+                {
+                    Forget(index);
+                }
+            }
+
+            while (unused.Count > UnusedCap)
+            {
+                Forget(0);
+            }
+        }
+
+        private void Forget(int unusedIndex)
+        {
+            var copy = unused[unusedIndex];
+            unused.RemoveAt(unusedIndex);
+            copies.Remove(copy.Material);
+            materials.Remove(copy.Key);
+            DestroyMaterial(copy.Material);
+        }
+
+        private static void DestroyMaterial(Material material)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(material);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
         public void Dispose()
         {
+            disposed = true;
+            copies.Clear();
+            unused.Clear();
             foreach (var material in materials.Values)
             {
                 if (material == null)
@@ -239,6 +343,23 @@ namespace Mmorpg.Client.Gameplay
             {
                 material.SetColor(property, source.GetColor(property) * tint);
             }
+        }
+
+        private sealed class Copy
+        {
+            public Copy((Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes) key, Material material)
+            {
+                Key = key;
+                Material = material;
+            }
+
+            public (Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes) Key { get; }
+
+            public Material Material { get; }
+
+            public int Users { get; set; }
+
+            public float UnusedSince { get; set; }
         }
     }
 }
