@@ -277,9 +277,9 @@ public sealed record PlayingScenario(
     }
 }
 
-// The extra actors of a load variant of a World: Mob areas, rectangles with an actor and a
-// count, and node groups, grids with an actor, rows, columns, and spacing. The game content
-// stays untouched; the variant is compiled into the run folder.
+// The extra actors of a load variant of a World: Mob areas, rectangles with an actor, a count,
+// and an optional patrol, and node groups, grids with an actor, rows, columns, and spacing. The
+// game content stays untouched; the variant is compiled into the run folder.
 public sealed record WorldVariantScenario(
     IReadOnlyList<WorldVariantArea> Areas,
     IReadOnlyList<WorldVariantGroup> Groups)
@@ -293,7 +293,7 @@ public sealed record WorldVariantScenario(
         foreach (var area in ReadArray(element, "areas", source))
         {
             StrictJson.RequireObject(area, source, "a variant area");
-            StrictJson.RequireOnly(area, source, "a variant area", "name", "actorId", "minimumX", "minimumZ", "maximumX", "maximumZ", "count");
+            StrictJson.RequireOnly(area, source, "a variant area", "name", "actorId", "minimumX", "minimumZ", "maximumX", "maximumZ", "count", "patrol");
             var name = UniqueName(area, names, source);
             areas.Add(new WorldVariantArea(
                 name,
@@ -304,7 +304,10 @@ public sealed record WorldVariantScenario(
                     source,
                     $"the count of the area '{name}'",
                     1,
-                    256)));
+                    256))
+            {
+                Patrol = ReadPatrol(area, name, source)
+            });
         }
 
         var groups = new List<WorldVariantGroup>();
@@ -337,6 +340,48 @@ public sealed record WorldVariantScenario(
         return new WorldVariantScenario(areas, groups);
     }
 
+    // The points an area's Mobs walk between, in this order and around again, with the seconds
+    // they wait at each; none when the area has no patrol, and its Mobs stand.
+    private static IReadOnlyList<WorldVariantPatrolPoint> ReadPatrol(JsonElement area, string name, string source)
+    {
+        if (!area.TryGetProperty("patrol", out var patrol))
+        {
+            return [];
+        }
+
+        if (patrol.ValueKind != JsonValueKind.Array
+            || patrol.GetArrayLength() < 2
+            || patrol.GetArrayLength() > MaximumPatrolPoints)
+        {
+            throw PlayingScenario.Invalid(
+                source,
+                $"the patrol of the area '{name}' must be an array of 2 to {MaximumPatrolPoints} points.");
+        }
+
+        var points = new List<WorldVariantPatrolPoint>();
+        foreach (var point in patrol.EnumerateArray())
+        {
+            var what = $"a patrol point of the area '{name}'";
+            StrictJson.RequireObject(point, source, what);
+            StrictJson.RequireOnly(point, source, what, "x", "z", "waitSeconds");
+            var wait = PlayingScenario.ReadFloat(point, "waitSeconds", source, what);
+            if (wait < 0f)
+            {
+                throw PlayingScenario.Invalid(source, $"{what} needs a 'waitSeconds' of at least 0.");
+            }
+
+            points.Add(new WorldVariantPatrolPoint(
+                PlayingScenario.ReadFloat(point, "x", source, what),
+                PlayingScenario.ReadFloat(point, "z", source, what),
+                wait));
+        }
+
+        return points;
+    }
+
+    // The most points a patrol may have, as the World actor compiler allows.
+    private const int MaximumPatrolPoints = 256;
+
     private static string UniqueName(JsonElement element, ISet<string> names, string source)
     {
         var name = PlayingScenario.RequireName(element, source, "a variant area or group");
@@ -364,7 +409,14 @@ public sealed record WorldVariantScenario(
     }
 }
 
-public sealed record WorldVariantArea(string Name, string ActorId, PlayingRectangle Area, int Count);
+public sealed record WorldVariantArea(string Name, string ActorId, PlayingRectangle Area, int Count)
+{
+    // The patrol its Mobs walk, or none, and they stand where they spawned.
+    public IReadOnlyList<WorldVariantPatrolPoint> Patrol { get; init; } = [];
+}
+
+// A point of a variant area's patrol on the ground, which the worker finds under it.
+public sealed record WorldVariantPatrolPoint(float X, float Z, float WaitSeconds);
 
 public sealed record WorldVariantGroup(
     string Name,

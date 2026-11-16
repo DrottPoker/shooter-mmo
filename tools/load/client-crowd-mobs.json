@@ -1,0 +1,55 @@
+{
+  "description": "Not a load run: the World variant of the Mob measurement of tools/Measure-ClientCrowd.ps1, written with StackStressGenerator world-variant. 200 walking Grey Wolves in the stress arena, a quarter in each corner, each quarter on a patrol around its corner; the script shares the Mobs of each size equally between the areas. Grey Wolves never attack, so the measuring player stands undisturbed at the spawn.",
+  "mode": "full-stack",
+  "workload": "lifecycle",
+  "shardId": "local-shard-2",
+  "worldId": "development-world-1",
+  "generator": {
+    "bots": 1,
+    "duration-seconds": 1
+  },
+  "worldVariant": {
+    "areas": [
+      {
+        "name": "crowd-north-east", "actorId": "mob.grey_wolf",
+        "minimumX": 20, "minimumZ": 20, "maximumX": 26, "maximumZ": 26, "count": 50,
+        "patrol": [
+          { "x": 26, "z": 26, "waitSeconds": 0.5 },
+          { "x": 26, "z": 9, "waitSeconds": 0.5 },
+          { "x": 8, "z": 9, "waitSeconds": 0.5 },
+          { "x": 8, "z": 26, "waitSeconds": 0.5 }
+        ]
+      },
+      {
+        "name": "crowd-north-west", "actorId": "mob.grey_wolf",
+        "minimumX": -26, "minimumZ": 20, "maximumX": -20, "maximumZ": 26, "count": 50,
+        "patrol": [
+          { "x": -26, "z": 26, "waitSeconds": 0.5 },
+          { "x": -10, "z": 26, "waitSeconds": 0.5 },
+          { "x": -10, "z": 11, "waitSeconds": 0.5 },
+          { "x": -26, "z": 11, "waitSeconds": 0.5 }
+        ]
+      },
+      {
+        "name": "crowd-south-east", "actorId": "mob.grey_wolf",
+        "minimumX": 20, "minimumZ": -26, "maximumX": 26, "maximumZ": -14, "count": 50,
+        "patrol": [
+          { "x": 28, "z": -28, "waitSeconds": 0.5 },
+          { "x": 18, "z": -28, "waitSeconds": 0.5 },
+          { "x": 18, "z": -12, "waitSeconds": 0.5 },
+          { "x": 28, "z": -12, "waitSeconds": 0.5 }
+        ]
+      },
+      {
+        "name": "crowd-south-west", "actorId": "mob.grey_wolf",
+        "minimumX": -26, "minimumZ": -26, "maximumX": -18, "maximumZ": -20, "count": 50,
+        "patrol": [
+          { "x": -28, "z": -28, "waitSeconds": 0.5 },
+          { "x": -28, "z": -17, "waitSeconds": 0.5 },
+          { "x": -10, "z": -17, "waitSeconds": 0.5 },
+          { "x": -10, "z": -28, "waitSeconds": 0.5 }
+        ]
+      }
+    ]
+  }
+}
