@@ -374,6 +374,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 RealtimeCombatLifeState.Alive,
                 true,
                 entityId == ActorEntityId ? ControlledEntityId : ActorEntityId,
+                0,
+                0,
                 0);
         }
 

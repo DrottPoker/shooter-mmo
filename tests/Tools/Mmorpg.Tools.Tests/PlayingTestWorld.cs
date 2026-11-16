@@ -114,7 +114,7 @@ internal static class PlayingTestWorld
         ulong target = 0,
         ulong taggedBy = 0)
     {
-        return new RealtimeCombatantState(entityId, revision, health, 50, lifeState, target != 0, target, taggedBy);
+        return new RealtimeCombatantState(entityId, revision, health, 50, lifeState, target != 0, target, taggedBy, 0, 0);
     }
 
     public static RealtimeCorpsePresenceSnapshotChunk Corpses(

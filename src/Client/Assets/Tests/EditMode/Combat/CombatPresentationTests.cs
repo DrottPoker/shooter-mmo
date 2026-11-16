@@ -116,6 +116,19 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(wrapping.SecondsUntil(20), Is.EqualTo(1f).Within(0.0001f));
         }
 
+        // The estimate of the worker's tick now counts the whole ticks since the newest owner
+        // snapshot and wraps like the worker's tick.
+        [Test]
+        public void ServerClockEstimatesTheWorkersTickNow()
+        {
+            Assert.That(default(CombatServerClock).EstimatedTick, Is.Zero);
+            Assert.That(new CombatServerClock(100, 1f, 0).EstimatedTick, Is.Zero);
+            Assert.That(new CombatServerClock(1_000, 0f, 30).EstimatedTick, Is.EqualTo(1_000u));
+            Assert.That(new CombatServerClock(1_000, 0.5f, 30).EstimatedTick, Is.EqualTo(1_015u));
+            Assert.That(new CombatServerClock(1_000, 0.99f, 30).EstimatedTick, Is.EqualTo(1_029u));
+            Assert.That(new CombatServerClock(uint.MaxValue - 9, 1f, 30).EstimatedTick, Is.EqualTo(20u));
+        }
+
         [Test]
         public void RespawnCountdownRoundsUpToWholeSeconds()
         {

@@ -3,7 +3,7 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 43,
+    "version": 44,
     "magic": "0x4F4D4D53",
     "connectionKey": "Mmorpg.Realtime.v8",
     "maximumPacketSize": 1200,
@@ -2845,13 +2845,13 @@
       "direction": "serverToClient",
       "channel": "WorldChannel",
       "delivery": "reliableOrdered",
-      "description": "A newer health and life state of a visible combatant. It follows every spawn of a combatant.",
+      "description": "A newer health and life state of a visible combatant, with the health it regains by itself until the next state. It follows every spawn of a combatant.",
       "parameter": "state",
       "rules": true,
       "fields": [
         { "name": "EntityId", "type": "u64", "minimum": 1, "description": "The network entity of the combatant." },
         { "name": "StateRevision", "type": "i64", "minimum": 1, "description": "Increases with every combat state change." },
-        { "name": "Health", "type": "i32", "minimum": 0, "description": "The current health." },
+        { "name": "Health", "type": "i32", "minimum": 0, "description": "The health when the state was sent." },
         { "name": "MaximumHealth", "type": "i32", "minimum": 1, "description": "The maximum health." },
         { "name": "LifeState", "type": "CombatLifeState", "description": "Whether the combatant lives." },
         { "name": "InCombat", "type": "bool", "description": "Whether the combatant fought recently." },
@@ -2860,6 +2860,17 @@
           "name": "TaggedByEntityId",
           "type": "u64",
           "description": "The player who tagged the Mob and alone gets its credit and loot, or 0 when no one has."
+        },
+        {
+          "name": "HealthRegenerationAmount",
+          "type": "i32",
+          "minimum": 0,
+          "description": "The health the combatant gains at HealthRegenerationTick and again every second after it, up to the maximum, while this state stands; 0 when its health does not rise by itself."
+        },
+        {
+          "name": "HealthRegenerationTick",
+          "type": "u32",
+          "description": "The server tick of the next regeneration step, or 0 when the amount is 0."
         }
       ]
     },

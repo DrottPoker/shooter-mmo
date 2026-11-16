@@ -152,10 +152,13 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            var clock = CombatServerClock.FromDiagnostics(
+                realtimeDiagnostics,
+                realtimeMovement != null ? realtimeMovement.MovementSession : null);
             UpdateOwnerFrame(owner);
-            UpdateTargetFrame();
-            UpdateDeathOverlay(owner);
-            UpdateHealthBars(owner);
+            UpdateTargetFrame(clock);
+            UpdateDeathOverlay(owner, clock);
+            UpdateHealthBars(owner, clock);
             UpdateDamageNumbers();
             messageText.gameObject.SetActive(Time.unscaledTime < messageVisibleUntil);
         }
@@ -187,7 +190,9 @@ namespace Mmorpg.Client.Ui
                 + (owner.InCombat ? "    In combat" : string.Empty);
         }
 
-        private void UpdateTargetFrame()
+        // A regenerating target's health rises every frame by the clock without a new state, so
+        // the frame compares what it shows each frame.
+        private void UpdateTargetFrame(CombatServerClock clock)
         {
             var targetId = targetingController != null ? targetingController.TargetEntityId : 0;
             if (targetId == 0
@@ -209,7 +214,8 @@ namespace Mmorpg.Client.Ui
             }
 
             targetFrame.SetActive(true);
-            var lines = new TargetLines(targetId, shownTargetName, state);
+            var health = combatController.State.HealthAt(state, clock);
+            var lines = new TargetLines(targetId, shownTargetName, state, health);
             if (lines.Equals(shownTarget))
             {
                 return;
@@ -217,18 +223,18 @@ namespace Mmorpg.Client.Ui
 
             shownTarget = lines;
             targetNameText.text = shownTargetName.Length > 0 ? shownTargetName : "Target";
-            var fraction = CombatHudPresentation.HealthFraction(state.Health, state.MaximumHealth);
+            var fraction = CombatHudPresentation.HealthFraction(health, state.MaximumHealth);
             targetHealth.Set(fraction, CombatHudPresentation.HealthColor(fraction));
             var life = state.LifeState == RealtimeCombatLifeState.Evading
                 ? "    Returning home"
                 : state.LifeState == RealtimeCombatLifeState.Dead
                     ? "    Dead"
                     : state.InCombat ? "    In combat" : string.Empty;
-            targetDetailText.text = CombatHudPresentation.HealthText(state.Health, state.MaximumHealth)
+            targetDetailText.text = CombatHudPresentation.HealthText(health, state.MaximumHealth)
                 + life;
         }
 
-        private void UpdateDeathOverlay(RealtimeOwnerCombatState owner)
+        private void UpdateDeathOverlay(RealtimeOwnerCombatState owner, CombatServerClock clock)
         {
             var dead = owner.LifeState == RealtimeCombatLifeState.Dead;
             deathOverlay.SetActive(dead);
@@ -237,9 +243,6 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            var clock = CombatServerClock.FromDiagnostics(
-                realtimeDiagnostics,
-                realtimeMovement != null ? realtimeMovement.MovementSession : null);
             var seconds = clock.IsKnown
                 ? Mathf.CeilToInt(Mathf.Max(0f, clock.SecondsUntil(owner.RespawnTick)))
                 : -1;
@@ -255,7 +258,9 @@ namespace Mmorpg.Client.Ui
                 texts);
         }
 
-        private void UpdateHealthBars(RealtimeOwnerCombatState owner)
+        // Every frame, so the bar of a regenerating player rises with the clock and goes once
+        // the player is whole again, without a new state.
+        private void UpdateHealthBars(RealtimeOwnerCombatState owner, CombatServerClock clock)
         {
             var playerCamera = views.PlayerCamera;
             var used = 0;
@@ -270,12 +275,17 @@ namespace Mmorpg.Client.Ui
                 for (var index = 0; index < damagedCombatants.Count && used < MaximumHealthBars; index++)
                 {
                     var entityId = damagedCombatants[index];
-                    if (entityId != ownerId
-                        && !views.IsMob(entityId)
-                        && combatController.State.TryGetCombatant(entityId, out var state)
-                        && CombatHudPresentation.ShowsHealthBar(state.Health, state.MaximumHealth, state.LifeState))
+                    if (entityId == ownerId
+                        || views.IsMob(entityId)
+                        || !combatController.State.TryGetCombatant(entityId, out var state))
                     {
-                        used = PlaceHealthBar(playerCamera, entityId, state.Health, state.MaximumHealth, used);
+                        continue;
+                    }
+
+                    var health = combatController.State.HealthAt(state, clock);
+                    if (CombatHudPresentation.ShowsHealthBar(health, state.MaximumHealth, state.LifeState))
+                    {
+                        used = PlaceHealthBar(playerCamera, entityId, health, state.MaximumHealth, used);
                     }
                 }
             }
@@ -353,6 +363,8 @@ namespace Mmorpg.Client.Ui
             }
         }
 
+        // The combatants whose state arrived damaged. Regeneration only raises the health between
+        // states, so no other combatant can need a bar before its next state arrives.
         private void OnCombatStateChanged()
         {
             damagedCombatants.Clear();
@@ -748,14 +760,14 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        // The target values the frame shows.
+        // The target values the frame shows, with the health it has now.
         private readonly struct TargetLines : IEquatable<TargetLines>
         {
-            public TargetLines(ulong entityId, string name, RealtimeCombatantState state)
+            public TargetLines(ulong entityId, string name, RealtimeCombatantState state, int health)
             {
                 EntityId = entityId;
                 Name = name;
-                Health = state.Health;
+                Health = health;
                 MaximumHealth = state.MaximumHealth;
                 LifeState = state.LifeState;
                 InCombat = state.InCombat;

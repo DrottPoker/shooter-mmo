@@ -1340,6 +1340,20 @@ the actor catalog. The combat model is in
   combatant reaches its viewers once at the end of the tick. Combat events reach
   every peer that sees the source or the target, and `OwnerCombatState` reaches
   the owner.
+- Health regeneration travels as a rule, not as a state per step. The state of
+  a living player out of combat below its maximum health names the
+  regeneration amount of the combat rules and the server tick of the next
+  step, which is the current tick when that step is already due, and every
+  viewer computes the health between states with `RealtimeCombatHealth`, as
+  [Combat](REALTIME_PROTOCOL.md#combat) describes. A step on the tick that the
+  state named changes only the owner state, so the owner still receives its
+  health and mana every second and other viewers receive nothing. Everything
+  else that changes a player's health or its regeneration is a new state for
+  the viewers: a hit, a death, a respawn, entering and leaving combat, vitals
+  restored at a join, and the admin's full health. A step after its named
+  tick, such as the first one after restored vitals or after a combat phase
+  that failed, is a new state too, because it starts another rhythm. Mobs do
+  not regenerate; a Mob that arrives home gets its full health as a new state.
 - Synthetic development bots are no combatants, because they have no durable
   character that could die. An attack on one returns
   `combat_target_not_attackable`.

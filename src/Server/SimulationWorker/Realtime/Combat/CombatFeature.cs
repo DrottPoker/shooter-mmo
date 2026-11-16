@@ -105,7 +105,9 @@ internal sealed class CombatFeature
             core.Sender,
             core.ConnectionBindings,
             core.Presence,
-            combatants);
+            combatants,
+            core.Clock,
+            dependencies.Rules.HealthRegenerationPerSecond);
         MobDeaths = new MobDeathProcessor(
             core.Config,
             core.Clock,

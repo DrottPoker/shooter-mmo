@@ -104,6 +104,8 @@ internal sealed class Combatant
 
     public uint RespawnTick { get; set; }
 
+    // The tick of the next health and mana regeneration step while either is missing out of
+    // combat; viewers learn it from the state.
     public uint NextRegenerationTick { get; set; }
 
     // The tick at which line of sight to the current target is checked again.
@@ -199,8 +201,20 @@ internal sealed class Combatant
         MarkStateChanged();
     }
 
-    public RealtimeCombatantState ToState()
+    // The state viewers receive at the server tick. A living player out of combat below its
+    // maximum health names its regeneration, so viewers follow every step by
+    // RealtimeCombatHealth without a new state: the next step's tick, or the current tick when
+    // that step is already due.
+    public RealtimeCombatantState ToState(uint serverTick, int healthRegenerationPerSecond)
     {
+        var regenerates = Kind == CombatantKind.Player
+            && IsAlive
+            && !InCombat
+            && Health < MaximumHealth
+            && healthRegenerationPerSecond > 0;
+        var regenerationTick = !regenerates
+            ? 0u
+            : CombatTicks.IsReached(serverTick, NextRegenerationTick) ? serverTick : NextRegenerationTick;
         return new RealtimeCombatantState(
             EntityId,
             StateRevision,
@@ -209,7 +223,9 @@ internal sealed class Combatant
             LifeState,
             InCombat,
             IsAlive ? TargetEntityId : 0,
-            TagEntityId);
+            TagEntityId,
+            regenerates ? healthRegenerationPerSecond : 0,
+            regenerationTick);
     }
 }
 

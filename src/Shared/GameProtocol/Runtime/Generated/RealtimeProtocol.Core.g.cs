@@ -161,7 +161,7 @@ namespace Mmorpg.GameProtocol
         CombatIntentResult = 30,
 
         /// <summary>
-        /// A newer health and life state of a visible combatant. It follows every spawn of a combatant.
+        /// A newer health and life state of a visible combatant, with the health it regains by itself until the next state. It follows every spawn of a combatant.
         /// </summary>
         CombatantState = 31,
 
@@ -412,7 +412,7 @@ namespace Mmorpg.GameProtocol
         /// <summary>
         /// The protocol version. Peers with another version never exchange messages.
         /// </summary>
-        public const ushort Version = 43;
+        public const ushort Version = 44;
 
         /// <summary>
         /// The LiteNetLib connection key.

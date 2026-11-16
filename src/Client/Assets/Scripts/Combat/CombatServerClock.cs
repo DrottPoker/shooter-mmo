@@ -1,11 +1,13 @@
+using System;
 using Mmorpg.Client.Networking;
 
 namespace Mmorpg.Client.Combat
 {
     // The client's best estimate of the worker's current tick: the tick of the newest owner
     // snapshot plus the time since it left the worker, which is the time since it arrived
-    // plus the one-way latency. Presentation only, such as a respawn countdown or an arrow
-    // that lands at its impact tick; nothing here feeds prediction or combat decisions.
+    // plus the one-way latency. Presentation only, such as a respawn countdown, an arrow
+    // that lands at its impact tick, or the regenerated health of another combatant; nothing
+    // here feeds prediction or combat decisions.
     public readonly struct CombatServerClock
     {
         public CombatServerClock(uint latestServerTick, float secondsSinceLatestTick, int tickRateHz)
@@ -25,6 +27,24 @@ namespace Mmorpg.Client.Combat
         public bool IsKnown
         {
             get { return LatestServerTick != 0 && TickRateHz > 0; }
+        }
+
+        // The worker's tick now: the latest tick plus the whole ticks since it, wrapping like
+        // the worker's tick; 0 while the clock is unknown.
+        public uint EstimatedTick
+        {
+            get
+            {
+                if (!IsKnown)
+                {
+                    return 0;
+                }
+
+                var ticksSince = Math.Floor((double)SecondsSinceLatestTick * TickRateHz);
+                return ticksSince > 0d
+                    ? unchecked(LatestServerTick + (uint)Math.Min(ticksSince, int.MaxValue))
+                    : LatestServerTick;
+            }
         }
 
         // The clock of the joined session, from its diagnostics and the tick rate of its

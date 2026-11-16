@@ -1,7 +1,8 @@
 namespace Mmorpg.GameProtocol
 {
-    // Cross-field rules of the Combat family. The schema in Schema~ describes the
-    // messages, and the generator writes their models and codecs.
+    // Cross-field rules of the Combat family, its intent error codes, and the health rule of
+    // its combatant state. The schema in Schema~ describes the messages, and the generator
+    // writes their models and codecs.
     public static partial class RealtimeProtocol
     {
         // Each event kind carries only its own fields. A cancelled attack ended before its release
@@ -33,14 +34,18 @@ namespace Mmorpg.GameProtocol
             }
         }
 
-        // A dead combatant has no health and no target, and nobody targets or tags itself.
+        // A dead combatant has no health, no target, and no regeneration, and nobody targets or
+        // tags itself. Without a regeneration amount there is no regeneration tick.
         private static bool SatisfiesRules(RealtimeCombatantState value)
         {
             return value.Health <= value.MaximumHealth
                 && (value.LifeState != RealtimeCombatLifeState.Dead
-                    || (value.Health == 0 && value.TargetEntityId == 0))
+                    || (value.Health == 0
+                        && value.TargetEntityId == 0
+                        && value.HealthRegenerationAmount == 0))
                 && value.TargetEntityId != value.EntityId
-                && value.TaggedByEntityId != value.EntityId;
+                && value.TaggedByEntityId != value.EntityId
+                && (value.HealthRegenerationAmount != 0 || value.HealthRegenerationTick == 0);
         }
 
         // A character is never evading; while dead it waits for its respawn tick.
@@ -66,6 +71,43 @@ namespace Mmorpg.GameProtocol
                     || value.AttackStatus == RealtimeCombatAttackStatus.Idle)
                 && (value.AmmunitionItemInstanceId != System.Guid.Empty
                     || value.AmmunitionQuantity == 0);
+        }
+    }
+
+    // The health that a combatant state describes at a server tick. The worker sends a new
+    // state only when something other than the regeneration changes, and every receiver
+    // follows the regeneration between states with this one rule.
+    public static class RealtimeCombatHealth
+    {
+        // The state's health plus its regeneration amount for every step whose tick the server
+        // tick reached, one step every tickRateHz ticks from HealthRegenerationTick, at most the
+        // maximum health. The state's own health when it regenerates nothing, the combatant is
+        // not alive, or the tick rate is unknown. Ticks wrap, so a step tick up to half the tick
+        // range behind the server tick counts as reached.
+        public static int At(RealtimeCombatantState state, uint serverTick, int tickRateHz)
+        {
+            if (state == null)
+            {
+                throw new System.ArgumentNullException(nameof(state));
+            }
+
+            if (state.HealthRegenerationAmount <= 0
+                || state.LifeState != RealtimeCombatLifeState.Alive
+                || tickRateHz <= 0
+                || state.Health >= state.MaximumHealth)
+            {
+                return state.Health;
+            }
+
+            var ticksSinceFirstStep = unchecked((int)(serverTick - state.HealthRegenerationTick));
+            if (ticksSinceFirstStep < 0)
+            {
+                return state.Health;
+            }
+
+            var steps = ((long)ticksSinceFirstStep / tickRateHz) + 1;
+            var health = state.Health + (steps * state.HealthRegenerationAmount);
+            return health >= state.MaximumHealth ? state.MaximumHealth : (int)health;
         }
     }
 

@@ -13,13 +13,16 @@ internal interface IOwnerAmmunitionSource
 // Sends combat state to the peers that may see it: a combatant's state to every peer
 // that sees the combatant, combat events to every peer that sees the attacker or the
 // target or controls one of them, and the owner state to its owner only. Changes made
-// during a tick are sent once at its end. Loop-confined.
+// during a tick are sent once at its end. A combatant's state names its health
+// regeneration, which viewers follow without a new state. Loop-confined.
 internal sealed class CombatReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
     ConnectionEntityBindingRegistry connectionBindings,
     EntityPresenceReplicator presence,
-    CombatantRegistry combatants)
+    CombatantRegistry combatants,
+    RealtimeSimulationClock clock,
+    int healthRegenerationPerSecond)
 {
     private readonly List<RealtimeCombatEvent> events = [];
     private readonly List<RealtimeCombatEvent> recipientEvents = [];
@@ -99,7 +102,7 @@ internal sealed class CombatReplicator(
         {
             if (combatant.StateChanged)
             {
-                BroadcastState(combatant);
+                BroadcastState(combatant, serverTick);
             }
 
             if (combatant.OwnerStateChanged)
@@ -123,7 +126,8 @@ internal sealed class CombatReplicator(
     {
         if (combatants.TryGet(entityId, out var combatant))
         {
-            sender.SendControl(peer, RealtimeProtocol.EncodeCombatantState(combatant.ToState()));
+            sender.SendControl(peer, RealtimeProtocol.EncodeCombatantState(
+                combatant.ToState(clock.ServerTick, healthRegenerationPerSecond)));
         }
     }
 
@@ -132,7 +136,7 @@ internal sealed class CombatReplicator(
         events.Clear();
     }
 
-    private void BroadcastState(Combatant combatant)
+    private void BroadcastState(Combatant combatant, uint serverTick)
     {
         byte[]? packet = null;
         foreach (var context in peers.Contexts)
@@ -144,7 +148,7 @@ internal sealed class CombatReplicator(
                 continue;
             }
 
-            packet ??= RealtimeProtocol.EncodeCombatantState(combatant.ToState());
+            packet ??= RealtimeProtocol.EncodeCombatantState(combatant.ToState(serverTick, healthRegenerationPerSecond));
             sender.SendControl(peer, packet);
         }
     }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Mmorpg.Client.Combat;
 using Mmorpg.Client.Gameplay;
+using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
 using TMPro;
 using UnityEngine;
@@ -50,6 +51,8 @@ namespace Mmorpg.Client.Ui
         private readonly List<ulong> retired = new List<ulong>();
         private CombatClientController combatController;
         private CombatantViewLocator views;
+        private IRealtimeMovementChannel realtimeMovement;
+        private IRealtimeDiagnostics realtimeDiagnostics;
         private RectTransform layer;
         private bool subscribed;
 
@@ -59,11 +62,18 @@ namespace Mmorpg.Client.Ui
             get { return shown.Count; }
         }
 
-        // Called by the composition root before the component is activated.
-        public void Initialize(CombatClientController combat, CombatantViewLocator combatantViews)
+        // Called by the composition root before the component is activated. The movement session
+        // and the diagnostics give the server clock that a regenerating health follows.
+        public void Initialize(
+            CombatClientController combat,
+            CombatantViewLocator combatantViews,
+            IRealtimeMovementChannel movement,
+            IRealtimeDiagnostics diagnostics)
         {
             combatController = combat;
             views = combatantViews;
+            realtimeMovement = movement;
+            realtimeDiagnostics = diagnostics;
         }
 
         // The nameplate of a Mob, while it shows.
@@ -139,11 +149,14 @@ namespace Mmorpg.Client.Ui
             {
                 var now = Time.unscaledTime;
                 var origin = player.transform.position;
+                var clock = CombatServerClock.FromDiagnostics(
+                    realtimeDiagnostics,
+                    realtimeMovement != null ? realtimeMovement.MovementSession : null);
                 for (var index = 0; index < combatantIds.Count; index++)
                 {
                     if (combatController.State.TryGetCombatant(combatantIds[index], out var state))
                     {
-                        Place(state, origin, playerCamera, now);
+                        Place(state, origin, playerCamera, clock, now);
                     }
                 }
             }
@@ -160,7 +173,14 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void Place(RealtimeCombatantState state, Vector3 origin, Camera playerCamera, float now)
+        // Every frame, so a health that rises by a regeneration the state names slides up without
+        // a new state.
+        private void Place(
+            RealtimeCombatantState state,
+            Vector3 origin,
+            Camera playerCamera,
+            CombatServerClock clock,
+            float now)
         {
             if (!views.TryGetMob(state.EntityId, out var mob)
                 || !views.TryGetView(state.EntityId, out var view))
@@ -188,7 +208,7 @@ namespace Mmorpg.Client.Ui
             nameplate.Tint(NameplatePresentation.IsTaggedByOther(
                 state.TaggedByEntityId,
                 combatController.LocalEntityId));
-            nameplate.Show(state.Health, state.MaximumHealth, now);
+            nameplate.Show(combatController.State.HealthAt(state, clock), state.MaximumHealth, now);
             nameplate.SqrDistance = sqrDistance;
             nameplate.ShownThisFrame = true;
             shown.Add(nameplate);

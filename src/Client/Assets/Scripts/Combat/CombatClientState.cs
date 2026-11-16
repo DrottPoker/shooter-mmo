@@ -7,7 +7,8 @@ namespace Mmorpg.Client.Combat
 {
     // Mirrors the worker's combat state: one state per visible combatant, the owner's own
     // combat state, and the combat intents that wait for a result. The worker owns health,
-    // targets, attacks, and death; nothing here is predicted or decided by the client.
+    // targets, attacks, and death; nothing here is predicted or decided by the client, which
+    // only follows the health regeneration that a combatant state names.
     public sealed class CombatClientState
     {
         // The worker answers every intent, so this only bounds a client that sends faster
@@ -16,6 +17,7 @@ namespace Mmorpg.Client.Combat
 
         private readonly Dictionary<ulong, RealtimeCombatantState> combatants =
             new Dictionary<ulong, RealtimeCombatantState>();
+        private readonly Dictionary<ulong, int> shownRegeneratedHealth = new Dictionary<ulong, int>();
         private readonly Dictionary<Guid, RealtimeCombatIntent> pendingIntents =
             new Dictionary<Guid, RealtimeCombatIntent>();
 
@@ -53,13 +55,48 @@ namespace Mmorpg.Client.Combat
             return combatants.TryGetValue(entityId, out state);
         }
 
+        // The health to show for a combatant now: its state's health plus the regeneration the
+        // state names, by RealtimeCombatHealth at the clock's estimate of the server tick, so a
+        // regenerating combatant rises without a new message. The estimate can step back when a
+        // late owner snapshot arrives, so the health shown for one state never falls back; a
+        // newer state, such as a hit, shows at once. Without a known clock it is the state's own
+        // health.
+        public int HealthAt(RealtimeCombatantState state, CombatServerClock clock)
+        {
+            if (state == null)
+            {
+                throw new ArgumentNullException(nameof(state));
+            }
+
+            var health = clock.IsKnown
+                ? RealtimeCombatHealth.At(state, clock.EstimatedTick, clock.TickRateHz)
+                : state.Health;
+            if (!combatants.TryGetValue(state.EntityId, out var current) || !ReferenceEquals(current, state))
+            {
+                return health;
+            }
+
+            if (shownRegeneratedHealth.TryGetValue(state.EntityId, out var shown) && shown > health)
+            {
+                return shown;
+            }
+
+            if (health > state.Health)
+            {
+                shownRegeneratedHealth[state.EntityId] = health;
+            }
+
+            return health;
+        }
+
         public bool IsIntentPending(Guid operationId)
         {
             return pendingIntents.ContainsKey(operationId);
         }
 
         // Applies a newer combatant state and ignores an older one. Equal revisions must
-        // carry equal values.
+        // carry equal values, except the health and the tick of a regeneration, which a state
+        // sent later describes further on.
         public bool TryApplyCombatant(RealtimeCombatantState state, out string error)
         {
             error = string.Empty;
@@ -89,6 +126,7 @@ namespace Mmorpg.Client.Combat
             }
 
             combatants[state.EntityId] = state;
+            shownRegeneratedHealth.Remove(state.EntityId);
             Changed?.Invoke();
             return true;
         }
@@ -146,6 +184,7 @@ namespace Mmorpg.Client.Combat
         // A combatant that left the recipient's interest has no state until it spawns again.
         public void RemoveCombatant(ulong entityId)
         {
+            shownRegeneratedHealth.Remove(entityId);
             if (combatants.Remove(entityId))
             {
                 Changed?.Invoke();
@@ -230,21 +269,27 @@ namespace Mmorpg.Client.Combat
             }
 
             combatants.Clear();
+            shownRegeneratedHealth.Clear();
             pendingIntents.Clear();
             Owner = null;
             LastIntentResult = null;
             Changed?.Invoke();
         }
 
+        // A state without regeneration repeats its health exactly; a regenerating one may carry
+        // the health and the next step that the regeneration reached by the time it was sent.
         private static bool HasSameValues(
             RealtimeCombatantState first,
             RealtimeCombatantState second)
         {
-            return first.Health == second.Health
-                && first.MaximumHealth == second.MaximumHealth
+            return first.MaximumHealth == second.MaximumHealth
                 && first.LifeState == second.LifeState
                 && first.InCombat == second.InCombat
-                && first.TargetEntityId == second.TargetEntityId;
+                && first.TargetEntityId == second.TargetEntityId
+                && first.HealthRegenerationAmount == second.HealthRegenerationAmount
+                && (first.HealthRegenerationAmount > 0
+                    || (first.Health == second.Health
+                        && first.HealthRegenerationTick == second.HealthRegenerationTick));
         }
 
         private static bool HasSameValues(

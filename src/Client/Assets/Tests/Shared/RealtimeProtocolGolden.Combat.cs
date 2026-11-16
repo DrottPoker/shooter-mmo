@@ -58,6 +58,15 @@ namespace Mmorpg.SharedTests
                     inCombat: false,
                     targetEntityId: 0)));
             r.Vector(
+                "Combat/CombatantState/regenerating",
+                state,
+                () => RealtimeProtocol.EncodeCombatantState(CombatantStateModel(
+                    inCombat: false,
+                    targetEntityId: 0,
+                    taggedByEntityId: 0,
+                    healthRegenerationAmount: 3,
+                    healthRegenerationTick: 0x01020340)));
+            r.Vector(
                 "Combat/CombatEventBatch/release hit death",
                 events,
                 () => RealtimeProtocol.EncodeCombatEventBatch(new RealtimeCombatEventBatch(
@@ -168,12 +177,45 @@ namespace Mmorpg.SharedTests
                 "Combat/CombatantState/in combat byte 2 reads as true",
                 CombatantStateWire(inCombat: 2),
                 CombatantStateWire());
+
+            // A regeneration names its amount and the tick of its next step; tick 0 is a tick
+            // like any other once the server tick wrapped.
+            r.Accepts(
+                "Combat/CombatantState/regenerating",
+                CombatantStateWire(inCombat: 0, healthRegenerationAmount: 3, healthRegenerationTick: 0x01020340));
+            r.Accepts(
+                "Combat/CombatantState/regenerating from tick 0",
+                CombatantStateWire(inCombat: 0, healthRegenerationAmount: 1, healthRegenerationTick: 0));
+            r.Rejects(
+                "Combat/CombatantState/negative regeneration",
+                CombatantStateWire(inCombat: 0, healthRegenerationAmount: -1, healthRegenerationTick: 0x01020340));
+            r.Rejects(
+                "Combat/CombatantState/regeneration tick without an amount",
+                CombatantStateWire(healthRegenerationTick: 0x01020340));
+            r.Rejects(
+                "Combat/CombatantState/dead and regenerating",
+                CombatantStateWire(
+                    health: 0,
+                    lifeState: 2,
+                    inCombat: 0,
+                    targetEntityId: 0,
+                    healthRegenerationAmount: 1,
+                    healthRegenerationTick: 0x01020340));
             r.RejectsEncode(
                 "Combat/CombatantState/health above maximum",
                 () => RealtimeProtocol.EncodeCombatantState(CombatantStateModel(health: 51)));
             r.RejectsEncode(
                 "Combat/CombatantState/undefined life state",
                 () => RealtimeProtocol.EncodeCombatantState(CombatantStateModel(lifeState: 0)));
+            r.RejectsEncode(
+                "Combat/CombatantState/negative regeneration",
+                () => RealtimeProtocol.EncodeCombatantState(CombatantStateModel(
+                    inCombat: false,
+                    healthRegenerationAmount: -1,
+                    healthRegenerationTick: 0x01020340)));
+            r.RejectsEncode(
+                "Combat/CombatantState/regeneration tick without an amount",
+                () => RealtimeProtocol.EncodeCombatantState(CombatantStateModel(healthRegenerationTick: 0x01020340)));
         }
 
         private static void RegisterCombatEventCases(Registry r)
@@ -311,7 +353,9 @@ namespace Mmorpg.SharedTests
             RealtimeCombatLifeState lifeState = RealtimeCombatLifeState.Alive,
             bool inCombat = true,
             ulong targetEntityId = CombatTargetEntityId,
-            ulong taggedByEntityId = CombatTargetEntityId)
+            ulong taggedByEntityId = CombatTargetEntityId,
+            int healthRegenerationAmount = 0,
+            uint healthRegenerationTick = 0)
         {
             return new RealtimeCombatantState(
                 CombatAttackerEntityId,
@@ -321,7 +365,9 @@ namespace Mmorpg.SharedTests
                 lifeState,
                 inCombat,
                 targetEntityId,
-                taggedByEntityId);
+                taggedByEntityId,
+                healthRegenerationAmount,
+                healthRegenerationTick);
         }
 
         private static RealtimeCombatEvent AttackReleasedModel()
@@ -437,7 +483,9 @@ namespace Mmorpg.SharedTests
             byte lifeState = 1,
             byte inCombat = 1,
             ulong targetEntityId = CombatTargetEntityId,
-            ulong taggedByEntityId = 0)
+            ulong taggedByEntityId = 0,
+            int healthRegenerationAmount = 0,
+            uint healthRegenerationTick = 0)
         {
             return Wire.Message(RealtimeMessageType.CombatantState)
                 .U64(entityId)
@@ -447,7 +495,9 @@ namespace Mmorpg.SharedTests
                 .U8(lifeState)
                 .U8(inCombat)
                 .U64(targetEntityId)
-                .U64(taggedByEntityId);
+                .U64(taggedByEntityId)
+                .I32(healthRegenerationAmount)
+                .U32(healthRegenerationTick);
         }
 
         private static Wire CombatEventBatchWire(params Wire[] events)
