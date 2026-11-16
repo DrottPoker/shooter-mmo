@@ -234,40 +234,48 @@ public sealed class RealtimePerformanceMetricsTests
     }
 
     // Every sample is 0.25 ms, so a capture that held a sample's duration without its count, or
-    // its count without its duration, would show another average or maximum.
+    // its count without its duration, would show another average or maximum. The producers go on
+    // until three captures ran, so captures run while they record also on a busy machine, where
+    // the producers could otherwise finish before the capturing loop ran twice.
     [Fact]
     public async Task ConcurrentCaptureHandsOutWholeDurationSamples()
     {
         using var metrics = new RealtimePerformanceMetrics();
         const int producers = 4;
         const int samplesPerProducer = 200_000;
+        const int capturesWhileRecording = 3;
         var cancellationToken = TestContext.Current.CancellationToken;
+        var produced = new long[producers];
+        var captures = 0;
         var producing = Enumerable.Range(0, producers)
-            .Select(_ => Task.Run(
+            .Select(producer => Task.Run(
                 () =>
                 {
-                    for (var index = 0; index < samplesPerProducer; index++)
+                    long count = 0;
+                    while (count < samplesPerProducer || Volatile.Read(ref captures) < capturesWhileRecording)
                     {
                         metrics.RecordNetworkPoll(TimeSpan.FromMilliseconds(0.25));
+                        count++;
                     }
+
+                    produced[producer] = count;
                 },
                 cancellationToken))
             .ToArray();
         var all = Task.WhenAll(producing);
 
         long capturedSamples = 0;
-        var captures = 0;
         while (!all.IsCompleted)
         {
             capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
-            captures++;
+            Interlocked.Increment(ref captures);
             await Task.Yield();
         }
 
         await all;
         capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
-        Assert.Equal((long)producers * samplesPerProducer, capturedSamples);
-        Assert.True(captures > 1, "No capture ran while the samples were recorded.");
+        Assert.Equal(produced.Sum(), capturedSamples);
+        Assert.True(captures >= capturesWhileRecording, "Too few captures ran while the samples were recorded.");
     }
 
     private static long AssertWholeSamples(RealtimeDurationSummary? summary)

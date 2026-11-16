@@ -61,6 +61,12 @@ internal sealed class Combatant
 
     public bool StateChanged { get; private set; } = true;
 
+    // The life state and the target of the last state the viewers got, so a change of the life
+    // state reaches every viewer at once and a new target brings its viewer what it missed.
+    public RealtimeCombatLifeState ReplicatedLifeState { get; set; } = RealtimeCombatLifeState.Alive;
+
+    public ulong ReplicatedTargetEntityId { get; set; }
+
     // The attacker whose hit reduced the health to 0, for the death event and the corpse.
     public ulong LastAttackerEntityId { get; set; }
 

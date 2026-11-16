@@ -108,6 +108,9 @@ internal sealed class CombatFeature
             combatants,
             core.Clock,
             dependencies.Rules.HealthRegenerationPerSecond);
+
+        // Presence sends a combatant's newest state to a viewer that missed it.
+        core.Presence.EncodeCombatantState = replicator.EncodeState;
         MobDeaths = new MobDeathProcessor(
             core.Config,
             core.Clock,

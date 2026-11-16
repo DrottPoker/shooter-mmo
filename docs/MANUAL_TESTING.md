@@ -2249,6 +2249,29 @@ on `local-shard-1`.
    health and `In combat` at once, and about 5 seconds after the hit the health
    rises again from there.
 
+### A Fight Seen From 60 And 90 Metres
+
+A viewer within 70 m of a fight sees all of it, and one farther away only its
+outcome, as [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes. Needs
+the [second client](#add-a-second-client); the first character fights, the
+second watches, and the F2 Debug menu shows where each stands.
+
+1. Equip the first character with the Training Shortbow and the Bronze Arrows
+   and let it attack a Grey Wolf in the meadow around `(-12, 0, -92)`. Stand
+   the second character about 60 m north of the wolf, near `(-12, 0, -32)`.
+   Expected result: the second client shows the archer draw and loose every
+   shot, the arrows fly, the damage numbers rise over the wolf, and the wolf's
+   health bar slides down with each hit, as next to the fight.
+2. Walk the second character to about 90 m north of the fight, near
+   `(-12, 0, -2)`, and let the first attack another Grey Wolf. Expected
+   result: the archer plays no draw, no arrow flies, and no damage number
+   rises, and nothing keeps hanging: no bow stays drawn and no arrow stays in
+   the air. When the wolf dies, it falls at once.
+3. While the first character still fights, walk the second one back toward
+   the fight. Expected result: from about 70 m on, the next shot draws, flies,
+   and hits as in step 1, and the wolf shows its current health at once
+   without first sliding through the hits before.
+
 ### Combat On The Playtest Dashboard
 
 1. Start the monitoring stack as [Monitoring](MONITORING.md) describes, fight
@@ -2620,25 +2643,25 @@ describes.
 1. Start GameService and the default worker, start twelve development bots on
    Development World 2 with
    `dotnet run --project tools/ActiveSimulationBots --configuration Release -- --ActiveSimulationBots:ShardId local-shard-1 --ActiveSimulationBots:MinimumActiveBots 12 --ActiveSimulationBots:MaximumActiveBots 12 --ActiveSimulationBots:MinimumBehaviorSeconds 8 --ActiveSimulationBots:MaximumBehaviorSeconds 12`,
-   whose walks of 40 to 60 m carry bots beyond 56 m within minutes, and join
+   whose walks of 40 to 60 m carry bots beyond 58 m within minutes, and join
    at the World spawn. In the F2 Debug menu, turn on `Record measurements to a
-   file`. Expected result: a bot that walks within about 48 m moves as
+   file`. Expected result: a bot that walks within about 50 m moves as
    smoothly as the local player, and `Remote starved / longest` stays at 0 %
    while the bots walk.
-2. Watch a bot that walks more than 56 m away. Expected result: it walks
+2. Watch a bot that walks more than 58 m away. Expected result: it walks
    smoothly too, about 0.4 s behind the worker instead of 0.13 s, without
    stepping five times a second, freezing, or jumping.
 3. Watch a bot that stops, near and far. Expected result: it stands where it
    stopped, without sliding on and back, and stays there, although its record
    now comes about once a second.
-4. Watch a bot walk across 48 m toward the spawn or across 56 m away from it.
+4. Watch a bot walk across 50 m toward the spawn or across 58 m away from it.
    Expected result: no jump and no pause at the border; at most its walk looks
    an eighth slower or faster for about a second.
 5. Walk about 140 m away from the bots and back, so that bots come into view
    at about 128 m while they walk. Expected result: such a bot appears, stands
    for about a fifth of a second, and then walks on at its own speed; it never
    rushes ahead to catch up.
-6. Watch a bot more than 56 m away that stands for a while and then walks off.
+6. Watch a bot more than 58 m away that stands for a while and then walks off.
    Expected result: it starts at its own speed or a little slower and never
    walks faster than it does afterwards, neither at the start nor a moment
    later.

@@ -5,13 +5,15 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
 // The incremental interest index against a model that recomputes every rule from all positions:
 // entities walk across cells, jump, join, leave, and drop out of the index and come back, and
-// every refresh and join must give what the model gives.
+// every refresh and join must give what the model gives: the visible entities, their tiers, the
+// detail, the viewers of every entity, and the states that viewers missed.
 public sealed class SimulationInterestManagerTests
 {
     private const int Connections = 30;
     private const float Area = 600f;
+    private const uint Slots = 15;
 
-    private static readonly InterestManagementConfig Config = new(64f, 128f, 144f, 3, 48f, 56f);
+    private static readonly InterestManagementConfig Config = new(64f, 128f, 144f, 3, 50f, 58f, 70f, 78f);
 
     [Fact]
     public void TheIncrementalIndexMatchesAModelOfTheRulesOverALongRandomWalk()
@@ -29,6 +31,10 @@ public sealed class SimulationInterestManagerTests
         var nextId = 121ul;
         var refreshes = 0;
         var changes = 0;
+        var detailEntered = 0;
+        var takenOnSlots = 0;
+        var recipients = new List<int>();
+        var missedOnSlot = new List<SimulationInterestMissed>();
         for (var step = 0; step < 2_000; step++)
         {
             foreach (var entityId in positions.Keys.ToArray())
@@ -77,6 +83,22 @@ public sealed class SimulationInterestManagerTests
                 Assert.Equal(model.Forget(forgotten), manager.ForgetEntity(forgotten).Order());
             }
 
+            // Replicators hold back states from some viewers, also from ones that see the entity
+            // in detail, as a change right before a refresh does.
+            for (var mark = 0; mark < 20; mark++)
+            {
+                var connectionId = random.Next(1, Connections + 1);
+                var visible = manager.GetVisibleOrdered(connectionId);
+                if (visible.Count == 0)
+                {
+                    continue;
+                }
+
+                var entityId = visible[random.Next(visible.Count)];
+                manager.MarkMissed(connectionId, entityId, MissedStates.Look);
+                model.MarkMissed(connectionId, entityId);
+            }
+
             for (var connectionId = 1; connectionId <= Connections; connectionId++)
             {
                 if (connectionId % 3 != step % 3)
@@ -85,20 +107,106 @@ public sealed class SimulationInterestManagerTests
                 }
 
                 var update = manager.Refresh(connectionId, (ulong)connectionId);
-                var (entered, exited, visible, near) = model.Refresh(connectionId, (ulong)connectionId);
-                Assert.Equal(entered, update.Entered);
-                Assert.Equal(exited, update.Exited);
-                Assert.Equal(visible, manager.GetVisibleOrdered(connectionId));
-                Assert.Equal(near, manager.GetNearOrdered(connectionId));
-                Assert.True(update.Visible.SetEquals(visible));
+                var expected = model.Refresh(connectionId, (ulong)connectionId);
+                Assert.Equal(expected.Entered, update.Entered);
+                Assert.Equal(expected.Exited, update.Exited);
+                Assert.Equal(expected.Visible, manager.GetVisibleOrdered(connectionId));
+                Assert.Equal(expected.Near, manager.GetNearOrdered(connectionId));
+                Assert.Equal(expected.Detail, expected.Visible.Select(entityId => manager.IsInDetail(connectionId, entityId)));
+                Assert.Equal(expected.DetailEntered, update.DetailEntered);
+                Assert.True(update.Visible.SetEquals(expected.Visible));
+
+                // The replicator sends what came into detail, so it is missed no longer.
+                foreach (var entityId in update.DetailEntered)
+                {
+                    Assert.Equal(MissedStates.Look, manager.TakeMissed(connectionId, entityId));
+                    model.TakeMissed(connectionId, entityId);
+                }
+
                 refreshes++;
-                changes += entered.Count + exited.Count;
+                changes += expected.Entered.Count + expected.Exited.Count;
+                detailEntered += expected.DetailEntered.Count;
             }
+
+            // The slot of this step takes what the viewers of its entities missed.
+            var slotPhase = (uint)(step % Slots);
+            manager.TakeMissedOnSlot(slotPhase, Slots, missedOnSlot);
+            Assert.Equal(
+                model.TakeMissedOnSlot(slotPhase, Slots),
+                missedOnSlot.Select(missed => (missed.ConnectionId, missed.EntityId)).Order());
+            Assert.All(missedOnSlot, missed => Assert.Equal(MissedStates.Look, missed.States));
+            takenOnSlots += missedOnSlot.Count;
+
+            // Every entity's viewers are the connections that see it.
+            foreach (var entityId in positions.Keys)
+            {
+                manager.CollectRecipients(entityId, MissedStates.None, true, -1, recipients);
+                Assert.Equal(model.ViewersOf(entityId), recipients.Order());
+                Assert.Equal(recipients.Count > 0, manager.IsVisibleToAnyConnection(entityId));
+            }
+
+            Assert.Equal(model.PairCount, manager.ViewerPairCount);
         }
 
         // The walk crossed cells and radii often enough to matter.
         Assert.Equal(20_000, refreshes);
         Assert.InRange(changes, 5_000, int.MaxValue);
+        Assert.InRange(detailEntered, 100, int.MaxValue);
+        Assert.InRange(takenOnSlots, 1_000, int.MaxValue);
+    }
+
+    // A connection sees its own entity, its target, and whoever targets its entity in detail at
+    // any distance; a change of a state reaches it at once then, and the others missed it.
+    [Fact]
+    public void TheTargetRelationsKeepAViewerInDetailBeyondTheDetailRadius()
+    {
+        var manager = new SimulationInterestManager(Config);
+        manager.Synchronize([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 100f, 0f),
+            new SimulationInterestEntity(3, 0f, 100f),
+            new SimulationInterestEntity(4, 60f, 0f)
+        ]);
+        manager.Refresh(1, 1);
+        Assert.Equal([true, false, false, true], new ulong[] { 1, 2, 3, 4 }.Select(entityId => manager.IsInDetail(1, entityId)));
+
+        // Entity 1 targets 2, and 3 targets 1.
+        manager.SetTarget(1, 2);
+        manager.SetTarget(3, 1);
+        Assert.Equal([true, true, true, true], new ulong[] { 1, 2, 3, 4 }.Select(entityId => manager.IsInDetail(1, entityId)));
+        var recipients = new List<int>();
+        manager.CollectRecipients(2, MissedStates.Combatant, false, -1, recipients);
+        Assert.Equal([1], recipients);
+        Assert.Equal(MissedStates.None, manager.TakeMissed(1, 2));
+
+        // The targets end, and the far entities are out of detail again: a change of them is
+        // missed until it is taken.
+        manager.SetTarget(1, 0);
+        manager.SetTarget(3, 0);
+        manager.CollectRecipients(2, MissedStates.Combatant, false, -1, recipients);
+        Assert.Empty(recipients);
+        manager.CollectRecipients(3, MissedStates.WorldActor, false, -1, recipients);
+        Assert.Empty(recipients);
+        Assert.Equal(MissedStates.Combatant, manager.TakeMissed(1, 2));
+        Assert.Equal(MissedStates.None, manager.TakeMissed(1, 2));
+
+        // An urgent change reaches every viewer and leaves nothing missed.
+        manager.CollectRecipients(3, MissedStates.WorldActor, true, -1, recipients);
+        Assert.Equal([1], recipients);
+        Assert.Equal(MissedStates.None, manager.TakeMissed(1, 3));
+
+        // A target set before the connection's first refresh holds from it on.
+        manager.SetTarget(5, 2);
+        manager.Synchronize([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 100f, 0f),
+            new SimulationInterestEntity(3, 0f, 100f),
+            new SimulationInterestEntity(4, 60f, 0f),
+            new SimulationInterestEntity(5, 0f, 0f)
+        ]);
+        manager.Refresh(5, 5);
+        Assert.True(manager.IsInDetail(5, 2));
+        Assert.False(manager.IsInDetail(5, 3));
     }
 
     private static float Next(Random random, float minimum, float maximum)
@@ -108,11 +216,14 @@ public sealed class SimulationInterestManagerTests
 
     // The rules computed from all positions, with sets: visible within the enter radius or within
     // the exit radius when visible before, near within the near radius or within the near exit
-    // radius when near before. A connection controls the entity with its id.
+    // radius when near before, and in detail the same way with the detail radii. A pair that left
+    // the view forgets what it missed. A connection controls the entity with its id.
     private sealed class Model
     {
-        private readonly Dictionary<int, (HashSet<ulong> Visible, HashSet<ulong> Near)> connections = [];
+        private readonly Dictionary<int, ConnectionModel> connections = [];
         private Dictionary<ulong, (float X, float Z)> indexed = [];
+
+        public int PairCount => connections.Values.Sum(state => state.Visible.Count);
 
         public void Synchronize(IEnumerable<SimulationInterestEntity> entities)
         {
@@ -133,6 +244,11 @@ public sealed class SimulationInterestManagerTests
                         state.Near.Add(entity.EntityId);
                     }
 
+                    if (distance <= Config.DetailRadius * Config.DetailRadius)
+                    {
+                        state.Detail.Add(entity.EntityId);
+                    }
+
                     entered.Add(connectionId);
                 }
             }
@@ -148,6 +264,8 @@ public sealed class SimulationInterestManagerTests
             foreach (var (connectionId, state) in connections)
             {
                 state.Near.Remove(entityId);
+                state.Detail.Remove(entityId);
+                state.Missed.Remove(entityId);
                 if (state.Visible.Remove(entityId))
                 {
                     affected.Add(connectionId);
@@ -158,16 +276,47 @@ public sealed class SimulationInterestManagerTests
             return affected;
         }
 
-        public (List<ulong> Entered, List<ulong> Exited, List<ulong> Visible, List<bool> Near) Refresh(int connectionId, ulong observerId)
+        public void MarkMissed(int connectionId, ulong entityId)
+        {
+            connections[connectionId].Missed.Add(entityId);
+        }
+
+        public void TakeMissed(int connectionId, ulong entityId)
+        {
+            connections[connectionId].Missed.Remove(entityId);
+        }
+
+        public List<(int ConnectionId, ulong EntityId)> TakeMissedOnSlot(uint slotPhase, uint slots)
+        {
+            var taken = new List<(int ConnectionId, ulong EntityId)>();
+            foreach (var (connectionId, state) in connections)
+            {
+                foreach (var entityId in state.Missed.Where(entityId => entityId % slots == slotPhase).ToArray())
+                {
+                    state.Missed.Remove(entityId);
+                    taken.Add((connectionId, entityId));
+                }
+            }
+
+            return taken.Order().ToList();
+        }
+
+        public List<int> ViewersOf(ulong entityId)
+        {
+            return connections.Where(pair => pair.Value.Visible.Contains(entityId)).Select(pair => pair.Key).Order().ToList();
+        }
+
+        public RefreshResult Refresh(int connectionId, ulong observerId)
         {
             if (!connections.TryGetValue(connectionId, out var state))
             {
-                state = ([], []);
+                state = new ConnectionModel();
                 connections.Add(connectionId, state);
             }
 
             var visible = new HashSet<ulong>();
             var near = new HashSet<ulong>();
+            var detail = new HashSet<ulong>();
             foreach (var entityId in indexed.Keys)
             {
                 var distance = DistanceSquared(observerId, entityId);
@@ -181,17 +330,39 @@ public sealed class SimulationInterestManagerTests
                     {
                         near.Add(entityId);
                     }
+
+                    if (distance <= Config.DetailRadius * Config.DetailRadius
+                        || (distance <= Config.DetailExitRadius * Config.DetailExitRadius && state.Detail.Contains(entityId)))
+                    {
+                        detail.Add(entityId);
+                    }
                 }
             }
 
             var entered = visible.Except(state.Visible).Order().ToList();
             var exited = state.Visible.Except(visible).Order().ToList();
+            var detailEntered = visible
+                .Where(entityId => state.Visible.Contains(entityId)
+                    && !state.Detail.Contains(entityId)
+                    && detail.Contains(entityId)
+                    && state.Missed.Contains(entityId))
+                .Order()
+                .ToList();
+            state.Missed.ExceptWith(exited);
             state.Visible.Clear();
             state.Visible.UnionWith(visible);
             state.Near.Clear();
             state.Near.UnionWith(near);
+            state.Detail.Clear();
+            state.Detail.UnionWith(detail);
             var ordered = visible.Order().ToList();
-            return (entered, exited, ordered, ordered.Select(near.Contains).ToList());
+            return new RefreshResult(
+                entered,
+                exited,
+                ordered,
+                ordered.Select(near.Contains).ToList(),
+                ordered.Select(detail.Contains).ToList(),
+                detailEntered);
         }
 
         private float DistanceSquared(ulong first, ulong second)
@@ -201,4 +372,23 @@ public sealed class SimulationInterestManagerTests
             return (deltaX * deltaX) + (deltaZ * deltaZ);
         }
     }
+
+    private sealed class ConnectionModel
+    {
+        public HashSet<ulong> Visible { get; } = [];
+
+        public HashSet<ulong> Near { get; } = [];
+
+        public HashSet<ulong> Detail { get; } = [];
+
+        public HashSet<ulong> Missed { get; } = [];
+    }
+
+    private sealed record RefreshResult(
+        List<ulong> Entered,
+        List<ulong> Exited,
+        List<ulong> Visible,
+        List<bool> Near,
+        List<bool> Detail,
+        List<ulong> DetailEntered);
 }

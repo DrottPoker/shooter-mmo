@@ -1535,8 +1535,8 @@ Each bot's `SimulationBotSession` follows every remote player from its reliable
 spawn to its despawn, once per snapshot sequence, so a duplicated or reordered
 frame never counts twice. A record counts as one near moving update when it is
 inside the steady interval, its position differs from the record before, the
-record before also moved, and the player is within 48 m of the bot; it adds
-the seconds since the record before. The 48 m is the constant
+record before also moved, and the player is within 50 m of the bot; it adds
+the seconds since the record before. The 50 m is the constant
 `SimulationBotRemoteCadence.DefaultNearRadius`, which the bot cannot read from
 the worker: it must equal the worker's `InterestManagement:NearRadius`, so a
 change of either changes both. A bot's rate is those updates over those seconds, the rate at
@@ -1949,11 +1949,11 @@ Per layout, over the measured ticks:
   encoded packets, spawns, despawns, dropped snapshots, and the near moving
   sightings and records.
 - The update rate is the one players judge: per player, the share of the
-  snapshots in which a walking entity within the near radius, 48 m, was in
+  snapshots in which a walking entity within the near radius, 50 m, was in
   the player's records, times the snapshot rate; the average, the fifth
   percentile over players, and the lowest. Beside it, the same rate over all
   players for the walking entities within 16 m and beyond the near exit
-  radius, 56 m, which shows how the budget degrades by distance, and the rate
+  radius, 58 m, which shows how the budget degrades by distance, and the rate
   over every entity the player sees with a state, standing or walking, the
   measure before changed-only replication, for comparison.
 - Informative: the average and the exact 99th percentile of the tick, the
@@ -1991,6 +1991,14 @@ its cores, so its timings are informative only:
 | `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 1.1 / 2.7 ms | 2.5 / 5.7 ms | 24 KiB |
 | `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.2 / 0.3 ms | 0.6 / 1.1 ms | 0 KiB |
 | `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 1.2 / 2.7 ms | 6.7 / 15.1 ms | 0 KiB |
+
+The baseline was measured with the near radius of 48 m and its exit radius of
+56 m, which its walkers beyond 56 m name. With 50 and 58 m, on 2026-11-16, the
+same layouts send 16.4, 26.9, and 30.3 KiB per second and player, `spread-500`
+0.25 KiB more than with 48 m, and the fingerprint is
+`0100da41381abdeb2b6c772cb46094b547653a67dedb334763d79e9568fe8548`.
+The benchmark sends no combat, look, or world actor state, so the detail radius
+leaves its numbers as they are.
 
 The same layouts through the three states of the replication, deterministic
 numbers only:
@@ -2268,10 +2276,18 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      so most of its CPU is still in LiteNetLib's threads. What is left are
      real changes, a hit, a new target, a tool taken in hand, a Mob that
      stops, each sent reliably to every peer that sees the entity within the
-     interest radius of 128 m, where 48 m is near: by the areas of the two
-     circles about six of seven such messages go to a viewer beyond the near
-     radius, an estimate that no run measured. Left to decide: what a far
-     viewer receives of them.
+     interest radius of 128 m, where 48 m was near then: by the areas of the
+     two circles about six of seven such messages go to a viewer beyond the
+     near radius, an estimate that no run measured. Decided on 2026-11-16: a
+     viewer beyond the detail radius of 70 m gets the newest state once a
+     second and no attack or hit, as
+     [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes. In
+     `playing-100` with a 120 second steady interval this took the four kinds
+     per second and player from 6.27 to 5.38 `CombatantState`, 3.45 to 1.30
+     `CombatEventBatch`, 1.14 to 1.07 `EntityAppearanceChanged`, and 3.33 to
+     2.42 `WorldActorState`, and all messages from 47.7 to 43.5; at 100
+     players most fights have their viewers within 70 m, so 500 players
+     measure what it saves at the tier.
    - Replication itself has room: the broadcast takes 4.7 ms on average, of
      which interest takes 1.9, a player receives 42.9 records per snapshot,
      the owner's included, of 15.4 bytes with their share of the packet
