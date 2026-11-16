@@ -46,6 +46,43 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(changes, Is.EqualTo(3));
         }
 
+        // The combat HUD and the nameplates read every combatant on every combatant state, tens
+        // of times a second in a crowd: the state keeps them in the order of their entity ids as
+        // they change, so a read neither sorts nor allocates.
+        [Test]
+        public void TheCombatantsReadInOrderWithoutSortingOrAllocating()
+        {
+            var state = new CombatClientState();
+            foreach (var entityId in new ulong[] { 9, 3, 7, 1 })
+            {
+                Apply(state, Combatant(entityId, 1, 50));
+            }
+
+            Assert.That(state.Combatants.Select(combatant => combatant.EntityId), Is.EqualTo(new ulong[] { 1, 3, 7, 9 }));
+            Assert.That(state.Combatants, Is.SameAs(state.Combatants));
+
+            Apply(state, Combatant(7, 2, 30));
+            state.RemoveCombatant(3);
+            Assert.That(state.Combatants.Select(combatant => combatant.EntityId), Is.EqualTo(new ulong[] { 1, 7, 9 }));
+            Assert.That(state.Combatants[1].Health, Is.EqualTo(30));
+
+            var sum = 0UL;
+            Assert.That(
+                ManagedAllocations.Of(() =>
+                {
+                    var combatants = state.Combatants;
+                    for (var index = 0; index < combatants.Count; index++)
+                    {
+                        sum += combatants[index].EntityId;
+                    }
+                }),
+                Is.Zero);
+            Assert.That(sum, Is.EqualTo(34UL));
+
+            state.Clear();
+            Assert.That(state.Combatants, Is.Empty);
+        }
+
         [Test]
         public void OwnerStateKeepsOnlyNewerRevisions()
         {

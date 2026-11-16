@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.Ui;
+using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Items;
 using Mmorpg.WorldData.Text;
@@ -250,6 +252,92 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(CombatProjectileRules.SecondsUntilRelease(100, 100, 30), Is.Zero);
             Assert.That(CombatProjectileRules.SecondsUntilRelease(9, uint.MaxValue - 20, 30), Is.EqualTo(1f).Within(0.0001f));
             Assert.That(CombatProjectileRules.SecondsUntilRelease(124, 100, 0), Is.Zero);
+        }
+
+        // CombatDeathPresentation tells every Mob's creature its life state every frame: it walks
+        // the world actors without allocating, also without an actor presentation, and a Mob
+        // finds its creature once instead of each frame.
+        [Test]
+        public void TheWorldActorsAreWalkedWithoutAllocatingAndAMobKnowsItsCreature()
+        {
+            var host = new GameObject("WorldActorPresentations");
+            var creatureObject = new GameObject("Wolf");
+            var plainObject = new GameObject("Capsule");
+            try
+            {
+                var presentation = host.AddComponent<WorldActorPresentationController>();
+                var located = new CombatantViewLocator(null, null, presentation);
+                var unlocated = new CombatantViewLocator(null, null, null);
+                var walked = 0;
+                Assert.That(
+                    ManagedAllocations.Of(() =>
+                    {
+                        foreach (var actor in located.WorldActors)
+                        {
+                            walked += actor != null ? 1 : 0;
+                        }
+
+                        foreach (var actor in unlocated.WorldActors)
+                        {
+                            walked += actor != null ? 1 : 0;
+                        }
+                    }),
+                    Is.Zero);
+                Assert.That(walked, Is.Zero);
+
+                var actors = FixtureTexts.ActorState();
+                Assert.That(actors.TryApplySpawn(MobSpawn(41), out var error), Is.True, error);
+                Assert.That(actors.TryApplySpawn(MobSpawn(42), out error), Is.True, error);
+                Assert.That(actors.TryGet(41, out var wolf), Is.True);
+                Assert.That(actors.TryGet(42, out var capsule), Is.True);
+
+                var creature = creatureObject.AddComponent<CreatureAnimator>();
+                var wolfView = creatureObject.AddComponent<MobView>();
+                wolfView.Initialize(wolf);
+                Assert.That(wolfView.Creature, Is.SameAs(creature));
+
+                var capsuleView = plainObject.AddComponent<MobView>();
+                capsuleView.Initialize(capsule);
+                Assert.That(capsuleView.Creature == null, Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+                UnityEngine.Object.DestroyImmediate(creatureObject);
+                UnityEngine.Object.DestroyImmediate(plainObject);
+            }
+        }
+
+        private static RealtimeWorldActorSpawn MobSpawn(ulong entityId)
+        {
+            return new RealtimeWorldActorSpawn(
+                entityId,
+                Guid.NewGuid(),
+                "mob.feral_wolf",
+                "local.feral_wolf",
+                RealtimeWorldActorKind.Mob,
+                "wild",
+                RealtimeWorldActorDisposition.Hostile,
+                2,
+                RealtimeWorldActorAggression.Aggressive,
+                "mob.feral_wolf",
+                1,
+                1,
+                true,
+                2.5f,
+                0f,
+                -1f,
+                270f,
+                RealtimeWorldActorActivityTier.EventDriven,
+                0,
+                false,
+                0f,
+                0.5f,
+                0f,
+                0.8f,
+                1f,
+                1.4f,
+                new RealtimeWorldActorMenuOption[0]);
         }
 
         private static RealtimeCombatEvent Released(uint impactTick)

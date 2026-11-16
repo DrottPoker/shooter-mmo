@@ -1,3 +1,4 @@
+using System.Linq;
 using Mmorpg.Client.Ui;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
@@ -6,10 +7,60 @@ using UnityEngine;
 namespace Mmorpg.Client.Tests.EditMode
 {
     // The rules of the Mob nameplates: which Mobs show one, their size, the bar color and texts,
-    // and how the health slides to a new value.
+    // how the health slides to a new value, and the draw order of a frame.
     public sealed class NameplateTests
     {
         private const float Slide = NameplatePresentation.HealthSlideSeconds;
+
+        // A frame of the nameplates allocates nothing once its nameplates exist, and draws them
+        // farther first, of equal distances in the order they were shown, the order of the
+        // combatants' entity ids, so the nearest draws on top.
+        [Test]
+        public void AFrameOfNameplatesDrawsTheNearestLastWithoutAllocating()
+        {
+            const int count = 40;
+            var host = new GameObject("WorldNameplates");
+            try
+            {
+                var nameplates = host.AddComponent<WorldNameplates>();
+                nameplates.BuildCanvas();
+
+                // Five distances with ties; each nameplate's place on the layer names it.
+                void Frame()
+                {
+                    nameplates.BeginFrame();
+                    for (var index = 0; index < count; index++)
+                    {
+                        nameplates.Show(
+                            (ulong)(index + 1),
+                            "Feral Wolf",
+                            3,
+                            RealtimeWorldActorAggression.Aggressive,
+                            new Vector2(index, 0f),
+                            100f * (1 + ((index * 7) % 5)),
+                            false,
+                            40,
+                            50,
+                            10f);
+                    }
+
+                    nameplates.EndFrame();
+                }
+
+                Assert.That(ManagedAllocations.Of(Frame), Is.Zero);
+                Assert.That(nameplates.VisibleCount, Is.EqualTo(count));
+
+                var layer = host.GetComponentInChildren<Canvas>().transform.GetChild(0);
+                var drawn = Enumerable.Range(0, layer.childCount)
+                    .Select(child => Mathf.RoundToInt(((RectTransform)layer.GetChild(child)).anchoredPosition.x))
+                    .ToList();
+                Assert.That(drawn, Is.EqualTo(Enumerable.Range(0, count).OrderByDescending(index => (index * 7) % 5).ToList()));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
 
         [Test]
         public void AggressiveMobsAreRedAndDefensiveMobsYellow()

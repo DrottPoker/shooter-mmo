@@ -14,7 +14,13 @@ namespace Mmorpg.Client.Gameplay
     {
         private static readonly EquippedItem[] NoItems = new EquippedItem[0];
 
+        // Raised after the items, the item presentation, or the used slot changed.
         public event Action Changed;
+
+        // Raised after the item presentation changed, as when the catalog loaded or a content
+        // update replaced it, after Changed. Only this changes the garments of the other
+        // players, whose items the server sends.
+        public event Action PresentationChanged;
 
         // In the order of the catalog's equipment slots.
         public IReadOnlyList<EquippedItem> Items { get; private set; } = NoItems;
@@ -50,9 +56,14 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
+            var presentationChanged = presentation != Presentation;
             Items = shown;
             Presentation = presentation;
             Changed?.Invoke();
+            if (presentationChanged)
+            {
+                PresentationChanged?.Invoke();
+            }
         }
 
         public void Use(string slotId)

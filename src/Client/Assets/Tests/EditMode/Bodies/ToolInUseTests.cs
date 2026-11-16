@@ -140,6 +140,30 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(changes, Is.EqualTo(3));
         }
 
+        // The other players wear what the server sends for them, so the World scene dresses them
+        // again only when the item presentation changes, not when the local player equips an
+        // item or uses a tool.
+        [Test]
+        public void OnlyANewPresentationDressesTheOtherPlayers()
+        {
+            var equipment = new PlayerEquipment();
+            var changes = 0;
+            var presentations = 0;
+            equipment.Changed += () => changes++;
+            equipment.PresentationChanged += () => presentations++;
+
+            equipment.Set(new[] { new EquippedItem("tool", "tool.woodcutting_axe") }, bundled.Presentation);
+            Assert.That((changes, presentations), Is.EqualTo((1, 1)));
+
+            equipment.Set(new EquippedItem[0], bundled.Presentation);
+            equipment.Use(ItemEquipmentSlotIds.Tool);
+            equipment.Set(new[] { new EquippedItem("tool", "tool.woodcutting_axe") }, bundled.Presentation);
+            Assert.That((changes, presentations), Is.EqualTo((4, 1)));
+
+            equipment.Set(equipment.Items, null);
+            Assert.That((changes, presentations), Is.EqualTo((5, 2)));
+        }
+
         // The clips are keyed on the male body and retargeted, so the other hand lands near the
         // haft; pinned, its socket lies on the tool's grip point, turned so both thumbs point along
         // the haft, on both bodies through the whole swing.

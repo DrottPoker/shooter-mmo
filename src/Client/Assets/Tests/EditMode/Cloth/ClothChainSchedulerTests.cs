@@ -29,6 +29,36 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The cloth is laid from the camera that renders the game, which the World scene gives the
+        // scheduler with its local player instead of the scheduler asking for Camera.main every
+        // frame. Another camera that goes leaves the main view alone.
+        [Test]
+        public void TheWorldSceneGivesTheCameraTheClothIsLaidFrom()
+        {
+            cameraObject = new GameObject("PlayerCamera");
+            var playerCamera = cameraObject.AddComponent<Camera>();
+            body = new GameObject("OtherCamera");
+            var other = body.AddComponent<Camera>();
+            var before = ClothChainScheduler.MainView;
+            try
+            {
+                ClothChainScheduler.UseMainView(playerCamera);
+                Assert.That(ClothChainScheduler.MainView, Is.SameAs(playerCamera));
+                ClothChainScheduler.ForgetMainView(other);
+                Assert.That(ClothChainScheduler.MainView, Is.SameAs(playerCamera));
+                ClothChainScheduler.ForgetMainView(playerCamera);
+                Assert.That(ClothChainScheduler.MainView == null, Is.True);
+            }
+            finally
+            {
+                ClothChainScheduler.ForgetMainView(playerCamera);
+                if (before != null)
+                {
+                    ClothChainScheduler.UseMainView(before);
+                }
+            }
+        }
+
         [Test]
         public void EveryBodyInViewIsLaidOutOfViewKeepsItsPoseAndFarAwayRests()
         {

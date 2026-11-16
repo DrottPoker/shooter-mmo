@@ -98,14 +98,14 @@ namespace Mmorpg.Client.Networking
         }
 
         public bool TryRefreshCollisionStreaming(
-            IEnumerable<SimulationVector3> anchors,
+            IReadOnlyList<SimulationVector3> anchors,
             out string error)
         {
             return CollisionStream.TryRefresh(anchors, out error);
         }
 
         public bool TryEnsureCollisionChunks(
-            IEnumerable<SimulationVector3> anchors,
+            IReadOnlyList<SimulationVector3> anchors,
             out string error)
         {
             return CollisionStream.TryEnsureLoaded(anchors, out error);

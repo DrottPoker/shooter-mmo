@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Collections.ObjectModel;
 using Mmorpg.GameProtocol;
 using Mmorpg.WorldData.Text;
 
@@ -219,7 +219,17 @@ namespace Mmorpg.Client.WorldActors
     {
         private readonly Dictionary<ulong, WorldActorClientEntry> actors =
             new Dictionary<ulong, WorldActorClientEntry>();
+
+        // The same actors in the order of their entity ids, kept as they change, so a read
+        // neither sorts nor allocates.
+        private readonly List<WorldActorClientEntry> ordered = new List<WorldActorClientEntry>();
+        private readonly ReadOnlyCollection<WorldActorClientEntry> orderedView;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
+
+        public WorldActorClientState()
+        {
+            orderedView = ordered.AsReadOnly();
+        }
 
         // The texts name every actor that spawns from now on. Until they are set, an actor
         // shows the keys of its texts.
@@ -228,11 +238,17 @@ namespace Mmorpg.Client.WorldActors
             texts = catalog ?? throw new ArgumentNullException(nameof(catalog));
         }
 
-        public event Action Changed;
+        // Raised after one actor spawned, changed, or left, with its entity id.
+        public event Action<ulong> ActorChanged;
 
+        // Raised after every actor left at once, as when the session ended.
+        public event Action Cleared;
+
+        // Every actor in the order of its entity id. The list is the state's own and changes
+        // with it, so a reader that keeps it across a change copies what it needs.
         public IReadOnlyList<WorldActorClientEntry> Actors
         {
-            get { return actors.Values.OrderBy(actor => actor.EntityId).ToArray(); }
+            get { return orderedView; }
         }
 
         public bool TryGet(ulong entityId, out WorldActorClientEntry actor)
@@ -305,14 +321,16 @@ namespace Mmorpg.Client.WorldActors
 
                 if (result == WorldActorStateApplyResult.Applied)
                 {
-                    Changed?.Invoke();
+                    ActorChanged?.Invoke(spawn.EntityId);
                 }
 
                 return true;
             }
 
-            actors.Add(spawn.EntityId, new WorldActorClientEntry(spawn, texts));
-            Changed?.Invoke();
+            var entry = new WorldActorClientEntry(spawn, texts);
+            actors.Add(spawn.EntityId, entry);
+            ordered.Insert(~OrderedIndexOf(spawn.EntityId), entry);
+            ActorChanged?.Invoke(spawn.EntityId);
             return true;
         }
 
@@ -336,7 +354,7 @@ namespace Mmorpg.Client.WorldActors
 
             if (result == WorldActorStateApplyResult.Applied)
             {
-                Changed?.Invoke();
+                ActorChanged?.Invoke(state.EntityId);
             }
 
             return true;
@@ -363,7 +381,8 @@ namespace Mmorpg.Client.WorldActors
             }
 
             actors.Remove(despawn.EntityId);
-            Changed?.Invoke();
+            ordered.RemoveAt(OrderedIndexOf(despawn.EntityId));
+            ActorChanged?.Invoke(despawn.EntityId);
             return true;
         }
 
@@ -375,7 +394,36 @@ namespace Mmorpg.Client.WorldActors
             }
 
             actors.Clear();
-            Changed?.Invoke();
+            ordered.Clear();
+            Cleared?.Invoke();
+        }
+
+        // The index of the actor in the ordered list, or the bitwise complement of the index it
+        // would take.
+        private int OrderedIndexOf(ulong entityId)
+        {
+            var low = 0;
+            var high = ordered.Count - 1;
+            while (low <= high)
+            {
+                var middle = low + ((high - low) / 2);
+                var current = ordered[middle].EntityId;
+                if (current == entityId)
+                {
+                    return middle;
+                }
+
+                if (current < entityId)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+
+            return ~low;
         }
     }
 }

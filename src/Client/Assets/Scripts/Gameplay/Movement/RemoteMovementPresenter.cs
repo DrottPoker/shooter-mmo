@@ -66,6 +66,12 @@ namespace Mmorpg.Client.Gameplay
         private float presentedTargetHeight;
         private Vector2 correction;
 
+        // While the pose rests: whether the render clock follows the server estimate exactly, and
+        // the unscaled seconds of the frames since then, which the clock catches up on at once.
+        private bool resting;
+        private bool restingFollowsEstimate;
+        private double restingSeconds;
+
         public int TickRateHz
         {
             get { return tickRateHz; }
@@ -150,6 +156,18 @@ namespace Mmorpg.Client.Gameplay
                     && IsWalking(out _, out _);
             }
         }
+
+        // Whether the pose rests on a standing newest state: it reached that state, nothing is
+        // extrapolated or blended, and the delay is the one the entity asks for, so the pose
+        // does not change until the next state or new ground under it. Advance then presents
+        // nothing, as it describes.
+        public bool IsResting
+        {
+            get { return resting; }
+        }
+
+        // The revision of the ground the pose was last presented on, as Advance was given it.
+        public int GroundRevision { get; private set; }
 
         // How many times the presented pose jumped rather than moved: the first state after a clear,
         // every restart of the render clock, and every snap of a correction. The body's loose cloth
@@ -247,6 +265,7 @@ namespace Mmorpg.Client.Gameplay
             currentDelayTicks = interpolationDelayTicks;
             observedIntervalTicks = interpolationDelayTicks / (double)InterpolationDelaySnapshotIntervals;
             correction = Vector2.zero;
+            StopResting();
         }
 
         // Buffers a server state and returns false for one that is not newer than the newest.
@@ -270,6 +289,7 @@ namespace Mmorpg.Client.Gameplay
 
         private bool Push(uint serverTick, PlayerMovementState state, bool firstStateStands)
         {
+            Wake();
             var wasEmpty = interpolation.Count == 0;
             var renderTick = renderClock.RenderTick;
             var shown = Vector2.zero;
@@ -333,6 +353,7 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
+            StopResting();
             correction = Vector2.zero;
             Present(renderClock.Reset(interpolation.LatestServerTick, currentDelayTicks), 0f);
             Discontinuities++;
@@ -351,13 +372,32 @@ namespace Mmorpg.Client.Gameplay
             return interpolation.TryGetNewestPlanarVelocity(tickRateHz, out velocityX, out velocityZ);
         }
 
-        // Advances the render clock by one frame and presents the state at it. Returns
-        // whether there is a pose to present.
-        public bool Advance(float unscaledDeltaTime, float deltaTime)
+        // Advances the render clock by one frame and presents the state at it, on the ground of
+        // the given revision, which changes when the ground may have, such as when a collision
+        // chunk loaded. Returns whether it presented a pose.
+        //
+        // A resting pose presents nothing and asks the collision world for nothing. Until the
+        // render time follows the server estimate exactly, a frame only advances the clock; after
+        // that it only adds up its time, which the clock catches up on in one step at the next
+        // state, or when the ground revision changed and the pose lands on the new ground. The
+        // clock then stands where advancing it frame by frame would have it, so the delay, the
+        // walk after a stand, and every other rule show exactly the same.
+        public bool Advance(float unscaledDeltaTime, float deltaTime, int groundRevision)
         {
             if (!HasPose)
             {
                 return false;
+            }
+
+            if (resting)
+            {
+                if (groundRevision == GroundRevision)
+                {
+                    Rest(unscaledDeltaTime);
+                    return false;
+                }
+
+                Wake();
             }
 
             FollowTargetDelay(unscaledDeltaTime);
@@ -369,7 +409,61 @@ namespace Mmorpg.Client.Gameplay
             var step = CorrectionMetresPerSecond * Math.Max(0f, unscaledDeltaTime);
             correction = correction.magnitude <= step ? Vector2.zero : correction - (correction.normalized * step);
             Present(renderClock.RenderTick, deltaTime);
+            GroundRevision = groundRevision;
+            resting = !interpolation.NewestMoved && currentDelayTicks == TargetDelayTicks && IsSettled;
+            restingFollowsEstimate = resting && FollowsEstimate;
             return true;
+        }
+
+        // Advances on ground that does not change.
+        public bool Advance(float unscaledDeltaTime, float deltaTime)
+        {
+            return Advance(unscaledDeltaTime, deltaTime, GroundRevision);
+        }
+
+        private bool FollowsEstimate
+        {
+            get { return renderClock.FollowsEstimate(tickRateHz, interpolation.LatestServerTick, currentDelayTicks); }
+        }
+
+        // A frame of a resting pose. Nothing it shows changes, so only the clock moves on, and
+        // once it follows the estimate exactly, only the time is counted.
+        private void Rest(float unscaledDeltaTime)
+        {
+            if (restingFollowsEstimate)
+            {
+                restingSeconds += unscaledDeltaTime;
+                return;
+            }
+
+            renderClock.Advance(
+                unscaledDeltaTime,
+                tickRateHz,
+                interpolation.LatestServerTick,
+                currentDelayTicks);
+            restingFollowsEstimate = FollowsEstimate;
+        }
+
+        // Ends a rest: the clock catches up on the time it only counted.
+        private void Wake()
+        {
+            if (restingSeconds > 0d)
+            {
+                renderClock.Advance(
+                    (float)restingSeconds,
+                    tickRateHz,
+                    interpolation.LatestServerTick,
+                    currentDelayTicks);
+            }
+
+            StopResting();
+        }
+
+        private void StopResting()
+        {
+            resting = false;
+            restingFollowsEstimate = false;
+            restingSeconds = 0d;
         }
 
         private float OverrunSecondsAt(double renderTick)
