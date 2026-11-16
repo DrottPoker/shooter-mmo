@@ -5,7 +5,9 @@ using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Quests;
+using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.SimulationWorker.Sessions;
+using Mmorpg.SimulationWorker.Tests.Realtime;
 
 namespace Mmorpg.SimulationWorker.Tests;
 
@@ -216,6 +218,127 @@ public sealed class SimulationSessionReleaseServiceTests
         handler.BeforeAnswer = null;
         await service.ReleaseDetachedAsync(other, CancellationToken.None);
         Assert.Null(handler.Releases[^1].FinalState);
+    }
+
+    // GameService refuses the token of a session whose reconnect consumed its ticket. The release
+    // saved nothing and the session goes on, so the state stays for the reconnect's join; a
+    // release that GameService answered forgets it.
+    [Fact]
+    public async Task AReleaseWhoseCredentialsGameServiceRefusedKeepsTheFinalState()
+    {
+        var handler = new RecordingReleaseHandler(HttpStatusCode.Unauthorized, HttpStatusCode.OK);
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://game-service.test") };
+        var service = new SimulationSessionReleaseService(
+            new GameServiceClient(httpClient),
+            new ActiveSimulationSessionStore(),
+            CharacterStateTestData.SessionStores(new CharacterItemStateStore()),
+            []);
+        var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), "rotated-token", PlayerCarryState.Default);
+        service.FinalStates.Capture(
+            session.CharacterId,
+            session.SimulationSessionId,
+            new CharacterFinalState(7, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
+
+        var refused = await service.ReleaseDetachedAsync(session, CancellationToken.None);
+
+        Assert.True(refused.Succeeded);
+        Assert.Equal(7, Assert.Single(handler.Releases).FinalState!.Sequence);
+        Assert.True(service.FinalStates.TryGet(session.CharacterId, session.SimulationSessionId, out var kept));
+        Assert.Equal(7, kept.Sequence);
+
+        var answered = await service.ReleaseDetachedAsync(session with { SimulationSessionToken = "reconnect-token" }, CancellationToken.None);
+
+        Assert.True(answered.Succeeded);
+        Assert.Equal([7L, 7L], handler.Releases.Select(release => release.FinalState!.Sequence));
+        Assert.Equal(0, service.FinalStates.Count);
+    }
+
+    // The reconnect's join could not go on after it consumed its ticket, so it releases the
+    // session it took over; the release carries the state that the session's body left, whose own
+    // release GameService refused, so GameService keeps that state instead of an older one.
+    [Fact]
+    public async Task AJoinThatCannotGoOnReleasesItsSessionWithTheStateTheBodyLeft()
+    {
+        var gameService = new ScriptedGameServiceHandler();
+        using var httpClient = new HttpClient(gameService) { BaseAddress = new Uri("http://game-service.test") };
+        var client = new GameServiceClient(httpClient);
+        var sessionStore = new ActiveSimulationSessionStore();
+        var itemStates = new CharacterItemStateStore();
+        var releaseService = new SimulationSessionReleaseService(
+            client,
+            sessionStore,
+            CharacterStateTestData.SessionStores(itemStates));
+        var joinService = new SimulationJoinService(
+            client,
+            sessionStore,
+            itemStates,
+            RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions()),
+            new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow),
+            questLogs: new CharacterQuestLogStore(),
+            releaseService: releaseService);
+        var character = new RealtimeTestCharacter("ticket-of-the-reconnect", "Unlucky Returner");
+        gameService.AddCharacter(character);
+        gameService.OnQuestLog = (_, _, _) => Task.FromResult(ScriptedGameServiceHandler.Problem(
+            HttpStatusCode.ServiceUnavailable,
+            "database_unavailable",
+            "PostgreSQL is unavailable."));
+        releaseService.FinalStates.Capture(
+            character.CharacterId,
+            character.SimulationSessionId,
+            new CharacterFinalState(11, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
+
+        var joined = await joinService.JoinAsync(character.Ticket, CancellationToken.None);
+
+        Assert.False(joined.Succeeded);
+        var release = Assert.Single(gameService.Releases);
+        Assert.Equal(character.SimulationSessionId, release.SimulationSessionId);
+        Assert.Equal(character.SimulationSessionToken, release.Request.SessionToken);
+        Assert.Equal((11L, 100), (release.Request.FinalState!.Sequence, release.Request.FinalState.Health));
+        Assert.Equal(0, releaseService.FinalStates.Count);
+        Assert.False(sessionStore.TryGet(character.CharacterId, out _));
+    }
+
+    // The reconnect's join fails unexpectedly after it consumed its ticket and before it
+    // registered the session. It releases the session with the state that the session's body
+    // left, so neither the session nor that state stays until the worker stops.
+    [Fact]
+    public async Task AJoinThatThrowsAfterItsConsumeReleasesItsSessionWithTheStateTheBodyLeft()
+    {
+        var gameService = new ScriptedGameServiceHandler();
+        using var httpClient = new HttpClient(gameService) { BaseAddress = new Uri("http://game-service.test") };
+        var client = new GameServiceClient(httpClient);
+        var sessionStore = new ActiveSimulationSessionStore();
+        var itemStates = new CharacterItemStateStore();
+        var releaseService = new SimulationSessionReleaseService(
+            client,
+            sessionStore,
+            CharacterStateTestData.SessionStores(itemStates),
+            []);
+        var joinService = new SimulationJoinService(
+            client,
+            sessionStore,
+            itemStates,
+            RealtimeServerHarness.CreateConfig(27015, new RealtimeServerHarnessOptions()),
+            new SimulationWorkerIdentity(RealtimeServerHarness.RuntimeId, DateTime.UtcNow),
+            questLogs: new CharacterQuestLogStore(),
+            releaseService: releaseService);
+        var character = new RealtimeTestCharacter("ticket-of-the-reconnect", "Thrown Returner");
+        gameService.AddCharacter(character);
+        gameService.OnQuestLog = (_, _, _) => throw new InvalidOperationException("The quest log could not be read.");
+        releaseService.FinalStates.Capture(
+            character.CharacterId,
+            character.SimulationSessionId,
+            new CharacterFinalState(13, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => joinService.JoinAsync(character.Ticket, CancellationToken.None));
+
+        var release = Assert.Single(gameService.Releases);
+        Assert.Equal(character.SimulationSessionId, release.SimulationSessionId);
+        Assert.Equal(character.SimulationSessionToken, release.Request.SessionToken);
+        Assert.Equal(13L, release.Request.FinalState!.Sequence);
+        Assert.Equal(0, releaseService.FinalStates.Count);
+        Assert.False(sessionStore.TryGet(character.CharacterId, out _));
+        Assert.False(itemStates.TryGet(character.CharacterId, character.SimulationSessionId, out _));
     }
 
     [Fact]

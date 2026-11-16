@@ -15,7 +15,10 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // lingering bodies too, since they can still lose health, at most one call at a time, and a failed
 // call's players go again with the next one. When the entity of a session the worker still holds
 // is removed, such as a lingering body whose time is up or whose death committed, and at shutdown,
-// the final state is captured for the release that follows, whichever path runs it. A dead
+// the final state is captured for the release that follows, whichever path runs it. A reconnect
+// whose join comes after the entity went places its new entity from that state, also when
+// GameService refused the release because the reconnect had rotated the session's token, and the
+// new entity takes the state over. A dead
 // player is saved as its respawn leaves it: at the World spawn with full health and mana. The
 // vitals are read from combat whenever they are needed: the removed hooks run in reverse
 // registration order, so this feature, added after combat, sees a player go while combat still
@@ -80,7 +83,9 @@ internal sealed class CharacterStatePersistence(
         return new PlayerPlace(state.PositionX, state.PositionY, state.PositionZ, state.YawDegrees);
     }
 
-    // Combat made the player a combatant with full vitals; a new entity takes the saved ones.
+    // Combat made the player a combatant with full vitals; a new entity takes the saved ones. A
+    // new entity placed from the state that the session's earlier entity left takes that state
+    // over, so no release sends it any more, and the next checkpoint saves it.
     public void OnPlayerJoined(RealtimePeerContext context, PlayerSimulationEntity entity)
     {
         var session = entity.Session;
@@ -91,6 +96,11 @@ internal sealed class CharacterStatePersistence(
 
         var isNewEntity = placements.Remove(session.SimulationSessionId, out var placement);
         var restored = placement.State;
+        if (isNewEntity && restored is { CapturedSequence: { } capturedSequence })
+        {
+            finalStates.Remove(session.CharacterId, session.SimulationSessionId, capturedSequence);
+        }
+
         if (players.ContainsKey(entity.NetworkEntityId)
             || !combat.TryGetPlayerCombatant(entity.NetworkEntityId, out var combatant))
         {
@@ -313,14 +323,15 @@ internal sealed class CharacterStatePersistence(
         return null;
     }
 
-    // A state this worker captured for the session is newer than the one GameService returned.
-    // A saved place counts only in this World with the collision this worker runs; the saved
-    // health and mana count everywhere.
+    // A state this worker captured for the session is newer than the one GameService returned:
+    // GameService gives a reconnect what it saved before the session's entity went, also the
+    // place and health of a body whose death committed since. A saved place counts only in this
+    // World with the collision this worker runs; the saved health and mana count everywhere.
     private RestoredState? Resolve(ActiveSimulationSession session)
     {
         if (finalStates.TryGet(session.CharacterId, session.SimulationSessionId, out var captured))
         {
-            return new RestoredState(captured.State, RestoresPosition: true, Saved: null);
+            return new RestoredState(captured.State, RestoresPosition: true, Saved: null, captured.Sequence);
         }
 
         if (session.SavedState is not { } saved)
@@ -374,10 +385,12 @@ internal sealed class CharacterStatePersistence(
 
     // State restores the vitals and, when RestoresPosition, the place. Saved is what GameService
     // holds as far as the worker knows, so an unchanged player is not saved again.
+    // CapturedSequence names the captured final state that State came from.
     private readonly record struct RestoredState(
         CharacterStateSnapshot State,
         bool RestoresPosition,
-        CharacterStateSnapshot? Saved);
+        CharacterStateSnapshot? Saved,
+        long? CapturedSequence = null);
 
     private readonly record struct Placement(Guid CharacterId, RestoredState? State);
 
