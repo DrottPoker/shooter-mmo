@@ -218,27 +218,41 @@ public sealed class SimulationSessionHeartbeatService(
     {
         if (result.Lease is not { } lease)
         {
-            // The lease was not renewed, so the session ended whatever the code says.
+            // The lease was not renewed, so the generation ended whatever the code says, unless
+            // a reconnect's join rotated its token at GameService and registers the session
+            // again: such a refusal waits for the joins in flight.
             var refusal = GameServiceClient.NormalizeForwardedErrorCode(result.Error!.Code);
             var (code, message) = GameServiceOutcome.AccountSessionEndDisconnect(refusal);
-            var invalidated = sessionStore.Invalidate(
+            var outcome = sessionStore.RefuseCredentials(
                 session.CharacterId,
                 session.SimulationSessionId,
                 session.SimulationSessionToken,
                 code,
-                message);
-            if (invalidated)
+                message,
+                () =>
+                {
+                    itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
+                    logger.LogWarning(
+                        "Invalidated simulation session {SimulationSessionId} with code {Code} after a refused heartbeat: {Refusal}.",
+                        session.SimulationSessionId,
+                        code,
+                        refusal);
+                });
+            if (outcome == SessionCredentialsRefusal.WaitsForJoins)
             {
-                itemStateStore.Remove(
-                    session.CharacterId,
-                    session.SimulationSessionId);
+                logger.LogInformation(
+                    "GameService refused the heartbeat of simulation session {SimulationSessionId} with {Refusal} while a join is in flight; the session ends once the joins in flight ended unless a reconnect registered it again.",
+                    session.SimulationSessionId,
+                    refusal);
+            }
+            else if (outcome == SessionCredentialsRefusal.EarlierGeneration)
+            {
+                logger.LogDebug(
+                    "GameService refused the heartbeat of simulation session {SimulationSessionId} with {Refusal} for a token that a reconnect replaced.",
+                    session.SimulationSessionId,
+                    refusal);
             }
 
-            logger.LogWarning(
-                "Invalidated simulation session {SimulationSessionId} with code {Code} after a refused heartbeat: {Refusal}.",
-                session.SimulationSessionId,
-                code,
-                refusal);
             return;
         }
 

@@ -91,6 +91,13 @@ namespace Mmorpg.Client.Gameplay
 
         // The longest gap after a first state that a moving second state walked all of, the
         // longest render delay; a longer gap counts as a stand.
+        // A second state closer than this to a first state of unknown standing takes its place:
+        // one snapshot interval, the shortest gap between two records of an entity.
+        public long FirstStateRefreshTicks
+        {
+            get { return Math.Max(1L, (long)Math.Round(interpolationDelayTicks / (double)InterpolationDelaySnapshotIntervals)); }
+        }
+
         public long LongestWalkGapTicks
         {
             get { return (long)Math.Round(MaximumInterpolationDelaySeconds * tickRateHz); }
@@ -299,7 +306,8 @@ namespace Mmorpg.Client.Gameplay
                     state,
                     (long)Math.Round(observedIntervalTicks),
                     LongestWalkGapTicks,
-                    firstStateStands))
+                    firstStateStands,
+                    FirstStateRefreshTicks))
             {
                 return false;
             }

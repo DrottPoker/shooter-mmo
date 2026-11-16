@@ -42,6 +42,15 @@ public static class GameServiceOutcome
             or "simulation_worker_quest_catalog_mismatch";
     }
 
+    // GameService refused the credentials of the session generation that an operation named: the
+    // session is released or expired, or a reconnect's ticket consumption rotated its token before
+    // the reconnect's join registered the new one on the worker. Only the worker can tell them
+    // apart, by whether that join registers a newer generation of the session.
+    public static bool RefusesSessionCredentials(string? code)
+    {
+        return code is "simulation_session_invalid";
+    }
+
     // Item and NPC lifecycle operations act for the session, so a worker mismatch also
     // ends it. A corpse operation reports the same code when the corpse belongs to another
     // Shard, which closes only the corpse view.

@@ -20,15 +20,28 @@ public sealed class SimulationJoinService(
     DevelopmentBotLooks? botLooks = null,
     CharacterQuestLogStore? questLogs = null,
     QuestCatalogRuntimeDocument? questCatalog = null,
-    ILogger<SimulationJoinService>? logger = null)
+    ILogger<SimulationJoinService>? logger = null,
+    SimulationSessionReleaseService? releaseService = null)
 {
-    // One span covers the ticket consumption and any release a rejected join needs.
+    // One span covers the ticket consumption and any release a rejected join needs. The session
+    // store counts the join as in flight until it registered its session or failed, because a
+    // reconnect's consumption rotates the session's token at GameService before that.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
         string joinTicket,
         CancellationToken cancellationToken)
     {
         using var activity = SimulationWorkerTelemetry.StartOperation("simulation.join");
-        var result = await JoinCoreAsync(joinTicket, cancellationToken);
+        var join = sessionStore.BeginJoin();
+        SimulationJoinResult<ActiveSimulationSession> result;
+        try
+        {
+            result = await JoinCoreAsync(joinTicket, cancellationToken);
+        }
+        finally
+        {
+            sessionStore.EndJoin(join);
+        }
+
         if (!result.Succeeded)
         {
             SimulationWorkerTelemetry.RecordFailure(activity, result.Error!.Code);
@@ -102,6 +115,27 @@ public sealed class SimulationJoinService(
         }
 
         var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);
+        try
+        {
+            return await RegisterAsync(session, consumedTicket.Value, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // GameService gave this join the session, so a join that fails unexpectedly after the
+            // consumption releases it as a session that no peer owns: neither the session nor the
+            // state that a body of it left stays behind, and GameService keeps that state.
+            await ReleaseAfterFailureAsync(session);
+            throw;
+        }
+    }
+
+    // Reads the quest log of the session that the ticket gave, and registers the session with its
+    // item state, look, and quest log.
+    private async Task<SimulationJoinResult<ActiveSimulationSession>> RegisterAsync(
+        ActiveSimulationSession session,
+        ConsumedSimulationJoinTicketResponse consumedTicket,
+        CancellationToken cancellationToken)
+    {
         var questLog = await ReadQuestLogAsync(session, cancellationToken);
 
         // A reconnect of a session that the worker hosts keeps the quest log it holds when the read
@@ -112,11 +146,7 @@ public sealed class SimulationJoinService(
             && HoldsQuestLogOf(session);
         if (!questLog.Succeeded && !keepsQuestLog)
         {
-            await gameServiceClient.ReleaseSimulationSessionAsync(
-                session.SimulationSessionId,
-                session.WorkerRuntimeId,
-                session.SimulationSessionToken,
-                cancellationToken);
+            await ReleaseAsync(session, cancellationToken);
 
             return SimulationJoinResult<ActiveSimulationSession>.Failure(
                 questLog.StatusCode,
@@ -128,11 +158,7 @@ public sealed class SimulationJoinService(
 
         if (registration == ActiveSimulationSessionRegistration.Conflict)
         {
-            await gameServiceClient.ReleaseSimulationSessionAsync(
-                session.SimulationSessionId,
-                session.WorkerRuntimeId,
-                session.SimulationSessionToken,
-                cancellationToken);
+            await ReleaseAsync(session, cancellationToken);
 
             return SimulationJoinResult<ActiveSimulationSession>.Conflict(
                 "character_already_active",
@@ -142,7 +168,7 @@ public sealed class SimulationJoinService(
         var carryRegistration = itemStateStore.Register(
             session.CharacterId,
             session.SimulationSessionId,
-            CharacterItemState.Create(session.CarryState, consumedTicket.Value.Equipment),
+            CharacterItemState.Create(session.CarryState, consumedTicket.Equipment),
             out var currentItemState);
         if (carryRegistration == ItemStateApplyResult.Conflict)
         {
@@ -157,11 +183,7 @@ public sealed class SimulationJoinService(
                 itemStateStore.Remove(session.CharacterId, session.SimulationSessionId);
             }
 
-            await gameServiceClient.ReleaseSimulationSessionAsync(
-                session.SimulationSessionId,
-                session.WorkerRuntimeId,
-                session.SimulationSessionToken,
-                cancellationToken);
+            await ReleaseAsync(session, cancellationToken);
 
             return SimulationJoinResult<ActiveSimulationSession>.Conflict(
                 "carry_state_conflict",
@@ -175,7 +197,7 @@ public sealed class SimulationJoinService(
             currentItemState.Carry);
 
         // A development bot has no stored look, so the worker dresses it from its id.
-        var look = consumedTicket.Value.Appearance is { } appearance
+        var look = consumedTicket.Appearance is { } appearance
             ? new CharacterLook(appearance)
             : botLooks?.For(session.CharacterId);
         if (look is not null)
@@ -195,6 +217,53 @@ public sealed class SimulationJoinService(
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 
         return SimulationJoinResult<ActiveSimulationSession>.Success(registeredSession!);
+    }
+
+    // A join that cannot go on releases the session it consumed. A body of the session that went
+    // before this join rotated the session's token left a final state, whose own release
+    // GameService refused; this release carries it, so GameService keeps the state the body left
+    // instead of an older one.
+    private async Task ReleaseAsync(ActiveSimulationSession session, CancellationToken cancellationToken)
+    {
+        if (releaseService is not null)
+        {
+            await releaseService.ReleaseAsync(session, cancellationToken);
+            return;
+        }
+
+        await gameServiceClient.ReleaseSimulationSessionAsync(
+            session.SimulationSessionId,
+            session.WorkerRuntimeId,
+            session.SimulationSessionToken,
+            cancellationToken);
+    }
+
+    // Releases the session of a join that failed unexpectedly, with the local state that the join
+    // may have registered for it; a release that fails too only logs, so the join's own failure is
+    // what the caller sees.
+    private async Task ReleaseAfterFailureAsync(ActiveSimulationSession session)
+    {
+        try
+        {
+            if (releaseService is not null)
+            {
+                await releaseService.ReleaseDetachedAsync(session, CancellationToken.None);
+                return;
+            }
+
+            await gameServiceClient.ReleaseSimulationSessionAsync(
+                session.SimulationSessionId,
+                session.WorkerRuntimeId,
+                session.SimulationSessionToken,
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(
+                exception,
+                "Could not release simulation session {SimulationSessionId} after its join failed.",
+                session.SimulationSessionId);
+        }
     }
 
     private bool HoldsQuestLogOf(ActiveSimulationSession session)
