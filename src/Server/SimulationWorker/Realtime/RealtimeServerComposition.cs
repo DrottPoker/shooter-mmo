@@ -112,7 +112,15 @@ internal static class RealtimeServerComposition
             new RealtimeCompletionProcessor(core.Completions, core.Peers, core.Sender, logger),
             core.OperationTracker,
             corpses.MutationCoordinator,
-            new SimulationTickLoop(core.Clock, core.EntityRegistry, registries.TickPhases, performanceMetrics, loopGuard, logger, networkMetrics),
+            new SimulationTickLoop(
+                core.Clock,
+                core.EntityRegistry,
+                registries.TickPhases,
+                performanceMetrics,
+                loopGuard,
+                logger,
+                networkMetrics,
+                ThreadCpuClock.ForCurrentPlatform()),
             supervisor,
             worldActors.Driver,
             host.TransportReadiness,
@@ -141,7 +149,8 @@ internal static class RealtimeServerComposition
         ILogger logger)
     {
         var config = host.Config;
-        var registries = new RealtimeFeatureRegistries();
+        var registries = new RealtimeFeatureRegistries(
+            new SimulationTickCadence(config.MovementSimulation.TickRateHz, config.SnapshotRateHz));
         var completions = new RealtimeCompletionQueue();
         var operationTracker = new RealtimeOperationTracker();
         var peers = new RealtimePeerRegistry(

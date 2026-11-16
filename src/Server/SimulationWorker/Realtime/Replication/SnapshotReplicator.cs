@@ -7,7 +7,8 @@ using Mmorpg.SimulationWorker.Entities;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Broadcasts movement snapshots: one owner snapshot per player plus interest-filtered
-// remote snapshots of players and Mobs. Every entity's remote record is quantized once per
+// remote snapshots of players and Mobs, whose visible sets the interest refresh of the tick
+// before brought up to date. Every entity's remote record is quantized once per
 // snapshot, and the scheduler sends each recipient the records that are due for it, nearest
 // tier first, within its own byte budget and its share of the aggregate one, assembled
 // without allocating. The recipient rotation keeps the aggregate budget fair across peers in
@@ -45,15 +46,10 @@ internal sealed class SnapshotReplicator(
         config.UdpQuotas.AggregateSnapshotByteBurst,
         timeProvider);
 
-    // Where a snapshot's time goes: the records, the interest index and refresh, the owner
-    // snapshots, and the remote snapshots' plans, chunk encoding, and sends, each summed over
-    // the recipients.
+    // Where a snapshot's time goes: the records, the owner snapshots, and the remote snapshots'
+    // plans, chunk encoding, and sends, each summed over the recipients.
     private readonly RealtimePerformanceMetrics.DurationTimer recordsTimer =
         performanceMetrics.TickPhasePartTimer(PhaseName, "records");
-    private readonly RealtimePerformanceMetrics.DurationTimer interestIndexTimer =
-        performanceMetrics.TickPhasePartTimer(PhaseName, "interest index");
-    private readonly RealtimePerformanceMetrics.DurationTimer interestRefreshTimer =
-        performanceMetrics.TickPhasePartTimer(PhaseName, "interest refresh");
     private readonly RealtimePerformanceMetrics.DurationTimer ownerSnapshotsTimer =
         performanceMetrics.TickPhasePartTimer(PhaseName, "owner snapshots");
     private readonly RealtimePerformanceMetrics.DurationTimer remotePlansTimer =
@@ -64,16 +60,16 @@ internal sealed class SnapshotReplicator(
         performanceMetrics.TickPhasePartTimer(PhaseName, "remote sends");
     private uint snapshotSequence;
 
-    // Sends the snapshots at the snapshot rate.
-    public void AddTickPhase(SimulationTickPhases phases)
+    // Sends the snapshots on the snapshot ticks.
+    public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence)
     {
-        var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
+        ArgumentNullException.ThrowIfNull(cadence);
         phases.AddPeriodic(
             SimulationTickOrder.Snapshots,
             PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks != 0)
+                if (!cadence.IsSnapshotTick(tick.ServerTick))
                 {
                     return false;
                 }
@@ -114,9 +110,6 @@ internal sealed class SnapshotReplicator(
 
             if (playerBuffer.Count == 0)
             {
-                // No bound player has interest to refresh, but despawned world actors
-                // must still be pruned, or their tombstones stay until a player joins.
-                presence.PruneDespawned();
                 return;
             }
 
@@ -127,16 +120,8 @@ internal sealed class SnapshotReplicator(
             }
 
             records.EndReports();
-            var interestStarted = Stopwatch.GetTimestamp();
-            recordsTimer.Record(Stopwatch.GetElapsedTime(broadcastStarted, interestStarted));
-            presence.SynchronizeInterestIndex(playerBuffer);
-            var refreshStarted = Stopwatch.GetTimestamp();
-            interestIndexTimer.Record(Stopwatch.GetElapsedTime(interestStarted, refreshStarted));
-            presence.RefreshInterests(null);
-            var interestEnded = Stopwatch.GetTimestamp();
-            interestRefreshTimer.Record(Stopwatch.GetElapsedTime(refreshStarted, interestEnded));
-            performanceMetrics.RecordInterestRefresh(
-                Stopwatch.GetElapsedTime(interestStarted, interestEnded));
+            var recordsEnded = Stopwatch.GetTimestamp();
+            recordsTimer.Record(Stopwatch.GetElapsedTime(broadcastStarted, recordsEnded));
 
             snapshotSequence = sequence;
 
@@ -207,7 +192,7 @@ internal sealed class SnapshotReplicator(
             }
 
             // The owner snapshots include gathering the recipients.
-            ownerSnapshotsTimer.Record(Stopwatch.GetElapsedTime(interestEnded));
+            ownerSnapshotsTimer.Record(Stopwatch.GetElapsedTime(recordsEnded));
 
             // Stopwatch ticks summed over the recipients, timed at the boundaries between the parts.
             long planTicks = 0;

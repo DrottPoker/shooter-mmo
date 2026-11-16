@@ -79,7 +79,12 @@ internal sealed class RealtimeServer(
             config.SnapshotRateHz);
 
         // A dedicated thread keeps the loop off the thread pool, whose scheduling delays
-        // would shift ticks, and lets it block in a precise timer wait.
+        // would shift ticks, and lets it block in a precise timer wait. Its priority decides how
+        // often other work on a busy machine preempts it.
+        logger.LogInformation(
+            "[SIMULATION] The realtime loop thread runs at priority {LoopThreadPriority} and measures its CPU time per tick with {CpuClock}.",
+            config.LoopThreadPriority,
+            tickLoop.CpuClock?.Description ?? "nothing, since the system offers no clock for it");
         var loopCompleted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var loopThread = new Thread(() =>
@@ -96,7 +101,8 @@ internal sealed class RealtimeServer(
         })
         {
             IsBackground = true,
-            Name = "SimulationWorker realtime loop"
+            Name = "SimulationWorker realtime loop",
+            Priority = config.LoopThreadPriority
         };
         try
         {

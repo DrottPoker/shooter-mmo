@@ -225,7 +225,8 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         performance.TickPhaseTimer("snapshots").Record(TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(12));
         performance.TickPhasePartTimer("snapshots", "remote plans").Record(TimeSpan.FromMilliseconds(9));
         performance.LoopStepTimer("send flush").Record(TimeSpan.FromMilliseconds(5));
-        performance.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget, TimeSpan.FromMilliseconds(12), spawnPackets: 140, despawnPackets: 90);
+        performance.RecordSimulationTick(TimeSpan.FromMilliseconds(40), tickBudget, TimeSpan.FromMilliseconds(12), spawnPackets: 140, despawnPackets: 90, cpuMilliseconds: 22);
+        performance.RecordSimulationTick(TimeSpan.FromMilliseconds(6), tickBudget, cpuMilliseconds: 5);
 
         reporter.ReportInterval();
 
@@ -236,6 +237,12 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         Assert.Equal(12, tick.GetProperty("gcPauseMs").GetDouble());
         Assert.Equal(28, tick.GetProperty("maximumWithoutGcPausesMs").GetDouble());
         Assert.Equal(33.34, tick.GetProperty("p99WithoutGcPausesMs").GetDouble());
+        // The loop thread ran 27 of the 46 ms of the two ticks; 18 ms of the slowest it did not.
+        Assert.Equal(27, root.GetProperty("tickCpuMs").GetDouble());
+        var notRunning = root.GetProperty("tickNotRunning");
+        Assert.Equal(2, notRunning.GetProperty("samples").GetInt64());
+        Assert.Equal(18, notRunning.GetProperty("maximumMs").GetDouble());
+        Assert.Equal(9.5, notRunning.GetProperty("averageMs").GetDouble());
         Assert.Equal(1, root.GetProperty("tickOverruns").GetInt64());
         Assert.Equal(0, root.GetProperty("tickOverrunsWithoutGcPauses").GetInt64());
         var snapshots = root.GetProperty("phases").GetProperty("snapshots");
@@ -245,6 +252,7 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         Assert.Equal(9, root.GetProperty("phaseParts").GetProperty("snapshots: remote plans").GetProperty("maximumMs").GetDouble());
         var slowest = root.GetProperty("slowestTick");
         Assert.Equal(40, slowest.GetProperty("ms").GetDouble());
+        Assert.Equal(22, slowest.GetProperty("cpuMs").GetDouble());
         Assert.Equal(12, slowest.GetProperty("gcPauseMs").GetDouble());
         Assert.Equal(140, slowest.GetProperty("spawnPackets").GetInt64());
         Assert.Equal(90, slowest.GetProperty("despawnPackets").GetInt64());

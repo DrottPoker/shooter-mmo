@@ -36,6 +36,10 @@ public sealed record RealtimeSlowestTick(
     public long SpawnPackets { get; init; }
 
     public long DespawnPackets { get; init; }
+
+    // The loop thread's CPU time inside the tick; the rest of the tick it did not run. Null
+    // without a CPU clock.
+    public double? CpuMilliseconds { get; init; }
 }
 
 public sealed record RealtimeNamedMilliseconds(string Name, double Milliseconds);
@@ -101,6 +105,12 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     // The time the loop thread spent in its timed work: every tick and every loop step.
     public double LoopBusyMilliseconds { get; init; }
 
+    // Per tick, the loop thread's CPU time and the time it did not run, wall time minus CPU
+    // time; null without a CPU clock.
+    public RealtimeDurationSummary? SimulationTickCpu { get; init; }
+
+    public RealtimeDurationSummary? SimulationTickNotRunning { get; init; }
+
     // Steps that players and Mobs skipped because collision chunks around them still loaded.
     public long CollisionPendingSteps { get; init; }
 }
@@ -150,6 +160,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly DurationAccumulator joinFinalization = new();
     private readonly DurationAccumulator simulationTick = new();
     private readonly GcPauseAccumulator simulationTickGcPauses = new();
+    private readonly DurationAccumulator simulationTickCpu = new();
+    private readonly DurationAccumulator simulationTickNotRunning = new();
     private readonly DurationAccumulator simulationTickLag = new();
     private readonly DurationAccumulator collisionStreaming = new();
     private readonly DurationAccumulator movementSimulation = new();
@@ -289,18 +301,28 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     // A tick that takes longer than its fixed interval is an overrun, even when the
     // catch-up budget later absorbs the delay without a resynchronization. gcPause is the
     // garbage collection pause time that fell inside the tick, and the packets are the spawns
-    // and despawns it sent. The tick ends the breakdown of the phases and parts timed since the
-    // previous one.
+    // and despawns it sent. cpuMilliseconds is the loop thread's CPU time inside the tick, null
+    // without a CPU clock; the rest of the tick the thread did not run. The tick ends the
+    // breakdown of the phases and parts timed since the previous one.
     public void RecordSimulationTick(
         TimeSpan duration,
         TimeSpan budget,
         TimeSpan gcPause = default,
         long spawnPackets = 0,
-        long despawnPackets = 0)
+        long despawnPackets = 0,
+        double? cpuMilliseconds = null)
     {
         var milliseconds = Record(simulationTick, simulationTickHistogram, duration);
         var pauseMilliseconds = simulationTickGcPauses.Record(milliseconds, gcPause);
-        slowestTick.EndTick(milliseconds, pauseMilliseconds, spawnPackets, despawnPackets);
+        var cpu = double.NaN;
+        if (cpuMilliseconds is { } measured)
+        {
+            cpu = Math.Clamp(measured, 0d, milliseconds);
+            simulationTickCpu.Record(cpu);
+            simulationTickNotRunning.Record(milliseconds - cpu);
+        }
+
+        slowestTick.EndTick(milliseconds, pauseMilliseconds, spawnPackets, despawnPackets, cpu);
         if (duration > budget)
         {
             Interlocked.Increment(ref tickOverruns);
@@ -396,6 +418,10 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 }));
     }
 
+    // Each fact is captured whole: a duration with its count, total, maximum, and buckets, and the
+    // slowest tick with its phases. The facts of one tick are captured one after another, though,
+    // so a tick that ends while this runs may count in this interval for its duration and in the
+    // next for its overrun or as the slowest tick.
     public RealtimePerformanceMetricsSnapshot CaptureAndReset()
     {
         var allocatedBytes = GC.GetTotalAllocatedBytes(false);
@@ -491,6 +517,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             TickOverrunsWithoutGcPauses = Interlocked.Exchange(ref tickOverrunsWithoutGcPauses, 0),
             SlowestTick = slowest,
             LoopBusyMilliseconds = loopBusyMilliseconds,
+            SimulationTickCpu = simulationTickCpu.CaptureAndReset(),
+            SimulationTickNotRunning = simulationTickNotRunning.CaptureAndReset(),
             CollisionPendingSteps = Interlocked.Exchange(ref collisionPendingSteps, 0)
         };
     }
@@ -629,8 +657,11 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     }
 
     // Counts samples into buckets with Interlocked operations, so the loop never waits for the
-    // reporter. A capture takes the sample count first, so a sample recorded during it counts
-    // whole in this interval or in the next, apart from its bucket, which may land in this one.
+    // reporter, and still hands the reporter whole samples: a sample goes into the slot of the
+    // interval it was recorded in, and a capture starts the next interval and then waits until
+    // every sample that was being recorded has landed, so the count, the total, the maximum,
+    // the buckets, and the tagged samples of one capture describe the same samples. Any thread
+    // may record; one thread captures at a time.
     private sealed class DurationAccumulator
     {
         private static readonly double[] UpperBoundsMilliseconds =
@@ -652,18 +683,34 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             double.PositiveInfinity
         ];
 
-        private readonly long[] buckets = new long[UpperBoundsMilliseconds.Length];
-        private long samples;
-        private long totalMicroseconds;
-        private long maximumMicroseconds;
+        private readonly Slot[] slots = [new Slot(), new Slot()];
+        private readonly Lock captureGate = new();
+        private long interval;
+        private int recording;
 
         public void Record(double milliseconds)
         {
+            Record(milliseconds, 0);
+        }
+
+        // taggedMicroseconds above zero counts the sample as tagged and adds to the tagged total,
+        // such as the garbage collection pause inside a sample.
+        public void Record(double milliseconds, long taggedMicroseconds)
+        {
             var microseconds = (long)Math.Ceiling(milliseconds * 1000d);
-            Interlocked.Increment(ref buckets[FindBucketIndex(milliseconds)]);
-            Interlocked.Add(ref totalMicroseconds, microseconds);
-            RaiseMaximum(ref maximumMicroseconds, microseconds);
-            Interlocked.Increment(ref samples);
+            Interlocked.Increment(ref recording);
+            var slot = slots[Volatile.Read(ref interval) & 1];
+            Interlocked.Increment(ref slot.Buckets[FindBucketIndex(milliseconds)]);
+            Interlocked.Add(ref slot.TotalMicroseconds, microseconds);
+            RaiseMaximum(ref slot.MaximumMicroseconds, microseconds);
+            Interlocked.Increment(ref slot.Samples);
+            if (taggedMicroseconds > 0)
+            {
+                Interlocked.Add(ref slot.TaggedMicroseconds, taggedMicroseconds);
+                Interlocked.Increment(ref slot.TaggedSamples);
+            }
+
+            Interlocked.Decrement(ref recording);
         }
 
         // A plain loop, because a predicate lambda would capture the sample and
@@ -683,26 +730,45 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
         public RealtimeDurationSummary? CaptureAndReset()
         {
-            var capturedSamples = Interlocked.Exchange(ref samples, 0);
-            if (capturedSamples == 0)
-            {
-                return null;
-            }
+            return CaptureAndReset(out _, out _);
+        }
 
-            var capturedBuckets = new long[buckets.Length];
-            for (var index = 0; index < buckets.Length; index++)
+        public RealtimeDurationSummary? CaptureAndReset(out long taggedSamples, out long taggedMicroseconds)
+        {
+            lock (captureGate)
             {
-                capturedBuckets[index] = Interlocked.Exchange(ref buckets[index], 0);
-            }
+                // From here on new samples go into the other slot. A sample that read the old
+                // interval first is still counted as recording, so the wait covers it.
+                var slot = slots[(Interlocked.Increment(ref interval) - 1) & 1];
+                var wait = default(SpinWait);
+                while (Volatile.Read(ref recording) != 0)
+                {
+                    wait.SpinOnce();
+                }
 
-            var capturedTotalMicroseconds = Interlocked.Exchange(ref totalMicroseconds, 0);
-            var capturedMaximumMicroseconds = Interlocked.Exchange(ref maximumMicroseconds, 0);
-            return new RealtimeDurationSummary(
-                capturedSamples,
-                capturedTotalMicroseconds / 1000d / capturedSamples,
-                FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.95, capturedMaximumMicroseconds),
-                FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.99, capturedMaximumMicroseconds),
-                capturedMaximumMicroseconds / 1000d);
+                var capturedSamples = Interlocked.Exchange(ref slot.Samples, 0);
+                var capturedBuckets = new long[slot.Buckets.Length];
+                for (var index = 0; index < slot.Buckets.Length; index++)
+                {
+                    capturedBuckets[index] = Interlocked.Exchange(ref slot.Buckets[index], 0);
+                }
+
+                var capturedTotalMicroseconds = Interlocked.Exchange(ref slot.TotalMicroseconds, 0);
+                var capturedMaximumMicroseconds = Interlocked.Exchange(ref slot.MaximumMicroseconds, 0);
+                taggedSamples = Interlocked.Exchange(ref slot.TaggedSamples, 0);
+                taggedMicroseconds = Interlocked.Exchange(ref slot.TaggedMicroseconds, 0);
+                if (capturedSamples == 0)
+                {
+                    return null;
+                }
+
+                return new RealtimeDurationSummary(
+                    capturedSamples,
+                    capturedTotalMicroseconds / 1000d / capturedSamples,
+                    FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.95, capturedMaximumMicroseconds),
+                    FindPercentileUpperBound(capturedBuckets, capturedSamples, 0.99, capturedMaximumMicroseconds),
+                    capturedMaximumMicroseconds / 1000d);
+            }
         }
 
         private static void RaiseMaximum(ref long maximum, long value)
@@ -742,6 +808,17 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
             return capturedMaximumMicroseconds / 1000d;
         }
+
+        // The samples of one interval.
+        private sealed class Slot
+        {
+            public readonly long[] Buckets = new long[UpperBoundsMilliseconds.Length];
+            public long Samples;
+            public long TotalMicroseconds;
+            public long MaximumMicroseconds;
+            public long TaggedSamples;
+            public long TaggedMicroseconds;
+        }
     }
 
     // The garbage collection pauses inside the samples of one duration: the samples a pause fell
@@ -749,29 +826,24 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private sealed class GcPauseAccumulator
     {
         private readonly DurationAccumulator withoutPauses = new();
-        private long pausedSamples;
-        private long pauseMicroseconds;
 
         // Returns the pause time counted inside the sample, at most the sample itself.
         public double Record(double milliseconds, TimeSpan gcPause)
         {
             var pause = Math.Clamp(gcPause.TotalMilliseconds, 0d, milliseconds);
-            withoutPauses.Record(milliseconds - pause);
-            if (pause > 0d)
-            {
-                Interlocked.Add(ref pauseMicroseconds, (long)Math.Ceiling(pause * 1000d));
-                Interlocked.Increment(ref pausedSamples);
-            }
-
+            withoutPauses.Record(milliseconds - pause, pause > 0d ? (long)Math.Ceiling(pause * 1000d) : 0);
             return pause;
         }
 
-        // The summary with the pauses of its interval, which starts the next interval.
+        // The summary with the pauses of its interval, which starts the next interval. The
+        // samples without their pauses and the paused samples are captured together; the
+        // summary itself comes from another accumulator, so a sample recorded between the two
+        // captures counts in this interval for one and in the next for the other.
         public RealtimeDurationSummary? Attach(RealtimeDurationSummary? summary)
         {
-            var withoutPausesSummary = withoutPauses.CaptureAndReset();
-            var capturedPausedSamples = Interlocked.Exchange(ref pausedSamples, 0);
-            var capturedPauseMicroseconds = Interlocked.Exchange(ref pauseMicroseconds, 0);
+            var withoutPausesSummary = withoutPauses.CaptureAndReset(
+                out var capturedPausedSamples,
+                out var capturedPauseMicroseconds);
             return summary is null
                 ? null
                 : summary with
@@ -787,9 +859,11 @@ public sealed class RealtimePerformanceMetrics : IDisposable
 
     // The slowest tick of each metrics interval, with how long each tick phase and phase part took
     // in it. The loop sums what the timers record into the running tick and, at the tick's end,
-    // keeps the tick when it is the slowest of the interval so far. Each interval has its own slot
-    // whose version is odd while the loop writes it, so the reporter copies a slot without a lock
-    // and copies again when the loop wrote meanwhile; the loop never waits.
+    // keeps the tick when it is the slowest of the interval so far. Each interval has its own slot,
+    // and the loop says that it is ending a tick before it reads which interval runs, so the
+    // reporter, which starts the next interval first, waits for a tick that still belongs to the
+    // interval it takes and then reads a slot that the loop no longer writes. The loop never
+    // waits.
     internal sealed class SlowestTickRecorder
     {
         // Timers beyond it stay out of the breakdown.
@@ -799,6 +873,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         private readonly IntervalSlot[] slots = [new(), new()];
         private int assignedSlots;
         private long interval;
+        private int endingTick;
 
         // A place for one more timer, during composition and under the metrics' timer gate.
         public int AddSlot()
@@ -817,8 +892,18 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             running[slot] = double.IsNaN(value) ? milliseconds : value + milliseconds;
         }
 
-        public void EndTick(double milliseconds, double gcPauseMilliseconds, long spawnPackets, long despawnPackets)
+        // cpuMilliseconds is NaN without a CPU clock.
+        public void EndTick(
+            double milliseconds,
+            double gcPauseMilliseconds,
+            long spawnPackets,
+            long despawnPackets,
+            double cpuMilliseconds = double.NaN)
         {
+            // Said with a full fence before the interval is read: the reporter either sees it and
+            // waits, or has started the next interval already, which this tick then reads.
+            Interlocked.Exchange(ref endingTick, 1);
+
             // Slot intervals count from 1, so a slot that was never written matches none.
             var stamp = Volatile.Read(ref interval) + 1;
             var slot = slots[stamp & 1];
@@ -828,12 +913,14 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 slot.Interval = stamp;
                 slot.Milliseconds = milliseconds;
                 slot.GcPauseMilliseconds = gcPauseMilliseconds;
+                slot.CpuMilliseconds = cpuMilliseconds;
                 slot.SpawnPackets = spawnPackets;
                 slot.DespawnPackets = despawnPackets;
                 Array.Copy(running, slot.Timings, Capacity);
                 Interlocked.Increment(ref slot.Version);
             }
 
+            Volatile.Write(ref endingTick, 0);
             Array.Fill(running, double.NaN);
         }
 
@@ -843,10 +930,19 @@ public sealed class RealtimePerformanceMetrics : IDisposable
         {
             var stamp = Interlocked.Increment(ref interval);
             var slot = slots[stamp & 1];
+
+            // A tick that read the interval before it advanced is still being kept in this slot.
+            var ending = default(SpinWait);
+            while (Volatile.Read(ref endingTick) != 0)
+            {
+                ending.SpinOnce();
+            }
+
             var timings = new double[Capacity];
             long slotInterval;
             double milliseconds;
             double gcPauseMilliseconds;
+            double cpuMilliseconds;
             long spawnPackets;
             long despawnPackets;
             var spinner = new SpinWait();
@@ -858,6 +954,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                     slotInterval = slot.Interval;
                     milliseconds = slot.Milliseconds;
                     gcPauseMilliseconds = slot.GcPauseMilliseconds;
+                    cpuMilliseconds = slot.CpuMilliseconds;
                     spawnPackets = slot.SpawnPackets;
                     despawnPackets = slot.DespawnPackets;
                     Array.Copy(slot.Timings, timings, Capacity);
@@ -876,7 +973,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 : new RealtimeSlowestTick(milliseconds, gcPauseMilliseconds, Named(phases, timings), Named(parts, timings))
                 {
                     SpawnPackets = spawnPackets,
-                    DespawnPackets = despawnPackets
+                    DespawnPackets = despawnPackets,
+                    CpuMilliseconds = double.IsNaN(cpuMilliseconds) ? null : cpuMilliseconds
                 };
         }
 
@@ -908,6 +1006,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             public long Interval;
             public double Milliseconds;
             public double GcPauseMilliseconds;
+            public double CpuMilliseconds = double.NaN;
             public long SpawnPackets;
             public long DespawnPackets;
         }

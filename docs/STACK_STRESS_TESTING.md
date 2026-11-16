@@ -1895,8 +1895,9 @@ copies the records of the remote snapshots as a transport copies a packet, and
 discards the rest; the benchmark reads the copied records' entity ids after
 the tick, outside the measured phases. Nothing needs GameService or a
 database. The real
-`SimulationTickLoop` runs two phases: a seeded motion in the place of movement
-and the Mob brains, and the snapshot broadcast with its interest refresh. A
+`SimulationTickLoop` runs three phases: a seeded motion in the place of
+movement and the Mob brains, the interest refresh on the tick before each
+snapshot tick, and the snapshot broadcast on the snapshot ticks. A
 clock that advances one tick per tick drives the byte budgets, so the ticks run
 as fast as the machine allows and the budgets still refill as at the tick rate.
 
@@ -1947,7 +1948,7 @@ Per layout, over the measured ticks:
   interest refresh, and the snapshot broadcast, the bytes allocated per tick,
   the garbage collections and pause milliseconds per second of the World, the
   average of every tick phase, and the wall time; and the average and the
-  exact 99th percentile of every part of the snapshot phase, as
+  exact 99th percentile of every part of the interest and snapshot phases, as
   [Monitoring](MONITORING.md#simulationworker) names them under
   `simulation_worker.simulation.tick_phase_part.duration`, which the script
   prints in a second table.

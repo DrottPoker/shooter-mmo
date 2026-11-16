@@ -85,7 +85,7 @@ internal sealed class WorldActorFeature
         WorldInteractionHandler.AddRoute(core.Registries.Routes, Interactions.HandleIntent);
         var tickPhases = core.Registries.TickPhases;
         Driver.AddTickPhase(tickPhases);
-        Interactions.AddTickPhase(tickPhases, core.Config.MovementSimulation.TickRateHz);
+        Interactions.AddTickPhase(tickPhases, core.Registries.TickCadence, core.Config.MovementSimulation.TickRateHz);
         gathering.AddTickPhase(tickPhases);
         var shutdown = core.Registries.ShutdownSteps;
         var leases = core.WorldInteractionLeases;

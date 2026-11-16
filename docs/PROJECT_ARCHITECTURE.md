@@ -360,14 +360,35 @@ contract:
   positions; due world actor timers and world actor activity; Mob brains and
   movement; the combat phase; the lingering bodies whose time is up, whose
   death committed, or whose session ended; interaction revalidation every fifth
-  of a second while world interactions run; the gathering pass; changed looks
-  and then snapshots at the snapshot rate; corpse presence twice per second;
-  the notice to every joined peer when GameService stops or starts answering;
-  and the character checkpoint at its interval. The loop fills the players of the tick
-  once, in entity id order, and hands every phase the server tick, those
-  players, and the player grid; a phase that runs less often than every tick
-  decides that itself. At most five ticks catch up before
-  the clock resynchronizes.
+  of a second while world interactions run; the gathering pass; the changed
+  looks; the interest refresh with its spawns and despawns; the snapshots;
+  corpse presence twice per second; the notice to every joined peer when
+  GameService stops or starts answering; and the character checkpoint at its
+  interval. The loop fills the players of the tick once, in entity id order,
+  and hands every phase the server tick, those players, and the player grid.
+  At most five ticks catch up before the clock resynchronizes.
+- A phase that runs less often than every tick takes its ticks from
+  `Realtime/Movement/SimulationTickCadence.cs`, never from a modulo of its own,
+  so a snapshot tick carries the snapshots and no other periodic pass. The
+  snapshots run on the snapshot ticks, every `TickRateHz / SnapshotRateHz`
+  ticks, the even ticks by default. The changed looks and the interest refresh
+  run on the tick before each snapshot tick, so the snapshot right after them
+  carries every entity that came into view; a spawn so leaves one tick before
+  the first record of its entity, and carries that tick and the pose of that
+  tick. Every other pass with a fixed period takes a lane at composition: a
+  place in its period that keeps it off the ticks of the lanes taken before it
+  and, where another tick is free, off the interest tick, a run that would land
+  on a snapshot tick moving to the tick after it. By default corpse presence
+  runs on the ticks 1 and 15 of every 30 and the interaction revalidation on 5,
+  11, 17, 23, and 29. The character checkpoint, whose due tick moves with its
+  own runs, waits for the first tick that no snapshot and no lane takes, at
+  most a second. With one snapshot per tick every tick is a snapshot tick and
+  the passes keep their own ticks. A test runs the composed phases and fails
+  when a periodic phase works on a snapshot tick. Only the tick on which a
+  periodic pass and its messages run moves, by one tick; the simulation's
+  states at each tick stay the same. The world actor activity and the
+  population gauges inside the world actor phase keep their ticks: the
+  activity tier is part of the simulation, and the gauges cost little.
 - Shutdown stops the transport, waits for in-flight operations, and then runs
   the registered shutdown steps in the order that
   `Realtime/RealtimeShutdownOrder.cs` declares: the combat authority

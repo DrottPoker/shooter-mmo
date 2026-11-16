@@ -34,16 +34,19 @@ internal sealed class WorldInteractionHandler(
         routes.AddAuthenticated(RealtimeMessageType.WorldInteractionIntent, DeliveryRejection, handler);
     }
 
-    // Revalidates the open interactions five times a second while world interactions run.
-    public void AddTickPhase(SimulationTickPhases phases, int tickRateHz)
+    // Revalidates the open interactions five times a second on its lane while world interactions
+    // run.
+    public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence, int tickRateHz)
     {
-        var intervalTicks = Math.Max(1, tickRateHz / 5);
+        ArgumentNullException.ThrowIfNull(cadence);
+        const string phaseName = "interaction revalidation";
+        var lane = cadence.AddLane(phaseName, Math.Max(1, tickRateHz / 5));
         phases.AddPeriodic(
             SimulationTickOrder.InteractionRevalidation,
-            "interaction revalidation",
+            phaseName,
             (in SimulationTick tick) =>
             {
-                if (!IsActive || tick.ServerTick % intervalTicks != 0)
+                if (!IsActive || !lane.IsDue(tick.ServerTick))
                 {
                     return false;
                 }

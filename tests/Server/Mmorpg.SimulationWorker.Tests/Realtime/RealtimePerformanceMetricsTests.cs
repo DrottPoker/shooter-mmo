@@ -176,28 +176,111 @@ public sealed class RealtimePerformanceMetricsTests
         Assert.Contains("latency mode", GcPauseMonitor.DescribeConfiguration(), StringComparison.Ordinal);
     }
 
+    // Each tick is slower than every tick before it, and the loop ends the next one only after
+    // the reporter took two more intervals, so every tick is the slowest of the interval it
+    // falls into and must come back from exactly one of them.
     [Fact]
-    public async Task ConcurrentCaptureDoesNotLoseDurationSamples()
+    public async Task NoIntervalLosesATickThatEndsWhileItIsTaken()
+    {
+        var recorder = new RealtimePerformanceMetrics.SlowestTickRecorder();
+        var phases = new List<RealtimePerformanceMetrics.DurationTimer>();
+        var parts = new List<RealtimePerformanceMetrics.DurationTimer>();
+        const int ticks = 20_000;
+        long taken = 0;
+        var stop = 0;
+        var seen = new bool[ticks + 1];
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var reporter = Task.Run(
+            () =>
+            {
+                while (Volatile.Read(ref stop) == 0)
+                {
+                    if (recorder.TakeInterval(phases, parts) is { } slowest)
+                    {
+                        var index = (int)slowest.Milliseconds;
+                        Assert.False(seen[index], $"Tick {index} came back twice.");
+                        seen[index] = true;
+                    }
+
+                    Interlocked.Increment(ref taken);
+                }
+            },
+            cancellationToken);
+
+        try
+        {
+            for (var tick = 1; tick <= ticks; tick++)
+            {
+                recorder.EndTick(tick, 0d, 0, 0);
+                var after = Volatile.Read(ref taken) + 2;
+                var wait = default(SpinWait);
+                while (Volatile.Read(ref taken) < after)
+                {
+                    Assert.False(reporter.IsCompleted, "The reporter stopped early.");
+                    wait.SpinOnce();
+                }
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref stop, 1);
+            await reporter;
+        }
+
+        for (var tick = 1; tick <= ticks; tick++)
+        {
+            Assert.True(seen[tick], $"Tick {tick} was lost.");
+        }
+    }
+
+    // Every sample is 0.25 ms, so a capture that held a sample's duration without its count, or
+    // its count without its duration, would show another average or maximum.
+    [Fact]
+    public async Task ConcurrentCaptureHandsOutWholeDurationSamples()
     {
         using var metrics = new RealtimePerformanceMetrics();
-        const int expectedSamples = 10_000;
-        var producer = Task.Run(() =>
-        {
-            for (var index = 0; index < expectedSamples; index++)
-            {
-                metrics.RecordNetworkPoll(TimeSpan.FromMilliseconds(0.25));
-            }
-        }, TestContext.Current.CancellationToken);
+        const int producers = 4;
+        const int samplesPerProducer = 200_000;
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var producing = Enumerable.Range(0, producers)
+            .Select(_ => Task.Run(
+                () =>
+                {
+                    for (var index = 0; index < samplesPerProducer; index++)
+                    {
+                        metrics.RecordNetworkPoll(TimeSpan.FromMilliseconds(0.25));
+                    }
+                },
+                cancellationToken))
+            .ToArray();
+        var all = Task.WhenAll(producing);
 
         long capturedSamples = 0;
-        while (!producer.IsCompleted)
+        var captures = 0;
+        while (!all.IsCompleted)
         {
-            capturedSamples += metrics.CaptureAndReset().NetworkPoll?.Samples ?? 0;
+            capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
+            captures++;
             await Task.Yield();
         }
 
-        await producer;
-        capturedSamples += metrics.CaptureAndReset().NetworkPoll?.Samples ?? 0;
-        Assert.Equal(expectedSamples, capturedSamples);
+        await all;
+        capturedSamples += AssertWholeSamples(metrics.CaptureAndReset().NetworkPoll);
+        Assert.Equal((long)producers * samplesPerProducer, capturedSamples);
+        Assert.True(captures > 1, "No capture ran while the samples were recorded.");
+    }
+
+    private static long AssertWholeSamples(RealtimeDurationSummary? summary)
+    {
+        if (summary is null)
+        {
+            return 0;
+        }
+
+        Assert.Equal(0.25, summary.AverageMilliseconds, 9);
+        Assert.Equal(0.25, summary.MaximumMilliseconds, 9);
+        Assert.Equal(0.25, summary.P95UpperBoundMilliseconds, 9);
+        Assert.Equal(0.25, summary.P99UpperBoundMilliseconds, 9);
+        return summary.Samples;
     }
 }

@@ -434,7 +434,8 @@ internal sealed record ReplicationLayoutResult(
 // Builds the worker's replication objects the way RealtimeServerComposition builds them, on the
 // worker's own appsettings.json, around counting peers and without UDP, GameService, or a
 // database, and runs the tick phases that replication needs: a seeded motion in the place of
-// movement and the Mob brains, and the snapshot broadcast with its interest refresh. Every
+// movement and the Mob brains, the interest refresh on the tick before each snapshot tick, and
+// the snapshot broadcast. Every
 // timing it reports comes from the loop's own timers and histograms.
 internal sealed class ReplicationBenchmark : IDisposable
 {
@@ -571,7 +572,9 @@ internal sealed class ReplicationBenchmark : IDisposable
         isolation.AddHooks(hooks);
 
         var phases = new SimulationTickPhases();
+        var cadence = new SimulationTickCadence(config.MovementSimulation.TickRateHz, config.SnapshotRateHz);
         phases.Add(SimulationTickOrder.Movement, MotionPhaseName, (in SimulationTick _) => Move());
+        new InterestRefresher(entities, presence, performanceMetrics).AddTickPhase(phases, cadence);
         new SnapshotReplicator(
             config,
             mobSnapshots,
@@ -584,7 +587,7 @@ internal sealed class ReplicationBenchmark : IDisposable
             performanceMetrics,
             clock,
             isolation,
-            timeProvider).AddTickPhase(phases);
+            timeProvider).AddTickPhase(phases, cadence);
         loop = new SimulationTickLoop(clock, entities, phases, performanceMetrics, loopGuard, NullLogger.Instance);
     }
 

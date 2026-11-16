@@ -56,7 +56,7 @@ internal static class PersistenceFeature
         hooks.AddPlayerPlacement(persistence.Place);
         hooks.AddPlayerJoined(persistence.OnPlayerJoined);
         hooks.AddPlayerRemoved(persistence.OnPlayerRemoved);
-        persistence.AddTickPhase(core.Registries.TickPhases);
+        persistence.AddTickPhase(core.Registries.TickPhases, core.Registries.TickCadence);
         core.Registries.ShutdownSteps.AddAsync(
             RealtimeShutdownOrder.CharacterStateFlush,
             "character state flush",

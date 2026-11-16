@@ -129,6 +129,64 @@ public sealed class AppearanceReplicatorTests
         }
     }
 
+    // Every spawn of a player carries one look that is built once, and a change of the look, the
+    // items, or the used slot replaces it, also when the broadcast saw the change first.
+    [Fact]
+    public void TheSpawnLookIsBuiltOnceAndReplacedWhenTheAppearanceChanges()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var looks = new CharacterLookStore();
+        var replicator = new AppearanceReplicator(
+            fixture.Registry,
+            fixture.Sender,
+            fixture.Presence,
+            fixture.Entities,
+            fixture.Bindings,
+            fixture.CharacterItemStateStore,
+            looks,
+            AppearanceReplicationSettings.Default,
+            fixture.FailureIsolation);
+        var player = fixture.ConnectPlayer(1, "Looker");
+        looks.Register(
+            player.Session.CharacterId,
+            player.Session.SimulationSessionId,
+            player.Session.SimulationSessionToken,
+            new CharacterLook(CharacterStateTestData.Appearance));
+
+        var first = replicator.SpawnAppearanceOf(player.Entity);
+        Assert.Same(first, replicator.SpawnAppearanceOf(player.Entity));
+        Assert.False(first.HeadwearLowered);
+
+        Assert.True(looks.TryApply(
+            player.Session.CharacterId,
+            player.Session.SimulationSessionId,
+            player.Session.SimulationSessionToken,
+            CharacterStateTestData.Appearance with { HeadwearLowered = true }));
+        var lowered = replicator.SpawnAppearanceOf(player.Entity);
+        Assert.NotSame(first, lowered);
+        Assert.True(lowered.HeadwearLowered);
+        Assert.Same(lowered, replicator.SpawnAppearanceOf(player.Entity));
+
+        var carry = player.Session.CarryState;
+        Assert.Equal(ItemStateApplyResult.Applied, fixture.CharacterItemStateStore.ApplyCommitted(
+            player.Session.CharacterId,
+            player.Session.SimulationSessionId,
+            CharacterStateTestData.ItemState(
+                new PlayerCarryState(carry.ItemStateRevision + 1, carry.CarriedWeight, carry.CarryCapacity),
+                new SimulationEquippedItem("tool", Guid.NewGuid(), "tool.starter_pickaxe", 1, 1)),
+            out _));
+        player.Entity.UsedEquipmentSlot = "tool";
+        var gathering = replicator.SpawnAppearanceOf(player.Entity);
+        Assert.Equal("tool.starter_pickaxe", gathering.ToolInUse);
+
+        // The broadcast builds the look of a change itself, and the spawns take that one.
+        player.Entity.UsedEquipmentSlot = string.Empty;
+        replicator.Broadcast();
+        var stopped = replicator.SpawnAppearanceOf(player.Entity);
+        Assert.Equal(string.Empty, stopped.ToolInUse);
+        Assert.Same(stopped, replicator.SpawnAppearanceOf(player.Entity));
+    }
+
     private static void SpawnEveryoneForEveryone(RealtimeLoopFixture fixture)
     {
         var players = new List<Mmorpg.SimulationWorker.Entities.PlayerSimulationEntity>();
@@ -136,7 +194,7 @@ public sealed class AppearanceReplicatorTests
         fixture.Presence.SynchronizeInterestIndex(players);
         for (var refresh = 0; refresh < 64; refresh++)
         {
-            fixture.Presence.RefreshInterests(null);
+            fixture.Presence.RefreshInterests();
         }
     }
 

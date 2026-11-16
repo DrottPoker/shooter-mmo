@@ -47,16 +47,17 @@ internal sealed class CorpsePresenceReplicator(
     // The equipment slots whose items a player corpse shows.
     public IReadOnlyList<string> VisibleEquipmentSlots { get; init; } = [];
 
-    // Sends corpse presence twice a second.
-    public void AddTickPhase(SimulationTickPhases phases)
+    // Sends corpse presence twice a second on its lane.
+    public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence)
     {
-        var intervalTicks = Math.Max(1, config.MovementSimulation.TickRateHz / 2);
+        ArgumentNullException.ThrowIfNull(cadence);
+        var lane = cadence.AddLane(PhaseName, Math.Max(1, config.MovementSimulation.TickRateHz / 2));
         phases.AddPeriodic(
             SimulationTickOrder.CorpsePresence,
             PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks != 0)
+                if (!lane.IsDue(tick.ServerTick))
                 {
                     return false;
                 }
