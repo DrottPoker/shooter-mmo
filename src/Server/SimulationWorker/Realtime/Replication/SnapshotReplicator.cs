@@ -44,6 +44,24 @@ internal sealed class SnapshotReplicator(
         config.UdpQuotas.AggregateSnapshotBytesPerSecond,
         config.UdpQuotas.AggregateSnapshotByteBurst,
         timeProvider);
+
+    // Where a snapshot's time goes: the records, the interest index and refresh, the owner
+    // snapshots, and the remote snapshots' plans, chunk encoding, and sends, each summed over
+    // the recipients.
+    private readonly RealtimePerformanceMetrics.DurationTimer recordsTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "records");
+    private readonly RealtimePerformanceMetrics.DurationTimer interestIndexTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "interest index");
+    private readonly RealtimePerformanceMetrics.DurationTimer interestRefreshTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "interest refresh");
+    private readonly RealtimePerformanceMetrics.DurationTimer ownerSnapshotsTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "owner snapshots");
+    private readonly RealtimePerformanceMetrics.DurationTimer remotePlansTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "remote plans");
+    private readonly RealtimePerformanceMetrics.DurationTimer remoteEncodingTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "remote encoding");
+    private readonly RealtimePerformanceMetrics.DurationTimer remoteSendsTimer =
+        performanceMetrics.TickPhasePartTimer(PhaseName, "remote sends");
     private uint snapshotSequence;
 
     // Sends the snapshots at the snapshot rate.
@@ -110,10 +128,15 @@ internal sealed class SnapshotReplicator(
 
             records.EndReports();
             var interestStarted = Stopwatch.GetTimestamp();
+            recordsTimer.Record(Stopwatch.GetElapsedTime(broadcastStarted, interestStarted));
             presence.SynchronizeInterestIndex(playerBuffer);
+            var refreshStarted = Stopwatch.GetTimestamp();
+            interestIndexTimer.Record(Stopwatch.GetElapsedTime(interestStarted, refreshStarted));
             presence.RefreshInterests(null);
+            var interestEnded = Stopwatch.GetTimestamp();
+            interestRefreshTimer.Record(Stopwatch.GetElapsedTime(refreshStarted, interestEnded));
             performanceMetrics.RecordInterestRefresh(
-                Stopwatch.GetElapsedTime(interestStarted));
+                Stopwatch.GetElapsedTime(interestStarted, interestEnded));
 
             snapshotSequence = sequence;
 
@@ -183,6 +206,13 @@ internal sealed class SnapshotReplicator(
                 }
             }
 
+            // The owner snapshots include gathering the recipients.
+            ownerSnapshotsTimer.Record(Stopwatch.GetElapsedTime(interestEnded));
+
+            // Stopwatch ticks summed over the recipients, timed at the boundaries between the parts.
+            long planTicks = 0;
+            long encodingTicks = 0;
+            long sendTicks = 0;
             var recipientStart = snapshotRecipientRotation.Begin(
                 snapshotRecipientBuffer.Count);
             var lastAdmittedRecipientOffset = -1;
@@ -193,6 +223,7 @@ internal sealed class SnapshotReplicator(
                 var recipient = snapshotRecipientBuffer[
                     (recipientStart + recipientIndex) % snapshotRecipientBuffer.Count];
                 var sent = false;
+                var partStarted = Stopwatch.GetTimestamp();
                 try
                 {
                     presence.GetVisibleSpans(recipient.Context.PeerId, out var orderedVisible, out var orderedNear, out var visibleVersion);
@@ -203,6 +234,9 @@ internal sealed class SnapshotReplicator(
                         orderedNear,
                         bytesPerRecipient,
                         visibleVersion);
+                    var planned = Stopwatch.GetTimestamp();
+                    planTicks += planned - partStarted;
+                    partStarted = planned;
                     deferredEntityUpdateCount += plan.DeferredCount;
                     if (plan.PacketCount == 0)
                     {
@@ -230,11 +264,15 @@ internal sealed class SnapshotReplicator(
                             packetIndex,
                             clock.ServerTick,
                             out var recordCount);
+                        var encoded = Stopwatch.GetTimestamp();
+                        encodingTicks += encoded - partStarted;
                         encodedPacketCount++;
                         sender.SendUnreliable(recipient.Peer, packet);
                         sentPacketCount++;
                         networkMetrics.RecordSnapshotEntities(recordCount);
                         networkMetrics.RecordSnapshotBytes(packet.Length);
+                        partStarted = Stopwatch.GetTimestamp();
+                        sendTicks += partStarted - encoded;
                     }
 
                     sent = true;
@@ -246,6 +284,7 @@ internal sealed class SnapshotReplicator(
                 finally
                 {
                     scheduler.Complete(sent);
+                    planTicks += Stopwatch.GetTimestamp() - partStarted;
                 }
             }
 
@@ -253,6 +292,9 @@ internal sealed class SnapshotReplicator(
                 snapshotRecipientBuffer.Count,
                 lastAdmittedRecipientOffset);
             ForgetStaleRecipients();
+            remotePlansTimer.Record(Stopwatch.GetElapsedTime(0, planTicks));
+            remoteEncodingTimer.Record(Stopwatch.GetElapsedTime(0, encodingTicks));
+            remoteSendsTimer.Record(Stopwatch.GetElapsedTime(0, sendTicks));
         }
         finally
         {

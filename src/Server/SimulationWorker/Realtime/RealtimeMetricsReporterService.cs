@@ -4,20 +4,22 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Config;
+using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Every NetworkMetricsLogSeconds it captures one interval of the realtime metrics, writes the
 // status, network, and performance log lines from it, and, when PerformanceReportPath is set,
-// appends the same interval to the performance file, with the worker's Mob numbers.
+// appends the same interval to the performance file, with the worker's Mob and corpse numbers.
 public sealed class RealtimeMetricsReporterService(
     RealtimeNetworkMetrics metrics,
     RealtimePerformanceMetrics performanceMetrics,
     SimulationWorkerConfig config,
     ILogger<RealtimeMetricsReporterService> logger,
     CombatMetrics? combatMetrics = null,
-    WorldActorMetrics? worldActorMetrics = null) : BackgroundService
+    WorldActorMetrics? worldActorMetrics = null,
+    CorpseRuntimeMetrics? corpseMetrics = null) : BackgroundService
 {
     private long previousMobPathPlans = combatMetrics?.CaptureMobActivity().MobPathPlans ?? 0;
 
@@ -83,7 +85,8 @@ public sealed class RealtimeMetricsReporterService(
             RealtimeMetricsInterval.Subtract(snapshot, previousNetwork),
             performanceMetrics.CaptureAndReset())
         {
-            Mobs = CaptureMobs()
+            Mobs = CaptureMobs(),
+            Corpses = corpseMetrics?.Capture()
         };
         previousSampleTime = sampleTime;
         previousSampleUtc = sampleUtc;
@@ -135,7 +138,7 @@ public sealed class RealtimeMetricsReporterService(
 
         var performance = interval.Performance;
         logger.LogInformation(
-            "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot remote recipients {SnapshotRemoteRecipients}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}; loop failures of whole steps {LoopStepFailures} and of single players or peers {LoopIsolatedFailures}; loop thread busy {LoopBusyPercent:F1}% of the interval; GC pauses {GcPauseMs:F1} ms.",
+            "[SIMULATION] Performance metrics for the interval: network poll {NetworkPoll}; completed operations {CompletedOperations}; join queue delay {JoinQueueDelay}; join finalization {JoinFinalization}; completed-operation backlog current {CompletedOperationBacklog}, max {MaximumCompletedOperationBacklog}; corpse mutation backlog current {CorpseMutationBacklog}, max {MaximumCorpseMutationBacklog}, active aggregates {ActiveCorpseMutations}; simulation tick {SimulationTick}; tick lag {TickLag}; collision streaming {CollisionStreaming}; movement {Movement}; interest {Interest}; snapshot broadcast {SnapshotBroadcast}; tick resynchronizations {TickResynchronizations}, overruns {TickOverruns}; process allocated {ProcessAllocatedMiB:F3} MiB; GC collections gen0 {Generation0Collections}, gen1 {Generation1Collections}, gen2 {Generation2Collections}; managed heap {ManagedHeapMiB:F3} MiB, fragmented {ManagedHeapFragmentedMiB:F3} MiB, live managed memory {TotalManagedMemoryMiB:F3} MiB; snapshot remote recipients {SnapshotRemoteRecipients}, packets encoded {SnapshotPacketsEncoded}, packets sent {SnapshotPacketsSent}, entity updates deferred {SnapshotEntityUpdatesDeferred}; loop failures of whole steps {LoopStepFailures} and of single players or peers {LoopIsolatedFailures}; loop thread busy {LoopBusyPercent:F1}% of the interval; GC pauses {GcPauseMs:F1} ms, {GcPauses}; inside ticks {GcPauseInTicksMs:F1} ms in {GcPausedTicks} ticks, overruns without their pauses {TickOverrunsWithoutGcPauses}.",
             Format(performance.NetworkPoll),
             Format(performance.CompletedOperations),
             Format(performance.JoinQueueDelay),
@@ -167,7 +170,11 @@ public sealed class RealtimeMetricsReporterService(
             performance.LoopStepFailures,
             performance.LoopIsolatedFailures,
             interval.LoopBusyPercent,
-            performance.GcPauseMilliseconds);
+            performance.GcPauseMilliseconds,
+            Format(performance.GcPauses),
+            performance.SimulationTick?.GcPauses?.PauseMilliseconds ?? 0d,
+            performance.SimulationTick?.GcPauses?.PausedSamples ?? 0L,
+            performance.TickOverrunsWithoutGcPauses);
     }
 
     private RealtimeMobActivity? CaptureMobs()
@@ -192,6 +199,15 @@ public sealed class RealtimeMetricsReporterService(
     {
         using var process = Process.GetCurrentProcess();
         return process.TotalProcessorTime;
+    }
+
+    private static string Format(RealtimeGcPauseCounts? pauses)
+    {
+        return pauses is null
+            ? "single pauses not watched"
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"{pauses.Pauses} pauses (gen0 {pauses.Generation0Pauses}, gen1 {pauses.Generation1Pauses}, gen2 {pauses.Generation2Pauses}), longest {pauses.LongestPauseMilliseconds:F3} ms");
     }
 
     private static string Format(RealtimeDurationSummary? summary)

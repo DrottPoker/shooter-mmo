@@ -162,7 +162,7 @@ entity, peer, or runtime id as a label.
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
-| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase and every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
+| `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase, of the parts of the phases that time themselves, and of every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
@@ -200,6 +200,7 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.simulation.tick.overruns` | counter | Ticks that took longer than the tick interval. |
 | `simulation_worker.simulation.tick.resynchronizations` | counter | Times the clock skipped time after five catch-up ticks. |
 | `simulation_worker.simulation.tick_phase.duration` | histogram, ms | Every tick phase, labeled `phase` with the name it registered under, such as `collision streaming`, `movement`, `mobs`, `combat`, or `snapshots`. A phase is timed only on the ticks on which it did its work: a periodic phase that was not due, such as the snapshots on every second tick, and a run that threw are no samples. |
+| `simulation_worker.simulation.tick_phase_part.duration` | histogram, ms | The parts of the tick phases that time where their own time goes, labeled `part` with `<phase>: <part>`, one sample per run of the phase. `snapshots`: `records` (the entity records and the owner states), `interest index` (the interest index brought to the entities' positions), `interest refresh` (the connections whose refresh is due, with the spawns and despawns they send), `owner snapshots` (gathering the recipients and their owner snapshots), and, summed over the recipients, `remote plans` (the scheduler's plan and its completion), `remote encoding` (the chunk packets), and `remote sends` (handing them to the transport). `corpse presence`: `collection` (the active corpses, sorted, and the views of expired ones closed), `selection` (every peer's corpses in range and its loot groups, compared with what it got last), and `sends` (the presences that changed, built and sent). |
 | `simulation_worker.simulation.collision_streaming.duration`, `.movement.duration`, `.interest.duration`, `.snapshot_broadcast.duration` | histogram, ms | Four tick phases timed inside themselves, kept for the dashboards and the load tooling. The snapshot broadcast is the complete snapshot pipeline and includes the separately reported interest phase. |
 | `simulation_worker.simulation.collision_streaming.pending_steps` | counter | Steps that a player or Mob did not take because collision chunks around it still loaded on the streaming loader, as [Collision Data And Streaming](SERVICE_FEATURES.md#collision-data-and-streaming) describes. With the default radii it stays at zero in play; a value above zero means the loader fell behind the movers. |
 | `simulation_worker.loop.step.duration` | histogram, ms | Every step of a loop iteration outside the tick, labeled `step`: `network poll`, `completed operations`, `peer supervision`, `orphan sweep`, and `send flush`. |
@@ -404,7 +405,16 @@ entries of both processes, and the trace share one id.
   memory, the recipients of remote snapshots, encoded and sent snapshot packets, tick
   overruns, the loop failures of whole steps and of single players or
   peers, the share of the interval that the loop thread was busy, and the
-  garbage collection pauses of the interval.
+  garbage collection pauses of the interval: their time, their number by the
+  generation of the collection that paused the process, the longest one, the
+  pause time that fell inside ticks and the ticks it fell into, and the
+  overruns that stay over the tick interval without their pauses. The worker
+  counts the pauses one by one from the runtime's own GC events, from the
+  suspension of the threads to their restart; a pause without a collection
+  start of its own, such as the last one of a background collection, counts as
+  generation 2. At its start the worker logs how its garbage collector runs,
+  such as `workstation, concurrent, latency mode Interactive`, the default of
+  the worker, which sets nothing about it.
 - With `SimulationWorker:PerformanceReportPath` set, environment form
   `SimulationWorker__PerformanceReportPath`, the worker also appends each
   interval of these three lines to that file as one JSON object per line,
@@ -412,13 +422,26 @@ entries of both processes, and the trace share one id.
   length; players, bots, peers, and entities; CPU and working set; the tick
   and every timed phase with samples, average, p95 and p99 bucket bounds, and
   maximum, among them `phases`, every tick phase that did its work in the
-  interval by its name in tick order, and `loopSteps`, every step of a loop
-  iteration outside the tick by its name; `loopBusyPercent`, the share of the
+  interval by its name in tick order, `phaseParts`, the parts of the phases
+  that time themselves by `<phase>: <part>`, as
+  `simulation_worker.simulation.tick_phase_part.duration` lists them, and
+  `loopSteps`, every step of a loop iteration outside the tick by its name;
+  for the tick and every tick phase, `gcPausedSamples`, the samples that a
+  garbage collection pause fell into, `gcPauseMs`, the pause time inside
+  them, and `p99WithoutGcPausesMs` and `maximumWithoutGcPausesMs`, the p99
+  bucket and the longest sample once each sample's own pauses are taken out
+  of it, so a sample that is long only by a pause shows as such;
+  `slowestTick`, the interval's slowest tick with `ms`, its `gcPauseMs`, the
+  `spawnPackets` and `despawnPackets` it sent, and the milliseconds of every
+  phase and phase part that ran in it, in `phases` and `phaseParts`; `loopBusyPercent`, the share of the
   interval that the loop thread spent in its ticks and loop steps, beside the
   process CPU, which also holds the transport's threads; `gcPauseMs`, the
-  garbage collection pauses of the interval; `collisionPendingSteps`, the
+  garbage collection pauses of the interval, and `gcPauses`,
+  `gcGeneration0Pauses`, `gcGeneration1Pauses`, `gcGeneration2Pauses`, and
+  `gcLongestPauseMs`, the pauses one by one; `collisionPendingSteps`, the
   steps that movers skipped because their collision chunks still loaded;
-  tick overruns and
+  tick overruns, `tickOverrunsWithoutGcPauses`, the overruns that stay over
+  the tick interval without their pauses, and
   resynchronizations; the loop failures,
   `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
@@ -431,7 +454,8 @@ entries of both processes, and the trace share one id.
   Mob numbers of the combat and world actor meters, the living Mobs,
   `engagedMobs`, `movingMobs`, and
   `mobPathQueue` as their current gauges and `mobPathPlans`, the Mob routes
-  planned in the interval. A failed write is logged as a warning
+  planned in the interval; and `durableCorpses` and `liveCorpses`, the active
+  corpses at the end of the interval. A failed write is logged as a warning
   and never stops the worker; without the setting nothing is written. The file
   is diagnostics for the load tooling, as
   [Stack Stress Testing](STACK_STRESS_TESTING.md#measurements) describes, not a
@@ -574,7 +598,15 @@ to the system, request, or database command that caused it.
   OpenTelemetry SDK attached that is a lock-free bucket update without
   allocation, which `RealtimeMetricsAllocationTests` enforces. The interval
   percentile accumulator of the periodic performance log does not allocate per
-  sample either.
+  sample either, and it counts with `Interlocked` operations, so the loop never
+  waits for the reporter that takes an interval.
+- The garbage collection pause inside the tick and each phase comes from the
+  process's total pause time, read before and after them. The slowest tick's
+  breakdown is a fixed array per interval that the loop fills and the reporter
+  copies without a lock, trying again when the loop wrote meanwhile. The
+  single pauses come from the runtime's GC events on the runtime's own event
+  thread, which the loop never touches. The snapshot phase reads the clock at
+  the boundaries of its parts, about six times per recipient.
 - The SDK collects, batches, and exports on its own threads. Spans and log
   export never run inside the fixed tick.
 

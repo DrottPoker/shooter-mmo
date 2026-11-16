@@ -53,6 +53,49 @@ public sealed class SimulationTickLoopTests
         Assert.Equal(0, guard.TotalFailures);
     }
 
+    // Every tick and phase is timed with the garbage collection pause inside it, and the slowest
+    // tick of the interval keeps its phases and the spawn and despawn packets it sent.
+    [Fact]
+    public void TheSlowestTickKeepsItsPhasesAndTheSpawnsItSent()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        using var network = new RealtimeNetworkMetrics();
+        var phases = new SimulationTickPhases();
+        phases.Add(SimulationTickOrder.Movement, "movement", (in SimulationTick _) => { });
+        phases.Add(SimulationTickOrder.Snapshots, "snapshots", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick != 2)
+            {
+                return;
+            }
+
+            // The second tick sends a wave of spawns and takes the longest.
+            for (var index = 0; index < 5; index++)
+            {
+                network.RecordSpawnPacket();
+            }
+
+            network.RecordDespawnPacket();
+            Thread.Sleep(20);
+        });
+        var guard = new RealtimeLoopGuard(SimulationWorkerConfig.DefaultTickPhaseFailureLimit, fixture.Clock, metrics, NullLogger.Instance);
+        var loop = new SimulationTickLoop(fixture.Clock, fixture.Entities, phases, metrics, guard, NullLogger.Instance, network);
+        var nextTick = TimeSpan.Zero;
+
+        RunTicks(loop, ref nextTick, 3);
+
+        var snapshot = metrics.CaptureAndReset();
+        var slowest = snapshot.SlowestTick!;
+        Assert.True(slowest.Milliseconds >= 20d);
+        Assert.Equal(5, slowest.SpawnPackets);
+        Assert.Equal(1, slowest.DespawnPackets);
+        Assert.Equal(["movement", "snapshots"], slowest.Phases.Select(phase => phase.Name));
+        Assert.True(slowest.Phases[1].Milliseconds >= 20d);
+        Assert.NotNull(snapshot.SimulationTick!.GcPauses);
+        Assert.All(snapshot.TickPhases, phase => Assert.NotNull(phase.Summary.GcPauses));
+    }
+
     // A phase that throws is logged once and skipped for this tick only: the later phases of the
     // tick run, the tick counts, and the next tick runs every phase.
     [Fact]
@@ -700,6 +743,103 @@ public sealed class SimulationTickLoopTests
         Assert.Equal(2, PresentedCorpses(first.Peer).Count);
         Assert.Equal(2, PresentedCorpses(second.Peer).Count);
         Assert.Equal(PresentedCorpses(first.Peer)[0], PresentedCorpses(first.Peer)[1]);
+    }
+
+    // A broadcast tests each peer only against the corpses of the cells its discovery radius
+    // reaches, and still finds exactly the corpses a test of every active corpse finds: on the
+    // radius, just beyond it, on cell borders, above and below the peer, and at negative
+    // coordinates.
+    [Fact]
+    public void ACorpsePresenceBroadcastFindsTheCorpsesThatATestOfEveryCorpseFinds()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var radius = fixture.Config.ItemInteraction.CorpseDiscoveryRadius;
+        var random = new Random(1116);
+        var players = new List<ConnectedPlayer>();
+        for (var peerId = 1; peerId <= 40; peerId++)
+        {
+            var player = fixture.ConnectPlayer(peerId, $"Corpse Finder {peerId}");
+            // Every fourth peer stands on a cell corner.
+            var x = peerId % 4 == 0 ? radius * random.Next(-3, 4) : (float)((random.NextDouble() * 240d) - 120d);
+            var z = peerId % 4 == 0 ? radius * random.Next(-3, 4) : (float)((random.NextDouble() * 240d) - 120d);
+            player.Entity.Movement.Teleport(new PlayerMovementState(x, 0f, z, 0f, 0f, 0f, 0f, true));
+            players.Add(player);
+        }
+
+        var durable = new DurableCorpseStore(TimeProvider.System);
+        var live = new LiveMobCorpseStore(TimeProvider.System);
+        var views = new CorpseViewDistributor(fixture.CorpseViewers, fixture.Leases, fixture.Registry, fixture.Sender, durable, live);
+        var replicator = new CorpsePresenceReplicator(fixture.Config, durable, live, null, views, fixture.Registry, fixture.Sender);
+        var corpses = new List<LiveMobCorpseState>();
+        for (var index = 0; index < 400; index++)
+        {
+            corpses.Add(live.CreateOrGet(LiveCorpse(Guid.Empty, Guid.Empty) with
+            {
+                CorpseId = Guid.NewGuid(),
+                PositionX = (random.NextDouble() * 300d) - 150d,
+                PositionY = (random.NextDouble() * 20d) - 10d,
+                PositionZ = (random.NextDouble() * 300d) - 150d
+            }));
+        }
+
+        // Around a few peers, corpses on the radius, just inside, and just beyond it.
+        foreach (var player in players.Take(10))
+        {
+            var state = player.Entity.Movement.State;
+            foreach (var (deltaX, deltaZ) in new[] { (radius, 0f), (0f, -radius), (radius * 0.999f, 0f), (-radius * 1.001f, 0f), (0f, radius * 1.0001f) })
+            {
+                corpses.Add(live.CreateOrGet(LiveCorpse(Guid.Empty, Guid.Empty) with
+                {
+                    CorpseId = Guid.NewGuid(),
+                    PositionX = state.PositionX + deltaX,
+                    PositionY = state.PositionY,
+                    PositionZ = state.PositionZ + deltaZ
+                }));
+            }
+        }
+
+        replicator.Broadcast();
+
+        var radiusSquared = radius * radius;
+        foreach (var player in players)
+        {
+            var state = player.Entity.Movement.State;
+            var expected = corpses
+                .Where(corpse =>
+                {
+                    var deltaX = corpse.PositionX - state.PositionX;
+                    var deltaY = corpse.PositionY - state.PositionY;
+                    var deltaZ = corpse.PositionZ - state.PositionZ;
+                    return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ) <= radiusSquared;
+                })
+                .Select(corpse => corpse.CorpseId)
+                .Order()
+                .ToArray();
+            Assert.Equal(expected, PresentedCorpseIds(player.Peer));
+        }
+
+        Assert.Contains(players, player => PresentedCorpseIds(player.Peer).Length > 6);
+    }
+
+    // The corpse ids of the peer's first corpse presence, over all its chunks.
+    private static Guid[] PresentedCorpseIds(RecordingPeerConnection peer)
+    {
+        var ids = new List<Guid>();
+        foreach (var send in peer.Sent)
+        {
+            if (RealtimeProtocol.TryReadMessageType(send.Data, out var type)
+                && type == RealtimeMessageType.CorpsePresenceSnapshotChunk
+                && RealtimeProtocol.TryDecodeCorpsePresenceSnapshotChunk(send.Data, out var chunk, out _))
+            {
+                ids.AddRange(chunk.Corpses.Select(corpse => corpse.CorpseId));
+                if (chunk.ChunkIndex == chunk.ChunkCount - 1)
+                {
+                    break;
+                }
+            }
+        }
+
+        return [.. ids];
     }
 
     // The corpse ids of every corpse presence the peer was sent, one list per presence.

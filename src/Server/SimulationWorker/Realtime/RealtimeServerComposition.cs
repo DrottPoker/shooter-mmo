@@ -112,7 +112,7 @@ internal static class RealtimeServerComposition
             new RealtimeCompletionProcessor(core.Completions, core.Peers, core.Sender, logger),
             core.OperationTracker,
             corpses.MutationCoordinator,
-            new SimulationTickLoop(core.Clock, core.EntityRegistry, registries.TickPhases, performanceMetrics, loopGuard, logger),
+            new SimulationTickLoop(core.Clock, core.EntityRegistry, registries.TickPhases, performanceMetrics, loopGuard, logger, networkMetrics),
             supervisor,
             worldActors.Driver,
             host.TransportReadiness,
