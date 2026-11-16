@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Collections;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
@@ -17,14 +19,26 @@ namespace Mmorpg.Client.Gameplay
     // fully to their socket bone, and a skinned attachment, such as a bow, keeps its own bones, which
     // the body holds below the socket, so a body holding them is still one renderer. Every body with
     // the same visible parts of the same model, the same garments, and the same attachments shares
-    // one mesh. The owner destroys the meshes.
-    public sealed class PlayerBodyMeshes : IDisposable
+    // one mesh.
+    //
+    // A build reads its renderers and models on the main thread (Gather), joins their vertices and
+    // triangles (Compute), and makes the mesh (Apply). For and Acquire build at once; Want asks for
+    // a build that Update runs on a worker thread, so a body that needs a combination no body has
+    // shown waits for it instead of building it in a frame, and both ways make the same mesh. The
+    // bodies that show a mesh count as its users; a mesh nobody uses stays GraceSeconds, at most
+    // UnusedCap of them, and is then destroyed, so memory comes back when a crowd leaves. The owner
+    // destroys the rest.
+    public sealed partial class PlayerBodyMeshes : IDisposable
     {
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Garment> NoGarments =
             new BodyAppearanceCatalog.Garment[0];
 
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Attachment> NoAttachments =
             new BodyAppearanceCatalog.Attachment[0];
+
+        private static readonly ProfilerMarker BuildMarker = new ProfilerMarker("PlayerBodyMeshes.Build");
+        private static readonly ProfilerMarker GatherMarker = new ProfilerMarker("PlayerBodyMeshes.Gather");
+        private static readonly ProfilerMarker ApplyMarker = new ProfilerMarker("PlayerBodyMeshes.Apply");
 
         // How far a hand swings from where it is in the bind pose, in meters, which the bounds of a
         // body leave room for around what it holds.
@@ -33,11 +47,66 @@ namespace Mmorpg.Client.Gameplay
         // The root object of an attachment's model, where it is held, and a skinned one's armature.
         public const string AttachmentRoot = "Grip";
 
-        private readonly Dictionary<string, Combined> meshes = new Dictionary<string, Combined>();
+        // A mesh no body uses any more stays this long, so a player who changes back and forth, or
+        // a crowd that leaves and comes back within seconds, builds nothing again; and at most this
+        // many such meshes stay, about 0.7 MB each, so a crowd that leaves frees its meshes at once.
+        public const float GraceSeconds = 4f;
+        public const int UnusedCap = 24;
 
+        // Builds that run on worker threads at the same time.
+        public const int ConcurrentBuilds = 3;
+
+        // A build that no body asked for again within this many frames is not started, and a built
+        // mesh that no body took is kept as long as one asks for it.
+        public const int WantedFrames = 30;
+
+        private readonly Dictionary<string, Combined> meshes = new Dictionary<string, Combined>(StringComparer.Ordinal);
+        private readonly List<Combined> queued = new List<Combined>();
+        private readonly List<Combined> running = new List<Combined>();
+        // The built meshes without a user, in the order they lost their last one.
+        private readonly List<Combined> unused = new List<Combined>();
+        private readonly Dictionary<PlayerBodyAppearance, (SkinnedMeshRenderer[] Parts, string Key)> bodyParts =
+            new Dictionary<PlayerBodyAppearance, (SkinnedMeshRenderer[] Parts, string Key)>();
+        // What the builds read of the source meshes, once per set, and the buffers they join
+        // meshes in, kept while builds come and let go a grace time after the last one.
+        private readonly Dictionary<Mesh, SourceMesh> sources = new Dictionary<Mesh, SourceMesh>();
+        private readonly Stack<Buffers> spareBuffers = new Stack<Buffers>();
+        private readonly bool releaseCpuCopies;
+        private float lastBuildTime;
+        private bool disposed;
+
+        public PlayerBodyMeshes()
+            : this(false)
+        {
+        }
+
+        // With releaseCpuCopies a mesh keeps no copy of its data once it is uploaded, as in play,
+        // where nothing reads a shared mesh back; out of play, as in the Wardrobe and the tests,
+        // the meshes stay readable.
+        public PlayerBodyMeshes(bool releaseCpuCopies)
+        {
+            this.releaseCpuCopies = releaseCpuCopies;
+        }
+
+        // How many combined meshes exist, used or kept for their grace time.
         public int Count
         {
-            get { return meshes.Count; }
+            get
+            {
+                var count = 0;
+                foreach (var combined in meshes.Values)
+                {
+                    count += combined.Mesh != null ? 1 : 0;
+                }
+
+                return count;
+            }
+        }
+
+        // How many builds wait or run.
+        public int Pending
+        {
+            get { return queued.Count + running.Count; }
         }
 
         // The combined mesh of these parts, built once and then shared. The parts must be
@@ -49,41 +118,412 @@ namespace Mmorpg.Client.Gameplay
 
         // Also wearing the garments of the catalog, whose models are skinned to bones of the same
         // names as the parts' skeleton, and holding its attachments on their sockets below the root.
+        // Built now when no body has it, also when its build waits or runs.
         public Combined For(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
             IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
         {
+            var combined = Entry(parts, root, catalog, garments, attachments, false);
+            Finish(combined);
+            return combined;
+        }
+
+        // As For, and the caller uses the mesh until it releases it.
+        public Combined Acquire(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
+        {
+            var combined = For(parts, root, catalog, garments, attachments);
+            AddUser(combined);
+            return combined;
+        }
+
+        // The caller uses the mesh no more; a mesh without users goes after its grace time.
+        public void Release(Combined combined)
+        {
+            if (disposed || combined == null || combined.Key == null || combined.Users == 0
+                || !meshes.TryGetValue(combined.Key, out var known) || known != combined)
+            {
+                return;
+            }
+
+            combined.Users--;
+            if (combined.Users == 0)
+            {
+                combined.UnusedSince = Time.realtimeSinceStartup;
+                unused.Add(combined);
+            }
+        }
+
+        // The combination the body, an instance or its prefab, shows in the look; when it is not
+        // built, Update builds it on a worker thread while bodies keep asking for it.
+        public Combined Want(PlayerBodyAppearance body, BodyLook look)
+        {
+            var catalog = body.Catalog;
+            var parts = CachedPartsOf(body, out var partsKey);
+            var combined = Entry(
+                parts,
+                body.transform,
+                catalog,
+                PlayerBodyAppearance.WornBy(catalog, look),
+                PlayerBodyAppearance.HeldBy(catalog, look),
+                true,
+                partsKey);
+            Touch(combined);
+            return combined;
+        }
+
+        // A body still waits for the combination.
+        public void Touch(Combined combined)
+        {
+            if (combined != null)
+            {
+                combined.WantedFrame = Time.frameCount;
+            }
+        }
+
+        // Makes the meshes of the builds that finished, starts the waiting builds for which a
+        // worker thread is free while the watch is under the budget, and destroys the meshes past
+        // their grace time. Allocates nothing unless a build starts or ends.
+        public void Update(System.Diagnostics.Stopwatch watch, double budgetMilliseconds)
+        {
+            for (var index = running.Count - 1; index >= 0; index--)
+            {
+                var combined = running[index];
+                if (!combined.Work.IsCompleted)
+                {
+                    continue;
+                }
+
+                running.RemoveAt(index);
+                Complete(combined);
+            }
+
+            var frame = Time.frameCount;
+            while (running.Count < ConcurrentBuilds && queued.Count > 0
+                && (watch == null || watch.Elapsed.TotalMilliseconds < budgetMilliseconds))
+            {
+                var next = queued[0];
+                queued.RemoveAt(0);
+                if (next.Users == 0 && frame - next.WantedFrame > WantedFrames)
+                {
+                    // Nobody waits for it any more, such as a player who left before it began.
+                    meshes.Remove(next.Key);
+                    next.Forgotten = true;
+                    continue;
+                }
+
+                Start(next);
+            }
+
+            Trim(Time.realtimeSinceStartup, frame);
+
+            // The buffers of the builds go a grace time after the last build, as when a crowd came.
+            if (spareBuffers.Count > 0 && queued.Count == 0 && running.Count == 0
+                && Time.realtimeSinceStartup - lastBuildTime >= GraceSeconds)
+            {
+                spareBuffers.Clear();
+            }
+        }
+
+        // Destroys every mesh without a user at once, as when nothing is going to ask again.
+        public void ReleaseUnused()
+        {
+            Trim(float.PositiveInfinity, int.MaxValue);
+        }
+
+        public void Dispose()
+        {
+            disposed = true;
+            foreach (var combined in running)
+            {
+                try
+                {
+                    combined.Work.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // A failed build has no mesh to destroy.
+                }
+            }
+
+            foreach (var combined in meshes.Values)
+            {
+                DestroyMesh(combined);
+            }
+
+            meshes.Clear();
+            queued.Clear();
+            running.Clear();
+            unused.Clear();
+            bodyParts.Clear();
+            sources.Clear();
+            spareBuffers.Clear();
+        }
+
+        // The skinned parts a body shows combined: its renderers with a mesh that are enabled and
+        // active below it, in their order, whether it is an instance or its prefab.
+        public static SkinnedMeshRenderer[] PartsOf(Component body)
+        {
+            var found = new List<SkinnedMeshRenderer>();
+            foreach (var renderer in body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (renderer.enabled && renderer.sharedMesh != null
+                    && renderer.name != PlayerBodyAppearance.CombinedRendererName
+                    && IsActiveBelow(renderer.transform, body.transform))
+                {
+                    found.Add(renderer);
+                }
+            }
+
+            return found.ToArray();
+        }
+
+        private static bool IsActiveBelow(Transform transform, Transform root)
+        {
+            for (var current = transform; current != null; current = current.parent)
+            {
+                if (!current.gameObject.activeSelf)
+                {
+                    return false;
+                }
+
+                if (current == root)
+                {
+                    return true;
+                }
+            }
+
+            return true;
+        }
+
+        // The parts of a body prefab and the part of a key that names them, found once.
+        private SkinnedMeshRenderer[] CachedPartsOf(PlayerBodyAppearance body, out string partsKey)
+        {
+            if (!bodyParts.TryGetValue(body, out var found))
+            {
+                var parts = PartsOf(body);
+                found = (parts, PartsKeyOf(parts));
+                bodyParts[body] = found;
+            }
+
+            partsKey = found.Key;
+            return found.Parts;
+        }
+
+        private Combined Entry(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments,
+            bool queue, string partsKey = null)
+        {
             garments = garments ?? NoGarments;
             attachments = attachments ?? NoAttachments;
-            var key = KeyOf(parts, garments, attachments);
-            if (!meshes.TryGetValue(key, out var combined) || combined.Mesh == null)
+            var key = KeyOf(partsKey ?? PartsKeyOf(parts), garments, attachments);
+            if (meshes.TryGetValue(key, out var combined))
             {
-                combined = Build(parts, root, catalog, garments, attachments);
-                meshes[key] = combined;
+                return combined;
+            }
+
+            combined = new Combined(key)
+            {
+                Parts = ToArray(parts),
+                Root = root,
+                Catalog = catalog,
+                Garments = ToArray(garments),
+                Attachments = ToArray(attachments),
+                WantedFrame = Time.frameCount,
+            };
+            meshes[key] = combined;
+            if (queue)
+            {
+                queued.Add(combined);
             }
 
             return combined;
         }
 
-        public void Dispose()
+        private static T[] ToArray<T>(IReadOnlyList<T> list)
         {
-            foreach (var combined in meshes.Values)
+            var array = new T[list.Count];
+            for (var index = 0; index < array.Length; index++)
             {
-                if (combined.Mesh == null)
+                array[index] = list[index];
+            }
+
+            return array;
+        }
+
+        // Builds the combination now: a waiting build runs here, and a running one is waited for.
+        private void Finish(Combined combined)
+        {
+            if (combined.Mesh != null)
+            {
+                return;
+            }
+
+            if (combined.Work != null)
+            {
+                running.Remove(combined);
+                try
                 {
-                    continue;
+                    combined.Work.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Complete builds it here again and shows the error.
                 }
 
-                if (Application.isPlaying)
+                Complete(combined);
+                if (combined.Mesh != null)
                 {
-                    UnityEngine.Object.Destroy(combined.Mesh);
-                }
-                else
-                {
-                    UnityEngine.Object.DestroyImmediate(combined.Mesh);
+                    return;
                 }
             }
 
-            meshes.Clear();
+            queued.Remove(combined);
+            using (BuildMarker.Auto())
+            {
+                var plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments, sources);
+                var buffers = TakeBuffers();
+                plan.Compute(buffers);
+                combined.Take(plan.Apply(releaseCpuCopies));
+                spareBuffers.Push(buffers);
+            }
+
+            Built(combined);
+        }
+
+        private void Start(Combined combined)
+        {
+            Plan plan;
+            try
+            {
+                using (GatherMarker.Auto())
+                {
+                    plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments, sources);
+                }
+            }
+            catch (Exception exception)
+            {
+                // A body that shows it builds it at once and shows the error, as without a build.
+                Debug.LogException(exception);
+                combined.Failed = true;
+                return;
+            }
+
+            var buffers = TakeBuffers();
+            combined.Plan = plan;
+            combined.Work = Task.Run(() => plan.Compute(buffers));
+            running.Add(combined);
+        }
+
+        private Buffers TakeBuffers()
+        {
+            lastBuildTime = Time.realtimeSinceStartup;
+            return spareBuffers.Count > 0 ? spareBuffers.Pop() : new Buffers();
+        }
+
+        private void Complete(Combined combined)
+        {
+            var plan = (Plan)combined.Plan;
+            var work = combined.Work;
+            var buffers = plan.Buffers;
+            combined.Plan = null;
+            combined.Work = null;
+            if (work.Status != TaskStatus.RanToCompletion)
+            {
+                if (work.Exception != null)
+                {
+                    Debug.LogException(work.Exception.GetBaseException());
+                }
+
+                combined.Failed = true;
+                spareBuffers.Push(buffers ?? new Buffers());
+                return;
+            }
+
+            using (ApplyMarker.Auto())
+            {
+                combined.Take(plan.Apply(releaseCpuCopies));
+            }
+
+            spareBuffers.Push(buffers);
+            Built(combined);
+        }
+
+        // A mesh starts without users; the bodies that asked for it take it in a frame or two.
+        private void Built(Combined combined)
+        {
+            combined.Failed = false;
+            combined.Parts = null;
+            combined.Root = null;
+            combined.Catalog = null;
+            combined.Garments = null;
+            combined.Attachments = null;
+            if (combined.Users == 0)
+            {
+                combined.UnusedSince = Time.realtimeSinceStartup;
+                unused.Add(combined);
+            }
+        }
+
+        private void AddUser(Combined combined)
+        {
+            if (combined.Users == 0)
+            {
+                unused.Remove(combined);
+            }
+
+            combined.Users++;
+        }
+
+        // Destroys the meshes without users past their grace time, and the oldest beyond the cap;
+        // a mesh that a body still asks for stays.
+        internal void Trim(float now, int frame)
+        {
+            for (var index = unused.Count - 1; index >= 0; index--)
+            {
+                var combined = unused[index];
+                if (now - combined.UnusedSince >= GraceSeconds && frame - combined.WantedFrame > WantedFrames)
+                {
+                    Forget(combined, index);
+                }
+            }
+
+            for (var index = 0; index < unused.Count && unused.Count > UnusedCap;)
+            {
+                var combined = unused[index];
+                if (frame - combined.WantedFrame > WantedFrames)
+                {
+                    Forget(combined, index);
+                }
+                else
+                {
+                    index++;
+                }
+            }
+        }
+
+        private void Forget(Combined combined, int unusedIndex)
+        {
+            unused.RemoveAt(unusedIndex);
+            meshes.Remove(combined.Key);
+            combined.Forgotten = true;
+            DestroyMesh(combined);
+        }
+
+        private static void DestroyMesh(Combined combined)
+        {
+            if (combined.Mesh == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(combined.Mesh);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(combined.Mesh);
+            }
         }
 
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root)
@@ -158,87 +598,27 @@ namespace Mmorpg.Client.Gameplay
         // materials first appear; vertices no triangle uses are left out. Each attachment's meshes
         // lie on its socket bone as the socket stands on its parent bone in the bind pose, with its
         // root object Grip on the socket; a skinned attachment's meshes lie on its own bones, which
-        // stand below the socket as they stand below the model's root.
+        // stand below the socket as they stand below the model's root. The mesh stays readable.
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
             IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
         {
-            if (parts == null || parts.Count == 0)
-            {
-                throw new ArgumentException("A combined body needs at least one part.", nameof(parts));
-            }
+            var plan = Plan.Gather(parts, root, catalog, garments ?? NoGarments, attachments ?? NoAttachments,
+                new Dictionary<Mesh, SourceMesh>());
+            plan.Compute(new Buffers());
+            return plan.Apply(false);
+        }
 
-            var drawn = Drawn(garments ?? NoGarments);
-            var coverLayer = new Dictionary<int, int>();
-            var pullIn = new Dictionary<int, float>();
-            foreach (var garment in drawn)
-            {
-                foreach (var face in garment.Covered)
-                {
-                    coverLayer[face] = coverLayer.TryGetValue(face, out var layer) ? Math.Max(layer, garment.Layer) : garment.Layer;
-                }
-
-                for (var index = 0; index < garment.PullInVertices.Count && index < garment.PullInDistances.Count; index++)
-                {
-                    var vertex = garment.PullInVertices[index];
-                    pullIn[vertex] = pullIn.TryGetValue(vertex, out var distance)
-                        ? Mathf.Max(distance, garment.PullInDistances[index])
-                        : garment.PullInDistances[index];
-                }
-            }
-
-            var builder = new Builder(parts[0].rootBone != null ? parts[0].rootBone : root);
-            foreach (var part in parts)
-            {
-                var map = catalog != null ? catalog.PartNamed(part.name) : null;
-                builder.Add(part, root.worldToLocalMatrix * part.transform.localToWorldMatrix,
-                    part.rootBone != null ? part.rootBone : part.transform, builder.RootBone,
-                    // A body face stays unless a drawn garment covers it.
-                    map != null && map.TriangleFaces.Count > 0 ? (Func<int, bool>)(triangle => !coverLayer.ContainsKey(map.TriangleFaces[triangle])) : null,
-                    map != null && pullIn.Count > 0 ? (Func<int, float>)(vertex => pullIn.TryGetValue(map.VertexSources[vertex], out var distance) ? distance : 0f) : null);
-            }
-
-            foreach (var garment in drawn)
-            {
-                var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>(true);
-                if (renderer == null || renderer.sharedMesh == null)
-                {
-                    continue;
-                }
-
-                // The bones of the garment's own armature stand where the body's do, so its bounds
-                // carry over from its root bone to the body's root bone of the same name.
-                var garmentRootBone = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
-                var bodyRootBone = FindDescendant(garment.Model.transform, builder.RootBoneName) ?? garmentRootBone;
-                var underlay = garment.Underlay;
-                var own = garment.Layer;
-                builder.Add(renderer, garment.Model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix,
-                    garmentRootBone, bodyRootBone,
-                    // A garment face stays unless a garment of a higher layer covers the body face under it.
-                    triangle => triangle >= underlay.Count || !coverLayer.TryGetValue(underlay[triangle], out var layer) || layer <= own,
-                    null, garment.Material, ShapeOf(garment, drawn));
-            }
-
-            foreach (var attachment in Held(attachments ?? NoAttachments))
-            {
-                var socket = FindDescendant(root, attachment.Bone);
-                if (socket == null || socket.parent == null || !builder.TryGetBoneToRoot(socket.parent.name, out var parentToRoot))
-                {
-                    continue;
-                }
-
-                // A socket is never animated, so it stands on its parent as it does in the model.
-                var socketToRoot = parentToRoot * Matrix4x4.TRS(socket.localPosition, socket.localRotation, socket.localScale);
-                if (attachment.IsSkinned)
-                {
-                    builder.AddSkinned(attachment.Model, socketToRoot);
-                }
-                else
-                {
-                    builder.AddRigid(attachment.Model, attachment.Bone, socketToRoot);
-                }
-            }
-
-            return builder.Finish(parts[0].sharedMesh.name + " combined");
+        // Builds the combination as Want and Update do, the vertices and triangles on a worker
+        // thread, and waits for it; the tests compare it with Build.
+        internal static Combined BuildOnWorkerThread(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root,
+            BodyAppearanceCatalog catalog, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
+        {
+            var plan = Plan.Gather(parts, root, catalog, garments ?? NoGarments, attachments ?? NoAttachments,
+                new Dictionary<Mesh, SourceMesh>());
+            var buffers = new Buffers();
+            Task.Run(() => plan.Compute(buffers)).Wait();
+            return plan.Apply(false);
         }
 
         // The bones of a skinned attachment's model, such as a bow's limbs and string, for a body to
@@ -341,8 +721,8 @@ namespace Mmorpg.Client.Gameplay
             return result;
         }
 
-        private static string KeyOf(IReadOnlyList<SkinnedMeshRenderer> parts, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
-            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
+        // The part of a key that names the parts: their meshes and materials.
+        private static string PartsKeyOf(IReadOnlyList<SkinnedMeshRenderer> parts)
         {
             var key = new System.Text.StringBuilder();
             foreach (var part in parts)
@@ -356,6 +736,13 @@ namespace Mmorpg.Client.Gameplay
                 key.Append(';');
             }
 
+            return key.ToString();
+        }
+
+        private static string KeyOf(string partsKey, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
+        {
+            var key = new System.Text.StringBuilder(partsKey);
             var drawn = Drawn(garments);
             foreach (var garment in drawn)
             {
@@ -373,461 +760,7 @@ namespace Mmorpg.Client.Gameplay
             return key.ToString();
         }
 
-        // Collects the vertices, bones, and triangles of the meshes it is given.
-        private sealed class Builder
-        {
-            private readonly Transform rootBone;
-            private readonly List<string> bones = new List<string>();
-            private readonly Dictionary<string, int> boneIndex = new Dictionary<string, int>(StringComparer.Ordinal);
-            private readonly List<Matrix4x4> bindposes = new List<Matrix4x4>();
-            private readonly List<Material> materials = new List<Material>();
-            private readonly List<List<int>> triangles = new List<List<int>>();
-            private readonly List<Vector3> positions = new List<Vector3>();
-            private readonly List<Vector3> normals = new List<Vector3>();
-            private readonly List<Vector4> tangents = new List<Vector4>();
-            private readonly List<Vector2> uvs = new List<Vector2>();
-            // The paint UVs, the body's second UV map, which the skin shader reads its paint layers
-            // through; zero on meshes without it, such as garments and the eyes.
-            private readonly List<Vector2> paintUvs = new List<Vector2>();
-            private readonly List<byte> bonesPerVertex = new List<byte>();
-            private readonly List<int> firstWeight = new List<int>();
-            private readonly List<BoneWeight1> weights = new List<BoneWeight1>();
-            private readonly List<Vector3> meshVertices = new List<Vector3>();
-            private readonly List<Vector3> meshNormals = new List<Vector3>();
-            private readonly List<Vector4> meshTangents = new List<Vector4>();
-            private readonly List<Vector2> meshUvs = new List<Vector2>();
-            private readonly List<Vector2> meshPaintUvs = new List<Vector2>();
-            private readonly List<Matrix4x4> meshBindposes = new List<Matrix4x4>();
-            private readonly List<int> meshTriangles = new List<int>();
-            private Bounds bounds;
-            private bool hasBounds;
-
-            public Builder(Transform rootBone)
-            {
-                this.rootBone = rootBone;
-            }
-
-            public Transform RootBone
-            {
-                get { return rootBone; }
-            }
-
-            public string RootBoneName
-            {
-                get { return rootBone.name; }
-            }
-
-            // One renderer's mesh, given in the root's space by toRoot, with its local bounds in the
-            // space of boundsFrom, its root bone, carried to boundsBone, the body's root bone or the
-            // bone of its armature that stands where the body's root bone does. keep says which
-            // triangles stay, over the submeshes in order; pull says how far each vertex moves
-            // inward; a material, such as a garment texture's, replaces the renderer's own; a blend
-            // shape of the mesh, such as hair's form under headwear, is taken in full.
-            public void Add(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Transform boundsFrom, Transform boundsBone,
-                Func<int, bool> keep, Func<int, float> pull, Material material = null, string shape = null)
-            {
-                AddMesh(renderer, toRoot, keep, pull, material, shape);
-                Encapsulate(BoundsIn(boundsFrom, renderer.localBounds, boundsBone));
-            }
-
-            // Every mesh of a skinned model held on a socket, such as a bow, given in the space of the
-            // model's root, which lies on the socket that stands at socketToRoot in the root's space,
-            // skinned to the model's own bones, which a body holds below the socket as they stand below
-            // the model's root. A model with a bone of the meshes added so far is left out, so a body
-            // holds one model of a skeleton. The body's bounds leave room around it for the socket to
-            // swing with the hand.
-            public void AddSkinned(GameObject model, Matrix4x4 socketToRoot)
-            {
-                var renderers = model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                foreach (var renderer in renderers)
-                {
-                    foreach (var bone in renderer.bones)
-                    {
-                        if (bone == null || boneIndex.ContainsKey(bone.name))
-                        {
-                            return;
-                        }
-                    }
-                }
-
-                var reach = 0f;
-                foreach (var renderer in renderers)
-                {
-                    if (renderer.sharedMesh == null)
-                    {
-                        continue;
-                    }
-
-                    var toSocket = model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
-                    AddMesh(renderer, socketToRoot * toSocket, null, null);
-                    foreach (var vertex in meshVertices)
-                    {
-                        reach = Mathf.Max(reach, toSocket.MultiplyPoint3x4(vertex).magnitude);
-                    }
-                }
-
-                Room(socketToRoot, reach);
-            }
-
-            // The vertices, bones, and triangles of one renderer's mesh; see Add.
-            private void AddMesh(SkinnedMeshRenderer renderer, Matrix4x4 toRoot, Func<int, bool> keep, Func<int, float> pull,
-                Material material = null, string shape = null)
-            {
-                var mesh = renderer.sharedMesh;
-                if (mesh == null || !mesh.isReadable)
-                {
-                    throw new InvalidOperationException("Body part '" + renderer.name + "' has no readable mesh.");
-                }
-
-                // A rigid part such as an eye has a pivot of its own.
-                var fromRoot = toRoot.inverse;
-                var normalMatrix = fromRoot.transpose;
-                var first = positions.Count;
-                mesh.GetVertices(meshVertices);
-                mesh.GetNormals(meshNormals);
-                mesh.GetTangents(meshTangents);
-                mesh.GetUVs(0, meshUvs);
-                mesh.GetUVs(1, meshPaintUvs);
-                if (shape != null)
-                {
-                    TakeShape(mesh, shape);
-                }
-                for (var index = 0; index < meshVertices.Count; index++)
-                {
-                    var vertex = meshVertices[index];
-                    var normal = index < meshNormals.Count ? meshNormals[index] : Vector3.up;
-                    var distance = pull != null ? pull(index) : 0f;
-                    if (distance > 0f)
-                    {
-                        vertex -= normal.normalized * distance;
-                    }
-
-                    positions.Add(toRoot.MultiplyPoint3x4(vertex));
-                    normals.Add(index < meshNormals.Count ? normalMatrix.MultiplyVector(normal).normalized : Vector3.up);
-                    if (index < meshTangents.Count)
-                    {
-                        var tangent = toRoot.MultiplyVector(meshTangents[index]).normalized;
-                        tangents.Add(new Vector4(tangent.x, tangent.y, tangent.z, meshTangents[index].w));
-                    }
-                    else
-                    {
-                        tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                    }
-
-                    uvs.Add(index < meshUvs.Count ? meshUvs[index] : Vector2.zero);
-                    paintUvs.Add(index < meshPaintUvs.Count ? meshPaintUvs[index] : Vector2.zero);
-                }
-
-                // A bone keeps one bind pose for every mesh: its bind pose in the root's space.
-                mesh.GetBindposes(meshBindposes);
-                var meshBones = renderer.bones;
-                var remap = new int[meshBones.Length];
-                for (var index = 0; index < meshBones.Length; index++)
-                {
-                    var bone = meshBones[index].name;
-                    if (!boneIndex.TryGetValue(bone, out var unified))
-                    {
-                        unified = bones.Count;
-                        boneIndex.Add(bone, unified);
-                        bones.Add(bone);
-                        bindposes.Add(meshBindposes[index] * fromRoot);
-                    }
-
-                    remap[index] = unified;
-                }
-
-                var meshBonesPerVertex = mesh.GetBonesPerVertex();
-                var meshWeights = mesh.GetAllBoneWeights();
-                var next = weights.Count;
-                for (var index = 0; index < meshBonesPerVertex.Length; index++)
-                {
-                    bonesPerVertex.Add(meshBonesPerVertex[index]);
-                    firstWeight.Add(next);
-                    next += meshBonesPerVertex[index];
-                }
-
-                for (var index = 0; index < meshWeights.Length; index++)
-                {
-                    var weight = meshWeights[index];
-                    weight.boneIndex = remap[weight.boneIndex];
-                    weights.Add(weight);
-                }
-
-                var meshMaterials = renderer.sharedMaterials;
-                var triangle = 0;
-                for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
-                {
-                    var drawn = material != null ? material : submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
-                    var slot = materials.IndexOf(drawn);
-                    if (slot < 0)
-                    {
-                        slot = materials.Count;
-                        materials.Add(drawn);
-                        triangles.Add(new List<int>());
-                    }
-
-                    mesh.GetTriangles(meshTriangles, submesh);
-                    for (var corner = 0; corner < meshTriangles.Count; corner += 3, triangle++)
-                    {
-                        if (keep != null && !keep(triangle))
-                        {
-                            continue;
-                        }
-
-                        triangles[slot].Add(first + meshTriangles[corner]);
-                        triangles[slot].Add(first + meshTriangles[corner + 1]);
-                        triangles[slot].Add(first + meshTriangles[corner + 2]);
-                    }
-                }
-            }
-
-            // Where a bone of the meshes added so far stands in the root's space in the bind pose.
-            public bool TryGetBoneToRoot(string bone, out Matrix4x4 boneToRoot)
-            {
-                if (!boneIndex.TryGetValue(bone, out var index))
-                {
-                    boneToRoot = Matrix4x4.identity;
-                    return false;
-                }
-
-                boneToRoot = bindposes[index].inverse;
-                return true;
-            }
-
-            // Every mesh of a rigid model, such as a sword, given in the space of the model's root,
-            // weighted fully to one bone that stands at boneToRoot in the root's space. The body's
-            // bounds leave room around it for the bone to swing with the hand.
-            public void AddRigid(GameObject model, string bone, Matrix4x4 boneToRoot)
-            {
-                if (!boneIndex.TryGetValue(bone, out var unified))
-                {
-                    unified = bones.Count;
-                    boneIndex.Add(bone, unified);
-                    bones.Add(bone);
-                    bindposes.Add(boneToRoot.inverse);
-                }
-
-                var reach = 0f;
-                foreach (var filter in model.GetComponentsInChildren<MeshFilter>(true))
-                {
-                    var mesh = filter.sharedMesh;
-                    var renderer = filter.GetComponent<MeshRenderer>();
-                    if (mesh == null || renderer == null)
-                    {
-                        continue;
-                    }
-
-                    if (!mesh.isReadable)
-                    {
-                        throw new InvalidOperationException("Attachment mesh '" + mesh.name + "' has no readable mesh.");
-                    }
-
-                    var toBone = model.transform.worldToLocalMatrix * filter.transform.localToWorldMatrix;
-                    var toRoot = boneToRoot * toBone;
-                    var normalMatrix = toRoot.inverse.transpose;
-                    var first = positions.Count;
-                    mesh.GetVertices(meshVertices);
-                    mesh.GetNormals(meshNormals);
-                    mesh.GetTangents(meshTangents);
-                    mesh.GetUVs(0, meshUvs);
-                    for (var index = 0; index < meshVertices.Count; index++)
-                    {
-                        reach = Mathf.Max(reach, toBone.MultiplyPoint3x4(meshVertices[index]).magnitude);
-                        positions.Add(toRoot.MultiplyPoint3x4(meshVertices[index]));
-                        normals.Add(index < meshNormals.Count ? normalMatrix.MultiplyVector(meshNormals[index]).normalized : Vector3.up);
-                        if (index < meshTangents.Count)
-                        {
-                            var tangent = toRoot.MultiplyVector(meshTangents[index]).normalized;
-                            tangents.Add(new Vector4(tangent.x, tangent.y, tangent.z, meshTangents[index].w));
-                        }
-                        else
-                        {
-                            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                        }
-
-                        uvs.Add(index < meshUvs.Count ? meshUvs[index] : Vector2.zero);
-                        paintUvs.Add(Vector2.zero);
-                        bonesPerVertex.Add(1);
-                        firstWeight.Add(weights.Count);
-                        weights.Add(new BoneWeight1 { boneIndex = unified, weight = 1f });
-                    }
-
-                    var meshMaterials = renderer.sharedMaterials;
-                    for (var submesh = 0; submesh < mesh.subMeshCount; submesh++)
-                    {
-                        var drawn = submesh < meshMaterials.Length ? meshMaterials[submesh] : null;
-                        var slot = materials.IndexOf(drawn);
-                        if (slot < 0)
-                        {
-                            slot = materials.Count;
-                            materials.Add(drawn);
-                            triangles.Add(new List<int>());
-                        }
-
-                        mesh.GetTriangles(meshTriangles, submesh);
-                        foreach (var vertex in meshTriangles)
-                        {
-                            triangles[slot].Add(first + vertex);
-                        }
-                    }
-                }
-
-                Room(boneToRoot, reach);
-            }
-
-            // Room in the bounds for what a bone at boneToRoot holds within reach of it, as the bone
-            // swings with the hand.
-            private void Room(Matrix4x4 boneToRoot, float reach)
-            {
-                // The bounds are in the space of the root bone in the bind pose.
-                var centre = TryGetBoneToRoot(rootBone.name, out var rootBoneToRoot)
-                    ? rootBoneToRoot.inverse.MultiplyPoint3x4(boneToRoot.GetColumn(3))
-                    : (Vector3)boneToRoot.GetColumn(3);
-                Encapsulate(new Bounds(centre, Vector3.one * (2f * (reach + AttachmentReach))));
-            }
-
-            private void Encapsulate(Bounds more)
-            {
-                if (hasBounds)
-                {
-                    bounds.Encapsulate(more);
-                }
-                else
-                {
-                    bounds = more;
-                    hasBounds = true;
-                }
-            }
-
-            // Moves the mesh's vertices, normals, and tangents just read by the deltas of the last
-            // frame of one of its blend shapes, its full weight.
-            private void TakeShape(Mesh mesh, string shape)
-            {
-                var index = mesh.GetBlendShapeIndex(shape);
-                if (index < 0)
-                {
-                    throw new InvalidOperationException("Mesh '" + mesh.name + "' has no blend shape '" + shape + "'.");
-                }
-
-                var count = mesh.vertexCount;
-                var deltaVertices = new Vector3[count];
-                var deltaNormals = new Vector3[count];
-                var deltaTangents = new Vector3[count];
-                mesh.GetBlendShapeFrameVertices(index, mesh.GetBlendShapeFrameCount(index) - 1, deltaVertices, deltaNormals, deltaTangents);
-                for (var vertex = 0; vertex < count; vertex++)
-                {
-                    meshVertices[vertex] += deltaVertices[vertex];
-                    if (vertex < meshNormals.Count)
-                    {
-                        meshNormals[vertex] = (meshNormals[vertex] + deltaNormals[vertex]).normalized;
-                    }
-
-                    if (vertex < meshTangents.Count)
-                    {
-                        var tangent = meshTangents[vertex];
-                        var turned = (new Vector3(tangent.x, tangent.y, tangent.z) + deltaTangents[vertex]).normalized;
-                        meshTangents[vertex] = new Vector4(turned.x, turned.y, turned.z, tangent.w);
-                    }
-                }
-            }
-
-            // The mesh of the vertices the triangles use, with the materials that kept triangles.
-            public Combined Finish(string name)
-            {
-                var used = new int[positions.Count];
-                for (var index = 0; index < used.Length; index++)
-                {
-                    used[index] = -1;
-                }
-
-                var keptMaterials = new List<Material>();
-                var keptTriangles = new List<List<int>>();
-                for (var slot = 0; slot < triangles.Count; slot++)
-                {
-                    if (triangles[slot].Count == 0)
-                    {
-                        continue;
-                    }
-
-                    keptMaterials.Add(materials[slot]);
-                    keptTriangles.Add(triangles[slot]);
-                    foreach (var vertex in triangles[slot])
-                    {
-                        used[vertex] = 0;
-                    }
-                }
-
-                var count = 0;
-                for (var index = 0; index < used.Length; index++)
-                {
-                    if (used[index] == 0)
-                    {
-                        used[index] = count++;
-                    }
-                }
-
-                var keptPositions = new List<Vector3>(count);
-                var keptNormals = new List<Vector3>(count);
-                var keptTangents = new List<Vector4>(count);
-                var keptUvs = new List<Vector2>(count);
-                var keptPaintUvs = new List<Vector2>(count);
-                var keptBonesPerVertex = new List<byte>(count);
-                var keptWeights = new List<BoneWeight1>();
-                for (var index = 0; index < used.Length; index++)
-                {
-                    if (used[index] < 0)
-                    {
-                        continue;
-                    }
-
-                    keptPositions.Add(positions[index]);
-                    keptNormals.Add(normals[index]);
-                    keptTangents.Add(tangents[index]);
-                    keptUvs.Add(uvs[index]);
-                    keptPaintUvs.Add(paintUvs[index]);
-                    keptBonesPerVertex.Add(bonesPerVertex[index]);
-                    for (var weight = 0; weight < bonesPerVertex[index]; weight++)
-                    {
-                        keptWeights.Add(weights[firstWeight[index] + weight]);
-                    }
-                }
-
-                var combinedMesh = new Mesh
-                {
-                    name = name,
-                    indexFormat = count > ushort.MaxValue
-                        ? UnityEngine.Rendering.IndexFormat.UInt32
-                        : UnityEngine.Rendering.IndexFormat.UInt16,
-                };
-                combinedMesh.SetVertices(keptPositions);
-                combinedMesh.SetNormals(keptNormals);
-                combinedMesh.SetTangents(keptTangents);
-                combinedMesh.SetUVs(0, keptUvs);
-                combinedMesh.SetUVs(1, keptPaintUvs);
-                using (var perVertex = new NativeArray<byte>(keptBonesPerVertex.ToArray(), Allocator.Temp))
-                using (var allWeights = new NativeArray<BoneWeight1>(keptWeights.ToArray(), Allocator.Temp))
-                {
-                    combinedMesh.SetBoneWeights(perVertex, allWeights);
-                }
-
-                combinedMesh.bindposes = bindposes.ToArray();
-                combinedMesh.subMeshCount = keptTriangles.Count;
-                for (var submesh = 0; submesh < keptTriangles.Count; submesh++)
-                {
-                    var remapped = new List<int>(keptTriangles[submesh].Count);
-                    foreach (var vertex in keptTriangles[submesh])
-                    {
-                        remapped.Add(used[vertex]);
-                    }
-
-                    combinedMesh.SetTriangles(remapped, submesh, false);
-                }
-
-                combinedMesh.RecalculateBounds();
-                return new Combined(combinedMesh, bones.ToArray(), keptMaterials.ToArray(), rootBone.name, bounds);
-            }
-        }
-
+        // A combination of parts, garments, and attachments, and its shared mesh once built.
         public sealed class Combined
         {
             public Combined(Mesh mesh, string[] boneNames, Material[] materials, string rootBoneName, Bounds localBounds)
@@ -839,16 +772,67 @@ namespace Mmorpg.Client.Gameplay
                 LocalBounds = localBounds;
             }
 
-            public Mesh Mesh { get; }
+            internal Combined(string key)
+            {
+                Key = key;
+            }
+
+            public Mesh Mesh { get; private set; }
 
             // The bones of the mesh by name, so every body binds the shared mesh to its own bones.
-            public IReadOnlyList<string> BoneNames { get; }
+            public IReadOnlyList<string> BoneNames { get; private set; }
 
-            public IReadOnlyList<Material> Materials { get; }
+            public IReadOnlyList<Material> Materials { get; private set; }
 
-            public string RootBoneName { get; }
+            public string RootBoneName { get; private set; }
 
-            public Bounds LocalBounds { get; }
+            public Bounds LocalBounds { get; private set; }
+
+            // Whether a body can show it at once: its mesh is built, or its build failed, which the
+            // body then shows as it builds it again.
+            public bool IsReady
+            {
+                get { return Mesh != null || Failed; }
+            }
+
+            // The bodies, previews, and bakes that show it now.
+            public int Users { get; internal set; }
+
+            internal string Key { get; }
+
+            internal bool Failed { get; set; }
+
+            // The set let go of it, unbuilt or destroyed; whoever still waits for it asks again.
+            public bool Forgotten { get; internal set; }
+
+            internal int WantedFrame { get; set; }
+
+            internal float UnusedSince { get; set; }
+
+            // What it is built from, until it is built.
+            internal SkinnedMeshRenderer[] Parts { get; set; }
+
+            internal Transform Root { get; set; }
+
+            internal BodyAppearanceCatalog Catalog { get; set; }
+
+            internal BodyAppearanceCatalog.Garment[] Garments { get; set; }
+
+            internal BodyAppearanceCatalog.Attachment[] Attachments { get; set; }
+
+            // The build that runs, and its plan.
+            internal Task Work { get; set; }
+
+            internal object Plan { get; set; }
+
+            internal void Take(Combined built)
+            {
+                Mesh = built.Mesh;
+                BoneNames = built.BoneNames;
+                Materials = built.Materials;
+                RootBoneName = built.RootBoneName;
+                LocalBounds = built.LocalBounds;
+            }
         }
     }
 }

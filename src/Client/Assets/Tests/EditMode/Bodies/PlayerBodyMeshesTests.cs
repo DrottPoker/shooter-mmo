@@ -203,6 +203,254 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A body that comes into view waits for a build on a worker thread, which must make the
+        // mesh the main thread would: every vertex, weight, triangle, and bound to the bit.
+        [Test]
+        public void AWorkerThreadBuildsTheSameMeshAsTheMainThread()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var appearance = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                var catalog = appearance.Catalog;
+                // Hair pressed flat under the hood, a jerkin over the body, a rigid sword, and a bow
+                // with bones of its own.
+                var look = BodyLook.Default
+                    .WithGarment("DarkBrownHair", true)
+                    .WithGarment("WoolHoodUp", true)
+                    .WithGarment("LeatherJerkin", true)
+                    .WithAttachment("IronSword", true)
+                    .WithAttachment("TrainingShortbow", true);
+                var worn = PlayerBodyAppearance.WornBy(catalog, look);
+                var held = PlayerBodyAppearance.HeldBy(catalog, look);
+                Assert.That(worn.Count, Is.EqualTo(3));
+                Assert.That(held.Count, Is.EqualTo(2));
+                Assert.That(held.Any(attachment => attachment.IsSkinned), Is.True);
+                var parts = PlayerBodyMeshes.PartsOf(appearance);
+                var main = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, worn, held);
+                var worker = PlayerBodyMeshes.BuildOnWorkerThread(parts, appearance.transform, catalog, worn, held);
+                try
+                {
+                    AssertSameMesh(main, worker);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(main.Mesh);
+                    Object.DestroyImmediate(worker.Mesh);
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        // A build asked for runs on a worker thread while the main thread goes on, and its mesh
+        // keeps no copy of its data once uploaded when the set says so.
+        [Test]
+        public void AWantedCombinationIsBuiltOffTheMainThread()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath).GetComponent<PlayerBodyAppearance>();
+            using (var meshes = new PlayerBodyMeshes(true))
+            {
+                var look = BodyLook.Default.WithGarment("LeatherJerkin", true);
+                var wanted = meshes.Want(prefab, look);
+                Assert.That(wanted.IsReady, Is.False);
+                Assert.That(meshes.Pending, Is.EqualTo(1));
+                Assert.That(meshes.Want(prefab, look), Is.SameAs(wanted), "a combination is asked for once");
+                var deadline = System.DateTime.UtcNow.AddSeconds(30);
+                while (!wanted.IsReady && System.DateTime.UtcNow < deadline)
+                {
+                    meshes.Update(null, 0.0);
+                    System.Threading.Thread.Sleep(1);
+                }
+
+                Assert.That(wanted.IsReady, Is.True);
+                Assert.That(wanted.Mesh, Is.Not.Null);
+                Assert.That(wanted.Mesh.isReadable, Is.False);
+                Assert.That(meshes.Pending, Is.EqualTo(0));
+                Assert.That(meshes.Count, Is.EqualTo(1));
+            }
+        }
+
+        // A mesh no body uses stays its grace time, at most UnusedCap of them, and then goes; a
+        // body that takes it again keeps it.
+        [Test]
+        public void AMeshNobodyUsesGoesAfterItsGraceTime()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                {
+                    var first = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                    var second = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                    first.CombineParts(meshes);
+                    second.CombineParts(meshes);
+                    var mesh = first.CombinedRenderer.sharedMesh;
+                    var now = Time.realtimeSinceStartup;
+                    var later = Time.frameCount + PlayerBodyMeshes.WantedFrames + 1;
+
+                    first.ReleaseShared();
+                    meshes.Trim(now + PlayerBodyMeshes.GraceSeconds + 1f, later);
+                    Assert.That(meshes.Count, Is.EqualTo(1), "the second body still shows it");
+
+                    second.ReleaseShared();
+                    meshes.Trim(now, later);
+                    Assert.That(meshes.Count, Is.EqualTo(1), "it stays its grace time");
+                    meshes.Trim(now + PlayerBodyMeshes.GraceSeconds + 1f, later);
+                    Assert.That(meshes.Count, Is.EqualTo(0));
+                    Assert.That(mesh == null, Is.True, "the mesh is destroyed");
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        [Test]
+        public void AtMostUnusedCapMeshesNobodyUsesStay()
+        {
+            var scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                using (var meshes = new PlayerBodyMeshes())
+                {
+                    var appearance = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
+                    var catalog = appearance.Catalog;
+                    var parts = PlayerBodyMeshes.PartsOf(appearance);
+                    var garments = catalog.Garments.Where(garment => garment != null && garment.Model != null).ToArray();
+                    // Every garment alone, then pairs of them, until there are two more combinations
+                    // than the cap.
+                    var combinations = garments.Select(garment => new[] { garment })
+                        .Concat(garments.SelectMany((first, index) => garments.Skip(index + 1).Select(second => new[] { first, second })));
+                    var built = new List<Mesh>();
+                    foreach (var combination in combinations)
+                    {
+                        var mesh = meshes.For(parts, appearance.transform, catalog, combination).Mesh;
+                        if (!built.Contains(mesh))
+                        {
+                            built.Add(mesh);
+                        }
+
+                        if (built.Count == PlayerBodyMeshes.UnusedCap + 2)
+                        {
+                            break;
+                        }
+                    }
+
+                    Assert.That(built.Count, Is.EqualTo(PlayerBodyMeshes.UnusedCap + 2));
+                    Assert.That(meshes.Count, Is.EqualTo(built.Count));
+
+                    // While a body still asks for them they stay.
+                    meshes.Trim(Time.realtimeSinceStartup, Time.frameCount);
+                    Assert.That(meshes.Count, Is.EqualTo(built.Count));
+
+                    meshes.Trim(Time.realtimeSinceStartup, Time.frameCount + PlayerBodyMeshes.WantedFrames + 1);
+                    Assert.That(meshes.Count, Is.EqualTo(PlayerBodyMeshes.UnusedCap));
+                    Assert.That(built[0] == null && built[1] == null, Is.True, "the oldest go first");
+                    Assert.That(built[2] != null, Is.True);
+                }
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        // A material copy no body or corpse shows goes after the grace time.
+        [Test]
+        public void AMaterialCopyNobodyShowsGoesAfterItsGraceTime()
+        {
+            var source = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            try
+            {
+                using (var materials = new PlayerBodyMaterials())
+                {
+                    var copy = materials.For(source, Color.red);
+                    Assert.That(copy, Is.Not.SameAs(source));
+                    materials.AddUser(copy);
+                    materials.AddUser(source);
+                    var now = Time.realtimeSinceStartup;
+                    materials.Trim(now + PlayerBodyMeshes.GraceSeconds + 1f);
+                    Assert.That(materials.Count, Is.EqualTo(1), "a copy in use stays");
+
+                    materials.Release(copy);
+                    materials.Trim(now);
+                    Assert.That(materials.Count, Is.EqualTo(1), "it stays its grace time");
+                    Assert.That(materials.For(source, Color.red), Is.SameAs(copy));
+                    materials.Trim(now + PlayerBodyMeshes.GraceSeconds + 1f);
+                    Assert.That(materials.Count, Is.EqualTo(0));
+                    Assert.That(copy == null, Is.True);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        private static void AssertSameMesh(PlayerBodyMeshes.Combined expected, PlayerBodyMeshes.Combined actual)
+        {
+            var a = expected.Mesh;
+            var b = actual.Mesh;
+            Assert.That(b.vertexCount, Is.EqualTo(a.vertexCount));
+            AssertSameBits(a.vertices.SelectMany(Floats), b.vertices.SelectMany(Floats), "positions");
+            AssertSameBits(a.normals.SelectMany(Floats), b.normals.SelectMany(Floats), "normals");
+            AssertSameBits(a.tangents.SelectMany(Floats), b.tangents.SelectMany(Floats), "tangents");
+            var uvs = new List<Vector2>();
+            var otherUvs = new List<Vector2>();
+            for (var channel = 0; channel < 2; channel++)
+            {
+                a.GetUVs(channel, uvs);
+                b.GetUVs(channel, otherUvs);
+                AssertSameBits(uvs.SelectMany(uv => new[] { uv.x, uv.y }), otherUvs.SelectMany(uv => new[] { uv.x, uv.y }), "uv" + channel);
+            }
+
+            Assert.That(b.GetBonesPerVertex().ToArray(), Is.EqualTo(a.GetBonesPerVertex().ToArray()));
+            var weights = a.GetAllBoneWeights().ToArray();
+            var otherWeights = b.GetAllBoneWeights().ToArray();
+            Assert.That(otherWeights.Select(weight => weight.boneIndex), Is.EqualTo(weights.Select(weight => weight.boneIndex)));
+            AssertSameBits(weights.Select(weight => weight.weight), otherWeights.Select(weight => weight.weight), "weights");
+            AssertSameBits(a.bindposes.SelectMany(Floats), b.bindposes.SelectMany(Floats), "bind poses");
+            Assert.That(b.subMeshCount, Is.EqualTo(a.subMeshCount));
+            for (var submesh = 0; submesh < a.subMeshCount; submesh++)
+            {
+                Assert.That(b.GetTriangles(submesh), Is.EqualTo(a.GetTriangles(submesh)), "submesh " + submesh);
+            }
+
+            Assert.That(b.indexFormat, Is.EqualTo(a.indexFormat));
+            Assert.That(actual.Materials, Is.EqualTo(expected.Materials));
+            Assert.That(actual.BoneNames, Is.EqualTo(expected.BoneNames));
+            Assert.That(actual.RootBoneName, Is.EqualTo(expected.RootBoneName));
+            AssertSameBits(Floats(expected.LocalBounds.center).Concat(Floats(expected.LocalBounds.size)),
+                Floats(actual.LocalBounds.center).Concat(Floats(actual.LocalBounds.size)), "bounds");
+        }
+
+        private static IEnumerable<float> Floats(Vector3 value)
+        {
+            return new[] { value.x, value.y, value.z };
+        }
+
+        private static IEnumerable<float> Floats(Vector4 value)
+        {
+            return new[] { value.x, value.y, value.z, value.w };
+        }
+
+        private static IEnumerable<float> Floats(Matrix4x4 value)
+        {
+            return Enumerable.Range(0, 16).Select(index => value[index]);
+        }
+
+        private static void AssertSameBits(IEnumerable<float> expected, IEnumerable<float> actual, string what)
+        {
+            var expectedBits = expected.Select(System.BitConverter.SingleToInt32Bits).ToArray();
+            var actualBits = actual.Select(System.BitConverter.SingleToInt32Bits).ToArray();
+            Assert.That(actualBits.Length, Is.EqualTo(expectedBits.Length), what);
+            Assert.That(actualBits, Is.EqualTo(expectedBits), what);
+        }
+
         private static GameObject InstantiateBody(UnityEngine.SceneManagement.Scene scene)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);

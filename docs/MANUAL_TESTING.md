@@ -3026,6 +3026,13 @@ Expected result:
   `crowd back`, with the bots the client knew, 0 once the crowd left; the churn
   shows spawns and despawns of about 3 a second; and the Mob table shows every
   Mob shown.
+- Every bot appears dressed in its whole look, the nearest first, never in part
+  of it; a bot in a combination of garments no bot showed before appears a frame
+  or two after its build on a worker thread ends. Once the crowd left, the body
+  meshes fall to the few the World keeps, the default look of each body model and
+  the looks of the local player and its preview, and the material copies to
+  those they show; the player log shows `[CLIENT] Prepared 2 body models` once
+  per World.
 - What to look for, and to record with the run's folder: frames over 33.3 ms
   in an arrival, memory or body cache entries that stay up once the crowd left
   or grow with the crowd that came back, and an attempt that the script

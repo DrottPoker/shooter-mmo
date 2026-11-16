@@ -12,9 +12,11 @@ namespace Mmorpg.Client.Gameplay
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour, IRemoteMotionSource
     {
-        // At most this long a frame goes to putting bodies on players that came into view, the
-        // nearest first and at least one a frame, so a crowd that comes into view at once, as at a
-        // join, takes a few frames instead of stalling one: a body takes about 2 ms.
+        // At most this long a frame goes to making the meshes of the combinations whose build
+        // finished, starting builds, and putting bodies on players that came into view, the nearest
+        // first and at least one a frame whose combination is built, so a crowd that comes into
+        // view at once, as at a join, takes a few frames instead of stalling one: a body takes
+        // about 2 ms.
         public const double BodyMillisecondsPerFrame = 3.0;
 
         [SerializeField] private LocalPlayerController localPlayerPrefab;
@@ -24,7 +26,10 @@ namespace Mmorpg.Client.Gameplay
         private readonly Dictionary<ulong, RemotePlayerView> remotePlayers =
             new Dictionary<ulong, RemotePlayerView>();
         private readonly PlayerBodyMaterials bodyMaterials = new PlayerBodyMaterials();
-        private readonly PlayerBodyMeshes bodyMeshes = new PlayerBodyMeshes();
+        // Nothing reads the shared meshes back, so they keep no copy once uploaded; the corpse
+        // bakes read theirs back and take readable meshes of their own.
+        private readonly PlayerBodyMeshes bodyMeshes = new PlayerBodyMeshes(true);
+        private readonly PlayerBodyMeshes corpseMeshes = new PlayerBodyMeshes();
         private readonly PlayerCorpseBodies corpseBodies = new PlayerCorpseBodies();
         // Looks that wait for a dead body to live again: a dying body keeps its clothes until its
         // character respawns, though its items already lie in its corpse.
@@ -35,6 +40,13 @@ namespace Mmorpg.Client.Gameplay
         private readonly WaitingBodies waitingBodies = new WaitingBodies();
         private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
         private bool localLookDeferred;
+        // The local body's look, or the preview's, waits for the build of its combination.
+        private bool localLookWaiting;
+        private bool previewWaiting;
+        private PlayerBodyMeshes.Combined localWanted;
+        private PlayerBodyMeshes.Combined previewWanted;
+        private PlayerBodyWarmUp warmUp;
+        private bool warmUpEnded;
         private IClientSession clientSession;
         private IRealtimeSession realtimeSession;
         private IRealtimeMovementChannel realtimeMovement;
@@ -86,7 +98,7 @@ namespace Mmorpg.Client.Gameplay
         // crowd measurement reads after a crowd left; nothing reads them a frame.
         internal int BodyMeshCount
         {
-            get { return bodyMeshes.Count; }
+            get { return bodyMeshes.Count + corpseMeshes.Count; }
         }
 
         internal int BodyMaterialCount
@@ -106,7 +118,7 @@ namespace Mmorpg.Client.Gameplay
             var body = model != null ? model.Body : null;
             var look = RemotePlayerView.DressedLook(appearance, body != null ? body.Catalog : null, Presentation);
             key = PlayerCorpseBodies.KeyOf(model != null ? model.Name : null, look);
-            return corpseBodies.TryGet(key, body, look, bodyMeshes, bodyMaterials, out mesh, out materials);
+            return corpseBodies.TryGet(key, body, look, corpseMeshes, bodyMaterials, out mesh, out materials);
         }
 
         // Destroys the lying bodies that no corpse in view shows.
@@ -276,7 +288,8 @@ namespace Mmorpg.Client.Gameplay
 
             CombineBody(localPlayer);
             ApplyLocalBodyTint();
-            ApplyLocalBodyLook();
+            ApplyLocalBodyLook(true);
+            WarmUpBodies();
             if (bodyTint != null)
             {
                 bodyTint.Changed += OnBodyTintChanged;
@@ -404,8 +417,11 @@ namespace Mmorpg.Client.Gameplay
             remotePlayers.Clear();
             deferredAppearances.Clear();
             waitingBodies.Clear();
+            warmUp?.Dispose(bodyMeshes);
+            warmUp = null;
             bodyMaterials.Dispose();
             corpseBodies.Dispose();
+            corpseMeshes.Dispose();
             bodyMeshes.Dispose();
 
             DestroyLocalPlayer();
@@ -483,14 +499,20 @@ namespace Mmorpg.Client.Gameplay
 
             if (remotePlayers.TryGetValue(change.EntityId, out var remotePlayer) && remotePlayer != null)
             {
-                PresentAppearance(remotePlayer, change.Appearance);
+                ShowWhenBuilt(remotePlayer, change.Appearance);
             }
         }
 
-        // Puts bodies on the players that wait for one, the nearest to the camera first, for at
-        // most BodyMillisecondsPerFrame and at least one body a frame.
+        // Makes the meshes of the finished builds and starts more, then puts bodies on the players
+        // that wait for one, the nearest to the camera first, for at most BodyMillisecondsPerFrame
+        // and at least one body a frame. A body whose combination is not built yet waits for it:
+        // its build runs on a worker thread meanwhile, so no frame builds a mesh.
         private void PresentWaitingBodies()
         {
+            bodyWatch.Restart();
+            bodyMeshes.Update(bodyWatch, BodyMillisecondsPerFrame);
+            corpseMeshes.Update(null, 0.0);
+            bodyMaterials.Update();
             if (waitingBodies.Count == 0)
             {
                 return;
@@ -501,18 +523,75 @@ namespace Mmorpg.Client.Gameplay
                 ? localPlayer.PlayerCamera.Camera
                 : null;
             var eye = camera != null ? camera.transform.position : Vector3.zero;
-            bodyWatch.Restart();
+            waitingBodies.Touch(bodyMeshes);
             waitingBodies.OrderFrom(remotePlayers, eye);
-            do
+            while (waitingBodies.TryTakeNext(out var nearest, out var appearance, out var wanted))
             {
-                if (!waitingBodies.TryTakeNext(out var nearest, out var appearance))
+                // Finding which mesh a look needs costs too; the farther players ask next frame.
+                if (wanted == null && bodyWatch.Elapsed.TotalMilliseconds >= BodyMillisecondsPerFrame)
                 {
+                    waitingBodies.Wait(nearest.NetworkEntityId, appearance, null);
                     return;
                 }
 
+                if (!IsBuilt(nearest, appearance, ref wanted))
+                {
+                    waitingBodies.Wait(nearest.NetworkEntityId, appearance, wanted);
+                    continue;
+                }
+
                 PresentAppearance(nearest, appearance);
+                if (bodyWatch.Elapsed.TotalMilliseconds >= BodyMillisecondsPerFrame)
+                {
+                    return;
+                }
             }
-            while (waitingBodies.Count > 0 && bodyWatch.Elapsed.TotalMilliseconds < BodyMillisecondsPerFrame);
+        }
+
+        // Whether the combination the player shows in the look is built; when it is not, its build
+        // is asked for. A body that lies dead keeps the look it had and needs none.
+        private bool IsBuilt(RemotePlayerView remotePlayer, RealtimeCharacterAppearance appearance, ref PlayerBodyMeshes.Combined wanted)
+        {
+            var body = remotePlayer.Body;
+            if (remotePlayer.Appearance != null && body != null && body.IsDead)
+            {
+                return true;
+            }
+
+            if (wanted == null || wanted.Forgotten)
+            {
+                var slot = SlotOf(remotePlayerPrefab);
+                var model = slot != null && slot.Models != null
+                    ? slot.Models.NamedOrDefault(appearance != null ? appearance.BodyModel : null)
+                    : null;
+                if (model == null || model.Body == null)
+                {
+                    return true;
+                }
+
+                wanted = bodyMeshes.Want(model.Body, RemotePlayerView.DressedLook(appearance, model.Body.Catalog, Presentation));
+            }
+            else
+            {
+                bodyMeshes.Touch(wanted);
+            }
+
+            return wanted.IsReady;
+        }
+
+        // Shows the look now when its combination is built, and otherwise once it is, in the
+        // meantime showing the body as it was.
+        private void ShowWhenBuilt(RemotePlayerView remotePlayer, RealtimeCharacterAppearance appearance)
+        {
+            PlayerBodyMeshes.Combined wanted = null;
+            if (IsBuilt(remotePlayer, appearance, ref wanted))
+            {
+                PresentAppearance(remotePlayer, appearance);
+            }
+            else
+            {
+                waitingBodies.Wait(remotePlayer.NetworkEntityId, appearance, wanted);
+            }
         }
 
         // Shows the body model and the dressed look, or keeps them for later while the body shows
@@ -540,11 +619,36 @@ namespace Mmorpg.Client.Gameplay
         // it waited with.
         private void Update()
         {
+            if (warmUp != null && !warmUpEnded)
+            {
+                warmUpEnded = warmUp.TryEnd();
+            }
+
             PresentWaitingBodies();
             if (localLookDeferred && !IsLocalBodyDead)
             {
                 localLookDeferred = false;
                 OnBodyLookChanged();
+            }
+
+            if (localLookWaiting)
+            {
+                bodyMeshes.Touch(localWanted);
+                if (localWanted == null || localWanted.IsReady || localWanted.Forgotten)
+                {
+                    localLookWaiting = false;
+                    OnBodyLookChanged();
+                }
+            }
+
+            if (previewWaiting)
+            {
+                bodyMeshes.Touch(previewWanted);
+                if (previewWanted == null || previewWanted.IsReady || previewWanted.Forgotten)
+                {
+                    previewWaiting = false;
+                    ShowPreview(false);
+                }
             }
 
             if (deferredAppearances.Count == 0)
@@ -570,7 +674,7 @@ namespace Mmorpg.Client.Gameplay
                 deferredAppearances.Remove(entityId);
                 if (remotePlayers.TryGetValue(entityId, out var remotePlayer) && remotePlayer != null)
                 {
-                    PresentAppearance(remotePlayer, appearance);
+                    ShowWhenBuilt(remotePlayer, appearance);
                 }
             }
         }
@@ -583,15 +687,19 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // A presentation that arrived, such as the catalog that loaded after players came into
-        // view, names the garments of every item, so it dresses every other player again.
+        // view, names the garments of every item, so it dresses every other player again: each
+        // waits for its new look, which the frames put on as they put on bodies, the nearest first.
         private void OnPresentationChanged()
         {
+            // The looks the waiting players asked meshes for may wear other garments now.
+            waitingBodies.ForgetWanted();
             foreach (var remotePlayer in remotePlayers.Values)
             {
                 if (remotePlayer != null && remotePlayer.Appearance != null
-                    && !deferredAppearances.ContainsKey(remotePlayer.NetworkEntityId))
+                    && !deferredAppearances.ContainsKey(remotePlayer.NetworkEntityId)
+                    && !waitingBodies.Contains(remotePlayer.NetworkEntityId))
                 {
-                    PresentAppearance(remotePlayer, remotePlayer.Appearance);
+                    waitingBodies.Wait(remotePlayer.NetworkEntityId, remotePlayer.Appearance, null);
                 }
             }
         }
@@ -683,12 +791,18 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Another model puts in another body, which is combined, tinted, and offered to the panel;
-        // either way the body shows the look. A dead body keeps its look until it lives again.
+        // either way the body shows the look. A dead body keeps its look until it lives again, and
+        // the body keeps its model and look until the combination of the new ones is built.
         private void OnBodyLookChanged()
         {
             if (IsLocalBodyDead)
             {
                 localLookDeferred = true;
+                return;
+            }
+
+            if (!IsLocalLookBuilt())
+            {
                 return;
             }
 
@@ -737,8 +851,10 @@ namespace Mmorpg.Client.Gameplay
 
         // The character's look, dressed in the garments of the items it wears as the inventory
         // shows them, with its headwear as the server stores it, and holding the tool it uses. A
-        // dead body keeps its look until it lives again.
-        private void ApplyLocalBodyLook()
+        // dead body keeps its look until it lives again. Unless now is asked for, as when the
+        // player spawns while the World loads, the body keeps its look until the combination of
+        // the new one is built.
+        private void ApplyLocalBodyLook(bool now = false)
         {
             if (IsLocalBodyDead)
             {
@@ -746,26 +862,54 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
+            if (!now && !IsLocalLookBuilt())
+            {
+                return;
+            }
+
             var appearance = LocalAppearance;
             if (appearance != null && bodyLook != null)
             {
-                appearance.ApplyLook(
-                    EquipmentGarments.Dress(
-                        bodyLook.Look,
-                        appearance.Catalog,
-                        equipment != null ? equipment.Items : null,
-                        Presentation,
-                        bodyLook.HeadwearLowered,
-                        equipment != null ? equipment.ToolInUse : null),
-                    bodyMaterials);
+                appearance.ApplyLook(DressLocal(appearance.Catalog, true), bodyMaterials);
             }
 
-            ShowPreview();
+            ShowPreview(now);
+        }
+
+        // The look of the local character for a body of the catalog, holding the tool it uses or
+        // not, as the preview shows it.
+        private BodyLook DressLocal(BodyAppearanceCatalog catalog, bool holdingTool)
+        {
+            return EquipmentGarments.Dress(
+                bodyLook.Look,
+                catalog,
+                equipment != null ? equipment.Items : null,
+                Presentation,
+                bodyLook.HeadwearLowered,
+                holdingTool && equipment != null ? equipment.ToolInUse : null);
+        }
+
+        // Whether the combination of the model and look the local player is to show is built;
+        // when it is not, its build is asked for and the look waits for it.
+        private bool IsLocalLookBuilt()
+        {
+            var slot = SlotOf(localPlayer);
+            var model = slot != null && slot.Models != null && bodyLook != null
+                ? slot.Models.NamedOrDefault(bodyLook.Model)
+                : null;
+            if (model == null || model.Body == null)
+            {
+                return true;
+            }
+
+            localWanted = bodyMeshes.Want(model.Body, DressLocal(model.Body.Catalog, true));
+            localLookWaiting = !localWanted.IsReady;
+            return !localLookWaiting;
         }
 
         // The preview shows the model of the local body in the same look, without the tool a
-        // gathering character holds.
-        private void ShowPreview()
+        // gathering character holds, once the combination of that look is built.
+        private void ShowPreview(bool now)
         {
             var slot = SlotOf(localPlayer);
             var model = slot != null ? slot.Model : null;
@@ -774,17 +918,49 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
-            preview.Show(
-                model,
-                EquipmentGarments.Dress(
-                    bodyLook.Look,
-                    model.Body.Catalog,
-                    equipment != null ? equipment.Items : null,
-                    Presentation,
-                    bodyLook.HeadwearLowered,
-                    null),
-                bodyMeshes,
-                bodyMaterials);
+            var look = DressLocal(model.Body.Catalog, false);
+            if (!now)
+            {
+                previewWanted = bodyMeshes.Want(model.Body, look);
+                previewWaiting = !previewWanted.IsReady;
+                if (previewWaiting)
+                {
+                    return;
+                }
+            }
+
+            preview.Show(model, look, bodyMeshes, bodyMaterials);
+        }
+
+        // Prepares every body model a player can show while the World loads, so the first player
+        // that comes into view costs what any other does.
+        private void WarmUpBodies()
+        {
+            var models = new List<PlayerBodyModels.Model>();
+            AddModels(SlotOf(remotePlayerPrefab), models);
+            AddModels(SlotOf(localPlayerPrefab), models);
+            warmUp = PlayerBodyWarmUp.Begin(models, bodyMeshes, bodyMaterials, playerCamera, transform);
+            ClientLog.Info(
+                ClientLogCategory.Client,
+                "Prepared " + warmUp.Models + " body models and " + warmUp.MaterialVariants
+                    + " material variants for the World in "
+                    + warmUp.Milliseconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms.");
+        }
+
+        private static void AddModels(PlayerBodySlot slot, List<PlayerBodyModels.Model> models)
+        {
+            if (slot == null || slot.Models == null)
+            {
+                return;
+            }
+
+            foreach (var model in slot.Models.Models)
+            {
+                if (model != null && model.Body != null && !models.Exists(known => known.Body == model.Body))
+                {
+                    models.Add(model);
+                }
+            }
         }
 
         private bool ValidateReferences()
