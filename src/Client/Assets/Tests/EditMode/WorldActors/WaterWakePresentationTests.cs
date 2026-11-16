@@ -86,6 +86,19 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(RingHeight(), Is.EqualTo(surfaces.Lift(point, 102.5f) + 0.02f).Within(0.0001f));
         }
 
+        // A wake beyond the range is too small to see, so a body there is not visited and costs
+        // no depth query.
+        [Test]
+        public void OnlyABodyWithinTheWakeRangeOfTheCameraShowsAWake()
+        {
+            var eye = new Vector3(1f, 6f, -2f);
+            var direction = new Vector3(3f, -1f, 2f).normalized;
+            Assert.That(WaterWakePresentation.WakeRange, Is.EqualTo(60f));
+            Assert.That(WaterWakePresentation.IsInWakeRange(eye, eye), Is.True);
+            Assert.That(WaterWakePresentation.IsInWakeRange(eye, eye + (direction * (WaterWakePresentation.WakeRange - 0.1f))), Is.True);
+            Assert.That(WaterWakePresentation.IsInWakeRange(eye, eye + (direction * (WaterWakePresentation.WakeRange + 0.1f))), Is.False);
+        }
+
         private float RingHeight()
         {
             var rings = host.transform.Find("WaterRings").GetComponent<ParticleSystem>();

@@ -32,6 +32,8 @@ namespace Mmorpg.Client.WorldActors
         // Mobs without a view yet, such as while their prefab loads, whose lost records showed
         // them away from the pose of their actor, by the state revision of that pose.
         private readonly Dictionary<ulong, long> missedMoves = new Dictionary<ulong, long>();
+        // The actors a full rebuild found gone, reused so a rebuild allocates nothing.
+        private readonly List<ulong> goneIds = new List<ulong>();
         private Action<RealtimeEntitySnapshot> noteUnrouted;
         private MaterialPropertyBlock materialProperties;
         private WorldActorClientController actorController;
@@ -126,7 +128,7 @@ namespace Mmorpg.Client.WorldActors
                     continue;
                 }
 
-                var creature = view.GetComponent<CreatureAnimator>();
+                var creature = view is MobView mob ? mob.Creature : null;
                 var offset = view.transform.position - position;
                 offset.y = 0f;
                 if (creature != null
@@ -284,7 +286,8 @@ namespace Mmorpg.Client.WorldActors
 
             if (actorController != null)
             {
-                actorController.State.Changed += Rebuild;
+                actorController.State.ActorChanged += OnActorChanged;
+                actorController.State.Cleared += Rebuild;
                 Rebuild();
             }
 
@@ -299,7 +302,8 @@ namespace Mmorpg.Client.WorldActors
         {
             if (actorController != null)
             {
-                actorController.State.Changed -= Rebuild;
+                actorController.State.ActorChanged -= OnActorChanged;
+                actorController.State.Cleared -= Rebuild;
             }
 
             if (snapshotsSubscribed)
@@ -385,6 +389,29 @@ namespace Mmorpg.Client.WorldActors
                     + " Every actor uses the explicit development fallback.");
         }
 
+        // A change of one actor presents only that actor: a spawn creates its view, a newer state
+        // applies to it, and a despawn destroys it. Before the registry resolved nothing is
+        // presented; the rebuild after it presents every actor.
+        private void OnActorChanged(ulong entityId)
+        {
+            if (actorController == null || !registryResolved)
+            {
+                return;
+            }
+
+            if (actorController.State.TryGet(entityId, out var actor))
+            {
+                Present(actor);
+            }
+            else
+            {
+                Forget(entityId);
+            }
+        }
+
+        // Presents every actor again, in the order of its entity id, and forgets every actor that
+        // left: when the presentation starts, after the registry or a prefab loaded, and when
+        // every actor left at once, as when the session ended.
         private void Rebuild()
         {
             if (actorController == null || !registryResolved)
@@ -392,38 +419,59 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            var currentIds = new HashSet<ulong>(
-                actorController.State.Actors.Select(actor => actor.EntityId));
-            foreach (var staleId in presentations.Keys
-                         .Where(entityId => !currentIds.Contains(entityId))
-                         .ToArray())
+            var state = actorController.State;
+            goneIds.Clear();
+            foreach (var entityId in presentations.Keys)
             {
-                DestroyPresentation(staleId);
-            }
-
-            foreach (var goneId in missedMoves.Keys
-                         .Where(entityId => !currentIds.Contains(entityId))
-                         .ToArray())
-            {
-                missedMoves.Remove(goneId);
-            }
-
-            foreach (var actor in actorController.State.Actors)
-            {
-                if (!presentations.TryGetValue(actor.EntityId, out var view))
+                if (!state.TryGet(entityId, out _))
                 {
-                    var state = ResolvePrefab(actor.PresentationArchetypeId, out var prefab);
-                    if (state == PrefabState.Loading)
-                    {
-                        continue;
-                    }
+                    goneIds.Add(entityId);
+                }
+            }
 
-                    view = CreatePresentation(actor, prefab);
-                    presentations.Add(actor.EntityId, view);
+            foreach (var entityId in missedMoves.Keys)
+            {
+                if (!state.TryGet(entityId, out _))
+                {
+                    goneIds.Add(entityId);
+                }
+            }
+
+            for (var index = 0; index < goneIds.Count; index++)
+            {
+                Forget(goneIds[index]);
+            }
+
+            var actors = state.Actors;
+            for (var index = 0; index < actors.Count; index++)
+            {
+                Present(actors[index]);
+            }
+        }
+
+        // Creates the view of an actor once its prefab is ready, and applies the actor to it.
+        private void Present(WorldActorClientEntry actor)
+        {
+            if (!presentations.TryGetValue(actor.EntityId, out var view))
+            {
+                var prefabState = ResolvePrefab(actor.PresentationArchetypeId, out var prefab);
+                if (prefabState == PrefabState.Loading)
+                {
+                    return;
                 }
 
-                view.Apply(actor);
+                view = CreatePresentation(actor, prefab);
+                presentations.Add(actor.EntityId, view);
             }
+
+            view.Apply(actor);
+        }
+
+        // An actor that left: its view goes, and a move it missed while it had none.
+        private void Forget(ulong entityId)
+        {
+            DestroyPresentation(entityId);
+            missedMoves.Remove(entityId);
         }
 
         private PrefabState ResolvePrefab(string presentationArchetypeId, out GameObject prefab)
@@ -580,7 +628,7 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            var creature = view.GetComponent<CreatureAnimator>();
+            var creature = view is MobView mob ? mob.Creature : null;
             if (creature != null && creature.IsDead)
             {
                 falls.Add(new CreatureFall(

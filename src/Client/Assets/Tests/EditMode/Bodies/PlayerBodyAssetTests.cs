@@ -65,6 +65,35 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(body.GetComponentsInChildren<Collider>(true), Is.Empty);
         }
 
+        // At run time every body a player shows culls its pose off screen. No prefab stores a
+        // culling mode: the Animator that the model importer gives each body model has Cull Update
+        // Transforms, and the body variants and the player prefabs keep it, also when a player
+        // puts in another body. The creatures do the same, as CreaturePresentationTests checks; the
+        // character preview's copy, which no player camera sees, culls completely instead.
+        [Test]
+        public void EveryBodyAPlayerShowsCullsItsPoseOffScreen()
+        {
+            foreach (var path in PlayerPrefabPaths)
+            {
+                var player = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(path));
+                try
+                {
+                    var slot = player.GetComponentInChildren<PlayerBodySlot>(true);
+                    Assert.That(slot, Is.Not.Null, path);
+                    foreach (var model in slot.Models.Models)
+                    {
+                        Assert.That(slot.Show(model), Is.True, path + " " + model.Name);
+                        var animator = slot.Body.GetComponent<Animator>();
+                        Assert.That(animator.cullingMode, Is.EqualTo(AnimatorCullingMode.CullUpdateTransforms), path + " " + model.Name);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(player);
+                }
+            }
+        }
+
         [Test]
         public void TheBodyModelsAreTheMaleBodyFirstAndTheFemaleBody()
         {

@@ -30,6 +30,11 @@ namespace Mmorpg.Client.Gameplay
             new GroundedVerticalPresentation();
         private readonly SimulationVector3[] collisionStreamingAnchor =
             new SimulationVector3[1];
+
+        // The predicted position whose chunks must be loaded before a tick, kept so a tick
+        // allocates nothing.
+        private readonly SimulationVector3[] predictedChunkAnchor =
+            new SimulationVector3[1];
         private CharacterBody characterBody;
         private CharacterLocomotionAnimator body;
         private LocalPlayerInput playerInput;
@@ -406,15 +411,16 @@ namespace Mmorpg.Client.Gameplay
             var collisionSession = realtimeMovement != null
                 ? realtimeMovement.MovementSession
                 : null;
-            if (collisionSession != null
-                && !collisionSession.TryEnsureCollisionChunks(
-                    new[] { movementPrediction.State.Position },
-                    out var collisionError))
+            if (collisionSession != null)
             {
-                realtimeSession.DisconnectForClientFailure(
-                    "collision_stream_failed",
-                    collisionError);
-                return;
+                predictedChunkAnchor[0] = movementPrediction.State.Position;
+                if (!collisionSession.TryEnsureCollisionChunks(predictedChunkAnchor, out var collisionError))
+                {
+                    realtimeSession.DisconnectForClientFailure(
+                        "collision_stream_failed",
+                        collisionError);
+                    return;
+                }
             }
 
             unchecked

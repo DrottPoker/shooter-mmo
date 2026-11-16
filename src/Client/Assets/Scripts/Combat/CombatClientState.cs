@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Collections.ObjectModel;
 using Mmorpg.GameProtocol;
 
 namespace Mmorpg.Client.Combat
@@ -17,6 +17,11 @@ namespace Mmorpg.Client.Combat
 
         private readonly Dictionary<ulong, RealtimeCombatantState> combatants =
             new Dictionary<ulong, RealtimeCombatantState>();
+
+        // The same states in the order of their entity ids, kept as they change, so a read
+        // neither sorts nor allocates.
+        private readonly List<RealtimeCombatantState> ordered = new List<RealtimeCombatantState>();
+        private readonly ReadOnlyCollection<RealtimeCombatantState> orderedView;
         private readonly Dictionary<ulong, int> shownRegeneratedHealth = new Dictionary<ulong, int>();
         private readonly Dictionary<Guid, RealtimeCombatIntent> pendingIntents =
             new Dictionary<Guid, RealtimeCombatIntent>();
@@ -45,9 +50,16 @@ namespace Mmorpg.Client.Combat
             get { return pendingIntents.Count; }
         }
 
+        public CombatClientState()
+        {
+            orderedView = ordered.AsReadOnly();
+        }
+
+        // Every combatant state in the order of its entity id. The list is the state's own and
+        // changes with it, so a reader that keeps it across a change copies what it needs.
         public IReadOnlyList<RealtimeCombatantState> Combatants
         {
-            get { return combatants.Values.OrderBy(state => state.EntityId).ToArray(); }
+            get { return orderedView; }
         }
 
         public bool TryGetCombatant(ulong entityId, out RealtimeCombatantState state)
@@ -126,6 +138,16 @@ namespace Mmorpg.Client.Combat
             }
 
             combatants[state.EntityId] = state;
+            var index = OrderedIndexOf(state.EntityId);
+            if (index >= 0)
+            {
+                ordered[index] = state;
+            }
+            else
+            {
+                ordered.Insert(~index, state);
+            }
+
             shownRegeneratedHealth.Remove(state.EntityId);
             Changed?.Invoke();
             return true;
@@ -187,6 +209,7 @@ namespace Mmorpg.Client.Combat
             shownRegeneratedHealth.Remove(entityId);
             if (combatants.Remove(entityId))
             {
+                ordered.RemoveAt(OrderedIndexOf(entityId));
                 Changed?.Invoke();
             }
         }
@@ -269,11 +292,40 @@ namespace Mmorpg.Client.Combat
             }
 
             combatants.Clear();
+            ordered.Clear();
             shownRegeneratedHealth.Clear();
             pendingIntents.Clear();
             Owner = null;
             LastIntentResult = null;
             Changed?.Invoke();
+        }
+
+        // The index of the combatant in the ordered list, or the bitwise complement of the index
+        // it would take.
+        private int OrderedIndexOf(ulong entityId)
+        {
+            var low = 0;
+            var high = ordered.Count - 1;
+            while (low <= high)
+            {
+                var middle = low + ((high - low) / 2);
+                var current = ordered[middle].EntityId;
+                if (current == entityId)
+                {
+                    return middle;
+                }
+
+                if (current < entityId)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+
+            return ~low;
         }
 
         // A state without regeneration repeats its health exactly; a regenerating one may carry

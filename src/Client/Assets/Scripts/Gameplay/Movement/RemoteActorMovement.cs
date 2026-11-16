@@ -1,4 +1,5 @@
 using Mmorpg.Client.Networking;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameSimulation;
 using UnityEngine;
 
@@ -28,6 +29,10 @@ namespace Mmorpg.Client.Gameplay
         private readonly RemoteMovementPresenter presenter = new RemoteMovementPresenter();
         private int snapshotIntervalTicks = 1;
         private bool resting;
+
+        // The joined session's collision chunks, whose revision tells that the ground under a
+        // settled actor may have changed; null without a session.
+        private UnityWorldCollisionStream groundStream;
 
         // The only state is the pose of a spawn that walked, and no snapshot followed it yet.
         private bool walkingSpawnUnconfirmed;
@@ -95,10 +100,12 @@ namespace Mmorpg.Client.Gameplay
             if (session == null)
             {
                 IsConfigured = false;
+                groundStream = null;
                 Clear();
                 return;
             }
 
+            groundStream = session.CollisionStream;
             Configure(
                 session.Settings.TickRateHz,
                 session.SnapshotRateHz,
@@ -284,15 +291,17 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // Advances the render clock by one frame and returns whether it presented a pose. A
-        // settled rest pose no longer changes, so it costs nothing until the next snapshot.
+        // settled rest pose no longer changes, so it costs nothing until the next snapshot, or
+        // until a collision chunk loaded or unloaded and the pose lands on the ground there.
         public bool Advance(float unscaledDeltaTime, float deltaTime)
         {
-            if (resting && presenter.IsSettled)
+            var groundRevision = groundStream != null ? groundStream.Revision : 0;
+            if (resting && presenter.IsSettled && groundRevision == presenter.GroundRevision)
             {
                 return false;
             }
 
-            return presenter.Advance(unscaledDeltaTime, deltaTime);
+            return presenter.Advance(unscaledDeltaTime, deltaTime, groundRevision);
         }
 
         // Shows the actor standing at the anchor and then walking into the snapshot, with the

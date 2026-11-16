@@ -430,12 +430,12 @@ player at `Initialize`. The bootstrap hands every component that needs it the
 one `LocalPlayerSource` instead, which tells who the local player is right now,
 as [Local Player Lifecycle](#local-player-lifecycle) describes. No runtime code
 searches the scene for a service or the player, or asks for `Camera.main`, except
-in four places that `ClientServiceAccessTests` lists with their reasons: the
+in three places that `ClientServiceAccessTests` lists with their reasons: the
 bootstrap's guard against a second bootstrap, its `AddSceneComponentIfMissing`,
-which keeps a component that a scene already has, `TemporaryUiKit`, which adds
-the EventSystem that uGUI needs when the scene has none, and
-`ClothChainScheduler`, which serves every body, also in tools and tests without
-the bootstrap, and measures from the camera that renders the game.
+which keeps a component that a scene already has, and `TemporaryUiKit`, which
+adds the EventSystem that uGUI needs when the scene has none. The cloth
+scheduler, which serves every body, gets the camera that renders the World from
+`WorldSceneContext` with the local player.
 
 When a scene loads, the bootstrap composes it. LoginMenu gets `LoginMenuPanel`
 and CharacterSelect gets `CharacterSelectPanel`, each with the text of the code
@@ -1884,6 +1884,23 @@ The clock uses bounded catch-up and slow-down corrections during normal delivery
 After a larger network stall it restores the intended buffer delay instead of
 retaining permanent extra latency.
 
+A player that stands rests. Once its newest state stands and its pose reached
+it, with nothing extrapolated or blended and the delay at the one the entity
+asks for, `RemoteMovementPresenter.Advance` presents nothing and asks the
+collision world nothing until the next state, so a standing crowd costs little
+more than the call of each view's `Update`. The render clock still stands where
+advancing it every frame would have it: until the render time follows the
+server estimate exactly, half a second or more after the pose reached the
+state, a resting frame advances only the clock, and after that it only adds up
+its time, which the clock catches up on in one step at the next state. So the
+delay and every rule above show exactly the same, and the starvation
+measurement counts the same; `RemoteRecordPresentationTests` compares a
+resting entity with one advanced every frame. The ground under a resting player
+changes when a collision chunk loads or unloads as the local player moves:
+`UnityWorldCollisionStream.Revision` counts those changes, and a new revision
+ends the rest, so the player lands on the ground there. A settled Mob does the
+same, as [Mob Movement](#mob-movement) describes.
+
 A reliable despawn removes the matching view immediately. Missing unreliable
 snapshots never decide entity lifetime. `WorldSceneContext` routes the snapshot
 entities of remote players; Mob entities go to the world actor presentation, as
@@ -1917,7 +1934,7 @@ Characters move in `Update`. Then, in this order:
 | 50 | `Locomotion` | `CharacterLocomotionAnimator` reads how far its body moved, after every character moved and before the Animator evaluates |
 | 60 | `Projectiles` | `CombatProjectilePresentation` places arrows and bolts in `LateUpdate`, after the bodies posed their hands and drew their strings |
 | 100 | `Camera` | `OrbitCameraController` follows the player |
-| 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the main camera or the character preview now sees |
+| 110 | `Cloth` | `ClothChainScheduler` lays the cloth of the bodies the player camera or the character preview now sees |
 | 200 | `ScreenAnchoredInterface` | `WorldNameplates` places the Mob nameplates, and `TemporaryCombatHud` places health bars and damage numbers |
 
 Without a fixed order Unity could place screen-anchored interface with the
@@ -2496,7 +2513,10 @@ presence entry and updates it from server position, facing, and presentation key
   to the body of its new look, and a baked body that no corpse in view shows any
   more is destroyed. While a body that shows its character dead lies within
   1.5 m, the corpse stays hidden, so the dying body and its remains never show
-  twice; it appears when the character respawns at the World spawn.
+  twice; it appears when the character respawns at the World spawn. While a
+  player corpse is in view, the presentation collects the dead bodies of the
+  players once a frame, `WorldSceneContext.CollectDeadBodies`, and checks each
+  corpse against them, so the cost never multiplies corpses by players.
 - A Mob corpse whose presentation key names a Mob archetype, such as
   `corpse.mob.feral_wolf`, shows an instance of that archetype's prefab, loaded
   through the actor presentations, lying in the last pose of its `Death` clip at
@@ -2623,7 +2643,10 @@ the remote pointer trigger, and the health bar height do not depend on it.
 
 The body's Animator uses its Humanoid avatar,
 `Assets/Art/Animation/HumanLocomotion.controller`, no root motion, and
-`Cull Update Transforms`, so a body off screen skips its pose. Every clip it plays
+`Cull Update Transforms`, so a body off screen skips its pose. No prefab stores
+the culling mode: the Animator that the model importer gives each body model
+has it, and the body variants keep it; `PlayerBodyAssetTests` reads it on every
+body a player shows. Every clip it plays
 comes from `Assets/Art/Models/Animations/Human_Actions.fbx`, the
 [animation library](ART_PIPELINE.md#animation-libraries) of the human bodies, as
 Humanoid motion that fits every body; the body's own model has no clips. The base
@@ -2866,12 +2889,15 @@ from these parts:
   `ClothChainSolver.FarDistance` in its target pose and gives springs to the
   bodies largest on the screen, as many as `ClothChainScheduler.Budget` holds,
   keeping them against a slightly larger body so no body flickers between the
-  levels. Besides the main camera it looks through every enabled camera given to
-  `AddView`, such as the [Character Preview](#character-preview)'s, and measures
-  each body from the camera it looks largest in (`Measure`). Three Burst jobs do the work: one reads the bodies' bones, one lays
-  each body with `ClothPose` and swings its springs with `ClothSprings`, and one
-  turns the chain bones. Out of play, as in the Wardrobe and the tests, each body
-  lays its own chains in a world of its own.
+  levels. It looks through the player camera, which `WorldSceneContext` gives
+  it with `UseMainView` when it spawns the local player and takes back with
+  `ForgetMainView`, and through every enabled camera given to `AddView`, such
+  as the [Character Preview](#character-preview)'s, and measures each body from
+  the camera it looks largest in (`Measure`). Three Burst jobs do the work: one
+  reads the bodies' bones, one lays each body with `ClothPose` and swings its
+  springs with `ClothSprings`, and one turns the chain bones. Out of play, as in
+  the Wardrobe and the tests, each body lays its own chains in a world of its
+  own.
 - `Mmorpg.Client.Cloth` holds the cloth math on plain data, without memory from
   frame to frame in the target pose, so the art pipeline's `cloth_core.py` lays
   the same cases; see [Cloth Parity](ART_PIPELINE.md#cloth-parity).
@@ -2979,8 +3005,10 @@ and sends `AppearanceIntent`; see
 - **Other players.** `RemotePlayerView.ApplyAppearance` shows the sent body model
   and dresses the look in the garments and attachments of the sent visible
   equipment with the sent headwear, holding the sent `ToolInUse`, from the item
-  presentation of `PlayerEquipment`; a new presentation dresses every player
-  again.
+  presentation of `PlayerEquipment`. A new presentation,
+  `PlayerEquipment.PresentationChanged`, such as the catalog that loaded after
+  players came into view, dresses every player again; an item the local player
+  equips or a tool it uses dresses only its own body.
 - **A dying body keeps its clothes.** While a body shows its character dead,
   `WorldSceneContext` keeps every new look for it and shows the last one once the
   body lives again, since its items lie in its corpse already.
@@ -3005,7 +3033,7 @@ catalogs and to `AppearanceRules`.
 
 ### Crowd Performance
 
-A crowd of dressed players costs the client in five places, and each is kept
+A crowd of dressed players costs the client in six places, and each is kept
 bounded:
 
 - **Cloth.** Burst jobs on the worker threads lay every body in view in its target
@@ -3017,10 +3045,22 @@ bounded:
   takes about 1.75 ms, since the cloth measures are shared per model, and several
   players often come into interest in one frame, so `WorldSceneContext` puts
   bodies on for at most `BodyMillisecondsPerFrame` (3 ms) a frame, the nearest to
-  the camera first and at least one. A player whose body waits already moves, is
+  the camera first and at least one. `WaitingBodies` measures every waiting
+  player once a frame and takes them from a heap, so hundreds that wait are not
+  scanned again for every body. A player whose body waits already moves, is
   picked by its trigger, and gets the newest look the server sent when its body
   goes on. The first body in a new combination of garments still builds its
   combined mesh, about 10 ms once per combination.
+- **Work per entity in view grows only with what changed.** A standing remote
+  player or a settled Mob does no work per frame, as
+  [Remote Players](#remote-players) and [Mob Movement](#mob-movement) describe.
+  A world actor state applies only its own actor, and the actors and the
+  combatants are kept in order as they change instead of sorted on every read.
+  The local player's equipment dresses only its own body. The combat
+  presentation walks the views without allocating and knows each Mob's creature,
+  the water wakes visit only the bodies within 60 m of the camera and ask
+  nothing for a body that stands, and the player corpses collect the dead bodies
+  once a frame.
 - **Combined bodies and shared materials.** Every body draws as one combined
   renderer with shared meshes and materials, as
   [Combined Bodies](#combined-bodies) and [Looks](#looks) describe.
@@ -3030,7 +3070,17 @@ bounded:
   closed.
 
 Hot paths allocate nothing: avoid `Mathf.Max` with three arguments, which
-allocates an array, and a sort with a `Comparison`, which allocates a comparer.
+allocates an array, `List.Sort`, which in the Editor's runtime allocates a
+comparison on every call also when it is given an `IComparer`, and a foreach
+over an interface such as `IEnumerable<T>`, which boxes the enumerator. Code
+that sorts every frame uses `StableListSort` in `Mmorpg.Client.Core`, which
+keeps equal items in their order and merges through a buffer the caller keeps,
+as the nameplates do. The collision refresh on every owner snapshot,
+`UnityWorldCollisionStream.TryRefresh`, and the check before every predicted
+tick, `TryEnsureLoaded`, keep their sets and anchors and allocate nothing
+unless a chunk loads. The EditMode tests count allocations with
+`ManagedAllocations`, from the profiler's `GC.Alloc` samples, because
+`GC.GetAllocatedBytesForCurrentThread` reads 0 in the Editor.
 
 The last measurement of a large crowd ran 400 ActiveSimulationBots on
 `local-shard-1` (Development World 2), about 170 dressed players in interest, in
@@ -3387,13 +3437,22 @@ interpolation, render clock, and render delay:
   pose before its first snapshot, such as one whose view appeared only after
   its prefab loaded, walks on as a remote player does.
 - **Restart.** A Mob that settled at its rest pose does no work per frame, and
-  its next snapshot starts again from the rest pose.
+  its next snapshot starts again from the rest pose. A collision chunk that
+  loads or unloads, a new `UnityWorldCollisionStream.Revision`, makes a settled
+  Mob present its pose once more, so it lands on the ground there.
 - **Cleanup.** A hidden Mob, such as a dead one, clears its interpolation and
   ignores snapshots, and it returns at its reliable pose. A despawn destroys the
   view, and a respawn creates a new view without interpolation.
 
-The presentation controller applies every actor again on each actor change, so a
-`MobView` moves on a reliable state only when its state revision is newer. The
+A change of one actor, which `WorldActorClientState.ActorChanged` names, applies
+only that actor's view: a spawn creates it, a newer state applies to it, and a
+despawn destroys it. The presentation controller applies every actor again, in
+the order of the entity ids that `WorldActorClientState.Actors` keeps without
+sorting, when it starts, after the registry or a prefab loaded, and when every
+actor left at once (`Cleared`), as at the end of a session; so a `MobView` moves
+on a reliable state only when its state revision is newer. The order makes the
+views that one rebuild creates appear in a fixed order, which is the order the
+per-frame presentation walks them in; nothing on screen depends on it. The
 grounded presentation of a Mob uses the session's character capsule, because the
 protocol does not carry a Mob's locomotion capsule; on walkable slopes its slope
 support offset therefore differs from the worker's by a few centimetres, within
@@ -3430,6 +3489,8 @@ move faster than 20 m/s as a placement, and drives the Animator of the prefab's
 - **Death** while `Dead` is set. `CombatDeathPresentation` tells every presented
   Mob with a `CreatureAnimator` its combatant life state each frame, so it falls
   when it dies and holds the last pose; Death returns to Idle if `Dead` clears.
+  The `MobView` finds its creature once, `MobView.Creature`, so neither this
+  nor a corpse waiting for a fall looks for a component every frame.
 
 The worker despawns a dead Mob once its corpse exists. When the view of a falling
 Mob is destroyed, `WorldActorPresentationController` remembers its archetype,
@@ -3443,9 +3504,10 @@ writes the corpse's pose at once anyway.
 
 `WaterWakePresentation` in `Assets/Scripts/WorldActors` shows where the local
 player, the other players, and the active Mobs stand in water. Each frame
-`WaterWakeTracker` asks `WaterRules.TryGetDepth` of the session's collision
-world, the same baked water as the movement rules, how deep the water is at a
-body's feet; from 5 cm deep a body leaves wakes:
+`WaterWakeTracker` visits every body within `WaterWakePresentation.WakeRange`
+(60 m) of the player camera and asks `WaterRules.TryGetDepth` of the session's
+collision world, the same baked water as the movement rules, how deep the water
+is at the body's feet; from 5 cm deep a body leaves wakes:
 
 - A ring spreads on the surface from its feet every 1.6 s while it stands, of
   1.2 m, and every 0.22 s while it moves faster than 0.4 m/s, of 1.4 to 2.2 m
@@ -3454,6 +3516,15 @@ body's feet; from 5 cm deep a body leaves wakes:
   in water at least 0.4 m deep and fewer in shallower water, and fall back under
   gravity.
 - A body that moves 2 m or more in one frame was placed anew and starts still.
+
+A body that stands exactly where it stood keeps the depth it was given while the
+collision world and its `UnityWorldCollisionStream.Revision` stay the same, so
+a crowd that stands asks nothing. A farther wake cannot be seen: at 60 m the
+camera's 55 degree view puts about 17 pixels of a 1080 pixel screen on a meter,
+so the largest still ring, 1.9 m across as it fades, is about 33 pixels wide
+and, lying flat on the water, a few pixels high, and a droplet one to three
+pixels. A body beyond the range is not visited, so the tracker forgets it, and
+it starts still when it comes near again.
 
 One particle system draws every ring and another every droplet, with the ring
 and spray materials of the configuration, so a crowd in the water costs two
@@ -3469,9 +3540,10 @@ a point and lifts its corners by `WaterWaves` times the green of their colors,
 as the water shader does. A wake starts at that height, and every ring on moving
 water is kept by its particle seed and moved to the lifted surface each frame
 until it fades. Still water costs nothing extra. The wakes are presentation
-only. `WaterWakeTrackerTests` checks the tracker on a test pond,
-`WaterWakePresentationTests` the particle systems, and `WaterSurfacesTests` the
-lifted surface and the water's clock.
+only. `WaterWakeTrackerTests` checks the tracker on a test pond, also that a
+standing body asks for its depth once, `WaterWakePresentationTests` the
+particle systems and the range, and `WaterSurfacesTests` the lifted surface and
+the water's clock.
 
 ### Gathering
 
@@ -3526,7 +3598,10 @@ world actor channels. Its `CombatClientState` keeps:
   the health and the next step of a regeneration, which a state of the same
   revision sent later carries further on. The state of an entity or world actor
   is removed when it despawns, and a combatant that spawns again starts from
-  the state that follows its spawn.
+  the state that follows its spawn. `Combatants` lists them in the order of
+  their entity ids from one list that the state keeps as they change, so the
+  combat HUD and the nameplates, which read it on every combatant state, never
+  sort or allocate.
 - The owner's combat state from `OwnerCombatState` with the same revision rules,
   where only the server tick of a repeated revision may differ.
 - The combat intents that wait for a result, keyed by operation id, at most
@@ -3797,7 +3872,10 @@ the final interface art.
   health at once.
 - Placement: the bottom of the nameplate sits `AnchorLift` (0.35 m) above the
   top of the Mob's interaction bounds, projected after the camera moved. The
-  nearest nameplate is the last sibling, so it draws over farther ones.
+  nearest nameplate is the last sibling, so it draws over farther ones; of
+  equal distances the one shown first, of the lower entity id, comes first.
+  `StableListSort` orders them, so a frame allocates nothing, which
+  `NameplateTests` checks.
 - Size: `NameplatePresentation.MobNameplateScale` scales a nameplate around its
   bottom edge with the distance from the local character, from `FarScale` (0.55)
   at the edge of the range to full size within `FullSizeDistanceMetres` (10).
@@ -3944,9 +4022,10 @@ namespace rule are in [Folder Layout](#folder-layout).
   a real body: the bootstrap and its controllers, a World scene loaded through
   Addressables without a joined session, the inventory panel drawn from a
   committed snapshot, the LoginMenu and CharacterSelect screens against an
-  unreachable GameService, real bodies dying, using tools, and attacking, and a
-  World scene that keeps its player across a lost connection and the join that
-  restores it, on the hub of a `ScriptedRealtimeTransport`.
+  unreachable GameService, real bodies dying, using tools, and attacking, the
+  world actor presentation applying the change of one actor to its view alone,
+  and a World scene that keeps its player across a lost connection and the join
+  that restores it, on the hub of a `ScriptedRealtimeTransport`.
 - **Fixtures.** Tests never depend on the layout of a development World:
   `FixtureCollisionWorld`, `FixtureItemCatalog`, and `FixtureWorldActorContent` in
   `Tests/EditMode/Fixtures` provide test-owned collision, items, and actors; see
@@ -4045,7 +4124,7 @@ namespace rule are in [Folder Layout](#folder-layout).
   configured material. `ClientServiceAccessTests` reads the sources below
   `Assets/Scripts` and fails on a scene search, `FindAnyObjectByType`,
   `FindFirstObjectByType`, `FindObjectsByType`, `FindObjectOfType`,
-  `GameObject.Find`, a find by tag, or `Camera.main`, outside its four allowed
+  `GameObject.Find`, a find by tag, or `Camera.main`, outside its three allowed
   places, each with its reason, and on an allowed place that is gone. It reads
   the client's runtime assemblies and fails on a type that keeps state in
   statics, an assignable static field or a static collection, outside its list

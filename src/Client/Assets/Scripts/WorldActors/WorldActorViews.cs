@@ -148,6 +148,16 @@ namespace Mmorpg.Client.WorldActors
             get { return movement; }
         }
 
+        // The creature with clips of its own that this Mob's prefab shows, such as a wolf, or null.
+        // Found once, so presentation that runs every frame never looks it up.
+        public CreatureAnimator Creature { get; private set; }
+
+        public override void Initialize(WorldActorClientEntry actor)
+        {
+            Creature = GetComponent<CreatureAnimator>();
+            base.Initialize(actor);
+        }
+
         // Lets the joined session's snapshots move this Mob.
         public void ConfigureMovement(NetworkMovementSession session)
         {
@@ -192,7 +202,7 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            // Every change applies every actor again; only a newer state can move this one.
+            // A rebuild applies every actor again; only a newer state can move this one.
             if (actor.StateRevision == appliedStateRevision)
             {
                 return;

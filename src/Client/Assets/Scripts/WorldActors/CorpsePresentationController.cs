@@ -31,6 +31,8 @@ namespace Mmorpg.Client.WorldActors
         private readonly HashSet<Guid> awaitingFalls = new HashSet<Guid>();
         // The box around each Mob model lying in the last pose of Death, by its prefab.
         private readonly Dictionary<GameObject, Bounds> lyingBounds = new Dictionary<GameObject, Bounds>();
+        // Where the bodies that show their character dead lie this frame.
+        private readonly List<Vector3> deadBodies = new List<Vector3>();
         private MaterialPropertyBlock colorProperties;
         private WorldActorPresentationController actorPresentations;
         private CorpseClientController controller;
@@ -56,21 +58,24 @@ namespace Mmorpg.Client.WorldActors
         }
 
         // A player corpse hides under the dead body that left it and shows once the character
-        // respawned and the body is gone.
+        // respawned and the body is gone. The dead bodies are found once a frame, and only while
+        // a player corpse is in view, so the cost never multiplies corpses by players.
         private void Update()
         {
             ShowLoadedModels();
             TakeOverFalls();
-            if (sceneContext == null)
+            if (sceneContext == null || playerBodies.Count == 0)
             {
                 return;
             }
 
+            deadBodies.Clear();
+            sceneContext.CollectDeadBodies(deadBodies);
             foreach (var body in playerBodies.Values)
             {
                 if (body != null)
                 {
-                    body.enabled = !sceneContext.IsDeadBodyNear(body.transform.position, PlayerCorpseBodies.OwnBodyRadius);
+                    body.enabled = !WorldSceneContext.AnyNear(deadBodies, body.transform.position, PlayerCorpseBodies.OwnBodyRadius);
                 }
             }
         }
