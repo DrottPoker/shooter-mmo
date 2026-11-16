@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Combat;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.WorldActors;
@@ -33,9 +34,9 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Step);
         performance.RecordLoopFailure("movement", RealtimeLoopFailureScope.Player);
         performance.RecordLoopFailure("snapshots", RealtimeLoopFailureScope.Peer);
-        network.RecordReceived(100);
-        network.RecordSent(50);
-        network.RecordSent(25);
+        network.RecordReceived(new byte[100]);
+        network.RecordSent(new byte[50]);
+        network.RecordSent(new byte[25]);
         network.RecordQuotaRejected();
         network.RecordSnapshotDropped(2);
 
@@ -101,10 +102,10 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         using var network = new RealtimeNetworkMetrics();
         using var performance = new RealtimePerformanceMetrics();
         var reporter = CreateReporter(network, performance, path, new RecordingLogger());
-        network.RecordReceived(10);
+        network.RecordReceived(new byte[10]);
         var first = reporter.ReportInterval();
-        network.RecordReceived(10);
-        network.RecordReceived(10);
+        network.RecordReceived(new byte[10]);
+        network.RecordReceived(new byte[10]);
 
         var second = reporter.ReportInterval();
 
@@ -113,6 +114,48 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         using var secondEntry = JsonDocument.Parse(lines[1]);
         Assert.Equal(2, secondEntry.RootElement.GetProperty("packetsIn").GetInt64());
         Assert.Equal(first.EndedAtUtc, second.StartedAtUtc);
+    }
+
+    // The messages of every kind with a message in the interval, by type name in type byte
+    // order; a kind without a message in the interval is left out.
+    [Fact]
+    public void TheFileCarriesTheMessagesOfEveryKindInTheInterval()
+    {
+        var path = Path.Combine(directory, "worker-performance.jsonl");
+        using var network = new RealtimeNetworkMetrics();
+        using var performance = new RealtimePerformanceMetrics();
+        var reporter = CreateReporter(network, performance, path, new RecordingLogger());
+        var disconnect = RealtimeProtocol.EncodeServerDisconnect("code", "message");
+        var leaveAccepted = RealtimeProtocol.EncodeLeaveAccepted(30);
+        var joinRequest = RealtimeProtocol.EncodeJoinRequest("ticket");
+        network.RecordSent(disconnect);
+        network.RecordSent(leaveAccepted);
+        network.RecordSent(leaveAccepted);
+        network.RecordReceived(joinRequest);
+        network.RecordReceived([]);
+        reporter.ReportInterval();
+        network.RecordSent(leaveAccepted);
+
+        reporter.ReportInterval();
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(2, lines.Length);
+        using var first = JsonDocument.Parse(lines[0]);
+        var sent = first.RootElement.GetProperty("sentByMessage");
+        Assert.Equal(["LeaveAccepted", "ServerDisconnect"], sent.EnumerateObject().Select(kind => kind.Name));
+        Assert.Equal(2, sent.GetProperty("LeaveAccepted").GetProperty("messages").GetInt64());
+        Assert.Equal(2L * leaveAccepted.Length, sent.GetProperty("LeaveAccepted").GetProperty("bytes").GetInt64());
+        Assert.Equal(disconnect.Length, sent.GetProperty("ServerDisconnect").GetProperty("bytes").GetInt64());
+        var received = first.RootElement.GetProperty("receivedByMessage");
+        Assert.Equal(["0", "JoinRequest"], received.EnumerateObject().Select(kind => kind.Name));
+        Assert.Equal(1, received.GetProperty("0").GetProperty("messages").GetInt64());
+        Assert.Equal(0, received.GetProperty("0").GetProperty("bytes").GetInt64());
+        Assert.Equal(3, first.RootElement.GetProperty("packetsOut").GetInt64());
+        using var second = JsonDocument.Parse(lines[1]);
+        Assert.Equal(
+            ["LeaveAccepted"],
+            second.RootElement.GetProperty("sentByMessage").EnumerateObject().Select(kind => kind.Name));
+        Assert.Empty(second.RootElement.GetProperty("receivedByMessage").EnumerateObject());
     }
 
     [Fact]

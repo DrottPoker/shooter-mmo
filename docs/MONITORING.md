@@ -161,7 +161,7 @@ entity, peer, or runtime id as a label.
 
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase and every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
@@ -181,6 +181,7 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | `simulation_worker.realtime.peers.unauthenticated` | gauge | Peers that have not joined yet. |
 | `simulation_worker.realtime.received.packets`, `.received.bytes` | counter | Received packets and bytes. |
 | `simulation_worker.realtime.sent.packets`, `.sent.bytes` | counter | Sent packets and bytes. |
+| `simulation_worker.realtime.sent.messages`, `.received.messages` | counter | Sent and received messages by kind, labeled `message` with the `RealtimeMessageType` name, such as `SimulationSnapshot` or `MovementInputBatch`, and only kinds with a message. A packet without a readable type, empty or with an invalid header, counts under `0`. |
 | `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
 | `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
 | `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
@@ -421,9 +422,14 @@ entries of both processes, and the trace share one id.
   resynchronizations; the loop failures,
   `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
-  snapshot bytes, joins, spawns, and despawns; allocation, GC collections
-  per generation, and the managed heap; and the Mob numbers of the combat and
-  world actor meters, the living Mobs, `engagedMobs`, `movingMobs`, and
+  snapshot bytes, joins, spawns, and despawns; `sentByMessage` and
+  `receivedByMessage`, the messages and bytes of every message kind with a
+  message in the interval, keyed by the `RealtimeMessageType` name in type
+  order, such as
+  `"sentByMessage":{"EntitySpawn":{"messages":310,"bytes":21390}}`;
+  allocation, GC collections per generation, and the managed heap; and the
+  Mob numbers of the combat and world actor meters, the living Mobs,
+  `engagedMobs`, `movingMobs`, and
   `mobPathQueue` as their current gauges and `mobPathPlans`, the Mob routes
   planned in the interval. A failed write is logged as a warning
   and never stops the worker; without the setting nothing is written. The file

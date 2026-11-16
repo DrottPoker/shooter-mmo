@@ -43,7 +43,7 @@ internal sealed class RealtimeMessageDispatcher
                 return;
             }
 
-            networkMetrics.RecordReceived(packet.Length);
+            networkMetrics.RecordReceived(packet);
             if (context.PendingDisconnect is not null)
             {
                 return;

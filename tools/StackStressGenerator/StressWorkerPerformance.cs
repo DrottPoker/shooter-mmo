@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Mmorpg.Tools.StackStressGenerator;
@@ -11,6 +12,9 @@ public sealed record StressWorkerDuration(
     double P95Ms,
     double P99Ms,
     double MaximumMs);
+
+// The messages of one kind in a worker interval and their bytes.
+public sealed record StressWorkerMessageCount(long Messages, long Bytes);
 
 public sealed record StressWorkerInterval(
     DateTime IntervalStart,
@@ -95,7 +99,26 @@ public sealed record StressWorkerInterval(
     public double? GcPauseMs { get; init; }
 
     public double? LoopBusyPercent { get; init; }
+
+    // The messages that the worker handed to the transport and received in the interval, by
+    // their RealtimeMessageType name, or the type byte as text for a packet without a readable
+    // type. Null in a file of an older worker.
+    public IReadOnlyDictionary<string, StressWorkerMessageCount>? SentByMessage { get; init; }
+
+    public IReadOnlyDictionary<string, StressWorkerMessageCount>? ReceivedByMessage { get; init; }
 }
+
+// One message kind over the steady intervals: its messages and bytes, both per second, and both
+// per second and player, by the same population as bytesOutPerBotPerSecond, the average peers;
+// null per player without peers.
+public sealed record StressWorkerMessageKind(
+    string Name,
+    long Messages,
+    long Bytes,
+    double MessagesPerSecond,
+    double BytesPerSecond,
+    double? MessagesPerPlayerPerSecond,
+    double? BytesPerPlayerPerSecond);
 
 // One phase of the worst interval: its samples, average, p99, and longest sample, and how many
 // milliseconds of every second it took, which orders the phases by cost.
@@ -173,6 +196,12 @@ public sealed record StressWorkerPerformanceSummary(
     public StressWorkerLevelFold? GcPauseMsPerSecond { get; init; }
 
     public StressWorkerWorstInterval? WorstInterval { get; init; }
+
+    // Every message kind that the worker sent or received in the steady intervals, the most bytes
+    // first; empty for an older worker's file. Diagnostics, judged by no rule.
+    public IReadOnlyList<StressWorkerMessageKind> SentByMessage { get; init; } = [];
+
+    public IReadOnlyList<StressWorkerMessageKind> ReceivedByMessage { get; init; } = [];
 }
 
 public static class StressWorkerPerformance
@@ -370,8 +399,105 @@ public static class StressWorkerPerformance
                 interval.GcPauseMs is { } pause && interval.IntervalSeconds > 0
                     ? pause / interval.IntervalSeconds
                     : (double?)null)),
-            WorstInterval = FindWorstInterval(steady)
+            WorstInterval = FindWorstInterval(steady),
+            SentByMessage = FoldMessages(steady, interval => interval.SentByMessage),
+            ReceivedByMessage = FoldMessages(steady, interval => interval.ReceivedByMessage)
         };
+    }
+
+    private static StressWorkerMessageKind[] FoldMessages(
+        IReadOnlyList<StressWorkerInterval> steady,
+        Func<StressWorkerInterval, IReadOnlyDictionary<string, StressWorkerMessageCount>?> select)
+    {
+        var seconds = steady.Sum(interval => interval.IntervalSeconds);
+        if (seconds <= 0)
+        {
+            return [];
+        }
+
+        var players = steady.Average(interval => (double)interval.Peers);
+        return steady
+            .SelectMany(interval => select(interval) ?? new Dictionary<string, StressWorkerMessageCount>())
+            .GroupBy(kind => kind.Key, StringComparer.Ordinal)
+            .Select(kind =>
+            {
+                var messages = kind.Sum(interval => interval.Value.Messages);
+                var bytes = kind.Sum(interval => interval.Value.Bytes);
+                return new StressWorkerMessageKind(
+                    kind.Key,
+                    messages,
+                    bytes,
+                    messages / seconds,
+                    bytes / seconds,
+                    players > 0 ? messages / seconds / players : null,
+                    players > 0 ? bytes / seconds / players : null);
+            })
+            .OrderByDescending(kind => kind.Bytes)
+            .ThenByDescending(kind => kind.Messages)
+            .ThenBy(kind => kind.Name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    // Prints the sent and the received messages by kind, each as a table with a total row, for a
+    // worker file that carries them.
+    public static void WriteMessageTables(TextWriter writer, StressWorkerPerformanceSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(summary);
+        var players = summary.Levels.GetValueOrDefault("peers")?.Average;
+        WriteMessageTable(writer, "Sent messages by kind", summary.SentByMessage, summary.SteadySeconds, players);
+        WriteMessageTable(writer, "Received messages by kind", summary.ReceivedByMessage, summary.SteadySeconds, players);
+    }
+
+    private static void WriteMessageTable(
+        TextWriter writer,
+        string title,
+        IReadOnlyList<StressWorkerMessageKind> kinds,
+        double seconds,
+        double? players)
+    {
+        if (kinds.Count == 0 || seconds <= 0)
+        {
+            return;
+        }
+
+        var messages = kinds.Sum(kind => kind.Messages);
+        var bytes = kinds.Sum(kind => kind.Bytes);
+        var total = new StressWorkerMessageKind(
+            "Total",
+            messages,
+            bytes,
+            messages / seconds,
+            bytes / seconds,
+            players > 0 ? messages / seconds / players : null,
+            players > 0 ? bytes / seconds / players : null);
+        string[][] rows =
+        [
+            ["Kind", "Messages", "Bytes", "Messages/s", "Bytes/s", "Messages/s/player", "Bytes/s/player"],
+            .. kinds.Append(total).Select(kind => new[]
+            {
+                kind.Name,
+                kind.Messages.ToString(CultureInfo.InvariantCulture),
+                kind.Bytes.ToString(CultureInfo.InvariantCulture),
+                kind.MessagesPerSecond.ToString("0.0", CultureInfo.InvariantCulture),
+                kind.BytesPerSecond.ToString("0", CultureInfo.InvariantCulture),
+                kind.MessagesPerPlayerPerSecond?.ToString("0.00", CultureInfo.InvariantCulture) ?? "n/a",
+                kind.BytesPerPlayerPerSecond?.ToString("0.0", CultureInfo.InvariantCulture) ?? "n/a"
+            })
+        ];
+        var widths = Enumerable.Range(0, rows[0].Length)
+            .Select(column => rows.Max(row => row[column].Length))
+            .ToArray();
+        writer.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{title} over the {seconds:0} steady seconds of the worker, the most bytes first:"));
+        foreach (var row in rows)
+        {
+            var cells = row.Select((cell, column) => column == 0
+                ? cell.PadRight(widths[column])
+                : cell.PadLeft(widths[column]));
+            writer.WriteLine("  " + string.Join("  ", cells).TrimEnd());
+        }
     }
 
     public const int SlowestPhaseCount = 3;

@@ -52,7 +52,7 @@ internal sealed class RealtimePeerSender(
             return;
         }
 
-        networkMetrics.RecordSent(packet.Length);
+        networkMetrics.RecordSent(packet);
     }
 
     private void Send(IRealtimePeerConnection peer, byte[] packet, byte channel, DeliveryMethod deliveryMethod)
@@ -67,7 +67,7 @@ internal sealed class RealtimePeerSender(
             return;
         }
 
-        networkMetrics.RecordSent(packet.Length);
+        networkMetrics.RecordSent(packet);
     }
 
     // Sends the reliable LeaveAccepted, ServerDisconnect, or JoinRejected that says why the
@@ -109,7 +109,7 @@ internal sealed class RealtimePeerSender(
             return;
         }
 
-        networkMetrics.RecordSent(packet.Length);
+        networkMetrics.RecordSent(packet);
     }
 
     // Counts and logs the first failed send of a peer and starts its disconnect; the sends that

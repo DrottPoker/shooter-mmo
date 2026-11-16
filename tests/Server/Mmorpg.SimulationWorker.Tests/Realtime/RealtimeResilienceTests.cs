@@ -230,8 +230,8 @@ public sealed class RealtimeResilienceTests
         using var metrics = new RealtimeNetworkMetrics();
         metrics.SetActivePeers(2);
         metrics.SetActiveEntities(2);
-        metrics.RecordReceived(120);
-        metrics.RecordSent(80);
+        metrics.RecordReceived(new byte[120]);
+        metrics.RecordSent(new byte[80]);
         metrics.RecordQuotaRejected();
         metrics.RecordSnapshotDropped();
         metrics.RecordSnapshotBackpressureDropped(3);

@@ -422,6 +422,9 @@ public sealed class StressQualityVerdictTests
         Assert.Equal(300, interval.Tick.Samples);
         Assert.Equal(400_000, interval.BytesOut);
         Assert.Equal(DateTimeKind.Utc, interval.IntervalStart.Kind);
+        // An older worker writes no messages by kind.
+        Assert.Null(interval.SentByMessage);
+        Assert.Null(interval.ReceivedByMessage);
     }
 
     [Fact]
@@ -441,7 +444,7 @@ public sealed class StressQualityVerdictTests
             using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             var root = document.RootElement;
             Assert.Equal(
-                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst", "outage", "workerWorstInterval"],
+                ["scenario", "commit", "treeDirty", "date", "machine", "mode", "workload", "bots", "steadySeconds", "result", "verdict", "keyNumbers", "soak", "network", "burst", "outage", "workerWorstInterval", "workerSentByMessage", "workerReceivedByMessage"],
                 root.EnumerateObject().Select(property => property.Name));
             // A direct run names no network profile, and a run without a burst or an outage has none.
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("network").ValueKind);
@@ -771,6 +774,112 @@ public sealed class StressQualityVerdictTests
         Assert.Contains("\"engagedMobs\":3", line, StringComparison.Ordinal);
         Assert.Equal(12, interval.Mobs);
         Assert.Equal(9, interval.MobPathPlans);
+    }
+
+    // The worker's messages by kind parse from the objects its line carries, and the steady
+    // intervals fold to one list per direction, the most bytes first, per second and per player
+    // over the average peers. The summary carries the lists without a key number, and the report
+    // prints them as tables with a total row; an older worker's file folds to nothing.
+    [Fact]
+    public void TheMessagesByKindOfTheWorkerFoldPerSecondAndPerPlayer()
+    {
+        var web = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var line = System.Text.Json.JsonSerializer.Serialize(Interval(RunStart.AddSeconds(20), tickP99: 4), web)
+            .Replace(
+                "\"sentByMessage\":null",
+                "\"sentByMessage\":{\"SimulationSnapshot\":{\"messages\":1500,\"bytes\":350000},\"WorldActorState\":{\"messages\":1200,\"bytes\":60000}}",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"receivedByMessage\":null",
+                "\"receivedByMessage\":{\"MovementInputBatch\":{\"messages\":3000,\"bytes\":90000}}",
+                StringComparison.Ordinal);
+        var parsed = Assert.Single(StressWorkerPerformance.Parse([line]));
+        Assert.Equal(["SimulationSnapshot", "WorldActorState"], parsed.SentByMessage!.Keys);
+        Assert.Equal(new StressWorkerMessageCount(1200, 60000), parsed.SentByMessage["WorldActorState"]);
+        Assert.Equal(3000, parsed.ReceivedByMessage!["MovementInputBatch"].Messages);
+        StressWorkerInterval[] intervals =
+        [
+            parsed,
+            Interval(RunStart.AddSeconds(30), tickP99: 4) with
+            {
+                SentByMessage = new Dictionary<string, StressWorkerMessageCount>
+                {
+                    ["SimulationSnapshot"] = new(1500, 350_000),
+                    ["EntitySpawn"] = new(100, 30_000),
+                    ["WorldActorState"] = new(400, 20_000)
+                },
+                ReceivedByMessage = new Dictionary<string, StressWorkerMessageCount>
+                {
+                    ["0"] = new(4, 40),
+                    ["MovementInputBatch"] = new(3000, 90_000)
+                }
+            },
+            Interval(RunStart.AddSeconds(40), tickP99: 4),
+            Interval(RunStart.AddSeconds(50), tickP99: 4),
+            // Outside the steady window.
+            Interval(RunStart.AddSeconds(60), tickP99: 4) with
+            {
+                SentByMessage = new Dictionary<string, StressWorkerMessageCount> { ["EntityDespawn"] = new(9_000, 9_000_000) }
+            }
+        ];
+
+        var fold = StressWorkerPerformance.Fold(intervals, RunStart, RunEnd, SteadyStart, SteadyEnd);
+
+        // Four steady intervals of 10 seconds with 10 peers each.
+        Assert.Equal(
+            [
+                new StressWorkerMessageKind("SimulationSnapshot", 3000, 700_000, 75, 17_500, 7.5, 1750),
+                new StressWorkerMessageKind("WorldActorState", 1600, 80_000, 40, 2000, 4, 200),
+                new StressWorkerMessageKind("EntitySpawn", 100, 30_000, 2.5, 750, 0.25, 75)
+            ],
+            fold.SentByMessage);
+        Assert.Equal(["MovementInputBatch", "0"], fold.ReceivedByMessage.Select(kind => kind.Name));
+        Assert.Equal(150, fold.ReceivedByMessage[0].MessagesPerSecond);
+        Assert.Equal(1, fold.ReceivedByMessage[1].BytesPerSecond);
+
+        using var text = new StringWriter();
+        StressWorkerPerformance.WriteMessageTables(text, fold);
+        var lines = text.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(11, lines.Length);
+        Assert.Equal("Sent messages by kind over the 40 steady seconds of the worker, the most bytes first:", lines[0]);
+        Assert.Equal(
+            ["Kind", "Messages", "Bytes", "Messages/s", "Bytes/s", "Messages/s/player", "Bytes/s/player"],
+            lines[1].Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal(
+            ["SimulationSnapshot", "3000", "700000", "75.0", "17500", "7.50", "1750.0"],
+            lines[2].Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal(
+            ["Total", "4700", "810000", "117.5", "20250", "11.75", "2025.0"],
+            lines[5].Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal("Received messages by kind over the 40 steady seconds of the worker, the most bytes first:", lines[6]);
+        Assert.Equal(
+            ["Total", "6004", "180040", "150.1", "4501", "15.01", "450.1"],
+            lines[^1].Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        // The columns line up: every row of a table is as wide as its header.
+        Assert.All(lines[2..6], row => Assert.Equal(lines[1].Length, row.Length));
+
+        var summary = StressRunSummary.Create(
+            FullStackReport() with { WorkerPerformance = fold },
+            "playing-100",
+            "abc",
+            false,
+            0,
+            new StressMachine("cpu", 16, 1024, "os", ".NET"));
+        Assert.Equal(fold.SentByMessage, summary.WorkerSentByMessage);
+        Assert.Equal(fold.ReceivedByMessage, summary.WorkerReceivedByMessage);
+        Assert.DoesNotContain(summary.KeyNumbers.Keys, key => key.Contains("Message", StringComparison.OrdinalIgnoreCase));
+
+        var older = StressWorkerPerformance.Fold(
+            [Interval(RunStart.AddSeconds(20), tickP99: 4), Interval(RunStart.AddSeconds(30), tickP99: 4)],
+            RunStart,
+            RunEnd,
+            SteadyStart,
+            SteadyEnd);
+        Assert.Empty(older.SentByMessage);
+        Assert.Empty(older.ReceivedByMessage);
+        using var nothing = new StringWriter();
+        StressWorkerPerformance.WriteMessageTables(nothing, older);
+        Assert.Empty(nothing.ToString());
     }
 
     private static StressWorkerInterval Interval(
