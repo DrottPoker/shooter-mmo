@@ -1,3 +1,4 @@
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Items.Presentation;
@@ -18,6 +19,9 @@ namespace Mmorpg.Client.Gameplay
         private readonly RemoteMovementPresenter movement = new RemoteMovementPresenter();
         private CharacterLocomotionAnimator body;
         private int presentedDiscontinuities;
+
+        // The local player's collision chunks, which ground this player where they are loaded.
+        private UnityWorldCollisionStream collisionStream;
 
         public ulong NetworkEntityId { get; private set; }
 
@@ -57,6 +61,8 @@ namespace Mmorpg.Client.Gameplay
                 || string.Equals(archetypeId, RealtimePlayerArchetypeIds.DevelopmentBot, System.StringComparison.Ordinal);
         }
 
+        // The collision stream is the joined session's, whose loaded chunks ground the player and
+        // whose revision tells when they changed; null for none.
         public void Initialize(
             ulong networkEntityId,
             string persistentId,
@@ -64,14 +70,19 @@ namespace Mmorpg.Client.Gameplay
             string archetypeId,
             int simulationTickRateHz,
             int delayTicks,
-            ICollisionWorld worldCollision,
+            UnityWorldCollisionStream worldCollisionStream,
             CharacterCollisionSettings characterCollision)
         {
             NetworkEntityId = networkEntityId;
             PersistentId = persistentId;
             DisplayName = displayName;
             ArchetypeId = archetypeId;
-            movement.Configure(simulationTickRateHz, delayTicks, worldCollision, characterCollision);
+            collisionStream = worldCollisionStream;
+            movement.Configure(
+                simulationTickRateHz,
+                delayTicks,
+                collisionStream != null ? collisionStream.CollisionWorld : null,
+                characterCollision);
             name = "RemotePlayer_" + networkEntityId + "_" + displayName;
             ConfigurePointerTarget(characterCollision);
         }
@@ -160,9 +171,15 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // A player that stands where its newest state stands rests: it does no work and keeps its
+        // pose until its next state, or until a collision chunk loaded or unloaded and it lands on
+        // the ground there.
         private void Update()
         {
-            if (movement.Advance(Time.unscaledDeltaTime, Time.deltaTime))
+            if (movement.Advance(
+                    Time.unscaledDeltaTime,
+                    Time.deltaTime,
+                    collisionStream != null ? collisionStream.Revision : 0))
             {
                 ApplyPresentedPose();
             }

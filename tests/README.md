@@ -30,7 +30,7 @@ and the check before every push in
 | `Mmorpg.GameService.Content.Tests` | `Server/Mmorpg.GameService.Content.Tests` | Content: the content file loader and its startup refusals, the manifest and file routes with their cache headers and rate limit on an in-process host, and the PostgreSQL test of the startup revision check |
 | `Mmorpg.GameService.Tests` | `Server/Mmorpg.GameService.Tests` | The GameService host: its configuration, the migrate command, the startup check, and the statement trace of a start with unchanged content, and the module architecture guard tests under `Architecture` |
 | `Mmorpg.SimulationWorker.Tests` | `Server/Mmorpg.SimulationWorker.Tests` | SimulationWorker; socket and in-memory tests of `Mmorpg.SimulationWorker.Realtime` and their shared harness under `Realtime` |
-| `Mmorpg.Integration.Tests` | `Integration/Mmorpg.Integration.Tests` | Flows across GameService modules or across GameService and SimulationWorker, the test output guard, and the test database isolation guard |
+| `Mmorpg.Integration.Tests` | `Integration/Mmorpg.Integration.Tests` | Flows across GameService modules or across GameService and SimulationWorker, the load tool's checks that read GameService's database, the test output guard, and the test database isolation guard |
 | `Mmorpg.Tools.Tests` | `Tools/Mmorpg.Tools.Tests` | The tools in `tools`, through their public types |
 
 A project is a test project exactly when its name ends in `.Tests`. The folder

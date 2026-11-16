@@ -61,6 +61,9 @@ public sealed class StressPostgresSampler : IAsyncDisposable
     // SimulationSessionHeartbeatSeconds, so one with less lease left missed its last renewal.
     public const double LeaseExpiryThresholdSeconds = 10d;
 
+    // GameService's operation kind of a player death, the only kind a death event holds.
+    public const string DeathOperationKind = "process_player_death";
+
     // Counting every table must stay cheap; a statement that takes longer fails the run instead
     // of holding it.
     private const int TableCountTimeoutSeconds = 60;
@@ -338,14 +341,17 @@ public sealed class StressPostgresSampler : IAsyncDisposable
                     from pg_stat_activity a
                     where a.datname = current_database()
                       and a.state in ('idle in transaction', 'idle in transaction (aborted)')) as oldest_idle_in_transaction_seconds,
-                   -- The retention lag of item operations as GameService's task sees it: the
-                   -- completed operations past the window that no death event holds.
+                   -- The retention lag of item operations as GameService's task measures it: the
+                   -- completed operations past the window that no death event holds, without
+                   -- the operations of deaths, which become due only when their death event
+                   -- leaves and so tell no lag by their age.
                    (select coalesce(
                                extract(epoch from (now() - min(o.completed_at))) - @RetentionWindow,
                                0)::double precision
                     from item_operations o
                     where @RetentionWindow >= 0
                       and o.completed_at < now() - make_interval(secs => @RetentionWindow)
+                      and o.operation_kind <> @DeathOperationKind
                       and not exists (
                           select 1
                           from death_events d
@@ -359,6 +365,7 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         command.Parameters.AddWithValue("WorkerId", workerId);
         command.Parameters.AddWithValue("Sampler", ApplicationName);
         command.Parameters.AddWithValue("RetentionWindow", retentionWindowSeconds ?? -1d);
+        command.Parameters.AddWithValue("DeathOperationKind", DeathOperationKind);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {

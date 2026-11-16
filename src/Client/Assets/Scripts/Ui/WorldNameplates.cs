@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mmorpg.Client.Combat;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using Mmorpg.Client.Networking;
 using Mmorpg.GameProtocol;
@@ -48,6 +49,7 @@ namespace Mmorpg.Client.Ui
         private readonly Dictionary<ulong, Nameplate> nameplates = new Dictionary<ulong, Nameplate>();
         private readonly Stack<Nameplate> idle = new Stack<Nameplate>();
         private readonly List<Nameplate> shown = new List<Nameplate>();
+        private readonly List<Nameplate> drawOrderBuffer = new List<Nameplate>();
         private readonly List<ulong> retired = new List<ulong>();
         private CombatClientController combatController;
         private CombatantViewLocator views;
@@ -142,7 +144,7 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            shown.Clear();
+            BeginFrame();
             var player = views != null ? views.LocalPlayer : null;
             var playerCamera = views != null ? views.PlayerCamera : null;
             if (combatController != null && player != null && playerCamera != null)
@@ -161,8 +163,22 @@ namespace Mmorpg.Client.Ui
                 }
             }
 
+            EndFrame();
+        }
+
+        // A frame starts with no nameplate shown.
+        internal void BeginFrame()
+        {
+            shown.Clear();
+        }
+
+        // A frame ends: the nameplates not shown in it go back to the pool, and the shown ones
+        // draw farther first, of equals in the order they were shown, the order of the
+        // combatants' entity ids, so the nearest draws on top. The sort allocates nothing.
+        internal void EndFrame()
+        {
             RetireUnshown();
-            shown.Sort(DrawOrder);
+            StableListSort.Sort(shown, DrawOrder, drawOrderBuffer);
             for (var index = 0; index < shown.Count; index++)
             {
                 var root = shown[index].Root;
@@ -195,20 +211,45 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
-            if (!nameplates.TryGetValue(state.EntityId, out var nameplate))
+            Show(
+                state.EntityId,
+                view.DisplayName,
+                mob.Level,
+                mob.Aggression,
+                local,
+                sqrDistance,
+                NameplatePresentation.IsTaggedByOther(state.TaggedByEntityId, combatController.LocalEntityId),
+                combatController.State.HealthAt(state, clock),
+                state.MaximumHealth,
+                now);
+        }
+
+        // Shows the nameplate of a Mob in this frame at its place on the layer, taking one from
+        // the pool for a Mob that had none.
+        internal void Show(
+            ulong entityId,
+            string displayName,
+            int level,
+            RealtimeWorldActorAggression aggression,
+            Vector2 local,
+            float sqrDistance,
+            bool taggedByOther,
+            int health,
+            int maximumHealth,
+            float now)
+        {
+            if (!nameplates.TryGetValue(entityId, out var nameplate))
             {
                 nameplate = idle.Count > 0 ? idle.Pop() : CreateNameplate();
-                nameplate.Bind(view.DisplayName, mob.Level, mob.Aggression);
-                nameplates.Add(state.EntityId, nameplate);
+                nameplate.Bind(displayName, level, aggression);
+                nameplates.Add(entityId, nameplate);
             }
 
             nameplate.Root.gameObject.SetActive(true);
             nameplate.Root.anchoredPosition = local;
             nameplate.Scale(NameplatePresentation.MobNameplateScale(Mathf.Sqrt(sqrDistance)));
-            nameplate.Tint(NameplatePresentation.IsTaggedByOther(
-                state.TaggedByEntityId,
-                combatController.LocalEntityId));
-            nameplate.Show(combatController.State.HealthAt(state, clock), state.MaximumHealth, now);
+            nameplate.Tint(taggedByOther);
+            nameplate.Show(health, maximumHealth, now);
             nameplate.SqrDistance = sqrDistance;
             nameplate.ShownThisFrame = true;
             shown.Add(nameplate);
@@ -247,7 +288,8 @@ namespace Mmorpg.Client.Ui
                 && RectTransformUtility.ScreenPointToLocalPointInRectangle(layer, screen, null, out local);
         }
 
-        private void BuildCanvas()
+        // Start builds the canvas once; a test that runs frames by hand builds it itself.
+        internal void BuildCanvas()
         {
             var canvasObject = new GameObject(
                 "WorldNameplateCanvas",

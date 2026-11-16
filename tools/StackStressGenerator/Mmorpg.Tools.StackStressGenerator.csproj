@@ -29,6 +29,11 @@
              Link="WorldData\Actors\core.actor-catalog.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <!-- The World manifests the worker loads, for the World spawn of the churn's rejoin check. -->
+    <Content Include="..\..\content\worlds\**\world.json"
+             Link="WorldData\Worlds\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <!-- The combat rules the worker loads, for how fast a body regenerates during churn. -->
     <Content Include="..\..\content\combat\combat-rules.json"
              Link="WorldData\Combat\combat-rules.json"

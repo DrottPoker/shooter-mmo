@@ -3241,10 +3241,14 @@ applicable. A run takes about four minutes.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-10min
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-30min
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Load.ps1 -Scenario soak-500-30min
 ```
 
-Expected result: `soak-10min` takes about 15 minutes and `soak-30min` about 40,
-on an otherwise idle machine. Both churn their bots as above, `process_memory_growth`
+Expected result: `soak-10min` takes about 15 minutes, `soak-30min` about 40,
+and `soak-500-30min` about 45, on an otherwise idle machine; the last one still
+fails `simulation_tick_p99_ms` in some runs, as
+[The 30 Minute Soak](STACK_STRESS_TESTING.md#the-30-minute-soak) says. All
+three churn their bots as above, `process_memory_growth`
 is judged, and the verdict lists the growth of every process in its note. With
 their retention windows of four minutes, `retained_table_growth` and
 `retention_lag` are judged too, and the script prints a `Retention:` line with

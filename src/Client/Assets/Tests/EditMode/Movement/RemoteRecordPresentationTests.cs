@@ -5,6 +5,8 @@ using Mmorpg.Client.Gameplay;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 using NUnit.Framework;
+using UnityEngine;
+using Random = System.Random;
 
 namespace Mmorpg.Client.Tests.EditMode
 {
@@ -321,6 +323,202 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(unknown.TargetDelayTicks, Is.EqualTo(12d), "The first interval counts at once.");
         }
 
+        // A remote player that stands rests: from the frame its pose reached its standing newest
+        // state until its next state it presents nothing and asks the collision world nothing.
+        // It is shown exactly as one advanced every frame, which the reference is, given a new
+        // ground revision in every frame so it never rests: through stands with refreshes, walks
+        // off, lost states with extrapolation and starvation, a far walk, and stops, at frame
+        // times between 30 and 144 frames per second.
+        [Test]
+        public void ARestingEntityIsShownExactlyAsOneAdvancedEveryFrame()
+        {
+            var resting = Presenter();
+            var everyFrame = Presenter();
+            var random = new Random(7);
+            var time = 0d;
+            var nextTick = 100u;
+            var rested = 0;
+            var starved = 0;
+            for (var frame = 1; frame <= 2400; frame++)
+            {
+                var delta = 1f / random.Next(30, 145);
+                time += delta;
+                while (((nextTick - 100) / (double)TickRateHz) + 0.05d <= time)
+                {
+                    if (Wander(nextTick) is { } x)
+                    {
+                        var yaw = 90f + (nextTick % 7);
+                        resting.Push(nextTick, new PlayerMovementState(x, 0f, 0f, 0f, 0f, 0f, yaw, true));
+                        everyFrame.Push(nextTick, new PlayerMovementState(x, 0f, 0f, 0f, 0f, 0f, yaw, true));
+                    }
+
+                    nextTick += 2;
+                }
+
+                if (!resting.Advance(delta, delta, 0) && resting.HasPose)
+                {
+                    rested++;
+                }
+
+                everyFrame.Advance(delta, delta, frame);
+                Assert.That(resting.Position.x, Is.EqualTo(everyFrame.Position.x).Within(0.0001f), "frame " + frame);
+                Assert.That(resting.Position.y, Is.EqualTo(everyFrame.Position.y), "frame " + frame);
+                Assert.That(resting.YawDegrees, Is.EqualTo(everyFrame.YawDegrees).Within(0.001f), "frame " + frame);
+                Assert.That(resting.IsStarved, Is.EqualTo(everyFrame.IsStarved), "frame " + frame);
+                Assert.That(resting.Discontinuities, Is.EqualTo(everyFrame.Discontinuities), "frame " + frame);
+                starved += everyFrame.IsStarved ? 1 : 0;
+            }
+
+            Assert.That(nextTick, Is.GreaterThan(WanderEndTick), "the whole scenario played");
+            Assert.That(starved, Is.GreaterThan(0), "the lost states starved it for a while");
+            Assert.That(rested, Is.GreaterThan(800), "it rested through most of its stands, " + rested + " of 2400 frames");
+        }
+
+        // A resting player lands on ground that appears under it, such as a collision chunk that
+        // loaded as the local player came near: the new ground revision ends the rest. Until then
+        // it shows its replicated height and asks nothing.
+        [Test]
+        public void ARestingEntityLandsOnGroundThatLoadsUnderIt()
+        {
+            var settings = new CharacterCollisionSettings(0.4f, 1.8f, 0.35f, 45f, 0.2f, 0.25f, 4);
+            var ground = new LoadingWorld(SlopeWorld(30f));
+            var presenter = new RemoteMovementPresenter();
+            presenter.Configure(TickRateHz, RemoteMovementPresenter.InterpolationDelayTicks(TickRateHz, 15), ground, settings);
+
+            // The worker's capsule stands on the slope with its feet above the surface by its
+            // support height.
+            var standingY = 0.4f * ((1f / Mathf.Cos(30f * Mathf.Deg2Rad)) - 1f);
+            ground.Loaded = true;
+            Assert.That(
+                GroundedMovementPresentation.TryGetVisualHeight(0f, standingY, 0f, true, ground, settings, new CollisionQueryBuffer(), out var landed, out _),
+                Is.True);
+            Assert.That(landed, Is.LessThan(standingY - 0.03f));
+            ground.Loaded = false;
+
+            var standing = new PlayerMovementState(0f, standingY, 0f, 0f, 0f, 0f, 90f, true);
+            presenter.Push(100, standing);
+            presenter.Push(102, standing);
+            for (var frame = 0; frame < 120 && !presenter.IsResting; frame++)
+            {
+                presenter.Advance(FrameSeconds, FrameSeconds, 0);
+            }
+
+            Assert.That(presenter.IsResting, Is.True);
+            Assert.That(presenter.Position.y, Is.EqualTo(standingY));
+
+            ground.Loaded = true;
+            var asked = ground.Queries;
+            for (var frame = 0; frame < 30; frame++)
+            {
+                Assert.That(presenter.Advance(FrameSeconds, FrameSeconds, 0), Is.False);
+            }
+
+            Assert.That(ground.Queries, Is.EqualTo(asked), "a resting pose asks the collision world nothing");
+            Assert.That(presenter.Position.y, Is.EqualTo(standingY));
+
+            Assert.That(presenter.Advance(FrameSeconds, FrameSeconds, 1), Is.True);
+            Assert.That(presenter.Position.y, Is.EqualTo(landed).Within(0.00001f));
+            Assert.That(presenter.IsResting, Is.True, "it rests again on the new ground");
+        }
+
+        // Where a wandering entity is at a tick, or null when its record is not sent: it stands
+        // with a refresh once a second, walks off, loses states and walks on, stops, walks far
+        // with a state every third snapshot, and stands again until WanderEndTick.
+        private static float? Wander(uint tick)
+        {
+            const uint walkFrom = 160;
+            const uint stopAt = 300;
+            const uint farFrom = 420;
+            const uint farTo = 520;
+            if (tick < walkFrom)
+            {
+                return tick == 100 || tick % 30 == 0 ? 0f : (float?)null;
+            }
+
+            if (tick < stopAt)
+            {
+                return tick is >= 240 and < 270 ? null : MetresPerTick * (tick - walkFrom);
+            }
+
+            var stop = MetresPerTick * (stopAt - walkFrom);
+            if (tick < farFrom)
+            {
+                return tick < stopAt + 6 || tick % 30 == 0 ? stop : (float?)null;
+            }
+
+            if (tick < farTo)
+            {
+                return tick % 6 == 0 ? stop + (MetresPerTick * (tick - farFrom)) : (float?)null;
+            }
+
+            var far = stop + (MetresPerTick * (farTo - farFrom));
+            return tick < farTo + 6 || tick % 30 == 0 ? far : (float?)null;
+        }
+
+        private const uint WanderEndTick = 640;
+
+        // A slope of the given angle down toward negative z, whose surface passes through the
+        // origin, ten meters wide and long.
+        private static ICollisionWorld SlopeWorld(float degrees)
+        {
+            var radians = degrees * Mathf.Deg2Rad;
+            const float halfHeight = 0.25f;
+            var bake = CollisionWorldCompiler.Compile(new CollisionWorldAuthoringDocument
+            {
+                FormatVersion = CollisionDataFormat.Version,
+                WorldId = "rest-tests",
+                ChunkSize = 32f,
+                Boxes = new[]
+                {
+                    new CollisionBoxAuthoringEntry
+                    {
+                        SourcePath = "Test/Slope#BoxCollider0",
+                        LayerMask = CollisionLayers.CharacterMovement,
+                        CenterX = 0f,
+                        CenterY = -halfHeight * Mathf.Cos(radians),
+                        CenterZ = -halfHeight * Mathf.Sin(radians),
+                        HalfExtentX = 5f,
+                        HalfExtentY = halfHeight,
+                        HalfExtentZ = 5f,
+                        RotationX = Mathf.Sin(radians * 0.5f),
+                        RotationW = Mathf.Cos(radians * 0.5f)
+                    }
+                },
+                Meshes = new CollisionMeshAuthoringEntry[0],
+                Heightfields = new CollisionHeightfieldAuthoringEntry[0],
+                Water = new CollisionWaterAuthoringEntry[0]
+            });
+            return new ChunkedStaticCollisionWorld(
+                bake.Manifest.WorldId,
+                bake.Manifest.Revision,
+                bake.Manifest.ChunkSize,
+                bake.Chunks.Select(chunk => CollisionChunkCodec.Decode(chunk.Data)));
+        }
+
+        // Ground that is not there until it loads, counting how often it is asked for shapes.
+        private sealed class LoadingWorld : ICollisionWorld
+        {
+            private readonly ICollisionWorld world;
+
+            public LoadingWorld(ICollisionWorld world)
+            {
+                this.world = world;
+            }
+
+            public bool Loaded { get; set; }
+
+            public int Queries { get; private set; }
+
+            public void QueryShapes(CollisionAabb bounds, uint layerMask, CollisionQueryBuffer buffer)
+            {
+                Queries++;
+                if (Loaded)
+                {
+                    world.QueryShapes(bounds, layerMask, buffer);
+                }
+            }
+        }
+
         private static RemoteMovementPresenter Presenter()
         {
             var presenter = new RemoteMovementPresenter();
@@ -403,7 +601,9 @@ namespace Mmorpg.Client.Tests.EditMode
                         nextTick += 2;
                     }
 
-                    if (!presenter.Advance(FrameSeconds, FrameSeconds))
+                    // A resting pose presents nothing new and is shown where it was.
+                    presenter.Advance(FrameSeconds, FrameSeconds);
+                    if (!presenter.HasPose)
                     {
                         continue;
                     }

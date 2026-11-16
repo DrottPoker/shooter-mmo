@@ -6,8 +6,10 @@ namespace Mmorpg.Tools.SimulationBotClient;
 // A remote player counts from its reliable spawn to its despawn. Each remote snapshot frame
 // that carries its state counts once, by snapshot sequence, so a duplicated or reordered packet
 // never counts twice. Records of entities without a player spawn, such as moving Mobs, count
-// only as untracked records, and the bot's own entity never counts. The windows of one remote
-// player add up, so what the bot keeps grows with the players it saw, not with the run's length.
+// only as untracked records, and the bot's own entity never counts. A visit, a remote player's
+// stay from its spawn to its despawn, folds into the bot's totals and into a histogram of visit
+// rates when it ends, so what the bot keeps grows with the players in its interest at once, not
+// with the run's length, the players it met, or how often they left and came back.
 //
 // The worker sends a record only when it is due, so a player that stands gets about one per
 // second. The rate that judges replication is therefore the near moving rate: a record whose
@@ -25,7 +27,12 @@ public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotR
 
     private readonly float nearRadiusSquared = nearRadius * nearRadius;
     private readonly Dictionary<ulong, TrackedEntity> visible = [];
-    private readonly Dictionary<ulong, EntityWindow> closed = [];
+    private readonly SimulationBotRateHistogram visitRates = new();
+    private int visits;
+    private long updates;
+    private double visibleSeconds;
+    private long nearMovingUpdates;
+    private double nearMovingSeconds;
     private ulong? ownEntityId;
     private long? windowStart;
     private long? windowEnd;
@@ -159,17 +166,13 @@ public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotR
         }
 
         return new SimulationBotRemoteCadenceSummary(
-            closed.Count,
-            closed.Values.Sum(entity => entity.Updates),
-            closed.Values.Sum(entity => entity.VisibleSeconds),
+            visits,
+            updates,
+            visibleSeconds,
             untrackedRecords,
-            closed.Values
-                .Select(entity => new SimulationBotEntityCadence(
-                    entity.Updates,
-                    entity.VisibleSeconds,
-                    entity.NearMovingUpdates,
-                    entity.NearMovingSeconds))
-                .ToArray());
+            nearMovingUpdates,
+            nearMovingSeconds,
+            visitRates.Copy());
     }
 
     private static float Square(float value)
@@ -195,16 +198,15 @@ public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotR
             return;
         }
 
-        if (!closed.TryGetValue(entity.EntityId, out var window))
+        visits++;
+        updates += entity.Updates;
+        visibleSeconds += (endTimestamp - from) / (double)Stopwatch.Frequency;
+        nearMovingUpdates += entity.NearMovingUpdates;
+        nearMovingSeconds += entity.NearMovingSeconds;
+        if (entity.NearMovingSeconds > 0)
         {
-            window = new EntityWindow();
-            closed.Add(entity.EntityId, window);
+            visitRates.Add(entity.NearMovingUpdates / entity.NearMovingSeconds);
         }
-
-        window.Updates += entity.Updates;
-        window.VisibleSeconds += (endTimestamp - from) / (double)Stopwatch.Frequency;
-        window.NearMovingUpdates += entity.NearMovingUpdates;
-        window.NearMovingSeconds += entity.NearMovingSeconds;
     }
 
     private sealed class TrackedEntity(ulong entityId, long spawnedAt)
@@ -236,38 +238,17 @@ public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotR
 
         public bool Closed { get; set; }
     }
-
-    private sealed class EntityWindow
-    {
-        public long Updates { get; set; }
-
-        public double VisibleSeconds { get; set; }
-
-        public long NearMovingUpdates { get; set; }
-
-        public double NearMovingSeconds { get; set; }
-    }
 }
 
-// One remote player that a bot saw inside the window: the states it received and how long it saw
-// it, and the updates it got while the player walked near, with the time they covered.
-public sealed record SimulationBotEntityCadence(
-    long Updates,
-    double VisibleSeconds,
-    long NearMovingUpdates = 0,
-    double NearMovingSeconds = 0);
-
 public sealed record SimulationBotRemoteCadenceSummary(
-    int Entities,
+    int Visits,
     long Updates,
     double VisibleSeconds,
     long UntrackedRecords,
-    IReadOnlyList<SimulationBotEntityCadence> PerEntity)
+    long NearMovingUpdates,
+    double NearMovingSeconds,
+    SimulationBotRateHistogram VisitRates)
 {
-    public long NearMovingUpdates => PerEntity.Sum(entity => entity.NearMovingUpdates);
-
-    public double NearMovingSeconds => PerEntity.Sum(entity => entity.NearMovingSeconds);
-
     // Updates per second of the remote players while they walked near the bot; null when none
     // did.
     public double? UpdatesPerSecond => NearMovingSeconds > 0 ? NearMovingUpdates / NearMovingSeconds : null;
@@ -287,11 +268,89 @@ public sealed record SimulationBotRemoteCadenceSummary(
             return first ?? second;
         }
 
+        var rates = first.VisitRates.Copy();
+        rates.Add(second.VisitRates);
         return new SimulationBotRemoteCadenceSummary(
-            first.Entities + second.Entities,
+            first.Visits + second.Visits,
             first.Updates + second.Updates,
             first.VisibleSeconds + second.VisibleSeconds,
             first.UntrackedRecords + second.UntrackedRecords,
-            [.. first.PerEntity, .. second.PerEntity]);
+            first.NearMovingUpdates + second.NearMovingUpdates,
+            first.NearMovingSeconds + second.NearMovingSeconds,
+            rates);
+    }
+}
+
+// Rates in bins of 0.05 Hz from 0 to 60 Hz, a rate of 60 Hz or more in the last bin, so a
+// percentile over any number of rates needs a fixed few kilobytes. The bins are allocated with
+// the first rate.
+public sealed class SimulationBotRateHistogram
+{
+    public const double BinHz = 0.05;
+    public const int Bins = 1200;
+
+    private int[]? counts;
+
+    public long Count { get; private set; }
+
+    public void Add(double hz)
+    {
+        if (double.IsNaN(hz) || hz < 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(hz));
+        }
+
+        counts ??= new int[Bins];
+        counts[(int)Math.Min(Bins - 1, Math.Floor(hz / BinHz))]++;
+        Count++;
+    }
+
+    public void Add(SimulationBotRateHistogram other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (other.counts is null)
+        {
+            return;
+        }
+
+        counts ??= new int[Bins];
+        for (var bin = 0; bin < Bins; bin++)
+        {
+            counts[bin] += other.counts[bin];
+        }
+
+        Count += other.Count;
+    }
+
+    public SimulationBotRateHistogram Copy()
+    {
+        return new SimulationBotRateHistogram
+        {
+            counts = (int[]?)counts?.Clone(),
+            Count = Count
+        };
+    }
+
+    // The middle of the bin that holds the rate at the percentile, counted as the sorted rate at
+    // index ceiling(percentile * count) - 1; null without rates.
+    public double? Percentile(double percentile)
+    {
+        if (counts is null || Count == 0)
+        {
+            return null;
+        }
+
+        var index = Math.Clamp((long)Math.Ceiling(percentile * Count) - 1, 0, Count - 1);
+        var seen = 0L;
+        for (var bin = 0; bin < Bins; bin++)
+        {
+            seen += counts[bin];
+            if (seen > index)
+            {
+                return (bin + 0.5d) * BinHz;
+            }
+        }
+
+        return (Bins - 0.5d) * BinHz;
     }
 }

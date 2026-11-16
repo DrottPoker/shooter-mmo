@@ -41,10 +41,25 @@ namespace Mmorpg.Client.WorldActors
             WadingCount = 0;
         }
 
-        // The wake of one body in the current frame. Returns false when the body stands in no
-        // water; a ring size of zero means no ring this frame.
+        // The wake of one body in the current frame, in a collision world whose water does not
+        // change. Returns false when the body stands in no water; a ring size of zero means no
+        // ring this frame.
         public bool Visit(
             ICollisionWorld collisionWorld,
+            object body,
+            Vector3 position,
+            float deltaTime,
+            out WaterWake wake)
+        {
+            return Visit(collisionWorld, 0, body, position, deltaTime, out wake);
+        }
+
+        // The same in a collision world whose revision changes when its water may have, such as
+        // when a chunk loaded. A body that stands exactly where it stood, in the same revision of
+        // the same world, keeps the depth it was given, so a crowd that stands asks for nothing.
+        public bool Visit(
+            ICollisionWorld collisionWorld,
+            int collisionRevision,
             object body,
             Vector3 position,
             float deltaTime,
@@ -62,13 +77,26 @@ namespace Mmorpg.Client.WorldActors
             var speed = deltaTime > 0f ? travelled / deltaTime : 0f;
             wader.Position = position;
             wader.Frame = frame;
-            if (!WaterRules.TryGetDepth(
+            if (!wader.Queried
+                || !position.Equals(wader.QueriedPosition)
+                || !ReferenceEquals(collisionWorld, wader.QueriedWorld)
+                || collisionRevision != wader.QueriedRevision)
+            {
+                wader.InWater = WaterRules.TryGetDepth(
                     collisionWorld,
                     new SimulationVector3(position.x, position.y, position.z),
                     queryBuffer,
-                    out var depth,
-                    out var bodyId)
-                || depth < MinimumDepth)
+                    out wader.Depth,
+                    out wader.BodyId);
+                wader.Queried = true;
+                wader.QueriedPosition = position;
+                wader.QueriedWorld = collisionWorld;
+                wader.QueriedRevision = collisionRevision;
+            }
+
+            var depth = wader.Depth;
+            var bodyId = wader.BodyId;
+            if (!wader.InWater || depth < MinimumDepth)
             {
                 wader.RingTimer = 0f;
                 wader.Spray = 0f;
@@ -140,12 +168,28 @@ namespace Mmorpg.Client.WorldActors
                 Frame = 0;
                 RingTimer = 0f;
                 Spray = 0f;
+                Queried = false;
+                QueriedPosition = position;
+                QueriedWorld = null;
+                QueriedRevision = 0;
+                InWater = false;
+                Depth = 0f;
+                BodyId = null;
             }
 
             public Vector3 Position;
             public int Frame;
             public float RingTimer;
             public float Spray;
+
+            // The last depth query: where, in which world and revision, and what it found.
+            public bool Queried;
+            public Vector3 QueriedPosition;
+            public ICollisionWorld QueriedWorld;
+            public int QueriedRevision;
+            public bool InWater;
+            public float Depth;
+            public string BodyId;
         }
     }
 

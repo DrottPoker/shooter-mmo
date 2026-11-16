@@ -30,15 +30,16 @@ public interface IRetentionTask
 // Rows are due once they ended longer ago than the window.
 public sealed record RetentionBatch(TimeSpan Window, int Size);
 
-// How many rows a batch deleted and, when it deleted any, the age of the oldest of them: the time
-// since that row ended, which the host turns into the lag.
+// How many rows a batch deleted and the age of the oldest of them that tells the lag: the time
+// since that row ended, which the host turns into the lag. Null when the batch deleted none, or
+// only rows whose age tells no lag because they became due later than their window says.
 public readonly record struct RetentionBatchResult(int Deleted, TimeSpan? OldestDueAge)
 {
     public static RetentionBatchResult None { get; } = new(0, null);
 }
 
 // The row of a retention delete: count(*) as "Deleted" and the age in seconds of the oldest
-// deleted row, measured with the database clock, as "OldestDueAgeSeconds".
+// deleted row that tells the lag, measured with the database clock, as "OldestDueAgeSeconds".
 public sealed class RetentionBatchRow
 {
     public int Deleted { get; set; }

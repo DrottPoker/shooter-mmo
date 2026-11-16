@@ -32,8 +32,7 @@ namespace Mmorpg.Client.Gameplay
             new Dictionary<ulong, RealtimeCharacterAppearance>();
         private readonly List<ulong> revivedEntities = new List<ulong>();
         // Players in view whose body waits to be put on, with the look to show.
-        private readonly Dictionary<ulong, RealtimeCharacterAppearance> waitingBodies =
-            new Dictionary<ulong, RealtimeCharacterAppearance>();
+        private readonly WaitingBodies waitingBodies = new WaitingBodies();
         private readonly System.Diagnostics.Stopwatch bodyWatch = new System.Diagnostics.Stopwatch();
         private bool localLookDeferred;
         private IClientSession clientSession;
@@ -48,6 +47,7 @@ namespace Mmorpg.Client.Gameplay
         private PlayerBodyLookSetting bodyLook;
         private PlayerEquipment equipment;
         private LocalPlayerController localPlayer;
+        private Camera playerCamera;
         private CharacterPreview preview;
 
         // The local player of the joined session, or null before it spawned.
@@ -115,19 +115,30 @@ namespace Mmorpg.Client.Gameplay
             corpseBodies.KeepOnly(keys);
         }
 
-        // Whether a body that shows its character dead lies near the position, such as the body
-        // of the player who left a corpse there, until the player respawns.
-        public bool IsDeadBodyNear(Vector3 position, float radius)
+        // Adds where every body lies that shows its character dead, such as the body of a player
+        // who left a corpse there, until the player respawns. One pass over the players serves
+        // every corpse of a frame.
+        public void CollectDeadBodies(List<Vector3> positions)
         {
-            var body = localPlayer != null ? localPlayer.Body : null;
-            if (IsDeadNear(body, position, radius))
-            {
-                return true;
-            }
-
+            AddIfDead(localPlayer != null ? localPlayer.Body : null, positions);
             foreach (var remote in remotePlayers.Values)
             {
-                if (remote != null && IsDeadNear(remote.Body, position, radius))
+                if (remote != null)
+                {
+                    AddIfDead(remote.Body, positions);
+                }
+            }
+        }
+
+        // Whether one of the positions lies within the radius of the position, measured over the
+        // ground.
+        public static bool AnyNear(List<Vector3> positions, Vector3 position, float radius)
+        {
+            for (var index = 0; index < positions.Count; index++)
+            {
+                var offset = positions[index] - position;
+                offset.y = 0f;
+                if (offset.sqrMagnitude <= radius * radius)
                 {
                     return true;
                 }
@@ -136,16 +147,12 @@ namespace Mmorpg.Client.Gameplay
             return false;
         }
 
-        private static bool IsDeadNear(CharacterLocomotionAnimator body, Vector3 position, float radius)
+        private static void AddIfDead(CharacterLocomotionAnimator body, List<Vector3> positions)
         {
-            if (body == null || !body.IsDead || !body.isActiveAndEnabled)
+            if (body != null && body.IsDead && body.isActiveAndEnabled)
             {
-                return false;
+                positions.Add(body.transform.position);
             }
-
-            var offset = body.transform.position - position;
-            offset.y = 0f;
-            return offset.sqrMagnitude <= radius * radius;
         }
 
         // The presentation of another player by its network entity id.
@@ -284,6 +291,7 @@ namespace Mmorpg.Client.Gameplay
             if (equipment != null)
             {
                 equipment.Changed += OnEquipmentChanged;
+                equipment.PresentationChanged += OnPresentationChanged;
             }
 
             realtimePlayers.EntitySpawned += OnEntitySpawned;
@@ -382,6 +390,7 @@ namespace Mmorpg.Client.Gameplay
             if (equipment != null)
             {
                 equipment.Changed -= OnEquipmentChanged;
+                equipment.PresentationChanged -= OnPresentationChanged;
             }
 
             foreach (var remotePlayer in remotePlayers.Values)
@@ -438,11 +447,12 @@ namespace Mmorpg.Client.Gameplay
                     RemoteMovementPresenter.InterpolationDelayTicks(
                         movementSession.Settings.TickRateHz,
                         movementSession.SnapshotRateHz),
-                    movementSession.CollisionWorld,
+                    movementSession.CollisionStream,
                     movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
-                waitingBodies[spawn.EntityId] =
-                    realtimeLooks.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance;
+                waitingBodies.Set(
+                    spawn.EntityId,
+                    realtimeLooks.TryGetAppearance(spawn.EntityId, out var appearance) ? appearance : spawn.Appearance);
             }
 
             remotePlayer.PushSnapshot(spawn.ServerTick, spawn.InitialState);
@@ -465,9 +475,9 @@ namespace Mmorpg.Client.Gameplay
         // the new look when its body is put on.
         private void OnEntityAppearanceChanged(RealtimeEntityAppearanceChanged change)
         {
-            if (waitingBodies.ContainsKey(change.EntityId))
+            if (waitingBodies.Contains(change.EntityId))
             {
-                waitingBodies[change.EntityId] = change.Appearance;
+                waitingBodies.Set(change.EntityId, change.Appearance);
                 return;
             }
 
@@ -492,33 +502,14 @@ namespace Mmorpg.Client.Gameplay
                 : null;
             var eye = camera != null ? camera.transform.position : Vector3.zero;
             bodyWatch.Restart();
+            waitingBodies.OrderFrom(remotePlayers, eye);
             do
             {
-                var nearestId = 0UL;
-                RemotePlayerView nearest = null;
-                var nearestDistance = float.PositiveInfinity;
-                foreach (var entityId in waitingBodies.Keys)
+                if (!waitingBodies.TryTakeNext(out var nearest, out var appearance))
                 {
-                    if (remotePlayers.TryGetValue(entityId, out var view) && view != null)
-                    {
-                        var distance = (view.transform.position - eye).sqrMagnitude;
-                        if (distance < nearestDistance)
-                        {
-                            nearestId = entityId;
-                            nearest = view;
-                            nearestDistance = distance;
-                        }
-                    }
-                }
-
-                if (nearest == null)
-                {
-                    waitingBodies.Clear();
                     return;
                 }
 
-                var appearance = waitingBodies[nearestId];
-                waitingBodies.Remove(nearestId);
                 PresentAppearance(nearest, appearance);
             }
             while (waitingBodies.Count > 0 && bodyWatch.Elapsed.TotalMilliseconds < BodyMillisecondsPerFrame);
@@ -584,11 +575,17 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // Equipment the local player put on or took off dresses its body; a presentation that
-        // arrived dresses every player.
+        // Equipment the local player put on or took off, or the tool it uses, dresses only its
+        // own body: the other players wear what the server sends for them.
         private void OnEquipmentChanged()
         {
             ApplyLocalBodyLook();
+        }
+
+        // A presentation that arrived, such as the catalog that loaded after players came into
+        // view, names the garments of every item, so it dresses every other player again.
+        private void OnPresentationChanged()
+        {
             foreach (var remotePlayer in remotePlayers.Values)
             {
                 if (remotePlayer != null && remotePlayer.Appearance != null
@@ -863,6 +860,10 @@ namespace Mmorpg.Client.Gameplay
             localPlayer.PlayerCamera.SetPointerFocus(pointerFocus);
             localPlayer.SetPointerFocus(pointerFocus);
             localPlayers?.Set(localPlayer);
+
+            // The cloth is laid from the camera that renders the World.
+            playerCamera = localPlayer.PlayerCamera.Camera;
+            ClothChainScheduler.UseMainView(playerCamera);
             return true;
         }
 
@@ -870,6 +871,8 @@ namespace Mmorpg.Client.Gameplay
         private void DestroyLocalPlayer()
         {
             localPlayers?.Clear(localPlayer);
+            ClothChainScheduler.ForgetMainView(playerCamera);
+            playerCamera = null;
             if (localPlayer == null)
             {
                 return;

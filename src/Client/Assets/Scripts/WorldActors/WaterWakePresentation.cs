@@ -15,6 +15,14 @@ namespace Mmorpg.Client.WorldActors
     [DisallowMultipleComponent]
     public sealed class WaterWakePresentation : MonoBehaviour
     {
+        // Only a body this near the camera shows a wake. At 60 m the player camera's 55 degree
+        // view puts about 17 pixels of a 1080 pixel screen on a meter: the largest still ring,
+        // 1.9 m across as it fades, is about 33 pixels wide and, lying flat on the water seen
+        // from a few meters up, only a few pixels high, and a droplet of spray is one to three
+        // pixels. Farther wakes cannot be seen, so they cost nothing; the health bars and the
+        // cloth end at the same distance.
+        public const float WakeRange = 60f;
+
         private const int MaximumRings = 384;
         private const int MaximumSpray = 768;
         private const float RingLifetime = 1.4f;
@@ -56,7 +64,7 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        // The bodies that stood in water in the last frame.
+        // The bodies within the wake range that stood in water in the last frame.
         public int WadingCount
         {
             get { return tracker.WadingCount; }
@@ -77,17 +85,20 @@ namespace Mmorpg.Client.WorldActors
             }
 
             var clock = WaterShaderGlobals.Clock;
+            var world = session.CollisionWorld;
+            var revision = session.CollisionStream != null ? session.CollisionStream.Revision : 0;
+            var hasEye = TryGetEye(out var eye);
             tracker.BeginFrame();
             if (sceneContext != null)
             {
                 if (sceneContext.LocalPlayer != null)
                 {
-                    Visit(session.CollisionWorld, sceneContext.LocalPlayer.transform, clock);
+                    Visit(world, revision, sceneContext.LocalPlayer.transform, hasEye, eye, clock);
                 }
 
                 foreach (var player in sceneContext.RemotePlayers)
                 {
-                    Visit(session.CollisionWorld, player.transform, clock);
+                    Visit(world, revision, player.transform, hasEye, eye, clock);
                 }
             }
 
@@ -97,7 +108,7 @@ namespace Mmorpg.Client.WorldActors
                 {
                     if (view is MobView mob && mob.IsTargetActive)
                     {
-                        Visit(session.CollisionWorld, mob.transform, clock);
+                        Visit(world, revision, mob.transform, hasEye, eye, clock);
                     }
                 }
             }
@@ -106,9 +117,39 @@ namespace Mmorpg.Client.WorldActors
             RideWaves(clock);
         }
 
-        private void Visit(ICollisionWorld collisionWorld, Transform body, float clock)
+        // Whether a body can show a wake seen from the eye: within WakeRange of it.
+        public static bool IsInWakeRange(Vector3 eye, Vector3 body)
         {
-            if (tracker.Visit(collisionWorld, body, body.position, Time.deltaTime, out var wake))
+            return (body - eye).sqrMagnitude <= WakeRange * WakeRange;
+        }
+
+        // The player camera's position, or the local player's without a camera; false without
+        // either, and then every body counts.
+        private bool TryGetEye(out Vector3 eye)
+        {
+            var player = sceneContext != null ? sceneContext.LocalPlayer : null;
+            var camera = player != null && player.PlayerCamera != null ? player.PlayerCamera.Camera : null;
+            eye = camera != null ? camera.transform.position : player != null ? player.transform.position : Vector3.zero;
+            return player != null;
+        }
+
+        // A body beyond the wake range is not visited, so the tracker forgets it, and it starts
+        // still when it comes near again.
+        private void Visit(
+            ICollisionWorld collisionWorld,
+            int collisionRevision,
+            Transform body,
+            bool hasEye,
+            Vector3 eye,
+            float clock)
+        {
+            var position = body.position;
+            if (hasEye && !IsInWakeRange(eye, position))
+            {
+                return;
+            }
+
+            if (tracker.Visit(collisionWorld, collisionRevision, body, position, Time.deltaTime, out var wake))
             {
                 Leave(wake, clock);
             }

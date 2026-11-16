@@ -1724,9 +1724,11 @@ The target counts two things separately:
   place at the full cadence.
 
 The worker simulates the Shard on its one loop thread. At 500 spread players
-it holds the tick budget and the full remote update rate, and that thread is
-busy only a small part of the time; what a larger tier meets first, the tail
-of the tick and the transport's packets, is entry 1 of
+it holds the tick budget and the full remote update rate in a five-minute run,
+and that thread is busy only a small part of the time; over 30 minutes with
+players coming and going, the tail of the tick still goes over its budget in
+some runs, so the target is not claimed yet. That tail and the transport's
+messages are entry 1 of
 [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier).
 A tier is claimed only after
 stress workloads with combat, Mobs, and players spread over the World measured

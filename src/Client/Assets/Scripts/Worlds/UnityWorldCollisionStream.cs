@@ -15,6 +15,12 @@ namespace Mmorpg.Client.Worlds
             new HashSet<CollisionChunkCoordinate>();
         private readonly CollisionChunkStreamingPlanner planner;
 
+        // The chunks of a refresh, kept so a refresh allocates nothing.
+        private readonly List<CollisionChunkCoordinate> anchorChunks = new List<CollisionChunkCoordinate>();
+        private readonly HashSet<CollisionChunkCoordinate> required = new HashSet<CollisionChunkCoordinate>();
+        private readonly HashSet<CollisionChunkCoordinate> retained = new HashSet<CollisionChunkCoordinate>();
+        private readonly List<CollisionChunkCoordinate> unloading = new List<CollisionChunkCoordinate>();
+
         public UnityWorldCollisionStream(
             string addressDirectory,
             CollisionWorldManifest manifest,
@@ -36,26 +42,39 @@ namespace Mmorpg.Client.Worlds
 
         public ChunkedStaticCollisionWorld CollisionWorld { get; private set; }
 
-        public bool TryRefresh(IEnumerable<SimulationVector3> anchors, out string error)
+        // How many times a chunk loaded or unloaded, so presentation that rests on the ground,
+        // such as a standing remote player, can tell that the ground under it may have changed.
+        public int Revision { get; private set; }
+
+        // Loads the chunks within the load radius of the anchors and unloads those beyond the
+        // unload radius. It runs on every owner snapshot, so it keeps its sets and lists and
+        // allocates nothing unless a chunk loads.
+        public bool TryRefresh(IReadOnlyList<SimulationVector3> anchors, out string error)
         {
             error = string.Empty;
             try
             {
-                var anchorSnapshot = anchors.ToArray();
-                var required = planner.GetRequiredChunks(anchorSnapshot);
-                var retained = planner.GetRetainedChunks(anchorSnapshot);
+                FillAround(anchors);
                 foreach (var coordinate in required)
                 {
                     LoadChunk(coordinate);
                 }
 
-                foreach (var coordinate in loadedCoordinates.ToArray())
+                unloading.Clear();
+                foreach (var coordinate in loadedCoordinates)
                 {
                     if (!retained.Contains(coordinate))
                     {
-                        CollisionWorld.UnloadChunk(coordinate.X, coordinate.Z);
-                        loadedCoordinates.Remove(coordinate);
+                        unloading.Add(coordinate);
                     }
+                }
+
+                for (var index = 0; index < unloading.Count; index++)
+                {
+                    var coordinate = unloading[index];
+                    CollisionWorld.UnloadChunk(coordinate.X, coordinate.Z);
+                    loadedCoordinates.Remove(coordinate);
+                    Revision++;
                 }
 
                 return true;
@@ -67,12 +86,16 @@ namespace Mmorpg.Client.Worlds
             }
         }
 
-        public bool TryEnsureLoaded(IEnumerable<SimulationVector3> anchors, out string error)
+        // Loads the chunks within the load radius of the anchors and unloads nothing. It runs
+        // before every predicted tick, so like a refresh it allocates nothing unless a chunk
+        // loads.
+        public bool TryEnsureLoaded(IReadOnlyList<SimulationVector3> anchors, out string error)
         {
             error = string.Empty;
             try
             {
-                foreach (var coordinate in planner.GetRequiredChunks(anchors))
+                FillAround(anchors);
+                foreach (var coordinate in required)
                 {
                     LoadChunk(coordinate);
                 }
@@ -84,6 +107,30 @@ namespace Mmorpg.Client.Worlds
                 error = "Collision chunk streaming failed: " + exception.Message;
                 return false;
             }
+        }
+
+        // Fills the kept sets with the chunks within the load and the unload radius of the
+        // anchors, each set in the order the anchors and their chunks come; an anchor that is not
+        // finite throws before any chunk loads.
+        private void FillAround(IReadOnlyList<SimulationVector3> anchors)
+        {
+            if (anchors == null)
+            {
+                throw new ArgumentNullException(nameof(anchors));
+            }
+
+            anchorChunks.Clear();
+            for (var index = 0; index < anchors.Count; index++)
+            {
+                if (!SimulationVector3.IsFinite(anchors[index]))
+                {
+                    throw new ArgumentException("Collision streaming anchors must be finite.", nameof(anchors));
+                }
+
+                anchorChunks.Add(planner.ToChunk(anchors[index]));
+            }
+
+            planner.FillChunks(anchorChunks, required, retained);
         }
 
         public bool TryLoadAll(out string error)
@@ -144,6 +191,7 @@ namespace Mmorpg.Client.Worlds
             }
 
             loadedCoordinates.Add(coordinate);
+            Revision++;
         }
     }
 }

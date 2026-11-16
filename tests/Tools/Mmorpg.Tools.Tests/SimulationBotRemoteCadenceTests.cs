@@ -30,16 +30,14 @@ public sealed class SimulationBotRemoteCadenceTests
         cadence.EndWindow(4 * Second);
         cadence.OnDespawn(1, 5 * Second);
 
+        // Player 1 counts 15 records over 3 s, player 3 one record over 1 s.
         var summary = cadence.Capture()!;
-        Assert.Equal(2, summary.Entities);
-        var first = summary.PerEntity.Single(entity => entity.VisibleSeconds > 2);
-        Assert.Equal(15, first.Updates);
-        Assert.Equal(3d, first.VisibleSeconds, 6);
-        var third = summary.PerEntity.Single(entity => entity.VisibleSeconds < 2);
-        Assert.Equal(1d, third.VisibleSeconds, 6);
-        Assert.Equal(1, third.Updates);
+        Assert.Equal(2, summary.Visits);
+        Assert.Equal(16, summary.Updates);
+        Assert.Equal(4d, summary.VisibleSeconds, 6);
         Assert.Equal(16d / 4d, summary.AllEntitiesUpdatesPerSecond!.Value, 6);
         Assert.Null(summary.UpdatesPerSecond);
+        Assert.Equal(0, summary.VisitRates.Count);
     }
 
     // A player that walks near the bot counts its moving records over the time between them; a
@@ -84,12 +82,12 @@ public sealed class SimulationBotRemoteCadenceTests
         cadence.EndWindow(4 * Second);
 
         var summary = cadence.Capture()!;
-        var walker = summary.PerEntity.Single(entity => entity.NearMovingUpdates > 0);
         // 14 records walked; the first followed the stand, so 13 count over 14 frames.
-        Assert.Equal(13, walker.NearMovingUpdates);
-        Assert.Equal(14d / 15d, walker.NearMovingSeconds, 6);
-        Assert.Equal(13d / (14d / 15d), summary.UpdatesPerSecond!.Value, 3);
         Assert.Equal(13, summary.NearMovingUpdates);
+        Assert.Equal(14d / 15d, summary.NearMovingSeconds, 6);
+        Assert.Equal(13d / (14d / 15d), summary.UpdatesPerSecond!.Value, 3);
+        Assert.Equal(1, summary.VisitRates.Count);
+        Assert.Equal(13d / (14d / 15d), summary.VisitRates.Percentile(0.05)!.Value, SimulationBotRateHistogram.BinHz / 2);
     }
 
     [Fact]
@@ -104,7 +102,7 @@ public sealed class SimulationBotRemoteCadenceTests
         cadence.EndWindow(Second);
 
         var summary = cadence.Capture()!;
-        Assert.Equal(0, summary.Entities);
+        Assert.Equal(0, summary.Visits);
         Assert.Equal(0, summary.UntrackedRecords);
     }
 
@@ -118,7 +116,31 @@ public sealed class SimulationBotRemoteCadenceTests
         cadence.EndWindow(Second);
 
         var summary = cadence.Capture()!;
-        Assert.Equal(0, summary.Entities);
+        Assert.Equal(0, summary.Visits);
         Assert.Null(summary.UpdatesPerSecond);
+        Assert.Null(summary.VisitRates.Percentile(0.05));
+    }
+
+    // The percentile of the histogram is the middle of the bin of the sorted rate at
+    // ceiling(percentile * count) - 1, and rates of 60 Hz or more share the last bin.
+    [Fact]
+    public void TheRateHistogramFindsThePercentileInItsBins()
+    {
+        var rates = new SimulationBotRateHistogram();
+        for (var rate = 1; rate <= 100; rate++)
+        {
+            rates.Add(rate * 0.2);
+        }
+
+        var other = new SimulationBotRateHistogram();
+        other.Add(75);
+        rates.Add(other);
+
+        Assert.Equal(101, rates.Count);
+        // The sixth smallest of 101 rates is 1.2 Hz.
+        Assert.Equal(1.225, rates.Percentile(0.05)!.Value, 6);
+        Assert.Equal(59.975, rates.Percentile(1)!.Value, 6);
+        Assert.Equal(59.975, other.Copy().Percentile(0)!.Value, 6);
+        Assert.Throws<ArgumentOutOfRangeException>(() => rates.Add(-1));
     }
 }

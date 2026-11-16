@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Mmorpg.Client.Items;
 using Mmorpg.Client.WorldActors;
 using Mmorpg.GameProtocol;
@@ -75,6 +77,58 @@ namespace Mmorpg.Client.Tests.EditMode
                 state.TryApplySpawn(conflictingPresence, out error),
                 Is.False);
             Assert.That(error, Does.Contain("identity"));
+        }
+
+        // A change of one actor names that actor, so the presentation applies only it instead of
+        // every actor in view; only a clear changes them all. The actors read in the order of
+        // their entity ids, which a full rebuild applies them in, without sorting or allocating.
+        [Test]
+        public void AnActorChangeNamesItsActorAndTheActorsReadInOrderWithoutAllocating()
+        {
+            var state = FixtureTexts.ActorState();
+            var changed = new List<ulong>();
+            var cleared = 0;
+            state.ActorChanged += changed.Add;
+            state.Cleared += () => cleared++;
+            var spawns = new Dictionary<ulong, RealtimeWorldActorSpawn>();
+            foreach (var entityId in new ulong[] { 9, 3, 7 })
+            {
+                spawns[entityId] = CreateSpawn(entityId: entityId);
+                Assert.That(state.TryApplySpawn(spawns[entityId], out var spawnError), Is.True, spawnError);
+            }
+
+            Assert.That(changed, Is.EqualTo(new ulong[] { 9, 3, 7 }));
+            Assert.That(state.Actors.Select(actor => actor.EntityId), Is.EqualTo(new ulong[] { 3, 7, 9 }));
+            Assert.That(state.Actors, Is.SameAs(state.Actors));
+
+            // The same presence again, and an older state, change nothing.
+            Assert.That(state.TryApplySpawn(CreateSpawn(spawns[3].RuntimeActorId, entityId: 3), out var error), Is.True, error);
+            Assert.That(state.TryApplyState(State(7, 2, 3f), out error), Is.True, error);
+            Assert.That(state.TryApplyState(State(7, 1, 4f), out error), Is.True, error);
+            Assert.That(changed, Is.EqualTo(new ulong[] { 9, 3, 7, 7 }));
+
+            Assert.That(state.TryRemove(new RealtimeWorldActorDespawn(3, spawns[3].RuntimeActorId, "left"), out error), Is.True, error);
+            Assert.That(changed, Is.EqualTo(new ulong[] { 9, 3, 7, 7, 3 }));
+            Assert.That(state.Actors.Select(actor => actor.EntityId), Is.EqualTo(new ulong[] { 7, 9 }));
+            Assert.That(state.Actors[0].PositionX, Is.EqualTo(3f));
+
+            var sum = 0UL;
+            Assert.That(
+                ManagedAllocations.Of(() =>
+                {
+                    var actors = state.Actors;
+                    for (var index = 0; index < actors.Count; index++)
+                    {
+                        sum += actors[index].EntityId;
+                    }
+                }),
+                Is.Zero);
+            Assert.That(sum, Is.EqualTo(32UL));
+
+            state.Clear();
+            Assert.That(cleared, Is.EqualTo(1));
+            Assert.That(state.Actors, Is.Empty);
+            Assert.That(changed.Count, Is.EqualTo(5));
         }
 
         [Test]
@@ -478,13 +532,28 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        private static RealtimeWorldActorState State(ulong entityId, long revision, float positionX)
+        {
+            return new RealtimeWorldActorState(
+                entityId,
+                revision,
+                1,
+                true,
+                positionX,
+                0f,
+                -1f,
+                90f,
+                RealtimeWorldActorActivityTier.EventDriven);
+        }
+
         private static RealtimeWorldActorSpawn CreateSpawn(
             Guid? runtimeActorId = null,
             string spawnDefinitionId = "local.city_services",
-            RealtimeWorldActorMenuOption[] menuOptions = null)
+            RealtimeWorldActorMenuOption[] menuOptions = null,
+            ulong entityId = 7)
         {
             return new RealtimeWorldActorSpawn(
-                7,
+                entityId,
                 runtimeActorId ?? Guid.NewGuid(),
                 "npc.city_services",
                 spawnDefinitionId,

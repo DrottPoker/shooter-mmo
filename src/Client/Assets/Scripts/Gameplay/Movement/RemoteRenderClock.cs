@@ -90,10 +90,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var desiredTick = Math.Max(0d, estimatedServerTick - interpolationDelayTicks);
-            var snapThresholdTicks = Math.Max(
-                interpolationDelayTicks * 2d,
-                tickRateHz * 0.5d);
-            if (desiredTick - CurrentTick >= snapThresholdTicks)
+            if (desiredTick - CurrentTick >= SnapThresholdTicks(tickRateHz, interpolationDelayTicks))
             {
                 SetRenderTick(desiredTick, latestServerTick);
                 return CurrentTick;
@@ -117,6 +114,25 @@ namespace Mmorpg.Client.Gameplay
 
             SetRenderTick(renderTick + (unscaledDeltaTime * tickRateHz * speedMultiplier), latestServerTick);
             return CurrentTick;
+        }
+
+        // Whether the render time follows the estimate of the server tick exactly until a newer
+        // state arrives: it passed the newest state so far that every Advance sets it to the
+        // estimate less the delay. Then one Advance over many frames sets it where Advance frame
+        // by frame would, since the estimate runs on with real time alone.
+        public bool FollowsEstimate(int tickRateHz, long latestServerTick, double interpolationDelayTicks)
+        {
+            return IsInitialized
+                && observedLatestServerTick == latestServerTick
+                && CurrentTick >= latestServerTick
+                && Math.Max(0d, estimatedServerTick - interpolationDelayTicks) - CurrentTick
+                    >= SnapThresholdTicks(tickRateHz, interpolationDelayTicks);
+        }
+
+        // A render time this far behind the delay is set to it at once instead of caught up.
+        private static double SnapThresholdTicks(int tickRateHz, double interpolationDelayTicks)
+        {
+            return Math.Max(interpolationDelayTicks * 2d, tickRateHz * 0.5d);
         }
 
         private void SetRenderTick(double renderTick, long latestServerTick)

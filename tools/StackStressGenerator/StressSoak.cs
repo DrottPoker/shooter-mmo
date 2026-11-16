@@ -222,6 +222,9 @@ public sealed record StressMemoryTrend(
     // How far the last fifth's average working set lies above the second fifth's; the first
     // fifth is left out because caches, pools, and the JIT still warm up in it.
     public double? WorkingSetGrowthMiB => WorkingSetFifthsMiB.Count == 5 ? WorkingSetFifthsMiB[4] - WorkingSetFifthsMiB[1] : null;
+
+    // The same for the managed heap, where the process reports it.
+    public double? ManagedHeapGrowthMiB => ManagedHeapFifthsMiB is { Count: 5 } heap ? heap[4] - heap[1] : null;
 }
 
 // The worker's memory over the steady interval from its own performance file: its working set

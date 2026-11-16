@@ -164,6 +164,33 @@ public sealed class RetentionRunnerTests
         Assert.Equal(0d, lags["current"]);
     }
 
+    // Rows whose age tells no lag, such as the operation of a death that waited for its death
+    // event, are left out: the lag comes from the first batch that holds a row that tells it, and
+    // a task that finished without one had no lag.
+    [PostgresIntegrationFact]
+    public async Task TheLagComesFromTheFirstRowThatTellsItAndRowsThatTellNoneAreNoLag()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        using var metrics = new RetentionMetrics();
+        var batchSize = RetentionOptions.Default.BatchSize;
+
+        var pass = await Runner(
+                dataSource,
+                [
+                    new ScriptedTask(
+                        "later",
+                        new RetentionBatchResult(batchSize, null),
+                        new RetentionBatchResult(3, Window + TimeSpan.FromSeconds(40))),
+                    new ScriptedTask("untold", new RetentionBatchResult(2, null))
+                ],
+                metrics)
+            .RunPassAsync(CancellationToken.None);
+
+        Assert.Equal(TimeSpan.FromSeconds(40), pass.Tasks.Single(task => task.Task == "later").Lag);
+        Assert.Equal(TimeSpan.Zero, pass.Tasks.Single(task => task.Task == "untold").Lag);
+    }
+
     [Fact]
     public void TwoTasksWithOneNameAreRefused()
     {
@@ -245,6 +272,24 @@ public sealed class RetentionRunnerTests
             var deleted = Math.Min(batch.Size, Remaining);
             Remaining -= deleted;
             return new RetentionBatchResult(deleted, deleted == 0 ? null : oldestDueAge ?? batch.Window);
+        }
+    }
+
+    // Answers its batches in order, then nothing.
+    private sealed class ScriptedTask(string name, params RetentionBatchResult[] batches) : IRetentionTask
+    {
+        private int next;
+
+        public string Name => name;
+
+        public RetentionClass Class => RetentionClass.ItemHistory;
+
+        public Task<RetentionBatchResult> DeleteDueAsync(
+            PostgresTransactionScope scope,
+            RetentionBatch batch,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(next < batches.Length ? batches[next++] : RetentionBatchResult.None);
         }
     }
 

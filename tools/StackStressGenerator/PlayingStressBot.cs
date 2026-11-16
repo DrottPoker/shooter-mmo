@@ -117,6 +117,10 @@ public sealed record PlayingRunContext(
     // How fast a body regenerates, for the rejoin check.
     public PlayingRegeneration Regeneration { get; init; } = new(1, 1);
 
+    // Where the World puts a character whose body died, from the World's manifest, for the
+    // rejoin check.
+    public SimulationVector3 WorldSpawn { get; init; }
+
     // The GameService outage of the run, or null for a run without one.
     public StressOutageTracker? Outage { get; init; }
 }
@@ -730,7 +734,8 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
             own.MaximumHealth,
             DateTime.UtcNow,
             session.SimulationSessionId,
-            0);
+            0,
+            session.ControlledEntityId);
         gameplayMetrics.RecordRequest(PlayingOperations.Leave);
         leaveSentTimestamp = now;
         client.BeginLeave(now);
@@ -883,9 +888,11 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         var own = rejoinFound;
 
         // The ticket named the body, but its release came first, so the join entered from the
-        // saved place: the database says what the body left behind.
+        // saved place, or the body went before its release, so the join gave a new entity: the
+        // database says what the body left behind.
         var facts = ticket.Facts;
-        if (!reconnect && facts is null)
+        var bodyGone = reconnect && session.ControlledEntityId != leave!.EntityId;
+        if ((!reconnect || bodyGone) && facts is null)
         {
             if (lateFacts is null)
             {
@@ -927,9 +934,11 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
                 own.Health,
                 own.MaximumHealth,
                 own.LifeState,
-                own.ObservedAt),
+                own.ObservedAt,
+                session.ControlledEntityId),
             facts,
-            context.Regeneration.HealthPerSecond);
+            context.Regeneration.HealthPerSecond,
+            context.WorldSpawn);
         var metrics = context.Metrics;
         metrics.Count(reconnect ? PlayingCounter.RejoinsBody : PlayingCounter.RejoinsSaved);
         if (reconnect && churn!.Kind == PlayingChurnKind.Saved)
@@ -949,6 +958,11 @@ public sealed class PlayingStressBot : IStressBot, ISimulationBotRealtimeObserve
         if (verdict.BodyDied)
         {
             metrics.Count(PlayingCounter.RejoinBodiesDied);
+        }
+
+        if (verdict.BodyDiedBeforeRelease)
+        {
+            metrics.Count(PlayingCounter.RejoinBodiesDiedBeforeRelease);
         }
 
         gameplayMetrics.RecordRequest(operation);
