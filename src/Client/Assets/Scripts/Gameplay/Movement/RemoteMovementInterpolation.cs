@@ -5,8 +5,9 @@ using Mmorpg.GameSimulation;
 namespace Mmorpg.Client.Gameplay
 {
     // The buffered server states of one remote entity. A state that moved from the one before
-    // is a moving state; one at the same place says the entity stands there. Samples arrive at
-    // uneven intervals: every snapshot, every few, or once a second for an entity that stands.
+    // is a moving state; one at the same place says the entity stands there; the first state
+    // after a clear says neither. Samples arrive at uneven intervals: every snapshot, every
+    // few, or once a second for an entity that stands.
     internal sealed class RemoteMovementInterpolation
     {
         private const int MaximumBufferedSnapshots = 32;
@@ -16,6 +17,10 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly List<Sample> samples = new List<Sample>();
         private uint latestRawServerTick;
+
+        // The only state is the first after a clear, and nothing said whether the entity stood
+        // there or walked through it.
+        private bool firstStateUnknown;
 
         public int Count
         {
@@ -40,12 +45,18 @@ namespace Mmorpg.Client.Gameplay
         // walking entity's states arrive; 0 when the newest state did not follow a moving one.
         public long LastMovingIntervalTicks { get; private set; }
 
+        // Whether LastMovingIntervalTicks is the first one observed: the gap between the first
+        // state after a clear and a second state that walked all of it.
+        public bool IsFirstMovingInterval { get; private set; }
+
         public void Clear()
         {
             samples.Clear();
             latestRawServerTick = 0;
             LatestServerTick = 0;
             LastMovingIntervalTicks = 0;
+            IsFirstMovingInterval = false;
+            firstStateUnknown = false;
         }
 
         public bool TryGetNewest(out PlayerMovementState state)
@@ -86,18 +97,27 @@ namespace Mmorpg.Client.Gameplay
 
         public bool Push(uint serverTick, PlayerMovementState state)
         {
-            return Push(serverTick, state, long.MaxValue);
+            return Push(serverTick, state, long.MaxValue, 0, false);
         }
 
         // Buffers a newer state. A moving state that follows a standing one by more than
         // expectedIntervalTicks starts one expected interval before it: the entity stood until
-        // then, so it neither glides from the old state nor starts late.
-        public bool Push(uint serverTick, PlayerMovementState state, long expectedIntervalTicks)
+        // then, so it neither glides from the old state nor starts late. The first state after
+        // a clear stands only when firstStateStands says so, as for a reliable rest pose;
+        // otherwise a moving second state at most longestWalkGapTicks after it walked the whole
+        // gap, such as an entity that came into view while it walked.
+        public bool Push(
+            uint serverTick,
+            PlayerMovementState state,
+            long expectedIntervalTicks,
+            long longestWalkGapTicks,
+            bool firstStateStands)
         {
             if (samples.Count == 0)
             {
                 latestRawServerTick = serverTick;
                 LatestServerTick = serverTick;
+                firstStateUnknown = !firstStateStands;
                 Add(new Sample(LatestServerTick, state, moved: false));
                 return true;
             }
@@ -110,8 +130,16 @@ namespace Mmorpg.Client.Gameplay
             var previous = samples[samples.Count - 1];
             var tick = LatestServerTick + unchecked(serverTick - latestRawServerTick);
             var moved = !IsSamePlace(previous.State, state);
+            var walkedFromFirst = moved && firstStateUnknown && tick - previous.ServerTick <= longestWalkGapTicks;
+            firstStateUnknown = false;
             LastMovingIntervalTicks = 0;
-            if (moved && !previous.Moved && tick - previous.ServerTick > expectedIntervalTicks)
+            IsFirstMovingInterval = false;
+            if (walkedFromFirst)
+            {
+                LastMovingIntervalTicks = tick - previous.ServerTick;
+                IsFirstMovingInterval = true;
+            }
+            else if (moved && !previous.Moved && tick - previous.ServerTick > expectedIntervalTicks)
             {
                 Add(new Sample(tick - expectedIntervalTicks, previous.State, moved: false));
             }

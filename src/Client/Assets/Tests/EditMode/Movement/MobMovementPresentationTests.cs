@@ -218,6 +218,41 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(movement.Position.x, Is.EqualTo(3.45f).Within(0.0001f));
         }
 
+        // The first far-tier record of a walking Mob lies farther than a teleport from its reliable
+        // pose, as when its view appeared only after its prefab loaded: that record says nothing
+        // about standing, so the next one, 6 ticks later, walked the whole gap and the Mob is
+        // shown at its walking speed.
+        [Test]
+        public void AWalkingMobFirstSeenFarFromItsReliablePoseIsShownAtItsWalkingSpeed()
+        {
+            var rest = Vector3.zero;
+            var movement = Movement();
+            var maximumStep = 0f;
+            var movedBackwards = false;
+            float? last = null;
+            for (uint tick = 100; tick <= 160; tick += 6)
+            {
+                Assert.That(movement.PushSnapshot(tick, State(10f + (MetresPerTick * (tick - 100))), rest, 90f), Is.True);
+                for (var frame = 0; frame < 12; frame++)
+                {
+                    movement.Advance(FrameSeconds, FrameSeconds);
+                    var x = movement.Position.x;
+                    if (last is { } previous)
+                    {
+                        maximumStep = Mathf.Max(maximumStep, Mathf.Abs(x - previous));
+                        movedBackwards |= x < previous - 0.00001f;
+                    }
+
+                    last = x;
+                }
+            }
+
+            Assert.That(maximumStep, Is.LessThanOrEqualTo(MetresPerTick * TickRateHz * FrameSeconds * 1.2f), "No dash.");
+            Assert.That(movedBackwards, Is.False);
+            Assert.That(movement.Position.x, Is.GreaterThan(13f), "It walks.");
+            Assert.That(movement.Discontinuities, Is.EqualTo(1), "Only its appearance.");
+        }
+
         [Test]
         public void ATeleportIsShownAtOnce()
         {
