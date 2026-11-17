@@ -3701,7 +3701,11 @@ the nearest to the local player's camera first, while the frame's
 `PresentationBudget` lasts and at least one a frame, so a hundred Mobs whose
 prefab finished loading in one frame come into view over the frames that
 follow instead of in that frame with all their nameplates. `WaitingActors`
-measures every waiting actor once a frame and takes them from a heap. An actor
+measures every waiting actor once a frame and takes them from a heap. A pass
+visits every waiting actor, also once the budget is spent, so the prefab of each
+is asked for in the frame the actor came; the presentation is ready for the
+entry into a World, as [Crowd Performance](#crowd-performance) describes under
+The first view, only once such a pass ran and no prefab load runs. An actor
 that waits has no view, so every consumer asks for one and is told there is none
 yet, as it already was while a prefab loaded: `TryGetView` and the views of
 `Views` and `CombatantViewLocator` leave it out, the pointer cannot pick it, the

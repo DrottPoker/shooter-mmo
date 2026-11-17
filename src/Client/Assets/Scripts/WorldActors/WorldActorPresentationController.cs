@@ -42,6 +42,8 @@ namespace Mmorpg.Client.WorldActors
         private readonly List<ulong> goneIds = new List<ulong>();
         // The actors whose view waits to be made.
         private readonly WaitingActors waiting = new WaitingActors();
+        // An actor began to wait since the last pass over the waiting actors.
+        private bool waitingUnvisited;
         private PresentationBudget presentationBudget = new PresentationBudget();
         private LocalPlayerSource localPlayers;
         private Action<RealtimeEntitySnapshot> noteUnrouted;
@@ -210,6 +212,13 @@ namespace Mmorpg.Client.WorldActors
                 }
 
                 if (!registryResolved)
+                {
+                    return false;
+                }
+
+                // An actor that came since the last pass over the waiting actors may name a prefab
+                // that nobody asked for yet.
+                if (waitingUnvisited && waiting.Count > 0)
                 {
                     return false;
                 }
@@ -517,6 +526,7 @@ namespace Mmorpg.Client.WorldActors
             }
 
             waiting.Wait(actor.EntityId);
+            waitingUnvisited = true;
         }
 
         // An actor that left: its view goes, or its wait, and a move it missed while it had none.
@@ -529,7 +539,13 @@ namespace Mmorpg.Client.WorldActors
 
         private void Update()
         {
-            if (waiting.Count == 0 || actorController == null || !registryResolved)
+            if (waiting.Count == 0)
+            {
+                waitingUnvisited = false;
+                return;
+            }
+
+            if (actorController == null || !registryResolved)
             {
                 return;
             }
@@ -547,7 +563,9 @@ namespace Mmorpg.Client.WorldActors
 
         // Makes the views of the waiting actors, the nearest to the camera first, while the frame's
         // presentation budget lasts and at least one a frame; an actor whose prefab still loads
-        // waits on.
+        // waits on. The pass visits every waiting actor, also once the budget is spent, so the
+        // prefab of each is asked for in the frame it came: the first view of an entry waits for
+        // the prefabs of every actor in view, not only of those the budget reached.
         private void PresentWaitingActors()
         {
             var camera = localPlayers != null && localPlayers.Controller != null && localPlayers.Controller.PlayerCamera != null
@@ -555,6 +573,7 @@ namespace Mmorpg.Client.WorldActors
                 : null;
             waiting.OrderFrom(actorController.State, camera != null ? camera.transform.position : Vector3.zero);
             var made = 0;
+            var spent = false;
             while (waiting.TryTakeNext(out var actor))
             {
                 var prefabState = ResolvePrefab(actor.PresentationArchetypeId, out var prefab);
@@ -564,11 +583,12 @@ namespace Mmorpg.Client.WorldActors
                     continue;
                 }
 
-                if (made > 0 && presentationBudget.IsSpent)
+                spent = spent || (made > 0 && presentationBudget.IsSpent);
+                if (spent)
                 {
-                    // The farther actors keep waiting for the next frame.
+                    // The farther actors keep waiting for the next frame, with their prefabs asked for.
                     waiting.Wait(actor.EntityId);
-                    return;
+                    continue;
                 }
 
                 using (CreateViewMarker.Auto())
@@ -580,6 +600,8 @@ namespace Mmorpg.Client.WorldActors
 
                 made++;
             }
+
+            waitingUnvisited = false;
         }
 
         private PrefabState ResolvePrefab(string presentationArchetypeId, out GameObject prefab)
