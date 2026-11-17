@@ -95,6 +95,41 @@ namespace Mmorpg.Client.Tests.EditMode
                 Is.Zero);
         }
 
+        // The entry of a World waits for the content of the players in view and makes room in the
+        // cloth world for those whose looks may wear loose cloth: a player that did not ask for its
+        // content yet counts for both, one that asked counts until its content is ready, and only a
+        // look with loose cloth may wear it. Counting allocates nothing.
+        [Test]
+        public void TheEntryCountsThePlayersWaitingForContentAndThoseThatMayWearCloth()
+        {
+            var catalog = UnityEditor.AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(TestBodyContent.CatalogPaths[0]);
+            using (var content = TestBodyContent.Loaded())
+            {
+                var cloaked = PlayerBodyContent.NeedsOf(catalog, BodyLook.Default.WithGarment("WoolCloak", true));
+                var plain = PlayerBodyContent.NeedsOf(catalog, BodyLook.Default);
+                Assert.That(cloaked.HasCloth, Is.True);
+                Assert.That(plain.HasCloth, Is.False);
+
+                var waiting = new WaitingBodies();
+                waiting.Set(1, null);
+                waiting.Wait(2, null, cloaked, null);
+                waiting.Wait(3, null, plain, null);
+                Assert.That(waiting.CountWaitingForContent(content), Is.EqualTo(3), "content nobody asked for is not ready");
+                Assert.That(waiting.CountMayWearCloth(), Is.EqualTo(2));
+
+                Assert.That(content.Want(cloaked), Is.True);
+                Assert.That(content.Want(plain), Is.True);
+                Assert.That(waiting.CountWaitingForContent(content), Is.EqualTo(1), "only the player that did not ask waits");
+                Assert.That(
+                    ManagedAllocations.Of(() =>
+                    {
+                        waiting.CountWaitingForContent(content);
+                        waiting.CountMayWearCloth();
+                    }),
+                    Is.Zero);
+            }
+        }
+
         private RemotePlayerView Player(ulong entityId, Vector3 position)
         {
             var player = new GameObject("RemotePlayer_" + entityId);

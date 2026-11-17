@@ -273,6 +273,41 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // A world that reserves room for the bodies of a crowd ahead grows at once to the next
+        // doubling that holds them, keeps the swing of the bodies in it, and grows no more while
+        // they join.
+        [Test]
+        public void AWorldThatReservesRoomGrowsOnceAndKeepsTheSwingOfItsBodies()
+        {
+            using (var kept = Preview(new[] { "WoolRobe", "WoolCloak" }))
+            using (var grown = Preview(new[] { "WoolRobe", "WoolCloak" }))
+            using (var joining = Preview(new[] { "WoolCloak" }))
+            {
+                kept.Play(WardrobePreview.Motion.Jog);
+                grown.Play(WardrobePreview.Motion.Jog);
+                for (var frame = 0; frame < 60; frame++)
+                {
+                    kept.Step(Step, CameraOffset);
+                    grown.Step(Step, CameraOffset);
+                }
+
+                var world = grown.Solver.World;
+                Assert.That(world.Capacity, Is.EqualTo(1));
+                Assert.That(world.Reserve(world.Count + 2), Is.True);
+                Assert.That(world.Capacity, Is.EqualTo(4), "the next doubling that holds three bodies");
+                Assert.That(world.Reserve(world.Count + 2), Is.False, "a world with room grows no more");
+                joining.Solver.ShareWorld(world);
+                Assert.That(world.Capacity, Is.EqualTo(4));
+                for (var frame = 0; frame < 10; frame++)
+                {
+                    kept.Step(Step, CameraOffset);
+                    grown.Step(Step, CameraOffset);
+                    Assert.That(grown.Solver.SpringWeight, Is.EqualTo(1f), "frame " + frame);
+                    Assert.That(Apart(kept, grown), Is.LessThan(0.001f), "frame " + frame);
+                }
+            }
+        }
+
         private static WardrobePreview Preview(string[] garments)
         {
             var preview = new WardrobePreview(WardrobePreview.Bodies().Single(body => body.Name == "Human_Male"));

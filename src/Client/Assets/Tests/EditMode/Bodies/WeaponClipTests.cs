@@ -342,6 +342,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         Assert.That(Vector3.Angle(forward, body.transform.forward), Is.LessThan(10f), path + " aims the arrow ahead");
                         Assert.That(Vector3.Dot(up, forward), Is.EqualTo(0f).Within(0.001f));
                         Assert.That(body.transform.InverseTransformPoint(nock).y, Is.InRange(1.3f, 1.6f), path + " draws to the face");
+                        AssertLimbsBendBy(body.transform, bow.Draw, path);
                         TestContext.WriteLine(path + ": drawn to " + bow.Draw.ToString("F2") + ", the arrow "
                             + Vector3.Angle(forward, body.transform.forward).ToString("F1") + " degrees off ahead");
 
@@ -360,6 +361,48 @@ namespace Mmorpg.Client.Tests.EditMode
             finally
             {
                 EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        // The bow's content holds where Draw leaves each limb and tip of the bow at its end, so a
+        // player, which cannot sample the clip outside an Animator, bends them as the Editor does.
+        [Test]
+        public void TheBowsContentHoldsWhereDrawLeavesItsLimbs()
+        {
+            var bow = Catalogs()[0].AttachmentNamed("TrainingShortbow");
+            var content = TestBodyContent.Piece(bow.Address);
+            var model = TestBodyContent.ModelOf(bow);
+            Assert.That(content.EndRotations.Select(end => end.Clip).Distinct(), Is.EqualTo(new[] { BowRig.DrawClip }));
+            Assert.That(content.EndRotations.Select(end => end.Bone), Is.EquivalentTo(BowRig.LimbBones),
+                "Draw turns other bones than the limbs and tips of the bow");
+            foreach (var limb in BowRig.LimbBones)
+            {
+                Assert.That(content.TryGetEndRotation(BowRig.DrawClip, limb, out var full), Is.True, limb);
+                var rest = PlayerBodyMeshes.FindDescendant(model.transform, limb).localRotation;
+                Assert.That(Quaternion.Angle(rest, full), Is.GreaterThan(1f), limb + " does not bend at full draw");
+            }
+
+            var sampled = Mmorpg.Client.Editor.ArtAppearanceCatalogs.EndRotationsOf(model, content.Clips.ToArray());
+            Assert.That(sampled.Select(end => end.Bone + "@" + end.Rotation.ToString("F5")),
+                Is.EqualTo(content.EndRotations.Select(end => end.Bone + "@" + end.Rotation.ToString("F5"))),
+                "the content holds other rotations than Draw ends in; update the appearance catalogs");
+        }
+
+        // The limbs and tips of the bow below the body turn from their rest by how far the bow is
+        // drawn toward where Draw leaves them.
+        private static void AssertLimbsBendBy(Transform body, float draw, string path)
+        {
+            var catalog = body.GetComponent<PlayerBodyAppearance>().Catalog;
+            var bow = catalog.AttachmentNamed("TrainingShortbow");
+            var content = TestBodyContent.Piece(bow.Address);
+            var model = TestBodyContent.ModelOf(bow);
+            foreach (var limb in BowRig.LimbBones)
+            {
+                var rest = PlayerBodyMeshes.FindDescendant(model.transform, limb).localRotation;
+                Assert.That(content.TryGetEndRotation(BowRig.DrawClip, limb, out var full), Is.True, limb);
+                var shown = PlayerBodyMeshes.FindDescendant(body, limb).localRotation;
+                Assert.That(Quaternion.Angle(shown, Quaternion.Slerp(rest, full, draw)), Is.LessThan(0.1f),
+                    path + " bends " + limb + " otherwise than Draw at " + draw.ToString("F2"));
             }
         }
 

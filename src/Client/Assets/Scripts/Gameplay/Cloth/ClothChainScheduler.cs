@@ -65,6 +65,14 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // Grows the world at once for this many bodies with cloth more than it holds, as before the
+        // bodies of the players in view at an entry come; true when it grew.
+        internal static bool Reserve(int moreBodies)
+        {
+            var world = World;
+            return world.Reserve(world.Count + moreBodies);
+        }
+
         // A body in the plan of a frame: how far it is from the camera, whether the camera sees it,
         // its share of the screen's height, what its springs cost of the budget, whether it had them
         // last frame, and the detail it moves with.

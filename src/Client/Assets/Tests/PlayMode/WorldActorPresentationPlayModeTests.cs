@@ -142,6 +142,42 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(Enumerable.Range(1, arriving).Any(id => presentation.IsWaiting((ulong)id)), Is.False);
         }
 
+        // The entry into a World waits for the prefabs of the actors in view. An actor that the
+        // frame's budget did not reach has its prefab asked for in the same frame, so the
+        // presentation is not ready for the entry while that prefab loads.
+        [UnityTest]
+        [Timeout(30000)]
+        public IEnumerator ThePrefabOfAnActorTheBudgetDidNotReachIsAskedForAtOnce()
+        {
+            var presentation = Host(new PresentationBudget(0.0, null), out var actors);
+            for (var entityId = 1; entityId <= 3; entityId++)
+            {
+                // The test archetype has no prefab: its views are made without a load.
+                Assert.That(actors.State.TryApplySpawn(Spawn((ulong)entityId, Guid.NewGuid(), entityId * 10f), out var error), Is.True, error);
+            }
+
+            const ulong farthest = 4;
+            Assert.That(actors.State.TryApplySpawn(Spawn(farthest, Guid.NewGuid(), 90f, "npc.city_guard"), out var farError), Is.True, farError);
+            host.SetActive(true);
+            var deadline = Time.realtimeSinceStartup + 20f;
+            while (presentation.Views.Count == 0 && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(presentation.Views.Count, Is.EqualTo(1), "a budget of nothing makes one view a frame");
+            Assert.That(presentation.IsWaiting(farthest), Is.True);
+            Assert.That(presentation.IsReadyForEntry, Is.False, "the prefab of the actor the budget did not reach was not asked for");
+
+            while (!presentation.TryGetView(farthest, out _) && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(presentation.TryGetView(farthest, out _), Is.True);
+            Assert.That(presentation.IsReadyForEntry, Is.True);
+        }
+
         // A consumer that asks for an actor whose view waits is told it has none yet, and finds it
         // once it is made.
         [UnityTest]
@@ -215,6 +251,11 @@ namespace Mmorpg.Client.Tests.PlayMode
 
         private static RealtimeWorldActorSpawn Spawn(ulong entityId, Guid runtimeActorId, float positionX)
         {
+            return Spawn(entityId, runtimeActorId, positionX, Archetype);
+        }
+
+        private static RealtimeWorldActorSpawn Spawn(ulong entityId, Guid runtimeActorId, float positionX, string archetype)
+        {
             return new RealtimeWorldActorSpawn(
                 entityId,
                 runtimeActorId,
@@ -225,7 +266,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 RealtimeWorldActorDisposition.Friendly,
                 0,
                 RealtimeWorldActorAggression.None,
-                Archetype,
+                archetype,
                 1,
                 1,
                 true,
