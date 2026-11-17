@@ -2245,6 +2245,20 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      it in the next, as [The 30 Minute Soak](#the-30-minute-soak) shows, with
      the long samples of the snapshot phase and of the corpse presence phase
      as the first things to look at.
+   - The periodic work is off the snapshot ticks since 2026-11-17: the
+     interest refresh and the appearances run on the tick before each
+     snapshot, and every periodic pass has a lane of its own, as
+     `docs/PROJECT_ARCHITECTURE.md` describes for the tick loop. `playing-500` on a quiet machine then had 1 tick over budget
+     of 11,400 in the steady interval, where it had 12 on 2026-11-16 and 7
+     after the corpse presence pass was cut, and a tick p99 bucket of 16 ms in
+     36 of 38 intervals, where all 30 had been at 24 ms. By the phase timers a
+     snapshot tick takes 5.8 ms on average and the tick before it 5.6 ms, the
+     snapshots 36 ms per second and the interest refresh 24. The loop thread
+     did not run for 157 microseconds of a tick on average and for 17.3 ms of
+     the one tick over budget, which took 36.5 ms, so half of that tick was
+     the machine. The worker used 69 percent of a core. The loop thread's
+     priority stays `Normal`; whether a higher one helps under contention is
+     not measured.
    - The transport sends most messages for other things than snapshots, and
      the count per message kind says which. On 2026-11-16 the worker handed
      65,300 messages per second to the transport at 500 players: 15,200
