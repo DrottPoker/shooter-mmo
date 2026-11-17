@@ -18,7 +18,7 @@ internal static class AccountEndpoints
             var result = await accountService.RegisterAsync(request, cancellationToken);
             return result.ToHttpResult();
         })
-            .RequireRateLimiting("register")
+            .RequireRateLimiting(AccountsModule.RegisterPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
         group.MapPost("/login", async (
@@ -29,7 +29,7 @@ internal static class AccountEndpoints
             var result = await accountService.LoginAsync(request, cancellationToken);
             return result.ToHttpResult();
         })
-            .RequireRateLimiting("login")
+            .RequireRateLimiting(AccountsModule.LoginPolicy)
             .WithMetadata(new SensitiveResponseAttribute());
 
         group.MapGet("/me", async (
@@ -39,10 +39,13 @@ internal static class AccountEndpoints
         {
             var result = await accountService.GetProfileAsync(principal.GetAccountId(), cancellationToken);
             return result.ToHttpResult();
-        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+        })
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read);
 
         group.MapGet("/session", () => Results.NoContent())
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read);
 
         group.MapPost("/logout", async (
             ClaimsPrincipal principal,
@@ -68,7 +71,9 @@ internal static class AccountEndpoints
                 sessionId);
 
             return Results.NoContent();
-        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+        })
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action);
 
         group.MapDelete("/sessions/{sessionId:guid}", async (
             Guid sessionId,
@@ -88,7 +93,9 @@ internal static class AccountEndpoints
             }
 
             return Results.NoContent();
-        }).RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+        })
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action);
 
         return app;
     }

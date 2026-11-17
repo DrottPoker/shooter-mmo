@@ -370,7 +370,9 @@ Every GameService request has one correlation id: the caller's valid
 `X-Correlation-ID`, otherwise the W3C trace id of the request. The response
 header carries it, also on error responses, every log entry written during the
 request carries it as the `CorrelationId` scope value, whichever module writes
-it, and the request span carries it as `mmorpg.correlation_id`. SimulationWorker
+it, together with the `ClientAddress` scope value, the address that
+[The Client's Address](SERVICE_FEATURES.md#the-clients-address) decides, and
+the request span carries it as `mmorpg.correlation_id`. SimulationWorker
 sends the trace id of its operation as `X-Correlation-ID` together with the W3C
 `traceparent` header, so one worker operation, its GameService request, and that
 request's PostgreSQL commands form one trace, and the response header, the log

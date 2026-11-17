@@ -107,16 +107,21 @@ order. Startup runs in this order:
 
 1. Load configuration sources, then validate every option set
    (`GameServiceConfiguration.Load`), and configure telemetry export.
-2. Set the Kestrel request body limit from the item operations options.
+2. Set Kestrel's request limits from the `Http` section and the item operations
+   options, and the host's shutdown timeout, as
+   [Request Limits](SERVICE_FEATURES.md#request-limits) and
+   [Orderly Shutdown](SERVICE_FEATURES.md#orderly-shutdown) describe.
 3. Register Platform, the host services, and each module, then check that every
    single-implementation SPI has exactly one implementation. Content reads every
    file it serves here and refuses to start on a missing or invalid file, as
    [Content Files](SERVICE_FEATURES.md#content-files) describes.
-4. Build the pipeline: the API pipeline (correlation id, exception handler,
-   status pages, no-store responses), the distributed authentication rate
-   limiter, the in-process rate limiter, authentication, and authorization.
-   Routing stays implicit, so it runs first and the endpoint is known to the
-   rate limiter and the sensitive response middleware.
+4. Build the pipeline: the forwarded headers of trusted proxies, when any are
+   configured, the API pipeline (response headers, correlation id with the
+   client's address, exception handler, status pages, no-store responses), the
+   distributed authentication rate limiter, authentication, authorization, and
+   the in-process rate limiter, which runs last so the account limits know the
+   account. Routing stays implicit, so it runs first and the endpoint is known to
+   the rate limiters and the sensitive response middleware.
 5. Prepare the database through `GameServiceDatabaseInitializer`. When
    `Database:RunMigrationsOnStartup` is true, apply the merged migration
    history and run every `IDatabaseSeeder` in module order, as the `migrate`
@@ -1310,9 +1315,10 @@ immutable validated option records instead of reading `IConfiguration`:
 
 | Keys | Owner |
 | --- | --- |
-| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds` | `PlatformOptions` |
+| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds`, `RateLimiting:Public:*` | `PlatformOptions` |
+| `Http:*`, and `AllowedHosts`, which ASP.NET Core applies and Platform only checks | `HttpServerOptions` of Platform, which `PlatformOptions` carries |
 | `Retention:*` | `RetentionOptions` of Platform, which `PlatformOptions` carries |
-| `Auth:SessionIdleLifetimeDays`, `Auth:SessionMaximumLifetimeDays`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
+| `Auth:SessionIdleLifetimeDays`, `Auth:SessionMaximumLifetimeDays`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `RateLimiting:AccountActions:*`, `RateLimiting:AccountReads:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
 | `Quests:CatalogPath` | `QuestsModuleOptions` |
@@ -1322,7 +1328,12 @@ immutable validated option records instead of reading `IConfiguration`:
 
 The host loader `GameServiceConfiguration.Load` first validates the required
 keys of every module together and throws one `GameService configuration is
-invalid:` error that lists every problem. It then reads the self-contained
+invalid:` error that lists every problem. Next it checks the rules that differ
+by environment, again in one error: the retention windows, and outside
+Development the host names, the PostgreSQL and Redis passwords, and the worker
+secrets, as
+[Hosts, Secrets, And Passwords Outside Development](SERVICE_FEATURES.md#hosts-secrets-and-passwords-outside-development)
+describes. It then reads the self-contained
 option sets in a fixed order, each with its own error message: the World
 catalog, Development simulation bots, stack stress fixtures, NPC item
 lifecycle, item operations, Redis acceleration, the item catalog source, the

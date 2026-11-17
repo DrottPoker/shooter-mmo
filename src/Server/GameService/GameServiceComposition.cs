@@ -103,15 +103,41 @@ internal static class GameServiceComposition
     }
 
     // UseRouting stays implicit, so WebApplication inserts it first and the endpoint is
-    // known to the distributed rate limiter and the sensitive response middleware.
+    // known to the distributed rate limiter and the sensitive response middleware. The
+    // forwarded headers come first, so everything after them sees the client's address. The
+    // in-process limiter runs after authorization, so the account limits know the account.
     public static WebApplication UseGameServicePipeline(this WebApplication app)
     {
+        app.UseForwardedClientAddresses();
         app.UseApiPipeline();
         AccountsModule.UseDistributedAuthenticationRateLimiting(app);
-        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseRateLimiter();
         return app;
+    }
+
+    // Kestrel's request limits and the host's shutdown timeout, from the Http section and the
+    // item request body limit, as docs/SERVICE_FEATURES.md describes under Behind A Proxy.
+    public static WebApplicationBuilder ConfigureGameServiceHost(
+        this WebApplicationBuilder builder,
+        GameServiceConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var http = configuration.Platform.Http;
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.Limits.MaxRequestBodySize = configuration.Items.Operations.MaximumHttpRequestBodyBytes;
+            options.Limits.MaxRequestHeadersTotalSize = http.MaxRequestHeadersTotalSizeBytes;
+            options.Limits.MaxRequestHeaderCount = http.MaxRequestHeaderCount;
+            options.Limits.MaxRequestLineSize = http.MaxRequestLineSizeBytes;
+            options.Limits.RequestHeadersTimeout = http.RequestHeadersTimeout;
+            options.Limits.KeepAliveTimeout = http.KeepAliveTimeout;
+        });
+        builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = http.ShutdownTimeout);
+        return builder;
     }
 
     public static IEndpointRouteBuilder MapGameService(

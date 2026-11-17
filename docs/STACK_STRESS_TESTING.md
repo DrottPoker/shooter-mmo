@@ -575,16 +575,23 @@ masked. The local secrets and the connection string are the test values that
   as the worker's GameService, a random worker secret that only this run knows,
   and as many worker connections as bots, at least 100. The worker uses its
   configured Redis only for its health check.
-- Full-stack: GameService on `http://127.0.0.1:5500` with the disposable
-  PostgreSQL and Redis, `Database:RunMigrationsOnStartup`, so it migrates the
-  empty database also outside the Development environment, the shared worker
-  secret, no development bots, and an authentication limit of 1,000 requests
-  per minute instead of the normal five. Gameplay workloads add
-  the Development environment, `StackStressFixtures:Enabled`, and the fixture
+- Full-stack: GameService in the Development environment on
+  `http://127.0.0.1:5500` with the disposable PostgreSQL and Redis,
+  `Database:RunMigrationsOnStartup`, the shared worker secret, no development
+  bots, an authentication limit of 1,000 requests per minute instead of the
+  normal five, and a public limit of 100,000 requests per minute instead of
+  300, because every bot reads the Shard list from the same address. Every
+  full-stack run, the lifecycle workload too, uses the Development environment,
+  because GameService accepts the published passwords of
+  `docker-compose.stack-stress.yml`, a Redis without a password, and the shared
+  worker secret only there, as
+  [Hosts, Secrets, And Passwords Outside Development](SERVICE_FEATURES.md#hosts-secrets-and-passwords-outside-development)
+  describes. The account limits count per account, so they need no setting for
+  a run. Gameplay workloads add `StackStressFixtures:Enabled` and the fixture
   secret to GameService, and the scenarios with a shared corpse set a
   one-second durable corpse reconciliation, so the stress corpse becomes
   visible quickly. GameService counts registration and login against two
-  separate limits per remote address, `register` and `login`, both with the
+  separate limits per client address, `register` and `login`, both with the
   `RateLimiting:Authentication` permit limit, so a run may register 1,000 bots
   and log in 1,000 bots in a minute. The generator provisions inside the limit
   instead of raising it further: when GameService answers 429, it waits the

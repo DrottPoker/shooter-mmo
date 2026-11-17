@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.RateLimiting;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Accounts.Redis;
 
@@ -19,10 +20,9 @@ internal sealed class RedisAuthenticationRateLimitMiddleware(
 
         var permitLimit = options.AuthenticationPermitLimit;
         var window = options.AuthenticationRateLimitWindow;
-        var remoteAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var decision = await limiter.AcquireAsync(
             policyName,
-            remoteAddress,
+            ClientAddress.PartitionKey(context),
             permitLimit,
             window,
             context.RequestAborted);
@@ -32,19 +32,10 @@ internal sealed class RedisAuthenticationRateLimitMiddleware(
             return;
         }
 
-        context.Response.Headers.RetryAfter = Math.Max(
-                1,
-                (int)Math.Ceiling(decision.RetryAfter.TotalSeconds))
-            .ToString(System.Globalization.CultureInfo.InvariantCulture);
-        await Results.Problem(
-                statusCode: StatusCodes.Status429TooManyRequests,
-                title: "Too Many Requests",
-                detail: "Too many authentication attempts. Try again later.",
-                extensions: new Dictionary<string, object?>
-                {
-                    ["code"] = "rate_limit_exceeded"
-                })
-            .ExecuteAsync(context);
+        await FixedWindowRateLimitPolicy.WriteRejectionAsync(
+            context,
+            decision.RetryAfter,
+            AccountsModule.AuthenticationRejectionDetail);
     }
 
     // Routing matches paths case-insensitively, so the policy comes from the matched
@@ -53,6 +44,6 @@ internal sealed class RedisAuthenticationRateLimitMiddleware(
     {
         var policyName = context.GetEndpoint()?.Metadata
             .GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
-        return policyName is "login" or "register" ? policyName : null;
+        return policyName is AccountsModule.LoginPolicy or AccountsModule.RegisterPolicy ? policyName : null;
     }
 }

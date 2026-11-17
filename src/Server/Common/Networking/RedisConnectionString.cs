@@ -30,6 +30,36 @@ public static class RedisConnectionString
         return new ServiceEndpoint(parts[0], port);
     }
 
+    // The user and password options of a StackExchange.Redis connection string, such as
+    // "redis:6379,user=game,password=secret"; null when absent.
+    public static RedisCredentials ParseCredentials(string? connectionString)
+    {
+        string? user = null;
+        string? password = null;
+        foreach (var option in (connectionString ?? string.Empty)
+                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = option.IndexOf('=', StringComparison.Ordinal);
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            var key = option[..separator].Trim();
+            var value = option[(separator + 1)..].Trim();
+            if (string.Equals(key, "user", StringComparison.OrdinalIgnoreCase))
+            {
+                user = value.Length == 0 ? null : value;
+            }
+            else if (string.Equals(key, "password", StringComparison.OrdinalIgnoreCase))
+            {
+                password = value.Length == 0 ? null : value;
+            }
+        }
+
+        return new RedisCredentials(user, password);
+    }
+
     public static ServiceEndpoint ParseEndpoint(string? connectionString)
     {
         const string defaultHost = "localhost";
@@ -58,3 +88,5 @@ public static class RedisConnectionString
         return new ServiceEndpoint(host, port);
     }
 }
+
+public sealed record RedisCredentials(string? User, string? Password);
