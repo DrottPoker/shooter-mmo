@@ -1,6 +1,7 @@
 using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Platform.Http;
 
 namespace Mmorpg.GameService.Accounts;
 
@@ -16,12 +17,25 @@ public sealed record AccountsModuleOptions(
     public const string SessionIdleLifetimeDaysKey = "Auth:SessionIdleLifetimeDays";
     public const string SessionMaximumLifetimeDaysKey = "Auth:SessionMaximumLifetimeDays";
     public const string RemovedSessionLifetimeHoursKey = "Auth:SessionLifetimeHours";
+    public const string AccountActionsRateLimitSection = "RateLimiting:AccountActions";
+    public const string AccountReadsRateLimitSection = "RateLimiting:AccountReads";
+    public const int MaximumAccountRateLimitPermits = 100_000;
+
+    public static FixedWindowRateLimit DefaultAccountActionsRateLimit { get; } = new(20, TimeSpan.FromSeconds(60));
+
+    public static FixedWindowRateLimit DefaultAccountReadsRateLimit { get; } = new(300, TimeSpan.FromSeconds(60));
 
     // Read by its own factory after the core settings are valid.
     public RedisAccelerationOptions RedisAcceleration { get; init; } = RedisAccelerationOptions.Disabled;
 
     // The password hashing lane; optional settings with defaults.
     public PasswordHashingOptions PasswordHashing { get; init; } = PasswordHashingOptions.Default;
+
+    // Requests per account and window of each route that creates work or state.
+    public FixedWindowRateLimit AccountActionsRateLimit { get; init; } = DefaultAccountActionsRateLimit;
+
+    // Requests per account and window of the routes that read, together.
+    public FixedWindowRateLimit AccountReadsRateLimit { get; init; } = DefaultAccountReadsRateLimit;
 
     public static AccountsModuleOptions ReadCore(
         IConfiguration configuration,
@@ -70,6 +84,18 @@ public sealed record AccountsModuleOptions(
         var credentials = SimulationWorkerCredentials.FromConfiguration(configuration);
         credentials.Validate(errors);
         var passwordHashing = PasswordHashingOptions.Read(configuration, errors);
+        var accountActionsRateLimit = FixedWindowRateLimit.Read(
+            configuration,
+            AccountActionsRateLimitSection,
+            DefaultAccountActionsRateLimit,
+            MaximumAccountRateLimitPermits,
+            errors);
+        var accountReadsRateLimit = FixedWindowRateLimit.Read(
+            configuration,
+            AccountReadsRateLimitSection,
+            DefaultAccountReadsRateLimit,
+            MaximumAccountRateLimitPermits,
+            errors);
 
         return new AccountsModuleOptions(
             TimeSpan.FromDays(sessionIdleLifetimeDays),
@@ -78,14 +104,17 @@ public sealed record AccountsModuleOptions(
             TimeSpan.FromSeconds(authenticationWindowSeconds),
             credentials)
         {
-            PasswordHashing = passwordHashing
+            PasswordHashing = passwordHashing,
+            AccountActionsRateLimit = accountActionsRateLimit,
+            AccountReadsRateLimit = accountReadsRateLimit
         };
     }
 }
 
 // Simulation worker service secrets. Configuration keys ignore case, but worker ids
 // are case-sensitive in the database, so the original key casing is kept for an
-// ordinal match. The shared secret applies only when no per-worker secret exists.
+// ordinal match. The shared secret applies only when no per-worker secret exists, and only
+// the Development environment accepts it.
 public sealed class SimulationWorkerCredentials
 {
     public const string SectionName = "ServiceAuthentication:SimulationWorkers";
@@ -133,7 +162,8 @@ public sealed class SimulationWorkerCredentials
         {
             if (string.IsNullOrWhiteSpace(sharedSecret) || sharedSecret.Length < 32)
             {
-                errors.Add($"{SharedSecretKey} must be at least 32 characters.");
+                errors.Add(
+                    $"{SharedSecretKey} must be at least 32 characters, or {SectionName}:<workerId> must give each worker its own secret.");
             }
             else if (ConfigurationValidation.IsPlaceholderSecret(sharedSecret))
             {
@@ -141,6 +171,26 @@ public sealed class SimulationWorkerCredentials
             }
         }
 
+        ValidateWorkerSecrets(errors);
+    }
+
+    // Outside Development every worker has its own secret, so one leaked secret names one
+    // worker, and a secret that is set but would be ignored does not mislead anyone.
+    public IReadOnlyList<string> ErrorsOutsideDevelopment()
+    {
+        if (string.IsNullOrWhiteSpace(sharedSecret))
+        {
+            return [];
+        }
+
+        return
+        [
+            $"{SharedSecretKey} is accepted only in the Development environment; give every worker its own secret in {SectionName}:<workerId> and remove {SharedSecretKey}."
+        ];
+    }
+
+    private void ValidateWorkerSecrets(ICollection<string> errors)
+    {
         foreach (var (workerId, secret) in workerSecrets)
         {
             if (!ConfigurationValidation.IsValidIdentifier(workerId))

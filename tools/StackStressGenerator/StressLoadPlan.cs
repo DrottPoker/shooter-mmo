@@ -428,20 +428,27 @@ public sealed record StressLoadPlan(
         var advertisedPort = networkProfile is null ? udpPort : udpPort + StressNetworkProfiles.ProxyPortOffset;
         if (fullStack)
         {
+            // The disposable stack uses the published passwords of docker-compose.stack-stress.yml,
+            // a Redis without a password, and the shared worker secret, which GameService
+            // accepts only in the Development environment, so every full-stack run uses it.
+            gameServiceEnvironment["DOTNET_ENVIRONMENT"] = "Development";
             gameServiceEnvironment["ConnectionStrings__Postgres"] = PostgresConnection;
             gameServiceEnvironment["ConnectionStrings__Redis"] = RedisConnection;
-            // The disposable database starts empty, and a run outside the Development
-            // environment does not migrate on its own.
+            // The disposable database starts empty; the Development settings migrate it at
+            // the start already, and this keeps it so whatever they say.
             gameServiceEnvironment["Database__RunMigrationsOnStartup"] = "true";
             gameServiceEnvironment["SIMULATION_WORKER_SERVICE_SECRET"] = FullStackWorkerSecret;
             gameServiceEnvironment["DevelopmentSimulationBots__Enabled"] = "false";
             // Covers the registration and login of every bot within one minute.
             gameServiceEnvironment["RateLimiting__Authentication__PermitLimit"] = "1000";
             gameServiceEnvironment["RateLimiting__Authentication__WindowSeconds"] = "60";
+            // Every bot reads the Shard list from the same address at its admission and at
+            // each rejoin, far more than one player's address does.
+            gameServiceEnvironment["RateLimiting__Public__PermitLimit"] = "100000";
+            gameServiceEnvironment["RateLimiting__Public__WindowSeconds"] = "60";
             gameServiceEnvironment["ASPNETCORE_URLS"] = FullStackGameServiceUrl;
             if (gameplay)
             {
-                gameServiceEnvironment["DOTNET_ENVIRONMENT"] = "Development";
                 gameServiceEnvironment["StackStressFixtures__Enabled"] = "true";
                 gameServiceEnvironment[StressGeneratorOptions.FixtureSecretEnvironmentVariable] = FixtureSecret;
             }

@@ -7,10 +7,42 @@ namespace Mmorpg.GameService.Platform.Configuration;
 // human-readable error instead of throwing, so one startup failure lists every problem.
 public static class ConfigurationValidation
 {
+    // The literal passwords of the repository's own Compose files and CI workflow. They are
+    // public, so a deployment outside Development must never use one. A guard test keeps the
+    // list in step with those files.
+    public static IReadOnlyList<string> RepositoryPasswords { get; } =
+    [
+        "stack_stress_local_only",
+        "shooter_mmo_tests_password"
+    ];
+
     // Every secret placeholder in .env.example starts with this prefix.
     public static bool IsPlaceholderSecret(string secret)
     {
         return secret.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // A password that protects nothing: empty, a placeholder of .env.example, or a password
+    // that the repository publishes.
+    public static bool IsPlaceholderPassword(string? password)
+    {
+        return string.IsNullOrWhiteSpace(password)
+            || IsPlaceholderSecret(password)
+            || RepositoryPasswords.Contains(password, StringComparer.Ordinal);
+    }
+
+    // An optional integer: the default when the key is absent, else a value in the range.
+    public static int ReadOptionalIntRange(
+        IConfiguration configuration,
+        string key,
+        int defaultValue,
+        int minimum,
+        int maximum,
+        ICollection<string> errors)
+    {
+        return string.IsNullOrWhiteSpace(configuration[key])
+            ? defaultValue
+            : ValidateIntRange(configuration, key, minimum, maximum, errors);
     }
 
     public static string? RequireConnectionString(

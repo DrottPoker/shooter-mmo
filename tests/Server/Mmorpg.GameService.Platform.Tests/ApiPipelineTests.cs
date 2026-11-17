@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
@@ -91,6 +90,7 @@ public sealed class ApiPipelineTests
             ApiPipelineExtensions.CorrelationIdHeaderName,
             out var correlationIds));
         Assert.Equal("trace-123", Assert.Single(correlationIds));
+        Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
 
         await application.StopAsync(cancellationToken);
     }
@@ -140,6 +140,24 @@ public sealed class ApiPipelineTests
         Assert.Contains(
             new KeyValuePair<string, object?>("CorrelationId", "playtest-42"),
             entry.ScopeValues);
+        await application.StopAsync(cancellationToken);
+    }
+
+    // Every response, an error answer too, tells a browser not to guess its content type.
+    [Fact]
+    public async Task EveryResponseCarriesNoSniff()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var application = await StartAsync(builder => { }, cancellationToken);
+        using var client = CreateClient(application);
+
+        using var ok = await client.GetAsync("/log", cancellationToken);
+        using var missing = await client.GetAsync("/missing", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal("nosniff", Assert.Single(ok.Headers.GetValues("X-Content-Type-Options")));
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal("nosniff", Assert.Single(missing.Headers.GetValues("X-Content-Type-Options")));
         await application.StopAsync(cancellationToken);
     }
 
@@ -215,51 +233,4 @@ public sealed class ApiPipelineTests
     }
 
     private sealed record DatabaseProblem(string Code);
-
-    private sealed record CapturedLogEntry(
-        string Message,
-        IReadOnlyList<KeyValuePair<string, object?>> ScopeValues);
-
-    private sealed class ScopeCapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
-    {
-        private IExternalScopeProvider scopes = new LoggerExternalScopeProvider();
-
-        public ConcurrentQueue<CapturedLogEntry> Entries { get; } = new();
-
-        public ILogger CreateLogger(string categoryName) => new ScopeCapturingLogger(this);
-
-        public void SetScopeProvider(IExternalScopeProvider scopeProvider) => scopes = scopeProvider;
-
-        public void Dispose()
-        {
-        }
-
-        private sealed class ScopeCapturingLogger(ScopeCapturingLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state)
-                where TState : notnull => provider.scopes.Push(state);
-
-            public bool IsEnabled(LogLevel logLevel) => true;
-
-            public void Log<TState>(
-                LogLevel logLevel,
-                EventId eventId,
-                TState state,
-                Exception? exception,
-                Func<TState, Exception?, string> formatter)
-            {
-                var values = new List<KeyValuePair<string, object?>>();
-                provider.scopes.ForEachScope(
-                    (scope, collected) =>
-                    {
-                        if (scope is IEnumerable<KeyValuePair<string, object?>> pairs)
-                        {
-                            collected.AddRange(pairs);
-                        }
-                    },
-                    values);
-                provider.Entries.Enqueue(new CapturedLogEntry(formatter(state, exception), values));
-            }
-        }
-    }
 }

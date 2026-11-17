@@ -3628,6 +3628,88 @@ go on until the character's body leaves the world. An
 authenticated session revokes one of its account's sessions, its own included,
 with `DELETE /api/accounts/sessions/{sessionId}`, which also returns `204`.
 
+### Behind A Proxy, The Limits, And The Orderly Stop
+
+These steps check [Behind A Proxy](SERVICE_FEATURES.md#behind-a-proxy) and
+[Rate Limits](SERVICE_FEATURES.md#rate-limits) on the local stack. Your
+terminal plays a proxy on the same host.
+
+1. Stop GameService, and start it again with 127.0.0.1 as a trusted proxy, a
+   login limit of two, an account read limit of three, and a drain of ten
+   seconds:
+
+   ```powershell
+   $env:Http__TrustedProxies = "127.0.0.1"
+   $env:RateLimiting__Authentication__PermitLimit = "2"
+   $env:RateLimiting__AccountReads__PermitLimit = "3"
+   $env:Http__ShutdownDrainSeconds = "10"
+   dotnet run --project src/Server/GameService
+   ```
+
+   Expected result: the log shows `Client addresses come from X-Forwarded-For
+   of the trusted proxies 127.0.0.1.`
+
+2. In another terminal, send three empty logins for one client and one for
+   another, and show the status of each and the headers of the last:
+
+   ```powershell
+   function Send-Login([string]$Client) {
+       try {
+           Invoke-WebRequest http://localhost:5000/api/accounts/login -Method Post `
+             -ContentType "application/json" -Body '{"login":"","password":""}' `
+             -Headers @{ "X-Forwarded-For" = $Client } -UseBasicParsing
+       }
+       catch { $_.Exception.Response }
+   }
+   1..3 | ForEach-Object { [int](Send-Login "203.0.113.5").StatusCode }
+   $other = Send-Login "203.0.113.6"
+   [int]$other.StatusCode
+   $other.Headers["X-Content-Type-Options"]
+   ```
+
+   Expected result: `400`, `400`, `429`, then `400` and `nosniff`. The client
+   behind the proxy has its own window, and the third login of the first client
+   got `429` with `rate_limit_exceeded` and a `Retry-After`.
+
+3. Register an account as [Account And Character](#account-and-character)
+   does, call `Invoke-WebRequest http://localhost:5000/api/accounts/session
+   -Headers $headers -UseBasicParsing` four times in a row, then register a
+   second account and call the route once with its token. Expected result:
+   `204` three times, then `429` with a `Retry-After`, and `204` for the second
+   account, because the read limit counts per account.
+
+4. Press Ctrl+C in the GameService terminal, and in the other terminal read
+   readiness at once and then every second:
+
+   ```powershell
+   1..12 | ForEach-Object {
+       try { (Invoke-WebRequest http://localhost:5000/health/ready -UseBasicParsing).StatusCode }
+       catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { "refused" } }
+       Start-Sleep -Seconds 1
+   }
+   ```
+
+   Expected result: `503` about ten times, with the body status `stopping`,
+   while GameService logs that it still serves for 10 s, then `refused` once it
+   has stopped. In Development without the variable it stops at once.
+
+5. Clear the variables and start GameService outside Development with the
+   local `.env`:
+
+   ```powershell
+   Remove-Item Env:Http__*, Env:RateLimiting__*
+   $env:ASPNETCORE_ENVIRONMENT = "Production"
+   dotnet run --project src/Server/GameService --no-launch-profile
+   ```
+
+   Expected result: GameService does not start. Its error `GameService
+   configuration is invalid` lists `AllowedHosts`, the shared
+   `SIMULATION_WORKER_SERVICE_SECRET` with the per-worker setting
+   `ServiceAuthentication:SimulationWorkers:<workerId>`, and the Redis
+   connection without a password. Remove the variable with
+   `Remove-Item Env:ASPNETCORE_ENVIRONMENT` and start GameService again as
+   usual.
+
 ### Database Checks
 
 Read the item foundation as

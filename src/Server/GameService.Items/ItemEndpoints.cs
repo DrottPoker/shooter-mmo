@@ -10,6 +10,7 @@ internal static class ItemEndpoints
     {
         app.MapGet("/api/characters/{characterId:guid}/item-state", GetItemStateAsync)
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapGet("/api/characters/{characterId:guid}/bank", async (
@@ -25,6 +26,7 @@ internal static class ItemEndpoints
             return result.ToHttpResult();
         })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapGet("/api/characters/{characterId:guid}/recovery", async (
@@ -40,6 +42,7 @@ internal static class ItemEndpoints
             return result.ToHttpResult();
         })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapPost(
@@ -59,6 +62,7 @@ internal static class ItemEndpoints
                 return result.ToHttpResult();
             })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapPost(
@@ -78,6 +82,7 @@ internal static class ItemEndpoints
                 return result.ToHttpResult();
             })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapPost(
@@ -97,6 +102,7 @@ internal static class ItemEndpoints
                 return result.ToHttpResult();
             })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action)
             .WithMetadata(new SensitiveResponseAttribute());
 
         app.MapPost(
@@ -116,6 +122,7 @@ internal static class ItemEndpoints
                 return result.ToHttpResult();
             })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action)
             .WithMetadata(new SensitiveResponseAttribute());
 
         return app;

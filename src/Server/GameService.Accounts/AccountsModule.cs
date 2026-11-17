@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Mmorpg.GameService.Accounts.Contracts;
@@ -7,6 +6,7 @@ using Mmorpg.GameService.Accounts.Persistence;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Accounts.Retention;
 using Mmorpg.GameService.Platform.Database;
+using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Platform.Retention;
 
@@ -16,6 +16,10 @@ namespace Mmorpg.GameService.Accounts;
 // limits, the password hashing lane, and Redis session acceleration.
 public sealed class AccountsModule(AccountsModuleOptions options) : IGameServiceModule
 {
+    internal const string LoginPolicy = "login";
+    internal const string RegisterPolicy = "register";
+    internal const string AuthenticationRejectionDetail = "Too many authentication attempts. Try again later.";
+
     public string Name => "Accounts";
 
     public IReadOnlyList<DatabaseMigration> Migrations => AccountsSchemaMigrations.All;
@@ -64,33 +68,7 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
                 policy.RequireAuthenticatedUser();
             });
         });
-        services.AddRateLimiter(rateLimiterOptions =>
-        {
-            rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            rateLimiterOptions.OnRejected = async (context, cancellationToken) =>
-            {
-                var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var remaining)
-                    ? remaining
-                    : options.AuthenticationRateLimitWindow;
-                context.HttpContext.Response.Headers.RetryAfter = Math.Max(
-                        1,
-                        (int)Math.Ceiling(retryAfter.TotalSeconds))
-                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-                await Results.Problem(
-                        statusCode: StatusCodes.Status429TooManyRequests,
-                        title: "Too Many Requests",
-                        detail: "Too many authentication attempts. Try again later.",
-                        extensions: new Dictionary<string, object?>
-                        {
-                            ["code"] = "rate_limit_exceeded"
-                        })
-                    .ExecuteAsync(context.HttpContext);
-            };
-
-            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "login");
-            AddAuthenticationRateLimitPolicy(rateLimiterOptions, "register");
-        });
+        services.AddRateLimiter(rateLimiterOptions => AddRateLimitPolicies(rateLimiterOptions, options));
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
@@ -105,22 +83,57 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
         app.UseMiddleware<RedisAuthenticationRateLimitMiddleware>();
     }
 
-    private void AddAuthenticationRateLimitPolicy(
-        RateLimiterOptions rateLimiterOptions,
-        string policyName)
+    // Login and registration count per client address, each in its own window; the account
+    // routes count per account, as docs/SERVICE_FEATURES.md describes under Rate Limits.
+    internal static void AddRateLimitPolicies(RateLimiterOptions rateLimiterOptions, AccountsModuleOptions options)
     {
-        rateLimiterOptions.AddPolicy(policyName, httpContext =>
+        ArgumentNullException.ThrowIfNull(rateLimiterOptions);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var authentication = new FixedWindowRateLimit(
+            options.AuthenticationPermitLimit,
+            options.AuthenticationRateLimitWindow);
+        foreach (var policyName in new[] { LoginPolicy, RegisterPolicy })
         {
-            var remoteAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
-                $"{policyName}:{remoteAddress}",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = options.AuthenticationPermitLimit,
-                    Window = options.AuthenticationRateLimitWindow,
-                    QueueLimit = 0,
-                    AutoReplenishment = true
-                });
-        });
+            rateLimiterOptions.AddPolicy(
+                policyName,
+                new FixedWindowRateLimitPolicy(
+                    policyName,
+                    authentication,
+                    ClientAddress.PartitionKey,
+                    AuthenticationRejectionDetail));
+        }
+
+        rateLimiterOptions.AddPolicy(
+            AccountRateLimitPolicies.Action,
+            new FixedWindowRateLimitPolicy(
+                AccountRateLimitPolicies.Action,
+                options.AccountActionsRateLimit,
+                context => $"{RouteOf(context)}:{AccountOf(context)}",
+                "Too many requests for this account. Try again later."));
+        rateLimiterOptions.AddPolicy(
+            AccountRateLimitPolicies.Read,
+            new FixedWindowRateLimitPolicy(
+                AccountRateLimitPolicies.Read,
+                options.AccountReadsRateLimit,
+                AccountOf,
+                "Too many requests for this account. Try again later."));
+    }
+
+    // The limiter runs after authorization, so an account route always has its account. A
+    // request without one would have been refused first; it counts by address all the same.
+    private static string AccountOf(HttpContext context)
+    {
+        var accountId = context.User.FindFirst(AuthenticationConstants.AccountIdClaim)?.Value;
+        return string.IsNullOrEmpty(accountId)
+            ? "address:" + ClientAddress.PartitionKey(context)
+            : "account:" + accountId;
+    }
+
+    private static string RouteOf(HttpContext context)
+    {
+        return context.GetEndpoint() is RouteEndpoint endpoint
+            ? $"{context.Request.Method} {endpoint.RoutePattern.RawText}"
+            : $"{context.Request.Method} {context.Request.Path}";
     }
 }
