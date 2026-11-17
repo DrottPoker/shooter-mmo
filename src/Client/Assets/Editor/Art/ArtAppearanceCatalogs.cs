@@ -111,6 +111,7 @@ namespace Mmorpg.Client.Editor
             public GameObject Model;
             public Material Material;
             public AnimationClip[] Clips;
+            public BodyPieceContent.EndRotation[] EndRotations;
         }
 
         // The image of an option or a paint layer, an entry of its own.
@@ -199,12 +200,12 @@ namespace Mmorpg.Client.Editor
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(piece.Path));
                     content = ScriptableObject.CreateInstance<BodyPieceContent>();
-                    content.Configure(piece.Model, piece.Material, piece.Clips);
+                    content.Configure(piece.Model, piece.Material, piece.Clips, piece.EndRotations);
                     AssetDatabase.CreateAsset(content, piece.Path);
                 }
                 else
                 {
-                    content.Configure(piece.Model, piece.Material, piece.Clips);
+                    content.Configure(piece.Model, piece.Material, piece.Clips, piece.EndRotations);
                     EditorUtility.SetDirty(content);
                 }
 
@@ -233,9 +234,16 @@ namespace Mmorpg.Client.Editor
 
         public static bool Matches(BodyPieceContent content, PieceSpec piece)
         {
+            var ends = piece.EndRotations ?? Array.Empty<BodyPieceContent.EndRotation>();
             return content.Model == piece.Model
                 && content.Material == piece.Material
-                && content.Clips.SequenceEqual(piece.Clips ?? Array.Empty<AnimationClip>());
+                && content.Clips.SequenceEqual(piece.Clips ?? Array.Empty<AnimationClip>())
+                && content.EndRotations.Count == ends.Length
+                && content.EndRotations.Zip(ends, (actual, expected) =>
+                    actual.Clip == expected.Clip
+                    && actual.Bone == expected.Bone
+                    && actual.Rotation.Equals(expected.Rotation))
+                    .All(same => same);
         }
 
         public static bool Matches(BodyAppearanceCatalog catalog, BodyAppearanceCatalog.Slot[] slots, BodyAppearanceCatalog.Paint[] paints)
@@ -357,7 +365,14 @@ namespace Mmorpg.Client.Editor
                         var launch = attachment.launchPoint ?? Array.Empty<float>();
                         var clips = attachment.IsSkinned ? ClipsOf(attachment) : Array.Empty<AnimationClip>();
                         var path = AttachmentContentPath(attachment.Name);
-                        found.Add(new PieceSpec { Path = path, Address = ContentAddressOf(path), Model = model, Clips = clips });
+                        found.Add(new PieceSpec
+                        {
+                            Path = path,
+                            Address = ContentAddressOf(path),
+                            Model = model,
+                            Clips = clips,
+                            EndRotations = EndRotationsOf(model, clips),
+                        });
                         return new BodyAppearanceCatalog.Attachment(
                             attachment.Name,
                             attachment.socket,
@@ -377,6 +392,55 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
             pieces = found.ToArray();
             return attachments;
+        }
+
+        // A clip turns a bone when its end leaves the bone this many degrees or more from its rest.
+        public const float EndRotationDegrees = 0.01f;
+
+        // The bones each clip turns, with their local rotations at the clip's end, sampled on a copy
+        // of the model in a preview scene, which the Editor can and a player cannot: a player samples
+        // no clip outside an Animator. In the order of the clips and then of the model's bones.
+        public static BodyPieceContent.EndRotation[] EndRotationsOf(GameObject model, IReadOnlyList<AnimationClip> clips)
+        {
+            if (model == null || clips == null || clips.Count == 0)
+            {
+                return Array.Empty<BodyPieceContent.EndRotation>();
+            }
+
+            var found = new List<BodyPieceContent.EndRotation>();
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var copy = (GameObject)PrefabUtility.InstantiatePrefab(model, scene);
+                var bones = copy.GetComponentsInChildren<Transform>(true);
+                var rest = bones.Select(bone => (bone.localPosition, bone.localRotation, bone.localScale)).ToArray();
+                foreach (var clip in clips)
+                {
+                    if (clip == null)
+                    {
+                        continue;
+                    }
+
+                    clip.SampleAnimation(copy, clip.length);
+                    for (var index = 0; index < bones.Length; index++)
+                    {
+                        if (Quaternion.Angle(rest[index].localRotation, bones[index].localRotation) >= EndRotationDegrees)
+                        {
+                            found.Add(new BodyPieceContent.EndRotation(clip.name, bones[index].name, bones[index].localRotation));
+                        }
+
+                        bones[index].localPosition = rest[index].localPosition;
+                        bones[index].localRotation = rest[index].localRotation;
+                        bones[index].localScale = rest[index].localScale;
+                    }
+                }
+            }
+            finally
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
+            }
+
+            return found.ToArray();
         }
 
         // The clips a skinned attachment exports, imported from its model, in the manifest's order.

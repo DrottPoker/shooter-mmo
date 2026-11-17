@@ -41,6 +41,9 @@ namespace Mmorpg.Client.Gameplay
         public const float GraceSeconds = PlayerBodyMeshes.GraceSeconds;
         public const int WantedFrames = PlayerBodyMeshes.WantedFrames;
 
+        private static readonly Unity.Profiling.ProfilerMarker UpdateMarker =
+            new Unity.Profiling.ProfilerMarker("PlayerBodyContent.Update");
+
         private readonly Dictionary<string, Entry> entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
         private readonly List<Entry> loading = new List<Entry>();
         private readonly List<Entry> preparing = new List<Entry>();
@@ -148,6 +151,27 @@ namespace Mmorpg.Client.Gameplay
             return ready;
         }
 
+        // Whether every entry of needs that were asked for is ready; starts no load, so needs that
+        // nobody asked for yet are not. Allocates nothing.
+        public bool IsReady(Needs needs)
+        {
+            if (needs == null || disposed)
+            {
+                return true;
+            }
+
+            for (var index = 0; index < needs.Count; index++)
+            {
+                var entry = needs.Entries[index];
+                if (entry == null || entry.Forgotten || !entry.IsReady)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         // The needs are still asked for, as by a body that waits but was not reached this frame;
         // starts no load. Allocates nothing.
         public void Touch(Needs needs)
@@ -239,6 +263,14 @@ namespace Mmorpg.Client.Gameplay
                 return;
             }
 
+            using (UpdateMarker.Auto())
+            {
+                TakeAndPrepare(budget);
+            }
+        }
+
+        private void TakeAndPrepare(PresentationBudget budget)
+        {
             for (var index = loading.Count - 1; index >= 0; index--)
             {
                 var entry = loading[index];
@@ -531,12 +563,16 @@ namespace Mmorpg.Client.Gameplay
                 Items = distinct.ToArray();
                 Entries = new Entry[Items.Length];
                 Held = new Entry[Items.Length];
+                HasCloth = distinct.Exists(item => PlayerBodyAppearance.ChainsOf(item.Cloth).HasValue);
             }
 
             public int Count
             {
                 get { return Items.Length; }
             }
+
+            // Whether the look wears a garment with loose cloth, so its body joins the cloth world.
+            public bool HasCloth { get; }
 
             // The addresses, for tests and diagnostics.
             public IEnumerable<string> Addresses

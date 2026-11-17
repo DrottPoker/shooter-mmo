@@ -1084,7 +1084,8 @@ A weapon may name how its arm holds it and what its body does when it attacks:
   follow-through.
 - **The bow draws**: the bow is skinned to the `Bow` skeleton, a riser, two bones
   for each limb, a bone for each straight half of the string, and the nock. Its
-  clip `Draw` bends the limbs from brace to full draw, and its draw length,
+  clip `Draw` bends the limbs from brace to full draw, which its content holds as
+  the limbs' rotations at the clip's end, and its draw length,
   0.62 m, says how far behind the arrow pass the nock comes at full draw. After
   the Animator, the drawing hand takes the string where it rests, the nock
   follows the hand's socket, the limbs bend by how far the string comes back,

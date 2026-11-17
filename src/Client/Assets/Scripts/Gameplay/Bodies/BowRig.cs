@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Mmorpg.Client.Gameplay
@@ -56,8 +55,8 @@ namespace Mmorpg.Client.Gameplay
         // How firmly the drawing arm keeps to the string or the arrow's line, from 0 to 1.
         private float pin;
 
-        private BowRig(Transform socket, Transform nock, Transform[] limbs, Transform[] strings, AnimationClip draw,
-            Transform bones, Vector3 arrowPass, float drawLength)
+        private BowRig(Transform socket, Transform nock, Transform[] limbs, Transform[] strings, BodyPieceContent content,
+            Vector3 arrowPass, float drawLength)
         {
             this.socket = socket;
             this.nock = nock;
@@ -71,12 +70,16 @@ namespace Mmorpg.Client.Gameplay
             brace = toNock.magnitude;
             back = brace > 0f ? toNock / brace : Vector3.back;
 
+            // At full draw each limb turns as Draw leaves it at its end, which the content holds, since
+            // a player cannot sample the clip outside an Animator.
             limbRest = new Quaternion[limbs.Length];
             limbFull = new Quaternion[limbs.Length];
             for (var index = 0; index < limbs.Length; index++)
             {
                 limbRest[index] = limbs[index].localRotation;
-                limbFull[index] = limbRest[index];
+                limbFull[index] = content != null && content.TryGetEndRotation(DrawClip, limbs[index].name, out var full)
+                    ? full
+                    : limbRest[index];
             }
 
             stringRest = new Quaternion[strings.Length];
@@ -94,11 +97,6 @@ namespace Mmorpg.Client.Gameplay
                 stringLength[index] = socket.InverseTransformVector(toRestingNock).magnitude;
                 stringAxis[index] = AxisAlong(stringAlong[index]);
             }
-
-            if (draw != null)
-            {
-                FullDraw(draw, bones);
-            }
         }
 
         // Whether the drawing hand holds the string.
@@ -113,8 +111,8 @@ namespace Mmorpg.Client.Gameplay
         // How far the bow is drawn, from 0 at brace to 1 at its draw length.
         public float Draw { get; private set; }
 
-        // The rig of a bow whose bones the body holds below its socket, with the clips of its
-        // content, or null when they are not those of the Bow skeleton or the bow names no launch
+        // The rig of a bow whose bones the body holds below its socket, with the end pose of Draw from
+        // its content, or null when they are not those of the Bow skeleton or the bow names no launch
         // point.
         public static BowRig TryCreate(Transform bones, Transform socket, BodyAppearanceCatalog.Attachment bow,
             BodyPieceContent content)
@@ -132,7 +130,7 @@ namespace Mmorpg.Client.Gameplay
                 return null;
             }
 
-            return new BowRig(socket, nock, limbs, strings, content != null ? content.ClipNamed(DrawClip) : null, bones, bow.LaunchPoint, bow.DrawLength);
+            return new BowRig(socket, nock, limbs, strings, content, bow.LaunchPoint, bow.DrawLength);
         }
 
         // A new shot: the drawing hand may take the string again.
@@ -276,30 +274,6 @@ namespace Mmorpg.Client.Gameplay
 
             Draw = 0f;
             posed = false;
-        }
-
-        // The limbs' rotations at the end of Draw, sampled on the bones, which then rest again.
-        private void FullDraw(AnimationClip draw, Transform bones)
-        {
-            var all = bones.GetComponentsInChildren<Transform>(true);
-            var rest = new List<(Vector3 Position, Quaternion Rotation, Vector3 Scale)>(all.Length);
-            foreach (var bone in all)
-            {
-                rest.Add((bone.localPosition, bone.localRotation, bone.localScale));
-            }
-
-            draw.SampleAnimation(bones.gameObject, draw.length);
-            for (var index = 0; index < limbs.Length; index++)
-            {
-                limbFull[index] = limbs[index].localRotation;
-            }
-
-            for (var index = 0; index < all.Length; index++)
-            {
-                all[index].localPosition = rest[index].Position;
-                all[index].localRotation = rest[index].Rotation;
-                all[index].localScale = rest[index].Scale;
-            }
         }
 
         private static Transform[] Find(Transform bones, string[] names)

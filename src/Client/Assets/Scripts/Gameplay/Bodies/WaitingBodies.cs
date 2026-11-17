@@ -56,6 +56,38 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
+        // The waiting players whose look's content is not ready, those that did not ask for it yet
+        // included. Allocates nothing.
+        public int CountWaitingForContent(PlayerBodyContent content)
+        {
+            var count = 0;
+            foreach (var waiting in looks.Values)
+            {
+                if (waiting.Content == null || (content != null && !content.IsReady(waiting.Content)))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        // The waiting players whose look may wear loose cloth: those whose content wears it and
+        // those that did not ask for their content yet. Allocates nothing.
+        public int CountMayWearCloth()
+        {
+            var count = 0;
+            foreach (var waiting in looks.Values)
+            {
+                if (waiting.Content == null || waiting.Content.HasCloth)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
         // Every waiting player asks for its content and mesh again, as when the looks wear other
         // garments now.
         public void ForgetWanted()

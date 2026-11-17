@@ -20,6 +20,11 @@ namespace Mmorpg.Client.Gameplay
         private CharacterLocomotionAnimator body;
         private int presentedDiscontinuities;
 
+        // Where the camera is, from which the body casts its shadow or not, and when that is checked
+        // next.
+        private FarBodies farBodies;
+        private float nextShadowCheck;
+
         // The local player's collision chunks, which ground this player where they are loaded.
         private UnityWorldCollisionStream collisionStream;
 
@@ -55,6 +60,9 @@ namespace Mmorpg.Client.Gameplay
         // The height of the movement capsule above the root, the player's ground point.
         public float TargetHeight { get; private set; }
 
+        // Whether the body casts its shadow, as its distance from the camera decides; see FarBodies.
+        public bool CastsShadow { get; private set; } = true;
+
         public static bool SupportsArchetype(string archetypeId)
         {
             return string.Equals(archetypeId, RealtimePlayerArchetypeIds.Player, System.StringComparison.Ordinal)
@@ -62,7 +70,8 @@ namespace Mmorpg.Client.Gameplay
         }
 
         // The collision stream is the joined session's, whose loaded chunks ground the player and
-        // whose revision tells when they changed; null for none.
+        // whose revision tells when they changed; null for none. The far bodies say where the
+        // camera is, from which the body casts its shadow or not; without them it always does.
         public void Initialize(
             ulong networkEntityId,
             string persistentId,
@@ -71,8 +80,11 @@ namespace Mmorpg.Client.Gameplay
             int simulationTickRateHz,
             int snapshotRateHz,
             UnityWorldCollisionStream worldCollisionStream,
-            CharacterCollisionSettings characterCollision)
+            CharacterCollisionSettings characterCollision,
+            FarBodies far = null)
         {
+            farBodies = far;
+            nextShadowCheck = Time.time + FarBodies.CheckOffsetOf(networkEntityId);
             NetworkEntityId = networkEntityId;
             PersistentId = persistentId;
             DisplayName = displayName;
@@ -182,6 +194,31 @@ namespace Mmorpg.Client.Gameplay
                     collisionStream != null ? collisionStream.Revision : 0))
             {
                 ApplyPresentedPose();
+            }
+
+            if (farBodies != null && farBodies.HasEye && farBodies.Now >= nextShadowCheck)
+            {
+                CheckShadow(farBodies.Now);
+            }
+        }
+
+        // Decides from the body's distance from the camera whether it casts its shadow, and gives
+        // the body that, also a body the player shows newly; due ChecksPerSecond times a second.
+        // Allocates nothing.
+        internal void CheckShadow(float now)
+        {
+            if (farBodies == null || !farBodies.HasEye)
+            {
+                return;
+            }
+
+            nextShadowCheck = now + (1f / FarBodies.ChecksPerSecond);
+            CastsShadow = FarBodies.CastsShadowAt(Vector3.Distance(transform.position, farBodies.Eye), CastsShadow);
+            var shown = Body;
+            var appearance = shown != null ? shown.GetComponent<PlayerBodyAppearance>() : null;
+            if (appearance != null)
+            {
+                appearance.CastsShadow = CastsShadow;
             }
         }
 

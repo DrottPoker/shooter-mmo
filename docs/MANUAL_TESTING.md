@@ -2625,8 +2625,10 @@ describes, the loads read the built bundles.
    CharacterSelect the screen is black for a moment with the interface over it,
    and the World then shows the character in its hair and clothes; it never
    shows the character in its underwear. The Console shows `[CLIENT] Entered the
-   World with the content of the local look loaded ... ms after the scene
-   started.`
+   World ... ms after the scene started: the content of the local look was
+   loaded after ... ms, and the first view with the ... players in view was
+   ready.`, or, with many players in view in the Editor, that the first view
+   showed at its cap of 1000 ms.
 2. Join the same shard near the first character with the
    [second client](#add-a-second-client), wearing a robe and the hood, and walk
    toward the first. Expected result: the first client shows the second
@@ -2676,6 +2678,27 @@ describes.
    Expected result: it starts at its own speed or a little slower and never
    walks faster than it does afterwards, neither at the start nor a moment
    later.
+
+### Far Bodies
+
+Another player's body beyond 44 m from the camera casts no shadow until it comes
+within 40 m again, as
+[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance) describes.
+
+1. Keep a crowd in the stress arena with
+   `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1 -Platform Editor -Bots 200 -Only Standing -HoldMinutes 30`,
+   and once it prints that the bots stay up, join `Local Stress Arena` in the
+   Editor with a character of your own.
+2. Walk to the middle of the south wall, about `(0, 0, -28)` in the F2 Debug
+   menu's coordinates, and look north across the arena with the default camera.
+   Expected result: the bodies up to about the middle of the arena, 40 to 44 m
+   from the camera, cast shadows; the bodies beyond cast none, with their
+   garments and weapons; your own character casts its shadow.
+3. Zoom the camera in and out slowly with the mouse wheel. Expected result: the
+   line where shadows stop moves with the camera a quarter of a second later at
+   most, and no body's shadow flickers on and off while the camera rests.
+4. Walk to the south-west corner, about `(-27, 0, -27)`, and look across to the
+   opposite corner. Expected result: the same, with more bodies beyond the line.
 
 ## Art In The Game
 
@@ -3081,8 +3104,12 @@ Expected result:
   they show, and the garment and attachment entries to those of the local
   player's look and its preview; the player log shows `[CLIENT] Prepared 2 body
   models` once per World.
+- The player log of no run shows `Non-Legacy animations cannot be sampled`, and
+  the `[CLIENT] Entered the World` line of a crowd run says that the first view
+  with the players in view was ready or showed at its cap.
 - What to look for, and to record with the run's folder: frames over 33.3 ms
-  in an arrival, memory, body cache, or body content entries that stay up once
+  in an arrival, each with its `in it` line of what the profiler markers took in
+  that frame, memory, body cache, or body content entries that stay up once
   the crowd left or grow with the crowd that came back, and an attempt that the script
   repeats again and again because other programs disturbed it.
 

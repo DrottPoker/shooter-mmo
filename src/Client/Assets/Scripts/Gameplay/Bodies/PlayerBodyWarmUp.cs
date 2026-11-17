@@ -24,6 +24,9 @@ namespace Mmorpg.Client.Gameplay
         public const string StageName = "PlayerBodyWarmUpStage";
         public const string VariantRendererName = "WarmUpVariants";
 
+        private static readonly Unity.Profiling.ProfilerMarker BeginMarker =
+            new Unity.Profiling.ProfilerMarker("PlayerBodyWarmUp.Begin");
+
         // Far below every World, beyond every player camera's far plane, and away from the
         // Character Preview's stage.
         public static readonly Vector3 StagePosition = new Vector3(0f, -11000f, 0f);
@@ -65,6 +68,12 @@ namespace Mmorpg.Client.Gameplay
             get { return drawnFrame >= 0; }
         }
 
+        // Whether the stage neither draws nor has materials waiting for their draw.
+        public bool IsIdle
+        {
+            get { return drawnFrame < 0 && queued.Count == 0; }
+        }
+
         // The content every body shows before its look: the default look of each model, its
         // underwear. The World is shown once it is loaded, and the warm-up's bodies hold it.
         public static List<PlayerBodyContent.Needs> DefaultNeeds(IReadOnlyList<PlayerBodyModels.Model> models)
@@ -86,6 +95,15 @@ namespace Mmorpg.Client.Gameplay
         // content loaded so far at the end of this frame. Without a player camera, as in a test
         // without one, nothing is drawn but the rest is prepared.
         public static PlayerBodyWarmUp Begin(IReadOnlyList<PlayerBodyModels.Model> models, PlayerBodyMeshes meshes,
+            PlayerBodyMaterials materials, Camera playerCamera, Transform parent)
+        {
+            using (BeginMarker.Auto())
+            {
+                return BeginNow(models, meshes, materials, playerCamera, parent);
+            }
+        }
+
+        private static PlayerBodyWarmUp BeginNow(IReadOnlyList<PlayerBodyModels.Model> models, PlayerBodyMeshes meshes,
             PlayerBodyMaterials materials, Camera playerCamera, Transform parent)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();

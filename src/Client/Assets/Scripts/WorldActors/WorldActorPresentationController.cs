@@ -22,8 +22,11 @@ namespace Mmorpg.Client.WorldActors
     // snapshot of a Mob without a view is lost, so one that showed the Mob away from its pose is
     // noted, and its view starts at its next snapshot instead of sliding from that pose.
     [DisallowMultipleComponent]
-    public sealed class WorldActorPresentationController : MonoBehaviour, IRemoteMotionSource
+    public sealed class WorldActorPresentationController : MonoBehaviour, IRemoteMotionSource, IWorldEntryReadiness
     {
+        private static readonly Unity.Profiling.ProfilerMarker CreateViewMarker =
+            new Unity.Profiling.ProfilerMarker("WorldActorPresentation.CreateView");
+
         private readonly Dictionary<ulong, WorldActorView> presentations =
             new Dictionary<ulong, WorldActorView>();
         private readonly Dictionary<string, AsyncOperationHandle<GameObject>> prefabLoads =
@@ -191,6 +194,35 @@ namespace Mmorpg.Client.WorldActors
             if (budget != null)
             {
                 presentationBudget = budget;
+            }
+        }
+
+        // Whether the first view of the World can show the actors in view: the registry resolved and
+        // no prefab of an actor that waits for its view still loads. The World's entry cover waits
+        // for it, at most until its cap. Allocates nothing.
+        public bool IsReadyForEntry
+        {
+            get
+            {
+                if (actorController == null)
+                {
+                    return true;
+                }
+
+                if (!registryResolved)
+                {
+                    return false;
+                }
+
+                foreach (var load in prefabLoads.Values)
+                {
+                    if (!load.IsDone)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
         }
 
@@ -539,9 +571,13 @@ namespace Mmorpg.Client.WorldActors
                     return;
                 }
 
-                var view = CreatePresentation(actor, prefab);
-                presentations.Add(actor.EntityId, view);
-                view.Apply(actor);
+                using (CreateViewMarker.Auto())
+                {
+                    var view = CreatePresentation(actor, prefab);
+                    presentations.Add(actor.EntityId, view);
+                    view.Apply(actor);
+                }
+
                 made++;
             }
         }

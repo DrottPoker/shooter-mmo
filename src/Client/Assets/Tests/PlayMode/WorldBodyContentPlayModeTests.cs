@@ -1,19 +1,13 @@
 using System;
 using System.Collections;
 using System.Linq;
-using Mmorpg.Client.Api;
-using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
-using Mmorpg.Client.Networking;
-using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
-using Mmorpg.GameSimulation;
 using Mmorpg.WorldData.Characters;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.TestTools;
-using Object = UnityEngine.Object;
+using static Mmorpg.Client.Tests.PlayMode.ScriptedWorld;
 
 namespace Mmorpg.Client.Tests.PlayMode
 {
@@ -24,44 +18,19 @@ namespace Mmorpg.Client.Tests.PlayMode
     // frames in between show what a body does while its content loads.
     public sealed class WorldBodyContentPlayModeTests
     {
-        private const string WorldId = "development-world-1";
-        private const string ShardId = "local-shard-1";
-        private const string CharacterId = "00000000-0000-4000-8000-000000002003";
         private const string Hair = "DarkBrownHair";
         private const string Tattoo = "Tattoo";
-        private static readonly ClientSettings Settings = new ClientSettings("http://127.0.0.1:9", 10, 10, 5);
 
         [UnityTest]
         [Timeout(60000)]
         public IEnumerator ABodyShowsOnlyOnceTheContentOfItsWholeLookIsLoaded()
         {
-            PlayModeClient.Session.SignOut();
-            yield return PlayModeClient.WaitForContent();
-            var sceneLoad = ClientSceneLoader.LoadWorldScene(SceneNames.DevelopmentWorld1);
-            yield return sceneLoad;
-            Assert.That(sceneLoad.Status, Is.EqualTo(AsyncOperationStatus.Succeeded));
-            yield return null;
-            var context = Object.FindAnyObjectByType<WorldSceneContext>(FindObjectsInactive.Include);
-            Assert.That(context, Is.Not.Null);
-
-            var transport = new ScriptedRealtimeTransport();
-            var hubObject = new GameObject("Body content test hub");
-            hubObject.SetActive(false);
-            var hub = hubObject.AddComponent<RealtimeSimulationClient>();
-            hub.Initialize(transport, () => Time.realtimeSinceStartup, Settings);
-            hubObject.SetActive(true);
+            var world = new ScriptedWorld();
+            yield return world.Load(null);
             try
             {
-                var session = new ClientSession(Settings);
-                session.SignIn(new AuthResponse { accountId = "account-2", username = "content_hero", sessionToken = "token" });
-                var collisionRevision = CollisionRevision();
-                transport.NextJoinAccepted = Accepted(collisionRevision);
-                ActiveSimulationSessionResponse joined = null;
-                yield return hub.Session.Join(Placement(collisionRevision), value => joined = value, error => Assert.Fail(error.ToDiagnostic()));
-                session.EnterWorld(joined);
-                context.Initialize(session, hub.Session, hub.Movement, hub.Players, hub.Looks, hub.Admin, new LocalPlayerSource(),
-                    new WorldPointerFocus(), null, null);
-                context.enabled = true;
+                var context = world.Context;
+                var transport = world.Transport;
 
                 // The World is entered at once but shown only once the content of the default looks,
                 // their underwear, is loaded; a cover hides it meanwhile.
@@ -76,7 +45,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 // with its hair.
                 var withHair = Appearance(Choice(CharacterAppearanceFormat.Hair, Hair));
                 var cold = Time.realtimeSinceStartup;
-                Spawn(transport, 77, withHair);
+                world.Spawn(77, withHair);
                 var waited = 0;
                 var longest = 0f;
                 RemotePlayerView view = null;
@@ -137,7 +106,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 // A second player in a look whose content is loaded shows as soon as its body is
                 // built, without a load.
                 var warm = Time.realtimeSinceStartup;
-                Spawn(transport, 78, withHair);
+                world.Spawn(78, withHair);
                 RemotePlayerView second = null;
                 while (second == null || second.Body == null)
                 {
@@ -160,12 +129,165 @@ namespace Mmorpg.Client.Tests.PlayMode
             }
             finally
             {
-                if (hub.Session.State != RealtimeConnectionState.Disconnected)
+                world.Dispose();
+            }
+        }
+
+        // A player in view at the entry: the cover stays until the content of its look is loaded,
+        // and the World shows with it.
+        [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator TheWorldShowsOnceTheContentOfThePlayersInViewAtTheEntryIsLoaded()
+        {
+            var world = new ScriptedWorld();
+            yield return world.Load(null);
+            try
+            {
+                var context = world.Context;
+                context.FirstViewCap = 30f;
+                world.Spawn(77, Appearance(Choice(CharacterAppearanceFormat.Hair, Hair)));
+                Assert.That(context.TryEnterWorld(), Is.True);
+                var hair = HairAddress(context);
+                var started = Time.realtimeSinceStartup;
+                while (!context.IsWorldShown)
                 {
-                    hub.Session.Abort();
+                    Assert.That(Time.realtimeSinceStartup - started, Is.LessThan(10f), "the World was never shown");
+                    yield return null;
                 }
 
-                Object.Destroy(hubObject);
+                Assert.That(context.BodyContent.PieceOf(hair), Is.Not.Null, "the World showed before the content of a player in view loaded");
+                Assert.That(context.ShownFrame, Is.GreaterThan(context.EntryLookFrame));
+            }
+            finally
+            {
+                world.Dispose();
+            }
+        }
+
+        // A part of the first view that never gets ready holds the cover only until the cap.
+        [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator TheWorldShowsAtTheCapWhenTheFirstViewIsNotReady()
+        {
+            var world = new ScriptedWorld();
+            yield return world.Load(null);
+            try
+            {
+                var context = world.Context;
+                const float cap = 0.5f;
+                context.FirstViewCap = cap;
+                context.AddEntryReadiness(new NeverReady());
+                var started = Time.realtimeSinceStartup;
+                Assert.That(context.TryEnterWorld(), Is.True);
+                while (!context.IsWorldShown)
+                {
+                    Assert.That(Time.realtimeSinceStartup - started, Is.LessThan(10f), "the World was never shown");
+                    yield return null;
+                }
+
+                Assert.That(Time.realtimeSinceStartup - started, Is.GreaterThanOrEqualTo(cap), "the World showed before its cap");
+                Assert.That(GameObject.Find("WorldEntryCover") == null || !GameObject.Find("WorldEntryCover").activeInHierarchy, Is.True);
+            }
+            finally
+            {
+                world.Dispose();
+            }
+        }
+
+        // Players in view at the entry whose bodies were not ready when the World showed at its cap
+        // come into view afterwards within the presentation budget, each with its whole look: with a
+        // budget that one body spends, putting a body on takes milliseconds, one a frame.
+        [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator WhatWasNotReadyAtTheCapComesIntoViewWithinThePresentationBudget()
+        {
+            var world = new ScriptedWorld();
+            yield return world.Load(new PresentationBudget(0.5, null));
+            try
+            {
+                var context = world.Context;
+                context.FirstViewCap = 0f;
+                var withHair = Appearance(Choice(CharacterAppearanceFormat.Hair, Hair));
+                var players = new ulong[] { 77, 78, 79, 80, 81, 82 };
+                foreach (var player in players)
+                {
+                    world.Spawn(player, withHair);
+                }
+
+                Assert.That(context.TryEnterWorld(), Is.True);
+                var started = Time.realtimeSinceStartup;
+                while (!context.IsWorldShown)
+                {
+                    Assert.That(Time.realtimeSinceStartup - started, Is.LessThan(10f), "the World was never shown");
+                    yield return null;
+                }
+
+                var withBodyAtTheCap = players.Count(player => context.TryGetRemotePlayer(player, out var view) && view.Body != null);
+                Assert.That(withBodyAtTheCap, Is.LessThan(players.Length), "every body was ready at the cap");
+                var shownFrames = new System.Collections.Generic.Dictionary<ulong, int>();
+                while (shownFrames.Count < players.Length)
+                {
+                    Assert.That(Time.realtimeSinceStartup - started, Is.LessThan(10f), "a body never came into view");
+                    foreach (var player in players)
+                    {
+                        if (!shownFrames.ContainsKey(player) && context.TryGetRemotePlayer(player, out var view) && view.Body != null)
+                        {
+                            shownFrames[player] = Time.frameCount;
+                            AssertWearsItsLook(view.GetComponentInChildren<PlayerBodyAppearance>());
+                        }
+                    }
+
+                    yield return null;
+                }
+
+                Assert.That(shownFrames.Values.Distinct().Count(), Is.EqualTo(players.Length), "two bodies went on in one frame of a spent budget");
+            }
+            finally
+            {
+                world.Dispose();
+            }
+        }
+
+        // Without other players or actors in view the World shows in the frame after the content of
+        // the local look loaded: the warm-up draws the bodies once under the cover in that frame.
+        [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator AWorldWithNobodyElseInViewShowsTheFrameAfterItsLookLoaded()
+        {
+            var world = new ScriptedWorld();
+            yield return world.Load(null);
+            try
+            {
+                var context = world.Context;
+                Assert.That(context.TryEnterWorld(), Is.True);
+                var started = Time.realtimeSinceStartup;
+                while (!context.IsWorldShown)
+                {
+                    Assert.That(Time.realtimeSinceStartup - started, Is.LessThan(10f), "the World was never shown");
+                    yield return null;
+                }
+
+                Assert.That(context.ShownFrame - context.EntryLookFrame, Is.EqualTo(1));
+            }
+            finally
+            {
+                world.Dispose();
+            }
+        }
+
+        // The address of the hair's content for the local player's body model, which the visitors
+        // share.
+        private static string HairAddress(WorldSceneContext context)
+        {
+            var catalog = context.LocalPlayer.GetComponentInChildren<PlayerBodyAppearance>(true).Catalog;
+            return catalog.Garments.First(garment => garment.Name == Hair).Address;
+        }
+
+        private sealed class NeverReady : IWorldEntryReadiness
+        {
+            public bool IsReadyForEntry
+            {
+                get { return false; }
             }
         }
 
@@ -178,88 +300,6 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(body.CombinedRenderer.sharedMesh, Is.Not.Null);
             var named = PlayerBodyAppearance.WornBy(body.Catalog, body.Look).Select(garment => garment.Name).ToArray();
             Assert.That(body.Worn.Select(garment => garment.Name), Is.EqualTo(named), "the body shows without a garment of its look");
-        }
-
-        private static IEnumerator Until(Func<bool> condition, string message)
-        {
-            var deadline = Time.realtimeSinceStartup + 10f;
-            while (!condition())
-            {
-                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), message);
-                yield return null;
-            }
-        }
-
-        private static void Spawn(ScriptedRealtimeTransport transport, ulong entityId, RealtimeCharacterAppearance appearance)
-        {
-            var spawn = new RealtimeEntitySpawn(
-                entityId,
-                RealtimeEntityKind.Player,
-                "00000000-0000-4000-8000-0000000020" + entityId.ToString("00"),
-                "Visitor " + entityId,
-                RealtimePlayerArchetypeIds.Player,
-                10,
-                new RealtimePlayerState(2f, 0f, 2f, 0f, 0f, 0f, 0f, true),
-                appearance);
-            transport.Deliver(RealtimeProtocol.EncodeEntitySpawn(spawn), RealtimeProtocol.WorldChannel);
-        }
-
-        private static RealtimeCharacterAppearance Appearance(params RealtimeAppearanceChoice[] choices)
-        {
-            return new RealtimeCharacterAppearance("Human_Male", choices, null, false, null);
-        }
-
-        private static RealtimeAppearanceChoice Choice(string kind, string option)
-        {
-            return new RealtimeAppearanceChoice(kind, string.Empty, option);
-        }
-
-        private static string CollisionRevision()
-        {
-            Assert.That(UnityWorldCollisionLoader.TryCreateStream(WorldId, out var stream, out var error), Is.True, error);
-            return stream.CollisionWorld.Revision;
-        }
-
-        private static JoinShardResponse Placement(string collisionRevision)
-        {
-            return new JoinShardResponse
-            {
-                shard = new ShardResponse { id = ShardId, worldId = WorldId },
-                endpoint = new SimulationEndpointResponse
-                {
-                    workerId = "worker-1",
-                    runtimeId = "runtime-1",
-                    host = "127.0.0.1",
-                    udpPort = 27015,
-                    protocolVersion = RealtimeProtocol.Version,
-                    simulationRevision = GameSimulationCompatibility.Revision,
-                    collisionRevision = collisionRevision
-                },
-                characterId = CharacterId,
-                joinTicket = "ticket-content",
-                expiresAt = DateTime.UtcNow.AddMinutes(5).ToString("O")
-            };
-        }
-
-        private static RealtimeJoinAccepted Accepted(string collisionRevision)
-        {
-            return new RealtimeJoinAccepted(
-                "00000000-0000-4000-8000-000000002101",
-                "00000000-0000-4000-8000-000000002002",
-                CharacterId,
-                "Content Hero",
-                ShardId,
-                WorldId,
-                7,
-                GameSimulationCompatibility.Revision,
-                collisionRevision,
-                "2026-11-17T10:00:00.0000000Z",
-                "2026-11-17T22:00:00.0000000Z",
-                false,
-                new RealtimeCarryState(0, 0, 200),
-                new RealtimeMovementSettings(30, 15, 5f, 720f, -24f, 55f, -2f, 0f, -14f, 14f, -14f, 14f, 0.35f, 2f, 0.35f, 45f, 0.4f, 0.1f, 6),
-                new RealtimePlayerState(0f, 0f, -1f, 0f, 0f, 0f, 0f, true),
-                new RealtimeShardRules(false));
         }
     }
 }

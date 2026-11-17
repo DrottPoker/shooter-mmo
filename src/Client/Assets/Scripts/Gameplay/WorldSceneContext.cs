@@ -12,6 +12,11 @@ namespace Mmorpg.Client.Gameplay
     [DisallowMultipleComponent]
     public sealed class WorldSceneContext : MonoBehaviour, IRemoteMotionSource
     {
+        private static readonly Unity.Profiling.ProfilerMarker PresentBodyMarker =
+            new Unity.Profiling.ProfilerMarker("WorldSceneContext.PresentBody");
+        private static readonly Unity.Profiling.ProfilerMarker FirstViewMarker =
+            new Unity.Profiling.ProfilerMarker("WorldSceneContext.PrepareFirstView");
+
         [SerializeField] private LocalPlayerController localPlayerPrefab;
         [SerializeField] private Transform playerSpawnPoint;
         [SerializeField] private RemotePlayerView remotePlayerPrefab;
@@ -40,6 +45,8 @@ namespace Mmorpg.Client.Gameplay
         // whose combination is built, so a crowd that comes into view at once, as at a join, takes
         // a few frames instead of stalling one: a body takes about 2 ms.
         private PresentationBudget presentationBudget = new PresentationBudget();
+        // Where the camera is, from which the other players' bodies cast their shadows or not.
+        private readonly FarBodies farBodies = new FarBodies();
         private bool localLookDeferred;
         // The local body's look, or the preview's, waits for its content and then for the build of
         // its combination.
@@ -50,14 +57,31 @@ namespace Mmorpg.Client.Gameplay
         private PlayerBodyMeshes.Combined localWanted;
         private PlayerBodyMeshes.Combined previewWanted;
         private PlayerBodyWarmUp warmUp;
-        // Entering the World waits for the content of the local player's look and of the default
-        // looks, under a cover that hides the World until then.
-        private bool entering;
+        // Entering the World waits under a cover that hides the World: first for the content of the
+        // local player's look and of the default looks, then for the first view, the warm-up's draw,
+        // the content of the looks of the players in view, and what the readiness parts wait for,
+        // such as the prefabs of the world actors in view, at most until FirstViewCapSeconds.
+        private EntryStage entry = EntryStage.Shown;
         private List<PlayerBodyContent.Needs> entryContent;
         private PlayerBodyContent.Needs localEntryContent;
         private PlayerBodyContent.Needs previewEntryContent;
+        private readonly List<IWorldEntryReadiness> entryReadiness = new List<IWorldEntryReadiness>();
         private GameObject entryCover;
         private System.Diagnostics.Stopwatch entryWatch;
+        private double entryLookMilliseconds;
+        private float firstViewCapSeconds = FirstViewCapSeconds;
+
+        // How long after the start of the entry the World shows at the latest once the content of
+        // the local look is loaded, also when the rest of the first view is not ready; that rest then
+        // comes into view within the presentation budget.
+        public const float FirstViewCapSeconds = 1f;
+
+        private enum EntryStage
+        {
+            Shown,
+            LoadingLook,
+            PreparingView,
+        }
         private IClientSession clientSession;
         private IRealtimeSession realtimeSession;
         private IRealtimeMovementChannel realtimeMovement;
@@ -134,11 +158,34 @@ namespace Mmorpg.Client.Gameplay
             get { return bodyContent; }
         }
 
-        // Whether the World shows: the local player spawned and the content of its look loaded.
-        // Until then a cover hides the World.
+        // Whether the World shows: the local player spawned, the content of its look loaded, and the
+        // first view ready or its cap passed. Until then a cover hides the World.
         public bool IsWorldShown
         {
-            get { return localPlayer != null && !entering; }
+            get { return localPlayer != null && entry == EntryStage.Shown; }
+        }
+
+        // The frames in which the content of the local look was loaded and in which the World
+        // showed, for tests; -1 before.
+        internal int EntryLookFrame { get; private set; } = -1;
+
+        internal int ShownFrame { get; private set; } = -1;
+
+        // The cap of the first view, which tests shorten.
+        internal float FirstViewCap
+        {
+            get { return firstViewCapSeconds; }
+            set { firstViewCapSeconds = value; }
+        }
+
+        // The first view also waits for this part, such as the world actors' presentation, until
+        // the cap.
+        public void AddEntryReadiness(IWorldEntryReadiness readiness)
+        {
+            if (readiness != null && !entryReadiness.Contains(readiness))
+            {
+                entryReadiness.Add(readiness);
+            }
         }
 
         // The lying body of a player corpse in the dead character's body model and look, dressed in
@@ -290,7 +337,7 @@ namespace Mmorpg.Client.Gameplay
         // it to the movement session, and presents the players already in view. False when the
         // scene cannot enter a World. Start runs it once; a join that restores a lost connection
         // later binds the same player again in OnSessionJoined. The World shows once the content of
-        // the local player's look is loaded; see FinishEntry.
+        // the local player's look is loaded and the first view is ready; see BeginEntry.
         internal bool TryEnterWorld()
         {
             EnsureBodyCaches();
@@ -537,7 +584,8 @@ namespace Mmorpg.Client.Gameplay
                     movementSession.Settings.TickRateHz,
                     movementSession.SnapshotRateHz,
                     movementSession.CollisionStream,
-                    movementSession.Settings.CharacterCollision);
+                    movementSession.Settings.CharacterCollision,
+                    farBodies);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
                 waitingBodies.Set(
                     spawn.EntityId,
@@ -612,27 +660,33 @@ namespace Mmorpg.Client.Gameplay
             var eye = camera != null ? camera.transform.position : Vector3.zero;
             waitingBodies.Touch(bodyMeshes, bodyContent);
             waitingBodies.OrderFrom(remotePlayers, eye);
+            // Under the entry cover every waiting player asks for its content at once, which the
+            // first view waits for, and the bodies still go on within the budget.
+            var covered = entry != EntryStage.Shown;
             var asked = false;
+            var presented = false;
             while (waitingBodies.TryTakeNext(out var nearest, out var appearance, out var content, out var wanted))
             {
                 // Finding which content and mesh a look needs costs too; once a frame asked once and
                 // the budget is spent, the farther players ask next frame.
                 var asks = content == null || wanted == null;
-                if (asks && asked && presentationBudget.IsSpent)
+                if (asks && asked && presentationBudget.IsSpent && !covered)
                 {
                     waitingBodies.Wait(nearest.NetworkEntityId, appearance, content, wanted);
                     return;
                 }
 
                 asked |= asks;
-                if (!IsBuilt(nearest, appearance, ref content, ref wanted))
+                if (!IsBuilt(nearest, appearance, ref content, ref wanted)
+                    || (covered && presented && presentationBudget.IsSpent))
                 {
                     waitingBodies.Wait(nearest.NetworkEntityId, appearance, content, wanted);
                     continue;
                 }
 
                 PresentAppearance(nearest, appearance);
-                if (presentationBudget.IsSpent)
+                presented = true;
+                if (presentationBudget.IsSpent && !covered)
                 {
                     return;
                 }
@@ -708,6 +762,14 @@ namespace Mmorpg.Client.Gameplay
         // its character dead in the look it had.
         private void PresentAppearance(RemotePlayerView remotePlayer, RealtimeCharacterAppearance appearance)
         {
+            using (PresentBodyMarker.Auto())
+            {
+                PresentAppearanceNow(remotePlayer, appearance);
+            }
+        }
+
+        private void PresentAppearanceNow(RemotePlayerView remotePlayer, RealtimeCharacterAppearance appearance)
+        {
             var body = remotePlayer.Body;
             if (remotePlayer.Appearance != null && body != null && body.IsDead)
             {
@@ -730,11 +792,23 @@ namespace Mmorpg.Client.Gameplay
         private void Update()
         {
             warmUp?.Update();
-            PresentWaitingBodies();
-            if (entering)
+            if (playerCamera != null)
             {
-                FinishEntry();
-                return;
+                farBodies.SetEye(playerCamera.transform.position, Time.time);
+            }
+            else
+            {
+                farBodies.ForgetEye();
+            }
+
+            PresentWaitingBodies();
+            if (entry != EntryStage.Shown)
+            {
+                ContinueEntry();
+                if (entry == EntryStage.LoadingLook)
+                {
+                    return;
+                }
             }
 
             if (localLookDeferred && !IsLocalBodyDead)
@@ -797,20 +871,65 @@ namespace Mmorpg.Client.Gameplay
             return wanted.IsReady || wanted.Forgotten;
         }
 
-        // The World is entered once the content of the local player's look, of the preview's, and
-        // of every default look is loaded: then the warm-up prepares the bodies, the local body and
-        // the preview show their looks, and the cover goes, so the World never shows the local
-        // player without its look. Asks for the content every frame until then.
+        // The World is entered in two stages under the cover. Once the content of the local player's
+        // look, of the preview's, and of every default look is loaded, the warm-up prepares the
+        // bodies and draws them, and the local body and the preview show their looks, so the World
+        // never shows the local player without its look. Then the first view is prepared: the cover
+        // stays while the warm-up draws, while a player in view waits for the content of its look,
+        // which loads and draws its new material variants once, and while a readiness part, such as
+        // the world actors' presentation with its prefabs, is not ready, but at most until
+        // FirstViewCapSeconds after the start of the entry, so the frames after the World showed do
+        // not pay for what the first view needed. Asks for the content every frame until then.
         private void BeginEntry()
         {
-            entering = true;
+            entry = EntryStage.LoadingLook;
             entryWatch = System.Diagnostics.Stopwatch.StartNew();
             entryContent = PlayerBodyWarmUp.DefaultNeeds(PlayerModels());
             CoverWorld();
-            FinishEntry();
+            ContinueEntry();
         }
 
-        private void FinishEntry()
+        private void ContinueEntry()
+        {
+            if (entry == EntryStage.LoadingLook)
+            {
+                if (!IsEntryLookLoaded())
+                {
+                    return;
+                }
+
+                PrepareFirstView();
+            }
+
+            // The warm-up draws the bodies under the cover in the frame the look was loaded.
+            if (entry != EntryStage.PreparingView || Time.frameCount <= EntryLookFrame)
+            {
+                return;
+            }
+
+            // The cloth world grows under the cover for the players in view whose looks may wear
+            // loose cloth, since growing writes every body in it again, and the World shows in a
+            // later frame than one in which it grew.
+            if (ClothChainScheduler.Reserve(waitingBodies.CountMayWearCloth()))
+            {
+                return;
+            }
+
+            var capped = entryWatch.Elapsed.TotalSeconds >= firstViewCapSeconds;
+            var waitingPlayers = waitingBodies.CountWaitingForContent(bodyContent);
+            var actorsReady = AreReadinessPartsReady();
+            var warm = warmUp == null || warmUp.IsIdle;
+            if (!capped && (waitingPlayers > 0 || !actorsReady || !warm))
+            {
+                return;
+            }
+
+            ShowWorld(waitingPlayers, actorsReady);
+        }
+
+        // Whether the content of the local look, of the preview's, and of every default look is
+        // loaded; asks for it meanwhile.
+        private bool IsEntryLookLoaded()
         {
             var ready = true;
             foreach (var needs in entryContent)
@@ -828,31 +947,63 @@ namespace Mmorpg.Client.Gameplay
 
             ready &= bodyContent.Want(localEntryContent);
             ready &= bodyContent.Want(previewEntryContent);
-            if (!ready)
+            return ready;
+        }
+
+        // The warm-up prepares and draws the bodies under the cover, and the local body and the
+        // preview show the look they entered with, also when the character lies dead already.
+        private void PrepareFirstView()
+        {
+            using (FirstViewMarker.Auto())
             {
-                return;
+                entry = EntryStage.PreparingView;
+                entryLookMilliseconds = entryWatch.Elapsed.TotalMilliseconds;
+                EntryLookFrame = Time.frameCount;
+                WarmUpBodies();
+                var appearance = LocalAppearance;
+                if (appearance != null && bodyLook != null)
+                {
+                    appearance.ApplyLook(DressLocal(appearance.Catalog, true), bodyMaterials);
+                }
+
+                ShowPreview(true);
+                entryContent = null;
+                localEntryContent = null;
+                previewEntryContent = null;
+            }
+        }
+
+        private bool AreReadinessPartsReady()
+        {
+            for (var index = 0; index < entryReadiness.Count; index++)
+            {
+                var part = entryReadiness[index];
+                if (part != null && !(part is Object component && component == null) && !part.IsReadyForEntry)
+                {
+                    return false;
+                }
             }
 
-            entering = false;
-            WarmUpBodies();
+            return true;
+        }
 
-            // The body shows the look it entered with, also when its character lies dead already.
-            var appearance = LocalAppearance;
-            if (appearance != null && bodyLook != null)
-            {
-                appearance.ApplyLook(DressLocal(appearance.Catalog, true), bodyMaterials);
-            }
-
-            ShowPreview(true);
+        private void ShowWorld(int waitingPlayers, bool actorsReady)
+        {
+            entry = EntryStage.Shown;
+            ShownFrame = Time.frameCount;
             UncoverWorld();
-            entryContent = null;
-            localEntryContent = null;
-            previewEntryContent = null;
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+            var shown = entryWatch.Elapsed.TotalMilliseconds;
+            var view = waitingPlayers == 0 && actorsReady
+                ? "the first view with the " + remotePlayers.Count + " players in view was ready"
+                : "the first view showed at its cap of " + (firstViewCapSeconds * 1000f).ToString("0", invariant) + " ms with "
+                    + waitingPlayers + " players waiting for the content of their looks"
+                    + (actorsReady ? string.Empty : " and the world actors not ready");
             ClientLog.Info(
                 ClientLogCategory.Client,
-                "Entered the World with the content of the local look loaded "
-                    + entryWatch.Elapsed.TotalMilliseconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
-                    + " ms after the scene started.");
+                "Entered the World " + shown.ToString("0.0", invariant)
+                    + " ms after the scene started: the content of the local look was loaded after "
+                    + entryLookMilliseconds.ToString("0.0", invariant) + " ms, and " + view + ".");
         }
 
         // A camera after the player camera that draws black over the World while it is entered;
@@ -1003,7 +1154,7 @@ namespace Mmorpg.Client.Gameplay
         // the body keeps its model and look until the combination of the new ones is built.
         private void OnBodyLookChanged()
         {
-            if (entering)
+            if (entry == EntryStage.LoadingLook)
             {
                 // The World waits for the new look's content instead.
                 if (ShowLocalModel())
@@ -1079,7 +1230,7 @@ namespace Mmorpg.Client.Gameplay
         // the new one is built.
         private void ApplyLocalBodyLook(bool now = false)
         {
-            if (entering)
+            if (entry == EntryStage.LoadingLook)
             {
                 localEntryContent = null;
                 previewEntryContent = null;

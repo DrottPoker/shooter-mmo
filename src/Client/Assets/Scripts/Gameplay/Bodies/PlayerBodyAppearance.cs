@@ -73,6 +73,9 @@ namespace Mmorpg.Client.Gameplay
         private BowRig.DrawingArm drawingArm;
         private bool stringHeld;
         private Animator bodyAnimator;
+        // Whether the body casts its shadow, and how its parts cast theirs.
+        private bool castsShadow = true;
+        private UnityEngine.Rendering.ShadowCastingMode ownShadowMode = UnityEngine.Rendering.ShadowCastingMode.On;
 
         public IReadOnlyList<Material> SkinMaterials
         {
@@ -106,6 +109,35 @@ namespace Mmorpg.Client.Gameplay
         public SkinnedMeshRenderer CombinedRenderer
         {
             get { return combinedRenderer; }
+        }
+
+        // Whether the body casts its shadow as its parts do, with the attachments it holds, which
+        // its one renderer draws; a far body does not, as FarBodies decides.
+        public bool CastsShadow
+        {
+            get
+            {
+                return castsShadow;
+            }
+
+            set
+            {
+                if (castsShadow == value)
+                {
+                    return;
+                }
+
+                castsShadow = value;
+                ShowShadow();
+            }
+        }
+
+        private void ShowShadow()
+        {
+            if (combinedRenderer != null)
+            {
+                combinedRenderer.shadowCastingMode = castsShadow ? ownShadowMode : UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
         }
 
         // The garments the body wears, from the lowest layer up, as the look names them.
@@ -282,7 +314,8 @@ namespace Mmorpg.Client.Gameplay
             var rendererObject = new GameObject(CombinedRendererName);
             rendererObject.transform.SetParent(transform, false);
             combinedRenderer = rendererObject.AddComponent<SkinnedMeshRenderer>();
-            combinedRenderer.shadowCastingMode = parts[0].shadowCastingMode;
+            ownShadowMode = parts[0].shadowCastingMode;
+            ShowShadow();
             combinedRenderer.receiveShadows = parts[0].receiveShadows;
             combinedRenderer.quality = parts[0].quality;
             combinedRenderer.updateWhenOffscreen = false;

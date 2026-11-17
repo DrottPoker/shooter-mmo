@@ -16,3 +16,16 @@ MonoBehaviour:
   material: {fileID: 0}
   clips:
   - {fileID: 465769213163361915, guid: 145b4eb81e1c17744b1d84c997b5db5a, type: 3}
+  endRotations:
+  - clip: Draw
+    bone: Bow_LimbLower
+    rotation: {x: 0.78765196, y: 0.5722625, z: -0.13419022, w: -0.18469702}
+  - clip: Draw
+    bone: Bow_TipLower
+    rotation: {x: 0.01707737, y: 0.0000000066853865, z: -0.000000035541607, w: 0.9998542}
+  - clip: Draw
+    bone: Bow_LimbUpper
+    rotation: {x: -0.18469705, y: -0.13419026, z: 0.5722627, w: 0.78765184}
+  - clip: Draw
+    bone: Bow_TipUpper
+    rotation: {x: -0.017077334, y: -0.000000013818289, z: 0.000000014929242, w: 0.9998542}

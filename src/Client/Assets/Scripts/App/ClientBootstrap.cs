@@ -673,6 +673,12 @@ namespace Mmorpg.Client.App
                     localPlayer,
                     presentationBudget));
             measurements.SetRemoteSources(sceneContext, actorPresentation);
+            // The World shows once the prefabs of the actors in view are loaded, at most until the
+            // cap of its first view.
+            if (sceneContext != null)
+            {
+                sceneContext.AddEntryReadiness(actorPresentation);
+            }
             AddSceneComponentIfMissing<CorpsePresentationController>(
                 presentation => presentation.Initialize(
                     corpseController,

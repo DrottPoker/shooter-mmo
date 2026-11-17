@@ -21,6 +21,8 @@ namespace Mmorpg.Client.Cloth
         private const int ReadBatch = 32;
         private const int WriteBatch = 32;
 
+        private static readonly Unity.Profiling.ProfilerMarker GrowMarker = new Unity.Profiling.ProfilerMarker("ClothWorld.Grow");
+
         private readonly ClothBodyLayout layout;
         private readonly List<BodyDescription> bodies = new List<BodyDescription>();
         private readonly Stack<int> free = new Stack<int>();
@@ -73,6 +75,29 @@ namespace Mmorpg.Client.Cloth
 
         // How many bodies the world holds.
         public int Count => bodies.Count - free.Count;
+
+        // How many bodies the world holds before it grows.
+        public int Capacity => capacity;
+
+        // Grows the world at once to hold at least this many bodies, to the next doubling of its
+        // capacity, as before a crowd's bodies come, so no frame that adds one of them pays for
+        // writing every body again; true when it grew.
+        public bool Reserve(int bodyCount)
+        {
+            if (bodyCount <= capacity)
+            {
+                return false;
+            }
+
+            var grown = capacity;
+            while (grown < bodyCount)
+            {
+                grown *= 2;
+            }
+
+            Grow(grown);
+            return true;
+        }
 
         // Adds a body and returns its handle.
         public int Add(BodyDescription body)
@@ -708,6 +733,14 @@ namespace Mmorpg.Client.Cloth
         // growing the world neither starts their springs again nor jolts their cloth. A body keeps
         // its block, which starts at its handle times the layout's size whatever the capacity.
         private void Grow(int bodyCapacity)
+        {
+            using (GrowMarker.Auto())
+            {
+                GrowNow(bodyCapacity);
+            }
+        }
+
+        private void GrowNow(int bodyCapacity)
         {
             var keptSlots = new NativeArray<ClothBodySlot>(slots, Allocator.Temp);
             var keptSpringBodies = new NativeArray<ClothSpringBody>(springBodies, Allocator.Temp);
