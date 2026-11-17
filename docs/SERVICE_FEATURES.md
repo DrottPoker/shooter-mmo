@@ -42,12 +42,12 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
 | `GET /api/shards` | Public | List logical shards, status, players, and capacity |
-| `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
+| `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket: its public id and its transport key |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-workers/{workerId}/session-heartbeat` | Worker service policy | Renew the exact simulation leases of the worker runtime's sessions in one batch, and answer each session on its own: its lease with the end of its account session and its carry state, or its refusal |
 | `POST /api/simulation-workers/{workerId}/checkpoint` | Worker service policy | Save the place and vitals of the worker runtime's characters whose state changed, in one batch |
-| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket and return the character's saved place and vitals |
+| `POST /api/simulation-join-tickets/consume` | Worker service policy | Consume an exact-runtime join ticket that the client's proof proves, and return the session, the ticket's transport key, and the character's saved place and vitals |
 | `POST /api/simulation-sessions/{id}/release` | Worker service policy | Release an exact simulation lease, with the character's final place and vitals when the worker has them |
 | `POST /api/simulation-sessions/{id}/appearance` | Worker service policy | Lower or raise the exact-session character's headwear, or in the Development environment only store another body model and look |
 | `POST /api/simulation-sessions/{id}/item-operations` | Worker service policy | Execute one exact-session item mutation, Recovery claim, insurance or quest item action, vendor trade, or gathering yield through the durable kernel; Items runs its own kinds and the Economy module the vendor and gathering kinds |
@@ -429,12 +429,13 @@ Join placement:
    rejects them with `409` `simulation_worker_quest_catalog_mismatch` when the
    worker reported another quest catalog revision, because the worker counts
    quest progress that GameService commits with its own catalog.
-9. Stores a hash of a new ticket bound to shard, worker, runtime, character, and
-   account session.
+9. Stores a new ticket bound to shard, worker, runtime, character, and account
+   session: a public ticket id and a transport key of 32 random bytes.
 10. Computes expiry with `clock_timestamp()` after placement locks are acquired.
     Ticket consumption and session leases use the same clock, so time spent
     waiting for a lock never shortens or extends a ticket or lease.
-11. Returns the shard and exact endpoint metadata.
+11. Returns the shard, the exact endpoint metadata, `joinTicketId`, and
+    `transportKey` in base64, the only time the key reaches the client.
 
 Selection serializes reservations on the target shard, then locks the selected
 worker. A waiting request recalculates session and ticket usage from a fresh
@@ -442,9 +443,33 @@ database snapshot before reserving capacity. Different shards remain parallel.
 
 ## Join Tickets And Simulation Sessions
 
-Join tickets live `Simulation:JoinTicketLifetimeSeconds`, are used once, and are
-stored only as hashes. A worker must present the ticket together with its own
-worker id, runtime id, and shard id.
+Join tickets live `Simulation:JoinTicketLifetimeSeconds` and are used once. A
+ticket is a public id, which the client sends over UDP in clear, and a transport
+key, which only the join answer and the consume answer carry, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes.
+GameService stores the key with the ticket for its lifetime; the consume clears
+it, and so does every other end of a pending ticket: a newer ticket of the
+account, a logout, a revoke, and the release of the worker runtime.
+
+The consume call takes the ticket id, the client's 16-byte nonce and 32-byte
+proof (base64 in JSON), the protocol version of the join request, and the
+worker's own worker id, runtime id, and shard id. GameService checks the proof
+against the stored key in constant time before it takes a lock or changes
+anything:
+
+- A request without a ticket id, a nonce and a proof of their sizes, or a
+  protocol version from 1 to 65,535 is refused with `400` `invalid_ticket`.
+- A proof that the ticket's key did not make, of an unknown, consumed, or
+  expired ticket, or of a ticket without a key, such as one issued before keys
+  existed, is refused with `401` `invalid_ticket`, and the ticket stays as it
+  was. Tickets live 30 seconds, so a ticket without a key is gone soon after an
+  upgrade.
+- A proved ticket is consumed, and the answer carries `transportKey`, from
+  which the worker derives the keys of the peer's datagrams. The call must
+  reach GameService over TLS or a private network, because it carries the key.
+
+Development bot tickets in GameService memory follow the same rules, as
+[Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md) describes.
 
 Consumption locks the account, character, and character item-state row,
 validates account session status, checks exact placement binding, and creates or
@@ -787,6 +812,21 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
 - Connection key validation happens before application messages. Without a
   valid registration lease, or with every one of the `MaxConnections` slots
   taken, a connection request is refused silently.
+- Every datagram passes a LiteNetLib packet layer that seals and opens it, as
+  [Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. The
+  worker installs a peer's keys when GameService consumed its ticket, before it
+  answers the join, and they go when the peer disconnects or the worker stops.
+  Before its keys a peer reaches the worker only with LiteNetLib's connection
+  control and the session channel; anything else is dropped. Every
+  `NetManager` sets `MtuOverride` to 1,024, so the 25 bytes of the seal come on
+  top of LiteNetLib's packets. A worker whose platform has no ChaCha20-Poly1305
+  logs one warning at its start and seals with the managed implementation.
+- The worker counts every datagram it sends and receives, their bytes, the
+  bytes that the seal adds in both directions, and the received datagrams it
+  drops by reason: `malformed`, `unauthenticated`, `replayed`,
+  `clear_after_sealing`, and `clear_not_allowed`. A dropped datagram is never
+  answered. The counts are in the metrics and the performance file, as
+  [Monitoring](MONITORING.md#simulationworker) lists.
 - New peers must send one reliable ordered join request within the join
   handshake timeout, which is also LiteNetLib's disconnect timeout.
 - Join ticket consumption is asynchronous and does not block the UDP poll loop.
@@ -818,7 +858,9 @@ SimulationWorker uses LiteNetLib and the versioned `GameProtocol` package.
   describes. The worker disconnects once the client acknowledged that reliable
   message, which LiteNetLib reports with a delivery event, no sooner than the
   next loop iteration and no later than `GracefulDisconnectMaximumMilliseconds`,
-  2,000 by default, after it sent the message. A working line thus gets the
+  2,000 by default, after it sent the message. A peer without keys would drop
+  the reliable copy, so the worker sends it the message only as the data of the
+  disconnect, at the next loop iteration. A working line thus gets the
   reason on the reliable channel about one round trip before the disconnect,
   and a line that lost it gets it with the disconnect. Packets that such a peer
   sends meanwhile are counted and dropped.

@@ -93,6 +93,8 @@ namespace Mmorpg.Client.Tests.EditMode
             }
         }
 
+        // The placement of a join ticket that a label names; its id and transport key derive from
+        // the label, so two placements of one label carry the same ticket.
         public static JoinShardResponse Placement(string joinTicket = "ticket-1", string host = "127.0.0.1")
         {
             return new JoinShardResponse
@@ -113,9 +115,30 @@ namespace Mmorpg.Client.Tests.EditMode
                     collisionRevision = BakedCollisionRevision
                 },
                 characterId = RealtimeHubMessages.CharacterId.ToString("D"),
-                joinTicket = joinTicket,
+                joinTicketId = TicketIdOf(joinTicket).ToString("D"),
+                transportKey = Convert.ToBase64String(TransportKeyOf(joinTicket)),
                 expiresAt = DateTime.UtcNow.AddMinutes(5).ToString("O")
             };
+        }
+
+        public static Guid TicketIdOf(string joinTicket)
+        {
+            var hash = Hash("ticket id:" + joinTicket);
+            Array.Resize(ref hash, 16);
+            return new Guid(hash);
+        }
+
+        public static byte[] TransportKeyOf(string joinTicket)
+        {
+            return Hash("transport key:" + joinTicket);
+        }
+
+        private static byte[] Hash(string value)
+        {
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                return sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(value));
+            }
         }
 
         public static RealtimeJoinAccepted JoinAccepted(bool isReconnect = false)

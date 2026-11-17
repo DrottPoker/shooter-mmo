@@ -13,6 +13,7 @@ internal static class PlacementSchemaMigrations
         new(WorkerQuestCatalogRevisionMigration.Id, WorkerQuestCatalogRevisionMigration.Sql),
         new(SimulationSessionAccountEndMigration.Id, SimulationSessionAccountEndMigration.Sql),
         new(PlacementForeignKeyIndexMigration.Id, PlacementForeignKeyIndexMigration.Sql),
-        new(PlacementRetentionIndexMigration.Id, PlacementRetentionIndexMigration.Sql)
+        new(PlacementRetentionIndexMigration.Id, PlacementRetentionIndexMigration.Sql),
+        new(JoinTicketTransportKeyMigration.Id, JoinTicketTransportKeyMigration.Sql)
     ];
 }

@@ -173,7 +173,7 @@ public sealed class RealtimeGracefulDisconnectTests
         await harness.StartAsync();
         using var relay = new LossyUdpRelay(harness.Port);
         var client = await harness.JoinAsync(character, viaPort: relay.Port);
-        relay.LoseReliableToClient();
+        relay.LoseReliableToClient(character.Ticket);
 
         var leaveSentAt = DateTime.UtcNow;
         client.SendLeave(client.JoinAccepted!.SimulationSessionId);
@@ -198,14 +198,14 @@ public sealed class RealtimeGracefulDisconnectTests
         using var relay = new LossyUdpRelay(harness.Port);
         var lossyClient = await harness.JoinAsync(lossy, viaPort: relay.Port);
         var steadyClient = await harness.JoinAsync(steady);
-        relay.LoseReliableToClient();
+        relay.LoseReliableToClient(lossy.Ticket);
 
         await harness.StopWhilePollingAsync();
         await harness.PollUntilAsync(
             () => lossyClient.IsDisconnected && steadyClient.IsDisconnected,
             "both clients to be disconnected");
 
-        Assert.Null(lossyClient.ServerDisconnect);
+        Assert.False(lossyClient.Has(RealtimeMessageType.ServerDisconnect));
         Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(lossyClient.DisconnectData!, out var lostNotice, out _));
         Assert.Equal("server_shutdown", lostNotice.Code);
         Assert.Equal("server_shutdown", steadyClient.ServerDisconnect!.Code);

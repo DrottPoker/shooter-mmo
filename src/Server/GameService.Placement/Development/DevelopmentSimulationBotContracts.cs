@@ -12,7 +12,8 @@ internal sealed record DevelopmentSimulationBotTicketResponse(
     string ShardId,
     string WorldId,
     SimulationEndpointResponse Endpoint,
-    string JoinTicket,
+    Guid JoinTicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt);
 
 internal sealed record DevelopmentSimulationBotPlacement(

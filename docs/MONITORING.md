@@ -161,7 +161,7 @@ entity, peer, or runtime id as a label.
 
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase, of the parts of the phases that time themselves, and of every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
@@ -182,6 +182,10 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | `simulation_worker.realtime.received.packets`, `.received.bytes` | counter | Received packets and bytes. |
 | `simulation_worker.realtime.sent.packets`, `.sent.bytes` | counter | Sent packets and bytes. |
 | `simulation_worker.realtime.sent.messages`, `.received.messages` | counter | Sent and received messages by kind, labeled `message` with the `RealtimeMessageType` name, such as `SimulationSnapshot` or `MovementInputBatch`, and only kinds with a message. A packet without a readable type, empty or with an invalid header, counts under `0`. |
+| `simulation_worker.realtime.datagrams.sent`, `.datagrams.received` | counter | UDP datagrams that the transport's sealing layer sent and received: every message, merged or alone, and LiteNetLib's own packets, such as acknowledgements and pings. Received datagrams count also when the layer dropped them. |
+| `simulation_worker.realtime.datagrams.sent.bytes`, `.datagrams.received.bytes` | counter | Every byte of those datagrams, the seal included. |
+| `simulation_worker.realtime.datagrams.overhead.bytes` | counter | The bytes that the seal added in both directions: 25 per sealed datagram and 1 per clear one, as [Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. |
+| `simulation_worker.realtime.datagrams.dropped` | counter | Received datagrams that the layer dropped unanswered, labeled `reason`: `malformed`, `unauthenticated` (another key, altered bytes, or no keys for the endpoint), `replayed`, `clear_after_sealing`, and `clear_not_allowed` (a clear packet before the keys on another channel than the join's). A steady value above zero means a broken client or traffic on the path. |
 | `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
 | `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
 | `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
@@ -396,7 +400,9 @@ entries of both processes, and the trace share one id.
   players, synthetic bots, unauthenticated peers, connected peers, entities,
   process CPU normalized to total logical-core capacity, single-core-equivalent
   CPU, working set, packet and payload rates including the snapshot payload
-  rate, snapshot drops, quota rejections, and the sample window. The
+  rate, the received and sent datagrams per second with the sealing overhead in
+  KiB per second and the dropped datagrams per second, snapshot drops, quota
+  rejections, and the sample window. The
   performance line reports, for the interval, averages, approximate p95 and p99
   upper bounds, and maximum durations of every performance histogram, the
   current and interval-maximum completed-operation and corpse-mutation backlogs,
@@ -459,7 +465,10 @@ entries of both processes, and the trace share one id.
   resynchronizations; the loop failures,
   `loopStepFailures` and `loopIsolatedFailures`; the backlogs; the interval's
   snapshot drops, deferrals, quota rejections, packets and bytes in and out,
-  snapshot bytes, joins, spawns, and despawns; `sentByMessage` and
+  snapshot bytes, joins, spawns, and despawns; `datagramsIn`,
+  `datagramBytesIn`, `datagramsOut`, and `datagramBytesOut`, the UDP datagrams
+  of the interval and every byte of them, `sealingOverheadBytes`, the bytes that
+  the seal added in both directions, and `droppedDatagrams`; `sentByMessage` and
   `receivedByMessage`, the messages and bytes of every message kind with a
   message in the interval, keyed by the `RealtimeMessageType` name in type
   order, such as
@@ -630,7 +639,8 @@ to the system, request, or database command that caused it.
   anonymous admin access and no login form, which is only acceptable on a
   developer machine. A shared or staging deployment needs authentication, TLS,
   and network restrictions first.
-- Traces and logs never contain tokens, passwords, or request bodies. Npgsql
+- Traces and logs never contain tokens, passwords, request bodies, or the
+  transport keys, join proofs, and nonces of the realtime transport. Npgsql
   spans contain SQL text with parameter placeholders, not parameter values. The
   connection pool is labeled `postgres` instead of the connection string.
 

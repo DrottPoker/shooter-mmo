@@ -79,6 +79,23 @@ namespace Mmorpg.Client.Tests.PlayMode
             AssertNoFailures("protocol constants", RealtimeProtocolGolden.VerifyConstants());
         }
 
+        // The sealed transport as the player's runtime runs it: the managed ChaCha20-Poly1305
+        // against RFC 8439, HMAC-SHA256 through HKDF against RFC 5869, the pinned key schedule,
+        // proof, and datagram, and both packet layer cores.
+        [Test]
+        public void TheSealedTransportSealsOpensAndProvesAsPinned()
+        {
+            Report("cipher implementation", Mmorpg.GameProtocol.RealtimeAead.DefaultImplementationName);
+            AssertNoFailures(
+                "transport cipher vectors",
+                RealtimeTransportSecurityCases.VerifyAeadVectors(RealtimeTransportSecurityCases.RealtimeManagedOnly));
+            AssertNoFailures("transport key derivation vectors", RealtimeTransportSecurityCases.VerifyHkdfVectors());
+            AssertNoFailures("transport pinned vectors", RealtimeTransportSecurityCases.VerifyPinnedVectors());
+            AssertNoFailures("transport join proof", RealtimeTransportSecurityCases.VerifyJoinProof());
+            AssertNoFailures("transport replay window", RealtimeTransportSecurityCases.VerifyReplayWindow());
+            AssertNoFailures("transport layers", RealtimeTransportSecurityCases.VerifyLayers());
+        }
+
         // The value lands in the result file, so a run shows what the runtime computed.
         private static void Report(string name, string value)
         {

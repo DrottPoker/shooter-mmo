@@ -173,12 +173,15 @@ namespace Mmorpg.Client.Api
     }
 
     [Serializable]
+    // A join ticket: its public id, which the join request carries over UDP, and the transport
+    // key in base64, which never leaves this HTTPS response.
     public sealed class JoinShardResponse
     {
         public ShardResponse shard;
         public SimulationEndpointResponse endpoint;
         public string characterId;
-        public string joinTicket;
+        public string joinTicketId;
+        public string transportKey;
         public string expiresAt;
         public bool isReconnect;
     }

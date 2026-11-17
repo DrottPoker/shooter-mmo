@@ -1482,7 +1482,13 @@ seconds, and adds a `workerPerformance` section to the report:
 - `counters`: traffic, drops, deferrals, quota rejections, ticks over budget
   and those still over it without their garbage collection pauses,
   resynchronizations, allocation, and GC collections, each as its total and its
-  largest interval.
+  largest interval. The traffic holds the messages, `packetsIn` and
+  `packetsOut` with their bytes, and the UDP datagrams, `datagramsIn`,
+  `datagramBytesIn`, `datagramsOut`, and `datagramBytesOut`, with
+  `sealingOverheadBytes`, the bytes that the seal of
+  [Transport Security](REALTIME_PROTOCOL.md#transport-security) added in both
+  directions, and `droppedDatagrams`; the datagram counters are 0 for a file of
+  a worker that does not write them.
 - `sentByMessage` and `receivedByMessage`: every message kind that the worker
   sent or received in the steady intervals, by its `RealtimeMessageType` name,
   the most bytes first, with its messages and bytes, both per second, and both
@@ -1516,9 +1522,10 @@ The worker's traffic counters count messages: `packetsIn`, `packetsOut`, and
 the other names with "packets" in the worker's file, its log lines, and its
 metrics count the messages that the worker received or handed to the
 transport, one per realtime message. LiteNetLib may merge several of them into
-one UDP datagram, so they are not datagrams on the wire; under a network
-profile, the [network proxy](LOCAL_DEVELOPMENT.md#what-the-proxy-counts)
-counts those.
+one UDP datagram, and sends acknowledgements and pings of its own, so they are
+not datagrams on the wire. The datagram counters count those, as the worker's
+sealing layer sees every one; under a network profile, the
+[network proxy](LOCAL_DEVELOPMENT.md#what-the-proxy-counts) counts them too.
 
 ### Remote Update Rate
 
@@ -1658,8 +1665,12 @@ or none, the verdict entries, the result, and
 update rate average and fifth percentile, the p95 of every gameplay operation
 kind, the worst steady tick p99, the worker's average single-core CPU and
 highest working set from its own intervals, the generator's average CPU, the
-payload bytes per bot and second that the worker received and sent, the
-worker's loop failures over the run, `workerLoopStepFailures` and
+payload bytes per bot and second that the worker received and sent, the UDP
+datagrams per second that the worker received and sent,
+`datagramsInPerSecond` and `datagramsOutPerSecond`, and the bytes per bot and
+second that sealing added in both directions,
+`sealingOverheadBytesPerBotPerSecond`, all three absent for a worker that does
+not count datagrams, the worker's loop failures over the run, `workerLoopStepFailures` and
 `workerLoopIsolatedFailures`, the average share of the loop thread's busy time,
 `workerLoopBusyAveragePercent`, and its garbage collection pauses,
 `workerGcPauseMsPerSecond`, both absent for a worker that does not write them,

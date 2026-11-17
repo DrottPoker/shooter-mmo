@@ -384,6 +384,7 @@ public sealed class LingeringBodyReconnectOrderTests
         {
             SessionLeaseDurationMilliseconds = 150_000,
             Appearance = CharacterStateTestData.Appearance,
+            TransportKey = RealtimeTestTickets.TransportKeyOf(ReconnectTicket),
             SavedState = new SimulationSavedCharacterState(
                 RealtimeServerHarness.WorldId,
                 fixture.Core.StaticCollisionWorld.Revision,

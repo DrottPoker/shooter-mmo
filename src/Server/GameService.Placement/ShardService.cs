@@ -1,4 +1,5 @@
 using Dapper;
+using Mmorpg.GameProtocol;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Placement.Contracts;
@@ -123,8 +124,8 @@ internal sealed class ShardService(
 
         var normalizedShardId = shardId.Trim();
         var ticketLifetimeSeconds = options.JoinTicketLifetimeSeconds;
-        var ticket = TokenGenerator.CreateToken();
-        var ticketHash = TokenGenerator.HashToken(ticket);
+        var ticketId = Guid.NewGuid();
+        var transportKey = RealtimeTransportKeys.CreateTransportKey();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -193,7 +194,8 @@ internal sealed class ShardService(
         await connection.ExecuteAsync(new CommandDefinition(
             """
             update simulation_join_tickets
-            set consumed_at = now()
+            set consumed_at = now(),
+                transport_key = null
             where account_id = @AccountId
               and consumed_at is null;
             """,
@@ -260,7 +262,7 @@ internal sealed class ShardService(
         const string insertTicketSql = """
             insert into simulation_join_tickets (
                 id,
-                ticket_hash,
+                transport_key,
                 account_id,
                 account_session_id,
                 character_id,
@@ -271,7 +273,7 @@ internal sealed class ShardService(
                 simulation_session_id)
             values (
                 @Id,
-                @TicketHash,
+                @TransportKey,
                 @AccountId,
                 @AccountSessionId,
                 @CharacterId,
@@ -287,8 +289,8 @@ internal sealed class ShardService(
             insertTicketSql,
             new
             {
-                Id = Guid.NewGuid(),
-                TicketHash = ticketHash,
+                Id = ticketId,
+                TransportKey = transportKey,
                 AccountId = account.AccountId,
                 AccountSessionId = account.SessionId,
                 request.CharacterId,
@@ -307,7 +309,8 @@ internal sealed class ShardService(
             placement.ToShardResponse(),
             placement.ToEndpointResponse(),
             request.CharacterId,
-            ticket,
+            ticketId,
+            transportKey,
             expiresAt,
             activeSession is not null));
     }
@@ -322,7 +325,6 @@ internal sealed class ShardService(
             return validationError;
         }
 
-        var ticketHash = TokenGenerator.HashToken(request.Ticket!.Trim());
         var sessionToken = TokenGenerator.CreateToken();
         var sessionTokenHash = TokenGenerator.HashToken(sessionToken);
         var leaseLifetimeSeconds = options.SessionLeaseLifetimeSeconds;
@@ -330,12 +332,14 @@ internal sealed class ShardService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // The proof comes first, before any lock or change: whoever only saw the ticket id over
+        // UDP can neither burn the ticket nor use it, and learns no more than from an unknown id.
         var ticketOwner = await FindTicketOwnerAsync(
             connection,
             transaction,
-            ticketHash,
+            request.TicketId,
             cancellationToken);
-        if (ticketOwner is null)
+        if (ticketOwner is null || !ProvesTransportKey(request, ticketOwner))
         {
             await transaction.RollbackAsync(cancellationToken);
             return InvalidTicket();
@@ -354,7 +358,7 @@ internal sealed class ShardService(
         var joinTicket = await GetValidJoinTicketAsync(
             connection,
             transaction,
-            ticketHash,
+            request.TicketId,
             cancellationToken);
         if (joinTicket is null)
         {
@@ -455,7 +459,8 @@ internal sealed class ShardService(
             """
             update simulation_join_tickets
             set consumed_at = now(),
-                simulation_session_id = @SimulationSessionId
+                simulation_session_id = @SimulationSessionId,
+                transport_key = null
             where id = @TicketId
               and consumed_at is null;
             """,
@@ -494,8 +499,38 @@ internal sealed class ShardService(
                 SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
                 Equipment = carryState.Equipment,
                 Appearance = appearance is null ? null : SimulationAppearance.From(appearance),
-                SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState)
+                SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState),
+                TransportKey = joinTicket.TransportKey
             });
+    }
+
+    // Whether the request's proof is the one that the ticket's transport key makes, compared in
+    // constant time. A ticket without a key, as one issued before keys existed, proves nothing.
+    private static bool ProvesTransportKey(
+        ConsumeSimulationJoinTicketRequest request,
+        SimulationTicketOwnerRow ticket)
+    {
+        if (ticket.TransportKey is not { Length: RealtimeTransportKeys.TransportKeySize })
+        {
+            return false;
+        }
+
+        var proofKey = RealtimeTransportKeys.DeriveProofKey(ticket.TransportKey);
+        try
+        {
+            return RealtimeJoinProof.Verify(
+                proofKey,
+                (ushort)request.ProtocolVersion,
+                request.TicketId,
+                ticket.ShardId,
+                request.ClientNonce,
+                request.Proof);
+        }
+        finally
+        {
+            Array.Clear(proofKey);
+            Array.Clear(ticket.TransportKey);
+        }
     }
 
     // Development bot reservations exist only in GameService memory, so they are joined
@@ -728,17 +763,19 @@ internal sealed class ShardService(
     private static async Task<SimulationTicketOwnerRow?> FindTicketOwnerAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        string ticketHash,
+        Guid ticketId,
         CancellationToken cancellationToken)
     {
         return await connection.QuerySingleOrDefaultAsync<SimulationTicketOwnerRow>(new CommandDefinition(
             """
             select account_id as "AccountId",
-                   character_id as "CharacterId"
+                   character_id as "CharacterId",
+                   shard_id as "ShardId",
+                   transport_key as "TransportKey"
             from simulation_join_tickets
-            where ticket_hash = @TicketHash;
+            where id = @TicketId;
             """,
-            new { TicketHash = ticketHash },
+            new { TicketId = ticketId },
             transaction,
             cancellationToken: cancellationToken));
     }
@@ -746,7 +783,7 @@ internal sealed class ShardService(
     private static async Task<SimulationJoinTicketRow?> GetValidJoinTicketAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        string ticketHash,
+        Guid ticketId,
         CancellationToken cancellationToken)
     {
         var sql = $"""
@@ -759,12 +796,14 @@ internal sealed class ShardService(
                    shard.world_id as "WorldId",
                    ticket.simulation_worker_id as "WorkerId",
                    ticket.worker_runtime_id as "WorkerRuntimeId",
-                   ticket.simulation_session_id as "TargetSimulationSessionId"
+                   ticket.simulation_session_id as "TargetSimulationSessionId",
+                   ticket.transport_key as "TransportKey"
             from simulation_join_tickets ticket
             join {CharactersSql.ActiveCharacters} character
               on character.id = ticket.character_id
             join shards shard on shard.id = ticket.shard_id
-            where ticket.ticket_hash = @TicketHash
+            where ticket.id = @TicketId
+              and ticket.transport_key is not null
               and ticket.consumed_at is null
               and ticket.expires_at > clock_timestamp()
               and ticket.simulation_worker_id is not null
@@ -776,7 +815,7 @@ internal sealed class ShardService(
         return await connection.QuerySingleOrDefaultAsync<SimulationJoinTicketRow>(
             new CommandDefinition(
                 sql,
-                new { TicketHash = ticketHash },
+                new { TicketId = ticketId },
                 transaction,
                 cancellationToken: cancellationToken));
     }
@@ -928,11 +967,14 @@ internal sealed class ShardService(
     private static ServiceResult<ConsumedSimulationJoinTicketResponse>?
         ValidateConsumeRequest(ConsumeSimulationJoinTicketRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Ticket))
+        if (request.TicketId == Guid.Empty
+            || request.ClientNonce is not { Length: RealtimeJoinProof.NonceSize }
+            || request.Proof is not { Length: RealtimeJoinProof.ProofSize }
+            || request.ProtocolVersion is < 1 or > ushort.MaxValue)
         {
             return ServiceResult<ConsumedSimulationJoinTicketResponse>.BadRequest(
                 "invalid_ticket",
-                "Join ticket is required.");
+                "A join ticket id, a client nonce, a proof, and the protocol version are required.");
         }
 
         if (!Identifiers.IsServiceIdentifier(request.WorkerId)
@@ -964,9 +1006,14 @@ internal sealed class ShardService(
         string WorldId,
         string WorkerId,
         string WorkerRuntimeId,
-        Guid? TargetSimulationSessionId);
+        Guid? TargetSimulationSessionId,
+        byte[] TransportKey);
 
-    private sealed record SimulationTicketOwnerRow(Guid AccountId, Guid CharacterId);
+    private sealed record SimulationTicketOwnerRow(
+        Guid AccountId,
+        Guid CharacterId,
+        string ShardId,
+        byte[]? TransportKey);
 
     private sealed record ActiveSimulationSessionRow(
         Guid Id,

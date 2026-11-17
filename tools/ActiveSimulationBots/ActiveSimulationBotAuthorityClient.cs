@@ -87,7 +87,8 @@ public sealed class ActiveSimulationBotAuthorityClient(
             || ticket.CharacterId == Guid.Empty
             || string.IsNullOrWhiteSpace(ticket.CharacterName)
             || string.IsNullOrWhiteSpace(ticket.WorldId)
-            || string.IsNullOrWhiteSpace(ticket.JoinTicket)
+            || ticket.JoinTicketId == Guid.Empty
+            || ticket.TransportKey is not { Length: RealtimeTransportKeys.TransportKeySize }
             || endpoint is null
             || string.IsNullOrWhiteSpace(endpoint.Host)
             || endpoint.UdpPort is < 1 or > ushort.MaxValue)
@@ -151,7 +152,8 @@ public sealed record ActiveSimulationBotTicket(
     string ShardId,
     string WorldId,
     ActiveSimulationBotEndpoint Endpoint,
-    string JoinTicket,
+    Guid JoinTicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt);
 
 public sealed record ActiveSimulationBotEndpoint(

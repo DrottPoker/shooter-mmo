@@ -34,7 +34,8 @@ internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSession
 
         const string revokeTicketsSql = """
             update simulation_join_tickets
-            set consumed_at = now()
+            set consumed_at = now(),
+                transport_key = null
             where account_id = @AccountId
               and consumed_at is null;
             """;
@@ -68,7 +69,8 @@ internal sealed class SimulationAccountSessionLifecycleHandler : IAccountSession
 
         const string revokeTicketsSql = """
             update simulation_join_tickets
-            set consumed_at = now()
+            set consumed_at = now(),
+                transport_key = null
             where account_session_id = @SessionId and consumed_at is null;
             """;
 

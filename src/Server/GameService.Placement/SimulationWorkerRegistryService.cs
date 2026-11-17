@@ -754,7 +754,8 @@ internal sealed class SimulationWorkerRegistryService(
             await connection.ExecuteAsync(new CommandDefinition(
                 """
                 update simulation_join_tickets
-                set consumed_at = now()
+                set consumed_at = now(),
+                    transport_key = null
                 where simulation_worker_id = @WorkerId
                   and worker_runtime_id = @RuntimeId
                   and consumed_at is null;
@@ -810,7 +811,8 @@ internal sealed class SimulationWorkerRegistryService(
         await connection.ExecuteAsync(new CommandDefinition(
             """
             update simulation_join_tickets
-            set consumed_at = now()
+            set consumed_at = now(),
+                transport_key = null
             where simulation_worker_id = @WorkerId
               and worker_runtime_id is distinct from @CurrentRuntimeId
               and consumed_at is null;

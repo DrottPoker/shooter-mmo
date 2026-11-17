@@ -151,7 +151,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     collisionRevision = collisionRevision
                 },
                 characterId = CharacterId,
-                joinTicket = "ticket-content",
+                joinTicketId = Guid.NewGuid().ToString("D"),
+                transportKey = Convert.ToBase64String(RealtimeTransportKeys.CreateTransportKey()),
                 expiresAt = DateTime.UtcNow.AddMinutes(5).ToString("O")
             };
         }

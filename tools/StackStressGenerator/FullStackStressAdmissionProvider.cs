@@ -252,7 +252,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 login.AccountId,
                 character.Id,
                 character.Name,
-                join.JoinTicket,
+                join.JoinTicketId,
+                join.TransportKey,
                 join.ExpiresAt,
                 join.Endpoint.Host,
                 join.Endpoint.UdpPort,
@@ -465,7 +466,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 admitted.AccountId,
                 admitted.Character.Id,
                 admitted.Character.Name,
-                join.JoinTicket,
+                join.JoinTicketId,
+                join.TransportKey,
                 join.ExpiresAt,
                 join.Endpoint.Host,
                 join.Endpoint.UdpPort,
@@ -685,7 +687,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
             || string.IsNullOrWhiteSpace(join.Endpoint.RuntimeId)
             || string.IsNullOrWhiteSpace(join.Endpoint.Host)
             || join.Endpoint.UdpPort is <= 0 or > ushort.MaxValue
-            || string.IsNullOrWhiteSpace(join.JoinTicket))
+            || join.JoinTicketId == Guid.Empty
+            || join.TransportKey is not { Length: RealtimeTransportKeys.TransportKeySize })
         {
             throw new FullStackApiException(
                 "invalid_join_response",
@@ -887,7 +890,8 @@ public sealed class FullStackStressAdmissionProvider : IStressAdmissionProvider
                 account.AccountId,
                 account.Character.Id,
                 account.Character.Name,
-                join.JoinTicket,
+                join.JoinTicketId,
+                join.TransportKey,
                 join.ExpiresAt,
                 join.Endpoint.Host,
                 join.Endpoint.UdpPort,

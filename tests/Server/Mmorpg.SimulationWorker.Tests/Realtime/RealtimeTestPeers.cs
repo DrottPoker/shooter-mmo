@@ -19,12 +19,27 @@ internal sealed record RecordedPeerSend(byte[] Data, byte Channel, DeliveryMetho
     }
 }
 
-// An in-memory peer that records every packet the realtime loop sends to it.
-internal sealed class RecordingPeerConnection(int id) : IRealtimePeerConnection
+// An in-memory peer that records every packet the realtime loop sends to it. A peer that the
+// test joins directly is sealed, as every joined peer is; one that joins through the join route
+// is sealed when the join installs its keys.
+internal sealed class RecordingPeerConnection(int id, bool isSealed = false) : IRealtimePeerConnection
 {
     private readonly List<RealtimePendingDisconnect> unacknowledgedReasons = [];
 
     public int Id { get; } = id;
+
+    public bool IsSealed { get; private set; } = isSealed;
+
+    // How often a join installed the peer's keys.
+    public int SealCount { get; private set; }
+
+    public void Seal(RealtimeTransportKeys keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        Assert.Equal(RealtimeAead.KeySize, keys.ClientToWorkerKey.Length);
+        IsSealed = true;
+        SealCount++;
+    }
 
     public List<RecordedPeerSend> Sent { get; } = [];
 

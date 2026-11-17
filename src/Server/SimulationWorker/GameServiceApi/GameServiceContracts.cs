@@ -3,8 +3,13 @@ using System.Text.Json.Serialization;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
+// The ticket id, the client's nonce, and its proof from the join request, with the protocol
+// version of the request. GameService checks the proof before it consumes the ticket.
 public sealed record ConsumeSimulationJoinTicketRequest(
-    string Ticket,
+    Guid TicketId,
+    byte[] ClientNonce,
+    byte[] Proof,
+    int ProtocolVersion,
     string WorkerId,
     string RuntimeId,
     string ShardId);
@@ -39,6 +44,10 @@ public sealed record ConsumedSimulationJoinTicketResponse(
 
     // The character's saved place and vitals, or null when it has none, as a development bot.
     public SimulationSavedCharacterState? SavedState { get; init; }
+
+    // The ticket's transport key, from which the worker derives the keys of the peer's sealed
+    // datagrams. The join zeroes it once it derived them.
+    public byte[] TransportKey { get; init; } = [];
 }
 
 // A character's saved place and vitals: the World and its collision revision when the state was

@@ -50,7 +50,8 @@ internal static class RealtimeServerComposition
                 admissionGuard,
                 networkMetrics),
             loopGuard,
-            logger);
+            logger,
+            networkMetrics);
         var core = CreateCore(host, transport, admissionGuard, networkMetrics, performanceMetrics, clock, loopGuard, availability, logger);
 
         // The features, each after the features it takes.

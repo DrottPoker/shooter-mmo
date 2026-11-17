@@ -104,6 +104,8 @@ internal sealed class RealtimeServerHarnessOptions
     public TimeSpan? GracefulDisconnectMaximum { get; init; }
 }
 
+// A character with the label of its join ticket, from which RealtimeTestTickets derives the
+// ticket's id and keys.
 internal sealed record RealtimeTestCharacter(string Ticket, string Name)
 {
     public Guid AccountId { get; init; } = Guid.NewGuid();
@@ -673,8 +675,7 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
 {
     private readonly object sync = new();
     private readonly List<string> calls = [];
-    private readonly Dictionary<string, RealtimeTestCharacter> charactersByTicket =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, RealtimeTestCharacter> charactersByTicket = [];
     private readonly Dictionary<Guid, RealtimeTestCharacter> charactersBySession = [];
     private int consumeCount;
     private int releaseCount;
@@ -1029,17 +1030,19 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
     {
         lock (sync)
         {
-            charactersByTicket[character.Ticket] = character;
+            charactersByTicket[RealtimeTestTickets.IdOf(character.Ticket)] = character;
             charactersBySession[character.SimulationSessionId] = character;
         }
     }
 
+    // Consumes the ticket that the request names and proves, as GameService does, and hands the
+    // worker its transport key.
     public HttpResponseMessage DefaultConsume(ConsumeSimulationJoinTicketRequest request)
     {
         RealtimeTestCharacter? character;
         lock (sync)
         {
-            charactersByTicket.TryGetValue(request.Ticket, out character);
+            charactersByTicket.TryGetValue(request.TicketId, out character);
         }
 
         if (character is null)
@@ -1048,6 +1051,14 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                 HttpStatusCode.NotFound,
                 "join_ticket_not_found",
                 "The join ticket is not active.");
+        }
+
+        if (!RealtimeTestTickets.Proves(request, character.Ticket))
+        {
+            return Problem(
+                HttpStatusCode.Unauthorized,
+                "invalid_ticket",
+                "Join ticket is invalid or expired.");
         }
 
         return Json(new ConsumedSimulationJoinTicketResponse(
@@ -1070,7 +1081,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
             IsSyntheticBot = character.IsSyntheticBot,
             Equipment = character.Equipment,
             Appearance = character.IsSyntheticBot ? null : character.Appearance,
-            SavedState = character.SavedState
+            SavedState = character.SavedState,
+            TransportKey = RealtimeTestTickets.TransportKeyOf(character.Ticket)
         });
     }
 

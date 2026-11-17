@@ -75,14 +75,14 @@ internal sealed class RealtimeSessionHandler(
             return;
         }
 
-        if (!RealtimeProtocol.TryDecodeJoinRequest(packet, out var joinTicket, out var error))
+        if (!RealtimeProtocol.TryDecodeJoinRequest(packet, out var joinRequest, out var error))
         {
             sender.RejectProtocol(peer, context, "invalid_join_request", error);
             return;
         }
 
         context.JoinStarted = true;
-        operationTracker.Track(sessionOperations.RunJoinAsync(this, context, joinTicket));
+        operationTracker.Track(sessionOperations.RunJoinAsync(this, context, joinRequest));
     }
 
     public void HandleLeaveRequest(in RealtimeInboundMessage message)
@@ -167,11 +167,16 @@ internal sealed class RealtimeSessionHandler(
     // the session leased, so it is released before the peer is disconnected.
     public void OnCompletionFailed(RealtimeOperationResult operation)
     {
-        if (operation is JoinCompleted { Result.Succeeded: true } joinCompleted
-            && joinCompleted.Context.Session is null
-            && joinCompleted.Result.Value is not null)
+        if (operation is JoinCompleted joinCompleted)
         {
-            EndUnboundJoin(joinCompleted.Result.Value);
+            joinCompleted.Result.TransportKeys?.Dispose();
+        }
+
+        if (operation is JoinCompleted { Result.Succeeded: true } unbound
+            && unbound.Context.Session is null
+            && unbound.Result.Value is not null)
+        {
+            EndUnboundJoin(unbound.Result.Value);
         }
     }
 
@@ -179,6 +184,7 @@ internal sealed class RealtimeSessionHandler(
     {
         if (!peers.TryGetCurrentPeer(completed.Context, out var peer))
         {
+            completed.Result.TransportKeys?.Dispose();
             if (completed.Result.Succeeded
                 && completed.Result.Value is not null)
             {
@@ -186,6 +192,17 @@ internal sealed class RealtimeSessionHandler(
             }
 
             return;
+        }
+
+        // Sealing starts the moment GameService consumed the ticket: whatever the peer gets from
+        // now on is sealed, the acceptance or a refusal. A join that waits for its collision
+        // chunks comes back here with its keys installed already.
+        if (completed.Result.Succeeded && !peer.IsSealed)
+        {
+            var keys = completed.Result.TransportKeys
+                ?? throw new InvalidOperationException("A successful join carries the keys of its sealed datagrams.");
+            peer.Seal(keys);
+            keys.Dispose();
         }
 
         if (!completed.Result.Succeeded)

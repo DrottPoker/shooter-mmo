@@ -13,12 +13,15 @@ public enum SimulationBotClientState
     Failed
 }
 
+// A bot and its join ticket: the public ticket id and the transport key that came with it, from
+// which the bot derives its proof and the keys of its sealed datagrams.
 public sealed record SimulationBotIdentity(
     int BotIndex,
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
-    string Ticket,
+    Guid TicketId,
+    byte[] TransportKey,
     string ShardId,
     string WorldId);
 

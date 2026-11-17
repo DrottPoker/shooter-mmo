@@ -190,7 +190,7 @@ public sealed class CharacterAppearanceFlowIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, LocalWorkerId, LocalRuntimeId, LocalShardId),
+            JoinTicketProofs.Consume(join.Value!, LocalWorkerId, LocalRuntimeId, LocalShardId),
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;

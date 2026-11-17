@@ -331,8 +331,8 @@ public sealed class SimulationItemMutationIntegrationTests
             CancellationToken.None);
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         var reconnect = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                reconnectTicket.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                reconnectTicket.Value!,
                 WorkerId,
                 RuntimeId,
                 ShardId),
@@ -822,8 +822,8 @@ public sealed class SimulationItemMutationIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 RuntimeId,
                 ShardId),

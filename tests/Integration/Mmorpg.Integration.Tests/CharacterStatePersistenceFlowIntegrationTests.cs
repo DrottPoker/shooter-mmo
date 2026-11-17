@@ -95,7 +95,7 @@ public sealed class CharacterStatePersistenceFlowIntegrationTests
             cancellationToken);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await client.ConsumeJoinTicketAsync(
-            join.Value!.JoinTicket,
+            JoinTicketProofs.JoinRequest(join.Value!),
             WorkerId,
             WorkerRuntimeId,
             ShardId,

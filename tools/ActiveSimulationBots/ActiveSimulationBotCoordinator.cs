@@ -144,7 +144,8 @@ public sealed class ActiveSimulationBotCoordinator(
                     ticket.AccountId,
                     ticket.CharacterId,
                     ticket.CharacterName,
-                    ticket.JoinTicket,
+                    ticket.JoinTicketId,
+                    ticket.TransportKey,
                     ticket.ShardId,
                     ticket.WorldId),
                 new ActiveSimulationBotInputSource(

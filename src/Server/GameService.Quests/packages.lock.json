@@ -38,6 +38,9 @@
         "resolved": "10.0.12",
         "contentHash": "jDix4bBMYnpZdSPcnY+KDV6ik3SRMzpMKby/bZl/XUwIiflwRNAFZ0oOl61R/pSaveIJ8t1gs2BUlrGsPs/bcg=="
       },
+      "mmorpg.gameprotocol": {
+        "type": "Project"
+      },
       "mmorpg.gameservice.accounts": {
         "type": "Project",
         "dependencies": {
@@ -73,6 +76,7 @@
         "type": "Project",
         "dependencies": {
           "Dapper": "[2.1.89, )",
+          "Mmorpg.GameProtocol": "[1.0.0, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",

@@ -43,8 +43,12 @@ public sealed record StressWorkerOfflineResponse(
     string RuntimeId,
     DateTime OfflineAt);
 
+// Matches GameService: the ticket id, the client's nonce, and its proof from the join request.
 public sealed record StressConsumeTicketRequest(
-    string Ticket,
+    Guid TicketId,
+    byte[]? ClientNonce,
+    byte[]? Proof,
+    int ProtocolVersion,
     string WorkerId,
     string RuntimeId,
     string ShardId);
@@ -72,6 +76,10 @@ public sealed record StressConsumedTicketResponse(
 
     // Matches GameService: stress bots join without equipment.
     public IReadOnlyList<object> Equipment { get; init; } = [];
+
+    // Matches GameService: the ticket's transport key, from which the worker derives the keys of
+    // the bot's sealed datagrams.
+    public byte[] TransportKey { get; init; } = [];
 }
 
 public sealed record StressSessionCredentialRequest(
@@ -130,15 +138,18 @@ public sealed record StressIssuedTicket(
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
-    string Ticket,
+    Guid TicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt);
 
+// A bot's admission: its character and the join ticket's public id and transport key.
 public sealed record StressBotAdmission(
     int BotIndex,
     Guid AccountId,
     Guid CharacterId,
     string CharacterName,
-    string Ticket,
+    Guid TicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt,
     string WorkerHost,
     int WorkerUdpPort,

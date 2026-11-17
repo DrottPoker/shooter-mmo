@@ -14,6 +14,12 @@ public sealed class RealtimeMetricNamesTests
     private static readonly string[] ExpectedRealtimeInstruments =
     [
         "simulation_worker.realtime.connections.rejected",
+        "simulation_worker.realtime.datagrams.dropped",
+        "simulation_worker.realtime.datagrams.overhead.bytes",
+        "simulation_worker.realtime.datagrams.received",
+        "simulation_worker.realtime.datagrams.received.bytes",
+        "simulation_worker.realtime.datagrams.sent",
+        "simulation_worker.realtime.datagrams.sent.bytes",
         "simulation_worker.realtime.despawn.packets",
         "simulation_worker.realtime.entities",
         "simulation_worker.realtime.joins.accepted",

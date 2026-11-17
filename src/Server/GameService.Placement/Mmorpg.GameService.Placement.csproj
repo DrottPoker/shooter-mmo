@@ -8,6 +8,8 @@
     <ProjectReference Include="..\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
     <ProjectReference Include="..\Common\Mmorpg.Server.Common.csproj" />
     <ProjectReference Include="..\..\Shared\DotNet\WorldData\Mmorpg.WorldData.csproj" />
+    <!-- The join proof and the key schedule of the sealed realtime transport. -->
+    <ProjectReference Include="..\..\Shared\DotNet\GameProtocol\Mmorpg.GameProtocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
