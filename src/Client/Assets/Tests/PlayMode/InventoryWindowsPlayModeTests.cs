@@ -248,6 +248,57 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(windows.IsInventoryOpen, Is.True);
         }
 
+        // A window's title takes the room its detail and close button leave: a long name, such as
+        // a corpse's beside the time it expires, shrinks and is cut short instead of being drawn
+        // over them, and the detail shows whole.
+        [UnityTest]
+        public IEnumerator AWindowTitleNeverDrawsOverItsDetailOrCloseButton()
+        {
+            using var probe = new WindowProbe();
+            yield return probe.Load("Title Probe");
+            var windows = probe.Windows;
+            windows.OpenStorage(InventoryContextKind.Bank, InventoryStorageSource.Development);
+            yield return null;
+            var storage = windows.GetComponentsInChildren<UiWindow>(true)
+                .Single(window => window.name == InventoryWindows.StorageWindowName);
+            foreach (var (title, detail) in new[]
+                     {
+                         ("Feral Wolf", "Expires 14:32"),
+                         ("Mira the Quartermaster", "12 / 40"),
+                         ("Recovery Storage", string.Empty),
+                         ("An Exceedingly Long Character Name", "Expires 23:59")
+                     })
+            {
+                storage.SetTitle(title);
+                storage.SetDetail(detail);
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(storage.Rect);
+                storage.Title.ForceMeshUpdate();
+                storage.Detail.ForceMeshUpdate();
+                var titleRect = WorldRect(storage.Title.transform);
+                var scale = titleRect.width / storage.Title.rectTransform.rect.width;
+                var drawnRight = titleRect.xMin + storage.Title.GetRenderedValues(true).x * scale;
+                var close = WorldRect(storage.transform.Find("Header/Close"));
+                var next = detail.Length > 0 ? WorldRect(storage.Detail.transform).xMin : close.xMin;
+                Assert.That(drawnRight, Is.LessThan(next), title + " ends before what stands beside it");
+                Assert.That(titleRect.xMax, Is.LessThanOrEqualTo(close.xMin + 0.5f), title);
+                if (detail.Length > 0)
+                {
+                    Assert.That(
+                        storage.Detail.rectTransform.rect.width,
+                        Is.GreaterThanOrEqualTo(storage.Detail.preferredWidth - 0.5f),
+                        detail + " shows whole");
+                }
+            }
+
+            storage.SetTitle("Feral Wolf");
+            storage.SetDetail("Expires 14:32");
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(storage.Rect);
+            storage.Title.ForceMeshUpdate();
+            Assert.That(storage.Title.isTextTruncated, Is.False, "A creature's name fits beside the time.");
+        }
+
         // A right-click on an equipped item runs its move: without a simulation session the
         // controller refuses it, and the game message says so. The right button never drags.
         [UnityTest]

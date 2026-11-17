@@ -29,13 +29,6 @@ namespace Mmorpg.Client.Ui
         public const string TargetFrameName = "CombatTargetFrame";
         public const string DeathOverlayName = "CombatDeathOverlay";
 
-        // The HUD draws below the interaction panel and the inventory.
-        public const int CanvasSortingOrder = 20;
-
-        // The death overlay draws above every panel, so an open inventory or corpse view
-        // never hides a death and its countdown.
-        public const int DeathOverlaySortingOrder = InventoryWindows.CanvasSortingOrder + 50;
-
         private const int MaximumHealthBars = 32;
         private const int MaximumDamageNumbers = 24;
         private const float HealthBarRange = 60f;
@@ -492,18 +485,10 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            var canvasObject = new GameObject(
-                "TemporaryCombatCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            // The HUD draws below the panels and windows; its death overlay draws above every
+            // window and dialog, so an open inventory or corpse view never hides a death and its
+            // countdown.
+            var canvasObject = UiCanvas.Create(transform, "TemporaryCombatCanvas", UiLayer.Hud, false).gameObject;
 
             worldLayer = TemporaryUiKit.CreateUiObject("CombatWorldLayer", canvasObject.transform)
                 .GetComponent<RectTransform>();
@@ -555,9 +540,7 @@ namespace Mmorpg.Client.Ui
         private void BuildDeathOverlay(Transform parent)
         {
             deathOverlay = TemporaryUiKit.CreateUiObject(DeathOverlayName, parent);
-            var overlayCanvas = deathOverlay.AddComponent<Canvas>();
-            overlayCanvas.overrideSorting = true;
-            overlayCanvas.sortingOrder = DeathOverlaySortingOrder;
+            UiCanvas.AddNested(deathOverlay, UiLayers.SortingOrder(UiLayer.DeathOverlay), false);
             TemporaryUiKit.Stretch(
                 deathOverlay.GetComponent<RectTransform>(),
                 Vector2.zero,

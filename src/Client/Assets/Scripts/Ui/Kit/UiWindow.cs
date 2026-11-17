@@ -8,17 +8,24 @@ namespace Mmorpg.Client.Ui
     // A themed window: a framed panel with a header (icon, title, detail, close button), a line,
     // a body that grows with its content up to a maximum and scrolls beyond it, and an optional
     // footer. It sits at a fixed place on the screen; its height follows its content. The frame
-    // takes every click and scroll over the window, so nothing reaches the world below it.
+    // takes every click and scroll over the window, so nothing reaches the world below it. On the
+    // window manager's stack it has a canvas of its own, which the manager sorts, and Escape
+    // closes it the way its close button does.
     [DisallowMultipleComponent]
     public sealed class UiWindow : MonoBehaviour
     {
+        // The smallest share of its size that a long title shrinks to before it is cut short.
+        public const float TitleFitFloor = 0.7f;
+
         private static readonly Color FallbackPanelColor = new Color(0.06f, 0.09f, 0.10f, 0.96f);
 
         private UiTheme theme;
         private RectTransform scroll;
         private LayoutElement scrollLayout;
         private float maximumBodyHeight = float.MaxValue;
+        private UiStackEntry entry;
 
+        // Raised by the close button and by an Escape that closes the window; the owner closes it.
         public event Action CloseRequested;
 
         public RectTransform Rect { get; private set; }
@@ -64,12 +71,39 @@ namespace Mmorpg.Client.Ui
             Rect.anchoredPosition = offset;
         }
 
+        // Puts the window on the manager's stack in a layer, on a canvas of its own.
+        public void Attach(UiWindowManager manager, UiLayer layer)
+        {
+            if (manager == null)
+            {
+                throw new ArgumentNullException(nameof(manager));
+            }
+
+            var canvas = UiCanvas.AddNested(gameObject, UiLayers.StackedOrder(layer, 0), true);
+            entry = manager.Register(name, layer, canvas, () => CloseRequested?.Invoke());
+            entry.SetOpen(IsOpen);
+        }
+
         public void SetOpen(bool open)
         {
             if (gameObject.activeSelf != open)
             {
                 gameObject.SetActive(open);
             }
+
+            entry?.SetOpen(open);
+        }
+
+        // Brings the open window to the top of its layer, as a click on it does.
+        public void Focus()
+        {
+            entry?.Focus();
+        }
+
+        private void OnDestroy()
+        {
+            entry?.Remove();
+            entry = null;
         }
 
         public void SetTitle(string value)
@@ -148,8 +182,16 @@ namespace Mmorpg.Client.Ui
             Icon = UiFactory.Image(header.transform, "Icon", icon, theme.TitleColor);
             UiFactory.Layout(Icon, theme.HeaderHeight * 0.55f, theme.HeaderHeight * 0.55f, 0f);
             Icon.gameObject.SetActive(icon != null);
+            // The title takes only the room that the icon, the detail, and the close button leave.
+            // A long one shrinks to TitleFitFloor of its size and ends with an ellipsis beyond
+            // that, so it never draws over the detail or the close button.
             Title = UiFactory.Heading(theme, header.transform, "Title", theme.TitleSize, TextAlignmentOptions.MidlineLeft, title);
-            UiFactory.Layout(Title, flexibleWidth: 1f);
+            var titleLayout = UiFactory.Layout(Title, preferredWidth: 0f, flexibleWidth: 1f);
+            titleLayout.minWidth = 0f;
+            Title.enableAutoSizing = true;
+            Title.fontSizeMax = theme.TitleSize;
+            Title.fontSizeMin = Mathf.Round(theme.TitleSize * TitleFitFloor);
+            Title.overflowMode = TextOverflowModes.Ellipsis;
             Detail = UiFactory.BodyText(theme, header.transform, "Detail", theme.BodySize, theme.TextColor, TextAlignmentOptions.MidlineRight);
             var close = UiFactory.IconButton(theme, header.transform, "Close", theme.CloseIcon, theme.HeaderHeight * 0.62f, () => CloseRequested?.Invoke());
             if (theme.CloseIcon == null)

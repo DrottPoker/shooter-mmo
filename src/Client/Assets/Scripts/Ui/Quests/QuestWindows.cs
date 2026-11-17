@@ -20,31 +20,23 @@ namespace Mmorpg.Client.Ui
     // answers it; it closes with the interaction. They read the quest state, the inventory, and
     // the open interaction, send every action through the interaction or the quest controller,
     // and own no quest rule. A QuestNoticeFeed writes the notices of every committed quest change
-    // into the game messages. They run after the inventory windows, so an Escape that a dialog
-    // took does nothing else; the abandon confirmation takes its Escape before the inventory
-    // windows.
-    [DefaultExecutionOrder(InventoryWindows.ExecutionOrder + 1)]
+    // into the game messages. The dialog and the log stand on the window manager's stack in the
+    // Windows layer; the quest canvas itself draws only the tracker, in the QuestTracker layer.
     [DisallowMultipleComponent]
     public sealed class QuestWindows : MonoBehaviour
     {
         public const string DialogWindowName = "QuestDialogWindow";
 
-        // Above the interaction panel and below the inventory, whose tooltips draw over it.
-        public const int CanvasSortingOrder = 90;
-
         public const float DialogWidth = 460f;
 
         private UiTheme theme;
+        private UiWindowManager windowManager;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private QuestClientController quests;
         private InventoryClientController inventory;
         private WorldInteractionClientController interaction;
         private GameMessageLog messages;
-        private WorldMenuController worldMenu;
         private InventoryWindows inventoryWindows;
-        private LocalPlayerSource localPlayers;
-        // The local player's input of this frame.
-        private LocalPlayerInput localPlayerInput;
         private QuestNoticeFeed notices;
         private UiWindow dialog;
         private QuestLogWindow log;
@@ -82,6 +74,7 @@ namespace Mmorpg.Client.Ui
             get { return tracker != null && tracker.Panel.gameObject.activeSelf ? tracker.Text : string.Empty; }
         }
 
+        // The window manager's dialog, which asks whether to abandon a quest.
         public UiDialog Confirmation
         {
             get { return confirmation; }
@@ -91,23 +84,21 @@ namespace Mmorpg.Client.Ui
         // windows tell where the Equipment window stands, which the dialog and the log keep clear.
         public void Initialize(
             UiTheme uiTheme,
+            UiWindowManager manager,
             QuestClientController questController,
             InventoryClientController inventoryController,
             WorldInteractionClientController worldInteraction,
-            LocalPlayerSource localPlayerSource,
             GameMessageLog gameMessages,
             TextCatalog uiTexts,
-            WorldMenuController menu = null,
             InventoryWindows inventoryWindowsBeside = null)
         {
-            localPlayers = localPlayerSource;
             theme = uiTheme;
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             quests = questController;
             inventory = inventoryController;
             interaction = worldInteraction;
             messages = gameMessages;
-            worldMenu = menu;
             inventoryWindows = inventoryWindowsBeside;
         }
 
@@ -144,6 +135,7 @@ namespace Mmorpg.Client.Ui
             interaction.State.ClearMessage();
             dialog.SetTitle(actor.DisplayName);
             dialog.SetOpen(true);
+            dialog.Focus();
             quests?.EnsureLoaded();
             Refresh();
         }
@@ -161,7 +153,7 @@ namespace Mmorpg.Client.Ui
         private void Start()
         {
             BuildUi();
-            ReadPlayerInput();
+            windowManager.SetCommand(UiCommand.ToggleQuestLog, ToggleLog);
             if (quests != null)
             {
                 // The quest log may have loaded before the windows, so the notices start from
@@ -187,6 +179,16 @@ namespace Mmorpg.Client.Ui
         private void OnDestroy()
         {
             notices?.Dispose();
+            if (windowManager != null)
+            {
+                windowManager.ClearCommand(UiCommand.ToggleQuestLog, ToggleLog);
+            }
+
+            if (confirmation != null)
+            {
+                confirmation.CloseFor(this);
+            }
+
             if (quests != null)
             {
                 quests.State.Changed -= OnQuestStateChanged;
@@ -212,39 +214,12 @@ namespace Mmorpg.Client.Ui
             {
                 PlaceWindows();
             }
-
-            ReadPlayerInput();
-            if (localPlayerInput == null)
-            {
-                return;
-            }
-
-            if (localPlayerInput.ToggleQuestLogPressedThisFrame && !IsTyping())
-            {
-                SetLogOpen(!IsLogOpen);
-            }
-            else if (localPlayerInput.CancelPressedThisFrame
-                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame)
-                && IsLogOpen)
-            {
-                // The log closes with the other windows. A confirmation took its Escape earlier.
-                SetLogOpen(false);
-            }
         }
 
-        // A key typed into a text field, such as the inventory search, is text.
-        private static bool IsTyping()
+        // L.
+        private void ToggleLog()
         {
-            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
-            var selectedObject = eventSystem != null ? eventSystem.currentSelectedGameObject : null;
-            return selectedObject != null
-                && selectedObject.TryGetComponent<TMP_InputField>(out var field)
-                && field.isFocused;
-        }
-
-        private void ReadPlayerInput()
-        {
-            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
+            SetLogOpen(!IsLogOpen);
         }
 
         private void Abandon(QuestLogActiveEntry entry)
@@ -256,6 +231,7 @@ namespace Mmorpg.Client.Ui
 
             var questId = entry.Quest.Id;
             confirmation.AskConfirmation(
+                this,
                 T("ui/quests/abandon-heading"),
                 T("ui/quests/abandon-question", MessageArgument.Text("quest", entry.Quest.Title)),
                 T("ui/quests/abandon"),
@@ -691,37 +667,26 @@ namespace Mmorpg.Client.Ui
                 theme = UiTheme.Load(out _);
             }
 
-            TemporaryUiKit.EnsureEventSystem();
-            var canvasObject = new GameObject(
-                "QuestCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            // The canvas draws the tracker, which takes no clicks; the dialog and the log have
+            // canvases of their own in the Windows layer.
+            var canvas = UiCanvas.Create(transform, "QuestCanvas", UiLayer.QuestTracker, false);
 
             // The root only groups the windows and draws nothing, so a click beside them still
             // reaches the world.
-            var root = UiFactory.Create("QuestRoot", canvasObject.transform);
+            var root = UiFactory.Create("QuestRoot", canvas.transform);
             UiFactory.Fill(root);
             tracker = new QuestTracker(theme, texts, root);
             dialog = UiWindow.Create(theme, root, DialogWindowName, null, T("ui/quests/dialog-title"), DialogWidth);
             dialog.SetMaximumBodyHeight(1080f - theme.WindowTop - theme.ScreenMargin - 220f);
             dialog.CloseRequested += CloseDialog;
             dialog.SetOpen(false);
+            dialog.Attach(windowManager, UiLayer.Windows);
             // The log stands beside the dialog, so both show at once.
             log = new QuestLogWindow(theme, texts, root, Abandon, RefreshLog);
             log.Window.CloseRequested += () => SetLogOpen(false);
+            log.Window.Attach(windowManager, UiLayer.Windows);
             PlaceWindows();
-            confirmation = UiDialog.Create(theme, root, texts);
-            gameObject.AddComponent<UiDialogEscape>().Initialize(confirmation, worldMenu, () => localPlayerInput);
+            confirmation = windowManager.Dialog;
             RefreshTracker();
         }
     }

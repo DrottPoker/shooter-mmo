@@ -1,8 +1,6 @@
 using System;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -15,8 +13,9 @@ namespace Mmorpg.Client.Ui
         Quiet
     }
 
-    // Shared colors and widget builders for the temporary code-built uGUI panels. Every text is
-    // TextMesh Pro in its default font, so it stays sharp at every canvas scale.
+    // Shared colors and widget builders for the look of the temporary code-built uGUI panels.
+    // Every text is TextMesh Pro in its default font, so it stays sharp at every canvas scale.
+    // Their canvases, layers, Escape, and keys come from the UI kit and the window manager.
     public static class TemporaryUiKit
     {
         public static readonly Color BackdropColor = new Color(0.03f, 0.035f, 0.045f, 1f);
@@ -266,25 +265,6 @@ namespace Mmorpg.Client.Ui
             input.richText = false;
             input.text = value ?? string.Empty;
             return input;
-        }
-
-        // Every code-built panel shares one EventSystem: the first panel that needs it makes it,
-        // and it stays across scene loads, since no scene authors one.
-        public static void EnsureEventSystem()
-        {
-            if (EventSystem.current != null || UnityEngine.Object.FindAnyObjectByType<EventSystem>() != null)
-            {
-                return;
-            }
-
-            var eventSystem = new GameObject(
-                "TemporaryUiEventSystem",
-                typeof(EventSystem),
-                typeof(InputSystemUIInputModule));
-            if (Application.isPlaying)
-            {
-                UnityEngine.Object.DontDestroyOnLoad(eventSystem);
-            }
         }
 
         public static RectTransform CreateRow(Transform parent, float height, float spacing)

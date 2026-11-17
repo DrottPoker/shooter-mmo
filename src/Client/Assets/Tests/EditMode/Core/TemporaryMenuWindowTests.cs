@@ -13,14 +13,18 @@ namespace Mmorpg.Client.Tests.EditMode
         private GameObject parent;
         private GameObject eventSystemObject;
         private TemporaryMenuWindow window;
+        private UiWindowManager manager;
 
         [SetUp]
         public void SetUp()
         {
             eventSystemObject = new GameObject("EventSystem", typeof(EventSystem));
             parent = new GameObject("Menu Window Test");
+            manager = parent.AddComponent<UiWindowManager>();
+            manager.Initialize(null, FixtureTexts.Ui(), null);
             window = TemporaryMenuWindow.Create(
                 parent.transform,
+                manager,
                 "TestMenu",
                 "Test",
                 "F9",
@@ -55,6 +59,10 @@ namespace Mmorpg.Client.Tests.EditMode
             last.text = "3";
 
             window.SetVisible(true);
+            Assert.That(manager.Top, Is.Not.Null, "The menu stands on the window manager's stack.");
+            Assert.That(
+                window.Root.GetComponentInParent<Canvas>().sortingOrder,
+                Is.EqualTo(UiLayers.StackedOrder(UiLayer.Menus, 0)));
             Canvas.ForceUpdateCanvases();
             LayoutRebuilder.ForceRebuildLayoutImmediate(page);
 

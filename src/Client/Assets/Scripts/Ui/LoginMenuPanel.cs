@@ -6,7 +6,6 @@ using Mmorpg.Client.Worlds;
 using Mmorpg.WorldData.Text;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
@@ -16,21 +15,28 @@ namespace Mmorpg.Client.Ui
     // last login name of this computer and puts the caret in the password. Tab moves between the
     // fields and Enter sends the open tab. A failed request shows its reason in the card. When
     // GameService is busy, the card says so, counts down the answer's Retry-After, and sends the
-    // request again by itself, as AuthBusyRetry allows; Esc, a change to the form, or another tab
-    // stops it.
+    // request again by itself, as AuthBusyRetry allows; Esc, which the window manager hands the
+    // screen also while a field has focus, a change to the form, or another tab stops it.
     public sealed class LoginMenuPanel : MonoBehaviour
     {
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private string notice = string.Empty;
         private string exitNotice = string.Empty;
         private ClientSession clientSession;
+        private UiWindowManager windowManager;
 
         // Called by the composition root before the component is activated, with the client
         // session that a login signs in. A notice, such as that the client is out of date, shows in
         // the card and never blocks the form; so does the exit notice, why the client returned
         // here, such as a login of the account from another client.
-        public void Initialize(ClientSession session, TextCatalog messageTexts, string clientNotice, string clientExitNotice)
+        public void Initialize(
+            UiWindowManager manager,
+            ClientSession session,
+            TextCatalog messageTexts,
+            string clientNotice,
+            string clientExitNotice)
         {
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             clientSession = session;
             texts = messageTexts;
             notice = clientNotice ?? string.Empty;
@@ -154,12 +160,30 @@ namespace Mmorpg.Client.Ui
         {
             BuildUi();
             ShowRegistration(false);
+            windowManager.AddEscapeHandler(UiEscapeLevel.NothingOpen, StopRetryByEscape);
         }
 
         private void OnDestroy()
         {
+            if (windowManager != null)
+            {
+                windowManager.RemoveEscapeHandler(StopRetryByEscape);
+            }
+
             apiClient?.Dispose();
             screen?.Destroy();
+        }
+
+        // Esc stops the wait for a busy request, unless the request is on its way.
+        private bool StopRetryByEscape()
+        {
+            if (!busyRetry.IsWaiting || operationState.IsBusy)
+            {
+                return false;
+            }
+
+            CancelRetry();
+            return true;
         }
 
         private void Update()
@@ -179,13 +203,6 @@ namespace Mmorpg.Client.Ui
         {
             if (!busyRetry.IsWaiting || operationState.IsBusy)
             {
-                return;
-            }
-
-            var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
-            {
-                CancelRetry();
                 return;
             }
 

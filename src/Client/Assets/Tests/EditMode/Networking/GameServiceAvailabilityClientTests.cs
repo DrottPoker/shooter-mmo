@@ -125,7 +125,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 "The notice is one line of TextMesh Pro.");
             Assert.That(
                 owner.GetComponentInChildren<Canvas>(true).sortingOrder,
-                Is.EqualTo(SavingPausedNotice.CanvasSortingOrder));
+                Is.EqualTo(UiLayers.SortingOrder(UiLayer.Notices)));
 
             harness.Deliver(Availability(true));
             notice.Refresh();

@@ -13,9 +13,10 @@ namespace Mmorpg.Client.Combat
     // Combat's part of the world menu, whose options come before world interaction's. A
     // living Mob, or another player when the Shard allows player versus player, offers
     // Attack, which makes it the attack target, and the character walks into weapon range.
-    // Any other option except Examine, and Escape, clear the target. While the character is
-    // dead combat blocks the whole menu, and the navigator stops on death and on respawn, so
-    // a path planned before death never runs from the spawn. The decisions live in
+    // Any other option except Examine clears the target, and so does ClearTarget, which the
+    // interface's Escape runs with nothing open. While the character is dead combat blocks
+    // the whole menu, and the navigator stops on death and on respawn, so a path planned
+    // before death never runs from the spawn. The decisions live in
     // CombatClickRules, CombatTargetSelection, and CombatApproachPlanner.
     [DisallowMultipleComponent]
     public sealed class CombatTargetingController : MonoBehaviour, IWorldMenuProvider
@@ -127,13 +128,6 @@ namespace Mmorpg.Client.Combat
                 selection.Reset();
             }
 
-            if (localPlayer.PlayerInput != null
-                && localPlayer.PlayerInput.CancelPressedThisFrame
-                && (menu == null || !menu.CancelConsumedThisFrame))
-            {
-                ClearTarget();
-            }
-
             UpdateApproach();
             NotifyIfTargetChanged();
         }
@@ -232,9 +226,14 @@ namespace Mmorpg.Client.Combat
             NotifyIfTargetChanged();
         }
 
-        // Sends ClearTarget only when there is a target or a request to undo.
-        private void ClearTarget()
+        // Ends the attack. Sends ClearTarget only when there is a target or a request to undo.
+        public void ClearTarget()
         {
+            if (combatController == null)
+            {
+                return;
+            }
+
             var owner = combatController.State.Owner;
             if (TargetEntityId == 0
                 && selection.PendingOperationId == Guid.Empty

@@ -186,6 +186,8 @@ namespace Mmorpg.Client.Ui
             if (corpseState == null)
             {
                 Window.SetTitle(owner.Text("ui/corpse/title"));
+                Window.SetDetail(string.Empty);
+                SetFooter(string.Empty, null);
                 ShowMessage(owner.Text("ui/corpse/state-unavailable"), true);
                 return;
             }
@@ -200,6 +202,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            // The name of the dead character or creature, beside the time the corpse expires; the
+            // window's header fits a long name to the room the time leaves.
             Window.SetTitle(string.IsNullOrWhiteSpace(view.SourceDisplayName) ? owner.Text("ui/corpse/title") : view.SourceDisplayName);
             Window.SetDetail(owner.Text(
                 "ui/corpse/expires",

@@ -9,14 +9,12 @@ namespace Mmorpg.Client.Ui
 {
     // The notice over the World while a lost connection is restored: that the connection was lost,
     // that the client reconnects, and the seconds left. It has no raycaster, so it never takes a
-    // click and the camera still turns below it. The bootstrap adds it to every World scene.
+    // click and the camera still turns below it. It draws in the ReconnectNotice layer, above
+    // everything else. The bootstrap adds it to every World scene.
     [DisallowMultipleComponent]
     public sealed class ReconnectNotice : MonoBehaviour
     {
         public const string PanelName = "ReconnectNotice";
-
-        // Above every panel of the World but the context menu and the death overlay.
-        public const int CanvasSortingOrder = 130;
 
         private const float Width = 460f;
         private const float TopOffset = 150f;
@@ -89,19 +87,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            var canvasObject = new GameObject(
-                PanelName + "Canvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            var canvasObject = UiCanvas.Create(transform, PanelName + "Canvas", UiLayer.ReconnectNotice, false).gameObject;
 
             panel = UiFactory.Create(PanelName, canvasObject.transform);
             panel.anchorMin = new Vector2(0.5f, 1f);

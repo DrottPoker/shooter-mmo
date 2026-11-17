@@ -10,15 +10,13 @@ namespace Mmorpg.Client.Ui
     // items, trade, and quests are refused and saving is paused. It goes when GameService answers
     // again or the session ends. It sits where the reconnect notice does, which shows only while
     // no session is joined, so the two never show together. It has no raycaster, so it never
-    // takes a click. The bootstrap adds it to every World scene.
+    // takes a click. It draws in the Notices layer, over the HUD and under every panel and
+    // window. The bootstrap adds it to every World scene.
     [DisallowMultipleComponent]
     public sealed class SavingPausedNotice : MonoBehaviour
     {
         public const string PanelName = "SavingPausedNotice";
         public const string LineKey = "ui/world/saving-paused";
-
-        // Over the HUD and the interaction panel, under every window the player opens.
-        public const int CanvasSortingOrder = QuestWindows.CanvasSortingOrder - 5;
 
         private const float Width = 640f;
         private const float TopOffset = 150f;
@@ -81,19 +79,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            var canvasObject = new GameObject(
-                PanelName + "Canvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            var canvasObject = UiCanvas.Create(transform, PanelName + "Canvas", UiLayer.Notices, false).gameObject;
 
             panel = UiFactory.Create(PanelName, canvasObject.transform);
             panel.anchorMin = new Vector2(0.5f, 1f);

@@ -10,11 +10,11 @@ namespace Mmorpg.Client.WorldActors
     // The world menu, as in RuneScape. Every frame it collects the options for what the
     // pointer points at from the registered providers. A left click runs the top option at
     // once; a right click opens a menu with every option, which stays open until the player
-    // chooses one, clicks elsewhere, presses Escape, or moves the pointer away. Walk here and
-    // Examine are its own options; combat and world interaction add theirs. A left click
-    // that walked keeps steering the walk toward the ground under the pointer while the
-    // button stays down. It runs after input and before the features, so they can tell that
-    // an Escape only closed the menu.
+    // chooses one, clicks elsewhere, closes it with CloseMenu, which the interface's Escape
+    // runs, or moves the pointer away. Walk here and Examine are its own options; combat and
+    // world interaction add theirs. A left click that walked keeps steering the walk toward
+    // the ground under the pointer while the button stays down. It runs after input and before
+    // the features and the local player, so a click acts in the frame it happened.
     [DefaultExecutionOrder(ExecutionOrder)]
     [DisallowMultipleComponent]
     public sealed class WorldMenuController : MonoBehaviour, IWorldMenuProvider
@@ -40,7 +40,6 @@ namespace Mmorpg.Client.WorldActors
         // The navigation intent and destination of the latest Walk here.
         private int walkIntentId;
         private Vector3 walkDestination;
-        private int cancelConsumedFrame = -1;
 
         // Raised when the menu opens or closes.
         public event Action MenuChanged;
@@ -50,20 +49,6 @@ namespace Mmorpg.Client.WorldActors
         public event Action<WorldMenuOption> OptionExecuted;
 
         public bool IsMenuOpen { get; private set; }
-
-        // True in the frame in which Escape closed the open menu, or an interface that runs
-        // before the features took it, such as an inventory dialog it dismissed. That Escape
-        // does nothing else, so it neither ends an attack nor closes an interaction or panel.
-        public bool CancelConsumedThisFrame
-        {
-            get { return cancelConsumedFrame == Time.frameCount; }
-        }
-
-        // Marks this frame's Escape as taken by an interface.
-        public void ConsumeCancel()
-        {
-            cancelConsumedFrame = Time.frameCount;
-        }
 
         // The open menu's options, top first, without Cancel.
         public IReadOnlyList<WorldMenuOption> MenuOptions
@@ -237,12 +222,7 @@ namespace Mmorpg.Client.WorldActors
                 // A press over interface may choose a row of the menu itself.
                 var pressedInWorld = hasRay
                     && (input.SelectPressedThisFrame || input.ContextMenuPressedThisFrame);
-                if (input.CancelPressedThisFrame)
-                {
-                    cancelConsumedFrame = Time.frameCount;
-                    CloseMenu();
-                }
-                else if (pressedInWorld)
+                if (pressedInWorld)
                 {
                     CloseMenu();
                 }

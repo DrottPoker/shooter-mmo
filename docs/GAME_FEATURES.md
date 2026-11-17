@@ -21,7 +21,7 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | Middle mouse button, dragged | Turns and tilts the camera |
 | Arrow keys | Left and right turn the camera, up and down tilt it |
 | Scroll wheel | Zooms the camera |
-| `Escape` | Closes an open world menu, inventory dialog, or quest confirmation, or puts back a stack part carried on the pointer, and does nothing else; otherwise ends the attack, closes the open interaction, every inventory window, and the quest log, and cancels an Admin teleport pick |
+| `Escape` | Closes one thing per press, the top-most first: an open question such as `SPLIT STACK`, the text field you type in, the world menu, an item on the pointer or an Admin teleport pick, then the newest open window, menu, or panel; with nothing open it ends the attack and closes the open interaction or corpse |
 | `B` or `I` | Opens or closes the Inventory window |
 | `C` | Opens or closes the Equipment window |
 | `L` | Opens or closes the [quest log](#quests) |
@@ -31,8 +31,12 @@ to check each feature by hand is in [Manual Testing](MANUAL_TESTING.md).
 | `F2` | Opens or closes the [Debug Menu](#debug-menu-f2) |
 | `F3` | Opens or closes the [Admin Menu](#admin-menu-f3), whose tools work in the Development environment; a release build has no Admin menu |
 
-Clicks and scrolling over a panel never reach the world. The cursor always stays
-visible and free. There is no keyboard movement, sprint, jump, or aim. Gamepad
+Clicks and scrolling over a panel never reach the world. A click on a window,
+menu, or panel brings it to the front, so it draws over the others of its kind
+and the next `Escape` closes it first. While you type in a text field, such as
+the inventory search, `B`, `I`, `C`, `L`, `F2`, and `F3` are text and open
+nothing, and `Escape` only leaves the field. The cursor always stays visible and
+free. There is no keyboard movement, sprint, jump, or aim. Gamepad
 bindings and player-configurable rebinding are not implemented.
 
 ## Account Entry Flow
@@ -370,8 +374,8 @@ not implemented, and running with run energy is planned in
 ## Debug Menu (F2)
 
 - F2 opens and closes the Debug menu in the top-right corner, and its `X` button
-  closes it too. It is closed when a World scene loads. Its values refresh four
-  times a second.
+  closes it too, and so does `Escape` when it is the newest window. It is closed
+  when a World scene loads. Its values refresh four times a second.
 - The menu has four tabs:
   - **Overview**: the player's position, facing, collision chunk, and water
     depth with the wading speed, the ground under the pointer, `Copy player`
@@ -415,7 +419,8 @@ not implemented, and running with run energy is planned in
 ## Admin Menu (F3)
 
 - A release build has no Admin menu; F3 does nothing there.
-- F3 opens and closes the Admin menu below the player frame. Its tools work only
+- F3 opens and closes the Admin menu below the player frame; its `X` button and
+  `Escape`, when it is the newest window, close it too. Its tools work only
   against a SimulationWorker in the Development environment that allows them, as
   the local stack does; see
   [Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools). Such a
@@ -470,8 +475,9 @@ not implemented, and running with run energy is planned in
 The inventory has three windows, each with its own close button. `C` opens and
 closes Equipment, `B` and `I` open and close Inventory, and the storage window
 opens by itself beside Inventory when an NPC's Bank, Recovery Storage, or trade
-opens, or a corpse opens. `Escape` closes an open dialog first and then every
-inventory window. Each window has a fixed place: Equipment at the left edge,
+opens, or a corpse opens. `Escape` closes an open dialog first and then one
+window per press, the newest or the last clicked first. Each window has a fixed
+place: Equipment at the left edge,
 Inventory at the right edge, and the storage window to the left of Inventory.
 Opening or closing one never moves another. The world beside and between the
 windows works as when they are closed: a click walks or attacks, a held button
@@ -517,7 +523,8 @@ destruction restriction, and the slot location; tooltips never show during a
 drag.
 
 The search field dims every item whose name or category does not contain what
-you type, ignoring case, in all three windows.
+you type, ignoring case, in all three windows. While it has focus, keys are
+text, and `Escape` leaves the field and keeps what you typed.
 
 The carry meter spans zero to the 140 percent hard cap with a marker at full
 capacity. It is cyan up to full capacity, amber while movement is slowed, and red
@@ -640,7 +647,8 @@ corpses are open to everyone.
 Left-click a corpse, or choose `Loot Corpse of <name>`, to walk to it and open
 it. An open corpse shows in the storage window beside Inventory, which opens with
 it; the window's close button or `Escape` closes the corpse. The window's title
-names the dead character or creature and its header the time the corpse expires.
+names the dead character or creature and its header the time the corpse expires;
+a long name shrinks and is cut short with `...` so it never covers the time.
 The corpse shows its equipment, general inventory, and Bag contents once its
 complete state has arrived, and `Close` and `Loot All` below them.
 
@@ -727,8 +735,9 @@ real corpse from an offline character with the development item tools; see
   in sight, as
   [Interaction Targeting And Input](NPC_AND_MOB_SYSTEM_DESIGN.md#interaction-targeting-and-input)
   describes. The interaction panel says `Walking to <name>...` meanwhile. A new
-  option elsewhere cancels the walk, and `Escape` closes the active NPC or corpse
-  interaction.
+  option elsewhere cancels the walk. `Escape` stops the walk and closes the
+  active NPC interaction once its panel is the newest thing open, and the open
+  corpse with its window; a message the panel shows alone, it dismisses.
 - A player has one active interaction at a time, including a corpse view, and
   several players may use the same target at once.
 - The interaction panel lists only the capabilities the server returned when the
@@ -768,7 +777,7 @@ personal, and its progress survives death, leaving, and Shard switches.
   `Hand over` gives the asked-for items once the player carries them, and
   `Ask again` gives back lost start items. `Back` returns to the list. A refused
   action shows its reason in red, and the dialog closes when the interaction
-  ends.
+  ends. `Escape` closes the dialog alone and leaves the interaction open.
 - Credited kills and gathering yields count for the objectives that ask for
   them, and collect objectives count the carried items. A quest item that a Mob
   drops lies in the corpse of the player whose quest needs it.
@@ -915,7 +924,8 @@ Combat is target based and server authoritative:
   spent, and the next attack may start at once. A target that walks on during
   the windup is still hit while it stays within a quarter more than the weapon's
   range. An arrow or a bolt in flight still hits when the character moves on.
-- Any other world option except `Examine`, or `Escape`, ends the attack.
+- Any other world option except `Examine`, or `Escape` while no window, menu, or
+  panel is open, ends the attack.
 - When the worker reports the target out of range, the character walks closer
   by itself, at most once a second, and 2 m closer each time the line of sight is
   blocked.

@@ -16,15 +16,13 @@ namespace Mmorpg.Client.Ui
     // right of it. The bar and the numbers slide to every new health value, and a farther
     // nameplate is smaller. It reads the combat
     // state and the actor views and decides nothing. Its texts are TextMesh Pro world labels.
-    // Nameplates have a canvas of their own below the combat HUD, so damage numbers and frames
-    // draw over them, and nothing on it takes a raycast. Nearer nameplates draw over farther
+    // Nameplates have a canvas of their own in the WorldNameplates layer, below the combat HUD,
+    // so damage numbers and frames draw over them, and nothing on it takes a raycast. Nearer nameplates draw over farther
     // ones, and they are placed after the camera moved, so they stay on the heads they belong to.
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(PresentationExecutionOrder.ScreenAnchoredInterface)]
     public sealed class WorldNameplates : MonoBehaviour
     {
-        public const int CanvasSortingOrder = TemporaryCombatHud.CanvasSortingOrder - 10;
-
         // A nameplate's bottom edge sits this far above the top of the Mob, and at full size the
         // nameplate is this high on the 1080 pixel reference screen. Damage numbers rise from
         // above it.
@@ -42,6 +40,7 @@ namespace Mmorpg.Client.Ui
         private const float LevelGap = 4f;
         private const float LevelWidth = 48f;
         private static readonly Color TrackColor = new Color(0f, 0f, 0f, 0.72f);
+        private static readonly Color TextColor = new Color(0.93f, 0.94f, 0.96f, 1f);
         private static readonly Color TrackBorderColor = new Color(0f, 0f, 0f, 0.9f);
         private static readonly NearestLast DrawOrder = new NearestLast();
 
@@ -301,44 +300,31 @@ namespace Mmorpg.Client.Ui
         // Start builds the canvas once; a test that runs frames by hand builds it itself.
         internal void BuildCanvas()
         {
-            var canvasObject = new GameObject(
-                "WorldNameplateCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-
-            layer = TemporaryUiKit.CreateUiObject("NameplateLayer", canvasObject.transform)
-                .GetComponent<RectTransform>();
-            TemporaryUiKit.Stretch(layer, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var canvas = UiCanvas.Create(transform, "WorldNameplateCanvas", UiLayer.WorldNameplates, false);
+            layer = UiFactory.Create("NameplateLayer", canvas.transform);
+            UiFactory.Fill(layer);
         }
 
         // The root's pivot is the anchor point over the head; the bar is centered on it, the name
         // sits above the bar, and the level hangs off its right end.
         private Nameplate CreateNameplate()
         {
-            var root = TemporaryUiKit.CreateUiObject("MobNameplate", layer).GetComponent<RectTransform>();
+            var root = UiFactory.Create("MobNameplate", layer);
             root.anchorMin = new Vector2(0.5f, 0.5f);
             root.anchorMax = new Vector2(0.5f, 0.5f);
             root.pivot = new Vector2(0.5f, 0f);
             root.sizeDelta = new Vector2(BarWidth, Height);
 
-            var track = TemporaryUiKit.CreateUiObject("HealthBar", root).GetComponent<RectTransform>();
+            var track = UiFactory.Create("HealthBar", root);
             Layout(track, new Vector2(0.5f, 0f), new Vector2(0f, 0f), new Vector2(BarWidth, BarHeight));
             var trackImage = track.gameObject.AddComponent<Image>();
             trackImage.color = TrackColor;
             trackImage.raycastTarget = false;
-            TemporaryUiKit.AddOutline(trackImage, TrackBorderColor);
+            UiFactory.AddOutline(trackImage, TrackBorderColor);
 
-            var fill = TemporaryUiKit.CreateUiObject("Fill", track).AddComponent<Image>();
+            var fill = UiFactory.Create("Fill", track).gameObject.AddComponent<Image>();
             fill.raycastTarget = false;
-            TemporaryUiKit.Stretch(fill.rectTransform, Vector2.zero, Vector2.one, new Vector2(1f, 1f), new Vector2(-1f, -1f));
+            UiFactory.Fill(fill.rectTransform, 1f);
 
             // Geometry alignment centers the digits themselves on the bar.
             var health = WorldLabels.Create(
@@ -347,8 +333,8 @@ namespace Mmorpg.Client.Ui
                 WorldLabels.FontSizeForCapHeight(HealthCapHeight),
                 HorizontalAlignmentOptions.Center,
                 VerticalAlignmentOptions.Geometry,
-                TemporaryUiKit.TextPrimary);
-            TemporaryUiKit.Stretch(health.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                TextColor);
+            UiFactory.Fill(health.rectTransform);
 
             var name = WorldLabels.Create(
                 root,
@@ -356,7 +342,7 @@ namespace Mmorpg.Client.Ui
                 NameFontSize,
                 HorizontalAlignmentOptions.Center,
                 VerticalAlignmentOptions.Bottom,
-                TemporaryUiKit.TextPrimary);
+                TextColor);
             Layout(name.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, BarHeight + NameGap), new Vector2(BarWidth * 2f, NameHeight));
 
             var level = WorldLabels.Create(
@@ -365,7 +351,7 @@ namespace Mmorpg.Client.Ui
                 WorldLabels.FontSizeForCapHeight(BarHeight),
                 HorizontalAlignmentOptions.Left,
                 VerticalAlignmentOptions.Geometry,
-                TemporaryUiKit.TextPrimary);
+                TextColor);
             Layout(
                 level.rectTransform,
                 new Vector2(0f, 0f),
