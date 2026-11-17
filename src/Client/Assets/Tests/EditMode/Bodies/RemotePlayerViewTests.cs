@@ -64,7 +64,7 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 var body = PlayerBodyAppearanceTests.CreateBody(root.transform, skin, null);
                 var view = root.AddComponent<RemotePlayerView>();
-                view.Initialize(7, "character", "Ada", archetypeId, 30, 4, null, null);
+                view.Initialize(7, "character", "Ada", archetypeId, 30, 15, null, null);
                 view.ApplyBodyTint(tinted, materials);
                 return body.sharedMaterial.GetColor(BaseColorId);
             }

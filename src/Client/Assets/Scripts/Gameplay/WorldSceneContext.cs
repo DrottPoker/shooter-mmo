@@ -464,9 +464,7 @@ namespace Mmorpg.Client.Gameplay
                     spawn.DisplayName,
                     spawn.ArchetypeId,
                     movementSession.Settings.TickRateHz,
-                    RemoteMovementPresenter.InterpolationDelayTicks(
-                        movementSession.Settings.TickRateHz,
-                        movementSession.SnapshotRateHz),
+                    movementSession.SnapshotRateHz,
                     movementSession.CollisionStream,
                     movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
