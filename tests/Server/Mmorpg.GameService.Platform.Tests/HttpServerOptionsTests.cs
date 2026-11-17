@@ -55,6 +55,10 @@ public sealed partial class HttpServerOptionsTests
     [InlineData("")]
     [InlineData("*")]
     [InlineData("api.example.com;*")]
+    [InlineData("0.0.0.0")]
+    [InlineData("[::]")]
+    [InlineData("api.example.com;0.0.0.0")]
+    [InlineData("api.example.com; [::] ")]
     public void OutsideDevelopmentAllowedHostsMustNameRealHosts(string? allowedHosts)
     {
         var options = Read(new() { [HttpServerOptions.AllowedHostsKey] = allowedHosts });

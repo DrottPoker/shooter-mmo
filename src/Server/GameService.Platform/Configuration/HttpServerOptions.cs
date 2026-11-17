@@ -94,17 +94,21 @@ public sealed record HttpServerOptions(
         };
     }
 
-    // Outside Development, Host filtering must name real host names: "*", or no value, which
-    // ASP.NET Core also reads as "*", would answer a request for any host.
+    // The entries that ASP.NET Core's host filtering reads as "any host": one of them among the
+    // allowed hosts switches the filtering off, whatever else the list names.
+    private static readonly string[] AnyHostEntries = ["*", "0.0.0.0", "[::]"];
+
+    // Outside Development, Host filtering must name real host names: an entry for any host, or no
+    // value, which ASP.NET Core also reads as any host, would answer a request for any host.
     public IReadOnlyList<string> ErrorsOutsideDevelopment()
     {
         var hosts = (AllowedHosts ?? string.Empty)
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (hosts.Length == 0 || hosts.Contains("*", StringComparer.Ordinal))
+        if (hosts.Length == 0 || hosts.Any(host => AnyHostEntries.Contains(host, StringComparer.Ordinal)))
         {
             return
             [
-                $"{AllowedHostsKey} must name the host names of GameService, separated by ';', such as 'api.example.com;game-service'; '*' is allowed only in the Development environment."
+                $"{AllowedHostsKey} must name the host names of GameService, separated by ';', such as 'api.example.com;game-service'; '*', '0.0.0.0', and '[::]' allow any host and are allowed only in the Development environment."
             ];
         }
 

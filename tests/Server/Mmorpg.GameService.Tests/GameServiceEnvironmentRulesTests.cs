@@ -20,7 +20,8 @@ public sealed class GameServiceEnvironmentRulesTests
 
     [Theory]
     [InlineData("AllowedHosts", null, "AllowedHosts must name the host names of GameService")]
-    [InlineData("AllowedHosts", "*", "'*' is allowed only in the Development environment")]
+    [InlineData("AllowedHosts", "*", "allow any host and are allowed only in the Development environment")]
+    [InlineData("AllowedHosts", "api.example.com;0.0.0.0", "allow any host and are allowed only in the Development environment")]
     [InlineData("SIMULATION_WORKER_SERVICE_SECRET", "test-shared-simulation-secret-at-least-32-characters", "give every worker its own secret in ServiceAuthentication:SimulationWorkers:<workerId>")]
     [InlineData("ConnectionStrings:Postgres", "Host=db;Database=game;Username=game;Password=replace-with-local-postgres-password", "ConnectionStrings:Postgres has an empty or placeholder password")]
     [InlineData("ConnectionStrings:Postgres", "Host=db;Database=game;Username=game;Password=stack_stress_local_only", "ConnectionStrings:Postgres has an empty or placeholder password")]

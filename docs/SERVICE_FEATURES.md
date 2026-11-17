@@ -171,7 +171,8 @@ connection pool both fit.
 Outside the Development environment GameService refuses to start, with one
 message that lists every problem, when:
 
-- `AllowedHosts` is missing or contains `*`. It names the host names that
+- `AllowedHosts` is missing or contains `*`, `0.0.0.0`, or `[::]`, each of
+  which ASP.NET Core reads as any host. It names the host names that
   requests reach GameService with, separated by `;`: the public name that the
   proxy passes on and the names that health checks and SimulationWorker use. A
   request for another host gets `400` before any route runs. Development keeps
@@ -2536,7 +2537,7 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis` | from `.env` | Required. The PostgreSQL connection must name host, database, username, and password; GameService connects with the application name `Mmorpg.GameService`. Outside Development neither password may be empty or a placeholder, as [Hosts, Secrets, And Passwords Outside Development](#hosts-secrets-and-passwords-outside-development) describes |
-| `AllowedHosts` | `*` in `appsettings.Development.json`, none otherwise | The host names that requests may name, separated by `;`; outside Development it is required and must not contain `*` |
+| `AllowedHosts` | `*` in `appsettings.Development.json`, none otherwise | The host names that requests may name, separated by `;`; outside Development it is required and must not contain `*`, `0.0.0.0`, or `[::]`, which allow any host |
 | `Http:TrustedProxies` | empty | The proxies whose `X-Forwarded-For` and `X-Forwarded-Proto` count, IP addresses and networks such as `10.0.0.0/8` separated by `;` or `,`; empty ignores both headers, as [The Client's Address](#the-clients-address) describes |
 | `Http:ForwardLimit` | `1` | How many `X-Forwarded-For` entries from the right count, one per trusted proxy in the chain, 1 to 10 |
 | `Http:MaxRequestHeadersTotalSizeBytes`, `MaxRequestHeaderCount`, `MaxRequestLineSizeBytes` | `16384`, `64`, `4096` | Kestrel's limits of the request headers together, their number, and the request line; 4,096 to 1,048,576, 16 to 1,000, and 1,024 to 65,536 |
