@@ -9,7 +9,13 @@ namespace Mmorpg.SimulationWorker.Realtime;
 
 // Owns the interest manager and replicates entity presence: baselines, spawns,
 // despawns and world actor state. Every spawn it sends raises the spawn hooks.
-// Loop-confined, like the interest manager.
+//
+// It also decides who gets a change of a combatant's state, a player's look, or a world actor's
+// state at once: the viewers that see the entity in detail, and every viewer for an urgent
+// change. The others missed that state, as the interest manager remembers per viewer and entity,
+// and get its newest version when the entity comes into detail for them, and otherwise on the
+// entity's slot once a second, which FarStateRefresher runs. Loop-confined, like the interest
+// manager.
 internal sealed class EntityPresenceReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -24,6 +30,7 @@ internal sealed class EntityPresenceReplicator(
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly List<WorldActorRuntimeState> worldActorBuffer = [];
     private readonly List<SimulationInterestEntity> interestEntityBuffer = [];
+    private readonly List<int> actorStateRecipients = [];
     private Func<ulong, bool>? isVisibleToAnyConnection;
     private uint refreshCycle;
 
@@ -35,6 +42,10 @@ internal sealed class EntityPresenceReplicator(
     // Whether a world actor walks, so the pose its spawn carries is not a rest pose; without it
     // no actor walks.
     public Func<WorldActorRuntimeState, bool>? IsActorMoving { get; set; }
+
+    // A combatant's current state, encoded, or null for an entity that is no combatant; without
+    // it no viewer gets a combatant state it missed.
+    public Func<ulong, byte[]?>? EncodeCombatantState { get; set; }
 
     public bool IsVisibleTo(int connectionId, ulong entityId)
     {
@@ -206,7 +217,7 @@ internal sealed class EntityPresenceReplicator(
 
             // Indexed loops, because enumerating the interfaces would allocate an enumerator.
             var update = interestManager.Refresh(context.PeerId, controlledEntityId);
-            if (update.Entered.Count == 0 && update.Exited.Count == 0)
+            if (update.Entered.Count == 0 && update.Exited.Count == 0 && update.DetailEntered.Count == 0)
             {
                 continue;
             }
@@ -255,6 +266,12 @@ internal sealed class EntityPresenceReplicator(
                 {
                     SendDespawn(peer, exitedEntityId, "out_of_interest");
                 }
+            }
+
+            // What came into detail brings every state the connection missed of it at once.
+            for (var index = 0; index < update.DetailEntered.Count; index++)
+            {
+                CatchUp(peer, context.PeerId, update.DetailEntered[index]);
             }
 
             presenceTicks += Stopwatch.GetTimestamp() - sendsStarted;
@@ -342,8 +359,11 @@ internal sealed class EntityPresenceReplicator(
         interestManager.Synchronize(CollectionsMarshal.AsSpan(interestEntityBuffer));
     }
 
+    // A spawn carries the entity's newest look and state, and its combat state follows it, so the
+    // connection missed nothing of it afterwards.
     private void SendSpawn(IRealtimePeerConnection peer, PlayerSimulationEntity entity)
     {
+        interestManager.TakeMissed(peer.Id, entity.NetworkEntityId);
         sender.SendControl(peer, RealtimeProtocol.EncodeEntitySpawn(ToRealtimeEntitySpawn(entity)));
         networkMetrics.RecordSpawnPacket();
         hooks.RaiseSpawnSent(peer, entity.NetworkEntityId);
@@ -354,6 +374,7 @@ internal sealed class EntityPresenceReplicator(
         WorldActorRuntimeState actor)
     {
         // The pose is the one of the current tick, the tick that snapshots name.
+        interestManager.TakeMissed(peer.Id, actor.NetworkEntityId);
         sender.SendControl(
             peer,
             RealtimeProtocol.EncodeWorldActorSpawn(
@@ -380,22 +401,122 @@ internal sealed class EntityPresenceReplicator(
         networkMetrics.RecordDespawnPacket();
     }
 
+    // Sends the actor's state to the viewers that see it in detail, and to every viewer when it
+    // became active or inactive, such as a depleted or returned resource node.
     public void BroadcastWorldActorState(WorldActorRuntimeState actor)
     {
-        var packet = RealtimeProtocol.EncodeWorldActorState(
-            WorldActorProtocolMapper.ToState(actor));
-        foreach (var context in peers.Contexts)
+        ArgumentNullException.ThrowIfNull(actor);
+        var urgent = actor.IsActive != actor.ReplicatedIsActive;
+        actor.ReplicatedIsActive = actor.IsActive;
+        CollectChangeRecipients(actor.NetworkEntityId, MissedStates.WorldActor, urgent, -1, actorStateRecipients);
+        byte[]? packet = null;
+        foreach (var connectionId in actorStateRecipients)
         {
-            if (context.Session is null
-                || !interestManager.GetVisible(context.PeerId)
-                    .Contains(actor.NetworkEntityId)
-                || !peers.TryGetCurrentPeer(context, out var peer))
+            if (peers.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
+            {
+                packet ??= RealtimeProtocol.EncodeWorldActorState(WorldActorProtocolMapper.ToState(actor));
+                sender.SendControl(peer, packet);
+            }
+        }
+    }
+
+    // Fills recipients with the connections that get a change of the entity's states at once:
+    // those that see the entity in detail, or every one that sees it when the change is urgent.
+    // The others missed the states; with None, as for a combat event, they miss nothing. The
+    // excluded connection, such as an owner that gets its own look apart, is left out.
+    public void CollectChangeRecipients(
+        ulong entityId,
+        MissedStates states,
+        bool urgent,
+        int excludedConnectionId,
+        List<int> recipients)
+    {
+        interestManager.CollectRecipients(entityId, states, urgent, excludedConnectionId, recipients);
+    }
+
+    // The entity that a combatant targets, or 0: a viewer sees its target and whoever targets it
+    // in detail at any distance.
+    public void SetTarget(ulong entityId, ulong targetEntityId)
+    {
+        interestManager.SetTarget(entityId, targetEntityId);
+    }
+
+    // Sends the connection the newest of every state it missed of the entity at once, as when
+    // the entity comes into detail for it.
+    public void CatchUp(int connectionId, ulong entityId)
+    {
+        if (peers.TryGetAuthenticatedPeer(connectionId, out _, out var peer))
+        {
+            CatchUp(peer, connectionId, entityId);
+        }
+    }
+
+    // What the connections missed of the entities on this slot, grouped by entity; they missed
+    // nothing afterwards.
+    public void TakeMissedOnSlot(uint slotPhase, uint slotCount, List<SimulationInterestMissed> destination)
+    {
+        interestManager.TakeMissedOnSlot(slotPhase, slotCount, destination);
+    }
+
+    // The connection missed these states of the entity again.
+    public void MarkMissed(int connectionId, ulong entityId, MissedStates states)
+    {
+        interestManager.MarkMissed(connectionId, entityId, states);
+    }
+
+    // The newest state of one kind of the entity, encoded, or null when the entity has none. A
+    // Mob's world actor state is held back while the Mob walks, since a client takes every world
+    // actor state of a Mob as the pose it rests at; the state after its next stop replaces it.
+    public byte[]? EncodeNewestState(ulong entityId, MissedStates kind, out bool heldBack)
+    {
+        heldBack = false;
+        switch (kind)
+        {
+            case MissedStates.Combatant:
+                return EncodeCombatantState?.Invoke(entityId);
+            case MissedStates.Look:
+                return Appearances?.EncodeLook(entityId);
+            case MissedStates.WorldActor:
+                if (worldActorStore is null || !worldActorStore.TryGetByEntityId(entityId, out var actor))
+                {
+                    return null;
+                }
+
+                if (actor!.IsActive && (IsActorMoving?.Invoke(actor) ?? false))
+                {
+                    heldBack = true;
+                    return null;
+                }
+
+                return RealtimeProtocol.EncodeWorldActorState(WorldActorProtocolMapper.ToState(actor));
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, "One state kind is expected.");
+        }
+    }
+
+    private void CatchUp(IRealtimePeerConnection peer, int connectionId, ulong entityId)
+    {
+        var missed = interestManager.TakeMissed(connectionId, entityId);
+        var heldBack = MissedStates.None;
+        foreach (var kind in MissedStateKinds.All)
+        {
+            if ((missed & kind) == 0)
             {
                 continue;
             }
 
-            sender.SendControl(peer, packet);
+            var packet = EncodeNewestState(entityId, kind, out var held);
+            if (held)
+            {
+                heldBack |= kind;
+            }
+            else if (packet is not null)
+            {
+                sender.SendControl(peer, packet);
+            }
         }
+
+        interestManager.MarkMissed(connectionId, entityId, heldBack);
     }
 
     private void SendDespawn(IRealtimePeerConnection peer, ulong entityId, string reason)

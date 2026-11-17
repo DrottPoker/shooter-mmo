@@ -53,6 +53,11 @@ public sealed class WorldActorRuntimeState
     public float PositionZ { get; private set; }
     public float YawDegrees { get; private set; }
     public bool IsActive { get; private set; }
+
+    // Whether the last state the viewers got said active, so a change of it reaches every viewer
+    // at once. Loop-confined, like the replication that sets it.
+    internal bool ReplicatedIsActive { get; set; } = true;
+
     public long StateRevision { get; private set; }
     public long InteractionRevision { get; private set; }
     public string ActivityTier { get; private set; }

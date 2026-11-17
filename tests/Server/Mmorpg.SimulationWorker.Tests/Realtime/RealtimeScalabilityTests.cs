@@ -80,23 +80,23 @@ public sealed class RealtimeScalabilityTests
     [Fact]
     public void TheNearTierIsDecidedAtTheRefreshWithHysteresis()
     {
-        var manager = new SimulationInterestManager(new InterestManagementConfig(64f, 128f, 144f, 3, 48f, 56f));
+        var manager = new SimulationInterestManager(new InterestManagementConfig(64f, 128f, 144f, 3, 50f, 58f));
         manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
             new SimulationInterestEntity(2, 40f, 0f),
-            new SimulationInterestEntity(3, 52f, 0f),
+            new SimulationInterestEntity(3, 54f, 0f),
             new SimulationInterestEntity(4, 100f, 0f)
         ]);
         manager.Refresh(1, 1);
         Assert.Equal([1ul, 2ul, 3ul, 4ul], manager.GetVisibleOrdered(1));
         Assert.Equal([true, true, false, false], manager.GetNearOrdered(1));
 
-        // Between 48 and 56 m a near entity stays near and a far one stays far; beyond 56 m it
+        // Between 50 and 58 m a near entity stays near and a far one stays far; beyond 58 m it
         // leaves. Nothing changes before the connection's next refresh.
         manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
-            new SimulationInterestEntity(2, 50f, 0f),
-            new SimulationInterestEntity(3, 50f, 1f),
+            new SimulationInterestEntity(2, 54f, 0f),
+            new SimulationInterestEntity(3, 54f, 1f),
             new SimulationInterestEntity(4, 30f, 0f)
         ]);
         Assert.Equal([true, true, false, false], manager.GetNearOrdered(1));
@@ -104,8 +104,8 @@ public sealed class RealtimeScalabilityTests
         Assert.Equal([true, true, false, true], manager.GetNearOrdered(1));
         manager.Synchronize([
             new SimulationInterestEntity(1, 0f, 0f),
-            new SimulationInterestEntity(2, 57f, 0f),
-            new SimulationInterestEntity(3, 50f, 1f),
+            new SimulationInterestEntity(2, 59f, 0f),
+            new SimulationInterestEntity(3, 54f, 1f),
             new SimulationInterestEntity(4, 30f, 0f)
         ]);
         manager.Refresh(1, 1);
@@ -121,6 +121,58 @@ public sealed class RealtimeScalabilityTests
         manager.ForgetEntity(4);
         Assert.Equal([1ul, 2ul, 3ul, 5ul, 6ul], manager.GetVisibleOrdered(1));
         Assert.Equal([true, false, false, true, false], manager.GetNearOrdered(1));
+    }
+
+    // An entity comes into detail within 70 m and leaves it beyond 78 m, decided at the refresh
+    // like the near tier, and one that came into detail while the viewer missed a state of it
+    // is named by the refresh.
+    [Fact]
+    public void TheDetailIsDecidedAtTheRefreshWithHysteresis()
+    {
+        var manager = new SimulationInterestManager(InterestManagementConfig.Default);
+        Assert.Equal((70f, 78f), (InterestManagementConfig.Default.DetailRadius, InterestManagementConfig.Default.DetailExitRadius));
+        manager.Synchronize([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 69f, 0f),
+            new SimulationInterestEntity(3, 74f, 0f),
+            new SimulationInterestEntity(4, 100f, 0f)
+        ]);
+        manager.Refresh(1, 1);
+        Assert.Equal([true, true, false, false], InDetail());
+
+        // Between 70 and 78 m an entity in detail stays in it and one out of it stays out;
+        // beyond 78 m it leaves. Nothing changes before the connection's next refresh.
+        manager.Synchronize([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 77f, 0f),
+            new SimulationInterestEntity(3, 74f, 1f),
+            new SimulationInterestEntity(4, 70f, 0f)
+        ]);
+        manager.MarkMissed(1, 4, MissedStates.Combatant);
+        manager.MarkMissed(1, 3, MissedStates.Look);
+        Assert.Equal([true, true, false, false], InDetail());
+        var update = manager.Refresh(1, 1);
+        Assert.Equal([true, true, false, true], InDetail());
+        Assert.Equal([4ul], update.DetailEntered);
+        Assert.Equal(MissedStates.Combatant, manager.TakeMissed(1, 4));
+        manager.Synchronize([
+            new SimulationInterestEntity(1, 0f, 0f),
+            new SimulationInterestEntity(2, 79f, 0f),
+            new SimulationInterestEntity(3, 74f, 1f),
+            new SimulationInterestEntity(4, 70f, 0f)
+        ]);
+        update = manager.Refresh(1, 1);
+        Assert.Equal([true, false, false, true], InDetail());
+        Assert.Empty(update.DetailEntered);
+
+        // A joining entity takes its detail at once.
+        manager.AddEntity(new SimulationInterestEntity(5, 65f, 0f));
+        manager.AddEntity(new SimulationInterestEntity(6, 75f, 0f));
+        Assert.True(manager.IsInDetail(1, 5));
+        Assert.False(manager.IsInDetail(1, 6));
+        Assert.Equal(MissedStates.Look, manager.TakeMissed(1, 3));
+
+        IEnumerable<bool> InDetail() => new ulong[] { 1, 2, 3, 4 }.Select(entityId => manager.IsInDetail(1, entityId));
     }
 
     [Fact]

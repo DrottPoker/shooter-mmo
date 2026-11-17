@@ -1535,8 +1535,8 @@ Each bot's `SimulationBotSession` follows every remote player from its reliable
 spawn to its despawn, once per snapshot sequence, so a duplicated or reordered
 frame never counts twice. A record counts as one near moving update when it is
 inside the steady interval, its position differs from the record before, the
-record before also moved, and the player is within 48 m of the bot; it adds
-the seconds since the record before. The 48 m is the constant
+record before also moved, and the player is within 50 m of the bot; it adds
+the seconds since the record before. The 50 m is the constant
 `SimulationBotRemoteCadence.DefaultNearRadius`, which the bot cannot read from
 the worker: it must equal the worker's `InterestManagement:NearRadius`, so a
 change of either changes both. A bot's rate is those updates over those seconds, the rate at
@@ -1711,6 +1711,7 @@ names its commit.
 | `mixed-250` | failed | 8 ms | 46 / 84 ms | 15.0 | **corpse deposit 1,388 ms** | 43% | 30 KiB/s |
 | `soak-30min` | passed | 16 ms | 47 / 99 ms | 14.9 | rejoin 386 ms | 37% | 9.5 KiB/s |
 | `soak-500-30min`, later that day | failed | **50 ms** | 54 / 108 ms | 14.9 | rejoin 451 ms | 82% | 14 KiB/s |
+| `soak-500-30min`, 2026-11-17 | passed | 24 ms | 49 / 100 ms | 14.9 | rejoin 392 ms | 72% | 14 KiB/s |
 | `login-burst` | passed | 1 ms | 35 / 66 ms | 15.0 | relocation 68 ms | 4% | 5.9 KiB/s |
 | `logout-burst` | passed | 1 ms | 40 / 75 ms | 15.0 | relocation 66 ms | 5% | 5.9 KiB/s |
 | `outage-60s`, no baseline | passed | 8 ms | 43 / 98 ms | 14.9 | equip 153 ms | 15% | 5.5 KiB/s |
@@ -1731,12 +1732,16 @@ What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target
   loop thread is busy 26 percent of the time. The claim of the target also
   needs a 30-minute soak at 500, as
   [What The Playing Scenarios Are For](#what-the-playing-scenarios-are-for)
-  says, and `soak-500-30min` does not pass yet: everything held for 30
-  minutes except the tail of the tick, which passed its rule at the limit in
-  one run and failed it in the next, as
-  [The 30 Minute Soak](#the-30-minute-soak) shows. Entry 1 of
-  [What Limits The Next Tier](#what-limits-the-next-tier) says what that tail
-  is made of and what a larger tier would meet first.
+  says. On 2026-11-16 `soak-500-30min` held everything for 30 minutes except
+  the tail of the tick, which passed its rule at the limit in one run and
+  failed it in the next. **On 2026-11-17 it passed every rule with room**,
+  after the periodic work moved off the snapshot ticks: one tick of 54,600
+  went over its budget, and the tick p99 bucket was 16 ms in 178 of 182
+  intervals and 24 ms in the other 4, as
+  [The 30 Minute Soak](#the-30-minute-soak) shows. So the Shard holds the
+  Scale Target on this machine in one soak; a second soak has not confirmed
+  it yet. Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
+  says what the tail was made of and what a larger tier would meet first.
 - **250 playing players pass a five-minute run and a 30-minute soak** with every
   rule, at 37 to 38 percent of a core for the worker. 100 players in one place
   pass too.
@@ -1867,6 +1872,30 @@ churn, and its memory is now judged by its managed heap; and a reconnect
 whose body had died before GameService released the session was judged as a
 body in the wrong place.
 
+`soak-500-30min` ran again on 2026-11-17 on a quiet machine, with the
+interest refresh and the appearances on the tick before each snapshot and a
+lane for every periodic pass, and **passed every rule**; its summary is the
+scenario's baseline now:
+
+- **The tick** went over its budget once in 54,600 ticks, a tick of 59.9 ms.
+  Its p99 bucket was 16 ms in 178 of the 182 intervals and 24 ms in 4, where
+  the runs of the day before had 24 ms in most intervals and 33.34 and 50 ms
+  in some. A tick took 6.4 ms on average, a snapshot tick 6.5 and the tick
+  before it 6.3 by the phase timers, and the loop thread did not run for 111
+  microseconds of a tick on average.
+- **What held**: 500 of 500 bots and none failed; 1,429 leaves, 725 returns to
+  a standing body and 704 from the saved place, every one with its place and
+  health, and 8 bodies that died while their players were away; no deadlock
+  and 19 lock waits longer than the deadlock timeout; no error or critical log
+  line; 14.9 remote updates per second for the players who see the least;
+  operations of at most 392 ms at the 95th percentile; the worker at 72
+  percent of a core with its loop thread busy 24 percent of the time.
+- **Memory** levels off: the worker's fifths were 209.6, 228.5, 240.8, 242.2,
+  and 243.9 MiB, and GameService's 250.6, 251.5, 252.5, 257.1, and 259.0 MiB.
+- **Retention** kept up: the operation tables grew 5.2 and 3.6 percent after
+  the first 270 seconds, and no row was more than 15.0 seconds past its
+  window.
+
 What the history costs without retention was measured on 2026-11-14, before
 retention existed: the database grew 184 MiB per hour, about 750 KiB per player
 and hour.
@@ -1949,11 +1978,11 @@ Per layout, over the measured ticks:
   encoded packets, spawns, despawns, dropped snapshots, and the near moving
   sightings and records.
 - The update rate is the one players judge: per player, the share of the
-  snapshots in which a walking entity within the near radius, 48 m, was in
+  snapshots in which a walking entity within the near radius, 50 m, was in
   the player's records, times the snapshot rate; the average, the fifth
   percentile over players, and the lowest. Beside it, the same rate over all
   players for the walking entities within 16 m and beyond the near exit
-  radius, 56 m, which shows how the budget degrades by distance, and the rate
+  radius, 58 m, which shows how the budget degrades by distance, and the rate
   over every entity the player sees with a state, standing or walking, the
   measure before changed-only replication, for comparison.
 - Informative: the average and the exact 99th percentile of the tick, the
@@ -1991,6 +2020,14 @@ its cores, so its timings are informative only:
 | `spread-500` | 15.7 | 16.1 | 20,707 | 71.8 | 0 % | 15.0 / 14.9 Hz | 15.0 / 5.0 Hz | 1.1 / 2.7 ms | 2.5 / 5.7 ms | 24 KiB |
 | `crowd-200` | 26.9 | 26.9 | 9,000 | 125.6 | 0 % | 15.0 / 15.0 Hz | 15.0 / 6.0 Hz | 0.2 / 0.3 ms | 0.6 / 1.1 ms | 0 KiB |
 | `crowd-500` | 30.3 | 30.3 | 22,500 | 142.0 | 65.1 % | 9.9 / 7.6 Hz | 14.1 / 1.2 Hz | 1.2 / 2.7 ms | 6.7 / 15.1 ms | 0 KiB |
+
+The baseline was measured with the near radius of 48 m and its exit radius of
+56 m, which its walkers beyond 56 m name. With 50 and 58 m, on 2026-11-16, the
+same layouts send 16.4, 26.9, and 30.3 KiB per second and player, `spread-500`
+0.25 KiB more than with 48 m, and the fingerprint is
+`0100da41381abdeb2b6c772cb46094b547653a67dedb334763d79e9568fe8548`.
+The benchmark sends no combat, look, or world actor state, so the detail radius
+leaves its numbers as they are.
 
 The same layouts through the three states of the replication, deterministic
 numbers only:
@@ -2242,14 +2279,17 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      reach the budget, so these three phases are the first limit above 500.
      Under churn for 30 minutes the tail already decides the verdict at 500:
      `soak-500-30min` passed the tick rule at its limit in one run and failed
-     it in the next, as [The 30 Minute Soak](#the-30-minute-soak) shows, with
-     the long samples of the snapshot phase and of the corpse presence phase
-     as the first things to look at.
+     it in the next on 2026-11-16, as
+     [The 30 Minute Soak](#the-30-minute-soak) shows, with the long samples of
+     the snapshot phase and of the corpse presence phase as the first things
+     to look at; it passed with room on 2026-11-17, after the two changes
+     below.
    - The periodic work is off the snapshot ticks since 2026-11-17: the
      interest refresh and the appearances run on the tick before each
      snapshot, and every periodic pass has a lane of its own, as
-     `docs/PROJECT_ARCHITECTURE.md` describes for the tick loop. `playing-500` on a quiet machine then had 1 tick over budget
-     of 11,400 in the steady interval, where it had 12 on 2026-11-16 and 7
+     `docs/PROJECT_ARCHITECTURE.md` describes for the tick loop. `playing-500`
+     on a quiet machine then had 1 tick over budget of 11,400 in the steady
+     interval, where it had 12 on 2026-11-16 and 7
      after the corpse presence pass was cut, and a tick p99 bucket of 16 ms in
      36 of 38 intervals, where all 30 had been at 24 ms. By the phase timers a
      snapshot tick takes 5.8 ms on average and the tick before it 5.6 ms, the
@@ -2282,10 +2322,30 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      so most of its CPU is still in LiteNetLib's threads. What is left are
      real changes, a hit, a new target, a tool taken in hand, a Mob that
      stops, each sent reliably to every peer that sees the entity within the
-     interest radius of 128 m, where 48 m is near: by the areas of the two
-     circles about six of seven such messages go to a viewer beyond the near
-     radius, an estimate that no run measured. Left to decide: what a far
-     viewer receives of them.
+     interest radius of 128 m, where 48 m was near then: by the areas of the
+     two circles about six of seven such messages go to a viewer beyond the
+     near radius, an estimate that no run measured. Decided on 2026-11-16: a
+     viewer beyond the detail radius of 70 m gets the newest state once a
+     second and no attack or hit, as
+     [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes. In
+     `playing-100` with a 120 second steady interval this took the four kinds
+     per second and player from 6.27 to 5.38 `CombatantState`, 3.45 to 1.30
+     `CombatEventBatch`, 1.14 to 1.07 `EntityAppearanceChanged`, and 3.33 to
+     2.42 `WorldActorState`, and all messages from 47.7 to 43.5. On
+     2026-11-17 `playing-500` ran on a quiet machine without and then with the
+     detail radius, the second run also with the near radius of 50 m: per
+     second and player 24.1 to 22.3 `CombatantState`, 13.7 to 6.4
+     `CombatEventBatch`, 11.8 to 12.0 `EntityAppearanceChanged`, 7.2 to 5.6
+     `WorldActorState`, and all messages 95.2 to 85.0; a player received 14.9
+     and then 14.4 KiB per second, the worker used 69 and then 62 percent of a
+     core, and the tick took 5.7 and then 5.0 ms on average, with 1 and then 0
+     ticks over budget of 11,400 and a tick p99 bucket of 16 ms or less in
+     every interval. The interest refresh, which now also decides the detail,
+     took 24.5 ms per second against 20.9, and the far states 5.4. The events
+     halved, and the states fell little: the fighters of a hunting ground
+     stand within 70 m of each other, so most changes of a fight still go to
+     viewers that see it in detail, and what fell away went to the viewers
+     between 70 m and the interest radius.
    - Replication itself has room: the broadcast takes 4.7 ms on average, of
      which interest takes 1.9, a player receives 42.9 records per snapshot,
      the owner's included, of 15.4 bytes with their share of the packet

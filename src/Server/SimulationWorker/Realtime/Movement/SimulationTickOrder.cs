@@ -6,9 +6,9 @@ namespace Mmorpg.SimulationWorker.Realtime;
 //
 // A phase that does not work on every tick takes its ticks from SimulationTickCadence, never
 // from a modulo of its own, so the snapshot ticks carry the snapshots and no other periodic
-// pass: the interest refresh and the changed looks run on the tick before each snapshot tick,
-// every other pass with a period on a lane off the snapshot ticks and off the other lanes, and
-// the character checkpoint on a free tick. RealtimeFeatureRegistrationTests runs the composed
+// pass: the interest refresh, the changed looks, and the far states run on the tick before each
+// snapshot tick, every other pass with a period on a lane off the snapshot ticks and off the
+// other lanes, and the character checkpoint on a free tick. RealtimeFeatureRegistrationTests runs the composed
 // phases and fails when a periodic phase works on a snapshot tick.
 internal static class SimulationTickOrder
 {
@@ -58,6 +58,12 @@ internal static class SimulationTickOrder
     // snapshot tick, after everything that moved, so the snapshot after it carries every entity
     // that came into view.
     public const int Interest = 950;
+
+    // Sends the viewers that see an entity out of detail its newest missed states on the
+    // entity's slot, on the tick before each snapshot tick, after the interest refresh, so no
+    // state goes to a viewer that just lost the entity and an entity that just came into detail
+    // already brought its states.
+    public const int FarStates = 960;
 
     // Sends the movement snapshots on the snapshot ticks, after everything that moved.
     public const int Snapshots = 1000;

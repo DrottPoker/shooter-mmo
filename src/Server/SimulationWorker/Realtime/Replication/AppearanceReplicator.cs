@@ -6,11 +6,12 @@ using Mmorpg.SimulationWorker.Items;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Gives every spawn the look of its player, and sends a new look to every connection that sees
-// the player and to its owner when it changes: its visible equipment, its lowered headwear, the
-// tool it uses, such as its pickaxe while it gathers, or in Development its body model and look.
-// The owner gets its own look when it joins, since it never spawns its own player. A player whose
-// look fails to build leaves the Shard alone, and a peer that a look fails to reach is
-// disconnected alone. Loop-confined.
+// the player in detail and to its owner when it changes: its visible equipment, its lowered
+// headwear, the tool it uses, such as its pickaxe while it gathers, or in Development its body
+// model and look. A connection that sees the player out of detail gets the newest look later,
+// as EntityPresenceReplicator describes. The owner gets its own look when it joins, since it
+// never spawns its own player. A player whose look fails to build leaves the Shard alone, and a
+// peer that a look fails to reach is disconnected alone. Loop-confined.
 internal sealed class AppearanceReplicator(
     RealtimePeerRegistry peers,
     RealtimePeerSender sender,
@@ -28,6 +29,7 @@ internal sealed class AppearanceReplicator(
     private readonly HashSet<ulong> seen = [];
     private readonly List<ulong> gone = [];
     private readonly Dictionary<ulong, Sent> sent = [];
+    private readonly List<int> recipients = [];
 
     // The look each player's spawns carry, built once and kept until the player's session, look
     // version, item-state revision, or used equipment slot moves, so the many spawns of an
@@ -54,6 +56,14 @@ internal sealed class AppearanceReplicator(
         }
 
         return look.Appearance;
+    }
+
+    // The player's look now, encoded for a viewer that missed it, or null for no player.
+    public byte[]? EncodeLook(ulong entityId)
+    {
+        return entityRegistry.TryGetPlayer(entityId, out var entity)
+            ? Encode(entityId, SpawnAppearanceOf(entity!))
+            : null;
     }
 
     private RealtimeCharacterAppearance AppearanceOf(PlayerSimulationEntity entity)
@@ -207,14 +217,13 @@ internal sealed class AppearanceReplicator(
         return (lookVersion, itemRevision);
     }
 
+    // The viewers that see the player in detail get the look at once, and the others missed it.
     private void SendToViewers(ulong entityId, byte[] packet, int owner)
     {
-        foreach (var context in peers.Contexts)
+        presence.CollectChangeRecipients(entityId, MissedStates.Look, false, owner, recipients);
+        foreach (var connectionId in recipients)
         {
-            if (context.PeerId != owner
-                && context.Session is not null
-                && presence.IsVisibleTo(context.PeerId, entityId)
-                && peers.TryGetCurrentPeer(context, out var peer))
+            if (peers.TryGetAuthenticatedPeer(connectionId, out var context, out var peer))
             {
                 Send(peer, context, packet);
             }

@@ -941,7 +941,7 @@ authentication, and domain failures to structured results:
   6. **Refresh**: an unchanged entity once every `RefreshIntervalSnapshots`
      snapshots, 15 by default, one second, staggered by entity id.
 - The near tier is the visible entities within `InterestManagement:NearRadius`,
-  48 m by default; an entity leaves it beyond `NearExitRadius`, 56 m. The tier
+  50 m by default; an entity leaves it beyond `NearExitRadius`, 58 m. The tier
   is decided at each refresh of the connection's visibility.
 - Each recipient gets at most `SnapshotReplication:PlayerBytesPerSecond`, 32
   KiB by default, owner snapshot included, or its share of the aggregate budget
@@ -994,12 +994,30 @@ observers. Each peer has a visibility set:
   between the enter and exit radius keeps an entity visible while its viewer
   waits for its turn, and joins and leaves still update visibility at once.
 - The same refresh decides which visible entities are near: within
-  `NearRadius`, 48 m by default, or still within `NearExitRadius`, 56 m, when
+  `NearRadius`, 50 m by default, or still within `NearExitRadius`, 58 m, when
   they were near before. An entity that becomes visible between two refreshes
   is near when it is within the near radius.
-- A refresh scans the cells around the observer once and decides visibility
-  and tier where it computes each distance. The positions lie in flat arrays
-  that the cells point into, so the scan looks nothing up per candidate.
+- The same refresh also decides which visible entities the connection sees in
+  detail: within `DetailRadius`, 70 m by default, or still within
+  `DetailExitRadius`, 78 m, when they were in detail before. An entity that
+  becomes visible between two refreshes is in detail when it is within the
+  detail radius. A connection also sees its own entity, its target, and
+  whoever targets its entity in detail at any distance. What detail decides is
+  in [Detail Radius](#detail-radius).
+- A refresh scans the cells around the observer once and decides visibility,
+  tier, and detail where it computes each distance. The positions lie in flat
+  arrays that the cells point into, so the scan looks nothing up per
+  candidate. The tier and the detail of the visible entities lie in lists
+  parallel to them, which a refresh reads and writes in order.
+- Every connection that sees an entity is one viewer pair, and the pairs of an
+  entity form a list, so a state change or a combat event walks the viewers of
+  its entity instead of asking every connection. A pair holds a copy of the
+  detail, which a refresh writes only when it changes, and the states the
+  connection missed. At 500 players the spread layout of the
+  [replication benchmark](STACK_STRESS_TESTING.md#replication-benchmark) has
+  about 119,000 pairs and the crowd of 500 in one place 250,000, at 37 bytes
+  each, a pair of 32 bytes and 5 bytes in the connection's lists: about 4.5
+  and 9.5 MB.
 - The maximum unreliable packet is `1023` bytes, so a remote snapshot chunk
   contains at most 71 current entity records of 14 bytes, as
   [Remote Entity Record](REALTIME_PROTOCOL.md#remote-entity-record) describes.
@@ -1007,6 +1025,48 @@ observers. Each peer has a visibility set:
 
 This is process-local interest management for one complete shard. Cross-worker
 zone interest is deferred until zones exist.
+
+### Detail Radius
+
+A viewer sees what happens around an entity in full only within the detail
+radius; beyond it, up to the exit radius, it sees the entity move in the
+snapshots as before, with its newest look and health once a second. The
+movement tiers of the snapshots do not depend on it.
+
+- A change of a combatant's `CombatantState`, a player's
+  `EntityAppearanceChanged`, or a world actor's `WorldActorState` goes at once
+  to every viewer that sees the entity in detail, and to its owner as before.
+- A viewer that sees the entity out of detail missed the change. Every entity
+  has a slot in the second, its id modulo the snapshot rate, and on the tick
+  before the snapshot of its slot every viewer that missed one of these states
+  gets the newest one, encoded once for all of them. The far states phase sends
+  them, after the interest refresh, on the same ticks.
+- When an entity comes into detail for a viewer at a refresh, the viewer gets
+  the newest of every state it missed of it at once, so a figure that walks
+  within 70 m never shows an old look or health there. The same holds when the
+  viewer's entity takes the entity as its target or the entity takes the
+  viewer's entity as its target, at the end of that tick's combat phase.
+- A change that must never be late reaches every viewer at once, in or out of
+  detail: a combatant whose life state changes between alive, dead, and
+  evading, and a world actor that becomes active or inactive, such as a
+  depleted resource node or one that returns. Spawns and despawns are not
+  affected, so a Mob that dies, leaves, or returns does so at once for every
+  viewer.
+- A spawn carries the entity's newest look and world actor state, and the
+  combatant's state follows it, so a viewer missed nothing of an entity it was
+  just sent.
+- A Mob's world actor state is held back from a viewer out of detail while the
+  Mob walks, because a client takes every world actor state of a Mob as the
+  pose it comes to rest at; the viewer gets it on a later slot once the Mob
+  stands.
+- Combat events: `AttackStarted`, `AttackReleased`, `AttackCancelled`, and
+  `Hit` reach the viewers that see the source or the target in detail and
+  whoever controls the source or the target. `Died` reaches every viewer of
+  either. A viewer that comes into detail while an attack is under way sees it
+  from its next event on.
+- The worker remembers what a viewer missed as one bit per state kind on its
+  viewer pair, which says that a newer revision of that kind exists than the
+  one the viewer got, and which a send of the newest state clears.
 
 ## Server-Authoritative Movement
 
@@ -1179,7 +1239,9 @@ them as follows:
   the central `WorldActorTimerQueue`, a min-heap by due tick that
   `WorldActorRuntimeDriver` drains every tick.
 - Actor presence reuses reliable interest enter and exit messages, while actor
-  state changes use bounded reliable updates. Assignment-local despawn
+  state changes use bounded reliable updates, at once to the viewers that see
+  the actor in detail and once a second to the others, as
+  [Detail Radius](#detail-radius) describes. Assignment-local despawn
   tombstones retain runtime identity until every interest exit can encode the
   actor-specific despawn contract. Each interest pass drops a tombstone once no
   connection still has the actor in its interest set, so they stay bounded by
@@ -1438,9 +1500,12 @@ the actor catalog. The combat model is in
   death between the lethal hit and its commit, after which the character keeps
   its items.
 - `CombatantState` follows every spawn of a combatant, and every changed
-  combatant reaches its viewers once at the end of the tick. Combat events reach
-  every peer that sees the source or the target, and `OwnerCombatState` reaches
-  the owner.
+  combatant reaches the viewers that see it in detail once at the end of the
+  tick, every viewer when its life state changed, and the others once a second.
+  Combat events reach whoever controls the source or the target and the peers
+  that see either in detail, and a death every peer that sees either, as
+  [Detail Radius](#detail-radius) describes. `OwnerCombatState` reaches the
+  owner.
 - Health regeneration travels as a rule, not as a state per step. The state of
   a living player out of combat below its maximum health names the
   regeneration amount of the combat rules and the server tick of the next
@@ -1514,7 +1579,9 @@ in `content/actors/catalog.json`:
   refresh, and the snapshots change neither the state nor the interaction
   revision. The first tick it stands still sends one reliable `WorldActorState`
   with its rest pose, which advances the state revision but never the
-  interaction revision.
+  interaction revision, to the viewers that see it in detail; the others get
+  it on the Mob's slot once it stands, as [Detail Radius](#detail-radius)
+  describes.
 - A Mob's `WorldActorSpawn` names the server tick of its pose and whether the
   Mob walks then: whether its pose changed in its last tick, so the pose is not
   yet the rest pose that the worker sent reliably. The moving Mobs gauge counts
@@ -1534,8 +1601,10 @@ The servers implement it as follows:
   `SimulationWorker:CharacterAppearancePath` and sends each player's look, the
   items of its visible equipment slots, its headwear, and the tool it uses while
   it gathers, as [Character Appearance](REALTIME_PROTOCOL.md#character-appearance)
-  describes. Development bots get a look and an outfit that the worker picks
-  from their character id.
+  describes, at once to the viewers that see the player in detail and once a
+  second to the others, as [Detail Radius](#detail-radius) describes.
+  Development bots get a look and an outfit that the worker picks from their
+  character id.
 - An `AppearanceIntent` lowers or raises the headwear, or in the Development
   environment stores another body model and look. The worker forwards it to the
   appearance route, which refuses a malformed change with
@@ -2433,7 +2502,8 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `Admission:MaxReliableQueuedPackets` | `1024` | Reliable packets that wait behind the 64 unacknowledged ones LiteNetLib sends per channel, of every reliable channel together, before a disconnect |
 | `InterestManagement:CellSize`, `EnterRadius`, `ExitRadius` | `64`, `128`, `144` m | Spatial hash and visibility hysteresis; a positive cell size of at most 4,096 m, a positive enter radius, an exit radius from the enter radius to 10,000 m, and at most 64 cells per axis direction |
 | `InterestManagement:RefreshIntervalSnapshots` | `3` | Snapshots between two refreshes of one connection's visibility, at most one second of snapshots |
-| `InterestManagement:NearRadius`, `NearExitRadius` | `48`, `56` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |
+| `InterestManagement:NearRadius`, `NearExitRadius` | `50`, `58` m | The near tier of a viewer's visible entities and its hysteresis; the exit radius at least the near radius and at most the enter radius |
+| `InterestManagement:DetailRadius`, `DetailExitRadius` | `70`, `78` m | The detail of a viewer's visible entities and its hysteresis, as [Detail Radius](#detail-radius) describes; the detail radius at least the near radius, and the exit radius at least the detail radius and at most the interest exit radius |
 | `SnapshotReplication:OverloadTargetUtilizationBasisPoints` | `9500` | Share in basis points, 1 to 10,000, of a player's and of the aggregate snapshot budget that snapshots may use before remote records are deferred |
 | `SnapshotReplication:PlayerBytesPerSecond` | 32 KiB | Snapshot bytes per player and second, owner snapshot included, at least two seconds of owner snapshots and at most `UdpQuotas:SnapshotBytesPerSecond` |
 | `SnapshotReplication:FarIntervalSnapshots`, `StopRepeats`, `RefreshIntervalSnapshots` | `3`, `3`, `15` | Snapshots between two changes of a far entity, repeats of a record after its last change, and snapshots between two refreshes of an unchanged entity; the first two at most one second of snapshots, the refresh between the far interval and ten seconds of snapshots |

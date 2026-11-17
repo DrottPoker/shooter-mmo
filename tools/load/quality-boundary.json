@@ -23,7 +23,7 @@
       "rule": "remote_update_rate_p5_hz",
       "limit": 10,
       "unit": "Hz",
-      "description": "Minimum. Updates per second of the remote players that walk near a player: each bot counts a remote snapshot record of a remote player whose position moved from its record before, while that record also moved and the player stands within the worker's near radius of 48 m, over the time since that record before, inside the steady interval. The worker sends a standing or far player less often by design, so those records do not count. The rule judges the fifth percentile over bots of each bot's rate, so the players who see the least are judged, not the average."
+      "description": "Minimum. Updates per second of the remote players that walk near a player: each bot counts a remote snapshot record of a remote player whose position moved from its record before, while that record also moved and the player stands within the worker's near radius of 50 m, over the time since that record before, inside the steady interval. The worker sends a standing or far player less often by design, so those records do not count. The rule judges the fifth percentile over bots of each bot's rate, so the players who see the least are judged, not the average."
     },
     {
       "rule": "gameplay_operation_p95_ms",

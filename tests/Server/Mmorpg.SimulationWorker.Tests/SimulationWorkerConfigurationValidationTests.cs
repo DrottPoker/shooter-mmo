@@ -62,7 +62,8 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Equal(
             9_500,
             config.SnapshotReplication.OverloadTargetUtilizationBasisPoints);
-        Assert.Equal((48f, 56f), (config.InterestManagement.NearRadius, config.InterestManagement.NearExitRadius));
+        Assert.Equal((50f, 58f), (config.InterestManagement.NearRadius, config.InterestManagement.NearExitRadius));
+        Assert.Equal((70f, 78f), (config.InterestManagement.DetailRadius, config.InterestManagement.DetailExitRadius));
         Assert.Equal(
             (32_768, 3, 3, 15),
             (config.SnapshotReplication.PlayerBytesPerSecond,
@@ -265,6 +266,10 @@ public sealed class SimulationWorkerConfigurationValidationTests
     [InlineData("InterestManagement:NearRadius", "0", "NearRadius must be positive")]
     [InlineData("InterestManagement:NearExitRadius", "40", "NearExitRadius at least NearRadius")]
     [InlineData("InterestManagement:NearExitRadius", "129", "at most EnterRadius")]
+    [InlineData("InterestManagement:DetailRadius", "0", "DetailRadius must be positive")]
+    [InlineData("InterestManagement:DetailRadius", "49", "DetailRadius must be positive and at least NearRadius")]
+    [InlineData("InterestManagement:DetailExitRadius", "69", "DetailExitRadius at least DetailRadius")]
+    [InlineData("InterestManagement:DetailExitRadius", "145", "at most ExitRadius")]
     [InlineData("SnapshotReplication:PlayerBytesPerSecond", "1000", "PlayerBytesPerSecond must hold")]
     [InlineData("SnapshotReplication:PlayerBytesPerSecond", "300000", "at most UdpQuotas:SnapshotBytesPerSecond")]
     [InlineData("SnapshotReplication:FarIntervalSnapshots", "16", "must not exceed one second of snapshots")]

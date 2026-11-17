@@ -346,7 +346,11 @@ contract:
   limit never drops: at most one batch waits, and a death rejects every waiting
   client operation.
 - Peers are iterated in registry insertion order. Snapshot fairness and
-  broadcast order depend on it, so the table stays a plain dictionary.
+  broadcast order depend on it, so the table stays a plain dictionary. A
+  combatant's state, a look, a world actor's state, and a combat event go to
+  the viewers of their entity instead, which the interest manager lists per
+  entity, as [Interest Management](SERVICE_FEATURES.md#interest-management)
+  describes.
 - A tick runs the registered tick phases in the order that
   `Realtime/Movement/SimulationTickOrder.cs` declares, with the reason for each
   position; that file is the only place that decides the order. A tick runs:
@@ -361,7 +365,8 @@ contract:
   movement; the combat phase; the lingering bodies whose time is up, whose
   death committed, or whose session ended; interaction revalidation every fifth
   of a second while world interactions run; the gathering pass; the changed
-  looks; the interest refresh with its spawns and despawns; the snapshots;
+  looks; the interest refresh with its spawns and despawns; the far states,
+  the newest states that viewers out of detail missed; the snapshots;
   corpse presence twice per second; the notice to every joined peer when
   GameService stops or starts answering; and the character checkpoint at its
   interval. The loop fills the players of the tick once, in entity id order,
@@ -371,9 +376,9 @@ contract:
   `Realtime/Movement/SimulationTickCadence.cs`, never from a modulo of its own,
   so a snapshot tick carries the snapshots and no other periodic pass. The
   snapshots run on the snapshot ticks, every `TickRateHz / SnapshotRateHz`
-  ticks, the even ticks by default. The changed looks and the interest refresh
-  run on the tick before each snapshot tick, so the snapshot right after them
-  carries every entity that came into view; a spawn so leaves one tick before
+  ticks, the even ticks by default. The changed looks, the interest refresh,
+  and the far states run on the tick before each snapshot tick, so the
+  snapshot right after them carries every entity that came into view; a spawn so leaves one tick before
   the first record of its entity, and carries that tick and the pose of that
   tick. Every other pass with a fixed period takes a lane at composition: a
   place in its period that keeps it off the ticks of the lanes taken before it
@@ -1746,10 +1751,11 @@ The target counts two things separately:
 
 The worker simulates the Shard on its one loop thread. At 500 spread players
 it holds the tick budget and the full remote update rate in a five-minute run,
-and that thread is busy only a small part of the time; over 30 minutes with
-players coming and going, the tail of the tick still goes over its budget in
-some runs, so the target is not claimed yet. That tail and the transport's
-messages are entry 1 of
+and that thread is busy only a small part of the time. Over 30 minutes with
+players coming and going it passed every rule on 2026-11-17, with one tick of
+54,600 over its budget, where the tail of the tick had failed the rule the day
+before; that is one soak, and a second has not confirmed it yet. The tail and
+the transport's messages are entry 1 of
 [What Limits The Next Tier](STACK_STRESS_TESTING.md#what-limits-the-next-tier).
 A tier is claimed only after
 stress workloads with combat, Mobs, and players spread over the World measured
