@@ -40,8 +40,9 @@ Scripts only write what follows from the source, such as the body parts of the
 starting points that a person then edits, such as the gait model's clips in an
 [animation library](#animation-libraries). No script replaces handmade work.
 After an export, Unity creates the project materials an export lacks and updates
-the appearance catalogs by itself when it gets focus, so no menu command stands
-between the export and the game.
+the appearance catalogs, the content assets of garments and attachments, and
+their Addressables entries by itself when it gets focus, so no menu command
+stands between the export and the game.
 
 ## What To Do
 
@@ -157,6 +158,7 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Art/Textures/<Category>/<Image>.png` | Exported image of a painted material, byte for byte as it is packed in the `.blend` file. Never edited by hand; CI rejects a texture without an export record or with a changed file. Paint layers export to `Textures/Paint`, each image cropped to its paint, and garment textures to `Textures/Garments`. |
 | `src/Client/Assets/Art/Materials` | Unity URP Lit materials. A Blender material maps to the Unity material of the same name. |
 | `src/Client/Assets/Art/Appearance` | The appearance catalog of every body model, `<Model>_Appearance.asset`; see [Unity Import Rules](#unity-import-rules). |
+| `src/Client/Assets/Content/Bodies` | The content asset of every garment per body, `Garments/<Model>/<Garment>.asset`, and of every attachment, `Attachments/<Attachment>.asset`, which the client loads on demand; written with the catalogs, never by hand. |
 | `src/Client/Assets/Art/Fonts` | TextMesh Pro font assets of the interface, such as `LiberationSans UI SDF.asset`, TextMesh Pro's default font; how it is made is in [Text And Fonts](UNITY_CLIENT_ARCHITECTURE.md#text-and-fonts). |
 | `src/Client/Assets/Art/Animation` | Animator controllers that play the exported clips, `HumanLocomotion.controller` and `WolfLocomotion.controller`, and the avatar masks of their layers. |
 | `src/Client/Assets/Art/Shaders` | `CharacterSkin.shader`, `CharacterSkinInput.hlsl`, `CharacterSkinForwardPass.hlsl`, and `CharacterSkinGBufferPass.hlsl`, the skin shader `Mmorpg/Character Skin`: URP Lit with paint layers read through the paint UV map; `Garment.shader`, `GarmentInput.hlsl`, and `GarmentForwardPass.hlsl`, the garment shader `Mmorpg/Garment`: URP Lit with dye channels, drawing both faces; `Water.shader`, the water surface shader `Mmorpg/Water`, `Waterfall.shader`, the falling water shader `Mmorpg/Waterfall`, and `WaterCommon.hlsl`, the water's clock and the sea's waves that both share; see [Water](#water). |
@@ -181,8 +183,10 @@ only you run Claude Code, and save your work before a live session.
 | `src/Client/Assets/Editor/Art/ArtModelImportRules.cs` | Unity import rules for every model below `Assets/Art/Models` and every texture below `Assets/Art/Textures`. |
 | `src/Client/Assets/Editor/Art/ArtAssetManifests.cs` | Reads `asset.json` and the skeleton definitions for the import rules, the material command, and the tests. |
 | `src/Client/Assets/Editor/Art/ArtMaterialCreator.cs` | `MMORPG > Tools > Art Pipeline > Create Missing Materials`: creates the project material of every exported material that has none, from its export record, and gives every garment texture's material the dye mask and natural colors of its record. |
-| `src/Client/Assets/Editor/Art/ArtAppearanceCatalogs.cs`, `ArtTopologyMaps.cs` | `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs`, and the maps from Unity's triangles to the faces of a body's editable mesh. |
-| `src/Client/Assets/Editor/Art/ArtExportFollowUp.cs` | After an import of exported models, their data, or textures, creates the missing project materials and updates the appearance catalogs, once, outside batch mode. |
+| `src/Client/Assets/Editor/Art/ArtAppearanceCatalogs.cs`, `ArtTopologyMaps.cs` | `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs`, with the content assets and their Addressables entries, and the maps from Unity's triangles to the faces of a body's editable mesh. |
+| `src/Client/Assets/Editor/Art/ArtBodyContentEntries.cs` | The entries of the `Body Content` and `Body Content Shared` Addressables groups, and the assets two bundles would share. |
+| `src/Client/Assets/Editor/Art/EditorBodyContent.cs` | Body content read from the asset database at once, for the Wardrobe and the tests. |
+| `src/Client/Assets/Editor/Art/ArtExportFollowUp.cs` | After an import of exported models, their data, or textures, creates the missing project materials and updates the appearance catalogs with their content and entries, once, outside batch mode. |
 | `src/Client/Assets/Editor/Art/CreaturePresentationBuilder.cs` | `MMORPG > Tools > Art Pipeline > Build Creature Presentations`; see [Prefabs](#prefabs). |
 | `src/Client/Assets/Editor/Wardrobe/WardrobePreview.cs`, `WardrobeWindow.cs` | `MMORPG > Tools > Art Pipeline > Wardrobe`; see [The Wardrobe](#the-wardrobe). |
 | `src/Client/Assets/Editor/Cloth/ClothStressMotion.cs`, `ClothMotionMeter.cs`, `ClothMeasurement.cs` | The cloth stress motions, what is measured of the cloth in them, and `MMORPG > Tools > Art Pipeline > Measure Cloth`, which writes `artifacts/cloth-measurements.md`; see [Measuring The Cloth](EQUIPMENT_VISUALS_DESIGN.md#measuring-the-cloth). |
@@ -775,6 +779,39 @@ that holds its three corners, so the order of Unity's vertices and triangles
 does not matter. `ArtAppearanceCatalogTests` fails when a catalog differs from
 what the command writes from `asset.json`, or when a face of an editable body is
 not drawn by its size less two triangles.
+
+A catalog holds data and addresses, not content, so a client loads only the looks
+in view; see [Body Content](UNITY_CLIENT_ARCHITECTURE.md#body-content). The same
+command writes the content they address and its entries:
+
+- a `BodyPieceContent` per garment and body,
+  `Assets/Content/Bodies/Garments/<Model>/<Garment>.asset`, with the template's
+  model for that body and the texture's material, addressed
+  `Bodies/Garments/<Model>/<Garment>.asset`;
+- a `BodyPieceContent` per attachment,
+  `Assets/Content/Bodies/Attachments/<Attachment>.asset`, with its model and the
+  clips of a skinned one, addressed `Bodies/Attachments/<Attachment>.asset`;
+- the image of every paint layer and of every option other than a material's own
+  image as an entry of its own, addressed `Bodies/Paints/<file>` and
+  `Bodies/Options/<file>`;
+- these as the entries of the Addressables group `Body Content`, one bundle each,
+  and every asset two bundles would otherwise both hold, such as a garment
+  texture's material that both bodies draw with, a template model that several
+  textures share, the template materials, the garment shader, and URP Lit, as an
+  entry of `Body Content Shared`, one bundle each; the bundles of the World scenes
+  and the other groups count, and an asset that only one shared entry holds stays
+  in that entry's bundle.
+
+It removes the content assets and entries that no catalog names, writes only what
+differs, so a second run changes nothing, and uses the Addressables Editor API
+for every entry. A new garment, texture, paint layer, or attachment gets its
+content and entries with the catalogs after its export, without a manual step.
+`ArtAppearanceCatalogTests` also fails when a content asset or an entry differs
+from what the command writes or when a second run would write anything, and
+`BodyContentValidationTests` when an address does not load content of its type,
+when the player prefabs or a World scene hold a garment's or an attachment's
+model, material, or image, or when two bundles share an asset that is no
+entry.
 
 A project material is never changed by the import, and every project material
 is saved in the form its shader's Inspector keeps: URP Lit validates a material
@@ -1583,7 +1620,8 @@ describes.
    problems. When Unity gets focus, it updates the appearance catalogs. Expected
    result: the Console lists `Paint Tattoo` in both catalogs when the paint
    layer is new. Commit the `.blend` file, `asset.json`, the PNG files, the
-   catalogs, and their `.meta` files together. Add a new layer to the options of
+   catalogs, the changed files of `Assets/AddressableAssetsData/AssetGroups`,
+   and their `.meta` files together. Add a new layer to the options of
    its kind, and for underwear its slot, of every body model it fits in
    `content/characters/appearance.json`, as
    [Character Appearance](../content/README.md#character-appearance) describes;
@@ -2373,7 +2411,9 @@ at the front where the skin shows between the laces.
    `Assets/Art/Materials/Garments/M_Garment_WoolTunic.mat` and updates the
    appearance catalogs: the Console lists `Garment WoolTunic` in both. Commit the
    `.blend` file, `asset.json`, the PNG and JSON files, the material, the
-   catalogs, and their `.meta` files together. A dyeable texture also exports
+   catalogs, the content assets below `Assets/Content/Bodies/Garments`, the
+   changed files of `Assets/AddressableAssetsData/AssetGroups`, and their
+   `.meta` files together. A dyeable texture also exports
    `T_Garment_WoolTunic_Dye.png`, and Unity gives the material its dye mask and
    natural colors. A texture is exported again after every export of its
    template.
@@ -2547,8 +2587,9 @@ not end up on the grip through the swing; see
    Expected result: when Unity gets focus, it creates the materials below
    `Assets/Art/Materials/Attachments` and the Console lists both appearance
    catalogs with `Attachment IronAxe`. Commit the `.blend` file, `asset.json`,
-   the FBX, the texture, the materials, the catalogs, and their `.meta` files
-   together.
+   the FBX, the texture, the materials, the catalogs, the content asset
+   `Assets/Content/Bodies/Attachments/IronAxe.asset`, the changed files of
+   `Assets/AddressableAssetsData/AssetGroups`, and their `.meta` files together.
 5. Let an item show it: in `MMORPG > Tools > Item Catalog`, select an item of
    the socket's equipment slot, such as `main_hand`, enter `IronAxe` in
    `Attachment` under `Client Presentation`, and `Save And Bake`. Expected

@@ -96,6 +96,12 @@ namespace Mmorpg.Client.Tests.PlayMode
             pending.Clear();
         }
 
+        // The worker sends a packet, which the next poll raises.
+        public void Deliver(byte[] packet, byte channel)
+        {
+            pending.Add(() => Received?.Invoke(packet, channel, DeliveryMethod.ReliableOrdered));
+        }
+
         // The line drops: the next poll reports the timeout, as LiteNetLib does.
         public void LoseLine()
         {

@@ -102,11 +102,16 @@ namespace Mmorpg.Client.Tests.PlayMode
             Assert.That(PlayerCorpseBodies.IsPlayerCorpse("corpse.mob"), Is.False);
             var prefab = Spawn().GetComponent<PlayerBodyAppearance>();
             yield return null;
-            using (var meshes = new PlayerBodyMeshes())
-            using (var bodyMaterials = new PlayerBodyMaterials())
+            using (var content = new PlayerBodyContent())
+            using (var meshes = new PlayerBodyMeshes(false, content))
+            using (var bodyMaterials = new PlayerBodyMaterials(content))
             using (var corpses = new PlayerCorpseBodies())
             {
                 var plainKey = PlayerCorpseBodies.KeyOf("Human_Male", BodyLook.Default);
+                // A lying body waits for the content of its look.
+                Assert.That(corpses.TryGet(plainKey, prefab, BodyLook.Default, meshes, bodyMaterials, out _, out _, out var loading), Is.False);
+                Assert.That(loading, Is.True);
+                yield return PlayModeBodyContent.Load(content, prefab.Catalog, BodyLook.Default);
                 Assert.That(corpses.TryGet(plainKey, prefab, BodyLook.Default, meshes, bodyMaterials, out var mesh, out var materials), Is.True);
                 Assert.That(corpses.TryGet(plainKey, prefab, BodyLook.Default, meshes, bodyMaterials, out var again, out _), Is.True);
                 Assert.That(again, Is.SameAs(mesh), "every player corpse of one look shares one baked body");
@@ -125,6 +130,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 // and a look no corpse shows any more is destroyed.
                 var cloaked = BodyLook.Default.WithGarment("WoolCloak", true);
                 var cloakedKey = PlayerCorpseBodies.KeyOf("Human_Male", cloaked);
+                yield return PlayModeBodyContent.Load(content, prefab.Catalog, cloaked);
                 Assert.That(corpses.TryGet(cloakedKey, prefab, cloaked, meshes, bodyMaterials, out var wrapped, out _), Is.True);
                 Assert.That(wrapped, Is.Not.SameAs(mesh));
                 Assert.That(wrapped.vertexCount, Is.GreaterThan(mesh.vertexCount));
@@ -133,6 +139,15 @@ namespace Mmorpg.Client.Tests.PlayMode
                 yield return null;
                 Assert.That(corpses.Count, Is.EqualTo(1));
                 Assert.That(mesh == null, Is.True);
+
+                // A lying body holds the content of its look while it exists, and lets go of it
+                // when it goes.
+                var cloak = prefab.Catalog.GarmentNamed("WoolCloak").Address;
+                content.ReleaseUnused();
+                Assert.That(content.PieceOf(cloak), Is.Not.Null);
+                corpses.KeepOnly(new string[0]);
+                content.ReleaseUnused();
+                Assert.That(content.PieceOf(cloak), Is.Null);
             }
         }
 

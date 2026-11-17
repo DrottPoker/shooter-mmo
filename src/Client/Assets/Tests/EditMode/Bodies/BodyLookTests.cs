@@ -93,7 +93,7 @@ namespace Mmorpg.Client.Tests.EditMode
         }
 
         // A catalog with the Face and Eye slots of the male body, without materials or images.
-        internal static BodyAppearanceCatalog Catalog(Material face = null, Texture2D clean = null)
+        internal static BodyAppearanceCatalog Catalog(Material face = null, string clean = null)
         {
             var catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
             catalog.Configure(new[]

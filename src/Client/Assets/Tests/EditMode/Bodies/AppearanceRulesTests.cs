@@ -100,8 +100,8 @@ namespace Mmorpg.Client.Tests.EditMode
 
         private static BodyAppearanceCatalog.Garment Garment(string name, string slot, bool hidesUnderwear)
         {
-            return new BodyAppearanceCatalog.Garment(name, name, null, slot, 150, new string[0], hidesUnderwear, string.Empty, string.Empty,
-                null, new int[0], new int[0], new int[0], new float[0]);
+            return new BodyAppearanceCatalog.Garment(name, name, "Tests/" + name, slot, 150, new string[0], hidesUnderwear, string.Empty,
+                string.Empty, new int[0], new int[0], new int[0], new float[0]);
         }
 
         private static string[] Shown(BodyAppearanceCatalog catalog, BodyLook look, IReadOnlyList<BodyAppearanceCatalog.Garment> drawn)

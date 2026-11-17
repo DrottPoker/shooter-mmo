@@ -335,12 +335,13 @@ namespace Mmorpg.Client.Editor
 
             foreach (var garment in PlayerBodyMeshes.Drawn(preview.Worn))
             {
-                if (PlayerBodyAppearance.ChainsOf(garment.Cloth) == null || garment.Model == null)
+                var model = PlayerBodyMeshes.ModelOf(garment, preview.Content);
+                if (PlayerBodyAppearance.ChainsOf(garment.Cloth) == null || model == null)
                 {
                     continue;
                 }
 
-                foreach (var renderer in garment.Model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                foreach (var renderer in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 {
                     var mapped = renderer.bones.Select(bone => bone != null && bones.TryGetValue(bone.name, out var own) ? own : null).ToArray();
                     var root = renderer.rootBone != null && bones.TryGetValue(renderer.rootBone.name, out var ownRoot) ? ownRoot : bones["Hips"];

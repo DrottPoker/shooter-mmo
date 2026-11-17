@@ -27,7 +27,9 @@ namespace Mmorpg.Client.Gameplay
     // shown waits for it instead of building it in a frame, and both ways make the same mesh. The
     // bodies that show a mesh count as its users; a mesh nobody uses stays GraceSeconds, at most
     // UnusedCap of them, and is then destroyed, so memory comes back when a crowd leaves. The owner
-    // destroys the rest.
+    // destroys the rest. The garments' and attachments' models and materials come from a
+    // PlayerBodyContent: a combination takes only the pieces whose content is ready, is keyed by
+    // their names, and goes with any of its content, so no mesh outlives what it draws with.
     public sealed partial class PlayerBodyMeshes : IDisposable
     {
         private static readonly IReadOnlyList<BodyAppearanceCatalog.Garment> NoGarments =
@@ -71,21 +73,40 @@ namespace Mmorpg.Client.Gameplay
         // meshes in, kept while builds come and let go a grace time after the last one.
         private readonly Dictionary<Mesh, SourceMesh> sources = new Dictionary<Mesh, SourceMesh>();
         private readonly Stack<Buffers> spareBuffers = new Stack<Buffers>();
+        private readonly List<Combined> dropped = new List<Combined>();
         private readonly bool releaseCpuCopies;
+        private readonly PlayerBodyContent content;
         private float lastBuildTime;
         private bool disposed;
 
         public PlayerBodyMeshes()
-            : this(false)
+            : this(false, null)
+        {
+        }
+
+        public PlayerBodyMeshes(bool releaseCpuCopies)
+            : this(releaseCpuCopies, null)
         {
         }
 
         // With releaseCpuCopies a mesh keeps no copy of its data once it is uploaded, as in play,
         // where nothing reads a shared mesh back; out of play, as in the Wardrobe and the tests,
-        // the meshes stay readable.
-        public PlayerBodyMeshes(bool releaseCpuCopies)
+        // the meshes stay readable. The garments and attachments come from the content; without
+        // it a body wears none.
+        public PlayerBodyMeshes(bool releaseCpuCopies, PlayerBodyContent bodyContent)
         {
             this.releaseCpuCopies = releaseCpuCopies;
+            content = bodyContent;
+            if (content != null)
+            {
+                content.Releasing += OnContentReleasing;
+            }
+        }
+
+        // The content the combinations draw garments and attachments from, or null.
+        public PlayerBodyContent Content
+        {
+            get { return content; }
         }
 
         // How many source meshes the builds hold the data of.
@@ -142,11 +163,27 @@ namespace Mmorpg.Client.Gameplay
             return combined;
         }
 
-        // The caller uses the mesh no more; a mesh without users goes after its grace time.
+        // The caller uses the mesh no more; a mesh without users goes after its grace time, and one
+        // whose content went goes with its last user.
         public void Release(Combined combined)
         {
-            if (disposed || combined == null || combined.Key == null || combined.Users == 0
-                || !meshes.TryGetValue(combined.Key, out var known) || known != combined)
+            if (disposed || combined == null || combined.Key == null || combined.Users == 0)
+            {
+                return;
+            }
+
+            if (combined.Forgotten)
+            {
+                combined.Users--;
+                if (combined.Users == 0)
+                {
+                    DestroyMesh(combined);
+                }
+
+                return;
+            }
+
+            if (!meshes.TryGetValue(combined.Key, out var known) || known != combined)
             {
                 return;
             }
@@ -242,8 +279,60 @@ namespace Mmorpg.Client.Gameplay
             Trim(float.PositiveInfinity, int.MaxValue);
         }
 
+        // The combinations that draw content that goes go with it, and the source meshes read of
+        // it, before the content's bundle unloads. A combination that runs is dropped when it ends.
+        private void OnContentReleasing(string address, UnityEngine.Object released)
+        {
+            dropped.Clear();
+            foreach (var combined in meshes.Values)
+            {
+                if (combined.Draws(address))
+                {
+                    dropped.Add(combined);
+                }
+            }
+
+            foreach (var combined in dropped)
+            {
+                meshes.Remove(combined.Key);
+                queued.Remove(combined);
+                unused.Remove(combined);
+                combined.Forgotten = true;
+                if (combined.Work == null && combined.Users == 0)
+                {
+                    DestroyMesh(combined);
+                }
+            }
+
+            dropped.Clear();
+            var piece = released as BodyPieceContent;
+            if (piece != null && piece.Model != null)
+            {
+                foreach (var renderer in piece.Model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    if (renderer.sharedMesh != null)
+                    {
+                        sources.Remove(renderer.sharedMesh);
+                    }
+                }
+
+                foreach (var filter in piece.Model.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (filter.sharedMesh != null)
+                    {
+                        sources.Remove(filter.sharedMesh);
+                    }
+                }
+            }
+        }
+
         public void Dispose()
         {
+            if (content != null)
+            {
+                content.Releasing -= OnContentReleasing;
+            }
+
             disposed = true;
             foreach (var combined in running)
             {
@@ -325,8 +414,8 @@ namespace Mmorpg.Client.Gameplay
             IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments,
             bool queue, string partsKey = null)
         {
-            garments = garments ?? NoGarments;
-            attachments = attachments ?? NoAttachments;
+            garments = Available(garments ?? NoGarments, content);
+            attachments = Available(attachments ?? NoAttachments, content);
             var key = KeyOf(partsKey ?? PartsKeyOf(parts), garments, attachments);
             if (meshes.TryGetValue(key, out var combined))
             {
@@ -340,6 +429,7 @@ namespace Mmorpg.Client.Gameplay
                 Catalog = catalog,
                 Garments = ToArray(garments),
                 Attachments = ToArray(attachments),
+                Contents = ContentsOf(garments, attachments),
                 WantedFrame = Time.frameCount,
             };
             meshes[key] = combined;
@@ -349,6 +439,80 @@ namespace Mmorpg.Client.Gameplay
             }
 
             return combined;
+        }
+
+        // The garments whose content is ready, in their order.
+        public static IReadOnlyList<BodyAppearanceCatalog.Garment> Available(
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, PlayerBodyContent content)
+        {
+            if (garments.Count == 0)
+            {
+                return garments;
+            }
+
+            var available = new List<BodyAppearanceCatalog.Garment>(garments.Count);
+            foreach (var garment in garments)
+            {
+                if (garment != null && ModelOf(garment, content) != null)
+                {
+                    available.Add(garment);
+                }
+            }
+
+            return available;
+        }
+
+        // The attachments whose content is ready, in their order.
+        public static IReadOnlyList<BodyAppearanceCatalog.Attachment> Available(
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments, PlayerBodyContent content)
+        {
+            if (attachments.Count == 0)
+            {
+                return attachments;
+            }
+
+            var available = new List<BodyAppearanceCatalog.Attachment>(attachments.Count);
+            foreach (var attachment in attachments)
+            {
+                if (attachment != null && ModelOf(attachment, content) != null)
+                {
+                    available.Add(attachment);
+                }
+            }
+
+            return available;
+        }
+
+        public static GameObject ModelOf(BodyAppearanceCatalog.Garment garment, PlayerBodyContent content)
+        {
+            var piece = content != null && garment != null ? content.PieceOf(garment.Address) : null;
+            return piece != null ? piece.Model : null;
+        }
+
+        public static GameObject ModelOf(BodyAppearanceCatalog.Attachment attachment, PlayerBodyContent content)
+        {
+            var piece = content != null && attachment != null ? content.PieceOf(attachment.Address) : null;
+            return piece != null ? piece.Model : null;
+        }
+
+        // The addresses of the content a combination draws.
+        private static string[] ContentsOf(IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
+        {
+            var drawn = Drawn(garments);
+            var held = Held(attachments);
+            var contents = new string[drawn.Count + held.Count];
+            for (var index = 0; index < drawn.Count; index++)
+            {
+                contents[index] = drawn[index].Address;
+            }
+
+            for (var index = 0; index < held.Count; index++)
+            {
+                contents[drawn.Count + index] = held[index].Address;
+            }
+
+            return contents;
         }
 
         private static T[] ToArray<T>(IReadOnlyList<T> list)
@@ -392,7 +556,8 @@ namespace Mmorpg.Client.Gameplay
             queued.Remove(combined);
             using (BuildMarker.Auto())
             {
-                var plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments, sources);
+                var plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments,
+                    content, sources);
                 var buffers = TakeBuffers();
                 plan.Compute(buffers);
                 combined.Take(plan.Apply(releaseCpuCopies));
@@ -409,7 +574,8 @@ namespace Mmorpg.Client.Gameplay
             {
                 using (GatherMarker.Auto())
                 {
-                    plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments, sources);
+                    plan = Plan.Gather(combined.Parts, combined.Root, combined.Catalog, combined.Garments, combined.Attachments,
+                        content, sources);
                 }
             }
             catch (Exception exception)
@@ -439,6 +605,13 @@ namespace Mmorpg.Client.Gameplay
             var buffers = plan.Buffers;
             combined.Plan = null;
             combined.Work = null;
+            if (combined.Forgotten)
+            {
+                // Its content went while it ran; nobody may draw with it.
+                spareBuffers.Push(buffers ?? new Buffers());
+                return;
+            }
+
             if (work.Status != TaskStatus.RanToCompletion)
             {
                 if (work.Exception != null)
@@ -540,7 +713,7 @@ namespace Mmorpg.Client.Gameplay
 
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root)
         {
-            return Build(parts, root, null, NoGarments);
+            return Build(parts, root, null, NoGarments, null, null);
         }
 
         // The garments a body draws: the worn ones from the lowest layer up, without those of a slot
@@ -551,7 +724,7 @@ namespace Mmorpg.Client.Gameplay
             var drawn = new List<BodyAppearanceCatalog.Garment>();
             foreach (var garment in garments)
             {
-                if (garment == null || garment.Model == null)
+                if (garment == null || garment.Address.Length == 0)
                 {
                     continue;
                 }
@@ -610,12 +783,15 @@ namespace Mmorpg.Client.Gameplay
         // materials first appear; vertices no triangle uses are left out. Each attachment's meshes
         // lie on its socket bone as the socket stands on its parent bone in the bind pose, with its
         // root object Grip on the socket; a skinned attachment's meshes lie on its own bones, which
-        // stand below the socket as they stand below the model's root. The mesh stays readable.
+        // stand below the socket as they stand below the model's root. The garments and attachments
+        // come from the content, and those whose content is not ready are left out. The mesh stays
+        // readable.
         public static Combined Build(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
-            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
+            IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments,
+            PlayerBodyContent content)
         {
-            var plan = Plan.Gather(parts, root, catalog, garments ?? NoGarments, attachments ?? NoAttachments,
-                new Dictionary<Mesh, SourceMesh>());
+            var plan = Plan.Gather(parts, root, catalog, Available(garments ?? NoGarments, content),
+                Available(attachments ?? NoAttachments, content), content, new Dictionary<Mesh, SourceMesh>());
             plan.Compute(new Buffers());
             return plan.Apply(false);
         }
@@ -624,10 +800,10 @@ namespace Mmorpg.Client.Gameplay
         // thread, and waits for it; the tests compare it with Build.
         internal static Combined BuildOnWorkerThread(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root,
             BodyAppearanceCatalog catalog, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
-            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments = null)
+            IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments, PlayerBodyContent content)
         {
-            var plan = Plan.Gather(parts, root, catalog, garments ?? NoGarments, attachments ?? NoAttachments,
-                new Dictionary<Mesh, SourceMesh>());
+            var plan = Plan.Gather(parts, root, catalog, Available(garments ?? NoGarments, content),
+                Available(attachments ?? NoAttachments, content), content, new Dictionary<Mesh, SourceMesh>());
             var buffers = new Buffers();
             Task.Run(() => plan.Compute(buffers)).Wait();
             return plan.Apply(false);
@@ -637,11 +813,11 @@ namespace Mmorpg.Client.Gameplay
         // hold: a copy of its armature, the root object Grip with every transform below it, by name
         // and as they stand, below a new transform of the attachment's name on the socket, which
         // stands where the model's root does.
-        public static Transform HoldBones(BodyAppearanceCatalog.Attachment attachment, Transform socket)
+        public static Transform HoldBones(BodyAppearanceCatalog.Attachment attachment, GameObject model, Transform socket)
         {
             var root = new GameObject(attachment.Name).transform;
             root.SetParent(socket, false);
-            var armature = attachment.Model.transform.Find(AttachmentRoot);
+            var armature = model != null ? model.transform.Find(AttachmentRoot) : null;
             if (armature != null)
             {
                 var copy = new GameObject(armature.name).transform;
@@ -668,13 +844,13 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // The attachments with a model, one per socket bone, by name.
+        // The attachments with content, one per socket bone, by name.
         public static List<BodyAppearanceCatalog.Attachment> Held(IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
         {
             var held = new List<BodyAppearanceCatalog.Attachment>();
             foreach (var attachment in attachments)
             {
-                if (attachment != null && attachment.Model != null
+                if (attachment != null && attachment.Address.Length > 0
                     && !held.Exists(other => string.Equals(other.Bone, attachment.Bone, StringComparison.Ordinal)))
                 {
                     held.Add(attachment);
@@ -754,18 +930,19 @@ namespace Mmorpg.Client.Gameplay
         private static string KeyOf(string partsKey, IReadOnlyList<BodyAppearanceCatalog.Garment> garments,
             IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments)
         {
+            // Content is named, not counted by its objects, so a key stays the same when the content
+            // loads again; a combination goes with its content.
             var key = new System.Text.StringBuilder(partsKey);
             var drawn = Drawn(garments);
             foreach (var garment in drawn)
             {
-                key.Append('|').Append(garment.Name).Append('@').Append(garment.Model.GetEntityId().ToString())
-                    .Append('/').Append(garment.Material != null ? garment.Material.GetEntityId().ToString() : "-")
+                key.Append('|').Append(garment.Name).Append('@').Append(garment.Address)
                     .Append('~').Append(ShapeOf(garment, drawn) ?? string.Empty);
             }
 
             foreach (var attachment in Held(attachments))
             {
-                key.Append('#').Append(attachment.Name).Append('@').Append(attachment.Model.GetEntityId().ToString())
+                key.Append('#').Append(attachment.Name).Append('@').Append(attachment.Address)
                     .Append('/').Append(attachment.Bone);
             }
 
@@ -831,6 +1008,27 @@ namespace Mmorpg.Client.Gameplay
             internal BodyAppearanceCatalog.Garment[] Garments { get; set; }
 
             internal BodyAppearanceCatalog.Attachment[] Attachments { get; set; }
+
+            // The addresses of the content it draws, with which it goes.
+            internal string[] Contents { get; set; }
+
+            internal bool Draws(string address)
+            {
+                if (Contents == null)
+                {
+                    return false;
+                }
+
+                foreach (var content in Contents)
+                {
+                    if (string.Equals(content, address, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
 
             // The build that runs, and its plan.
             internal Task Work { get; set; }

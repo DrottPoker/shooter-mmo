@@ -14,6 +14,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         private const string BodyPrefabPath = "Assets/Prefabs/Player/HumanMaleBody.prefab";
 
         private GameObject body;
+        private PlayerBodyContent content;
         private PlayerBodyMeshes meshes;
         private PlayerBodyMaterials materials;
 
@@ -27,6 +28,7 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             meshes?.Dispose();
             materials?.Dispose();
+            content?.Dispose();
         }
 
         [UnityTest]
@@ -34,6 +36,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             var appearance = Spawn();
             yield return null;
+            yield return PlayModeBodyContent.Load(content, appearance.Catalog, BodyLook.Default.WithAttachment("OakStaff", true));
             appearance.ApplyLook(BodyLook.Default.WithAttachment("OakStaff", true), materials);
             var animator = appearance.GetComponent<Animator>();
             var locomotion = appearance.GetComponent<CharacterLocomotionAnimator>();
@@ -77,6 +80,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             var appearance = Spawn();
             yield return null;
+            yield return PlayModeBodyContent.Load(content, appearance.Catalog, BodyLook.Default.WithAttachment("OakStaff", true));
             appearance.ApplyLook(BodyLook.Default.WithAttachment("OakStaff", true), materials);
             var locomotion = appearance.GetComponent<CharacterLocomotionAnimator>();
             yield return null;
@@ -119,6 +123,7 @@ namespace Mmorpg.Client.Tests.PlayMode
         {
             var appearance = Spawn();
             yield return null;
+            yield return PlayModeBodyContent.Load(content, appearance.Catalog, BodyLook.Default.WithAttachment("OakStaff", true));
             appearance.ApplyLook(BodyLook.Default.WithAttachment("OakStaff", true), materials);
             var locomotion = appearance.GetComponent<CharacterLocomotionAnimator>();
             var target = new GameObject("Target");
@@ -163,8 +168,9 @@ namespace Mmorpg.Client.Tests.PlayMode
 #endif
             Assert.That(prefab, Is.Not.Null, BodyPrefabPath);
             body = Object.Instantiate(prefab);
-            meshes = new PlayerBodyMeshes();
-            materials = new PlayerBodyMaterials();
+            content = new PlayerBodyContent();
+            meshes = new PlayerBodyMeshes(false, content);
+            materials = new PlayerBodyMaterials(content);
             body.GetComponent<Animator>().cullingMode = AnimatorCullingMode.AlwaysAnimate;
             var appearance = body.GetComponent<PlayerBodyAppearance>();
             appearance.CombineParts(meshes);

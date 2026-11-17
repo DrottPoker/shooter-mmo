@@ -2634,6 +2634,40 @@ equips to the `back` slot; see
    and the hood. Loot the robe from the corpse with the second character.
    Expected result: the robe leaves the lying body at once.
 
+### Bodies Show Only Dressed
+
+A body shows only once the content of its whole look is loaded, as
+[Body Content](UNITY_CLIENT_ARCHITECTURE.md#body-content) describes. In the
+Editor every load takes the simulated delay of the Addressables settings, 0.1 s,
+so the waiting is short but real; with `Play Mode Script > Use Existing Build`
+after a content build, as
+[Client Project And Content Loading](#client-project-and-content-loading)
+describes, the loads read the built bundles.
+
+1. Join with a dressed character that has hair. Expected result: after
+   CharacterSelect the screen is black for a moment with the interface over it,
+   and the World then shows the character in its hair and clothes; it never
+   shows the character in its underwear. The Console shows `[CLIENT] Entered the
+   World with the content of the local look loaded ... ms after the scene
+   started.`
+2. Join the same shard near the first character with the
+   [second client](#add-a-second-client), wearing a robe and the hood, and walk
+   toward the first. Expected result: the first client shows the second
+   character only once it is whole, with its hair, robe, and hood, never in
+   part of it or in its underwear.
+3. In the second client, put on an item that nobody in view wears, such as a
+   shield or a staff, then raise and lower the hood. Expected result: the first
+   client shows the character in its old look until the new one shows whole, a
+   moment later; no frame shows it without a garment or with an empty hand that
+   should hold the item.
+4. Walk the first character more than 140 m away from the second and back
+   within a few seconds, then again after half a minute. Expected result: the
+   second character shows whole both times; the Console shows no `[BODY
+   CONTENT]` error.
+5. Let the second character die and respawn, and walk the first character to
+   its corpse from out of view. Expected result: the corpse shows the body as it
+   died, in the look and garments still in it, once it shows at all.
+
 ### Near And Far Players
 
 The worker sends a player's record only when it is due, nearest first, as
@@ -2883,8 +2917,14 @@ Expected result:
    run the script again. Expected result: the scripts compile and the tests pass.
 3. Open `Window > Asset Management > Addressables > Groups`. Expected result:
    the groups `Client Content`, `Item Icons`, `World Actor Prefabs`, `World
-   Collision`, and `World Scenes` exist, and `World Scenes` holds
-   `DevelopmentWorld1` and `DevelopmentWorld2`.
+   Collision`, `World Scenes`, `Body Content`, and `Body Content Shared` exist,
+   `World Scenes` holds `DevelopmentWorld1` and `DevelopmentWorld2`, and `Body
+   Content` holds an entry per garment of each body, per attachment, and per
+   image of an option or a paint layer, with addresses that start with
+   `Bodies/`. Run `MMORPG > Tools > Art Pipeline > Update Appearance Catalogs`
+   twice. Expected result: the Console says `Every appearance catalog, its
+   content, and its Addressables entries are up to date.`, and `git status`
+   shows no change.
 4. Open `File > Build Profiles`. Expected result: the scene list holds only
    `LoginMenu` and `CharacterSelect`.
 5. Join `Local Shard 1` from LoginMenu. Expected result: CharacterSelect shows
@@ -3046,24 +3086,27 @@ Expected result:
   its nameplate.
 - The script prints one table per kind and `Client crowd measured`, and exits
   with code 0. In the standing table every size keeps the columns of the
-  baseline; the arrival and Mob tables have a `World activation frame` column,
-  the length of the frame in which the World scene became active, which the
-  arrival does not count; the arrival table has a `first` and a `return` row
-  per size, the `return` row without an activation frame; the
+  baseline; the arrival and Mob tables have a `World entry / activation frame`
+  column, the time from the start of the frame in which the World scene became
+  active until the World showed and that frame's own length, which the arrival
+  does not count; the arrival table has a `first` and a `return` row per size,
+  the `return` row without an entry; the
   memory table has three rows per size, `with the crowd`, `crowd gone`, and
-  `crowd back`, with the bots the client knew, 0 once the crowd left; the churn
+  `crowd back`, with the bots the client knew, 0 once the crowd left, and the
+  entries of the body caches and of the body content; the churn
   shows spawns and despawns of about 3 a second; and the Mob table shows every
   Mob shown.
 - Every bot appears dressed in its whole look, the nearest first, never in part
   of it; a bot in a combination of garments no bot showed before appears a frame
   or two after its build on a worker thread ends. Once the crowd left, the body
   meshes fall to the few the World keeps, the default look of each body model and
-  the looks of the local player and its preview, and the material copies to
-  those they show; the player log shows `[CLIENT] Prepared 2 body models` once
-  per World.
+  the looks of the local player and its preview, the material copies to those
+  they show, and the garment and attachment entries to those of the local
+  player's look and its preview; the player log shows `[CLIENT] Prepared 2 body
+  models` once per World.
 - What to look for, and to record with the run's folder: frames over 33.3 ms
-  in an arrival, memory or body cache entries that stay up once the crowd left
-  or grow with the crowd that came back, and an attempt that the script
+  in an arrival, memory, body cache, or body content entries that stay up once
+  the crowd left or grow with the crowd that came back, and an attempt that the script
   repeats again and again because other programs disturbed it.
 
 ## Load Tooling
