@@ -44,9 +44,12 @@ namespace Mmorpg.Client.Tests.PlayMode
     // joined; no rule judges the numbers, which it writes to a result file and prints as [CROWD]
     // lines.
     //
-    // The frame in which the World scene became active is its load, not its arrival: the arrival
-    // records from the first frame that began after it, and the activation frame's own length is a
-    // value of the result.
+    // Entering the World is its load, not its arrival: the frame in which the World scene became
+    // active and the frames after it in which a cover hides the World while the content of the
+    // local look loads. The arrival records from the first frame that began after the World
+    // showed, and the entry's length and the activation frame's own are values of the result.
+    // Every frame of an arrival longer than 33.3 ms is printed with its time, so a hitch can be
+    // told from the entry and from the crowd.
     //
     // Its category holds no other category's name, because the test runner matches a category
     // filter as a regular expression: LiveStack would select a LiveStackCrowd test.
@@ -412,22 +415,23 @@ namespace Mmorpg.Client.Tests.PlayMode
             ReadMemory(run, "with the Mobs", true);
         }
 
-        // The first arrival records from the first frame that began after the World scene became
-        // active, which the activation's watch started the recording at, until the wait ends.
+        // The first arrival records from the first frame that began after the World showed, which
+        // the activation's watch started the recording at, until the wait ends.
         private static IEnumerator RecordFirstArrival(Run run, CrowdStretch stretch, IEnumerator wait)
         {
             var activation = run.Activation;
-            var deadline = Time.realtimeSinceStartup + 15f;
+            var deadline = Time.realtimeSinceStartup + 45f;
             while (!activation.Recording)
             {
-                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The arrival's recording never started after the World scene became active.");
+                Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "The arrival's recording never started after the World showed.");
                 yield return null;
             }
 
             run.Result.activationFrameMilliseconds = activation.Milliseconds;
+            run.Result.entryMilliseconds = activation.EntryMilliseconds;
             stretch.recording = activation.RecordingPath;
             stretch.startUtc = activation.StartUtc;
-            yield return wait;
+            yield return WhileReportingLongFrames(run, "first", activation.StartTime, wait);
             stretch.summary = run.Measurements.StopRecording();
             stretch.endUtc = Utc();
             stretch.shownSeconds = Time.realtimeSinceStartup - activation.StartTime;
@@ -440,11 +444,43 @@ namespace Mmorpg.Client.Tests.PlayMode
             stretch.recording = run.Measurements.StartRecording(name + "-" + run.Label, 5f);
             stretch.startUtc = Utc();
             var started = Time.realtimeSinceStartup;
-            yield return wait;
+            yield return WhileReportingLongFrames(run, name, started, wait);
             stretch.summary = run.Measurements.StopRecording();
             stretch.endUtc = Utc();
             stretch.shownSeconds = Time.realtimeSinceStartup - started;
             stretch.measured = true;
+        }
+
+        // Runs the wait and prints every frame of it that took longer than a hitch, with the time
+        // since the arrival's start at which it ended and the remote players in the scene by then.
+        // The wait runs as a coroutine of its own, so every frame is looked at, also while the
+        // wait sleeps.
+        private static IEnumerator WhileReportingLongFrames(Run run, string name, float started, IEnumerator wait)
+        {
+            var invariant = CultureInfo.InvariantCulture;
+            var ended = false;
+            run.Context.StartCoroutine(Then(wait, () => ended = true));
+            while (!ended)
+            {
+                yield return null;
+                var milliseconds = Time.unscaledDeltaTime * 1000f;
+                if (milliseconds > ClientMeasurementRecord.HitchFrameMilliseconds)
+                {
+                    Report(string.Format(
+                        invariant,
+                        "  long frame of the {0} arrival: {1:0.0} ms, ended {2:0.00} s after its start, {3} remote players in the scene",
+                        name,
+                        milliseconds,
+                        Time.realtimeSinceStartup - started,
+                        UnityEngine.Object.FindObjectsByType<RemotePlayerView>().Length));
+                }
+            }
+        }
+
+        private static IEnumerator Then(IEnumerator wait, Action done)
+        {
+            yield return wait;
+            done();
         }
 
         // Records for the given seconds into the result's main recording, and looks up the count
@@ -478,8 +514,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             fewest(Mathf.Min(smallest, count()));
         }
 
-        // The memory now, the bots the client knows, and the entries of its body caches. The
-        // first row is also the result's memory.
+        // The memory now, the bots the client knows, and the entries of its body caches and body
+        // content. The first row is also the result's memory.
         private static void ReadMemory(Run run, string moment, bool isResultMemory)
         {
             ShownBots(run.Context, out var known);
@@ -492,7 +528,9 @@ namespace Mmorpg.Client.Tests.PlayMode
                 reservedMegabytes = Profiler.GetTotalReservedMemoryLong() / (1024f * 1024f),
                 managedHeapMegabytes = Profiler.GetMonoUsedSizeLong() / (1024f * 1024f),
                 bodyMeshes = run.Context.BodyMeshCount,
-                bodyMaterials = run.Context.BodyMaterialCount
+                bodyMaterials = run.Context.BodyMaterialCount,
+                bodyGarments = run.Context.BodyGarmentCount,
+                bodyAttachments = run.Context.BodyAttachmentCount
             };
             run.Memory.Add(memory);
             if (isResultMemory)
@@ -723,7 +761,11 @@ namespace Mmorpg.Client.Tests.PlayMode
             Report(string.Format(invariant, "{0} {1}, {2} by {3}, {4}, {5}, {6}", result.runtime, result.platform, result.screenWidth, result.screenHeight, result.graphicsDevice, result.processor, result.mode));
             if (result.arrival.measured)
             {
-                Report(string.Format(invariant, "  World activation frame {0:0.0} ms, the load before the arrival", result.activationFrameMilliseconds));
+                Report(string.Format(
+                    invariant,
+                    "  World entry {0:0.0} ms until the World showed, of which the activation frame {1:0.0} ms: the load before the arrival",
+                    result.entryMilliseconds,
+                    result.activationFrameMilliseconds));
             }
 
             ReportStretch("arrival", result.arrival);
@@ -745,8 +787,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             ReportStretch("return", result.returnArrival);
             foreach (var memory in result.memory)
             {
-                Report(string.Format(invariant, "  memory {0}: allocated/reserved/managed {1:0}/{2:0}/{3:0} MB, {4} bots known, body caches {5} meshes and {6} materials",
-                    memory.moment, memory.allocatedMegabytes, memory.reservedMegabytes, memory.managedHeapMegabytes, memory.knownBots, memory.bodyMeshes, memory.bodyMaterials));
+                Report(string.Format(invariant, "  memory {0}: allocated/reserved/managed {1:0}/{2:0}/{3:0} MB, {4} bots known, body caches {5} meshes and {6} materials, body content {7} garments and {8} attachments",
+                    memory.moment, memory.allocatedMegabytes, memory.reservedMegabytes, memory.managedHeapMegabytes, memory.knownBots, memory.bodyMeshes, memory.bodyMaterials,
+                    memory.bodyGarments, memory.bodyAttachments));
             }
 
             Report(string.Format(invariant, "  vsync {0}, target frame rate {1}, quality {2}", result.vSyncCount, result.targetFrameRate, result.qualityLevel));
@@ -799,9 +842,10 @@ namespace Mmorpg.Client.Tests.PlayMode
             public Activation Activation;
         }
 
-        // The frame in which the World scene became active: its length, the time that frame takes
-        // as the next one begins, and the arrival's recording, which starts in the frame after
-        // that, so its first frame is the first that began after the activation.
+        // The entry into the World: the length of the frame in which the World scene became active,
+        // the time from that frame's start until the frame in which the World showed ended, and the
+        // arrival's recording, which starts in the frame after that one, so its first frame is the
+        // first that began after the World showed.
         private sealed class Activation
         {
             private readonly ClientMeasurements measurements;
@@ -817,6 +861,8 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             public float Milliseconds { get; private set; }
 
+            public float EntryMilliseconds { get; private set; }
+
             public bool Recording { get; private set; }
 
             public string RecordingPath { get; private set; }
@@ -829,7 +875,25 @@ namespace Mmorpg.Client.Tests.PlayMode
             {
                 yield return null;
                 Milliseconds = Time.unscaledDeltaTime * 1000f;
+                var activationEnded = Time.realtimeSinceStartup;
+
+                // A cover hides the World until the content of the local look is loaded; the frame
+                // in which it goes still belongs to the entry.
+                var deadline = activationEnded + 30f;
+                WorldSceneContext context = null;
+                while (Time.realtimeSinceStartup < deadline)
+                {
+                    context = context != null ? context : UnityEngine.Object.FindAnyObjectByType<WorldSceneContext>();
+                    if (context != null && context.IsWorldShown)
+                    {
+                        break;
+                    }
+
+                    yield return null;
+                }
+
                 yield return null;
+                EntryMilliseconds = Milliseconds + ((Time.realtimeSinceStartup - activationEnded) * 1000f);
                 if (measurements == null)
                 {
                     yield break;
@@ -856,9 +920,11 @@ namespace Mmorpg.Client.Tests.PlayMode
             public int expectedBots;
             public int shownBots;
             public float crowdShownSeconds;
-            // The length of the frame in which the World scene became active, its load, which the
-            // arrival does not count.
+            // The length of the frame in which the World scene became active, and the time from
+            // that frame's start until the World showed, the entry, which the arrival does not
+            // count.
             public float activationFrameMilliseconds;
+            public float entryMilliseconds;
             public int shownBotsAtEnd;
             public int knownBotsAtEnd;
             public int fewestShownBots;
@@ -921,6 +987,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             public float managedHeapMegabytes;
             public int bodyMeshes;
             public int bodyMaterials;
+            public int bodyGarments;
+            public int bodyAttachments;
         }
     }
 }

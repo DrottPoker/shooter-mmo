@@ -11,7 +11,8 @@ namespace Mmorpg.Client.Gameplay
     // body out of the SRP Batcher, so a dense crowd paid a full draw call setup per player. The
     // bodies and corpses that show a copy count as its users; a copy nobody uses stays
     // PlayerBodyMeshes.GraceSeconds, at most UnusedCap of them, and is then destroyed. The owner
-    // destroys the rest.
+    // destroys the rest. A copy of content from PlayerBodyContent, a garment's material or the image
+    // of an option or a paint layer, goes with that content.
     public sealed class PlayerBodyMaterials : IDisposable
     {
         // Copies are small, so more of them stay unused than meshes do.
@@ -40,7 +41,31 @@ namespace Mmorpg.Client.Gameplay
         // their last one.
         private readonly Dictionary<Material, Copy> copies = new Dictionary<Material, Copy>();
         private readonly List<Copy> unused = new List<Copy>();
+        private readonly List<Copy> dropped = new List<Copy>();
+        private readonly PlayerBodyContent content;
         private bool disposed;
+
+        public PlayerBodyMaterials()
+            : this(null)
+        {
+        }
+
+        // The images of options and paint layers come from the content; without it a copy shows no
+        // paint layer. A copy goes with the content it draws with.
+        public PlayerBodyMaterials(PlayerBodyContent bodyContent)
+        {
+            content = bodyContent;
+            if (content != null)
+            {
+                content.Releasing += OnContentReleasing;
+            }
+        }
+
+        // The content the copies take their images from, or null.
+        public PlayerBodyContent Content
+        {
+            get { return content; }
+        }
 
         // The dye channels the garment shader, Mmorpg/Garment, has.
         public const int MaximumDyes = 3;
@@ -103,7 +128,7 @@ namespace Mmorpg.Client.Gameplay
                         + (dyeKey.Length > 0 ? " " + dyeKey : string.Empty)
                         + (tint != Color.white ? " " + ColorUtility.ToHtmlStringRGB(tint) : string.Empty)
                 };
-                SetPaints(material, paints);
+                var paintMaps = SetPaints(material, paints);
                 SetDyes(material, dyes, dyeKey);
                 if (baseMap != null)
                 {
@@ -114,7 +139,7 @@ namespace Mmorpg.Client.Gameplay
                 MultiplyColor(material, source, BaseColorId, tint);
                 MultiplyColor(material, source, ColorId, tint);
                 materials[key] = material;
-                var copy = new Copy(key, material) { UnusedSince = Time.realtimeSinceStartup };
+                var copy = new Copy(key, material, paintMaps) { UnusedSince = Time.realtimeSinceStartup };
                 copies[material] = copy;
                 unused.Add(copy);
             }
@@ -147,7 +172,12 @@ namespace Mmorpg.Client.Gameplay
             }
 
             copy.Users--;
-            if (copy.Users == 0)
+            if (copy.Users == 0 && copy.Dropped)
+            {
+                copies.Remove(copy.Material);
+                DestroyMaterial(copy.Material);
+            }
+            else if (copy.Users == 0)
             {
                 copy.UnusedSince = Time.realtimeSinceStartup;
                 unused.Add(copy);
@@ -209,28 +239,58 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        public void Dispose()
+        // The copies of content that goes, a garment's material or the image of an option or a
+        // paint layer, go before its bundle unloads; one that a body still shows goes with its last
+        // user.
+        private void OnContentReleasing(string address, UnityEngine.Object released)
         {
-            disposed = true;
-            copies.Clear();
-            unused.Clear();
-            foreach (var material in materials.Values)
+            var piece = released as BodyPieceContent;
+            var source = piece != null ? piece.Material : null;
+            var texture = released as Texture;
+            dropped.Clear();
+            foreach (var copy in copies.Values)
             {
-                if (material == null)
+                if ((source != null && copy.Key.Source == source)
+                    || (texture != null && (copy.Key.BaseMap == texture || Array.IndexOf(copy.PaintMaps, texture) >= 0)))
                 {
-                    continue;
-                }
-
-                if (Application.isPlaying)
-                {
-                    UnityEngine.Object.Destroy(material);
-                }
-                else
-                {
-                    UnityEngine.Object.DestroyImmediate(material);
+                    dropped.Add(copy);
                 }
             }
 
+            foreach (var copy in dropped)
+            {
+                materials.Remove(copy.Key);
+                if (copy.Users == 0)
+                {
+                    unused.Remove(copy);
+                    copies.Remove(copy.Material);
+                    DestroyMaterial(copy.Material);
+                }
+                else
+                {
+                    copy.Dropped = true;
+                }
+            }
+
+            dropped.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (content != null)
+            {
+                content.Releasing -= OnContentReleasing;
+            }
+
+            disposed = true;
+            // Every copy, also those whose content went while a body still showed them.
+            foreach (var material in copies.Keys)
+            {
+                DestroyMaterial(material);
+            }
+
+            copies.Clear();
+            unused.Clear();
             materials.Clear();
         }
 
@@ -305,11 +365,12 @@ namespace Mmorpg.Client.Gameplay
 
         // The first layers the shader can draw; a look with more paint layers than that is
         // reported once per material.
-        private static void SetPaints(Material material, IReadOnlyList<BodyAppearanceCatalog.Paint> paints)
+        // Sets the paint layers whose images the content has and returns those images.
+        private Texture[] SetPaints(Material material, IReadOnlyList<BodyAppearanceCatalog.Paint> paints)
         {
             if (paints.Count == 0)
             {
-                return;
+                return Array.Empty<Texture>();
             }
 
             if (paints.Count > MaximumPaintLayers)
@@ -319,14 +380,17 @@ namespace Mmorpg.Client.Gameplay
             }
 
             var count = Mathf.Min(paints.Count, MaximumPaintLayers);
+            var maps = new Texture[count];
             for (var index = 0; index < count; index++)
             {
-                material.SetTexture(PaintMapIds[index], paints[index].Texture);
+                maps[index] = content != null ? content.TextureOf(paints[index].Address) : null;
+                material.SetTexture(PaintMapIds[index], maps[index]);
                 material.SetVector(PaintSurfaceIds[index], new Vector4(paints[index].Smoothness, paints[index].Metallic, 0f, 0f));
                 material.SetVector(PaintRectIds[index], paints[index].Rect);
             }
 
             material.SetFloat(PaintCountId, count);
+            return maps;
         }
 
         private static void SetTexture(Material material, int property, Texture texture)
@@ -347,15 +411,23 @@ namespace Mmorpg.Client.Gameplay
 
         private sealed class Copy
         {
-            public Copy((Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes) key, Material material)
+            public Copy((Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes) key, Material material,
+                Texture[] paintMaps)
             {
                 Key = key;
                 Material = material;
+                PaintMaps = paintMaps ?? Array.Empty<Texture>();
             }
 
             public (Material Source, Texture BaseMap, Color Tint, string Paints, string Dyes) Key { get; }
 
             public Material Material { get; }
+
+            // The images of its paint layers.
+            public Texture[] PaintMaps { get; }
+
+            // Its content went while a body showed it; it goes with its last user.
+            public bool Dropped { get; set; }
 
             public int Users { get; set; }
 

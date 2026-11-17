@@ -481,26 +481,36 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // Measures the body and the cloth of the garments with loose parts as a body that wears
-        // them would. In play the measures are shared per model and garment, so a World measures
-        // every model and garment once while it loads, and the first body that wears them in view
-        // measures nothing.
-        public void PrepareMeasures(IReadOnlyList<BodyAppearanceCatalog.Garment> garments)
+        // Measures the body as a body of its model that wears cloth would. In play the measures are
+        // shared per model, so a World measures every model once while it loads, and the first body
+        // of a model in view measures nothing.
+        public void PrepareMeasures()
         {
-            var bones = BonesByName();
-            MeasureShape(bones);
-            if (garments == null)
+            MeasureShape(BonesByName());
+        }
+
+        // Measures how far a garment model's cloth reaches about the chains of a kind, once in play,
+        // where every body that wears it shares the measure; out of play every body measures its
+        // own, so this does nothing. PlayerBodyContent measures a garment when its content loads.
+        public static void PrepareReaches(GameObject garment, ClothChainKind kind)
+        {
+            if (garment != null && SharesMeasures)
+            {
+                ReachesOf(garment, kind);
+            }
+        }
+
+        // Forgets what was measured of a garment model, as when its content goes.
+        public static void ForgetReaches(GameObject garment)
+        {
+            if (garment == null || SharedReaches.Count == 0)
             {
                 return;
             }
 
-            foreach (var garment in garments)
+            foreach (ClothChainKind kind in Enum.GetValues(typeof(ClothChainKind)))
             {
-                var kind = garment != null && garment.Model != null ? PlayerBodyAppearance.ChainsOf(garment.Cloth) : null;
-                if (kind.HasValue && HasChains(kind.Value, bones))
-                {
-                    ReachesOf(garment.Model, kind.Value);
-                }
+                SharedReaches.Remove((garment, kind));
             }
         }
 

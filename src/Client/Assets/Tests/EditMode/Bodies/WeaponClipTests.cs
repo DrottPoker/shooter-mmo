@@ -63,7 +63,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(staff.AttackClip, Is.EqualTo(HumanLocomotion.CastClip));
                 Assert.That(staff.HasLaunchPoint, Is.True);
                 // The bolt leaves from the crystal, which lies on the model 70 cm along the shaft.
-                var nearest = ModelVertices(staff.Model).Min(vertex => (vertex - staff.LaunchPoint).magnitude);
+                var nearest = ModelVertices(TestBodyContent.ModelOf(staff)).Min(vertex => (vertex - staff.LaunchPoint).magnitude);
                 Assert.That(nearest, Is.LessThan(0.05f), "the launch point lies off the staff");
                 Assert.That(staff.LaunchPoint.magnitude, Is.EqualTo(0.7f).Within(0.01f));
             }
@@ -88,7 +88,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(greataxe.HoldClip, Is.EqualTo("HoldGreataxe"));
                 Assert.That(greataxe.AttackClip, Is.EqualTo("GreataxeSwing"));
                 Assert.That(greataxe.HoldsWithBothHands, Is.True);
-                Assert.That(SurfaceDistance(greataxe.Model, greataxe.OffHandGrip), Is.LessThan(0.03f), "the other hand's grip lies off the haft");
+                Assert.That(SurfaceDistance(TestBodyContent.ModelOf(greataxe), greataxe.OffHandGrip), Is.LessThan(0.03f), "the other hand's grip lies off the haft");
 
                 var bow = catalog.AttachmentNamed("TrainingShortbow");
                 Assert.That(bow.Socket, Is.EqualTo("off_hand"), catalog.name);
@@ -97,10 +97,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(bow.AttackClip, Is.EqualTo("BowShot"));
                 Assert.That(bow.IsSkinned, Is.True);
                 Assert.That(bow.Skeleton, Is.EqualTo("Bow"));
-                Assert.That(bow.ClipNamed(BowRig.DrawClip), Is.Not.Null);
+                Assert.That(TestBodyContent.Piece(bow.Address).ClipNamed(BowRig.DrawClip), Is.Not.Null);
                 Assert.That(bow.DrawLength, Is.EqualTo(0.62f).Within(0.001f));
                 Assert.That(bow.HasLaunchPoint, Is.True);
-                var pass = ModelVertices(bow.Model).Min(vertex => (vertex - bow.LaunchPoint).magnitude);
+                var pass = ModelVertices(TestBodyContent.ModelOf(bow)).Min(vertex => (vertex - bow.LaunchPoint).magnitude);
                 Assert.That(pass, Is.LessThan(0.05f), "the arrow pass lies off the bow");
             }
         }
@@ -238,8 +238,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     foreach (var path in BodyPrefabPaths)
                     {
@@ -300,8 +301,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     foreach (var path in BodyPrefabPaths)
                     {
@@ -369,8 +371,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     foreach (var path in BodyPrefabPaths)
                     {

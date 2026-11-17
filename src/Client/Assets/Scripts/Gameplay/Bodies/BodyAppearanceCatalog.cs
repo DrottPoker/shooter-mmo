@@ -9,8 +9,11 @@ namespace Mmorpg.Client.Gameplay
     // options, the material's own image first, the paint layers that fit the body, such as its
     // underwear and a tattoo, in the order they are drawn, the garments that fit it, with the faces
     // of the body's editable mesh that each part's triangles come from, and the attachments its
-    // sockets can hold, such as a sword. MMORPG > Tools > Art Pipeline > Update Appearance Catalogs
-    // writes it from asset.json; see docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
+    // sockets can hold, such as a sword. It holds what the rules need as data and names the content,
+    // the models, garment materials, clips, and images of the options and paint layers, by
+    // Addressables address, so only the looks in view load it; see PlayerBodyContent.
+    // MMORPG > Tools > Art Pipeline > Update Appearance Catalogs writes it from asset.json; see
+    // docs/ART_PIPELINE.md and docs/EQUIPMENT_VISUALS_DESIGN.md.
     public sealed class BodyAppearanceCatalog : ScriptableObject
     {
         [SerializeField] private Slot[] slots = Array.Empty<Slot>();
@@ -213,9 +216,9 @@ namespace Mmorpg.Client.Gameplay
             return null;
         }
 
-        // The image the material shows in the look: the chosen option's, or null for the
-        // material's own image, when the material has no slot, or the look names no option of it.
-        public Texture2D TextureFor(Material material, BodyLook look)
+        // The option whose image the material shows in the look, or null for the material's own
+        // image: when the material has no slot, or the look names no other option of it.
+        public Option OptionFor(Material material, BodyLook look)
         {
             if (material == null || look == null)
             {
@@ -229,17 +232,7 @@ namespace Mmorpg.Client.Gameplay
                     continue;
                 }
 
-                var options = slot.Options;
-                var chosen = look.OptionFor(slot.Name);
-                for (var index = 1; index < options.Count; index++)
-                {
-                    if (string.Equals(options[index].Name, chosen, StringComparison.Ordinal))
-                    {
-                        return options[index].Texture;
-                    }
-                }
-
-                return null;
+                return slot.ChosenIn(look);
             }
 
             return null;
@@ -275,6 +268,27 @@ namespace Mmorpg.Client.Gameplay
             {
                 get { return options ?? Array.Empty<Option>(); }
             }
+
+            // The option other than the material's own image that the look names, or null.
+            public Option ChosenIn(BodyLook look)
+            {
+                if (look == null)
+                {
+                    return null;
+                }
+
+                var all = Options;
+                var chosen = look.OptionFor(name);
+                for (var index = 1; index < all.Count; index++)
+                {
+                    if (all[index] != null && string.Equals(all[index].Name, chosen, StringComparison.Ordinal))
+                    {
+                        return all[index];
+                    }
+                }
+
+                return null;
+            }
         }
 
         [Serializable]
@@ -284,20 +298,20 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private AppearanceCategory category;
             [SerializeField] private string slot;
             [SerializeField] private Material material;
-            [SerializeField] private Texture2D texture;
+            [SerializeField] private string address;
             [SerializeField] private Vector4 rect = new Vector4(0f, 0f, 1f, 1f);
             [SerializeField] private int layer;
             [SerializeField] private float smoothness;
             [SerializeField] private float metallic;
 
-            public Paint(string name, AppearanceCategory category, string slot, Material material, Texture2D texture, Vector4 rect,
+            public Paint(string name, AppearanceCategory category, string slot, Material material, string address, Vector4 rect,
                 int layer, float smoothness, float metallic)
             {
                 this.name = name;
                 this.category = category;
                 this.slot = slot ?? string.Empty;
                 this.material = material;
-                this.texture = texture;
+                this.address = address ?? string.Empty;
                 this.rect = rect;
                 this.layer = layer;
                 this.smoothness = smoothness;
@@ -329,11 +343,11 @@ namespace Mmorpg.Client.Gameplay
                 get { return material; }
             }
 
-            // The paint in the mesh's paint UVs, its second UV map, cropped to the paint and
-            // transparent where the skin shows.
-            public Texture2D Texture
+            // The Addressables address of its image, a Texture2D: the paint in the mesh's paint UVs,
+            // its second UV map, cropped to the paint and transparent where the skin shows.
+            public string Address
             {
-                get { return texture; }
+                get { return address ?? string.Empty; }
             }
 
             // Where the texture lies in the paint UVs: xy its corner and zw its size.
@@ -392,10 +406,11 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // A garment the body can wear: a garment texture on its template's version for the body,
-        // with the template's model, skinned to the body's armature; its visual slot and layer; the
-        // slots it hides; the body faces it covers; the body face under each of its triangles; how
-        // far it moves visible body vertices inward; and the texture's material it draws with.
+        // A garment the body can wear: a garment texture on its template's version for the body; its
+        // visual slot and layer; the slots it hides; the body faces it covers; the body face under
+        // each of its triangles; and how far it moves visible body vertices inward. Its content, the
+        // template's model skinned to the body's armature and the texture's material it draws with,
+        // is a BodyPieceContent at its address.
         [Serializable]
         public sealed class Garment
         {
@@ -412,33 +427,31 @@ namespace Mmorpg.Client.Gameplay
 
             [SerializeField] private string name;
             [SerializeField] private string template;
-            [SerializeField] private Material material;
+            [SerializeField] private string address;
             [SerializeField] private string slot;
             [SerializeField] private int layer;
             [SerializeField] private string[] hides;
             [SerializeField] private bool hidesUnderwear;
             [SerializeField] private string hair;
             [SerializeField] private string cloth;
-            [SerializeField] private GameObject model;
             [SerializeField] private int[] covered;
             [SerializeField] private int[] underlay;
             [SerializeField] private int[] pullInVertices;
             [SerializeField] private float[] pullInDistances;
 
-            public Garment(string name, string template, Material material, string slot, int layer, string[] hides,
-                bool hidesUnderwear, string hair, string cloth, GameObject model, int[] covered, int[] underlay,
+            public Garment(string name, string template, string address, string slot, int layer, string[] hides,
+                bool hidesUnderwear, string hair, string cloth, int[] covered, int[] underlay,
                 int[] pullInVertices, float[] pullInDistances)
             {
                 this.name = name;
                 this.template = template ?? string.Empty;
-                this.material = material;
+                this.address = address ?? string.Empty;
                 this.slot = slot;
                 this.layer = layer;
                 this.hides = hides ?? Array.Empty<string>();
                 this.hidesUnderwear = hidesUnderwear;
                 this.hair = hair ?? string.Empty;
                 this.cloth = cloth ?? string.Empty;
-                this.model = model;
                 this.covered = covered ?? Array.Empty<int>();
                 this.underlay = underlay ?? Array.Empty<int>();
                 this.pullInVertices = pullInVertices ?? Array.Empty<int>();
@@ -457,11 +470,11 @@ namespace Mmorpg.Client.Gameplay
                 get { return template ?? string.Empty; }
             }
 
-            // The texture's material, which the template's model draws with instead of its own; null
-            // draws with the model's.
-            public Material Material
+            // The Addressables address of its BodyPieceContent: the template's model for this body
+            // and the texture's material, which the model draws with instead of its own.
+            public string Address
             {
-                get { return material; }
+                get { return address ?? string.Empty; }
             }
 
             // The visual slot, such as body.
@@ -500,12 +513,6 @@ namespace Mmorpg.Client.Gameplay
                 get { return cloth ?? string.Empty; }
             }
 
-            // The garment's model for this body, with its renderer and the body's armature.
-            public GameObject Model
-            {
-                get { return model; }
-            }
-
             // The faces of the body's editable mesh it hides, sorted.
             public IReadOnlyList<int> Covered
             {
@@ -530,9 +537,10 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // A model a socket of the body holds, such as a sword in the right hand: its model, whose
-        // root object Grip lies on the socket bone, the socket, the equipment slot whose item it
-        // shows, and the bone. A tool, such as a pickaxe, is held only while the body uses it: it
+        // A model a socket of the body holds, such as a sword in the right hand: the socket, the
+        // equipment slot whose item it shows, and the bone; its content, the model, whose root object
+        // Grip lies on the socket bone, and a skinned model's clips, is a BodyPieceContent at its
+        // address. A tool, such as a pickaxe, is held only while the body uses it: it
         // names the clip the body plays meanwhile, and a tool held in both hands where on it the
         // other hand holds it. A weapon, such as a staff, may name the pose its arm holds it in,
         // the clip the body plays once when its attack starts with the moment in it when the attack
@@ -546,7 +554,7 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private string name;
             [SerializeField] private string socket;
             [SerializeField] private string bone;
-            [SerializeField] private GameObject model;
+            [SerializeField] private string address;
             [SerializeField] private string useClip;
             [SerializeField] private bool holdsWithBothHands;
             [SerializeField] private Vector3 offHandGrip;
@@ -556,19 +564,19 @@ namespace Mmorpg.Client.Gameplay
             [SerializeField] private bool hasLaunchPoint;
             [SerializeField] private Vector3 launchPoint;
             [SerializeField] private string skeleton;
-            [SerializeField] private AnimationClip[] clips;
+            [SerializeField] private string[] clipNames;
             [SerializeField] private float drawLength;
 
-            public Attachment(string name, string socket, string bone, GameObject model,
+            public Attachment(string name, string socket, string bone, string address,
                 string useClip = null, Vector3? offHandGrip = null,
                 string holdClip = null, string attackClip = null, Vector3? launchPoint = null,
-                float attackRelease = 0f, string skeleton = null, AnimationClip[] clips = null,
+                float attackRelease = 0f, string skeleton = null, string[] clipNames = null,
                 float drawLength = 0f)
             {
                 this.name = name;
                 this.socket = socket ?? string.Empty;
                 this.bone = bone ?? string.Empty;
-                this.model = model;
+                this.address = address ?? string.Empty;
                 this.useClip = useClip ?? string.Empty;
                 holdsWithBothHands = offHandGrip.HasValue;
                 this.offHandGrip = offHandGrip ?? Vector3.zero;
@@ -578,7 +586,7 @@ namespace Mmorpg.Client.Gameplay
                 hasLaunchPoint = launchPoint.HasValue;
                 this.launchPoint = launchPoint ?? Vector3.zero;
                 this.skeleton = skeleton ?? string.Empty;
-                this.clips = clips ?? Array.Empty<AnimationClip>();
+                this.clipNames = clipNames ?? Array.Empty<string>();
                 this.drawLength = drawLength;
             }
 
@@ -600,9 +608,11 @@ namespace Mmorpg.Client.Gameplay
                 get { return bone ?? string.Empty; }
             }
 
-            public GameObject Model
+            // The Addressables address of its BodyPieceContent: the model and a skinned model's
+            // clips.
+            public string Address
             {
-                get { return model; }
+                get { return address ?? string.Empty; }
             }
 
             // The clip the body plays while it uses the tool, such as Mine, or empty for an
@@ -677,10 +687,10 @@ namespace Mmorpg.Client.Gameplay
                 get { return Skeleton.Length > 0; }
             }
 
-            // The clips of a skinned model, by name, such as a bow's Draw.
-            public IReadOnlyList<AnimationClip> Clips
+            // The names of a skinned model's clips, such as a bow's Draw, which its content holds.
+            public IReadOnlyList<string> ClipNames
             {
-                get { return clips ?? Array.Empty<AnimationClip>(); }
+                get { return clipNames ?? Array.Empty<string>(); }
             }
 
             // How far behind the launch point a bow's string comes at the end of its clip Draw, in
@@ -689,31 +699,18 @@ namespace Mmorpg.Client.Gameplay
             {
                 get { return drawLength; }
             }
-
-            public AnimationClip ClipNamed(string clipName)
-            {
-                foreach (var clip in Clips)
-                {
-                    if (clip != null && string.Equals(clip.name, clipName, StringComparison.Ordinal))
-                    {
-                        return clip;
-                    }
-                }
-
-                return null;
-            }
         }
 
         [Serializable]
         public sealed class Option
         {
             [SerializeField] private string name;
-            [SerializeField] private Texture2D texture;
+            [SerializeField] private string address;
 
-            public Option(string name, Texture2D texture)
+            public Option(string name, string address)
             {
                 this.name = name;
-                this.texture = texture;
+                this.address = address ?? string.Empty;
             }
 
             // Such as Clean, from the image T_Face_Male_Clean.
@@ -722,9 +719,11 @@ namespace Mmorpg.Client.Gameplay
                 get { return name; }
             }
 
-            public Texture2D Texture
+            // The Addressables address of its image, a Texture2D; empty for the material's own image,
+            // the first option, which the material holds.
+            public string Address
             {
-                get { return texture; }
+                get { return address ?? string.Empty; }
             }
         }
     }

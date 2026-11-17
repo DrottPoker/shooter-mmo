@@ -32,10 +32,12 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(actual.Material, Is.Not.Null, where);
                     Assert.That(actual.Material, Is.SameAs(slot.Material), where);
                     Assert.That(actual.Options.Select(option => option.Name), Is.EqualTo(slot.Options.Select(option => option.Name)), where);
-                    Assert.That(actual.Options.Select(option => option.Texture), Is.EqualTo(slot.Options.Select(option => option.Texture)), where);
-                    Assert.That(actual.Options.All(option => option.Texture != null), Is.True, where);
-                    // The first option is the material's own image.
-                    Assert.That(actual.Options[0].Texture, Is.SameAs(actual.Material.GetTexture("_BaseMap")), where);
+                    Assert.That(actual.Options.Select(option => option.Address), Is.EqualTo(slot.Options.Select(option => option.Address)), where);
+                    // The first option is the material's own image, which the material holds; every
+                    // other option's image loads by its address.
+                    Assert.That(actual.Options[0].Address, Is.Empty, where);
+                    Assert.That(actual.Material.GetTexture("_BaseMap").name, Does.EndWith("_" + actual.Options[0].Name), where);
+                    Assert.That(actual.Options.Skip(1).All(option => option.Address.StartsWith(ArtAppearanceCatalogs.OptionAddressPrefix)), Is.True, where);
                 }
 
                 var paints = ArtAppearanceCatalogs.PaintsFor(manifest);
@@ -46,8 +48,8 @@ namespace Mmorpg.Client.Tests.EditMode
                     var where = path + " paint " + actual.Name;
                     Assert.That(actual.Material, Is.Not.Null, where);
                     Assert.That(actual.Material, Is.SameAs(paints[index].Material), where);
-                    Assert.That(actual.Texture, Is.Not.Null, where);
-                    Assert.That(actual.Texture, Is.SameAs(paints[index].Texture), where);
+                    Assert.That(actual.Address, Does.StartWith(ArtAppearanceCatalogs.PaintAddressPrefix), where);
+                    Assert.That(actual.Address, Is.EqualTo(paints[index].Address), where);
                     Assert.That(actual.Layer, Is.EqualTo(paints[index].Layer), where);
                     Assert.That(actual.Smoothness, Is.EqualTo(paints[index].Smoothness), where);
                     Assert.That(actual.Metallic, Is.EqualTo(paints[index].Metallic), where);
@@ -68,6 +70,48 @@ namespace Mmorpg.Client.Tests.EditMode
                 AssetDatabase.FindAssets("t:BodyAppearanceCatalog", new[] { ArtAppearanceCatalogs.Folder })
                     .Select(AssetDatabase.GUIDToAssetPath),
                 Is.EquivalentTo(manifests.Select(ArtAppearanceCatalogs.PathFor)));
+        }
+
+        // The content asset of every garment and attachment holds what the exports give, and no
+        // other content asset exists.
+        [Test]
+        public void EveryContentAssetIsWhatTheExportsGive()
+        {
+            var looks = ArtAppearanceCatalogs.ManifestsWithLooks().Select(ArtAppearanceCatalogs.LooksFor).ToArray();
+            var pieces = looks.SelectMany(body => body.Pieces).GroupBy(piece => piece.Path).Select(group => group.First()).ToArray();
+            Assert.That(pieces, Is.Not.Empty);
+            foreach (var piece in pieces)
+            {
+                var content = AssetDatabase.LoadAssetAtPath<BodyPieceContent>(piece.Path);
+                Assert.That(content, Is.Not.Null, piece.Path + " is missing; run " + ArtAppearanceCatalogs.MenuPath);
+                Assert.That(ArtAppearanceCatalogs.Matches(content, piece), Is.True,
+                    piece.Path + " holds another model, material, or clips than the exports give; run " + ArtAppearanceCatalogs.MenuPath);
+                Assert.That(content.Model, Is.Not.Null, piece.Path);
+                Assert.That(piece.Address, Is.EqualTo(ArtAppearanceCatalogs.ContentAddressOf(piece.Path)));
+            }
+
+            Assert.That(
+                AssetDatabase.FindAssets("t:BodyPieceContent", new[] { ArtAppearanceCatalogs.ContentFolder }).Select(AssetDatabase.GUIDToAssetPath),
+                Is.EquivalentTo(pieces.Select(piece => piece.Path)));
+        }
+
+        // Every content asset and every image of an option or a paint layer is an entry of its own,
+        // and every asset two bundles share is an entry of the shared group.
+        [Test]
+        public void TheAddressablesEntriesOfTheContentAreWhatTheGeneratorWrites()
+        {
+            var looks = ArtAppearanceCatalogs.ManifestsWithLooks().Select(ArtAppearanceCatalogs.LooksFor).ToArray();
+            var problems = ArtBodyContentEntries.Problems(ArtAppearanceCatalogs.ContentEntries(looks));
+            Assert.That(problems, Is.Empty, string.Join("\n", problems) + "\nRun " + ArtAppearanceCatalogs.MenuPath + ".");
+        }
+
+        // A second run of the generator writes nothing; with the committed catalogs, content, and
+        // entries current, neither does the first.
+        [Test]
+        public void TheGeneratorChangesNothingWhenItRunsAgain()
+        {
+            Assert.That(ArtAppearanceCatalogs.UpdateAll(), Is.Zero, "the committed catalogs, content, or entries were not current");
+            Assert.That(ArtAppearanceCatalogs.UpdateAll(), Is.Zero);
         }
 
         [Test]
@@ -111,10 +155,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 .Select(template => template.Name).ToHashSet();
             foreach (var body in ArtAppearanceCatalogs.ManifestsWithLooks())
             {
-                foreach (var garment in ArtAppearanceCatalogs.GarmentsFor(body))
+                var garments = ArtAppearanceCatalogs.GarmentsFor(body, out var pieces);
+                for (var index = 0; index < garments.Length; index++)
                 {
+                    var garment = garments[index];
+                    var piece = pieces[index];
                     var where = body.path + " " + garment.Name;
-                    var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>();
+                    Assert.That(garment.Address, Is.EqualTo(piece.Address), where);
+                    var renderer = piece.Model.GetComponentInChildren<SkinnedMeshRenderer>();
                     Assert.That(garment.Underlay.Count, Is.EqualTo(renderer.sharedMesh.triangles.Length / 3), where);
                     // A texture with masks of its own, such as a net, may leave every body face visible,
                     // and a template that covers nothing, such as the cloak or the hood down, does.
@@ -126,9 +174,9 @@ namespace Mmorpg.Client.Tests.EditMode
                     Assert.That(garment.Slot, Is.Not.Empty, where);
                     // A garment is a texture on its template, and draws with the texture's material.
                     Assert.That(garment.Template, Is.Not.Empty, where);
-                    Assert.That(garment.Material, Is.Not.Null, where);
-                    Assert.That(garment.Material.name, Is.EqualTo("M_Garment_" + garment.Name), where);
-                    Assert.That(garment.Material.shader.name, Is.EqualTo(ArtMaterialCreator.GarmentShader), where);
+                    Assert.That(piece.Material, Is.Not.Null, where);
+                    Assert.That(piece.Material.name, Is.EqualTo("M_Garment_" + garment.Name), where);
+                    Assert.That(piece.Material.shader.name, Is.EqualTo(ArtMaterialCreator.GarmentShader), where);
                 }
             }
         }

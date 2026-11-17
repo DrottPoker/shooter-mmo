@@ -54,13 +54,13 @@ namespace Mmorpg.Client.Tests.EditMode
             waiting.OrderFrom(views, eye);
             Assert.That(waiting.Count, Is.EqualTo(PlayerCount));
             var taken = new List<RemotePlayerView>();
-            Assert.That(waiting.TryTakeNext(out var first, out _, out _), Is.True);
+            Assert.That(waiting.TryTakeNext(out var first, out _, out _, out _), Is.True);
             taken.Add(first);
 
             // A body that went on some other way is not taken again.
             var other = views[views.Keys.First(entityId => entityId != first.NetworkEntityId)];
             waiting.Remove(other.NetworkEntityId);
-            while (waiting.TryTakeNext(out var view, out _, out _))
+            while (waiting.TryTakeNext(out var view, out _, out _, out _))
             {
                 taken.Add(view);
             }
@@ -88,7 +88,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     }
 
                     waiting.OrderFrom(views, eye);
-                    while (waiting.TryTakeNext(out _, out _, out _))
+                    while (waiting.TryTakeNext(out _, out _, out _, out _))
                     {
                     }
                 }),

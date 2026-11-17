@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Mmorpg.Client.Core;
 using Mmorpg.Client.Gameplay;
 using UnityEditor;
 using UnityEngine;
@@ -12,40 +13,49 @@ namespace Mmorpg.Client.Editor
     // asset.json or that a paint layer or a garment fits: one slot per painted material with
     // variants, its own image first, the paint layers of the body in the order they are drawn, the
     // body parts with the faces of the editable mesh their triangles come from, and the garments of
-    // the body from the lowest layer up, one per garment texture, each its template's model and data
-    // with the texture's material, and the attachments its sockets can hold, as
-    // Assets/Art/Appearance/<Model>_Appearance.asset. It
-    // writes only catalogs that differ, and ArtExportFollowUp runs it after every export.
-    // ArtAppearanceCatalogTests fails when a catalog differs from what this writes. See
-    // docs/ART_PIPELINE.md.
+    // the body from the lowest layer up, one per garment texture, each its template's data, and the
+    // attachments its sockets can hold, as Assets/Art/Appearance/<Model>_Appearance.asset. The
+    // catalog names its content by Addressables address: this writes a BodyPieceContent per garment
+    // and body, Assets/Content/Bodies/Garments/<Model>/<Garment>.asset with the template's model for
+    // the body and the texture's material, and one per attachment,
+    // Assets/Content/Bodies/Attachments/<Attachment>.asset with its model and clips, and makes them
+    // and the images of the options and paint layers entries of the Body Content group, each its own
+    // bundle, and every asset two of them share an entry of the Body Content Shared group; see
+    // ArtBodyContentEntries. It writes only what differs, so a second run changes nothing, and
+    // ArtExportFollowUp runs it after every export. ArtAppearanceCatalogTests fails when a catalog,
+    // a content asset, or an entry differs from what this writes. See docs/ART_PIPELINE.md.
     public static class ArtAppearanceCatalogs
     {
         public const string Folder = "Assets/Art/Appearance";
+        public const string ContentFolder = ClientAddresses.ContentRoot + "Bodies";
+        public const string GarmentContentFolder = ContentFolder + "/Garments";
+        public const string AttachmentContentFolder = ContentFolder + "/Attachments";
+        public const string PaintAddressPrefix = "Bodies/Paints/";
+        public const string OptionAddressPrefix = "Bodies/Options/";
         public const string MenuPath = "MMORPG/Tools/Art Pipeline/Update Appearance Catalogs";
 
         [MenuItem(MenuPath)]
         public static void UpdateAllMenu()
         {
             var written = UpdateAll();
-            Debug.Log(written == 0 ? "Every appearance catalog is up to date." : "Wrote " + written + " appearance catalog(s).");
+            Debug.Log(written == 0
+                ? "Every appearance catalog, its content, and its Addressables entries are up to date."
+                : "Wrote " + written + " appearance catalog(s), content asset(s), or Addressables change(s).");
         }
 
-        // Writes every catalog that is missing or differs from its body's export, and returns how
-        // many it wrote.
+        // Writes every catalog, content asset, and Addressables entry that is missing or differs
+        // from the exports, removes the content assets no catalog names, and returns how many
+        // things it wrote.
         public static int UpdateAll()
         {
-            var written = 0;
-            foreach (var manifest in ManifestsWithLooks())
+            var looks = ManifestsWithLooks().Select(LooksFor).ToArray();
+            var written = WriteContent(looks);
+            foreach (var body in looks)
             {
-                var path = PathFor(manifest);
-                var slots = SlotsFor(manifest);
-                var paints = PaintsFor(manifest);
-                var parts = PartsFor(manifest);
-                var garments = GarmentsFor(manifest);
-                var attachments = AttachmentsFor(manifest);
+                var path = PathFor(body.Manifest);
                 var catalog = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(path);
-                if (catalog != null && Matches(catalog, slots, paints) && Matches(catalog, parts, garments)
-                    && Matches(catalog, attachments))
+                if (catalog != null && Matches(catalog, body.Slots, body.Paints) && Matches(catalog, body.Parts, body.Garments)
+                    && Matches(catalog, body.Attachments))
                 {
                     continue;
                 }
@@ -54,21 +64,163 @@ namespace Mmorpg.Client.Editor
                 {
                     Directory.CreateDirectory(Folder);
                     catalog = ScriptableObject.CreateInstance<BodyAppearanceCatalog>();
-                    catalog.Configure(slots, paints, parts, garments, attachments);
+                    catalog.Configure(body.Slots, body.Paints, body.Parts, body.Garments, body.Attachments);
                     AssetDatabase.CreateAsset(catalog, path);
                 }
                 else
                 {
-                    catalog.Configure(slots, paints, parts, garments, attachments);
+                    catalog.Configure(body.Slots, body.Paints, body.Parts, body.Garments, body.Attachments);
                     EditorUtility.SetDirty(catalog);
                 }
 
                 written++;
                 Debug.Log("Wrote the appearance catalog " + path + " with " + string.Join(", ",
-                    slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")
-                        .Concat(paints.Select(paint => "Paint " + paint.Name))
-                        .Concat(garments.Select(garment => "Garment " + garment.Name))
-                        .Concat(attachments.Select(attachment => "Attachment " + attachment.Name))));
+                    body.Slots.Select(slot => slot.Name + " (" + string.Join(", ", slot.Options.Select(option => option.Name)) + ")")
+                        .Concat(body.Paints.Select(paint => "Paint " + paint.Name))
+                        .Concat(body.Garments.Select(garment => "Garment " + garment.Name))
+                        .Concat(body.Attachments.Select(attachment => "Attachment " + attachment.Name))));
+            }
+
+            if (written > 0)
+            {
+                AssetDatabase.SaveAssets();
+            }
+
+            written += ArtBodyContentEntries.Apply(ContentEntries(looks));
+            return written;
+        }
+
+        // What the catalog of a body holds and the content it names.
+        public sealed class BodyLooks
+        {
+            public ArtAssetManifest Manifest;
+            public BodyAppearanceCatalog.Slot[] Slots;
+            public BodyAppearanceCatalog.Paint[] Paints;
+            public BodyAppearanceCatalog.Part[] Parts;
+            public BodyAppearanceCatalog.Garment[] Garments;
+            public BodyAppearanceCatalog.Attachment[] Attachments;
+            public PieceSpec[] Pieces;
+            public TextureSpec[] Textures;
+        }
+
+        // A garment's or an attachment's content asset, at its path, with what it holds.
+        public sealed class PieceSpec
+        {
+            public string Path;
+            public string Address;
+            public GameObject Model;
+            public Material Material;
+            public AnimationClip[] Clips;
+        }
+
+        // The image of an option or a paint layer, an entry of its own.
+        public sealed class TextureSpec
+        {
+            public string Address;
+            public Texture2D Texture;
+        }
+
+        public static BodyLooks LooksFor(ArtAssetManifest manifest)
+        {
+            var slots = SlotsFor(manifest, out var options);
+            var paints = PaintsFor(manifest, out var paintTextures);
+            var garments = GarmentsFor(manifest, out var garmentPieces);
+            var attachments = AttachmentsFor(manifest, out var attachmentPieces);
+            return new BodyLooks
+            {
+                Manifest = manifest,
+                Slots = slots,
+                Paints = paints,
+                Parts = PartsFor(manifest),
+                Garments = garments,
+                Attachments = attachments,
+                Pieces = garmentPieces.Concat(attachmentPieces).ToArray(),
+                Textures = options.Concat(paintTextures).ToArray(),
+            };
+        }
+
+        // The address of an asset below the content root: its path below it.
+        public static string ContentAddressOf(string path)
+        {
+            return path.Substring(ClientAddresses.ContentRoot.Length);
+        }
+
+        public static string GarmentContentPath(ArtAssetManifest body, string garment)
+        {
+            return GarmentContentFolder + "/" + Path.GetFileNameWithoutExtension(body.target) + "/" + garment + ".asset";
+        }
+
+        public static string AttachmentContentPath(string attachment)
+        {
+            return AttachmentContentFolder + "/" + attachment + ".asset";
+        }
+
+        // Every Addressables entry of the body content: the content assets and the images, by
+        // address.
+        public static IReadOnlyDictionary<string, string> ContentEntries(IEnumerable<BodyLooks> looks)
+        {
+            var entries = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var body in looks)
+            {
+                foreach (var piece in body.Pieces)
+                {
+                    entries[piece.Address] = piece.Path;
+                }
+
+                foreach (var texture in body.Textures)
+                {
+                    entries[texture.Address] = AssetDatabase.GetAssetPath(texture.Texture);
+                }
+            }
+
+            return entries;
+        }
+
+        // Creates or updates the content asset of every garment and attachment, removes those no
+        // catalog names, and returns how many it wrote or removed.
+        public static int WriteContent(IReadOnlyList<BodyLooks> looks)
+        {
+            var written = 0;
+            var expected = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var piece in looks.SelectMany(body => body.Pieces))
+            {
+                if (!expected.Add(piece.Path))
+                {
+                    continue;
+                }
+
+                var content = AssetDatabase.LoadAssetAtPath<BodyPieceContent>(piece.Path);
+                if (content != null && Matches(content, piece))
+                {
+                    continue;
+                }
+
+                if (content == null)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(piece.Path));
+                    content = ScriptableObject.CreateInstance<BodyPieceContent>();
+                    content.Configure(piece.Model, piece.Material, piece.Clips);
+                    AssetDatabase.CreateAsset(content, piece.Path);
+                }
+                else
+                {
+                    content.Configure(piece.Model, piece.Material, piece.Clips);
+                    EditorUtility.SetDirty(content);
+                }
+
+                written++;
+            }
+
+            if (AssetDatabase.IsValidFolder(ContentFolder))
+            {
+                foreach (var stale in AssetDatabase.FindAssets("t:BodyPieceContent", new[] { ContentFolder })
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Where(path => !expected.Contains(path))
+                    .ToArray())
+                {
+                    AssetDatabase.DeleteAsset(stale);
+                    written++;
+                }
             }
 
             if (written > 0)
@@ -79,6 +231,13 @@ namespace Mmorpg.Client.Editor
             return written;
         }
 
+        public static bool Matches(BodyPieceContent content, PieceSpec piece)
+        {
+            return content.Model == piece.Model
+                && content.Material == piece.Material
+                && content.Clips.SequenceEqual(piece.Clips ?? Array.Empty<AnimationClip>());
+        }
+
         public static bool Matches(BodyAppearanceCatalog catalog, BodyAppearanceCatalog.Slot[] slots, BodyAppearanceCatalog.Paint[] paints)
         {
             return catalog.Slots.Count == slots.Length
@@ -86,7 +245,7 @@ namespace Mmorpg.Client.Editor
                     actual.Name == expected.Name
                     && actual.Material == expected.Material
                     && actual.Options.Select(option => option.Name).SequenceEqual(expected.Options.Select(option => option.Name))
-                    && actual.Options.Select(option => option.Texture).SequenceEqual(expected.Options.Select(option => option.Texture)))
+                    && actual.Options.Select(option => option.Address).SequenceEqual(expected.Options.Select(option => option.Address)))
                     .All(same => same)
                 && catalog.Paints.Count == paints.Length
                 && catalog.Paints.Zip(paints, (actual, expected) =>
@@ -94,7 +253,7 @@ namespace Mmorpg.Client.Editor
                     && actual.Category == expected.Category
                     && actual.Slot == expected.Slot
                     && actual.Material == expected.Material
-                    && actual.Texture == expected.Texture
+                    && actual.Address == expected.Address
                     && actual.Rect == expected.Rect
                     && actual.Layer == expected.Layer
                     && actual.Smoothness.Equals(expected.Smoothness)
@@ -115,14 +274,13 @@ namespace Mmorpg.Client.Editor
                 && catalog.Garments.Zip(garments, (actual, expected) =>
                     actual.Name == expected.Name
                     && actual.Template == expected.Template
-                    && actual.Material == expected.Material
+                    && actual.Address == expected.Address
                     && actual.Slot == expected.Slot
                     && actual.Layer == expected.Layer
                     && actual.Hides.SequenceEqual(expected.Hides)
                     && actual.HidesUnderwear == expected.HidesUnderwear
                     && actual.Hair == expected.Hair
                     && actual.Cloth == expected.Cloth
-                    && actual.Model == expected.Model
                     && actual.Covered.SequenceEqual(expected.Covered)
                     && actual.Underlay.SequenceEqual(expected.Underlay)
                     && actual.PullInVertices.SequenceEqual(expected.PullInVertices)
@@ -137,7 +295,7 @@ namespace Mmorpg.Client.Editor
                     actual.Name == expected.Name
                     && actual.Socket == expected.Socket
                     && actual.Bone == expected.Bone
-                    && actual.Model == expected.Model
+                    && actual.Address == expected.Address
                     && actual.UseClip == expected.UseClip
                     && actual.HoldsWithBothHands == expected.HoldsWithBothHands
                     && actual.OffHandGrip == expected.OffHandGrip
@@ -147,7 +305,7 @@ namespace Mmorpg.Client.Editor
                     && actual.HasLaunchPoint == expected.HasLaunchPoint
                     && actual.LaunchPoint == expected.LaunchPoint
                     && actual.Skeleton == expected.Skeleton
-                    && actual.Clips.SequenceEqual(expected.Clips)
+                    && actual.ClipNames.SequenceEqual(expected.ClipNames)
                     && actual.DrawLength == expected.DrawLength)
                     .All(same => same);
         }
@@ -176,7 +334,14 @@ namespace Mmorpg.Client.Editor
         // such as a bow, its skeleton, its clips, and its draw length.
         public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body)
         {
-            return ArtAssetManifests.Attachments()
+            return AttachmentsFor(body, out _);
+        }
+
+        // Also with the content asset of each attachment: its model and clips.
+        public static BodyAppearanceCatalog.Attachment[] AttachmentsFor(ArtAssetManifest body, out PieceSpec[] pieces)
+        {
+            var found = new List<PieceSpec>();
+            var attachments = ArtAssetManifests.Attachments()
                 .OrderBy(attachment => attachment.Name, StringComparer.Ordinal)
                 .SelectMany(attachment => ArtAssetManifests.SocketBones(attachment.socket)
                     .Where(socket => socket.Skeleton == body.skeleton)
@@ -190,11 +355,14 @@ namespace Mmorpg.Client.Editor
 
                         var grip = attachment.offHandGrip ?? Array.Empty<float>();
                         var launch = attachment.launchPoint ?? Array.Empty<float>();
+                        var clips = attachment.IsSkinned ? ClipsOf(attachment) : Array.Empty<AnimationClip>();
+                        var path = AttachmentContentPath(attachment.Name);
+                        found.Add(new PieceSpec { Path = path, Address = ContentAddressOf(path), Model = model, Clips = clips });
                         return new BodyAppearanceCatalog.Attachment(
                             attachment.Name,
                             attachment.socket,
                             socket.Bone,
-                            model,
+                            ContentAddressOf(path),
                             attachment.useClip,
                             // In the socket's axes in Blender, which the import turns as it turns the model.
                             grip.Length == 3 ? ArtTopologyMaps.ToUnity(grip[0], grip[1], grip[2]) : (Vector3?)null,
@@ -203,10 +371,12 @@ namespace Mmorpg.Client.Editor
                             launch.Length == 3 ? ArtTopologyMaps.ToUnity(launch[0], launch[1], launch[2]) : (Vector3?)null,
                             attachment.attackRelease,
                             attachment.IsSkinned ? attachment.skeleton : null,
-                            attachment.IsSkinned ? ClipsOf(attachment) : null,
+                            clips.Select(clip => clip.name).ToArray(),
                             attachment.drawLength);
                     }))
                 .ToArray();
+            pieces = found.ToArray();
+            return attachments;
         }
 
         // The clips a skinned attachment exports, imported from its model, in the manifest's order.
@@ -278,12 +448,20 @@ namespace Mmorpg.Client.Editor
         // joined its cage, is left out for that body.
         public static BodyAppearanceCatalog.Garment[] GarmentsFor(ArtAssetManifest body)
         {
+            return GarmentsFor(body, out _);
+        }
+
+        // Also with the content asset of each garment for the body: the template's model for the
+        // body and the texture's material.
+        public static BodyAppearanceCatalog.Garment[] GarmentsFor(ArtAssetManifest body, out PieceSpec[] pieces)
+        {
+            var found = new List<PieceSpec>();
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
             var templates = ArtAssetManifests.Garments()
                 .Where(garment => ArtAssetManifests.BodiesOf(garment).Contains(body.AssetPath)
                     && garment.export.models.Any(model => model.body == label))
                 .ToDictionary(garment => garment.AssetPath, StringComparer.Ordinal);
-            return ArtAssetManifests.Textures()
+            var garments = ArtAssetManifests.Textures()
                 .Where(texture => templates.ContainsKey(texture.garment)
                     && (texture.export.masks.Length == 0 || texture.export.masks.Any(mask => mask.body == label)))
                 .Select(texture => (texture, garment: templates[texture.garment]))
@@ -329,23 +507,26 @@ namespace Mmorpg.Client.Editor
                     }
 
                     var faces = ArtTopologyMaps.TriangleFaces(renderer.sharedMesh, sources, topology, where);
+                    var path = GarmentContentPath(body, pair.texture.Name);
+                    found.Add(new PieceSpec { Path = path, Address = ContentAddressOf(path), Model = model, Material = material });
                     return new BodyAppearanceCatalog.Garment(
                         pair.texture.Name,
                         garment.Name,
-                        material,
+                        ContentAddressOf(path),
                         garment.slot,
                         garment.layer,
                         garment.hides,
                         garment.hidesUnderwear,
                         garment.hair,
                         garment.cloth,
-                        model,
                         data.covered,
                         faces.Select(face => data.underlay[face]).ToArray(),
                         data.pullInVertices,
                         data.pullInDistances);
                 })
                 .ToArray();
+            pieces = found.ToArray();
+            return garments;
         }
 
         // The renderer's vertices in the model root's space.
@@ -361,8 +542,15 @@ namespace Mmorpg.Client.Editor
         // name.
         public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body)
         {
+            return PaintsFor(body, out _);
+        }
+
+        // Also with the image of each paint layer, an entry of its own.
+        public static BodyAppearanceCatalog.Paint[] PaintsFor(ArtAssetManifest body, out TextureSpec[] textures)
+        {
+            var found = new List<TextureSpec>();
             var label = body.rootObjects.Length == 1 ? body.rootObjects[0] : string.Empty;
-            return ArtAssetManifests.PaintLayers()
+            var paints = ArtAssetManifests.PaintLayers()
                 .Where(paint => paint.bodies.Contains(body.AssetPath))
                 .OrderBy(paint => paint.layer)
                 .ThenBy(paint => paint.Name, StringComparer.Ordinal)
@@ -370,18 +558,29 @@ namespace Mmorpg.Client.Editor
                 {
                     var image = "T_Paint_" + paint.Name + "_" + label;
                     var texture = paint.export.textures.Single(record => record.name == image);
+                    var path = ArtAssetManifests.ToUnityPath(texture.target);
+                    var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    if (asset == null)
+                    {
+                        throw new InvalidOperationException(paint.path + ": the image " + image + " is not imported.");
+                    }
+
+                    var address = PaintAddressPrefix + Path.GetFileName(path);
+                    found.Add(new TextureSpec { Address = address, Texture = asset });
                     return new BodyAppearanceCatalog.Paint(
                         paint.Name,
                         CategoryOf(paint),
                         paint.slot,
                         ArtModelImportRules.FindProjectMaterial("M_" + paint.part + "_" + label),
-                        AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(texture.target)),
+                        address,
                         texture.PaintRect,
                         paint.layer,
                         paint.export.smoothness,
                         paint.export.metallic);
                 })
                 .ToArray();
+            textures = found.ToArray();
+            return paints;
         }
 
         public static AppearanceCategory CategoryOf(ArtAssetManifest paint)
@@ -402,10 +601,17 @@ namespace Mmorpg.Client.Editor
         }
 
         // M_Face_Male with T_Face_Male_Stubble as its own image and the variant
-        // T_Face_Male_Clean is the slot Face with the options Stubble and Clean.
+        // T_Face_Male_Clean is the slot Face with the options Stubble and Clean. The own image is
+        // the material's and has no address; every other option's image is an entry of its own.
         public static BodyAppearanceCatalog.Slot[] SlotsFor(ArtAssetManifest manifest)
         {
-            return manifest.variants
+            return SlotsFor(manifest, out _);
+        }
+
+        public static BodyAppearanceCatalog.Slot[] SlotsFor(ArtAssetManifest manifest, out TextureSpec[] textures)
+        {
+            var found = new List<TextureSpec>();
+            var slots = manifest.variants
                 .OrderBy(variant => variant.material, StringComparer.Ordinal)
                 .Select(variant =>
                 {
@@ -419,10 +625,24 @@ namespace Mmorpg.Client.Editor
                     var prefix = "T_" + parts[1] + "_" + parts[2] + "_";
                     var images = new[] { record.baseMap }.Concat(variant.images);
                     var options = images
-                        .Select(image => new BodyAppearanceCatalog.Option(
-                            image.Substring(prefix.Length),
-                            AssetDatabase.LoadAssetAtPath<Texture2D>(ArtAssetManifests.ToUnityPath(
-                                manifest.export.textures.Single(texture => texture.name == image).target))))
+                        .Select((image, index) =>
+                        {
+                            if (index == 0)
+                            {
+                                return new BodyAppearanceCatalog.Option(image.Substring(prefix.Length), string.Empty);
+                            }
+
+                            var path = ArtAssetManifests.ToUnityPath(manifest.export.textures.Single(texture => texture.name == image).target);
+                            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                            if (asset == null)
+                            {
+                                throw new InvalidOperationException(manifest.path + ": the image " + image + " is not imported.");
+                            }
+
+                            var address = OptionAddressPrefix + Path.GetFileName(path);
+                            found.Add(new TextureSpec { Address = address, Texture = asset });
+                            return new BodyAppearanceCatalog.Option(image.Substring(prefix.Length), address);
+                        })
                         .ToArray();
                     return new BodyAppearanceCatalog.Slot(
                         parts[1],
@@ -430,6 +650,8 @@ namespace Mmorpg.Client.Editor
                         options);
                 })
                 .ToArray();
+            textures = found.ToArray();
+            return slots;
         }
     }
 }

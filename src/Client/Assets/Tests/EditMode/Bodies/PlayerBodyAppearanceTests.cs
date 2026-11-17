@@ -1,3 +1,4 @@
+using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
@@ -8,6 +9,8 @@ namespace Mmorpg.Client.Tests.EditMode
     public sealed class PlayerBodyAppearanceTests
     {
         private const string SkinShader = "Mmorpg/Character Skin";
+        private const string CleanAddress = "Tests/T_Face_Male_Clean.png";
+        private const string TattooAddress = "Tests/T_Paint_Tattoo_Male.png";
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         [Test]
@@ -81,14 +84,16 @@ namespace Mmorpg.Client.Tests.EditMode
             var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var face = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "M_Face_Male" };
             var clean = new Texture2D(4, 4) { name = "T_Face_Male_Clean" };
-            var catalog = BodyLookTests.Catalog(face, clean);
+            var catalog = BodyLookTests.Catalog(face, CleanAddress);
             try
             {
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = new TestContentSource().With(CleanAddress, clean).Content())
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var head = CreateBody(root.transform, skin, face, catalog);
                     var appearance = root.GetComponentInChildren<PlayerBodyAppearance>();
 
+                    Assert.That(EditorBodyContent.Load(content, catalog, BodyLook.Default.With("Face", "Clean")), Is.True);
                     appearance.ApplyLook(BodyLook.Default.With("Face", "Clean"), materials);
 
                     var looked = head.sharedMaterials;
@@ -124,14 +129,16 @@ namespace Mmorpg.Client.Tests.EditMode
             var skin = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var face = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var clean = new Texture2D(4, 4);
-            var catalog = BodyLookTests.Catalog(face, clean);
+            var catalog = BodyLookTests.Catalog(face, CleanAddress);
             try
             {
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = new TestContentSource().With(CleanAddress, clean).Content())
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var firstBody = CreateBody(first.transform, skin, face, catalog);
                     var secondBody = CreateBody(second.transform, skin, face, catalog);
                     var look = BodyLook.Default.With("Face", "Clean");
+                    Assert.That(EditorBodyContent.Load(content, catalog, look), Is.True);
                     first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
                     second.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
 
@@ -163,18 +170,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 new BodyAppearanceCatalog.Slot[0],
                 new[]
                 {
-                    new BodyAppearanceCatalog.Paint("Tattoo", AppearanceCategory.Tattoo, string.Empty, skin, tattoo,
+                    new BodyAppearanceCatalog.Paint("Tattoo", AppearanceCategory.Tattoo, string.Empty, skin, TattooAddress,
                         new Vector4(0.25f, 0.5f, 0.5f, 0.25f), 200, 0.38f, 0f),
-                    new BodyAppearanceCatalog.Paint("Scar", AppearanceCategory.Scar, string.Empty, lit, tattoo,
+                    new BodyAppearanceCatalog.Paint("Scar", AppearanceCategory.Scar, string.Empty, lit, TattooAddress,
                         new Vector4(0f, 0f, 1f, 1f), 100, 0.5f, 0f),
                 });
             try
             {
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = new TestContentSource().With(TattooAddress, tattoo).Content())
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var firstBody = CreateBody(first.transform, skin, lit, catalog);
                     var secondBody = CreateBody(second.transform, skin, lit, catalog);
                     var look = BodyLook.Default.WithPaint("Tattoo", true).WithPaint("Scar", true);
+                    Assert.That(EditorBodyContent.Load(content, catalog, look), Is.True);
                     first.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
                     second.GetComponentInChildren<PlayerBodyAppearance>().ApplyLook(look, materials);
 

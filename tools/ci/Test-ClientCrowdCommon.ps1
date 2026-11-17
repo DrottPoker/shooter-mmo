@@ -124,10 +124,10 @@ try {
     $summary = '{ "durationSeconds": 60.0, "frameMilliseconds": ' + $statistics + ', "slowFrames": 12, "hitchFrames": 0, "remoteStarvedPercent": 0.0, "remoteStarvations": 0, "longestRemoteStarvationSeconds": 0.0 }'
     $machine = '"runtime": "IL2CPP", "platform": "player", "screenWidth": 1920, "screenHeight": 1080, "graphicsDevice": "GPU", "processor": "CPU"'
     $stretch = '{ "measured": true, "shownSeconds": 1.7, "summary": ' + $summary + ' }'
-    $memory = '[ { "moment": "with the crowd", "knownBots": 100, "allocatedMegabytes": 312.2, "reservedMegabytes": 809.0, "managedHeapMegabytes": 14.0, "bodyMeshes": 37, "bodyMaterials": 210 },' +
-        ' { "moment": "crowd gone", "knownBots": 0, "allocatedMegabytes": 300.0, "reservedMegabytes": 809.0, "managedHeapMegabytes": 12.0, "bodyMeshes": 37, "bodyMaterials": 210 },' +
+    $memory = '[ { "moment": "with the crowd", "knownBots": 100, "allocatedMegabytes": 312.2, "reservedMegabytes": 809.0, "managedHeapMegabytes": 14.0, "bodyMeshes": 37, "bodyMaterials": 210, "bodyGarments": 12, "bodyAttachments": 3 },' +
+        ' { "moment": "crowd gone", "knownBots": 0, "allocatedMegabytes": 300.0, "reservedMegabytes": 809.0, "managedHeapMegabytes": 12.0, "bodyMeshes": 37, "bodyMaterials": 210, "bodyGarments": 2, "bodyAttachments": 0 },' +
         ' { "moment": "crowd back", "knownBots": 100, "allocatedMegabytes": 313.0, "reservedMegabytes": 809.0, "managedHeapMegabytes": 14.0, "bodyMeshes": 37, "bodyMaterials": 210 } ]'
-    $crowdResult = ('{ ' + $machine + ', "mode": "crowd", "standing": true, "crowdShownSeconds": 1.7, "activationFrameMilliseconds": 214.37, "ownerSnapshotsPerSecond": 15.0, "allocatedMegabytes": 312.2, "reservedMegabytes": 809.0, "managedHeapMegabytes": 14.0, "summary": ' + $summary +
+    $crowdResult = ('{ ' + $machine + ', "mode": "crowd", "standing": true, "crowdShownSeconds": 1.7, "activationFrameMilliseconds": 214.37, "entryMilliseconds": 380.12, "ownerSnapshotsPerSecond": 15.0, "allocatedMegabytes": 312.2, "reservedMegabytes": 809.0, "managedHeapMegabytes": 14.0, "summary": ' + $summary +
         ', "arrival": ' + $stretch + ', "returnArrival": ' + $stretch + ', "memory": ' + $memory + ' }') | ConvertFrom-Json
     $churnResult = ('{ ' + $machine + ', "mode": "churn", "standing": true, "summary": ' + $summary + ', "arrival": { "measured": false }, "returnArrival": { "measured": false }, "memory": [], "fewestKnownBots": 160, "mostKnownBots": 200, "spawnsPerSecond": 3.04, "despawnsPerSecond": 2.96 }') | ConvertFrom-Json
     $mobResult = ('{ ' + $machine + ', "mode": "mobs", "standing": true, "crowdShownSeconds": 2.1, "activationFrameMilliseconds": 98.04, "allocatedMegabytes": 290.0, "reservedMegabytes": 700.0, "managedHeapMegabytes": 11.0, "summary": ' + $summary + ', "arrival": ' + $stretch + ', "returnArrival": { "measured": false }, "memory": [] }') | ConvertFrom-Json
@@ -146,14 +146,17 @@ try {
         Assert-Equal "Standing table line $($index + 1)" $expected[$index] $lines[$index]
     }
 
-    Assert-True "Arrival header with the activation frame" ($lines -contains "| Bots | Arrival | World activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |")
-    Assert-True "Arrival of the first crowd, after the World's activation frame" ($lines -contains "| 100 | first | 214.4 ms | 1.7 s | 14.6 ms | 0 | 12 | 4.5 / 7.2 / 9.6 ms | 64 % |")
+    Assert-True "Arrival header with the entry" ($lines -contains "| Bots | Arrival | World entry / activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |")
+    Assert-True "Arrival of the first crowd, after the entry into the World" ($lines -contains "| 100 | first | 380.1 / 214.4 ms | 1.7 s | 14.6 ms | 0 | 12 | 4.5 / 7.2 / 9.6 ms | 64 % |")
     Assert-True "Arrival of the crowd that came back, without an activation" ($lines -contains "| 100 | return | - | 1.7 s | 14.6 ms | 0 | 12 | 4.5 / 7.2 / 9.6 ms | 64 % |")
-    Assert-True "Memory once the crowd left" ($lines -contains "| 100 | crowd gone | 0 | 300 / 809 / 12 MB | 1700 MB | 37 / 210 |")
-    Assert-True "Memory without a sample" ($lines -contains "| 100 | crowd back | 100 | 313 / 809 / 14 MB | - MB | 37 / 210 |")
+    Assert-True "Memory header with the content entries" ($lines -contains "| Bots | Moment | Bots known | Allocated / reserved / managed | Player private memory | Body meshes / materials | Body garments / attachments |")
+    Assert-True "Memory once the crowd left" ($lines -contains "| 100 | crowd gone | 0 | 300 / 809 / 12 MB | 1700 MB | 37 / 210 | 2 / 0 |")
+    # The last row stands for a result from before the content entries were counted.
+    Assert-True "Memory without a sample or content entries" ($lines -contains "| 100 | crowd back | 100 | 313 / 809 / 14 MB | - MB | 37 / 210 | - |")
     Assert-True "Churn" ($lines -contains "| 200 | 160 to 200 | 3.0 | 3.0 | 4.5 / 7.2 / 9.6 ms | 14.6 ms | 0 | 0.00 %, 0 times, longest 0.00 s | 64 % |")
-    Assert-True "Mobs header with the activation frame" ($lines -contains "| Mobs | World activation frame | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |")
-    Assert-True "Mobs" ($lines -contains "| 100 | 98.0 ms | 2.1 s | 14.6 ms / 0 | 4.5 / 7.2 / 9.6 / 14.6 ms | 0 | 0.00 %, 0 times, longest 0.00 s | 290 / 700 / 11 MB | 1842 MB | 64 % |")
+    Assert-True "Mobs header with the entry" ($lines -contains "| Mobs | World entry / activation frame | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |")
+    # The Mob result stands for one from before the entry was measured.
+    Assert-True "Mobs" ($lines -contains "| 100 | - / 98.0 ms | 2.1 s | 14.6 ms / 0 | 4.5 / 7.2 / 9.6 / 14.6 ms | 0 | 0.00 %, 0 times, longest 0.00 s | 290 / 700 / 11 MB | 1842 MB | 64 % |")
     # A result from before the activation frame was measured shows none.
     $olderMobs = ($mobResult | ConvertTo-Json -Depth 10 | ConvertFrom-Json)
     $olderMobs.PSObject.Properties.Remove("activationFrameMilliseconds")

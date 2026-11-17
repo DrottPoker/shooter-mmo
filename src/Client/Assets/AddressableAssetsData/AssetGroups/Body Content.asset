@@ -1,0 +1,253 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Body Content
+  m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.AddressableAssetGroup
+  m_GroupName: Body Content
+  m_GUID: 4e4df0599306bdb4ba62a1c870691d77
+  m_SerializeEntries:
+  - m_GUID: 0a7c5bb2fb86c664a9a877fb253e28a6
+    m_Address: Bodies/Garments/Human_Female/DarkBrownHair.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0e5bcb7aff1a0b44e9222f051c21ea81
+    m_Address: Bodies/Garments/Human_Male/WoolHoodUp.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 11fadc36a1e727d49850831837dd20f3
+    m_Address: Bodies/Garments/Human_Female/NetShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1823e2a0fe2040945967c18abfa3d3f3
+    m_Address: Bodies/Garments/Human_Female/LinenLongShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1e9f32601ee78894d83db11f637d3e03
+    m_Address: Bodies/Garments/Human_Male/LinenShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 205034558244a10459876d1060679757
+    m_Address: Bodies/Paints/T_Paint_Bra_Female.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 295ebf8501914ac46bd84cd38f6b20d9
+    m_Address: Bodies/Attachments/IronGreataxe.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 30e221301f90d254b83205f91b03cae8
+    m_Address: Bodies/Garments/Human_Male/WoolTrousers.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3332fc4d25f1b34438eaf7b0c9821a65
+    m_Address: Bodies/Attachments/IronSword.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 39fab9ff233eebb4dbbdf86f8d887627
+    m_Address: Bodies/Garments/Human_Female/WoolCloak.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3a8643e1ce297be42b8e734845b629ed
+    m_Address: Bodies/Paints/T_Paint_Briefs_Female.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 465e12a7a4e52e047b2241a219d701dc
+    m_Address: Bodies/Options/T_Eye_Male_Brown.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4d6575df82b88924481511efcaa56e71
+    m_Address: Bodies/Paints/T_Paint_ForearmRunes_Female.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4eb339a1c9b56354fabdd79cb4462781
+    m_Address: Bodies/Attachments/OakStaff.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 5494fd91cb92a5846802ea0419e6c8bf
+    m_Address: Bodies/Garments/Human_Female/LinenShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 596499902655b7440bc4dbb5fff6e061
+    m_Address: Bodies/Garments/Human_Male/WoolRobe.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 59902c8b1b9579c479581ec7c7ed002e
+    m_Address: Bodies/Paints/T_Paint_Scar_Male.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 5cd2dd2928c3c31478b55cffdf8634fb
+    m_Address: Bodies/Options/T_Face_Female_Freckles.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 5ce8da610efb9b44eae30b4a8b44c58d
+    m_Address: Bodies/Garments/Human_Male/LinenLongShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 62447c3bb154555479acccacfef5291f
+    m_Address: Bodies/Garments/Human_Female/WoolHoodDown.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 695946afb8f848f4dbab697f9963b82c
+    m_Address: Bodies/Garments/Human_Male/WoolCloak.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8170e74aab0496b448036ca0cabc8fee
+    m_Address: Bodies/Garments/Human_Female/WoolRobe.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 86c3777ef3cf9b34b8232b5f81f51a74
+    m_Address: Bodies/Options/T_Eye_Female_Hazel.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8f2bd97cd33663145a50a3ce56f879a6
+    m_Address: Bodies/Attachments/TrainingShortbow.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 90c151a3c5a495b46b3eb682d65702db
+    m_Address: Bodies/Garments/Human_Female/WoolHoodUp.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 91fc1c54a3b986d41b485b31f1828fa7
+    m_Address: Bodies/Garments/Human_Male/LeatherGloves.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 942a0b6079301524cb990d5556e258ac
+    m_Address: Bodies/Attachments/WoodcuttingAxe.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9624b05ca41eecf4cba4adafe77fe73f
+    m_Address: Bodies/Garments/Human_Female/WoolTrousers.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 979a192b8fcc40942be0a8bde8765257
+    m_Address: Bodies/Garments/Human_Male/DarkBrownHair.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9c2b38275bab25c45af9bf80b7eb7008
+    m_Address: Bodies/Options/T_Face_Male_Clean.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a50fe629b13ec374580c6ac06face292
+    m_Address: Bodies/Garments/Human_Female/IronNasalHelm.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a75e218e2177f4b4a9edcb08ffebb1ed
+    m_Address: Bodies/Garments/Human_Male/NetShirt.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a915c58942f213c469ad39f1ed4ab9bd
+    m_Address: Bodies/Paints/T_Paint_ForearmRunes_Male.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b4058ed7f260b0442883bf1d1e61a9d3
+    m_Address: Bodies/Paints/T_Paint_Tattoo_Male.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: bf468f16bfd9b7f45b7925f336809c21
+    m_Address: Bodies/Garments/Human_Female/LeatherJerkin.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c5625e0ead677a548b4722dc145e06a0
+    m_Address: Bodies/Garments/Human_Female/LeatherGloves.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: cd71c1cdb14cea747a64b6b9554bccd7
+    m_Address: Bodies/Garments/Human_Male/IronNasalHelm.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ceb1ecd1df6370647827ae1b3cd0d258
+    m_Address: Bodies/Paints/T_Paint_Briefs_Male.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d2b9dfa350e4c494ba24963f0cfbf93f
+    m_Address: Bodies/Garments/Human_Male/LeatherJerkin.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d91815f2eafc6ef428e4e5efed41cd77
+    m_Address: Bodies/Attachments/MiningPickaxe.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: dc222fcd076e09e47b319d4d0bc89c14
+    m_Address: Bodies/Paints/T_Paint_Tattoo_Female.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e8906a79d1477674b95227390dabc883
+    m_Address: Bodies/Paints/T_Paint_Scar_Female.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ed70e138affc3d74db8dd1629a1d4110
+    m_Address: Bodies/Garments/Human_Male/WoolHoodDown.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f141355a50471614ca94726cdf3bcf4e
+    m_Address: Bodies/Garments/Human_Male/LeatherBoots.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fb7ea488c048e164089bb57f2ce680b5
+    m_Address: Bodies/Attachments/HeaterShield.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ffcfc2d4c4155b24f9d778595274fa3a
+    m_Address: Bodies/Garments/Human_Female/LeatherBoots.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 7a3ecd208bfb7dc4f9c03da909e4feec, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 00400f827492c734885d70c7cba8aedf, type: 2}
+    - {fileID: 11400000, guid: eeec421fc65789548afac320686174c3, type: 2}

@@ -10,7 +10,8 @@ namespace Mmorpg.Client.Gameplay
     // no animation or skinning. A bake reads the combined mesh of a hidden body back, so it takes
     // it from a set of readable meshes, which the hidden body releases when it goes. The owner
     // destroys the lying meshes; their materials come from the shared set, which counts every
-    // lying body as a user until it goes.
+    // lying body as a user until it goes. A body is baked only once the content of its look is
+    // loaded, and a lying body holds that content while it exists, so it shows the body as it died.
     public sealed class PlayerCorpseBodies : IDisposable
     {
         // The presentation key of every player corpse, as the worker sends it.
@@ -23,6 +24,9 @@ namespace Mmorpg.Client.Gameplay
         private static readonly int DeathStateId = Animator.StringToHash(HumanLocomotion.DeathState);
 
         private readonly Dictionary<string, Baked> baked = new Dictionary<string, Baked>(StringComparer.Ordinal);
+        // The content of the looks that wait to be baked, by key.
+        private readonly Dictionary<string, PlayerBodyContent.Needs> waiting =
+            new Dictionary<string, PlayerBodyContent.Needs>(StringComparer.Ordinal);
 
         // How many lying bodies are baked.
         public int Count
@@ -47,13 +51,47 @@ namespace Mmorpg.Client.Gameplay
         public bool TryGet(string key, PlayerBodyAppearance bodyPrefab, BodyLook look, PlayerBodyMeshes meshes,
             PlayerBodyMaterials bodyMaterials, out Mesh lyingMesh, out Material[] lyingMaterials)
         {
-            if (!baked.TryGetValue(key ?? string.Empty, out var body)
+            return TryGet(key, bodyPrefab, look, meshes, bodyMaterials, out lyingMesh, out lyingMaterials, out _);
+        }
+
+        // As TryGet, and false with loading while the content of the look loads, which the meshes'
+        // content then loads; ask again in a later frame.
+        public bool TryGet(string key, PlayerBodyAppearance bodyPrefab, BodyLook look, PlayerBodyMeshes meshes,
+            PlayerBodyMaterials bodyMaterials, out Mesh lyingMesh, out Material[] lyingMaterials, out bool loading)
+        {
+            key = key ?? string.Empty;
+            loading = false;
+            if (!baked.TryGetValue(key, out var body)
                 && bodyPrefab != null && meshes != null && bodyMaterials != null)
             {
-                body = Bake(bodyPrefab, look ?? BodyLook.Default, meshes, bodyMaterials);
+                look = look ?? BodyLook.Default;
+                var content = meshes.Content;
+                PlayerBodyContent.Needs needs = null;
+                if (content != null)
+                {
+                    if (!waiting.TryGetValue(key, out needs))
+                    {
+                        needs = PlayerBodyContent.NeedsOf(bodyPrefab.Catalog, look);
+                        waiting[key] = needs;
+                    }
+
+                    if (!content.Want(needs))
+                    {
+                        loading = true;
+                        lyingMesh = null;
+                        lyingMaterials = null;
+                        return false;
+                    }
+
+                    waiting.Remove(key);
+                }
+
+                body = Bake(bodyPrefab, look, meshes, bodyMaterials);
                 if (body.Mesh != null)
                 {
-                    baked[key ?? string.Empty] = body;
+                    content?.AddUser(needs);
+                    body = new Baked(body.Mesh, body.Materials, body.MaterialSet, content, needs);
+                    baked[key] = body;
                 }
             }
 
@@ -79,6 +117,8 @@ namespace Mmorpg.Client.Gameplay
                 Forget(baked[key]);
                 baked.Remove(key);
             }
+
+            waiting.Clear();
         }
 
         public void Dispose()
@@ -89,6 +129,7 @@ namespace Mmorpg.Client.Gameplay
             }
 
             baked.Clear();
+            waiting.Clear();
         }
 
         private static void Forget(Baked body)
@@ -101,6 +142,8 @@ namespace Mmorpg.Client.Gameplay
                     body.MaterialSet.Release(material);
                 }
             }
+
+            body.Content?.Release(body.Needs);
         }
 
         // A hidden copy of the body plays the end of Death, and its combined renderer is baked in
@@ -110,9 +153,9 @@ namespace Mmorpg.Client.Gameplay
         {
             var body = UnityEngine.Object.Instantiate(bodyPrefab.gameObject);
             body.hideFlags = HideFlags.HideAndDontSave;
+            var appearance = body.GetComponent<PlayerBodyAppearance>();
             try
             {
-                var appearance = body.GetComponent<PlayerBodyAppearance>();
                 appearance.CombineParts(meshes);
                 // The underwear is paint over the skin, which only a look draws.
                 appearance.ApplyLook(look, bodyMaterials);
@@ -138,6 +181,10 @@ namespace Mmorpg.Client.Gameplay
             }
             finally
             {
+                // The copy lets go of its mesh, materials, and content at once, also out of play,
+                // where it gets no OnDestroy.
+                appearance.ReleaseShared();
+
                 // Destroy waits for the end of the frame; the copy must not draw meanwhile.
                 body.SetActive(false);
                 if (Application.isPlaying)
@@ -170,12 +217,20 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly struct Baked
         {
-            public Baked(Mesh mesh, Material[] materials, PlayerBodyMaterials materialSet)
+            public Baked(Mesh mesh, Material[] materials, PlayerBodyMaterials materialSet,
+                PlayerBodyContent content = null, PlayerBodyContent.Needs needs = null)
             {
                 Mesh = mesh;
                 Materials = materials;
                 MaterialSet = materialSet;
+                Content = content;
+                Needs = needs;
             }
+
+            // The content of the look, which the lying body holds while it exists.
+            public PlayerBodyContent Content { get; }
+
+            public PlayerBodyContent.Needs Needs { get; }
 
             public Mesh Mesh { get; }
 

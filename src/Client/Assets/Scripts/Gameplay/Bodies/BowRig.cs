@@ -113,9 +113,11 @@ namespace Mmorpg.Client.Gameplay
         // How far the bow is drawn, from 0 at brace to 1 at its draw length.
         public float Draw { get; private set; }
 
-        // The rig of a bow whose bones the body holds below its socket, or null when they are not
-        // those of the Bow skeleton or the bow names no launch point.
-        public static BowRig TryCreate(Transform bones, Transform socket, BodyAppearanceCatalog.Attachment bow)
+        // The rig of a bow whose bones the body holds below its socket, with the clips of its
+        // content, or null when they are not those of the Bow skeleton or the bow names no launch
+        // point.
+        public static BowRig TryCreate(Transform bones, Transform socket, BodyAppearanceCatalog.Attachment bow,
+            BodyPieceContent content)
         {
             if (bones == null || socket == null || bow == null || !bow.HasLaunchPoint)
             {
@@ -130,7 +132,7 @@ namespace Mmorpg.Client.Gameplay
                 return null;
             }
 
-            return new BowRig(socket, nock, limbs, strings, bow.ClipNamed(DrawClip), bones, bow.LaunchPoint, bow.DrawLength);
+            return new BowRig(socket, nock, limbs, strings, content != null ? content.ClipNamed(DrawClip) : null, bones, bow.LaunchPoint, bow.DrawLength);
         }
 
         // A new shot: the drawing hand may take the string again.

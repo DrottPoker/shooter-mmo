@@ -21,7 +21,10 @@ namespace Mmorpg.Client.Gameplay
     // that pose, plays its attack clip when its attack starts, timed to strike when the attack
     // releases, and names where its projectile leaves it. The other hand takes a weapon whose attack
     // takes both hands, such as a greataxe, wherever the attack clip brings it to the haft, and the
-    // drawing hand of a body that holds a bow draws its string.
+    // drawing hand of a body that holds a bow draws its string. The models, garment materials,
+    // clips, and images come from the PlayerBodyContent of the shared meshes or materials: the body
+    // counts as a user of the content of the look it shows and wears only what of it is ready, so
+    // whoever shows a look waits for its content first.
     [DisallowMultipleComponent]
     public sealed class PlayerBodyAppearance : MonoBehaviour
     {
@@ -51,6 +54,10 @@ namespace Mmorpg.Client.Gameplay
         private PlayerBodyMaterials materialsTakenFrom;
         private readonly List<Material> shownMaterials = new List<Material>();
         private readonly List<Material> shownMaterialsBefore = new List<Material>();
+        // The content of the look the body shows, which counts it as a user.
+        private PlayerBodyContent.Needs shownContent;
+        private PlayerBodyContent contentTakenFrom;
+        private string shownContentKey;
         private BodyLook look = BodyLook.Default;
         private bool gripPending;
         private bool tinted;
@@ -81,6 +88,18 @@ namespace Mmorpg.Client.Gameplay
         public BodyLook Look
         {
             get { return look; }
+        }
+
+        // Where the garments, attachments, and images of the look come from: the shared meshes' or
+        // materials' content, or null, when the body wears none.
+        public PlayerBodyContent Content
+        {
+            get
+            {
+                return meshes != null && meshes.Content != null ? meshes.Content
+                    : materials != null ? materials.Content
+                    : null;
+            }
         }
 
         // The renderer that draws the combined parts, or null before CombineParts.
@@ -336,9 +355,11 @@ namespace Mmorpg.Client.Gameplay
         // holds one attachment per socket the same way.
         private bool WearLook()
         {
+            HoldContent();
+            var content = Content;
             worn.Clear();
-            worn.AddRange(WornBy(catalog, look));
-            held = HeldBy(catalog, look);
+            worn.AddRange(PlayerBodyMeshes.Available(WornBy(catalog, look), content));
+            held = new List<BodyAppearanceCatalog.Attachment>(PlayerBodyMeshes.Available(HeldBy(catalog, look), content));
             tool = held.FirstOrDefault(attachment => attachment.IsTool);
             var heldWeapon = held.FirstOrDefault(attachment => !attachment.IsTool
                     && string.Equals(attachment.Bone, HumanLocomotion.MainHandSocketBone, StringComparison.Ordinal))
@@ -357,6 +378,26 @@ namespace Mmorpg.Client.Gameplay
             var changed = key != wornKey;
             wornKey = key;
             return changed;
+        }
+
+        // The body counts as a user of the content of the look it wears, which stays while the body
+        // shows it, and of no other. A look whose content is not ready is worn without it.
+        private void HoldContent()
+        {
+            var content = Content;
+            var key = catalog != null && content != null ? look.Key : null;
+            if (content == contentTakenFrom && string.Equals(key, shownContentKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var before = shownContent;
+            var takenBefore = contentTakenFrom;
+            shownContent = key != null ? PlayerBodyContent.NeedsOf(catalog, look) : null;
+            contentTakenFrom = key != null ? content : null;
+            shownContentKey = key;
+            contentTakenFrom?.AddUser(shownContent);
+            takenBefore?.Release(before);
         }
 
         // The garments of the catalog that a look names, as a body in it wears them: one per visual
@@ -425,7 +466,7 @@ namespace Mmorpg.Client.Gameplay
             ownMaterials[combinedRenderer] = combined.Materials.ToArray();
             if (bow == null && weapon != null && weapon.IsSkinned && heldBones.TryGetValue(weapon.Name, out var bones))
             {
-                bow = BowRig.TryCreate(bones, bones.parent, weapon);
+                bow = BowRig.TryCreate(bones, bones.parent, weapon, Content != null ? Content.PieceOf(weapon.Address) : null);
             }
 
             MoveCloth();
@@ -471,7 +512,8 @@ namespace Mmorpg.Client.Gameplay
                 var socket = PlayerBodyMeshes.FindDescendant(transform, attachment.Bone);
                 if (socket != null)
                 {
-                    heldBones[attachment.Name] = PlayerBodyMeshes.HoldBones(attachment, socket);
+                    heldBones[attachment.Name] = PlayerBodyMeshes.HoldBones(attachment,
+                        PlayerBodyMeshes.ModelOf(attachment, Content), socket);
                 }
             }
         }
@@ -667,7 +709,7 @@ namespace Mmorpg.Client.Gameplay
                 var garment = PlayerBodyMeshes.Drawn(worn).LastOrDefault(candidate => ChainsOf(candidate.Cloth) == kind);
                 if (garment != null)
                 {
-                    solver.Activate(kind, ClothProfile.For(kind), garment.Model);
+                    solver.Activate(kind, ClothProfile.For(kind), PlayerBodyMeshes.ModelOf(garment, Content));
                 }
                 else
                 {
@@ -714,6 +756,7 @@ namespace Mmorpg.Client.Gameplay
             var takenBefore = materialsTakenFrom;
             materialsTakenFrom = null;
             var tint = tinted ? TintFor(tintColor) : Color.white;
+            var content = Content;
             // Garments show only on the combined renderer, and only those drawn hide underwear.
             var drawn = combinedRenderer != null ? PlayerBodyMeshes.Drawn(worn) : (IReadOnlyList<BodyAppearanceCatalog.Garment>)NoGarments;
             foreach (var entry in ownMaterials)
@@ -740,16 +783,20 @@ namespace Mmorpg.Client.Gameplay
                         continue;
                     }
 
-                    var baseMap = catalog != null ? catalog.TextureFor(own, look) : null;
+                    // The images of the look whose content is ready; the others show the own image or no
+                    // paint.
+                    var option = catalog != null ? catalog.OptionFor(own, look) : null;
+                    var baseMap = option != null && content != null ? content.TextureOf(option.Address) : null;
                     paints.Clear();
                     if (catalog != null)
                     {
                         catalog.PaintsFor(own, look, drawn, paints);
+                        paints.RemoveAll(paint => content == null || content.TextureOf(paint.Address) == null);
                     }
 
                     var skinTint = System.Array.IndexOf(skinMaterials, own) >= 0 ? tint : Color.white;
                     // A worn garment draws with its texture's material, in the look's dye colors.
-                    var garment = worn.FirstOrDefault(candidate => candidate.Material == own);
+                    var garment = worn.FirstOrDefault(candidate => MaterialOf(candidate, content) == own);
                     var dyes = garment != null ? look.DyesFor(garment.Name) : null;
                     applied[index] = materials.For(own, baseMap, skinTint, paints, dyes);
                     materials.AddUser(applied[index]);
@@ -760,6 +807,12 @@ namespace Mmorpg.Client.Gameplay
             }
 
             ReleaseMaterials(takenBefore, shownMaterialsBefore);
+        }
+
+        private static Material MaterialOf(BodyAppearanceCatalog.Garment garment, PlayerBodyContent content)
+        {
+            var piece = content != null ? content.PieceOf(garment.Address) : null;
+            return piece != null ? piece.Material : null;
         }
 
         // The materials of the shared set that the body showed no longer count it as a user.
@@ -795,6 +848,10 @@ namespace Mmorpg.Client.Gameplay
             shownMesh = null;
             ReleaseMaterials(materialsTakenFrom, shownMaterials);
             materialsTakenFrom = null;
+            contentTakenFrom?.Release(shownContent);
+            contentTakenFrom = null;
+            shownContent = null;
+            shownContentKey = null;
         }
 
         private void CaptureOwnMaterials()

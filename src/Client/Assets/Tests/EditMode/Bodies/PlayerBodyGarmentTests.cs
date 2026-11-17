@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
@@ -35,7 +36,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 var dressed = appearance.CombinedRenderer.sharedMesh;
                 var covered = new HashSet<int>(jerkin.Covered);
                 var hidden = catalog.Parts.Sum(part => part.TriangleFaces.Count(face => covered.Contains(face)));
-                var garmentTriangles = TriangleCount(jerkin.Model.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh);
+                var garmentTriangles = TriangleCount(PlayerBodyMeshes.ModelOf(jerkin, meshes.Content).GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh);
                 Assert.That(hidden, Is.GreaterThan(0));
                 Assert.That(TriangleCount(dressed), Is.EqualTo(bare - hidden + garmentTriangles));
                 var drawn = appearance.CombinedRenderer.sharedMaterials.Select(material => material.name).ToArray();
@@ -58,8 +59,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var look = BodyLook.Default.WithGarment(Jerkin, true);
                     var bodies = Enumerable.Range(0, 3).Select(_ => InstantiateBody(scene).GetComponent<PlayerBodyAppearance>()).ToArray();
@@ -90,8 +92,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 var jerkin = appearance.Catalog.GarmentNamed(Jerkin);
                 var under = appearance.Catalog.GarmentNamed(Trousers);
                 Assert.That(under.Layer, Is.LessThan(jerkin.Layer));
-                var alone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under });
-                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, jerkin });
+                var alone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under }, null, meshes.Content);
+                var both = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { under, jerkin }, null, meshes.Content);
                 try
                 {
                     // The trousers' faces over the body faces the jerkin covers at the waist go, and
@@ -129,8 +131,8 @@ namespace Mmorpg.Client.Tests.EditMode
                 var greaves = CopyOf(trousers, "Greaves", trousers.Slot, robe.Layer + 100, new string[0]);
                 Assert.That(PlayerBodyMeshes.Drawn(new[] { robe, greaves }).Select(garment => garment.Name),
                     Is.EqualTo(new[] { "Robe", "Greaves" }));
-                var dressed = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { trousers, robe });
-                var robeAlone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { robe });
+                var dressed = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { trousers, robe }, null, meshes.Content);
+                var robeAlone = PlayerBodyMeshes.Build(parts, appearance.transform, appearance.Catalog, new[] { robe }, null, meshes.Content);
                 try
                 {
                     Assert.That(TriangleCount(dressed.Mesh), Is.EqualTo(TriangleCount(robeAlone.Mesh)));
@@ -167,10 +169,10 @@ namespace Mmorpg.Client.Tests.EditMode
                 }
 
                 const float distance = 0.002f;
-                var pulled = new BodyAppearanceCatalog.Garment(jerkin.Name, jerkin.Template, jerkin.Material, jerkin.Slot, jerkin.Layer,
-                    jerkin.Hides.ToArray(), jerkin.HidesUnderwear, jerkin.Hair, jerkin.Cloth, jerkin.Model, jerkin.Covered.ToArray(),
+                var pulled = new BodyAppearanceCatalog.Garment(jerkin.Name, jerkin.Template, jerkin.Address, jerkin.Slot, jerkin.Layer,
+                    jerkin.Hides.ToArray(), jerkin.HidesUnderwear, jerkin.Hair, jerkin.Cloth, jerkin.Covered.ToArray(),
                     jerkin.Underlay.ToArray(), new[] { map.VertexSources[visibleVertex] }, new[] { distance });
-                var combined = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { pulled });
+                var combined = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { pulled }, null, meshes.Content);
                 try
                 {
                     var toRoot = appearance.transform.worldToLocalMatrix * neck.transform.localToWorldMatrix;
@@ -219,13 +221,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(hoodUp.Hair, Is.EqualTo(BodyAppearanceCatalog.Garment.CompressHair));
                 Assert.That(hoodDown.Hair, Is.EqualTo("show"));
                 // A coif that hides the hair leaves it out.
-                var coif = new BodyAppearanceCatalog.Garment("Coif", hoodUp.Template, hoodUp.Material, hoodUp.Slot, hoodUp.Layer,
-                    hoodUp.Hides.ToArray(), hoodUp.HidesUnderwear, BodyAppearanceCatalog.Garment.HideHair, hoodUp.Cloth, hoodUp.Model,
+                var coif = new BodyAppearanceCatalog.Garment("Coif", hoodUp.Template, hoodUp.Address, hoodUp.Slot, hoodUp.Layer,
+                    hoodUp.Hides.ToArray(), hoodUp.HidesUnderwear, BodyAppearanceCatalog.Garment.HideHair, hoodUp.Cloth,
                     hoodUp.Covered.ToArray(), hoodUp.Underlay.ToArray(), hoodUp.PullInVertices.ToArray(), hoodUp.PullInDistances.ToArray());
                 Assert.That(PlayerBodyMeshes.Drawn(new[] { hair, coif }).Select(garment => garment.Name), Is.EqualTo(new[] { "Coif" }));
 
                 // The vertex the form under headwear moves the most, free and pressed flat.
-                var renderer = hair.Model.GetComponentInChildren<SkinnedMeshRenderer>();
+                var hairModel = PlayerBodyMeshes.ModelOf(hair, meshes.Content);
+                var renderer = hairModel.GetComponentInChildren<SkinnedMeshRenderer>();
                 var mesh = renderer.sharedMesh;
                 var shape = mesh.GetBlendShapeIndex(BodyAppearanceCatalog.Garment.UnderHeadwearShape);
                 Assert.That(shape, Is.GreaterThanOrEqualTo(0));
@@ -233,13 +236,13 @@ namespace Mmorpg.Client.Tests.EditMode
                 mesh.GetBlendShapeFrameVertices(shape, mesh.GetBlendShapeFrameCount(shape) - 1, deltas, null, null);
                 var moved = Enumerable.Range(0, deltas.Length).OrderByDescending(vertex => deltas[vertex].sqrMagnitude).First();
                 Assert.That(deltas[moved].magnitude, Is.GreaterThan(0.005f));
-                var toRoot = hair.Model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
+                var toRoot = hairModel.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
                 var free = toRoot.MultiplyPoint3x4(mesh.vertices[moved]);
                 var pressed = toRoot.MultiplyPoint3x4(mesh.vertices[moved] + deltas[moved]);
 
-                var alone = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair });
-                var up = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodUp });
-                var down = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodDown });
+                var alone = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair }, null, meshes.Content);
+                var up = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodUp }, null, meshes.Content);
+                var down = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, new[] { hair, hoodDown }, null, meshes.Content);
                 try
                 {
                     Assert.That(Nearest(alone.Mesh, free), Is.LessThan(1e-5f));
@@ -276,8 +279,8 @@ namespace Mmorpg.Client.Tests.EditMode
         private static BodyAppearanceCatalog.Garment CopyOf(BodyAppearanceCatalog.Garment garment, string name, string slot, int layer,
             IEnumerable<string> hides)
         {
-            return new BodyAppearanceCatalog.Garment(name, garment.Template, garment.Material, slot, layer, hides.ToArray(),
-                garment.HidesUnderwear, garment.Hair, garment.Cloth, garment.Model, garment.Covered.ToArray(), garment.Underlay.ToArray(),
+            return new BodyAppearanceCatalog.Garment(name, garment.Template, garment.Address, slot, layer, hides.ToArray(),
+                garment.HidesUnderwear, garment.Hair, garment.Cloth, garment.Covered.ToArray(), garment.Underlay.ToArray(),
                 garment.PullInVertices.ToArray(), garment.PullInDistances.ToArray());
         }
 
@@ -286,8 +289,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     test(InstantiateBody(scene).GetComponent<PlayerBodyAppearance>(), meshes, materials);
                 }
@@ -296,6 +300,15 @@ namespace Mmorpg.Client.Tests.EditMode
             {
                 EditorSceneManager.ClosePreviewScene(scene);
             }
+        }
+
+        // The content of every look of the body, loaded as the tests' content helper loads it.
+        private static PlayerBodyContent Loaded()
+        {
+            var content = EditorBodyContent.Create();
+            var catalog = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath).GetComponent<PlayerBodyAppearance>().Catalog;
+            Assert.That(EditorBodyContent.LoadAll(content, catalog), Is.True);
+            return content;
         }
 
         private static SkinnedMeshRenderer[] Parts(PlayerBodyAppearance appearance)

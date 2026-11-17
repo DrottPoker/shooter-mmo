@@ -219,7 +219,7 @@ namespace Mmorpg.Client.Gameplay
 
             public static Plan Gather(IReadOnlyList<SkinnedMeshRenderer> parts, Transform root, BodyAppearanceCatalog catalog,
                 IReadOnlyList<BodyAppearanceCatalog.Garment> garments, IReadOnlyList<BodyAppearanceCatalog.Attachment> attachments,
-                Dictionary<Mesh, SourceMesh> sources)
+                PlayerBodyContent contentSet, Dictionary<Mesh, SourceMesh> sources)
             {
                 if (parts == null || parts.Count == 0)
                 {
@@ -241,7 +241,9 @@ namespace Mmorpg.Client.Gameplay
 
                 foreach (var garment in plan.drawn)
                 {
-                    var renderer = garment.Model.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                    var content = contentSet != null ? contentSet.PieceOf(garment.Address) : null;
+                    var model = content != null ? content.Model : null;
+                    var renderer = model != null ? model.GetComponentInChildren<SkinnedMeshRenderer>(true) : null;
                     if (renderer == null || renderer.sharedMesh == null)
                     {
                         continue;
@@ -250,9 +252,9 @@ namespace Mmorpg.Client.Gameplay
                     // The bones of the garment's own armature stand where the body's do, so its bounds
                     // carry over from its root bone to the body's root bone of the same name.
                     var garmentRootBone = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
-                    var bodyRootBone = FindDescendant(garment.Model.transform, plan.rootBoneName) ?? garmentRootBone;
-                    var piece = plan.Read(renderer, garment.Model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix,
-                        garment.Material, ShapeOf(garment, plan.drawn));
+                    var bodyRootBone = FindDescendant(model.transform, plan.rootBoneName) ?? garmentRootBone;
+                    var piece = plan.Read(renderer, model.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix,
+                        content.Material, ShapeOf(garment, plan.drawn));
                     piece.IsGarment = true;
                     piece.Underlay = garment.Underlay;
                     piece.Layer = garment.Layer;
@@ -270,13 +272,19 @@ namespace Mmorpg.Client.Gameplay
 
                     // A socket is never animated, so it stands on its parent as it does in the model.
                     var socketToRoot = parentToRoot * Matrix4x4.TRS(socket.localPosition, socket.localRotation, socket.localScale);
+                    var model = ModelOf(attachment, contentSet);
+                    if (model == null)
+                    {
+                        continue;
+                    }
+
                     if (attachment.IsSkinned)
                     {
-                        plan.ReadSkinned(attachment.Model, socketToRoot);
+                        plan.ReadSkinned(model, socketToRoot);
                     }
                     else
                     {
-                        plan.ReadRigid(attachment.Model, attachment.Bone, socketToRoot);
+                        plan.ReadRigid(model, attachment.Bone, socketToRoot);
                     }
                 }
 

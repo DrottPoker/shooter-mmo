@@ -11,7 +11,9 @@ namespace Mmorpg.Client.WorldActors
 {
     // One presentation per nearby corpse. A player corpse shows the dead character's body lying
     // in the last pose of Death, turned as its character faced, in its look and the garments still
-    // in the corpse, and stays hidden while the dead body of its character still lies there. A Mob
+    // in the corpse, and stays hidden while the dead body of its character still lies there; until
+    // the content of that look is loaded it shows nothing, and a corpse whose look changed shows its
+    // old look until then. A Mob
     // corpse of a Mob with its own model, such as corpse.mob.feral_wolf, shows that model lying in
     // the last pose of Death, turned as the Mob died. While the Mob it replaces still falls there
     // it stays hidden, and then plays on the rest of that fall; until the model's prefab loads it
@@ -27,6 +29,8 @@ namespace Mmorpg.Client.WorldActors
         // The corpses that show their Mob's model, and those that wait for its prefab to load.
         private readonly HashSet<Guid> mobModels = new HashSet<Guid>();
         private readonly HashSet<Guid> awaitingModels = new HashSet<Guid>();
+        // The player corpses whose lying body waits for the content of its look.
+        private readonly HashSet<Guid> awaitingBodies = new HashSet<Guid>();
         // The Mob model corpses hidden while the Mob they replace still falls there.
         private readonly HashSet<Guid> awaitingFalls = new HashSet<Guid>();
         // The box around each Mob model lying in the last pose of Death, by its prefab.
@@ -63,6 +67,7 @@ namespace Mmorpg.Client.WorldActors
         private void Update()
         {
             ShowLoadedModels();
+            ShowLoadedBodies();
             TakeOverFalls();
             if (sceneContext == null || playerBodies.Count == 0)
             {
@@ -175,12 +180,26 @@ namespace Mmorpg.Client.WorldActors
         }
 
         // A corpse whose look changed, as when someone loots its cloak, shows the lying body of
-        // the new look.
+        // the new look once its content is loaded, and the old one until then.
         private void ShowLyingBody(CorpsePresenceEntry corpse, GameObject presentation)
         {
-            if (sceneContext == null
-                || !sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials)
-                || (playerBodyKeys.TryGetValue(corpse.CorpseId, out var shown) && shown == key))
+            if (sceneContext == null)
+            {
+                return;
+            }
+
+            if (!sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials, out var loading))
+            {
+                if (loading)
+                {
+                    awaitingBodies.Add(corpse.CorpseId);
+                }
+
+                return;
+            }
+
+            awaitingBodies.Remove(corpse.CorpseId);
+            if (playerBodyKeys.TryGetValue(corpse.CorpseId, out var shown) && shown == key)
             {
                 return;
             }
@@ -196,9 +215,10 @@ namespace Mmorpg.Client.WorldActors
         private GameObject CreatePresentation(CorpsePresenceEntry corpse)
         {
             GameObject presentation;
-            if (PlayerCorpseBodies.IsPlayerCorpse(corpse.PresentationKey)
-                && sceneContext != null
-                && sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials))
+            var loading = false;
+            var isPlayerCorpse = PlayerCorpseBodies.IsPlayerCorpse(corpse.PresentationKey) && sceneContext != null;
+            if (isPlayerCorpse
+                && sceneContext.TryGetCorpseBody(corpse.Appearance, out var key, out var mesh, out var materials, out loading))
             {
                 presentation = new GameObject("PlayerCorpseBody");
                 presentation.transform.SetParent(transform, false);
@@ -211,6 +231,13 @@ namespace Mmorpg.Client.WorldActors
                 box.size = mesh.bounds.size + new Vector3(0.1f, 0.1f, 0.1f);
                 playerBodies[corpse.CorpseId] = bodyRenderer;
                 playerBodyKeys[corpse.CorpseId] = key;
+            }
+            else if (isPlayerCorpse && loading)
+            {
+                // Nothing shows until the look's content is loaded; the box still takes clicks.
+                presentation = new GameObject("PlayerCorpseBodyLoading");
+                presentation.transform.SetParent(transform, false);
+                awaitingBodies.Add(corpse.CorpseId);
             }
             else if (TryCreateMobModel(corpse, out presentation))
             {
@@ -276,6 +303,46 @@ namespace Mmorpg.Client.WorldActors
                 awaitingModels.Remove(corpseId);
                 DestroyPresentation(corpseId);
                 ready = true;
+            }
+
+            if (ready)
+            {
+                Rebuild();
+            }
+        }
+
+        // A player corpse that waited for the content of its look shows its lying body once the
+        // content is loaded: a new presentation for one that showed nothing yet, or the new look
+        // of one whose look changed.
+        private void ShowLoadedBodies()
+        {
+            if (awaitingBodies.Count == 0 || sceneContext == null || controller == null)
+            {
+                return;
+            }
+
+            var ready = false;
+            foreach (var corpseId in awaitingBodies.ToArray())
+            {
+                var corpse = controller.State.NearbyCorpses.FirstOrDefault(entry => entry.CorpseId == corpseId);
+                if (corpse == null || !presentations.TryGetValue(corpseId, out var presentation) || presentation == null)
+                {
+                    awaitingBodies.Remove(corpseId);
+                    continue;
+                }
+
+                if (playerBodies.ContainsKey(corpseId))
+                {
+                    ShowLyingBody(corpse, presentation);
+                    continue;
+                }
+
+                if (sceneContext.TryGetCorpseBody(corpse.Appearance, out _, out _, out _, out var loading) || !loading)
+                {
+                    awaitingBodies.Remove(corpseId);
+                    DestroyPresentation(corpseId);
+                    ready = true;
+                }
             }
 
             if (ready)
@@ -411,6 +478,7 @@ namespace Mmorpg.Client.WorldActors
             playerBodyKeys.Remove(corpseId);
             mobModels.Remove(corpseId);
             awaitingFalls.Remove(corpseId);
+            awaitingBodies.Remove(corpseId);
             if (!presentations.Remove(corpseId, out var presentation)
                 || presentation == null)
             {

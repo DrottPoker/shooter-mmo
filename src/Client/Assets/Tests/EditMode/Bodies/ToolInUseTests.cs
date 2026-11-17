@@ -89,7 +89,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
                 // Both tools are held with both hands, the other hand on the leather near the butt.
                 Assert.That(tool.HoldsWithBothHands, Is.True, tool.Name);
-                var nearest = ModelVertices(tool.Model).Min(vertex => (vertex - tool.OffHandGrip).magnitude);
+                var nearest = ModelVertices(TestBodyContent.ModelOf(tool)).Min(vertex => (vertex - tool.OffHandGrip).magnitude);
                 Assert.That(nearest, Is.LessThan(0.03f), tool.Name + " has no haft where the other hand holds it");
             }
         }
@@ -173,8 +173,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     foreach (var path in BodyPrefabPaths)
                     {
