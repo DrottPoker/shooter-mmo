@@ -45,8 +45,6 @@ namespace Mmorpg.Client.Gameplay
         // whose combination is built, so a crowd that comes into view at once, as at a join, takes
         // a few frames instead of stalling one: a body takes about 2 ms.
         private PresentationBudget presentationBudget = new PresentationBudget();
-        // Where the camera is, from which the other players' bodies cast their shadows or not.
-        private readonly FarBodies farBodies = new FarBodies();
         private bool localLookDeferred;
         // The local body's look, or the preview's, waits for its content and then for the build of
         // its combination.
@@ -584,8 +582,7 @@ namespace Mmorpg.Client.Gameplay
                     movementSession.Settings.TickRateHz,
                     movementSession.SnapshotRateHz,
                     movementSession.CollisionStream,
-                    movementSession.Settings.CharacterCollision,
-                    farBodies);
+                    movementSession.Settings.CharacterCollision);
                 remotePlayers.Add(spawn.EntityId, remotePlayer);
                 waitingBodies.Set(
                     spawn.EntityId,
@@ -792,15 +789,6 @@ namespace Mmorpg.Client.Gameplay
         private void Update()
         {
             warmUp?.Update();
-            if (playerCamera != null)
-            {
-                farBodies.SetEye(playerCamera.transform.position, Time.time);
-            }
-            else
-            {
-                farBodies.ForgetEye();
-            }
-
             PresentWaitingBodies();
             if (entry != EntryStage.Shown)
             {

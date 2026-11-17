@@ -2679,27 +2679,6 @@ describes.
    walks faster than it does afterwards, neither at the start nor a moment
    later.
 
-### Far Bodies
-
-Another player's body beyond 44 m from the camera casts no shadow until it comes
-within 40 m again, as
-[Crowd Performance](UNITY_CLIENT_ARCHITECTURE.md#crowd-performance) describes.
-
-1. Keep a crowd in the stress arena with
-   `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Measure-ClientCrowd.ps1 -Platform Editor -Bots 200 -Only Standing -HoldMinutes 30`,
-   and once it prints that the bots stay up, join `Local Stress Arena` in the
-   Editor with a character of your own.
-2. Walk to the middle of the south wall, about `(0, 0, -28)` in the F2 Debug
-   menu's coordinates, and look north across the arena with the default camera.
-   Expected result: the bodies up to about the middle of the arena, 40 to 44 m
-   from the camera, cast shadows; the bodies beyond cast none, with their
-   garments and weapons; your own character casts its shadow.
-3. Zoom the camera in and out slowly with the mouse wheel. Expected result: the
-   line where shadows stop moves with the camera a quarter of a second later at
-   most, and no body's shadow flickers on and off while the camera rests.
-4. Walk to the south-west corner, about `(-27, 0, -27)`, and look across to the
-   opposite corner. Expected result: the same, with more bodies beyond the line.
-
 ## Art In The Game
 
 The models, materials, clips, catalogs, prefabs, and item presentation of
