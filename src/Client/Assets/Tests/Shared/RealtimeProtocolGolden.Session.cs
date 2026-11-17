@@ -1,4 +1,5 @@
 #nullable disable
+using System;
 using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SharedTests
@@ -17,9 +18,11 @@ namespace Mmorpg.SharedTests
             const RealtimeMessageType serverDisconnect = RealtimeMessageType.ServerDisconnect;
             const RealtimeMessageType availabilityChanged = RealtimeMessageType.GameServiceAvailabilityChanged;
 
-            r.Vector("Session/JoinRequest/ascii", joinRequest, () => RealtimeProtocol.EncodeJoinRequest("ticket.v1.abc-123"));
-            r.Vector("Session/JoinRequest/multibyte", joinRequest, () => RealtimeProtocol.EncodeJoinRequest("biljett-åäö-✓-😀"));
-            r.Vector("Session/JoinRequest/maximum-length", joinRequest, () => RealtimeProtocol.EncodeJoinRequest(Repeat("t", 1024)));
+            r.Vector("Session/JoinRequest/typical", joinRequest, () => RealtimeProtocol.EncodeJoinRequest(JoinRequestModel()));
+            r.Vector(
+                "Session/JoinRequest/empty ticket id",
+                joinRequest,
+                () => RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(Guid.Empty, Sequence(16, 0x40), Sequence(32, 0x80))));
             r.Vector("Session/JoinAccepted/typical", joinAccepted, () => RealtimeProtocol.EncodeJoinAccepted(JoinAcceptedModel()));
             r.Vector("Session/JoinAccepted/boundary", joinAccepted, () => RealtimeProtocol.EncodeJoinAccepted(JoinAcceptedBoundaryModel()));
             r.Vector(
@@ -54,19 +57,28 @@ namespace Mmorpg.SharedTests
                 availabilityChanged,
                 () => RealtimeProtocol.EncodeGameServiceAvailabilityChanged(true));
 
+            // The join request carries exactly 16 nonce and 32 proof bytes, each after its count.
+            r.Accepts("Session/JoinRequest/16 nonce and 32 proof bytes", JoinRequestWire(16, 32));
+            r.Accepts("Session/JoinRequest/empty ticket id", JoinRequestWire(16, 32, Guid.Empty));
+            r.Rejects("Session/JoinRequest/15 nonce bytes", JoinRequestWire(15, 32));
+            r.Rejects("Session/JoinRequest/17 nonce bytes", JoinRequestWire(17, 32));
+            r.Rejects("Session/JoinRequest/31 proof bytes", JoinRequestWire(16, 31));
+            r.Rejects("Session/JoinRequest/33 proof bytes", JoinRequestWire(16, 33));
+            r.Rejects(
+                "Session/JoinRequest/proof count beyond the packet",
+                Wire.Message(joinRequest).Guid(G(1)).U8(16).Bytes(Sequence(16, 0x40)).U8(32).Bytes(Sequence(31, 0x80)));
+
             // Text fields share one reader: a declared UTF-8 byte length of at least one, at
             // most four bytes per allowed character, valid UTF-8, and at most the allowed number
             // of UTF-16 characters. The decoder accepts whitespace that the encoder refuses.
-            r.Accepts("Session/JoinRequest/one character", JoinRequestWire("t"));
-            r.Accepts("Session/JoinRequest/1024 characters", JoinRequestWire(Repeat("t", 1024)));
-            r.Rejects("Session/JoinRequest/1025 characters", JoinRequestWire(Repeat("t", 1025)));
-            r.Rejects("Session/JoinRequest/empty text", JoinRequestWire(""));
-            r.AcceptsUnencodable("Session/JoinRequest/whitespace text", JoinRequestWire(" \t "));
-            r.Rejects("Session/JoinRequest/invalid UTF-8", JoinRequestWire(WireText.Raw(0x74, 0xC3, 0x28)));
-            r.Rejects("Session/JoinRequest/overlong UTF-8", JoinRequestWire(WireText.Raw(0xC0, 0x80)));
-            r.Rejects("Session/JoinRequest/encoded surrogate", JoinRequestWire(WireText.Raw(0xED, 0xA0, 0x80)));
-            r.Rejects("Session/JoinRequest/declared length beyond the packet", JoinRequestWire(WireText.Declared(10, 0x74, 0x74)));
-            r.Accepts("Session/JoinRequest/leading byte order mark", JoinRequestWire(WireText.Raw(0xEF, 0xBB, 0xBF, 0x74)));
+            r.Accepts("Session/LeaveRequest/one character", LeaveRequestWire("t"));
+            r.Rejects("Session/LeaveRequest/empty text", LeaveRequestWire(""));
+            r.AcceptsUnencodable("Session/LeaveRequest/tabs and spaces", LeaveRequestWire(" \t "));
+            r.Rejects("Session/LeaveRequest/invalid UTF-8", LeaveRequestWire(WireText.Raw(0x74, 0xC3, 0x28)));
+            r.Rejects("Session/LeaveRequest/overlong UTF-8", LeaveRequestWire(WireText.Raw(0xC0, 0x80)));
+            r.Rejects("Session/LeaveRequest/encoded surrogate", LeaveRequestWire(WireText.Raw(0xED, 0xA0, 0x80)));
+            r.Rejects("Session/LeaveRequest/declared length beyond the packet", LeaveRequestWire(WireText.Declared(10, 0x74, 0x74)));
+            r.Accepts("Session/LeaveRequest/leading byte order mark", LeaveRequestWire(WireText.Raw(0xEF, 0xBB, 0xBF, 0x74)));
             r.Accepts("Session/LeaveRequest/128 characters", LeaveRequestWire(Repeat("s", 128)));
             r.Rejects("Session/LeaveRequest/129 characters", LeaveRequestWire(Repeat("s", 129)));
             r.Accepts("Session/LeaveRequest/128 three-byte characters", LeaveRequestWire(Repeat("✓", 128)));
@@ -132,10 +144,19 @@ namespace Mmorpg.SharedTests
                 JoinAcceptedWire(playerState: PlayerStateWire(positionY: float.NaN)));
             RegisterMovementSettingsCases(r);
 
-            r.RejectsEncode("Session/JoinRequest/null ticket", () => RealtimeProtocol.EncodeJoinRequest(null));
-            r.RejectsEncode("Session/JoinRequest/empty ticket", () => RealtimeProtocol.EncodeJoinRequest(""));
-            r.RejectsEncode("Session/JoinRequest/whitespace ticket", () => RealtimeProtocol.EncodeJoinRequest(" "));
-            r.RejectsEncode("Session/JoinRequest/1025 character ticket", () => RealtimeProtocol.EncodeJoinRequest(Repeat("t", 1025)));
+            r.RejectsEncode("Session/JoinRequest/null request", () => RealtimeProtocol.EncodeJoinRequest(null));
+            r.RejectsEncode(
+                "Session/JoinRequest/null nonce",
+                () => RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(G(1), null, Sequence(32, 0x80))));
+            r.RejectsEncode(
+                "Session/JoinRequest/15 nonce bytes",
+                () => RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(G(1), Sequence(15, 0x40), Sequence(32, 0x80))));
+            r.RejectsEncode(
+                "Session/JoinRequest/null proof",
+                () => RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(G(1), Sequence(16, 0x40), null)));
+            r.RejectsEncode(
+                "Session/JoinRequest/33 proof bytes",
+                () => RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(G(1), Sequence(16, 0x40), Sequence(33, 0x80))));
             r.RejectsEncode("Session/LeaveRequest/whitespace session", () => RealtimeProtocol.EncodeLeaveRequest(" "));
             r.RejectsEncode("Session/LeaveRequest/129 character session", () => RealtimeProtocol.EncodeLeaveRequest(Repeat("s", 129)));
             r.RejectsEncode("Session/LeaveAccepted/3601 seconds", () => RealtimeProtocol.EncodeLeaveAccepted(3601));
@@ -240,9 +261,31 @@ namespace Mmorpg.SharedTests
                 playerVersusPlayer: false);
         }
 
-        private static Wire JoinRequestWire(WireText ticket)
+        private static RealtimeJoinRequest JoinRequestModel()
         {
-            return Wire.Message(RealtimeMessageType.JoinRequest).Text(ticket);
+            return new RealtimeJoinRequest(G(1), Sequence(16, 0x40), Sequence(32, 0x80));
+        }
+
+        private static Wire JoinRequestWire(int nonceBytes, int proofBytes, Guid? ticketId = null)
+        {
+            return Wire.Message(RealtimeMessageType.JoinRequest)
+                .Guid(ticketId ?? G(1))
+                .U8((byte)nonceBytes)
+                .Bytes(Sequence(nonceBytes, 0x40))
+                .U8((byte)proofBytes)
+                .Bytes(Sequence(proofBytes, 0x80));
+        }
+
+        // count bytes that count up from first.
+        private static byte[] Sequence(int count, byte first)
+        {
+            var bytes = new byte[count];
+            for (var index = 0; index < count; index++)
+            {
+                bytes[index] = (byte)(first + index);
+            }
+
+            return bytes;
         }
 
         private static Wire LeaveRequestWire(WireText simulationSessionId)

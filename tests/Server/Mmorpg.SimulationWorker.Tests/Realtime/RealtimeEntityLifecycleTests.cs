@@ -233,6 +233,7 @@ public sealed class RealtimeEntityLifecycleTests
     private sealed class RealtimeTestClient : IDisposable
     {
         private readonly EventBasedNetListener listener = new();
+        private readonly RealtimeClientTransportSecurity security = new();
         private readonly NetManager client;
         private readonly string ticket;
         private NetPeer? peer;
@@ -241,9 +242,15 @@ public sealed class RealtimeEntityLifecycleTests
         public RealtimeTestClient(string ticket)
         {
             this.ticket = ticket;
-            client = new NetManager(listener)
+            using (var keys = RealtimeTestTickets.KeysOf(ticket))
             {
-                ChannelsCount = RealtimeProtocol.ChannelCount
+                security.Install(keys);
+            }
+
+            client = new NetManager(listener, new RealtimeTestSealingLayer(security))
+            {
+                ChannelsCount = RealtimeProtocol.ChannelCount,
+                MtuOverride = RealtimeDatagram.LiteNetLibMtu
             };
             listener.PeerConnectedEvent += OnPeerConnected;
             listener.NetworkReceiveEvent += OnNetworkReceive;
@@ -304,7 +311,7 @@ public sealed class RealtimeEntityLifecycleTests
         {
             peer = connectedPeer;
             connectedPeer.Send(
-                RealtimeProtocol.EncodeJoinRequest(ticket),
+                RealtimeTestTickets.EncodeJoin(ticket),
                 DeliveryMethod.ReliableOrdered);
         }
 
@@ -386,8 +393,8 @@ public sealed class RealtimeEntityLifecycleTests
     private sealed class MultipleSimulationSessionAuthHandler(
         params TicketSession[] sessions) : HttpMessageHandler
     {
-        private readonly IReadOnlyDictionary<string, TicketSession> sessionsByTicket =
-            sessions.ToDictionary(session => session.Ticket, StringComparer.Ordinal);
+        private readonly IReadOnlyDictionary<Guid, TicketSession> sessionsByTicket =
+            sessions.ToDictionary(session => RealtimeTestTickets.IdOf(session.Ticket));
         private readonly IReadOnlyDictionary<Guid, TicketSession> sessionsById =
             sessions.ToDictionary(session => session.SimulationSessionId);
 
@@ -401,7 +408,8 @@ public sealed class RealtimeEntityLifecycleTests
                     .ReadFromJsonAsync<ConsumeSimulationJoinTicketRequest>(
                     cancellationToken);
                 Assert.NotNull(consume);
-                Assert.True(sessionsByTicket.TryGetValue(consume.Ticket, out var session));
+                Assert.True(sessionsByTicket.TryGetValue(consume.TicketId, out var session));
+                Assert.True(RealtimeTestTickets.Proves(consume, session.Ticket));
                 return JsonResponse(new ConsumedSimulationJoinTicketResponse(
                     session.AccountId,
                     session.CharacterId,
@@ -419,7 +427,8 @@ public sealed class RealtimeEntityLifecycleTests
                     false)
                 {
                     SessionLeaseDurationMilliseconds = 150_000,
-                    Appearance = CharacterStateTestData.Appearance
+                    Appearance = CharacterStateTestData.Appearance,
+                    TransportKey = RealtimeTestTickets.TransportKeyOf(session.Ticket)
                 });
             }
 

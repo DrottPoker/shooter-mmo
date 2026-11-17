@@ -329,7 +329,7 @@ public sealed class SimulationSessionReleaseServiceTests
             character.SimulationSessionId,
             new CharacterFinalState(11, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
 
-        var joined = await joinService.JoinAsync(character.Ticket, CancellationToken.None);
+        var joined = await joinService.JoinAsync(RealtimeTestTickets.JoinRequestFor(character.Ticket), CancellationToken.None);
 
         Assert.False(joined.Succeeded);
         var release = Assert.Single(gameService.Releases);
@@ -372,7 +372,7 @@ public sealed class SimulationSessionReleaseServiceTests
             character.SimulationSessionId,
             new CharacterFinalState(13, new CharacterStateSnapshot(0f, 0f, -1f, 0f, 100, 100)));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => joinService.JoinAsync(character.Ticket, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => joinService.JoinAsync(RealtimeTestTickets.JoinRequestFor(character.Ticket), CancellationToken.None));
 
         var release = Assert.Single(gameService.Releases);
         Assert.Equal(character.SimulationSessionId, release.SimulationSessionId);

@@ -383,7 +383,8 @@ public sealed class RealtimeMessageDispatcherTests
 
         public (RealtimePeerContext Context, RecordingPeerConnection Peer) AddPeer(string state)
         {
-            var peer = new RecordingPeerConnection(3);
+            // A joined peer is sealed, as the join installed its keys.
+            var peer = new RecordingPeerConnection(3, isSealed: state is "authenticated" or "disconnect_pending");
             directory.Peers[peer.Id] = peer;
             var context = new RealtimePeerContext(peer.Id, DateTime.UtcNow, quotas);
             context.JoinStarted = state == "join_started";
@@ -411,16 +412,29 @@ public sealed class RealtimeMessageDispatcherTests
                 return result;
             }
 
+            byte[] reason;
             if (peer.Sent.Count == 0)
             {
-                return "drop";
+                // A peer without keys gets the reason only in the data of its disconnect.
+                if (peer.IsSealed
+                    || !Registry.TryGetContext(peer.Id, out var context)
+                    || context.PendingDisconnect?.Data is not { } data)
+                {
+                    return "drop";
+                }
+
+                reason = data;
+            }
+            else
+            {
+                var sent = Assert.Single(peer.Sent);
+                peer.Sent.Clear();
+                Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);
+                reason = sent.Data;
             }
 
-            var sent = Assert.Single(peer.Sent);
-            peer.Sent.Clear();
-            Assert.Equal(DeliveryMethod.ReliableOrdered, sent.Delivery);
             Assert.True(RealtimeProtocol.TryDecodeServerDisconnect(
-                sent.Data,
+                reason,
                 out var rejection,
                 out var error), error);
             if (RejectionMessages.TryGetValue(rejection.Code, out var message))

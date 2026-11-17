@@ -32,7 +32,7 @@ public sealed class SessionRetentionFlowIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var session = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(join.Value!, WorkerId, RuntimeId, ShardId),
             CancellationToken.None);
         Assert.True(session.Succeeded, session.Error?.Message);
         var simulationSessionId = session.Value!.SimulationSessionId;

@@ -10,33 +10,47 @@ public sealed class StressAuthorityStateTests
     {
         var (state, options, registration) = CreateRegisteredState();
         var issued = state.IssueTicket(7);
-        var wrongRuntime = state.ConsumeTicket(new StressConsumeTicketRequest(
-            issued.Ticket,
-            options.WorkerId,
-            "wrong-runtime",
-            options.ShardId));
+        var wrongRuntime = state.ConsumeTicket(Consume(issued, options, "wrong-runtime"));
 
         Assert.False(wrongRuntime.Succeeded);
         Assert.Equal("wrong_simulation_assignment", wrongRuntime.Problem!.Code);
 
-        var consumed = state.ConsumeTicket(new StressConsumeTicketRequest(
-            issued.Ticket,
-            options.WorkerId,
-            registration.RuntimeId,
-            options.ShardId));
+        // A proof made with another key neither consumes the ticket nor joins.
+        var forged = state.ConsumeTicket(Consume(issued, options, registration.RuntimeId, RealtimeTransportKeys.CreateTransportKey()));
+        Assert.False(forged.Succeeded);
+        Assert.Equal("invalid_join_ticket", forged.Problem!.Code);
+
+        var consumed = state.ConsumeTicket(Consume(issued, options, registration.RuntimeId));
         Assert.True(consumed.Succeeded);
         Assert.True(consumed.Value!.IsSyntheticBot);
+        Assert.Equal(issued.TransportKey, consumed.Value.TransportKey);
         Assert.Equal(0, consumed.Value.ItemStateRevision);
         Assert.Equal(0, consumed.Value.CarriedWeight);
         Assert.Equal(200, consumed.Value.CarryCapacity);
 
-        var consumedAgain = state.ConsumeTicket(new StressConsumeTicketRequest(
-            issued.Ticket,
-            options.WorkerId,
-            registration.RuntimeId,
-            options.ShardId));
+        var consumedAgain = state.ConsumeTicket(Consume(issued, options, registration.RuntimeId));
         Assert.False(consumedAgain.Succeeded);
         Assert.Equal("invalid_join_ticket", consumedAgain.Problem!.Code);
+    }
+
+    // The consume request a worker forwards from the bot's join request, proved with the
+    // ticket's key unless another key is given.
+    private static StressConsumeTicketRequest Consume(
+        StressIssuedTicket issued,
+        StressGeneratorOptions options,
+        string runtimeId,
+        byte[]? transportKey = null)
+    {
+        using var keys = RealtimeTransportKeys.Derive(transportKey ?? issued.TransportKey);
+        var request = RealtimeJoinProof.CreateRequest(keys.ProofKey, issued.TicketId, options.ShardId);
+        return new StressConsumeTicketRequest(
+            request.TicketId,
+            request.ClientNonce,
+            request.Proof,
+            RealtimeProtocol.Version,
+            options.WorkerId,
+            runtimeId,
+            options.ShardId);
     }
 
     [Fact]
@@ -44,11 +58,7 @@ public sealed class StressAuthorityStateTests
     {
         var (state, options, registration) = CreateRegisteredState();
         var issued = state.IssueTicket(11);
-        var consumed = state.ConsumeTicket(new StressConsumeTicketRequest(
-            issued.Ticket,
-            options.WorkerId,
-            registration.RuntimeId,
-            options.ShardId));
+        var consumed = state.ConsumeTicket(Consume(issued, options, registration.RuntimeId));
 
         Assert.True(consumed.Succeeded);
         var session = consumed.Value!;

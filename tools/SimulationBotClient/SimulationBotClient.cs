@@ -6,7 +6,8 @@ using Mmorpg.GameProtocol;
 namespace Mmorpg.Tools.SimulationBotClient;
 
 // Connects one SimulationBotSession to SimulationWorker over LiteNetLib in manual mode, so the
-// caller's poll loop drives receiving, the session, and sending.
+// caller's poll loop drives receiving, the session, and sending. Every datagram is sealed as the
+// Unity client seals it, with the keys of the bot's join ticket.
 public sealed class SimulationBotClient : IDisposable
 {
     // The Unity client's default. The session keeps its own join and leave deadlines, so a
@@ -16,6 +17,7 @@ public sealed class SimulationBotClient : IDisposable
     private readonly SimulationBotConnectionOptions connectionOptions;
     private readonly SimulationBotSession session;
     private readonly EventBasedNetListener listener = new();
+    private readonly RealtimeClientTransportSecurity security = new();
     private readonly NetManager client;
     private long lastPollTimestamp;
     private bool transportClosed;
@@ -47,11 +49,17 @@ public sealed class SimulationBotClient : IDisposable
             inputAcknowledged,
             realtimeObserver,
             world);
-        client = new NetManager(listener)
+        using (var keys = RealtimeTransportKeys.Derive(identity.TransportKey))
+        {
+            security.Install(keys);
+        }
+
+        client = new NetManager(listener, new SimulationBotSealingLayer(security))
         {
             ChannelsCount = RealtimeProtocol.ChannelCount,
             DisconnectTimeout = (int)TransportTimeout.TotalMilliseconds,
-            MaxPacketPerManualReceive = 256
+            MaxPacketPerManualReceive = 256,
+            MtuOverride = RealtimeDatagram.LiteNetLibMtu
         };
 
         listener.PeerConnectedEvent += HandleConnected;
@@ -60,6 +68,12 @@ public sealed class SimulationBotClient : IDisposable
     }
 
     public SimulationBotClientState State => session.State;
+
+    // The datagrams of the bot's connection and the ones its sealing layer dropped.
+    public RealtimeTransportSecurityCounters TransportCounters => security.Counters;
+
+    // Whether the worker's sealed datagrams arrived, so the bot seals what it sends.
+    public bool IsSealing => security.IsSealing;
 
     public SimulationBotWorldView? World => session.World;
 
@@ -178,6 +192,7 @@ public sealed class SimulationBotClient : IDisposable
 
         disposed = true;
         client.Stop();
+        security.Dispose();
     }
 
     private void HandleConnected(NetPeer peer)

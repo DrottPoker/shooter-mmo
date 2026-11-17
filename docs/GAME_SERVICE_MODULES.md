@@ -29,7 +29,7 @@ Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Economy <-
 | `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, `IGameServiceModule`, and the retention host with its `IRetentionTask` contract and its settings. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
 | `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, character looks, and every character's saved place and vitals |
-| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
+| `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData`, `Mmorpg.GameProtocol` for the join proof and the transport key schedule | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
 | `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery with its expiry, policies, the retention tasks of item history, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, Items, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, every character's quest log with its owner and worker reads, and the quest commands with their worker routes, which run in Items' item transaction kernel |
 | `Mmorpg.GameService.Economy` | `src/Server/GameService.Economy` | Platform, Accounts, Characters, Placement, Items, Quests, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | NPC vendor purchases and sales and gathering yields: their item commands, which run in Items' item transaction kernel, and their operation kinds on Items' worker item route. It owns no table, migration, meter, route, or setting. |
@@ -1090,6 +1090,7 @@ topology names.
 | 46 | `202611141400_character_data_steps` | Characters |
 | 47 | `202611141410_item_data_steps` | Items |
 | 48 | `202611141420_character_item_state_backfill` | Items |
+| 49 | `202611171400_join_ticket_transport_key` | Placement |
 
 The nine baseline migrations stay together in the host's
 `LegacyBaselineMigrations` because #1 and #6 touch several modules' tables.
@@ -1155,6 +1156,13 @@ code of the version before it. A change of the schema takes two phases:
 - Contract: a later version removes what no running code reads any more, such
   as an old column, table, or constraint, once the version that read it runs
   nowhere.
+
+An expand may also relax a constraint that the running code never relies on.
+`202611171400_join_ticket_transport_key` added the nullable `transport_key` of
+a join ticket and made `ticket_hash` nullable, because a ticket is found by its
+id now and the hash is no longer written. The contract that drops
+`ticket_hash`, its unique constraint, and its index is still open. A pending
+ticket of the version before has no key and is refused; it lives 30 seconds.
 
 A data move over a table that grows with players, such as a recompute or a
 backfill of every character or item, is never one statement inside a schema

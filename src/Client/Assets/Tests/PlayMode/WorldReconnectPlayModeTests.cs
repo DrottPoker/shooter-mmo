@@ -180,6 +180,17 @@ namespace Mmorpg.Client.Tests.PlayMode
             return stream.CollisionWorld.Revision;
         }
 
+        // The ticket's id derives from its label, so each label is its own ticket.
+        private static Guid TicketIdOf(string ticket)
+        {
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(ticket));
+                Array.Resize(ref hash, 16);
+                return new Guid(hash);
+            }
+        }
+
         private static JoinShardResponse Placement(string ticket, string collisionRevision)
         {
             return new JoinShardResponse
@@ -196,7 +207,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     collisionRevision = collisionRevision
                 },
                 characterId = CharacterId,
-                joinTicket = ticket,
+                joinTicketId = TicketIdOf(ticket).ToString("D"),
+                transportKey = Convert.ToBase64String(RealtimeTransportKeys.CreateTransportKey()),
                 expiresAt = DateTime.UtcNow.AddMinutes(5).ToString("O")
             };
         }

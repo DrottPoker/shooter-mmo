@@ -88,6 +88,37 @@ namespace Mmorpg.GameProtocol
     }
 
     /// <summary>
+    /// Asks to join a simulation session with a join ticket's public id and the proof that the client holds the ticket's transport key, which never travels over UDP.
+    /// </summary>
+    public sealed partial class RealtimeJoinRequest
+    {
+        public RealtimeJoinRequest(
+            Guid ticketId,
+            byte[] clientNonce,
+            byte[] proof)
+        {
+            TicketId = ticketId;
+            ClientNonce = clientNonce;
+            Proof = proof;
+        }
+
+        /// <summary>
+        /// The public id of the join ticket that GameService issued; empty is refused with missing_join_ticket.
+        /// </summary>
+        public Guid TicketId { get; }
+
+        /// <summary>
+        /// Fresh random bytes of the client for this join.
+        /// </summary>
+        public byte[] ClientNonce { get; }
+
+        /// <summary>
+        /// HMAC-SHA256 with the ticket's proof key over the label, the protocol version, the ticket id, the Shard id, and the nonce.
+        /// </summary>
+        public byte[] Proof { get; }
+    }
+
+    /// <summary>
     /// Accepts a join and carries the session, movement settings, and initial state.
     /// </summary>
     public sealed partial class RealtimeJoinAccepted
@@ -213,23 +244,23 @@ namespace Mmorpg.GameProtocol
     public static partial class RealtimeProtocol
     {
         /// <summary>
-        /// Asks to join a simulation session with a join ticket.
+        /// Asks to join a simulation session with a join ticket's public id and the proof that the client holds the ticket's transport key, which never travels over UDP.
         /// </summary>
-        public static byte[] EncodeJoinRequest(string joinTicket)
+        public static byte[] EncodeJoinRequest(RealtimeJoinRequest request)
         {
-            if (!IsValidJoinRequest(joinTicket))
+            if (!IsValidJoinRequest(request))
             {
-                throw new ArgumentException("Join request is invalid.", nameof(joinTicket));
+                throw new ArgumentException("Join request is invalid.", nameof(request));
             }
 
-            var writer = StartPacket(RealtimeMessageType.JoinRequest, SizeOfJoinRequest(joinTicket));
-            WriteJoinRequest(ref writer, joinTicket);
+            var writer = StartPacket(RealtimeMessageType.JoinRequest, 66);
+            WriteJoinRequest(ref writer, request);
             return writer.Finish();
         }
 
-        public static bool TryDecodeJoinRequest(byte[] data, out string joinTicket, out string error)
+        public static bool TryDecodeJoinRequest(byte[] data, out RealtimeJoinRequest request, out string error)
         {
-            joinTicket = string.Empty;
+            request = null;
             if (!TryStartPacket(data, RealtimeMessageType.JoinRequest, out var reader, out error)
                 || !TryReadJoinRequest(ref reader, out var decoded, out error)
                 || !reader.TryFinish(out error))
@@ -237,45 +268,96 @@ namespace Mmorpg.GameProtocol
                 return false;
             }
 
-            if (!IsValidJoinRequest(decoded, decoding: true))
+            if (!IsValidJoinRequest(decoded))
             {
                 error = "Join request is invalid.";
                 return false;
             }
 
-            joinTicket = decoded;
+            request = decoded;
             return true;
         }
 
-        private static void WriteJoinRequest(ref PacketWriter writer, string value)
+        private static void WriteJoinRequest(ref PacketWriter writer, RealtimeJoinRequest value)
         {
-            writer.WriteString(value);
+            writer.WriteGuid(value.TicketId);
+            writer.WriteByte((byte)value.ClientNonce.Length);
+            foreach (var item in value.ClientNonce)
+            {
+                writer.WriteByte(item);
+            }
+            writer.WriteByte((byte)value.Proof.Length);
+            foreach (var item in value.Proof)
+            {
+                writer.WriteByte(item);
+            }
         }
 
-        private static int SizeOfJoinRequest(string value)
+        private static bool TryReadJoinRequest(ref PacketReader reader, out RealtimeJoinRequest value, out string error)
         {
-            var size = 0;
-            size += StringSize(value);
-            return size;
-        }
-
-        private static bool TryReadJoinRequest(ref PacketReader reader, out string value, out string error)
-        {
-            value = string.Empty;
-            if (!reader.TryReadString(MaximumJoinTicketLength, out var joinTicket, out error))
+            value = null;
+            if (!reader.TryReadGuid(out var ticketId, out error))
             {
                 return false;
             }
 
-            value = joinTicket;
+            if (!reader.TryReadByte(out var clientNonceCount, out error))
+            {
+                return false;
+            }
+
+            if (clientNonceCount < 16 || clientNonceCount > JoinNonceSize)
+            {
+                error = "Join request client nonce count is invalid.";
+                return false;
+            }
+
+            var clientNonce = new byte[clientNonceCount];
+            for (var index = 0; index < clientNonce.Length; index++)
+            {
+                if (!reader.TryReadByte(out var element, out error))
+                {
+                    return false;
+                }
+
+                clientNonce[index] = element;
+            }
+
+            if (!reader.TryReadByte(out var proofCount, out error))
+            {
+                return false;
+            }
+
+            if (proofCount < 32 || proofCount > JoinProofSize)
+            {
+                error = "Join request proof count is invalid.";
+                return false;
+            }
+
+            var proof = new byte[proofCount];
+            for (var index = 0; index < proof.Length; index++)
+            {
+                if (!reader.TryReadByte(out var element, out error))
+                {
+                    return false;
+                }
+
+                proof[index] = element;
+            }
+
+            value = new RealtimeJoinRequest(ticketId, clientNonce, proof);
             return true;
         }
 
-        private static bool IsValidJoinRequest(string value, bool decoding = false)
+        private static bool IsValidJoinRequest(RealtimeJoinRequest value)
         {
             if (value == null
-                || (!decoding && string.IsNullOrWhiteSpace(value))
-                || value.Length > MaximumJoinTicketLength)
+                || value.ClientNonce == null
+                || value.ClientNonce.Length < 16
+                || value.ClientNonce.Length > JoinNonceSize
+                || value.Proof == null
+                || value.Proof.Length < 32
+                || value.Proof.Length > JoinProofSize)
             {
                 return false;
             }

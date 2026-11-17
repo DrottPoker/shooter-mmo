@@ -1,4 +1,5 @@
 using System.Net;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.GameServiceApi;
 
@@ -6,9 +7,17 @@ public sealed record SimulationJoinResult<T>(T? Value, SimulationWorkerErrorResp
 {
     public bool Succeeded => Error is null;
 
-    public static SimulationJoinResult<T> Success(T value)
+    // The keys of the peer's sealed datagrams on a successful join. Whoever takes the result
+    // installs them for the peer, or not, and zeroes them either way.
+    public RealtimeTransportKeys? TransportKeys { get; init; }
+
+    public static SimulationJoinResult<T> Success(T value, RealtimeTransportKeys transportKeys)
     {
-        return new SimulationJoinResult<T>(value, null, (int)HttpStatusCode.OK);
+        ArgumentNullException.ThrowIfNull(transportKeys);
+        return new SimulationJoinResult<T>(value, null, (int)HttpStatusCode.OK)
+        {
+            TransportKeys = transportKeys
+        };
     }
 
     public static SimulationJoinResult<T> BadRequest(string code, string message)

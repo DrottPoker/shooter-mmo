@@ -77,7 +77,8 @@ public sealed class SimulationBotSession
             || identity.AccountId == Guid.Empty
             || identity.CharacterId == Guid.Empty
             || string.IsNullOrWhiteSpace(identity.CharacterName)
-            || string.IsNullOrWhiteSpace(identity.Ticket)
+            || identity.TicketId == Guid.Empty
+            || identity.TransportKey is not { Length: RealtimeTransportKeys.TransportKeySize }
             || string.IsNullOrWhiteSpace(identity.ShardId)
             || string.IsNullOrWhiteSpace(identity.WorldId))
         {
@@ -109,7 +110,8 @@ public sealed class SimulationBotSession
         State = SimulationBotClientState.Connecting;
     }
 
-    // The transport connected; the session asks to join with its one-time ticket.
+    // The transport connected; the session asks to join with its one-time ticket's id and the
+    // proof that it holds the ticket's transport key.
     public void OnConnected(ISimulationBotTransport connectedTransport)
     {
         ArgumentNullException.ThrowIfNull(connectedTransport);
@@ -120,7 +122,17 @@ public sealed class SimulationBotSession
 
         transport = connectedTransport;
         State = SimulationBotClientState.Joining;
-        Send(RealtimeMessageType.JoinRequest, RealtimeProtocol.EncodeJoinRequest(identity.Ticket));
+        var proofKey = RealtimeTransportKeys.DeriveProofKey(identity.TransportKey);
+        try
+        {
+            Send(
+                RealtimeMessageType.JoinRequest,
+                RealtimeProtocol.EncodeJoinRequest(RealtimeJoinProof.CreateRequest(proofKey, identity.TicketId, identity.ShardId)));
+        }
+        finally
+        {
+            Array.Clear(proofKey);
+        }
     }
 
     public void OnDisconnected(string reason)

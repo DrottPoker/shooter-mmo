@@ -60,8 +60,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal(LocalRuntimeId, join.Value.Endpoint.RuntimeId);
 
         var wrongWorker = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value,
                 "another-worker",
                 LocalRuntimeId,
                 LocalShardId),
@@ -72,7 +72,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.Equal("wrong_simulation_worker", wrongWorker.Error!.Code);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
 
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value);
 
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         Assert.Equal(player.Character.Id, consumed.Value!.CharacterId);
@@ -89,7 +89,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.False(consumed.Value.IsReconnect);
         Assert.Equal(1, await CountActiveSimulationSessionsAsync(context));
 
-        var consumedAgain = await ConsumeLocalTicketAsync(context, join.Value.JoinTicket);
+        var consumedAgain = await ConsumeLocalTicketAsync(context, join.Value);
         Assert.False(consumedAgain.Succeeded);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumedAgain.StatusCode);
 
@@ -156,7 +156,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(revokeWithPendingTicket.Succeeded, revokeWithPendingTicket.Error?.Message);
         Assert.Equal(1, await CountActiveTicketsAsync(context));
 
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         var revokeWithActiveSession = await context.SessionService.RevokeAsync(
@@ -251,7 +251,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         Assert.Equal(snapshot.ItemStateRevision, consumed.Value!.ItemStateRevision);
         Assert.Equal(snapshot.CarriedWeight, consumed.Value.CarriedWeight);
@@ -295,7 +295,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         var reconnect = await ConsumeLocalTicketAsync(
             context,
-            reconnectTicket.Value!.JoinTicket);
+            reconnectTicket.Value!);
         Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
         Assert.True(reconnect.Value!.IsReconnect);
         Assert.Equal(heartbeat.ItemStateRevision, reconnect.Value.ItemStateRevision);
@@ -368,7 +368,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         // A reconnect to the owning worker is rejected once that worker reports another catalog.
@@ -570,7 +570,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
-        var firstSession = await ConsumeLocalTicketAsync(context, firstJoin.Value!.JoinTicket);
+        var firstSession = await ConsumeLocalTicketAsync(context, firstJoin.Value!);
         Assert.True(firstSession.Succeeded, firstSession.Error?.Message);
 
         var secondPlayer = await context.RegisterPlayerAsync(
@@ -616,7 +616,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var consumedSessions = new List<ConsumedSimulationJoinTicketResponse>();
         foreach (var ticket in tickets)
         {
-            var consume = await ConsumeLocalTicketAsync(context, ticket.Value!.JoinTicket);
+            var consume = await ConsumeLocalTicketAsync(context, ticket.Value!);
             if (consume.Succeeded)
             {
                 consumedSessions.Add(consume.Value!);
@@ -654,7 +654,7 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var reconnect = await ConsumeLocalTicketAsync(
             context,
-            reconnectTicket.Value.JoinTicket);
+            reconnectTicket.Value);
         Assert.True(reconnect.Succeeded, reconnect.Error?.Message);
         Assert.True(reconnect.Value!.IsReconnect);
         Assert.Equal(firstSession.SimulationSessionId, reconnect.Value.SimulationSessionId);
@@ -753,7 +753,7 @@ public sealed class AuthSimulationFlowIntegrationTests
 
         var firstSimulationSession = await ConsumeLocalTicketAsync(
             context,
-            firstJoin.Value!.JoinTicket);
+            firstJoin.Value!);
         Assert.True(firstSimulationSession.Succeeded, firstSimulationSession.Error?.Message);
 
         var secondCharacter = await context.CharacterService.CreateAsync(
@@ -1064,7 +1064,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             new JoinShardRequest(activePlayer.Character.Id),
             CancellationToken.None);
         Assert.True(activeJoin.Succeeded, activeJoin.Error?.Message);
-        var consumed = await ConsumeLocalTicketAsync(context, activeJoin.Value!.JoinTicket);
+        var consumed = await ConsumeLocalTicketAsync(context, activeJoin.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
 
         var pendingPlayer = await context.RegisterPlayerAsync(
@@ -1229,8 +1229,8 @@ public sealed class AuthSimulationFlowIntegrationTests
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
         var firstSession = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                firstJoin.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                firstJoin.Value!,
                 LocalWorkerId,
                 "first-runtime",
                 LocalShardId),
@@ -1276,14 +1276,10 @@ public sealed class AuthSimulationFlowIntegrationTests
 
     private static Task<ServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeLocalTicketAsync(
         PostgresIntegrationTestContext context,
-        string ticket)
+        JoinShardResponse ticket)
     {
         return context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                ticket,
-                LocalWorkerId,
-                LocalRuntimeId,
-                LocalShardId),
+            JoinTicketProofs.Consume(ticket, LocalWorkerId, LocalRuntimeId, LocalShardId),
             CancellationToken.None);
     }
 

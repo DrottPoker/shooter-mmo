@@ -1346,7 +1346,13 @@ runtime.
 The LiteNetLib connection key filters unrelated traffic but is not player
 authentication. The join ticket is the player credential. It is bound to an
 account session, character, shard, worker, and runtime, then consumed exactly
-once through the authenticated service channel.
+once through the authenticated service channel. Its transport key travels only
+over HTTPS and the service channel, which must therefore be private: the
+client proves the key in its join request, and every UDP datagram after the
+join is sealed with keys derived from it, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes. The
+path between client and worker is untrusted; GameService, the worker, and the
+service channel between them are trusted.
 
 The client validates placement protocol and simulation revisions before opening
 UDP. Join acceptance must match the placed character, shard, World, simulation

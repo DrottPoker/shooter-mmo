@@ -51,24 +51,42 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.Zero, "No round trip before the connection.");
         }
 
+        // The join request carries the ticket id and a fresh nonce with the proof of the ticket's
+        // key, never the key, and the transport got the keys of the datagrams before it connected.
         [Test]
-        public void TheConnectionSendsTheTrimmedJoinTicketOnTheReliableSessionChannel()
+        public void TheConnectionSendsTheJoinRequestWithTheTicketsProofOnTheReliableSessionChannel()
         {
             harness.Transport.ReportedRoundTripTime = 40;
-            harness.BeginJoin(RealtimeHubHarness.Placement(joinTicket: " ticket-1 "));
+            harness.BeginJoin(RealtimeHubHarness.Placement(joinTicket: "ticket-1"));
             harness.Transport.QueueConnected();
 
             harness.Frame();
 
-            var request = RealtimeProtocol.EncodeJoinRequest("ticket-1");
             Assert.That(harness.Hub.Session.State, Is.EqualTo(RealtimeConnectionState.Joining));
             Assert.That(
                 harness.Timeline,
                 Is.EqualTo(new[] { "Start", "Connect", "frame", "Send JoinRequest on 0 ReliableOrdered" }));
-            Assert.That(harness.Transport.Sent.Single().Packet, Is.EqualTo(request));
+            var packet = harness.Transport.Sent.Single().Packet;
+            Assert.That(RealtimeProtocol.TryDecodeJoinRequest(packet, out var request, out var error), Is.True, error);
+            Assert.That(request.TicketId, Is.EqualTo(RealtimeHubHarness.TicketIdOf("ticket-1")));
+            using (var keys = RealtimeTransportKeys.Derive(RealtimeHubHarness.TransportKeyOf("ticket-1")))
+            {
+                Assert.That(
+                    RealtimeJoinProof.Verify(
+                        keys.ProofKey,
+                        RealtimeProtocol.Version,
+                        request.TicketId,
+                        RealtimeHubMessages.ShardId,
+                        request.ClientNonce,
+                        request.Proof),
+                    Is.True);
+                Assert.That(harness.Transport.ConnectedClientToWorkerKey, Is.EqualTo(keys.ClientToWorkerKey));
+                Assert.That(harness.Transport.ConnectedWorkerToClientKey, Is.EqualTo(keys.WorkerToClientKey));
+            }
+
             Assert.That(
                 (harness.Hub.Diagnostics.RealtimePacketsSent, harness.Hub.Diagnostics.RealtimeBytesSent),
-                Is.EqualTo((1L, (long)request.Length)));
+                Is.EqualTo((1L, (long)packet.Length)));
             Assert.That(harness.Hub.Diagnostics.RoundTripTimeMilliseconds, Is.EqualTo(40));
             Assert.That(harness.StepJoin(), Is.True, "The join waits for its answer.");
         }
@@ -277,6 +295,7 @@ namespace Mmorpg.Client.Tests.EditMode
 
         [TestCase("no placement", "invalid_join_parameters")]
         [TestCase("a placement without a ticket", "invalid_join_parameters")]
+        [TestCase("a placement without a transport key", "invalid_join_parameters")]
         [TestCase("an expired ticket", "join_ticket_expired")]
         [TestCase("another protocol version", "incompatible_protocol")]
         [TestCase("another simulation revision", "incompatible_simulation")]
@@ -289,7 +308,10 @@ namespace Mmorpg.Client.Tests.EditMode
                     placement = null;
                     break;
                 case "a placement without a ticket":
-                    placement.joinTicket = " ";
+                    placement.joinTicketId = " ";
+                    break;
+                case "a placement without a transport key":
+                    placement.transportKey = Convert.ToBase64String(new byte[16]);
                     break;
                 case "an expired ticket":
                     placement.expiresAt = DateTime.UtcNow.AddMinutes(-1).ToString("O");

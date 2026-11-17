@@ -3,9 +3,9 @@
   "description": "The binary realtime protocol between SimulationWorker and the Unity client. tools/ProtocolGenerator generates Runtime/Generated from this file.",
   "protocol": {
     "namespace": "Mmorpg.GameProtocol",
-    "version": 45,
+    "version": 46,
     "magic": "0x4F4D4D53",
-    "connectionKey": "Mmorpg.Realtime.v8",
+    "connectionKey": "Mmorpg.Realtime.v9",
     "maximumPacketSize": 1200,
     "maximumUnreliablePacketSize": 1023,
     "channelCount": 4,
@@ -120,10 +120,16 @@
       "description": "Characters in the value of a message argument, which fits a text key that two content ids make."
     },
     {
-      "name": "MaximumJoinTicketLength",
-      "value": 1024,
-      "visibility": "private",
-      "description": "Characters in a join ticket."
+      "name": "JoinNonceSize",
+      "value": 16,
+      "visibility": "protocol",
+      "description": "Bytes in the client nonce of a join request."
+    },
+    {
+      "name": "JoinProofSize",
+      "value": 32,
+      "visibility": "protocol",
+      "description": "Bytes in the HMAC-SHA256 proof of a join request."
     },
     {
       "name": "MaximumItemOperationItems",
@@ -1281,16 +1287,29 @@
       "direction": "clientToServer",
       "channel": "SessionChannel",
       "delivery": "reliableOrdered",
-      "description": "Asks to join a simulation session with a join ticket.",
-      "api": "unwrap",
-      "runtimeSizeCheck": true,
+      "description": "Asks to join a simulation session with a join ticket's public id and the proof that the client holds the ticket's transport key, which never travels over UDP.",
+      "parameter": "request",
       "fields": [
         {
-          "name": "JoinTicket",
-          "type": "string",
-          "maxLength": "MaximumJoinTicketLength",
-          "blank": "acceptOnDecode",
-          "description": "The join ticket that GameService issued for this session."
+          "name": "TicketId",
+          "type": "guid",
+          "description": "The public id of the join ticket that GameService issued; empty is refused with missing_join_ticket."
+        },
+        {
+          "name": "ClientNonce",
+          "type": "array",
+          "items": "u8",
+          "minCount": 16,
+          "maxCount": "JoinNonceSize",
+          "description": "Fresh random bytes of the client for this join."
+        },
+        {
+          "name": "Proof",
+          "type": "array",
+          "items": "u8",
+          "minCount": 32,
+          "maxCount": "JoinProofSize",
+          "description": "HMAC-SHA256 with the ticket's proof key over the label, the protocol version, the ticket id, the Shard id, and the nonce."
         }
       ]
     },

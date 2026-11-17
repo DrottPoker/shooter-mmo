@@ -52,7 +52,13 @@ internal sealed record RealtimeMetricsInterval(
             SnapshotEntityRecords = NonNegative(current.SnapshotEntityRecords, previous.SnapshotEntityRecords),
             SnapshotBytes = NonNegative(current.SnapshotBytes, previous.SnapshotBytes),
             SentByMessage = SubtractKinds(current.SentByMessage, previous.SentByMessage),
-            ReceivedByMessage = SubtractKinds(current.ReceivedByMessage, previous.ReceivedByMessage)
+            ReceivedByMessage = SubtractKinds(current.ReceivedByMessage, previous.ReceivedByMessage),
+            DatagramsReceived = NonNegative(current.DatagramsReceived, previous.DatagramsReceived),
+            DatagramsSent = NonNegative(current.DatagramsSent, previous.DatagramsSent),
+            DatagramBytesReceived = NonNegative(current.DatagramBytesReceived, previous.DatagramBytesReceived),
+            DatagramBytesSent = NonNegative(current.DatagramBytesSent, previous.DatagramBytesSent),
+            SealingOverheadBytes = NonNegative(current.SealingOverheadBytes, previous.SealingOverheadBytes),
+            DroppedDatagrams = NonNegative(current.DroppedDatagrams, previous.DroppedDatagrams)
         };
     }
 

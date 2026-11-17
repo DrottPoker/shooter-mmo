@@ -287,6 +287,7 @@
         "type": "Project",
         "dependencies": {
           "Dapper": "[2.1.89, )",
+          "Mmorpg.GameProtocol": "[1.0.0, )",
           "Mmorpg.GameService.Accounts": "[1.0.0, )",
           "Mmorpg.GameService.Characters": "[1.0.0, )",
           "Mmorpg.GameService.Platform": "[1.0.0, )",

@@ -250,7 +250,7 @@ internal sealed class CombatTickFixture : IDisposable
                     CollisionWorld))
             .Entity;
         Bindings.Bind(peerId, entity.NetworkEntityId);
-        var peer = new RecordingPeerConnection(peerId);
+        var peer = new RecordingPeerConnection(peerId, isSealed: true);
         Directory.Peers[peerId] = peer;
         var context = new RealtimePeerContext(peerId, DateTime.UtcNow, Config.UdpQuotas)
         {
@@ -337,7 +337,7 @@ internal sealed class CombatTickFixture : IDisposable
             peer,
             context,
             RealtimeMessageType.JoinRequest,
-            RealtimeProtocol.EncodeJoinRequest(ticket),
+            RealtimeTestTickets.EncodeJoin(ticket),
             route.Channel,
             route.Delivery));
     }

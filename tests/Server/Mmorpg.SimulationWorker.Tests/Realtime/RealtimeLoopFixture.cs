@@ -216,7 +216,7 @@ internal sealed class RealtimeLoopFixture : IDisposable
                     movementCollision ?? CollisionWorld))
             .Entity;
         Bindings.Bind(peerId, entity.NetworkEntityId);
-        var peer = new RecordingPeerConnection(peerId);
+        var peer = new RecordingPeerConnection(peerId, isSealed: true);
         Directory.Peers[peerId] = peer;
         var context = new RealtimePeerContext(peerId, DateTime.UtcNow, Config.UdpQuotas)
         {

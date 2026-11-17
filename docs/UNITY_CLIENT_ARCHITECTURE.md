@@ -1039,7 +1039,13 @@ received bytes with their channel and delivery, and socket error.
 LiteNetLib `NetManager` on the protocol's channels with synchronized events, so
 every event fires inside the poll that the hub's `Update` runs on Unity's main
 thread, and it returns each packet's reader to LiteNetLib's pool once the hub
-handled the packet. The transport only moves bytes. `ClientBootstrap` composes
+handled the packet. Its `NetManager` runs `RealtimeSealingPacketLayer`, which
+seals and opens every datagram with `RealtimeClientTransportSecurity` and the
+keys of the current join, with the managed ChaCha20-Poly1305, as
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) describes;
+`Connect` takes the keys, and `Stop` zeroes them. The session derives them from
+the placement's transport key, sends the join request with the ticket's proof,
+and zeroes its own copies at once. The transport only moves bytes. `ClientBootstrap` composes
 the hub's parts with `Initialize` and the client settings, on the LiteNetLib
 transport and Unity's realtime clock; the session takes its join and leave
 deadlines and the transport's disconnect timeout from the settings' realtime
@@ -4707,7 +4713,8 @@ namespace rule are in [Folder Layout](#folder-layout).
   timeouts, every way a session ends, a disconnect that carries its reason, and
   the two rules of [How A Session Ends](#how-a-session-ends);
   `LiteNetLibRealtimeTransportTests` drives the real transport against a
-  LiteNetLib server over loopback for the data a disconnect carries; the
+  LiteNetLib server with the worker's sealing layer over loopback for the data a
+  disconnect carries and the switch from clear to sealed datagrams; the
   dispatch tests pin, for every
   message type, the event it raises with its decoded content while joined, the
   failure code before the join and of a malformed payload, what the `Leaving`

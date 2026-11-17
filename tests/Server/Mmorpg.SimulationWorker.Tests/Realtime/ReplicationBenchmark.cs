@@ -254,6 +254,10 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
 
     public int Id { get; } = id;
 
+    // Every benchmark peer joined, so it is sealed. Sealing runs on LiteNetLib's update thread,
+    // not in the loop that the benchmark measures; the cipher benchmark measures its cost.
+    public bool IsSealed => true;
+
     public long ReliablePackets { get; private set; }
 
     public long ReliableBytes { get; private set; }
@@ -331,6 +335,11 @@ internal sealed class CountingPeerConnection(int id) : IRealtimePeerConnection
     public int GetPacketsCountInReliableQueue(byte channelNumber, bool ordered)
     {
         return 0;
+    }
+
+    public void Seal(RealtimeTransportKeys keys)
+    {
+        throw new InvalidOperationException("Benchmark peers join without the join route.");
     }
 
     public void Reset()

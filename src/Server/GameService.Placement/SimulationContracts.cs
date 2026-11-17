@@ -71,16 +71,25 @@ internal sealed record SimulationWorkerOfflineResponse(
 
 internal sealed record JoinShardRequest(Guid CharacterId);
 
+// A join ticket: its public id, which travels over UDP in clear, and the transport key, which
+// never does. The key travels only in this HTTPS response and, once the join proved it, in the
+// consume response to the worker.
 internal sealed record JoinShardResponse(
     ShardResponse Shard,
     SimulationEndpointResponse Endpoint,
     Guid CharacterId,
-    string JoinTicket,
+    Guid JoinTicketId,
+    byte[] TransportKey,
     DateTime ExpiresAt,
     bool IsReconnect);
 
+// The worker forwards the ticket id, the client's nonce, and its proof from the join request,
+// with the protocol version of the request and the worker's own identity.
 internal sealed record ConsumeSimulationJoinTicketRequest(
-    string? Ticket,
+    Guid TicketId,
+    byte[]? ClientNonce,
+    byte[]? Proof,
+    int ProtocolVersion,
     string? WorkerId,
     string? RuntimeId,
     string? ShardId);
@@ -115,6 +124,9 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
 
     // The character's saved place and vitals, or null when it has none, as for a development bot.
     public SimulationSavedCharacterState? SavedState { get; init; }
+
+    // The ticket's transport key, from which the worker derives the keys of the sealed datagrams.
+    public byte[] TransportKey { get; init; } = [];
 }
 
 // A character's saved place and vitals: the World and its collision revision when the state was

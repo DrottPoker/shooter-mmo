@@ -43,7 +43,7 @@ public sealed class AccountSessionEndIntegrationTests
         Assert.Equal("live marked", await StateAsync(context, session.SimulationSessionId));
 
         // The pending ticket of the old account session was consumed with the logout.
-        var consumedPending = await ConsumeAsync(context, pending.Value.JoinTicket);
+        var consumedPending = await ConsumeAsync(context, pending.Value);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumedPending.StatusCode);
         Assert.Equal("invalid_ticket", consumedPending.Error!.Code);
     }
@@ -125,7 +125,7 @@ public sealed class AccountSessionEndIntegrationTests
             CancellationToken.None));
         var stale = await TicketAsync(context, player.Account, player.Character.Id);
         Assert.True(stale.Succeeded, stale.Error?.Message);
-        var consumed = await ConsumeAsync(context, stale.Value!.JoinTicket);
+        var consumed = await ConsumeAsync(context, stale.Value!);
 
         Assert.Equal(StatusCodes.Status401Unauthorized, consumed.StatusCode);
         Assert.Equal("invalid_ticket", consumed.Error!.Code);
@@ -175,7 +175,7 @@ public sealed class AccountSessionEndIntegrationTests
         Assert.Equal(end, await AccountSessionEndAsync(context, player.Account.SessionId));
         var ticket = await TicketAsync(context, player.Account, player.Character.Id);
         Assert.True(ticket.Succeeded, ticket.Error?.Message);
-        var consumed = await ConsumeAsync(context, ticket.Value!.JoinTicket);
+        var consumed = await ConsumeAsync(context, ticket.Value!);
         Assert.Equal(StatusCodes.Status401Unauthorized, consumed.StatusCode);
     }
 
@@ -290,10 +290,10 @@ public sealed class AccountSessionEndIntegrationTests
 
     private static Task<ServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(
         PostgresIntegrationTestContext context,
-        string ticket)
+        JoinShardResponse ticket)
     {
         return context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(ticket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(ticket, WorkerId, RuntimeId, ShardId),
             CancellationToken.None);
     }
 
@@ -304,9 +304,9 @@ public sealed class AccountSessionEndIntegrationTests
     {
         var join = await TicketAsync(context, account, characterId);
         Assert.True(join.Succeeded, join.Error?.Message);
-        var consumed = await ConsumeAsync(context, join.Value!.JoinTicket);
+        var consumed = await ConsumeAsync(context, join.Value!);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
-        Assert.Equal(join.Value.IsReconnect, consumed.Value!.IsReconnect);
+        Assert.Equal(join.Value!.IsReconnect, consumed.Value!.IsReconnect);
         return consumed.Value;
     }
 

@@ -1,4 +1,5 @@
 using LiteNetLib;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -6,6 +7,15 @@ namespace Mmorpg.SimulationWorker.Realtime;
 internal interface IRealtimePeerConnection
 {
     int Id { get; }
+
+    // Whether the peer's datagrams are sealed, which they are from the moment its join's keys
+    // were installed until it disconnects.
+    bool IsSealed { get; }
+
+    // Installs the keys of the peer's join: every datagram to it is sealed from now on, the one
+    // that accepts the join included, and every clear one from it is dropped. The caller still
+    // owns the keys and zeroes them.
+    void Seal(RealtimeTransportKeys keys);
 
     // Sends on the channel, exactly like NetPeer.Send(byte[], byte, DeliveryMethod).
     void Send(byte[] data, byte channel, DeliveryMethod deliveryMethod);

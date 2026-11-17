@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Sessions;
 
@@ -17,11 +18,11 @@ internal sealed class SessionAuthorityOperations(
     public async Task RunJoinAsync(
         IRealtimeCompletionHandler completionHandler,
         RealtimePeerContext context,
-        string joinTicket)
+        RealtimeJoinRequest joinRequest)
     {
         try
         {
-            var result = await joinService.JoinAsync(joinTicket, CancellationToken.None);
+            var result = await joinService.JoinAsync(joinRequest, CancellationToken.None);
             completions.Post(completionHandler, new JoinCompleted(
                 context,
                 result,
