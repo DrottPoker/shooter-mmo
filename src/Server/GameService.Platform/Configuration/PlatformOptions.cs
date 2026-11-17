@@ -1,5 +1,7 @@
+using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Retention;
 using Npgsql;
+using StackExchange.Redis;
 
 namespace Mmorpg.GameService.Platform.Configuration;
 
@@ -33,6 +35,12 @@ public sealed record PlatformOptions(
 
     // The Retention section, which the retention host and every module's retention tasks share.
     public RetentionOptions Retention { get; init; } = RetentionOptions.Default;
+
+    // The Http section: trusted proxies, Kestrel's limits, and the orderly stop.
+    public HttpServerOptions Http { get; init; } = HttpServerOptions.Default;
+
+    // The per-address limit of the anonymous routes without a limit of their own.
+    public FixedWindowRateLimit PublicRateLimit { get; init; } = PublicRateLimitPolicy.Defaults;
 
     public static PlatformOptions Read(IConfiguration configuration, ICollection<string> errors)
     {
@@ -80,6 +88,13 @@ public sealed record PlatformOptions(
                 60_000,
                 errors);
         var retention = RetentionOptions.Read(configuration, errors);
+        var http = HttpServerOptions.Read(configuration, errors);
+        var publicRateLimit = FixedWindowRateLimit.Read(
+            configuration,
+            PublicRateLimitPolicy.Section,
+            PublicRateLimitPolicy.Defaults,
+            PublicRateLimitPolicy.MaximumPermitLimit,
+            errors);
 
         // Invalid settings fail startup, so only a valid connection string is rewritten.
         return new PlatformOptions(
@@ -92,8 +107,54 @@ public sealed record PlatformOptions(
         {
             MigrationLockTimeout = TimeSpan.FromMilliseconds(migrationLockTimeoutMilliseconds),
             RedisCommandTimeout = TimeSpan.FromMilliseconds(redisCommandTimeoutMilliseconds),
-            Retention = retention
+            Retention = retention,
+            Http = http,
+            PublicRateLimit = publicRateLimit
         };
+    }
+
+    // The rules that only the Development environment may break: real host names, and real
+    // passwords for PostgreSQL and Redis instead of none or one that the repository publishes.
+    public IReadOnlyList<string> ErrorsOutsideDevelopment()
+    {
+        var errors = new List<string>(Http.ErrorsOutsideDevelopment());
+        if (ConfigurationValidation.IsPlaceholderPassword(PostgresPassword(PostgresConnectionString)))
+        {
+            errors.Add(
+                "ConnectionStrings:Postgres has an empty or placeholder password; outside the Development environment it needs a real secret, never one of .env.example or the repository's Compose files.");
+        }
+
+        if (ConfigurationValidation.IsPlaceholderPassword(RedisPassword(RedisConnectionString)))
+        {
+            errors.Add(
+                "ConnectionStrings:Redis has no password or a placeholder one; outside the Development environment Redis needs a real secret in password=.");
+        }
+
+        return errors;
+    }
+
+    private static string? PostgresPassword(string connectionString)
+    {
+        try
+        {
+            return new NpgsqlConnectionStringBuilder(connectionString).Password;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static string? RedisPassword(string connectionString)
+    {
+        try
+        {
+            return ConfigurationOptions.Parse(connectionString).Password;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static string ConfigurePostgresConnectionString(

@@ -30,8 +30,11 @@ public static class ApiPipelineExtensions
         return services;
     }
 
+    // Runs after the forwarded headers, so the log scope and everything after it see the
+    // client's address.
     public static IApplicationBuilder UseApiPipeline(this IApplicationBuilder app)
     {
+        app.UseMiddleware<ApiResponseHeadersMiddleware>();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseExceptionHandler();
         app.UseStatusCodePages(async statusCodeContext =>
@@ -142,6 +145,23 @@ internal sealed class ApiExceptionHandler(
     }
 }
 
+// Headers that every API response carries. The client is a native program and TLS ends at
+// the proxy, so there is no CORS, HTTPS redirection, or HSTS here; nosniff keeps a browser that
+// opens a URL from treating an error body as something else.
+internal sealed class ApiResponseHeadersMiddleware(RequestDelegate next)
+{
+    public Task InvokeAsync(HttpContext context)
+    {
+        // The exception handler clears headers, so the header is added when the response starts.
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            return Task.CompletedTask;
+        });
+        return next(context);
+    }
+}
+
 // Gives every request one correlation id: the caller's X-Correlation-ID when it is
 // valid, otherwise the W3C trace id of the request, so the response header, the logs,
 // and the trace share one value.
@@ -167,8 +187,12 @@ internal sealed class CorrelationIdMiddleware(
             return Task.CompletedTask;
         });
 
-        // Every log entry of the request, from any module, carries the id.
-        using (logger.BeginScope("CorrelationId:{CorrelationId}", correlationId))
+        // Every log entry of the request, from any module, carries the id and the client's
+        // address.
+        using (logger.BeginScope(
+                   "CorrelationId:{CorrelationId} ClientAddress:{ClientAddress}",
+                   correlationId,
+                   ClientAddress.Of(context)?.ToString() ?? ClientAddress.UnknownPartition))
         {
             await next(context);
         }

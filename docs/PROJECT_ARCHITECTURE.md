@@ -1335,7 +1335,9 @@ valid account session clears the mark, as
 
 SimulationWorker sends `X-Simulation-Worker-ID` and
 `X-Simulation-Worker-Secret`. GameService validates the configured secret with a
-fixed-time comparison and adds the worker identity claim. Endpoint policies and
+fixed-time comparison and adds the worker identity claim. Outside Development
+every worker has a secret of its own; the shared secret of the local stack is
+refused there. Endpoint policies and
 request payload checks prevent a worker from acting for another worker id or
 runtime.
 
@@ -1362,7 +1364,9 @@ adds a production code path:
   change through the item transaction kernel.
 - The development bot ticket route and the stack stress fixture routes exist
   only when explicitly enabled in the Development environment, accept only
-  loopback callers, and require their own secret. Bot identities, tickets, and
+  loopback callers, and require their own secret. A caller is loopback by
+  [the client's address](SERVICE_FEATURES.md#the-clients-address), so a remote
+  client behind a proxy on the same host is not. Bot identities, tickets, and
   sessions stay in memory.
 - The SimulationWorker admin tools and the global Bank and Recovery access are
   options that fail startup outside the Development environment.
@@ -1706,9 +1710,12 @@ process. The options and their defaults are in
 
 GameService exposes `/health/live` and `/health/ready`, and `/` redirects to
 readiness. Liveness confirms the process. Readiness runs a real PostgreSQL
-`select 1` query and Redis `PING` within `HealthChecks:TimeoutMilliseconds` and
-returns HTTP 503 when an obligatory dependency fails. Redis accelerates
-account-session validation and authentication rate limits, as
+`select 1` query and Redis `PING`, after `AUTH` when Redis has a password,
+within `HealthChecks:TimeoutMilliseconds`, and returns HTTP 503 when an
+obligatory dependency fails, and from the stop signal on, so a proxy drains
+GameService before it stops, as
+[Orderly Shutdown](SERVICE_FEATURES.md#orderly-shutdown) describes. Redis
+accelerates account-session validation and authentication rate limits, as
 [Redis Account-Session Acceleration](SERVICE_FEATURES.md#redis-account-session-acceleration)
 describes, but it never decides item custody, simulation authority, or durable
 session truth.

@@ -21,6 +21,7 @@ internal static class QuestEndpoints
             return result.ToHttpResult();
         })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read)
             .WithMetadata(new SensitiveResponseAttribute());
 
         // The worker reads a joining character's quest log with the session's credentials.

@@ -25,7 +25,7 @@ public sealed class ContentModule(ContentModuleOptions options) : IGameServiceMo
         services.AddHostedService<ContentRevisionCheck>();
         services.AddRateLimiter(rateLimiterOptions => rateLimiterOptions.AddPolicy(
             ContentRateLimiterPolicy.PolicyName,
-            new ContentRateLimiterPolicy(options)));
+            ContentRateLimiterPolicy.Create(options)));
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

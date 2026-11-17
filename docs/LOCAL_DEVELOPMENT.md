@@ -50,6 +50,15 @@ both services live in their `Config` folders;
 [Configuration Defaults](SERVICE_FEATURES.md#configuration-defaults) describes
 the options.
 
+The local stack relies on settings that only the Development environment
+accepts, which `dotnet run` selects: the shared
+`SIMULATION_WORKER_SERVICE_SECRET`, a Redis without a password, any host name,
+which `appsettings.Development.json` allows with `AllowedHosts` `*`, and an
+immediate stop without a drain. Outside Development GameService refuses to
+start with them, as
+[Hosts, Secrets, And Passwords Outside Development](SERVICE_FEATURES.md#hosts-secrets-and-passwords-outside-development)
+describes.
+
 How the services read `.env`:
 
 - Each service looks for `.env` in its working directory and each parent up to
@@ -280,8 +289,10 @@ Expected result: an IPv4 and possibly an IPv6 listener on port 27015.
 
 ### Stop The Services
 
-Press Ctrl+C in each service terminal. A worker stopped this way marks its
-shard offline at once; a worker that ends without it leaves the shard online
+Press Ctrl+C in each service terminal. GameService stops at once in
+Development, where `Http:ShutdownDrainSeconds` is 0; elsewhere it first serves
+on through the drain, as [Orderly Shutdown](SERVICE_FEATURES.md#orderly-shutdown)
+describes. A worker stopped this way marks its shard offline at once; a worker that ends without it leaves the shard online
 until the worker heartbeat timeout passes. `docker compose stop` stops
 PostgreSQL and Redis and keeps the data.
 

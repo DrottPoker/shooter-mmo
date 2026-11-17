@@ -18,7 +18,7 @@ internal static class CharacterEndpoints
         {
             var result = await characterService.ListAsync(principal.GetAccountId(), cancellationToken);
             return result.ToHttpResult();
-        });
+        }).RequireRateLimiting(AccountRateLimitPolicies.Read);
 
         group.MapPost("/", async (
             ClaimsPrincipal principal,
@@ -32,12 +32,13 @@ internal static class CharacterEndpoints
                 cancellationToken);
 
             return result.ToHttpResult();
-        });
+        }).RequireRateLimiting(AccountRateLimitPolicies.Action);
 
         // What character creation offers: the body models and the options of every kind of look.
         app.MapGet("/api/character-appearance", (CharacterService characterService) =>
                 Results.Ok(characterService.AppearanceCatalog()))
-            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy);
+            .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Read);
 
         return app;
     }

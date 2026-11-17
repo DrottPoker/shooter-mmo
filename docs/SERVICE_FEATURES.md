@@ -20,29 +20,29 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 
 | Route | Authority | Behavior |
 | --- | --- | --- |
-| `GET /` | Public | Redirect to `/health/ready` |
+| `GET /` | Public, rate limited | Redirect to `/health/ready` |
 | `POST /api/accounts/register` | Public, rate limited | Create an account and its login session |
 | `POST /api/accounts/login` | Public, rate limited | Replace the active login session |
-| `GET /api/accounts/me` | Account session | Return the account profile |
-| `GET /api/accounts/session` | Account session | Validate the current session |
-| `POST /api/accounts/logout` | Account session | Revoke the current session and its dependent access |
-| `DELETE /api/accounts/sessions/{sessionId}` | Account session | Revoke an owned session |
+| `GET /api/accounts/me` | Account session, rate limited | Return the account profile |
+| `GET /api/accounts/session` | Account session, rate limited | Validate the current session |
+| `POST /api/accounts/logout` | Account session, rate limited | Revoke the current session and its dependent access |
+| `DELETE /api/accounts/sessions/{sessionId}` | Account session, rate limited | Revoke an owned session |
 | `GET /api/content` | Public, rate limited | Return the content manifest: every served content file with its revision and URL, as [Content Files](#content-files) describes |
 | `GET /api/content/{kind}/{id}/{revision}` | Public, rate limited | Return the exact bytes of the current item or quest catalog as an immutable file |
 | `GET /api/content/text-table/{locale}/{id}/{revision}` | Public, rate limited | Return the exact bytes of the current text table of a locale as an immutable file |
-| `GET /api/characters` | Account session | List owned characters with their body models |
-| `POST /api/characters` | Account session | Create a character with its body model and look, checked against `content/characters/appearance.json`, or with the default look of the default body model when the request names none |
-| `GET /api/character-appearance` | Account session | Return what character creation offers: the kinds of a look with their rules and every body model with its options per kind and slot |
-| `GET /api/characters/{characterId}/item-state` | Owning account session | Return one coherent no-store character item-state snapshot, including the currency balance |
-| `GET /api/characters/{characterId}/bank` | Owning account session | Return focused no-store bank state |
-| `GET /api/characters/{characterId}/recovery` | Owning account session | Return focused no-store unclaimed Recovery Storage deliveries |
-| `GET /api/characters/{characterId}/quests` | Owning account session | Return the no-store quest log: active quests with their current step and its progress, and completed quests |
-| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
-| `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session | Split a stack into an exact destination slot |
-| `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session | Merge compatible stacks |
-| `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session | Perform allowed player destruction with a server-owned reason |
-| `GET /api/shards` | Public | List logical shards, status, players, and capacity |
-| `POST /api/shards/{shardId}/join` | Account session | Place an owned character and issue a ticket |
+| `GET /api/characters` | Account session, rate limited | List owned characters with their body models |
+| `POST /api/characters` | Account session, rate limited | Create a character with its body model and look, checked against `content/characters/appearance.json`, or with the default look of the default body model when the request names none |
+| `GET /api/character-appearance` | Account session, rate limited | Return what character creation offers: the kinds of a look with their rules and every body model with its options per kind and slot |
+| `GET /api/characters/{characterId}/item-state` | Owning account session, rate limited | Return one coherent no-store character item-state snapshot, including the currency balance |
+| `GET /api/characters/{characterId}/bank` | Owning account session, rate limited | Return focused no-store bank state |
+| `GET /api/characters/{characterId}/recovery` | Owning account session, rate limited | Return focused no-store unclaimed Recovery Storage deliveries |
+| `GET /api/characters/{characterId}/quests` | Owning account session, rate limited | Return the no-store quest log: active quests with their current step and its progress, and completed quests |
+| `POST /api/characters/{characterId}/item-operations/relocate` | Owning offline account session, rate limited | Relocate an item through the durable transaction kernel. Bank and Recovery Storage are never reachable offline |
+| `POST /api/characters/{characterId}/item-operations/split` | Owning offline account session, rate limited | Split a stack into an exact destination slot |
+| `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session, rate limited | Merge compatible stacks |
+| `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session, rate limited | Perform allowed player destruction with a server-owned reason |
+| `GET /api/shards` | Public, rate limited | List logical shards, status, players, and capacity |
+| `POST /api/shards/{shardId}/join` | Account session, rate limited | Place an owned character and issue a ticket |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-workers/{workerId}/session-heartbeat` | Worker service policy | Renew the exact simulation leases of the worker runtime's sessions in one batch, and answer each session on its own: its lease with the end of its account session and its carry state, or its refusal |
@@ -66,17 +66,18 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/development/stack-stress/characters/{characterId}/inventory-fixture` | Account session and Development loopback secret | Seed the starting items of a stack stress inventory workload for an owned empty character when explicitly enabled |
 | `POST /api/development/stack-stress/characters/{characterId}/kit` | Account session and Development loopback secret | Grant an owned empty character the configured kit of its stack stress role, such as a weapon and its arrows, when explicitly enabled |
 | `POST /api/development/stack-stress/loot-hotspot` | Account session and Development loopback secret | Create the shared loot corpse of a stack stress workload when explicitly enabled |
-| `GET /health/live` | Public | Report process liveness |
-| `GET /health/ready` | Public | Verify obligatory dependencies |
+| `GET /health/live` | Public, rate limited | Report process liveness |
+| `GET /health/ready` | Public, rate limited | Verify obligatory dependencies; `503` with the status `stopping` from the stop signal on, as [Orderly Shutdown](#orderly-shutdown) describes |
 
-Route parameters named `characterId`, `sessionId`, `simulationSessionId`, and
-`corpseId` must be GUIDs. The public shard list never exposes a
+Every route's limit is in [Rate Limits](#rate-limits). Route parameters named
+`characterId`, `sessionId`, `simulationSessionId`, and `corpseId` must be GUIDs. The public shard list never exposes a
 SimulationWorker host, port, or runtime id. That endpoint appears only in a
 successful short-lived placement response.
 
 The development bot route is absent unless GameService runs in `Development`
 with `DevelopmentSimulationBots:Enabled=true`. It also requires a loopback
-caller and the separate `ACTIVE_SIMULATION_BOTS_SECRET`. Bot identities,
+caller, judged by [the client's address](#the-clients-address), and the
+separate `ACTIVE_SIMULATION_BOTS_SECRET`. Bot identities,
 tickets, and sessions remain in memory and are never durable account or
 character data. SimulationWorker uses the same worker service routes for real
 and bot credentials; GameService routes recognized bot credentials to the
@@ -87,12 +88,127 @@ described in
 
 The stack stress fixture routes are absent unless GameService runs in
 `Development` with `StackStressFixtures:Enabled=true`. They also require a
-loopback caller, the `X-Stack-Stress-Fixture-Key` header with
+loopback caller, judged by [the client's address](#the-clients-address), the
+`X-Stack-Stress-Fixture-Key` header with
 `STACK_STRESS_FIXTURE_SECRET`, a loopback PostgreSQL host, and a database name
 that contains `stress` or `test`; startup fails when an enabled fixture lacks
 any of these. They grant only the item definitions that configuration names,
 through the item transaction kernel. [Stack Stress Testing](STACK_STRESS_TESTING.md)
 uses them.
+
+## Rate Limits
+
+Every route that a client can reach without worker credentials has a
+fixed-window limit. A rejected request gets `429` with `rate_limit_exceeded` in
+Problem Details and a `Retry-After` in whole seconds that counts down to the end
+of the current window, and the next window starts with its full permits. Limits
+per client address use [the client's address](#the-clients-address), with one
+window per IPv4 address and per IPv6 `/64` network, because one IPv6 host
+usually holds a whole `/64`. Limits per account use the account of the session,
+so many accounts behind one address, such as the 500 bots of a load run, never
+share a window.
+
+| Routes | Caller | How often a legitimate client calls | Limit |
+| --- | --- | --- | --- |
+| `POST /api/accounts/register`, `POST /api/accounts/login` | Anonymous | Once per client start, and again after a mistyped password | `register` and `login`: `RateLimiting:Authentication`, 5 per 60 s per client address, each route in a window of its own, also in Redis across replicas as [Redis Account-Session Acceleration](#redis-account-session-acceleration) describes |
+| `GET /api/content` and the two content file routes | Anonymous | The manifest and about seven files at each client start | `content`: `RateLimiting:Content`, 120 per 60 s per client address, one window for the three routes |
+| `GET /api/shards`, `GET /`, `GET /health/live`, `GET /health/ready` | Anonymous: the client's Shard list, and the health checks of a proxy or an orchestrator | The Shard list when character select opens or refreshes; a health check every few seconds | `public`: `RateLimiting:Public`, 300 per 60 s per client address, one window for the four routes |
+| `POST /api/shards/{shardId}/join`, `POST /api/characters`, `POST /api/accounts/logout`, `DELETE /api/accounts/sessions/{sessionId}`, and the four offline `item-operations` routes | Account session | Once per join, new character, logout, revoke, or item move, with a few retries | `account-action`: `RateLimiting:AccountActions`, 20 per 60 s per account, each route in a window of its own |
+| `GET /api/accounts/me`, `GET /api/accounts/session`, `GET /api/characters`, `GET /api/character-appearance`, and the character's `item-state`, `bank`, `recovery`, and `quests` | Account session | A few at login and character select, and when a window opens | `account-read`: `RateLimiting:AccountReads`, 300 per 60 s per account, one window for these routes |
+| The worker routes | SimulationWorker with its service credentials | Every heartbeat, checkpoint, and player action of a Shard | None: they need worker credentials, and the worker bounds its own requests |
+| The development bot ticket and stack stress fixture routes | Development tools with their own secret | Hundreds at once for a bot population | None: they exist only in Development and answer only loopback callers |
+
+The account limits run after authentication and authorization, so a request
+without a valid session is refused with `401` before it counts. There is no
+route that deletes a character.
+
+## Behind A Proxy
+
+GameService speaks plain HTTP. In a deployment a reverse proxy ends TLS in front
+of it, so GameService has no HTTPS redirection and no HSTS, and no CORS either,
+because the client is a native program and never a browser page. Every response
+carries `X-Content-Type-Options: nosniff`, so a browser that opens an API URL
+never guesses a content type for its body.
+
+### The Client's Address
+
+One place decides the client's address, and the rate limits, the
+`ClientAddress` value of the log scope, and the loopback checks of the
+development routes all use it:
+
+- Without `Http:TrustedProxies`, the default and the local stack, the address
+  of the connection is the client's, and `X-Forwarded-For` and
+  `X-Forwarded-Proto` are ignored entirely.
+- With trusted proxies, a request whose connection comes from one of them
+  takes its client address from `X-Forwarded-For` and its scheme from
+  `X-Forwarded-Proto`, counting at most `Http:ForwardLimit` entries from the
+  right. A proxy appends the address it saw, so with one proxy only the entry
+  it added counts, and whatever the client wrote before it is ignored.
+- A request that names a forwarded address but does not come from a trusted
+  proxy keeps the address of its connection and is served normally.
+- A client behind a proxy on the same host is therefore not loopback for the
+  development routes, although its connection is.
+
+Behind a proxy, `Http:TrustedProxies` must name the proxy, or every client
+shares the proxy's address and its per-address limits. At startup GameService
+logs whether it trusts proxies and which.
+
+### Request Limits
+
+Kestrel serves HTTP/1.1 with these limits from the `Http` section, listed in
+[Configuration Defaults](#gameservice): request headers of at most 16 KiB
+together and 64 in number, a request line of at most 4 KiB, 15 seconds to
+receive the headers, and keep-alive connections that close after 130 seconds
+idle, longer than the idle timeout of a proxy's upstream connections, so the
+proxy closes them first. A request body may have at most
+`Items:Operations:MaximumHttpRequestBodyBytes`. Kestrel refuses a request over
+a limit with `431`, `414`, `413`, or `408` before any route runs. The number of
+connections is not limited, so 500 load bots from one machine and a proxy's
+connection pool both fit.
+
+### Hosts, Secrets, And Passwords Outside Development
+
+Outside the Development environment GameService refuses to start, with one
+message that lists every problem, when:
+
+- `AllowedHosts` is missing or contains `*`, `0.0.0.0`, or `[::]`, each of
+  which ASP.NET Core reads as any host. It names the host names that
+  requests reach GameService with, separated by `;`: the public name that the
+  proxy passes on and the names that health checks and SimulationWorker use. A
+  request for another host gets `400` before any route runs. Development keeps
+  `*` in `appsettings.Development.json`.
+- `SIMULATION_WORKER_SERVICE_SECRET` is set. Every worker has its own secret in
+  `ServiceAuthentication:SimulationWorkers:<workerId>`, and sets the same value
+  as its own `SimulationWorker:GameServiceSecret`. Development keeps the shared
+  secret, so the local stack and the tools work as before.
+- The password of `ConnectionStrings:Postgres` or `ConnectionStrings:Redis` is
+  empty or a placeholder: a value that starts with `replace-with-`, as in
+  `.env.example`, or one that the repository's Compose files or CI workflow
+  publish. Redis takes its password as `password=` in the connection string,
+  and the readiness probes of GameService and SimulationWorker authenticate with
+  it.
+
+### Orderly Shutdown
+
+On the stop signal, Ctrl+C or `SIGTERM`, GameService stops in this order:
+
+1. `/health/ready` answers `503` with the status `stopping` at once, without
+   checking its dependencies, so a proxy takes GameService out of rotation.
+2. For `Http:ShutdownDrainSeconds`, 10 by default and 0 in Development,
+   GameService keeps accepting and serving requests, so the proxy has time to
+   notice. Set it longer than the proxy's health check interval times the
+   failures it needs.
+3. Kestrel stops accepting connections and lets the requests in flight finish.
+4. The background services stop: the retention host, the Recovery and corpse
+   expiry, and the metric reporters. Each ends at its next wait on the stop
+   token. A batch or item operation that the stop interrupts rolls back its
+   transaction, and the next pass or start runs it again. Queued password
+   hashes are refused with `auth_busy`.
+
+All of it must fit `Http:ShutdownTimeoutSeconds`, 30 by default, the host's
+shutdown timeout, which must exceed the drain; whatever still runs then is
+abandoned. A container runtime must wait at least that long before it kills the
+process.
 
 ## Accounts And Authentication
 
@@ -122,11 +238,11 @@ uses them.
   that belong to the caller. Revoking another account's session id succeeds
   without effect, so foreign session ids are not revealed.
 
-Login and registration use independent fixed-window limits keyed by remote IP,
+Login and registration use independent fixed-window limits per
+[client address](#the-clients-address),
 `RateLimiting:Authentication:PermitLimit` requests per
-`RateLimiting:Authentication:WindowSeconds`. Rejected requests return HTTP 429
-with `rate_limit_exceeded` in Problem Details and a `Retry-After` that counts
-down to the end of the current window. The policy is taken from the matched
+`RateLimiting:Authentication:WindowSeconds`, rejected as every limit is, as
+[Rate Limits](#rate-limits) describes. The policy is taken from the matched
 endpoint, so a different path casing such as `/api/accounts/LOGIN` cannot skip
 the distributed limit.
 
@@ -1736,7 +1852,8 @@ known file at an older revision, is `404` with the code `content_not_found`.
 
 The routes are anonymous, because the files hold nothing secret, they ship
 inside every client, and a client fetches them before login. They share the
-`content` rate limit: a fixed window per remote address of
+`content` rate limit: a fixed window per
+[client address](#the-clients-address) of
 `RateLimiting:Content:PermitLimit` requests per
 `RateLimiting:Content:WindowSeconds`, 120 a minute by default. A client start
 needs the manifest and about seven files, so the default leaves room for many
@@ -2352,10 +2469,13 @@ on the wire is in [Realtime Protocol](REALTIME_PROTOCOL.md).
 - Worker routes use the `SimulationWorker` handler and policy.
 - Worker credentials use `X-Simulation-Worker-ID` and
   `X-Simulation-Worker-Secret`.
-- Local shared-secret mode authenticates any valid worker identifier and leaves
-  topology authorization to the registry. When a per-worker credential map is
-  configured in `ServiceAuthentication:SimulationWorkers`, it becomes an exact
-  allowlist and shared fallback is disabled.
+- Local shared-secret mode, which only the Development environment accepts,
+  authenticates any valid worker identifier and leaves topology authorization to
+  the registry. When a per-worker credential map is configured in
+  `ServiceAuthentication:SimulationWorkers`, it becomes an exact allowlist and
+  shared fallback is disabled, as
+  [Hosts, Secrets, And Passwords Outside Development](#hosts-secrets-and-passwords-outside-development)
+  describes.
 - Secrets are compared in fixed time. Every worker secret must have at least 32
   characters, and startup rejects the `replace-with-` placeholders of
   `.env.example`.
@@ -2363,6 +2483,8 @@ on the wire is in [Realtime Protocol](REALTIME_PROTOCOL.md).
 - Responses carry `X-Correlation-ID`, error responses too, as
   [Correlation Ids](MONITORING.md#correlation-ids) describes.
 - Token-bearing responses use `Cache-Control: no-store` and `Pragma: no-cache`.
+- Every response carries `X-Content-Type-Options: nosniff`; TLS, and with it
+  HSTS, belongs to the proxy, as [Behind A Proxy](#behind-a-proxy) describes.
 - No debug HTTP endpoint is registered in the current service surface.
 
 ### Redis Account-Session Acceleration
@@ -2394,7 +2516,7 @@ revocation. This prevents a successfully revoked session from remaining usable
 through stale cache state.
 
 Login and registration also use a Redis fixed-window rate limit keyed by a hash
-of the remote address and policy name. The process-local ASP.NET rate limit
+of the [client address](#the-clients-address) and policy name. The process-local ASP.NET rate limit
 remains active as a fallback if Redis is unavailable. Disconnected Redis
 commands fail fast instead of accumulating in a client backlog. The Redis client
 waits `Redis:CommandTimeoutMilliseconds` for a connection or an answer, its own
@@ -2414,7 +2536,14 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis` | from `.env` | Required. The PostgreSQL connection must name host, database, username, and password; GameService connects with the application name `Mmorpg.GameService` |
+| `ConnectionStrings:Postgres`, `ConnectionStrings:Redis` | from `.env` | Required. The PostgreSQL connection must name host, database, username, and password; GameService connects with the application name `Mmorpg.GameService`. Outside Development neither password may be empty or a placeholder, as [Hosts, Secrets, And Passwords Outside Development](#hosts-secrets-and-passwords-outside-development) describes |
+| `AllowedHosts` | `*` in `appsettings.Development.json`, none otherwise | The host names that requests may name, separated by `;`; outside Development it is required and must not contain `*`, `0.0.0.0`, or `[::]`, which allow any host |
+| `Http:TrustedProxies` | empty | The proxies whose `X-Forwarded-For` and `X-Forwarded-Proto` count, IP addresses and networks such as `10.0.0.0/8` separated by `;` or `,`; empty ignores both headers, as [The Client's Address](#the-clients-address) describes |
+| `Http:ForwardLimit` | `1` | How many `X-Forwarded-For` entries from the right count, one per trusted proxy in the chain, 1 to 10 |
+| `Http:MaxRequestHeadersTotalSizeBytes`, `MaxRequestHeaderCount`, `MaxRequestLineSizeBytes` | `16384`, `64`, `4096` | Kestrel's limits of the request headers together, their number, and the request line; 4,096 to 1,048,576, 16 to 1,000, and 1,024 to 65,536 |
+| `Http:RequestHeadersTimeoutSeconds`, `KeepAliveTimeoutSeconds` | `15`, `130` | How long Kestrel waits for the request headers, 1 to 300, and keeps an idle connection, 1 to 3,600 |
+| `Http:ShutdownDrainSeconds` | `10`, and `0` in `appsettings.Development.json` | How long GameService still serves after its readiness turned to `stopping`, 0 to 300, as [Orderly Shutdown](#orderly-shutdown) describes |
+| `Http:ShutdownTimeoutSeconds` | `30` | The host's shutdown timeout, which the drain, the requests in flight, and the background services share; longer than the drain and at most 3,600 |
 | `Database:RunMigrationsOnStartup` | `true` in the Development environment, `false` otherwise | Apply the migrations, the seeds, and the topology at startup. When false, the `migrate` command does it, and a start refuses a database with a pending migration or seed change, as [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations) describes |
 | `Database:MigrationLockTimeoutMilliseconds` | `5000` | How long a migration in a transaction waits for a lock that other sessions hold before it fails and applies nothing, 100 to 600,000 |
 | `Database:MaximumPoolSize` | `64` | Npgsql pool size of one process, at most 1,000 |
@@ -2429,14 +2558,17 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Auth:SessionMaximumLifetimeDays` | `90` | How long an account session lasts after its login at most, outside the World, from the idle lifetime to 3,650 days. A start that still sets the removed `Auth:SessionLifetimeHours` fails and names these two settings |
 | `Auth:PasswordHashing:MaxConcurrency` | half of the logical processors, at least `1` | Password hashes that run at once, 1 to 256, as [Password Hashing Lane](#password-hashing-lane) describes |
 | `Auth:PasswordHashing:MaxWaitSeconds` | `10` | The longest a registration or login waits for its hash before it is refused with `auth_busy`, 1 to 10 seconds: a client allows a queued login 10 seconds on top of its request timeout, so the server may not queue longer |
-| `RateLimiting:Authentication:PermitLimit`, `WindowSeconds` | `5`, `60` | Login and registration requests per remote address and window, each limited separately |
+| `RateLimiting:Authentication:PermitLimit`, `WindowSeconds` | `5`, `60` | Login and registration requests per client address and window, each limited separately |
+| `RateLimiting:Public:PermitLimit`, `WindowSeconds` | `300`, `60` | Requests per client address and window to the Shard list, the health routes, and `/` together; 1 to 100,000 requests and 1 to 3,600 seconds |
+| `RateLimiting:AccountActions:PermitLimit`, `WindowSeconds` | `20`, `60` | Requests per account and window to each route that creates work or state, as [Rate Limits](#rate-limits) lists them; 1 to 100,000 and 1 to 3,600 |
+| `RateLimiting:AccountReads:PermitLimit`, `WindowSeconds` | `300`, `60` | Requests per account and window to the account's read routes together; 1 to 100,000 and 1 to 3,600 |
 | `RedisAcceleration:Enabled`, `SessionCacheEnabled`, `AuthenticationRateLimitingEnabled` | `true` | Redis session cache and distributed rate limit |
 | `RedisAcceleration:KeyPrefix` | `shooter-mmo` | Prefix of every Redis key, 1 to 64 letters, digits, `-`, `_`, or `.` |
 | `RedisAcceleration:SessionCacheTtlSeconds` | `60` | Lifetime of a cached session, 1 to 300 seconds |
 | `RedisAcceleration:SessionRevocationTombstoneSeconds` | `120` | Lifetime of a revocation tombstone, at least the cache lifetime and at most 3,600 seconds |
 | `RedisAcceleration:SessionRevocationDeadlineMilliseconds` | `5000` | How long storing the tombstones of one revocation may take, a retry of a transient failure included, 100 to 30,000 |
 | `RedisAcceleration:MetricsIntervalSeconds` | `30` | Interval of the Redis counter log |
-| `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, or one secret per worker id |
+| `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, which only the Development environment accepts, or one secret per worker id |
 | `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |
 | `Characters:AppearancePath` | `WorldData/Characters/appearance.json` in the output | The character appearance content |
 | `Simulation:JoinTicketLifetimeSeconds` | `30` | Join ticket lifetime |
@@ -2449,11 +2581,11 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `Quests:CatalogPath` | `WorldData/Quests/core.quest-catalog.json` | The compiled quest catalog that GameService runs and mirrors |
 | `Content:TextTablesPath` | `WorldData/Text/en` | The folder of the text tables that GameService serves, one locale |
 | `Content:BaseUrl` | empty | When set, an absolute `http` or `https` URL without query or fragment that the content manifest puts before each file's relative path instead of `/api/content` |
-| `RateLimiting:Content:PermitLimit`, `WindowSeconds` | `120`, `60` | Content requests per remote address and window, shared by the manifest and file routes; 1 to 10,000 requests and 1 to 3,600 seconds |
+| `RateLimiting:Content:PermitLimit`, `WindowSeconds` | `120`, `60` | Content requests per client address and window, shared by the manifest and file routes; 1 to 10,000 requests and 1 to 3,600 seconds |
 | `Items:Operations:TransactionTimeoutMilliseconds` | `10000` | Statement timeout of an item transaction, 100 to 120,000 |
 | `Items:Operations:LockTimeoutMilliseconds` | `2000` | Lock timeout of an item transaction, 10 to 120,000 and at most the transaction timeout |
 | `Items:Operations:MaximumCommandPayloadBytes` | `65536` | Largest canonical command, 1,024 to 1,048,576 |
-| `Items:Operations:MaximumHttpRequestBodyBytes` | `262144` | Kestrel request body limit, 4,096 to 4,194,304 |
+| `Items:Operations:MaximumHttpRequestBodyBytes` | `262144` | Kestrel's request body limit, 4,096 to 4,194,304 |
 | `Items:Operations:MetricsIntervalSeconds`, `MaintenanceIntervalSeconds` | `30`, `60` | Item summary log and Recovery expiry intervals, 1 to 3,600 seconds |
 | `Items:Operations:CleanupBatchSize` | `64` | Recovery deliveries that one Recovery expiry run expires at most, 1 to 1,000 |
 | `Items:NpcLifecycle:InsurancePrice` | `100` | Server-owned insurance price |
@@ -2478,7 +2610,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
 | `GracefulDisconnectMaximumMilliseconds` | `2000` | Longest wait for the client to acknowledge the message that says why the worker ends its connection, before the disconnect, from 1 to the `JoinHandshakeTimeoutSeconds` that is also LiteNetLib's disconnect timeout, as [Realtime UDP Transport](#realtime-udp-transport) describes |
 | `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
-| `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters |
+| `GameServiceSecret` | from `SIMULATION_WORKER_SERVICE_SECRET` | Worker service secret, at least 32 characters; outside Development the secret that GameService holds for this worker id in `ServiceAuthentication:SimulationWorkers:<workerId>` |
 | `SimulationSessionHeartbeatSeconds`, `SimulationSessionHeartbeatMaxConcurrency` | `10`, `8` | Session heartbeat interval, and the session heartbeat requests, and the releases at shutdown, that run at once, at most 128 |
 | `SimulationSessionHeartbeatBatchSize` | `250` | Sessions that one session heartbeat request names at most, 1 to 500 |
 | `SimulationSessionHeartbeatRetryMilliseconds` | `2000` | How long a session heartbeat request that timed out, could not reach GameService, or got a server error waits before it goes again, shorter than the heartbeat interval, as [Session Heartbeat](#session-heartbeat) describes |

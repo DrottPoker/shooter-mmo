@@ -2,6 +2,7 @@ using Mmorpg.GameService;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.Server.Common.Configuration;
 
 // `migrate` and `migrate --plan` run instead of the web host; the other arguments configure.
@@ -34,10 +35,7 @@ builder.Logging.AddConsole();
 
 var configuration = GameServiceConfiguration.Load(builder.Configuration, builder.Environment);
 builder.AddGameServiceTelemetry(configuration);
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.Limits.MaxRequestBodySize = configuration.Items.Operations.MaximumHttpRequestBodyBytes;
-});
+builder.ConfigureGameServiceHost(configuration);
 
 builder.Services.AddGameService(configuration);
 
@@ -82,6 +80,18 @@ if (commandExitCode is not null)
 }
 
 app.MapGameService(configuration);
+
+if (configuration.Platform.Http.TrustsProxies)
+{
+    app.Logger.LogInformation(
+        "Client addresses come from X-Forwarded-For of the trusted proxies {TrustedProxies}.",
+        app.Configuration[HttpServerOptions.TrustedProxiesKey]);
+}
+else
+{
+    app.Logger.LogInformation(
+        "No trusted proxies are configured: the connection's address is the client's, and forwarded headers are ignored.");
+}
 
 if (configuration.Telemetry.IsEnabled)
 {

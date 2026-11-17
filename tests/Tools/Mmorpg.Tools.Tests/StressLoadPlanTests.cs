@@ -229,6 +229,22 @@ public sealed class StressLoadPlanTests
             plan.GeneratorEnvironment["STACK_STRESS_FIXTURE_SECRET"]);
         Assert.Contains("Database=shooter_mmo_stack_stress_test", plan.GeneratorEnvironment["STACK_STRESS_POSTGRES"], StringComparison.Ordinal);
         Assert.False(plan.WorkerEnvironment.ContainsKey("SimulationWorker__LingeringBodySeconds"));
+        Assert.Equal("100000", plan.GameServiceEnvironment["RateLimiting__Public__PermitLimit"]);
+    }
+
+    // The disposable stack has published passwords and the shared worker secret, which GameService
+    // accepts only in the Development environment, so a lifecycle run uses it too, and every bot's
+    // Shard list from the one address stays inside the public limit.
+    [Fact]
+    public void AFullStackLifecyclePlanRunsGameServiceInTheDevelopmentEnvironment()
+    {
+        var plan = Plan(LoadShipped("session-cache-on"));
+
+        Assert.True(plan.NeedsGameService);
+        Assert.Equal("Development", plan.GameServiceEnvironment["DOTNET_ENVIRONMENT"]);
+        Assert.False(plan.GameServiceEnvironment.ContainsKey("StackStressFixtures__Enabled"));
+        Assert.Equal("100000", plan.GameServiceEnvironment["RateLimiting__Public__PermitLimit"]);
+        Assert.Equal("60", plan.GameServiceEnvironment["RateLimiting__Public__WindowSeconds"]);
     }
 
     // The retention rules judge against GameService's own retention settings: the checked-in

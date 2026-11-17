@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Platform.Database;
+using Mmorpg.GameService.Platform.Hosting;
 using Mmorpg.GameService.Platform.Http;
 using Mmorpg.GameService.Platform.Redis;
 using Mmorpg.GameService.Platform.Retention;
@@ -10,8 +11,8 @@ namespace Mmorpg.GameService.Platform;
 
 public static class PlatformServiceCollectionExtensions
 {
-    // One bounded PostgreSQL pool, one Redis multiplexer, the Problem Details pipeline,
-    // and the migration runner for the whole process.
+    // One bounded PostgreSQL pool, one Redis multiplexer, the Problem Details pipeline, the
+    // migration runner, the public rate limit, and the orderly stop for the whole process.
     public static IServiceCollection AddGameServicePlatform(
         this IServiceCollection services,
         PlatformOptions options)
@@ -29,6 +30,20 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<RetentionMetrics>();
         services.AddSingleton<RetentionRunner>();
         services.AddHostedService<RetentionHostedService>();
+        services.AddSingleton<ServiceStopState>();
+        services.AddHostedService<ShutdownDrainService>();
+        services.AddRateLimiter(rateLimiterOptions =>
+        {
+            // Every policy answers its own rejection; this covers any that would not.
+            rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            rateLimiterOptions.AddPolicy(
+                PublicRateLimitPolicy.PolicyName,
+                new FixedWindowRateLimitPolicy(
+                    PublicRateLimitPolicy.PolicyName,
+                    options.PublicRateLimit,
+                    ClientAddress.PartitionKey,
+                    "Too many requests. Try again later."));
+        });
         return services;
     }
 
