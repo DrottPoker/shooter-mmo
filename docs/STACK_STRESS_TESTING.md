@@ -2299,9 +2299,21 @@ tuned away in the load tooling; the run folders of 2026-11-14, 2026-11-15, and
      `playing-100` with a 120 second steady interval this took the four kinds
      per second and player from 6.27 to 5.38 `CombatantState`, 3.45 to 1.30
      `CombatEventBatch`, 1.14 to 1.07 `EntityAppearanceChanged`, and 3.33 to
-     2.42 `WorldActorState`, and all messages from 47.7 to 43.5; at 100
-     players most fights have their viewers within 70 m, so 500 players
-     measure what it saves at the tier.
+     2.42 `WorldActorState`, and all messages from 47.7 to 43.5. On
+     2026-11-17 `playing-500` ran on a quiet machine without and then with the
+     detail radius, the second run also with the near radius of 50 m: per
+     second and player 24.1 to 22.3 `CombatantState`, 13.7 to 6.4
+     `CombatEventBatch`, 11.8 to 12.0 `EntityAppearanceChanged`, 7.2 to 5.6
+     `WorldActorState`, and all messages 95.2 to 85.0; a player received 14.9
+     and then 14.4 KiB per second, the worker used 69 and then 62 percent of a
+     core, and the tick took 5.7 and then 5.0 ms on average, with 1 and then 0
+     ticks over budget of 11,400 and a tick p99 bucket of 16 ms or less in
+     every interval. The interest refresh, which now also decides the detail,
+     took 24.5 ms per second against 20.9, and the far states 5.4. The events
+     halved, and the states fell little: the fighters of a hunting ground
+     stand within 70 m of each other, so most changes of a fight still go to
+     viewers that see it in detail, and what fell away went to the viewers
+     between 70 m and the interest radius.
    - Replication itself has room: the broadcast takes 4.7 ms on average, of
      which interest takes 1.9, a player receives 42.9 records per snapshot,
      the owner's included, of 15.4 bytes with their share of the packet
