@@ -1497,9 +1497,10 @@ A World scene holds the authored composition that
 describes; everything else comes from `ClientBootstrap` at runtime. The frame in
 which the scene activates is the end of its load: the composition root
 initializes the scene's components, and `WorldSceneContext.Start` spawns the
-local player, prepares the player bodies as
-[Crowd Performance](#crowd-performance) describes, and presents the players
-already in view, before the World draws its first frame. Every panel
+local player and presents the players already in view under a cover, which goes
+once the content of the local look is loaded, the player bodies are prepared,
+and the first view is ready, as [Body Content](#body-content) and
+[Crowd Performance](#crowd-performance) describe. Every panel
 of a World scene is runtime uGUI, so `WorldPointerFocus` can tell from the
 EventSystem whether the pointer is over interface. No scene authors an
 EventSystem: `TemporaryUiKit.EnsureEventSystem` makes one for the first panel
@@ -2779,7 +2780,8 @@ layers, hides, covered and underlay faces, pull-ins, cloth kinds, sockets, clip
 names, grips, and paint crops, and name the content of a look by Addressables
 address: a garment's `BodyPieceContent` per body with the template's model for
 that body and the texture's material, an attachment's `BodyPieceContent` with its
-model and the clips of a skinned one, and the images of the options and paint
+model, the clips of a skinned one, and where each clip leaves the bones it turns
+at its end, and the images of the options and paint
 layers. The material's own image of a slot, the body models, their skin
 materials, and their own images stay referenced by the player prefabs, since every
 body draws with them. One garment is one load and one release: Addressables loads
@@ -2837,14 +2839,22 @@ underwear and never half dressed:
   loaded and its combination built, for remote bodies, the local body, and the
   preview alike.
 - **Entering a World** waits for the content of the local player's look, of the
-  preview's, and of every model's default look. `TryEnterWorld` spawns the local
-  player at once and puts a camera after the player camera that draws black over
-  the World (`WorldEntryCover`); the screen-space interface draws over it. Once
-  the content is loaded, the warm-up prepares the bodies, the local body and the
-  preview show their looks, also when the character lies dead already, the cover
-  goes, and the log shows `[CLIENT] Entered the World with the content of the
-  local look loaded ... ms after the scene started.` `IsWorldShown` says when.
-  A look the server sends later is a look that changes.
+  preview's, and of every model's default look, and then for the first view.
+  `TryEnterWorld` spawns the local player at once and puts a camera after the
+  player camera that draws black over the World (`WorldEntryCover`); the
+  screen-space interface draws over it. Once the content is loaded, the warm-up
+  prepares the bodies and draws them in that frame, still under the cover, and the
+  local body and the preview show their looks, also when the character lies dead
+  already. Then the cover stays, as [Crowd Performance](#crowd-performance)
+  describes under The first view, until the content of the players in view is
+  loaded and warm and the prefabs of the world actors in view are loaded, at most
+  until `WorldSceneContext.FirstViewCapSeconds`, 1 s after the start of the entry,
+  and goes. The log shows `[CLIENT] Entered the World ... ms after the scene
+  started: the content of the local look was loaded after ... ms, and the first
+  view with the ... players in view was ready.`, or that the first view showed at
+  its cap with how many players still waited for their content and whether the
+  world actors were ready. `IsWorldShown` says when. A look the server sends later
+  is a look that changes.
 - **A player corpse** waits for the content of its look before its lying body is
   baked and shows nothing until then, and a corpse whose look changed shows the
   old lying body until then; a lying body holds its content while it exists.
@@ -3127,7 +3137,9 @@ from these parts:
   `BowRig` drives them in `LateUpdate` while `BowShot` plays before its release:
   the drawing arm reaches for the resting string and draws it along the arrow's
   line with the arm solver of `OffHandToolGrip.Place`, the nock follows the main
-  hand's socket, the limbs bend from the end pose of the bow's clip `Draw` by how
+  hand's socket, the limbs bend toward the end pose of the bow's clip `Draw`,
+  which the bow's content holds because a player samples no clip outside an
+  Animator, by how
   far the string comes back toward its `drawLength`, each half of the string aims
   at the nock and stretches, and the main hand closes on the string; `Loose` lets
   the string spring back to brace. `TryGetNockedArrow` gives where an arrow lies
@@ -3221,7 +3233,33 @@ bounded:
   default looks, with the World, since every body that comes into view starts
   from one. `[CLIENT] Prepared 2 body models and 0 material variants for the World
   in ... ms.` reports the work, without the draw; the variants count the content
-  loaded before the World showed.
+  loaded before the warm-up began. The stage draws in the frame in which the
+  content of the entry loaded, under the entry cover, so the first picture of the
+  World does not wait for it.
+- **The first view belongs to the entry.** What the first picture of the World
+  needs is made under the entry cover, and what comes later comes within the
+  presentation budget. After the warm-up's draw, the cover stays while a player
+  in view waits for the content of its look, which loads, has its cloth measured,
+  and has its new material variants drawn once by the stage, while the stage still
+  draws, and while a part that `AddEntryReadiness` gave the context is not ready:
+  `ClientBootstrap` gives it the world actors' presentation, which is ready once
+  its registry resolved and no prefab of an actor that waits for its view still
+  loads. Under the cover every waiting player asks for the content of its look
+  in the first frame it can, not a few a frame within the budget, since no
+  picture waits for that frame, and the bodies and actor views go on within the
+  presentation budget as at any time. In the Editor with 400 bots this made the
+  first view ready about 150 ms after the local look loaded, where asking within
+  the budget left about 390 players waiting at the cap. The cloth world grows
+  under the cover for every player in view whose look may wear loose cloth, those
+  that did not ask for their content yet included, and the World shows in a
+  later frame than one in which it grew: growing writes every body in the world
+  again and makes its transform arrays anew: in the Editor, growing to 64, 128,
+  256, and 512 bodies took 15, 30, 55, and 105 ms (`ClothWorld.Grow`). At
+  `WorldSceneContext.FirstViewCapSeconds`, 1 s after the start of the entry, the
+  World shows anyway, and what was not ready comes into view as anything that
+  comes later does. A World without other players or actors in view shows in the
+  frame after the content of the local look loaded. The cloth world still grows
+  when a crowd that comes later outgrows it.
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   takes about 1.75 ms, since the cloth measures are shared per model, and several
   players often come into interest in one frame, so `WorldSceneContext` puts
@@ -3307,12 +3345,13 @@ the camera and again in the shadow map, the shadows of the remote bodies about
 3 ms; and the Debug panel 1.4 ms. The GPU took under 1 ms. That measurement
 predates the Burst cloth jobs and the current Debug menu, which both cost less.
 
-The next levers are the levels of detail at half and a quarter of the triangles
-that [Budgets](EQUIPMENT_VISUALS_DESIGN.md#budgets) plans, a shorter shadow
-distance for bodies, animation that updates far bodies less often, and the
-garment texture arrays that
+The next lever is the garment texture arrays that
 [Equipment Visuals Design](EQUIPMENT_VISUALS_DESIGN.md#putting-a-character-together-in-unity)
-plans for fewer draw calls.
+plans for fewer draw calls. A shadow rule for far bodies, a lower animation
+rate for them, and the levels of detail that
+[Budgets](EQUIPMENT_VISUALS_DESIGN.md#budgets) plans were measured and are not
+built, as [Far Bodies, Tried And Measured](#far-bodies-tried-and-measured)
+records.
 
 `tools/Measure-ClientCrowd.ps1` measures the client in the stress arena, where
 every player is in interest, in an IL2CPP test player that compiles like a
@@ -3342,7 +3381,16 @@ describes. It makes four kinds of measurement, each with a table of its own in
   local player's look and the body warm-up come in the frame in which the
   content of the entry is loaded, the last of the entry. The test prints every
   frame of an arrival that took longer than 33.3 ms with the time at which it
-  ended, so a hitch can be told from the entry and from the crowd.
+  ended, so a hitch can be told from the entry and from the crowd, and below it
+  what the profiler markers of the suspects took in that frame (`in it: ...`),
+  from profiler recorders, which the test player, a development build, has: the
+  parts of the player loop, loading, instantiation, garbage collection, logging,
+  shader programs and pipeline states made on first use, texture uploads, waiting
+  for the graphics thread, and the client's markers of bodies, content, the
+  warm-up, the cloth world, and world actor views. A frame's time is read in the
+  frame after it, so the recording starts two frames after the World showed, and
+  its first frame is the first that began after the World showed; before
+  2026-11-17 it was the frame in which the World showed.
   After the standing recording the bots stop, and once their bodies are gone
   and the client settled for 5 seconds the memory is read again, with the
   entries of the shared body caches, `PlayerBodyMeshes` and
@@ -3392,99 +3440,99 @@ outside the client.
 The baseline, measured on 2026-11-17 on an AMD Ryzen 7 5800 with an NVIDIA
 GeForce RTX 3070 (Direct3D 12), at 1920 by 1080 with the quality level `PC`,
 no VSync, and no frame rate limit, with the body content loaded on demand as
-[Body Content](#body-content) describes. Before every run the script waited
-until other programs left the machine alone, and it accepted no run that they
-disturbed; the bots, the worker, and GameService on the same machine kept it
-31 to 87 percent busy.
+[Body Content](#body-content) describes and the first view prepared under the
+entry's cover. Before every run the script waited until other programs left
+the machine alone, and it accepted no run that they disturbed; the bots, the
+worker, and GameService on the same machine kept it 38 to 69 percent busy. The
+run still had the far body shadow rule that
+[Far Bodies, Tried And Measured](#far-bodies-tried-and-measured) records, which
+changed nothing measurable and is not in the client.
 
 Standing, 60 seconds per size:
 
 | Bots in view | Whole crowd shown after | Frame p50 | p95 | p99 | Longest | Owner snapshots per s | Remote players starved | Allocated / reserved / managed memory | Player private memory |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
-| 100 | 1.4 s | 3.8 ms | 6.3 ms | 8.1 ms | 13.4 ms | 15.0 | never | 316 / 1065 / 17 MB | 1947 MB |
-| 200 | 2.2 s | 6.7 ms | 9.0 ms | 10.8 ms | 20.6 ms | 15.0 | 2.5 % of the time, 0.46 s at the longest | 421 / 1066 / 22 MB | 2272 MB |
-| 400 | 6.5 s | 12.3 ms | 15.3 ms | 19.4 ms | 40.0 ms | 15.0 | 1.4 % of the time, 0.47 s at the longest | 621 / 1578 / 42 MB | 2839 MB |
+| 100 | 0.8 s | 3.5 ms | 5.9 ms | 7.9 ms | 13.0 ms | 15.0 | never | 286 / 808 / 29 MB | 1953 MB |
+| 200 | 1.9 s | 6.4 ms | 9.0 ms | 10.9 ms | 15.8 ms | 15.0 | 2.6 % of the time, 0.46 s at the longest | 391 / 1067 / 21 MB | 2249 MB |
+| 400 | 5.3 s | 11.8 ms | 14.6 ms | 18.5 ms | 26.7 ms | 15.0 | 1.4 % of the time, 0.48 s at the longest | 578 / 1322 / 42 MB | 2724 MB |
 
 Arrival, from the first frame after the World showed until the whole crowd is
 shown, the first time and when the same number of bots comes back:
 
 | Bots | Arrival | World entry / activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| 100 | first | 355.4 / 207.7 ms | 1.2 s | 139.6 ms | 2 | 2 | 7.9 / 11.3 / 49.7 ms |
-| 100 | return | - | 4.8 s | 11.2 ms | 0 | 0 | 3.3 / 7.1 / 9.1 ms |
-| 200 | first | 261.0 / 140.0 ms | 2.1 s | 104.6 ms | 2 | 3 | 8.4 / 13.7 / 22.4 ms |
-| 200 | return | - | 9.9 s | 15.8 ms | 0 | 0 | 4.4 / 9.4 / 12.4 ms |
-| 400 | first | 286.1 / 139.5 ms | 5.3 s | 121.0 ms | 3 | 43 | 11.4 / 18.1 / 20.6 ms |
-| 400 | return | - | 19.9 s | 25.7 ms | 0 | 65 | 5.8 / 14.1 / 19.1 ms |
+| 100 | first | 417.2 / 209.3 ms | 0.8 s | 15.3 ms | 0 | 0 | 6.9 / 10.0 / 11.1 ms |
+| 100 | return | - | 4.8 s | 13.3 ms | 0 | 0 | 3.2 / 6.9 / 8.8 ms |
+| 200 | first | 420.9 / 184.8 ms | 1.9 s | 15.2 ms | 0 | 0 | 8.7 / 13.3 / 14.9 ms |
+| 200 | return | - | 9.9 s | 16.3 ms | 0 | 0 | 3.7 / 9.1 / 12.0 ms |
+| 400 | first | 448.5 / 197.3 ms | 5.3 s | 21.0 ms | 0 | 36 | 11.8 / 17.9 / 19.0 ms |
+| 400 | return | - | 20.0 s | 26.9 ms | 0 | 66 | 5.7 / 14.0 / 19.0 ms |
 
 Memory with the crowd, once it left, and with it back:
 
 | Bots | Moment | Allocated / reserved / managed memory | Player private memory | Body meshes / materials | Body garments / attachments |
 | ---: | --- | --- | ---: | --- | --- |
-| 100 | with the crowd | 311 / 1062 / 30 MB | 1936 MB | 88 / 18 | 22 / 5 |
-| 100 | crowd gone | 186 / 1064 / 13 MB | 1815 MB | 2 / 2 | 0 / 0 |
-| 100 | crowd back | 319 / 1064 / 24 MB | 1952 MB | 97 / 18 | 22 / 5 |
-| 200 | with the crowd | 415 / 1066 / 35 MB | 2261 MB | 158 / 18 | 22 / 5 |
-| 200 | crowd gone | 193 / 1066 / 13 MB | 2036 MB | 2 / 2 | 0 / 0 |
-| 200 | crowd back | 421 / 1066 / 33 MB | 2297 MB | 163 / 18 | 22 / 5 |
-| 400 | with the crowd | 608 / 1322 / 42 MB | 2750 MB | 277 / 18 | 22 / 5 |
-| 400 | crowd gone | 205 / 1322 / 14 MB | 2283 MB | 2 / 2 | 0 / 0 |
-| 400 | crowd back | 606 / 1578 / 40 MB | 2738 MB | 274 / 18 | 22 / 5 |
+| 100 | with the crowd | 286 / 808 / 29 MB | 1898 MB | 91 / 18 | 22 / 5 |
+| 100 | crowd gone | 160 / 808 / 12 MB | 1762 MB | 2 / 2 | 0 / 0 |
+| 100 | crowd back | 284 / 1064 / 28 MB | 1743 MB | 88 / 18 | 22 / 5 |
+| 200 | with the crowd | 391 / 1067 / 21 MB | 2222 MB | 159 / 18 | 22 / 5 |
+| 200 | crowd gone | 167 / 1067 / 21 MB | 2005 MB | 2 / 2 | 0 / 0 |
+| 200 | crowd back | 399 / 1067 / 30 MB | (614 MB) | 169 / 18 | 22 / 5 |
+| 400 | with the crowd | 578 / 1322 / 42 MB | 2722 MB | 275 / 18 | 22 / 5 |
+| 400 | crowd gone | 179 / 1322 / 41 MB | 1991 MB | 2 / 2 | 0 / 0 |
+| 400 | crowd back | 586 / 1582 / 37 MB | 2764 MB | 279 / 18 | 22 / 5 |
+
+The private memory of 614 MB is one sample of the operating system that does
+not fit the rows beside it; Unity's own counts in that row do.
 
 Churn, 200 bot slots that come and go, 60 seconds:
 
 | Bots known | Spawns per s | Despawns per s | Frame p50 / p95 / p99 | Longest frame | Frames over 33.3 ms | Remote players starved |
 | --- | ---: | ---: | --- | ---: | ---: | --- |
-| 186 to 200 | 2.8 | 3.0 | 6.6 / 9.6 / 11.3 ms | 21.1 ms | 0 | never |
+| 180 to 200 | 3.1 | 3.1 | 6.4 / 9.4 / 11.4 ms | 20.5 ms | 0 | never |
 
 Walking Mobs and no bots, 60 seconds per size:
 
 | Mobs | World entry / activation frame | Shown after | Arrival, longest frame | Frame p50 / p95 / p99 | Longest | Frames over 33.3 ms | Allocated / reserved / managed memory | Player private memory |
 | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | ---: |
-| 100 | 218.1 / 116.1 ms | 0.1 s | 44.6 ms | 2.2 / 3.1 / 4.6 ms | 9.0 ms | 0 | 165 / 548 / 14 MB | 1432 MB |
-| 200 | 213.5 / 111.4 ms | 0.2 s | 44.9 ms | 4.2 / 5.8 / 7.8 ms | 13.9 ms | 0 | 178 / 558 / 18 MB | 1495 MB |
-
-The standing and the churn tables are of one run of the script and the other
-three of a second run an hour later, after the arrival's start moved from the
-frame after the activation to the first frame after the World showed.
+| 100 | 232.7 / 112.7 ms | 0.1 s | 13.5 ms | 2.2 / 3.1 / 4.5 ms | 18.2 ms | 0 | 165 / 548 / 15 MB | 1416 MB |
+| 200 | 229.1 / 112.3 ms | 0.2 s | 15.0 ms | 4.2 / 5.8 / 8.0 ms | 22.0 ms | 0 | 179 / 558 / 17 MB | 1513 MB |
 
 What the baseline says:
 
 - **The built client holds 60 frames per second with 400 dressed bodies in
-  view at the 95th percentile**: 12.3 ms at the median and 15.3 ms at the 95th
+  view at the 95th percentile**: 11.8 ms at the median and 14.6 ms at the 95th
   percentile, where it took 13.5 and 17.6 ms on 2026-11-16. The standing frame
-  grows by about 3 ms per 100 bodies. Which of the changes since then made it
-  faster was not measured one by one.
-- **Entering the World takes 210 to 360 ms** from the start of the activation
-  frame until the World shows, of which the activation frame is 110 to 210 ms.
-  The cover hides the World for that time, so the player sees a short black
-  screen and then the World with the own body dressed.
-- **A crowd that is already there costs one long frame right after the World
-  shows**: a frame of 105 to 140 ms that ended 0.13 to 0.20 seconds after the
-  first shown frame, and one more frame over 33.3 ms in the same moment. With
-  Mobs and no players the same moment has one frame of 45 ms. After it the
-  first arrival runs at a median of 8 to 11 ms, with one more frame of 46 ms at
-  400. What the long frame holds is not measured yet: the first content loads
-  of the players in view, the first use of their shader variants, and Unity's
-  cleanup of unused assets after the scene load are the candidates.
-- **A crowd that comes into view later costs no frame over 33.3 ms**: when the
-  same number of bots comes back, the longest frame is 11, 16, and 26 ms at
-  100, 200, and 400, where it was 26, 30, and 37 ms with 4 frames over 33.3 ms
-  at 400.
+  grows by about 3 ms per 100 bodies.
+- **Entering the World takes 230 to 450 ms** from the start of the activation
+  frame until the World shows, of which the activation frame is 110 to 210 ms:
+  about 230 ms into a World without other players, and about 420 to 450 ms into
+  a crowd of 100 to 400, whose first view was ready before its cap of one
+  second every time. The cover hides the World for that time, so the player
+  sees a short black screen and then the World with the own body dressed.
+- **No frame of an arrival is longer than 33.3 ms**, whether the crowd is
+  already there when the client enters or comes into view later: the longest
+  frame of a first arrival is 15, 15, and 21 ms at 100, 200, and 400, where an
+  hour earlier, before the first view was prepared under the cover, it was 105
+  to 140 ms, and the longest frame when the same bots come back is 13, 16, and
+  27 ms, where it was 26, 30, and 37 ms on 2026-11-16.
+  [The Long Frames After The Entry](#the-long-frames-after-the-entry) says what
+  the long frames held.
 - **Memory comes back.** Once the crowd left, the shared body caches hold 2
   meshes and 2 material copies, where they kept every mesh before, and no
   garment or attachment stays loaded, where every one of the catalog was
-  loaded for the whole World visit. The client allocated 608 MB with 400 bots,
-  205 MB once they left, and 606 MB with them back, where it was 608, 477, and
-  755 MB. The process's private memory falls only partly, from 2,750 to 2,283
-  MB, and Unity's reserved memory does not fall.
-- **Players that come and go one at a time cost no hitch**: at 2.8 spawns and
-  3.0 despawns a second with about 190 in view, the frame is that of 200
-  standing bots and the longest frame was 21 ms.
+  loaded for the whole World visit. The client allocated 578 MB with 400 bots,
+  179 MB once they left, and 586 MB with them back, where it was 608, 477, and
+  755 MB on 2026-11-16. The process's private memory falls only partly, from
+  2,722 to 1,991 MB, and Unity's reserved memory does not fall.
+- **Players that come and go one at a time cost no hitch**: at 3.1 spawns and
+  despawns a second with about 190 in view, the frame is that of 200 standing
+  bots and the longest frame was 21 ms.
 - **A walking Mob costs about 2 ms per 100 at the median**, and the Mob runs
-  have no frame over 33.3 ms once the Mobs are shown, where they had 27 at 100
-  Mobs and one of 119 ms at 200: their views, with their nameplates, come into
-  view within the presentation budget.
+  have no frame over 33.3 ms, neither while the Mobs come into view nor in the
+  minute after, where they had 27 at 100 Mobs and one of 119 ms at 200 on
+  2026-11-16: their views, with their nameplates, come into view within the
+  presentation budget.
 - **Remote players starve a little at 200 in view and at 400**, as on
   2026-11-16. The owner snapshots kept their 15 per second. A crowd in one
   place meets each recipient's byte budget, as
@@ -3493,6 +3541,92 @@ What the baseline says:
   past its newest state before it counts as starved, as
   [Remote Players](#remote-players) describes.
 - **Private memory grows by about 3 MB per body in view.**
+
+#### Far Bodies, Tried And Measured
+
+What another player's body far from the camera costs was measured on
+2026-11-17, and neither rule below is built. Every number is of this machine in
+the stress arena with 400 standing bots and the default camera at the spawn,
+where 70 to 85 of the 400 bodies stand beyond 40 m from the camera and none
+beyond 60 m, so a rule for far bodies touches a fifth of the crowd at most there.
+
+- **The frame's split.** In the Editor's Play Mode at 948 by 603 pixels,
+  averaged over 400 frames of three runs, the main thread took 15.3 to 15.6 ms
+  of a 20 ms frame. Of it, the Animators took 4.0 to 4.1 ms (the batched update,
+  `PreLateUpdate.DirectorUpdateAnimationBegin` and `End`; their retargeting,
+  writing of the bones, and clip sampling run on the worker threads), the
+  scripts' `Update` 3.4 to 3.5 ms, the scripts' `LateUpdate` 3.5 to 3.6 ms, of
+  which the cloth 2.2 to 2.4 ms, the skinning 1.0 ms on the main thread and
+  1.3 ms more on the graphics side, the render pipeline 1.5 ms on the main
+  thread, physics 0.4 ms, and the nameplates' canvases 0.1 ms. The render thread
+  took 3.6 ms and the GPU 4.2 to 4.6 ms. A frame drew 8.0 to 8.1 million
+  triangles, about half of them into the shadow map, and 4,770 shadow casters,
+  about 12 submeshes per body, with 34 SetPass calls.
+- **No shadow beyond 44 m.** A rule that took the shadow off another player's
+  body beyond 44 m from the camera and gave it back within 40 m, decided four
+  times a second per body, took 11 to 14 percent of the shadow casters and 8
+  percent of the triangles in the Editor, and the GPU time from 4.2 to 4.6 ms to
+  3.8 to 4.1 ms, with the frame times unchanged within the noise of the runs. In
+  the built player at 1920 by 1080 it changed nothing that can be measured: the
+  frame p50 / p95 / p99 was 11.9 / 14.6 / 18.4 ms with the rule off, and 11.8 /
+  15.4 / 18.5 ms and 11.8 / 14.6 / 18.5 ms in two runs with it on. It cost the
+  look of the far bodies, so it was removed.
+- **A lower animation rate.** Unity 6000.6 has no way to skip a visible
+  Animator for a frame that costs less than updating it, as the Editor with 400
+  standing bodies showed:
+
+  | Way to skip a frame | What it cost or saved |
+  | --- | --- |
+  | One batched update, for comparison | About 10 microseconds of the main thread per body |
+  | Stopping the Animator's playable graph and playing it again, every body every second frame | 2.7 ms longer on the main thread: playing it again cost about 25 microseconds in `Update.DirectorUpdate` and 5 more in the call |
+  | The same, every body every fourth frame | 0.35 ms shorter |
+  | Disabling the Animator and enabling it again | About 15 microseconds for each enable |
+  | A manual `Animator.Update` of a disabled Animator | 80 to 150 microseconds each |
+
+  Unity's `Cull Update Transforms` already skips the retargeting, IK, and bone
+  writes of an Animator whose renderers are not visible, its shadow included,
+  and still advances its state machine, so a body out of view costs little. A
+  cheaper rate for bodies in view would need that culling driven per frame,
+  such as by a renderer of the body's own that the Animator culls by, which
+  means taking the combined renderer out of the Animator's hierarchy.
+- **Levels of detail.** The GPU took about 4 ms of a 20 ms frame in the Editor,
+  and the far bodies are a fifth of the crowd at most, so their triangles are
+  not what the frame pays for: mesh levels of detail have no case on this
+  machine.
+
+#### The Long Frames After The Entry
+
+What the long frames of a first arrival held on the morning of 2026-11-17,
+before the baseline above, and what changed. The baseline was measured after
+the changes: its player logs hold no line of the sampling error and no long
+frame of an arrival.
+
+- **The 105 to 140 ms frame** was most likely the first error with a stack trace
+  that the player logged: `BowRig` sampled the bow's clip `Draw` on the bow's
+  bones to find how far its limbs bend, which a player cannot do outside an
+  Animator, so every body that came into view with a bow logged `Non-Legacy
+  animations cannot be sampled outside the Editor without an Animator` (47 times
+  at 100 bots, 170 at 400) and showed its bow unbent at full draw. In each run of
+  the baseline the first of these errors is logged in the long frame, right
+  before the line that reports it; the return of the crowd logs the same errors
+  without a long frame, and the Editor, which samples the clip, never had the
+  frame. The bow's content now holds the end pose of `Draw`, so no clip is
+  sampled and nothing is logged; see
+  [Attachments, Tools, And Weapons](#attachments-tools-and-weapons).
+- **The other frame over 33.3 ms in the same moment**, also the 45 ms frame of
+  the Mob runs, was the frame in which the World showed: the warm-up's work and
+  its first draw of the body models, which the recording counted as the
+  arrival's first frame. The warm-up now draws under the cover a frame before the
+  World shows, and the recording starts with the first frame that began after
+  the World showed.
+- **The 46 ms frame at 4.3 s at 400** was most likely the cloth world growing
+  from 256 to 512 bodies when a body with loose cloth came into view: in the
+  Editor's profile of 400 bots that growth took 105 ms, and the growths before it
+  15, 30, and 55 ms. The cloth world now grows under the cover for the players in
+  view, as The first view above describes. The player's logs of that morning
+  cannot show it; the baseline's arrival at 400 has no frame over 21 ms.
+- **Unity's unload of unused assets** after the scene load is not one of them: it
+  took 4 to 5 ms in the activation frame, before the warm-up.
 
 The test runner marks its player as a development build
 (`Debug.isDebugBuild`), although it compiles with the release settings and the
@@ -3567,7 +3701,11 @@ the nearest to the local player's camera first, while the frame's
 `PresentationBudget` lasts and at least one a frame, so a hundred Mobs whose
 prefab finished loading in one frame come into view over the frames that
 follow instead of in that frame with all their nameplates. `WaitingActors`
-measures every waiting actor once a frame and takes them from a heap. An actor
+measures every waiting actor once a frame and takes them from a heap. A pass
+visits every waiting actor, also once the budget is spent, so the prefab of each
+is asked for in the frame the actor came; the presentation is ready for the
+entry into a World, as [Crowd Performance](#crowd-performance) describes under
+The first view, only once such a pass ran and no prefab load runs. An actor
 that waits has no view, so every consumer asks for one and is told there is none
 yet, as it already was while a prefab loaded: `TryGetView` and the views of
 `Views` and `CombatantViewLocator` leave it out, the pointer cannot pick it, the

@@ -12,6 +12,7 @@ using Mmorpg.Client.WorldActors;
 using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using NUnit.Framework;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -48,8 +49,9 @@ namespace Mmorpg.Client.Tests.PlayMode
     // active and the frames after it in which a cover hides the World while the content of the
     // local look loads. The arrival records from the first frame that began after the World
     // showed, and the entry's length and the activation frame's own are values of the result.
-    // Every frame of an arrival longer than 33.3 ms is printed with its time, so a hitch can be
-    // told from the entry and from the crowd.
+    // Every frame of an arrival longer than 33.3 ms is printed with its time and what the profiler
+    // markers of its suspects took in it, so a hitch can be told from the entry and from the crowd
+    // and its cause read from a player's log.
     //
     // Its category holds no other category's name, because the test runner matches a category
     // filter as a regular expression: LiveStack would select a LiveStackCrowd test.
@@ -137,6 +139,9 @@ namespace Mmorpg.Client.Tests.PlayMode
 
             // A crowd makes the client log what it measures, not failures.
             LogAssert.ignoreFailingMessages = true;
+            Activation activation = null;
+            // Finding the markers takes many milliseconds, so it happens before the World loads.
+            var breakdown = new FrameBreakdown();
             try
             {
                 var shard = default(ShardResponse);
@@ -146,8 +151,9 @@ namespace Mmorpg.Client.Tests.PlayMode
                     shard = joinedShard;
                     character = created;
                 });
-                // Every kind but the churn records the arrival from the frame after the activation.
-                var activation = new Activation(mode != ChurnMode ? measurements : null, label);
+                // Every kind but the churn records the arrival from the first frame that began
+                // after the World showed.
+                activation = new Activation(mode != ChurnMode ? measurements : null, label, breakdown);
                 yield return EnterWorld(hub, shard, character, activation);
                 var result = new CrowdResult
                 {
@@ -179,7 +185,8 @@ namespace Mmorpg.Client.Tests.PlayMode
                     Result = result,
                     Results = results,
                     Label = label,
-                    Activation = activation
+                    Activation = activation,
+                    Breakdown = breakdown
                 };
 
                 if (mode == ChurnMode)
@@ -229,6 +236,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             }
             finally
             {
+                activation?.StopReporting();
+                breakdown.Dispose();
                 if (measurements.IsRecording)
                 {
                     measurements.StopRecording();
@@ -416,7 +425,8 @@ namespace Mmorpg.Client.Tests.PlayMode
         }
 
         // The first arrival records from the first frame that began after the World showed, which
-        // the activation's watch started the recording at, until the wait ends.
+        // the activation's watch started the recording at and whose long frames it reports, until
+        // the wait ends.
         private static IEnumerator RecordFirstArrival(Run run, CrowdStretch stretch, IEnumerator wait)
         {
             var activation = run.Activation;
@@ -431,7 +441,14 @@ namespace Mmorpg.Client.Tests.PlayMode
             run.Result.entryMilliseconds = activation.EntryMilliseconds;
             stretch.recording = activation.RecordingPath;
             stretch.startUtc = activation.StartUtc;
-            yield return WhileReportingLongFrames(run, "first", activation.StartTime, wait);
+            var ended = false;
+            run.Context.StartCoroutine(Then(wait, () => ended = true));
+            while (!ended)
+            {
+                yield return null;
+            }
+
+            activation.StopReporting();
             stretch.summary = run.Measurements.StopRecording();
             stretch.endUtc = Utc();
             stretch.shownSeconds = Time.realtimeSinceStartup - activation.StartTime;
@@ -451,29 +468,18 @@ namespace Mmorpg.Client.Tests.PlayMode
             stretch.measured = true;
         }
 
-        // Runs the wait and prints every frame of it that took longer than a hitch, with the time
-        // since the arrival's start at which it ended and the remote players in the scene by then.
-        // The wait runs as a coroutine of its own, so every frame is looked at, also while the
+        // Runs the wait and prints every frame of it that took longer than a hitch, as LongFrames
+        // does. The wait runs as a coroutine of its own, so every frame is looked at, also while the
         // wait sleeps.
         private static IEnumerator WhileReportingLongFrames(Run run, string name, float started, IEnumerator wait)
         {
-            var invariant = CultureInfo.InvariantCulture;
             var ended = false;
             run.Context.StartCoroutine(Then(wait, () => ended = true));
+            var longFrames = new LongFrames(name, started, run.Breakdown);
             while (!ended)
             {
                 yield return null;
-                var milliseconds = Time.unscaledDeltaTime * 1000f;
-                if (milliseconds > ClientMeasurementRecord.HitchFrameMilliseconds)
-                {
-                    Report(string.Format(
-                        invariant,
-                        "  long frame of the {0} arrival: {1:0.0} ms, ended {2:0.00} s after its start, {3} remote players in the scene",
-                        name,
-                        milliseconds,
-                        Time.realtimeSinceStartup - started,
-                        UnityEngine.Object.FindObjectsByType<RemotePlayerView>().Length));
-                }
+                longFrames.Check();
             }
         }
 
@@ -840,21 +846,27 @@ namespace Mmorpg.Client.Tests.PlayMode
             public string Results;
             public string Label;
             public Activation Activation;
+            public FrameBreakdown Breakdown;
         }
 
         // The entry into the World: the length of the frame in which the World scene became active,
         // the time from that frame's start until the frame in which the World showed ended, and the
-        // arrival's recording, which starts in the frame after that one, so its first frame is the
-        // first that began after the World showed.
+        // arrival's recording. A frame's time is read in the frame after it, so the recording starts
+        // two frames after the World showed: its first frame is the first that began after the
+        // World showed. From there it reports every long frame of the first arrival until
+        // StopReporting.
         private sealed class Activation
         {
             private readonly ClientMeasurements measurements;
             private readonly string label;
+            private readonly FrameBreakdown breakdown;
+            private bool reporting;
 
-            public Activation(ClientMeasurements arrivalMeasurements, string runLabel)
+            public Activation(ClientMeasurements arrivalMeasurements, string runLabel, FrameBreakdown frameBreakdown)
             {
                 measurements = arrivalMeasurements;
                 label = runLabel;
+                breakdown = frameBreakdown;
             }
 
             public int Frame { get; set; } = -1;
@@ -899,10 +911,151 @@ namespace Mmorpg.Client.Tests.PlayMode
                     yield break;
                 }
 
+                // This frame's time is that of the frame in which the World showed.
+                yield return null;
                 RecordingPath = measurements.StartRecording("arrival-" + label, 5f);
                 StartUtc = Utc();
                 StartTime = Time.realtimeSinceStartup;
                 Recording = true;
+                reporting = true;
+                var longFrames = new LongFrames("first", StartTime, breakdown);
+                while (reporting)
+                {
+                    longFrames.Check();
+                    yield return null;
+                }
+            }
+
+            public void StopReporting()
+            {
+                reporting = false;
+            }
+        }
+
+        // Prints every frame longer than a hitch with the time since the start at which it ended,
+        // the remote players in the scene by then, and what the profiler markers of FrameBreakdown
+        // took in it. Check looks at the frame before the one it runs in.
+        private sealed class LongFrames
+        {
+            private readonly string name;
+            private readonly float started;
+            private readonly FrameBreakdown breakdown;
+
+            public LongFrames(string arrival, float startTime, FrameBreakdown frameBreakdown)
+            {
+                name = arrival;
+                started = startTime;
+                breakdown = frameBreakdown;
+            }
+
+            public void Check()
+            {
+                var milliseconds = Time.unscaledDeltaTime * 1000f;
+                if (milliseconds <= ClientMeasurementRecord.HitchFrameMilliseconds)
+                {
+                    return;
+                }
+
+                Report(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "  long frame of the {0} arrival: {1:0.0} ms, ended {2:0.00} s after its start, {3} remote players in the scene",
+                    name,
+                    milliseconds,
+                    Time.realtimeSinceStartup - started,
+                    UnityEngine.Object.FindObjectsByType<RemotePlayerView>().Length));
+                Report("    in it: " + breakdown.Describe());
+            }
+        }
+
+        // What the suspects of a long frame took in the frame before, read from profiler recorders
+        // of their markers, which a development player and the Editor have: the parts of the player
+        // loop, loading, instantiation, garbage collection, logging, shader programs and pipeline
+        // states made on first use, texture uploads, waiting for the graphics thread, and the
+        // client's own markers of bodies, content, the warm-up, the cloth world, and world actor
+        // views. A marker that does not exist is left out. The recorders are made before the World
+        // loads, since finding the markers takes many milliseconds.
+        private sealed class FrameBreakdown : IDisposable
+        {
+            private const double ShownMilliseconds = 0.5;
+
+            private static readonly string[] Markers =
+            {
+                "PlayerLoop", "Update.ScriptRunBehaviourUpdate", "PreLateUpdate.ScriptRunBehaviourLateUpdate",
+                "Inl_UniversalRenderTotal", "Gfx.WaitForPresentOnGfxThread", "Gfx.WaitForRenderThread", "Gfx.PresentFrame",
+                "GC.Collect", "GarbageCollector.CollectIncremental", "Loading.ReadObject", "Loading.AwakeFromLoad",
+                "Instantiate", "Animator.Initialize", "LogStringToConsole", "Shader.CreateGPUProgram",
+                "CreateGraphicsPipelineImpl", "Gfx.UploadTexture", "Animators.Update", "MeshSkinning.Update",
+                "ClothChainScheduler.Step", "ClothWorld.Grow", "PlayerBodyMeshes.Gather", "PlayerBodyMeshes.Apply", "PlayerBodyContent.Update",
+                "PlayerBodyWarmUp.Begin", "WorldSceneContext.PrepareFirstView", "WorldSceneContext.PresentBody",
+                "WorldActorPresentation.CreateView",
+            };
+
+            private readonly List<string> names = new List<string>();
+            private readonly List<ProfilerRecorder> recorders = new List<ProfilerRecorder>();
+
+            public FrameBreakdown()
+            {
+                // The client's markers exist once their classes are initialized, which the World
+                // would do later.
+                var marked = new[]
+                {
+                    typeof(WorldSceneContext), typeof(PlayerBodyContent), typeof(PlayerBodyWarmUp), typeof(PlayerBodyMeshes),
+                    typeof(ClothChainScheduler), typeof(WorldActorPresentationController),
+                    Type.GetType("Mmorpg.Client.Cloth.ClothWorld, Mmorpg.Client.Cloth"),
+                };
+                foreach (var type in marked)
+                {
+                    if (type != null)
+                    {
+                        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+                    }
+                }
+
+                var handles = new List<Unity.Profiling.LowLevel.Unsafe.ProfilerRecorderHandle>();
+                Unity.Profiling.LowLevel.Unsafe.ProfilerRecorderHandle.GetAvailable(handles);
+                foreach (var marker in Markers)
+                {
+                    foreach (var handle in handles)
+                    {
+                        var description = Unity.Profiling.LowLevel.Unsafe.ProfilerRecorderHandle.GetDescription(handle);
+                        if (description.Name == marker && description.UnitType == ProfilerMarkerDataUnit.TimeNanoseconds)
+                        {
+                            var recorder = new ProfilerRecorder(handle, 1, ProfilerRecorderOptions.Default);
+                            recorder.Start();
+                            names.Add(marker);
+                            recorders.Add(recorder);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // The markers that took at least ShownMilliseconds, with their milliseconds.
+            public string Describe()
+            {
+                var parts = new List<string>();
+                for (var index = 0; index < recorders.Count; index++)
+                {
+                    var milliseconds = recorders[index].LastValue / 1e6;
+                    if (milliseconds >= ShownMilliseconds)
+                    {
+                        parts.Add(names[index] + " " + milliseconds.ToString("0.0", CultureInfo.InvariantCulture));
+                    }
+                }
+
+                return parts.Count > 0
+                    ? string.Join(", ", parts) + " ms"
+                    : "no marker over " + ShownMilliseconds.ToString("0.0", CultureInfo.InvariantCulture) + " ms";
+            }
+
+            public void Dispose()
+            {
+                foreach (var recorder in recorders)
+                {
+                    recorder.Dispose();
+                }
+
+                recorders.Clear();
             }
         }
 

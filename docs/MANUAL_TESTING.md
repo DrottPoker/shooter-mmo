@@ -2648,8 +2648,10 @@ describes, the loads read the built bundles.
    CharacterSelect the screen is black for a moment with the interface over it,
    and the World then shows the character in its hair and clothes; it never
    shows the character in its underwear. The Console shows `[CLIENT] Entered the
-   World with the content of the local look loaded ... ms after the scene
-   started.`
+   World ... ms after the scene started: the content of the local look was
+   loaded after ... ms, and the first view with the ... players in view was
+   ready.`, or, with many players in view in the Editor, that the first view
+   showed at its cap of 1000 ms.
 2. Join the same shard near the first character with the
    [second client](#add-a-second-client), wearing a robe and the hood, and walk
    toward the first. Expected result: the first client shows the second
@@ -3104,8 +3106,12 @@ Expected result:
   they show, and the garment and attachment entries to those of the local
   player's look and its preview; the player log shows `[CLIENT] Prepared 2 body
   models` once per World.
+- The player log of no run shows `Non-Legacy animations cannot be sampled`, and
+  the `[CLIENT] Entered the World` line of a crowd run says that the first view
+  with the players in view was ready or showed at its cap.
 - What to look for, and to record with the run's folder: frames over 33.3 ms
-  in an arrival, memory, body cache, or body content entries that stay up once
+  in an arrival, each with its `in it` line of what the profiler markers took in
+  that frame, memory, body cache, or body content entries that stay up once
   the crowd left or grow with the crowd that came back, and an attempt that the script
   repeats again and again because other programs disturbed it.
 

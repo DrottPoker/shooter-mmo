@@ -790,7 +790,10 @@ command writes the content they address and its entries:
   `Bodies/Garments/<Model>/<Garment>.asset`;
 - a `BodyPieceContent` per attachment,
   `Assets/Content/Bodies/Attachments/<Attachment>.asset`, with its model and the
-  clips of a skinned one, addressed `Bodies/Attachments/<Attachment>.asset`;
+  clips of a skinned one, addressed `Bodies/Attachments/<Attachment>.asset`, and
+  the local rotation each clip leaves every bone it turns in at its end, sampled
+  on a copy of the model in the Editor, since a player samples no clip outside an
+  Animator: the bow's limbs and tips at the end of `Draw`;
 - the image of every paint layer and of every option other than a material's own
   image as an entry of its own, addressed `Bodies/Paints/<file>` and
   `Bodies/Options/<file>`;
