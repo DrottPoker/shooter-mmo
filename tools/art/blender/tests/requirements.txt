@@ -1,0 +1,4 @@
+# What the art pipeline's Python tests need beside the standard library. CI installs it.
+# numpy is the version that Blender 5.2 bundles, since the code under test runs in Blender's
+# Python: change it together with the Blender version in docs/ART_PIPELINE.md, not on its own.
+numpy==2.3.4
