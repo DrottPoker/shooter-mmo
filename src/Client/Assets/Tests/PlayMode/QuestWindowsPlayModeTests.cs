@@ -15,8 +15,8 @@ namespace Mmorpg.Client.Tests.PlayMode
         // Port 9 refuses connections, so no request can reach a real GameService.
         private const string UnreachableGameServiceUrl = "http://127.0.0.1:9";
 
-        // The Equipment window stands at the left screen edge on a canvas above the quest
-        // windows, so the quest dialog and the quest log stand beside it while it is open.
+        // The Equipment window stands at the left screen edge, where the quest windows stand too,
+        // so the quest dialog and the quest log stand beside it while it is open.
         [UnityTest]
         public IEnumerator TheQuestWindowsStandBesideAnOpenEquipmentWindow()
         {

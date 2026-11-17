@@ -12,15 +12,19 @@ using UnityEngine.UI;
 
 namespace Mmorpg.Client.Ui
 {
+    // The temporary action list of the open world interaction. While it shows, it stands on the
+    // window manager's stack in the Panels layer, and Escape closes it: it stops the approach and
+    // closes the interaction, or dismisses the message it shows alone.
     [DisallowMultipleComponent]
     public sealed class TemporaryWorldInteractionPanel : MonoBehaviour
     {
-        // Above the combat HUD and below the inventory.
-        public const int CanvasSortingOrder = 40;
+        public const string PanelName = "InteractionPanel";
 
         private const float PanelWidth = 460f;
         private WorldInteractionClientController interactionController;
         private WorldInteractionTargetingController targetingController;
+        private UiWindowManager windowManager;
+        private UiStackEntry entry;
         private RectTransform panel;
         private RectTransform content;
         private RectTransform gatheringProgressFill;
@@ -29,10 +33,12 @@ namespace Mmorpg.Client.Ui
 
         // Called by the composition root before the component is activated.
         public void Initialize(
+            UiWindowManager manager,
             WorldInteractionClientController worldInteraction,
             WorldInteractionTargetingController targeting,
             InventoryClientController inventory)
         {
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             interactionController = worldInteraction;
             targetingController = targeting;
             inventoryController = inventory;
@@ -113,26 +119,52 @@ namespace Mmorpg.Client.Ui
             {
                 inventoryController.State.Changed -= Rebuild;
             }
+
+            entry?.Remove();
+            entry = null;
+        }
+
+        // Escape stops the approach and closes the open interaction, as the Close button does,
+        // and otherwise dismisses the message the panel shows alone. A close that is on its way
+        // is waited for.
+        private void CloseByEscape()
+        {
+            if (interactionController == null)
+            {
+                return;
+            }
+
+            var state = interactionController.State;
+            var acted = false;
+            if (targetingController != null && targetingController.ApproachTarget != null)
+            {
+                targetingController.CancelApproach();
+                acted = true;
+            }
+
+            if (state.ActiveInteraction != null)
+            {
+                if (state.PendingOperationId == Guid.Empty)
+                {
+                    SubmitClose();
+                }
+
+                acted = true;
+            }
+
+            if (!acted && state.PendingOperationId == Guid.Empty)
+            {
+                state.ClearMessage();
+            }
         }
 
         private void BuildUi()
         {
-            TemporaryUiKit.EnsureEventSystem();
-            var canvasObject = new GameObject(
-                "TemporaryWorldInteractionCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            var canvas = UiCanvas.Create(transform, "TemporaryWorldInteractionCanvas", UiLayer.Panels, true);
+            entry = windowManager.Register(PanelName, UiLayer.Panels, canvas, CloseByEscape);
+            var canvasObject = canvas.gameObject;
 
-            var panelObject = TemporaryUiKit.CreateUiObject("InteractionPanel", canvasObject.transform);
+            var panelObject = TemporaryUiKit.CreateUiObject(PanelName, canvasObject.transform);
             panel = panelObject.GetComponent<RectTransform>();
             panel.anchorMin = new Vector2(0.5f, 0f);
             panel.anchorMax = new Vector2(0.5f, 0f);
@@ -179,6 +211,7 @@ namespace Mmorpg.Client.Ui
                 || state.PendingOperationId != Guid.Empty
                 || !string.IsNullOrWhiteSpace(state.LastMessage);
             panel.gameObject.SetActive(showPanel);
+            entry?.SetOpen(showPanel);
             if (!showPanel)
             {
                 return;

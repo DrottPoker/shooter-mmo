@@ -43,8 +43,8 @@ namespace Mmorpg.Client.Ui
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private ClientContentReport content;
         private LocalPlayerSource localPlayers;
-        // The local player and its input of this frame.
-        private LocalPlayerInput localPlayerInput;
+        private UiWindowManager windowManager;
+        // The local player of this frame.
         private LocalPlayerController localPlayerController;
         private TemporaryMenuWindow window;
         private CollisionDebugOverlay overlay;
@@ -128,6 +128,7 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated, with every realtime
         // part or none.
         public void Initialize(
+            UiWindowManager manager,
             IClientSession accountSession,
             WorldExit exit,
             IRealtimeSession session,
@@ -141,6 +142,7 @@ namespace Mmorpg.Client.Ui
             TextCatalog textCatalog,
             ClientContentReport contentReport)
         {
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             clientSession = accountSession;
             worldExit = exit;
             realtimeSession = session;
@@ -172,6 +174,7 @@ namespace Mmorpg.Client.Ui
             ReadLocalPlayer();
             BuildUi();
             SetOpen(false);
+            windowManager.SetCommand(UiCommand.ToggleDebugMenu, Toggle);
             if (viewSettings != null)
             {
                 viewSettings.Changed += OnViewSettingsChanged;
@@ -202,6 +205,11 @@ namespace Mmorpg.Client.Ui
 
         private void OnDestroy()
         {
+            if (windowManager != null)
+            {
+                windowManager.ClearCommand(UiCommand.ToggleDebugMenu, Toggle);
+            }
+
             if (viewSettings != null)
             {
                 viewSettings.Changed -= OnViewSettingsChanged;
@@ -215,15 +223,15 @@ namespace Mmorpg.Client.Ui
             window?.Destroy();
         }
 
+        // F2.
+        private void Toggle()
+        {
+            SetOpen(!IsOpen);
+        }
+
         private void Update()
         {
             ReadLocalPlayer();
-
-            if (localPlayerInput != null && localPlayerInput.ToggleDebugMenuPressedThisFrame)
-            {
-                SetOpen(!IsOpen);
-            }
-
             if (IsOpen)
             {
                 TrackPointer();
@@ -239,6 +247,7 @@ namespace Mmorpg.Client.Ui
         {
             window = TemporaryMenuWindow.Create(
                 transform,
+                windowManager,
                 WindowName,
                 "Debug",
                 "F2",
@@ -899,7 +908,6 @@ namespace Mmorpg.Client.Ui
         private void ReadLocalPlayer()
         {
             localPlayerController = localPlayers != null ? localPlayers.Controller : null;
-            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
         }
 
         private static float BytesToMebibytes(long bytes)

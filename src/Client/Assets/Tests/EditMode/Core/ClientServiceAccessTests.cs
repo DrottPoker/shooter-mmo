@@ -38,7 +38,7 @@ namespace Mmorpg.Client.Tests.EditMode
                 "FindAnyObjectByType<T>()",
                 "Composing a scene keeps a component that the scene already has."),
             (
-                "Ui/TemporaryUiKit.cs",
+                "Ui/Kit/UiLayers.cs",
                 "FindAnyObjectByType<EventSystem>()",
                 "uGUI needs one EventSystem in the open scene, which the UI kit adds when the scene has none.")
         };

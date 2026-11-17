@@ -14,7 +14,6 @@ namespace Mmorpg.Client.Ui
     // screen. A clicked button never keeps the selection, so Enter cannot click it a second time.
     public sealed class TemporaryEntryScreen
     {
-        public const int CanvasSortingOrder = 10;
         public const string GameTitle = "MMORPG";
 
         private const float FieldHeight = 36f;
@@ -31,22 +30,8 @@ namespace Mmorpg.Client.Ui
 
         public static TemporaryEntryScreen Create(Transform parent, string name)
         {
-            TemporaryUiKit.EnsureEventSystem();
             var screen = new TemporaryEntryScreen();
-            screen.canvasObject = new GameObject(
-                name + "Canvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            screen.canvasObject.transform.SetParent(parent, false);
-            var canvas = screen.canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = screen.canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            screen.canvasObject = UiCanvas.Create(parent, name + "Canvas", UiLayer.EntryScreen, true).gameObject;
 
             screen.Root = TemporaryUiKit.CreateUiObject(name, screen.canvasObject.transform).GetComponent<RectTransform>();
             TemporaryUiKit.Stretch(screen.Root, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);

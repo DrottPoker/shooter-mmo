@@ -352,9 +352,21 @@ namespace Mmorpg.Client.Ui
             input.caretWidth = 2;
             input.selectionColor = new Color(theme.AccentColor.r, theme.AccentColor.g, theme.AccentColor.b, 0.35f);
             input.richText = false;
+            // Escape leaves the field and keeps its text, whether the field or the window manager
+            // sees the key first.
+            input.restoreOriginalTextOnEscape = false;
             input.text = value ?? string.Empty;
             Layout(root, preferredHeight: theme.FieldHeight, flexibleWidth: 1f);
             return input;
+        }
+
+        // A thin line around a graphic, one pixel down and to the right.
+        public static Outline AddOutline(Graphic graphic, Color color)
+        {
+            var outline = graphic.gameObject.AddComponent<Outline>();
+            outline.effectColor = color;
+            outline.effectDistance = new Vector2(1f, -1f);
+            return outline;
         }
 
         // Hidden children leave layout at once; destruction itself happens at frame end.

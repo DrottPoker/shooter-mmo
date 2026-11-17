@@ -268,6 +268,7 @@ namespace Mmorpg.Client.Ui
 
             var catalog = State.Catalog;
             dialog.AskQuantity(
+                this,
                 Text("ui/inventory/split-heading"),
                 Text(
                     "ui/inventory/split-stack-size",
@@ -361,6 +362,7 @@ namespace Mmorpg.Client.Ui
                     MessageArgument.Text("quantity", item.Quantity.ToString(CultureInfo.InvariantCulture)))
                 : State.Catalog.GetDisplayName(item.DefinitionId);
             dialog.AskConfirmation(
+                this,
                 Text("ui/inventory/destroy-heading"),
                 Text("ui/inventory/destroy-question", MessageArgument.Text("item", name)),
                 Text("ui/inventory/destroy"),

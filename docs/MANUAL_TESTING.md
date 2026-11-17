@@ -887,6 +887,41 @@ The client shows its own text for every code that a server sends, as
    `[CLIENT] API request failed: network_error:` followed by Unity's own
    explanation.
 
+### Windows, Escape, And Keys While Typing
+
+The window manager closes one thing per Escape and keeps every key of the
+interface away from a text field; see
+[UI Window Manager](UNITY_CLIENT_ARCHITECTURE.md#ui-window-manager).
+
+1. Join Development World 2, walk to Mira the Quartermaster, and choose `Trade`.
+   Expected result: the interaction panel, Inventory, and the storage window on
+   its `Trade` tab open. Press L and C. Expected result: the quest log and
+   Equipment open, and the quest log, which opened after the storage window,
+   draws over it where the two meet.
+2. Ctrl+click a stack in the Inventory window. Expected result: the
+   `SPLIT STACK` question opens over every window. Press Escape six times.
+   Expected result: each press closes one thing and nothing else: the question,
+   Equipment, the quest log, the storage window, Inventory, and then the
+   interaction panel with Mira's interaction. The panel then shows
+   `The interaction closed.`, which the seventh Escape dismisses; an eighth
+   changes nothing.
+3. Press B and L, click the Inventory window's frame, and press Escape.
+   Expected result: Inventory closes first, although the quest log opened after
+   it, and the next Escape closes the quest log.
+4. Press B, click into the search field, and type `ore`, then press B, I, C, L,
+   F2, and F3. Expected result: every letter goes into the field as text, and no
+   window or menu opens or closes. Press Escape. Expected result: the field loses
+   its caret, keeps `ore`, and Inventory stays open. Press Escape again.
+   Expected result: Inventory closes.
+5. Press F2 and F3, then Escape twice. Expected result: the Admin menu closes,
+   then the Debug menu. Right-click the ground, press F2, and press Escape.
+   Expected result: the world menu closes first, and the Debug menu stays open
+   until the next Escape.
+6. Attack a wolf with no window open and press Escape. Expected result: the
+   attack ends. Choose `Pick a spot` in the Admin menu's `Movement` tab and
+   press Escape. Expected result: `Teleport cancelled.`, and the Admin menu stays
+   open until the next Escape.
+
 ### Busy Buttons And Lost Connections
 
 1. Double-click `Create Account`, `Create Character`, `Refresh`, `Enter World`,
@@ -1752,9 +1787,11 @@ Admin menu (F3) opens them on its `Storage` tab.
 3. Press F3 and choose `Open Bank` on the `Storage` tab. Expected result: the
    storage window opens directly left of Inventory with `Bank` and `Recovery`
    tabs and the Bank in rows of five. Neither other window moves.
-4. Close each window with its `X`, then open them again and press Escape.
-   Expected result: an `X` closes only its window, and Escape closes every
-   inventory window, while the cursor stays free.
+4. Close each window with its `X`. Expected result: an `X` closes only its
+   window. Press B and C, press F3 and choose `Open Bank`, and press Escape four
+   times. Expected result: each Escape closes one thing, the newest first: the
+   storage window, the Admin menu, Equipment, and Inventory, while the cursor
+   stays free.
 5. Look at the slots and hover items. Expected result: every slot is a square
    of the same size. Occupied slots show the placeholder icon, a grey cube, in
    a white frame, and the stack quantity in the lower-right corner; the Sealed
@@ -1766,7 +1803,9 @@ Admin menu (F3) opens them on its `Storage` tab.
    The carry meter is cyan up to its marker.
 6. Type `ore` into the search field, then `MATERIAL`, then clear it. Expected
    result: every item whose name or category does not contain the text dims, in
-   all open windows, and typing `b`, `c`, or `i` there never toggles a window.
+   all open windows, and typing `b`, `c`, `i`, or `l` there never toggles a
+   window; the full check of the keys while typing is
+   [Windows, Escape, And Keys While Typing](#windows-escape-and-keys-while-typing).
 7. With the windows open, left-click the ground beside them, right-click it,
    and scroll there, then do the same on a window. Expected result: the world is
    not dimmed. Beside the windows the character walks, keeps steering while the
@@ -2095,9 +2134,10 @@ the town, around `(-12, 0, -92)`. Give the character the Equipment Test Pack.
    stops, the status reads `Attacking`, arrows fly, white damage numbers rise
    above the wolf's nameplate, its health bar slides down, and the arrow count
    drops by one per shot in the frame and in the inventory's `Ammunition` slot.
-5. Click the ground or press Escape while it fights. Expected result: the target
-   frame closes, the status reads `No target`, the shooting stops, and the
-   arrow count stays.
+5. Click the ground, or press Escape with no window open, while it fights.
+   Expected result: the target frame closes, the status reads `No target`, the
+   shooting stops, and the arrow count stays. With the Equipment window still
+   open, the first Escape closes it and the attack goes on.
 6. Attack a wolf until it dies. Expected result: the target frame closes, the
    wolf leaves a corpse, and a new wolf appears at its spawn after 30 seconds.
    The corpse holds a Wolf Pelt and sometimes Bronze Arrows; looting it is

@@ -11,8 +11,6 @@ namespace Mmorpg.Client.Ui
     [DisallowMultipleComponent]
     public sealed class TemporaryGameMessagePanel : MonoBehaviour
     {
-        // Below the world interaction panel.
-        public const int CanvasSortingOrder = TemporaryWorldInteractionPanel.CanvasSortingOrder - 5;
         public const float VisibleSeconds = 12f;
         public const float FadeSeconds = 2f;
 
@@ -136,18 +134,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            var canvasObject = new GameObject(
-                "TemporaryGameMessageCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            var canvasObject = UiCanvas.Create(transform, "TemporaryGameMessageCanvas", UiLayer.GameMessages, false).gameObject;
 
             var panelObject = TemporaryUiKit.CreateUiObject("GameMessages", canvasObject.transform);
             panel = panelObject.GetComponent<RectTransform>();

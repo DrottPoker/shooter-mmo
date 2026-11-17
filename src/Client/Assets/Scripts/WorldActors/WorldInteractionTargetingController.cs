@@ -11,8 +11,9 @@ namespace Mmorpg.Client.WorldActors
     // World interaction's part of the world menu. An NPC or resource node offers one option per
     // capability, in authored order, such as Talk-to, Trade, or Mine, and a corpse offers Loot;
     // a Mob belongs to combat. Choosing one walks the player into range, asks the worker to
-    // open the interaction, and then starts the chosen capability. Escape closes it. The
-    // worker still owns range, line of sight, revision, session, and availability validation.
+    // open the interaction, and then starts the chosen capability. Cancel, which the
+    // interface's Escape runs, stops the approach and closes it. The worker still owns range,
+    // line of sight, revision, session, and availability validation.
     [DisallowMultipleComponent]
     public sealed class WorldInteractionTargetingController : MonoBehaviour, IWorldMenuProvider
     {
@@ -93,17 +94,18 @@ namespace Mmorpg.Client.WorldActors
                 return;
             }
 
-            if (localPlayer.PlayerInput.CancelPressedThisFrame
-                && (menu == null || !menu.CancelConsumedThisFrame))
-            {
-                CancelApproach();
-                if (interactionController != null && interactionController.HasActiveLease)
-                {
-                    SubmitCloseActive();
-                }
-            }
-
             UpdateApproach();
+        }
+
+        // What Escape does with nothing of the interface open: stops the approach and closes the
+        // open interaction or corpse.
+        public void Cancel()
+        {
+            CancelApproach();
+            if (interactionController != null && interactionController.HasActiveLease)
+            {
+                SubmitCloseActive();
+            }
         }
 
         public void AddWorldMenuOptions(WorldMenuBuilder worldMenu)
@@ -292,7 +294,8 @@ namespace Mmorpg.Client.WorldActors
             }
         }
 
-        private void CancelApproach()
+        // Stops walking to the target before its interaction opens.
+        public void CancelApproach()
         {
             if (approachTarget == null)
             {

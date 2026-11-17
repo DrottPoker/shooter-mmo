@@ -546,15 +546,22 @@ namespace Mmorpg.Client.App
         // so Awake and OnEnable already see their dependencies.
         private void ComposeScene(Scene scene)
         {
-            if (!IsContentReady)
+            if (!IsContentReady
+                || (scene.name != SceneNames.LoginMenu
+                    && scene.name != SceneNames.CharacterSelect
+                    && !WorldSceneCatalog.IsWorldScene(scene.name)))
             {
                 return;
             }
 
+            // Every window and panel of the scene stands on its one window manager, which also
+            // runs Escape and the interface's keys.
+            var windowManager = AddSceneComponentIfMissing<UiWindowManager>(
+                manager => manager.Initialize(uiTheme, texts, localPlayer));
             if (scene.name == SceneNames.LoginMenu)
             {
                 AddSceneComponentIfMissing<LoginMenuPanel>(
-                    panel => panel.Initialize(clientSession, texts, ContentNotice(), TakeExitNotice()));
+                    panel => panel.Initialize(windowManager, clientSession, texts, ContentNotice(), TakeExitNotice()));
                 return;
             }
 
@@ -570,11 +577,6 @@ namespace Mmorpg.Client.App
                         texts,
                         notices,
                         TakeExitNotice()));
-                return;
-            }
-
-            if (!WorldSceneCatalog.IsWorldScene(scene.name))
-            {
                 return;
             }
 
@@ -605,6 +607,7 @@ namespace Mmorpg.Client.App
 
             AddSceneComponentIfMissing<TemporaryDebugMenu>(
                 menu => menu.Initialize(
+                    windowManager,
                     clientSession,
                     worldExit,
                     realtime.Session,
@@ -628,6 +631,7 @@ namespace Mmorpg.Client.App
             {
                 AddSceneComponentIfMissing<TemporaryAdminMenu>(
                     menu => menu.Initialize(
+                        windowManager,
                         realtime.Admin,
                         realtime.Session,
                         realtime.Movement,
@@ -642,12 +646,11 @@ namespace Mmorpg.Client.App
             var inventoryWindows = AddSceneComponentIfMissing<InventoryWindows>(
                 windows => windows.Initialize(
                     uiTheme,
+                    windowManager,
                     inventoryController,
                     corpseController,
                     worldInteractionController,
                     combatController,
-                    worldMenu,
-                    localPlayer,
                     gameMessages,
                     inventoryWindowRequests,
                     texts,
@@ -657,13 +660,12 @@ namespace Mmorpg.Client.App
             AddSceneComponentIfMissing<QuestWindows>(
                 windows => windows.Initialize(
                     uiTheme,
+                    windowManager,
                     questController,
                     inventoryController,
                     worldInteractionController,
-                    localPlayer,
                     gameMessages,
                     texts,
-                    worldMenu,
                     inventoryWindows));
             var actorPresentation = AddSceneComponentIfMissing<WorldActorPresentationController>(
                 presentation => presentation.Initialize(
@@ -693,18 +695,28 @@ namespace Mmorpg.Client.App
                     WaterSurfaces.FromScene(scene),
                     waterRingMaterial,
                     waterSprayMaterial));
+            // With nothing of the interface open, Escape stops an approach and closes the open
+            // interaction or corpse, and ends the attack.
             var interactionTargeting = AddSceneComponentIfMissing<WorldInteractionTargetingController>(
-                targeting => targeting.Initialize(
-                    worldInteractionController,
-                    worldActorController,
-                    worldMenu,
-                    localPlayer,
-                    gameMessages,
-                    texts));
+                targeting =>
+                {
+                    targeting.Initialize(
+                        worldInteractionController,
+                        worldActorController,
+                        worldMenu,
+                        localPlayer,
+                        gameMessages,
+                        texts);
+                    windowManager.AddEscapeHandler(UiEscapeLevel.NothingOpen, () =>
+                    {
+                        targeting.Cancel();
+                        return true;
+                    });
+                });
             AddSceneComponentIfMissing<TemporaryWorldInteractionPanel>(
-                panel => panel.Initialize(worldInteractionController, interactionTargeting, inventoryController));
+                panel => panel.Initialize(windowManager, worldInteractionController, interactionTargeting, inventoryController));
             AddSceneComponentIfMissing<TemporaryWorldContextMenu>(
-                menu => menu.Initialize(worldMenu));
+                menu => menu.Initialize(worldMenu, windowManager));
             AddSceneComponentIfMissing<TemporaryGameMessagePanel>(
                 panel => panel.Initialize(gameMessages));
             AddSceneComponentIfMissing<ReconnectNotice>(
@@ -717,14 +729,22 @@ namespace Mmorpg.Client.App
                 sceneContext,
                 actorPresentation);
             var combatTargeting = AddSceneComponentIfMissing<CombatTargetingController>(
-                targeting => targeting.Initialize(
-                    combatController,
-                    realtime.Session,
-                    worldActorController,
-                    inventoryController,
-                    combatantViews,
-                    worldMenu,
-                    texts));
+                targeting =>
+                {
+                    targeting.Initialize(
+                        combatController,
+                        realtime.Session,
+                        worldActorController,
+                        inventoryController,
+                        combatantViews,
+                        worldMenu,
+                        texts);
+                    windowManager.AddEscapeHandler(UiEscapeLevel.NothingOpen, () =>
+                    {
+                        targeting.ClearTarget();
+                        return true;
+                    });
+                });
             AddSceneComponentIfMissing<CombatProjectilePresentation>(
                 presentation => presentation.Initialize(
                     combatController,

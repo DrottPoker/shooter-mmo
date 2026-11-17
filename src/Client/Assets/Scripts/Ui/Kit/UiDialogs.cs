@@ -9,7 +9,9 @@ using UnityEngine.UI;
 namespace Mmorpg.Client.Ui
 {
     // A small framed box that asks one thing, such as how many items to split or whether to
-    // destroy an item. One dialog shows at a time; Enter confirms and Escape cancels.
+    // destroy an item. The window manager hosts one for the whole scene, so one dialog shows at
+    // a time; Enter confirms, and Escape, through the window manager, cancels. Each question has
+    // an owner, which may close its own question and leave another owner's open.
     [DisallowMultipleComponent]
     public sealed class UiDialog : MonoBehaviour
     {
@@ -36,6 +38,9 @@ namespace Mmorpg.Client.Ui
         // The asked question's heading as given; it shows in capitals.
         public string Title { get; private set; } = string.Empty;
 
+        // Who asked the open question, or null.
+        public object Owner { get; private set; }
+
         public string Message
         {
             get { return message.text; }
@@ -58,6 +63,7 @@ namespace Mmorpg.Client.Ui
         // Asks for a quantity from minimum to maximum, starting at the initial value, near a
         // screen position.
         public void AskQuantity(
+            object owner,
             string heading,
             string text,
             int minimumQuantity,
@@ -70,7 +76,7 @@ namespace Mmorpg.Client.Ui
             maximum = Math.Max(minimum, maximumQuantity);
             quantityRow.gameObject.SetActive(true);
             quantityField.text = Clamp(initialQuantity).ToString(CultureInfo.InvariantCulture);
-            Open(heading, text, texts.Get("ui/common/ok"), UiButtonTone.Primary, onConfirmed);
+            Open(owner, heading, text, texts.Get("ui/common/ok"), UiButtonTone.Primary, onConfirmed);
             PlaceNear(screenPosition);
             quantityField.ActivateInputField();
             quantityField.selectionAnchorPosition = 0;
@@ -78,13 +84,22 @@ namespace Mmorpg.Client.Ui
         }
 
         // Asks to confirm an action, such as destroying an item, in the middle of the screen.
-        public void AskConfirmation(string heading, string text, string confirmLabel, Action onConfirmed)
+        public void AskConfirmation(object owner, string heading, string text, string confirmLabel, Action onConfirmed)
         {
             minimum = 1;
             maximum = 1;
             quantityRow.gameObject.SetActive(false);
-            Open(heading, text, confirmLabel, UiButtonTone.Danger, _ => onConfirmed?.Invoke());
+            Open(owner, heading, text, confirmLabel, UiButtonTone.Danger, _ => onConfirmed?.Invoke());
             rect.anchoredPosition = new Vector2(-Width / 2f, rect.rect.height / 2f);
+        }
+
+        // Closes the open question if this owner asked it.
+        public void CloseFor(object owner)
+        {
+            if (IsOpen && ReferenceEquals(Owner, owner))
+            {
+                Close();
+            }
         }
 
         public void Confirm()
@@ -103,6 +118,7 @@ namespace Mmorpg.Client.Ui
         public void Close()
         {
             confirmed = null;
+            Owner = null;
             if (gameObject.activeSelf)
             {
                 gameObject.SetActive(false);
@@ -123,8 +139,9 @@ namespace Mmorpg.Client.Ui
             }
         }
 
-        private void Open(string heading, string text, string confirmLabel, UiButtonTone tone, Action<int> onConfirmed)
+        private void Open(object owner, string heading, string text, string confirmLabel, UiButtonTone tone, Action<int> onConfirmed)
         {
+            Owner = owner;
             confirmed = onConfirmed;
             Title = heading ?? string.Empty;
             UiFactory.SetHeading(title, Title);

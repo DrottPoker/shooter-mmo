@@ -15,15 +15,13 @@ namespace Mmorpg.Client.Ui
     // a grey ! for one that needs a higher level, a yellow ? for something to turn in, talk
     // about, or hand over, and a grey ? for an active quest that the NPC completes once it is
     // ready, as QuestMarkers derives them. It reads the quest state, the inventory, and the actor
-    // views and decides nothing. The markers have a canvas of their own beside the nameplates',
-    // take no raycasts, and are placed after the camera moved, so they stay over the heads. A
+    // views and decides nothing. The markers have a canvas of their own in the WorldQuestMarkers
+    // layer, just above the nameplates', take no raycasts, and are placed after the camera moved, so they stay over the heads. A
     // farther marker is smaller, like a nameplate.
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(PresentationExecutionOrder.ScreenAnchoredInterface)]
     public sealed class WorldQuestMarkers : MonoBehaviour
     {
-        public const int CanvasSortingOrder = WorldNameplates.CanvasSortingOrder;
-
         // Every NPC this near the local character shows its marker, as far as a Mob's nameplate.
         public const float RangeMetres = NameplatePresentation.MobRangeMetres;
 
@@ -267,22 +265,9 @@ namespace Mmorpg.Client.Ui
 
         private void BuildCanvas()
         {
-            var canvasObject = new GameObject(
-                "WorldQuestMarkerCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-
-            layer = TemporaryUiKit.CreateUiObject("QuestMarkerLayer", canvasObject.transform)
-                .GetComponent<RectTransform>();
-            TemporaryUiKit.Stretch(layer, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var canvas = UiCanvas.Create(transform, "WorldQuestMarkerCanvas", UiLayer.WorldQuestMarkers, false);
+            layer = UiFactory.Create("QuestMarkerLayer", canvas.transform);
+            UiFactory.Fill(layer);
         }
 
         // The label's pivot is the anchor point over the head, at the bottom of the glyph.

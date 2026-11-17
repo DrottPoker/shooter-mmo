@@ -21,7 +21,8 @@ namespace Mmorpg.Client.Ui
     // accepts, completes, and resets quests. Only a worker in the Development environment allows them, which
     // it says by sending the admin state after the join; without it the menu explains that the
     // tools are off. While the menu is open, the world menu offers Teleport here on the ground,
-    // and after Pick a spot a left click on the ground teleports.
+    // and after Pick a spot a left click on the ground teleports; Escape cancels the pick before
+    // it closes anything else.
     public sealed class TemporaryAdminMenu : MonoBehaviour, IWorldMenuProvider
     {
         public const string WindowName = "AdminMenu";
@@ -43,6 +44,7 @@ namespace Mmorpg.Client.Ui
         private IRealtimeMovementChannel realtimeMovement;
         private PlayerBodyLookSetting bodyLook;
         private WorldMenuController worldMenu;
+        private UiWindowManager windowManager;
         private CombatClientController combat;
         private InventoryWindowRequests inventoryWindowRequests;
         private QuestClientController quests;
@@ -87,6 +89,7 @@ namespace Mmorpg.Client.Ui
 
         // Called by the composition root before the component is activated.
         public void Initialize(
+            UiWindowManager manager,
             IRealtimeAdminChannel admin,
             IRealtimeSession session,
             IRealtimeMovementChannel movement,
@@ -97,6 +100,7 @@ namespace Mmorpg.Client.Ui
             InventoryWindowRequests windowRequests = null,
             QuestClientController questController = null)
         {
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             adminChannel = admin;
             realtimeSession = session;
             realtimeMovement = movement;
@@ -191,6 +195,8 @@ namespace Mmorpg.Client.Ui
             }
 
             worldMenu?.AddProvider(this, WorldMenuOrder.Admin);
+            windowManager.SetCommand(UiCommand.ToggleAdminMenu, Toggle);
+            windowManager.AddEscapeHandler(UiEscapeLevel.PointerMode, CancelPick);
         }
 
         private void OnDestroy()
@@ -213,41 +219,48 @@ namespace Mmorpg.Client.Ui
             }
 
             worldMenu?.RemoveProvider(this);
+            if (windowManager != null)
+            {
+                windowManager.ClearCommand(UiCommand.ToggleAdminMenu, Toggle);
+                windowManager.RemoveEscapeHandler(CancelPick);
+            }
+
             questTab?.Dispose();
             window?.Destroy();
         }
 
         private void Update()
         {
-            ReadLocalPlayer();
-            var input = localPlayer != null ? localPlayer.PlayerInput : null;
-            if (input == null)
-            {
-                return;
-            }
-
-            if (input.ToggleAdminMenuPressedThisFrame)
-            {
-                SetOpen(!IsOpen);
-            }
-            else if (IsPickingTeleport
-                && input.CancelPressedThisFrame
-                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame))
-            {
-                SetPicking(false);
-                ShowResult("Teleport cancelled.", TemporaryUiKit.TextSecondary);
-            }
-
             if (ToolsAvailable != lastAvailable)
             {
                 RefreshAll();
             }
         }
 
+        // F3.
+        private void Toggle()
+        {
+            SetOpen(!IsOpen);
+        }
+
+        // Escape cancels Pick a spot.
+        private bool CancelPick()
+        {
+            if (!IsPickingTeleport)
+            {
+                return false;
+            }
+
+            SetPicking(false);
+            ShowResult("Teleport cancelled.", TemporaryUiKit.TextSecondary);
+            return true;
+        }
+
         private void BuildUi()
         {
             window = TemporaryMenuWindow.Create(
                 transform,
+                windowManager,
                 WindowName,
                 "Admin",
                 "F3  Development only",

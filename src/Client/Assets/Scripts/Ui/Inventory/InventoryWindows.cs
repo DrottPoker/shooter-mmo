@@ -42,32 +42,27 @@ namespace Mmorpg.Client.Ui
     // The inventory windows: Equipment, Inventory, and the storage window for a Bank, Recovery
     // Storage, a corpse, or a vendor. Each window opens and closes on its own and sits at a
     // fixed place: Equipment at the left edge, Inventory at the right edge, and storage to the
-    // left of Inventory. The windows read the persistent client state and send every action
-    // through InventoryInteractions; they own no item rule. They run after the world menu and
-    // before the features, so an Escape that dismissed a dialog reaches nothing else.
-    [DefaultExecutionOrder(ExecutionOrder)]
+    // left of Inventory. The windows stand on the window manager's stack in the Windows layer;
+    // the inventory canvas itself draws only the tooltip and the dragged item, in the Tooltips
+    // layer above them. The windows read the persistent client state and send every action
+    // through InventoryInteractions; they own no item rule.
     [DisallowMultipleComponent]
     public sealed partial class InventoryWindows : MonoBehaviour
     {
-        public const int ExecutionOrder = WorldMenuController.ExecutionOrder + 10;
-
         public const string EquipmentWindowName = "EquipmentWindow";
         public const string InventoryWindowName = "InventoryWindow";
         public const string StorageWindowName = "StorageWindow";
-
-        // The inventory canvas draws above the world interaction panel and the combat HUD.
-        public const int CanvasSortingOrder = 100;
 
         // How long an undone item move stays marked in red.
         private const float RollbackMarkSeconds = 1.5f;
 
         private UiTheme theme;
+        private UiWindowManager windowManager;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private InventoryClientController controller;
         private CorpseClientController corpseController;
         private WorldInteractionClientController worldInteractionController;
         private CombatClientController combatController;
-        private WorldMenuController worldMenu;
         private GameMessageLog gameMessages;
         private InventoryWindowRequests requests;
         private PlayerBodyLookSetting bodyLook;
@@ -75,9 +70,6 @@ namespace Mmorpg.Client.Ui
         private WorldPointerFocus pointerFocus;
         private Func<bool> pointerCapture;
         private InventoryInteractions interactions;
-        private LocalPlayerSource localPlayers;
-        // The local player's input of this frame.
-        private LocalPlayerInput localPlayerInput;
         private RectTransform root;
         private InventoryDragCoordinator dragCoordinator;
         private InventoryTooltipView tooltip;
@@ -139,6 +131,7 @@ namespace Mmorpg.Client.Ui
             get { return searchQuery; }
         }
 
+        // The window manager's dialog, which the windows ask their questions in.
         public UiDialog Dialog
         {
             get { return dialog; }
@@ -199,12 +192,11 @@ namespace Mmorpg.Client.Ui
         // Called by the composition root before the component is activated.
         public void Initialize(
             UiTheme uiTheme,
+            UiWindowManager manager,
             InventoryClientController inventoryController,
             CorpseClientController corpses,
             WorldInteractionClientController worldInteraction,
             CombatClientController combat,
-            WorldMenuController menu,
-            LocalPlayerSource localPlayerSource,
             GameMessageLog messages,
             InventoryWindowRequests windowRequests,
             TextCatalog uiTexts,
@@ -213,6 +205,7 @@ namespace Mmorpg.Client.Ui
             WorldPointerFocus focus = null)
         {
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
             characterPreview = preview;
             pointerFocus = focus;
             theme = uiTheme;
@@ -220,8 +213,6 @@ namespace Mmorpg.Client.Ui
             corpseController = corpses;
             worldInteractionController = worldInteraction;
             combatController = combat;
-            worldMenu = menu;
-            localPlayers = localPlayerSource;
             gameMessages = messages;
             requests = windowRequests;
             bodyLook = lookSetting;
@@ -239,7 +230,8 @@ namespace Mmorpg.Client.Ui
         }
 
         // Opens the storage window on a context, and the Inventory window beside it, so a
-        // transfer has its source and destination in view.
+        // transfer has its source and destination in view. The storage window comes to the top,
+        // also when it was open already.
         public void OpenStorage(InventoryContextKind context, InventoryStorageSource source)
         {
             if (context == InventoryContextKind.None)
@@ -256,6 +248,7 @@ namespace Mmorpg.Client.Ui
 
             SetWindowOpen(inventory.Window, true);
             SetWindowOpen(storage.Window, true);
+            storage.Window.Focus();
             Refresh();
         }
 
@@ -294,7 +287,7 @@ namespace Mmorpg.Client.Ui
 
         public void CloseAll()
         {
-            dialog.Close();
+            CloseOwnQuestion();
             dragCoordinator.Cancel();
             CloseStorage();
             SetWindowOpen(equipment.Window, false);
@@ -488,14 +481,14 @@ namespace Mmorpg.Client.Ui
                 requests.StorageRequested += OnStorageRequested;
             }
 
-            ReadPlayerInput();
             BuildUi();
+            windowManager.SetCommand(UiCommand.ToggleInventory, ToggleInventory);
+            windowManager.SetCommand(UiCommand.ToggleEquipment, ToggleEquipment);
+            windowManager.AddEscapeHandler(UiEscapeLevel.PointerMode, PutBackDraggedItem);
         }
 
         private void Update()
         {
-            ReadPlayerInput();
-
             if (rolledBackItemIds.Count > 0 && Time.unscaledTime >= rollbackMarkUntil)
             {
                 rolledBackItemIds.Clear();
@@ -506,55 +499,31 @@ namespace Mmorpg.Client.Ui
             {
                 Refresh();
             }
+        }
 
-            if (localPlayerInput == null)
+        // B and I.
+        private void ToggleInventory()
+        {
+            SetInventoryOpen(!IsInventoryOpen);
+        }
+
+        // C.
+        private void ToggleEquipment()
+        {
+            SetEquipmentOpen(!IsEquipmentOpen);
+        }
+
+        // Escape puts back an item that rides on the pointer, held or carried, before it closes
+        // a window.
+        private bool PutBackDraggedItem()
+        {
+            if (dragCoordinator == null || (!dragCoordinator.IsCarrying && !dragCoordinator.IsDragging))
             {
-                return;
+                return false;
             }
 
-            // A key typed into the search field is text, not a window key.
-            var typing = inventory != null && inventory.IsTyping;
-            if (!typing && (localPlayerInput.ToggleCharacterInventoryPressedThisFrame
-                || localPlayerInput.ToggleInventoryPressedThisFrame))
-            {
-                SetInventoryOpen(!IsInventoryOpen);
-            }
-            else if (!typing && localPlayerInput.ToggleEquipmentInventoryPressedThisFrame)
-            {
-                SetEquipmentOpen(!IsEquipmentOpen);
-            }
-            else if (localPlayerInput.CancelPressedThisFrame
-                && (worldMenu == null || !worldMenu.CancelConsumedThisFrame))
-            {
-                // An Escape that dismissed a dialog does nothing else: the windows run before
-                // the features, which then leave the interaction and the combat target alone.
-                // Otherwise the targeting controller closes the interaction on Cancel too. An
-                // Escape that only closed the world menu leaves the windows open.
-                if (dialog.IsOpen || dragCoordinator.IsCarrying)
-                {
-                    // A dialog closes first, then a part carried on the pointer is put back.
-                    if (dialog.IsOpen)
-                    {
-                        dialog.Close();
-                    }
-                    else
-                    {
-                        dragCoordinator.Cancel();
-                    }
-
-                    if (worldMenu != null)
-                    {
-                        worldMenu.ConsumeCancel();
-                    }
-                }
-                else if (IsAnyOpen)
-                {
-                    dragCoordinator.Cancel();
-                    CloseStorage(false);
-                    SetWindowOpen(equipment.Window, false);
-                    SetWindowOpen(inventory.Window, false);
-                }
-            }
+            dragCoordinator.Cancel();
+            return true;
         }
 
         private void OnDisable()
@@ -599,6 +568,14 @@ namespace Mmorpg.Client.Ui
                 requests.StorageRequested -= OnStorageRequested;
             }
 
+            if (windowManager != null)
+            {
+                windowManager.ClearCommand(UiCommand.ToggleInventory, ToggleInventory);
+                windowManager.ClearCommand(UiCommand.ToggleEquipment, ToggleEquipment);
+                windowManager.RemoveEscapeHandler(PutBackDraggedItem);
+            }
+
+            CloseOwnQuestion();
             if (characterPreview != null)
             {
                 characterPreview.Visible = false;
@@ -641,7 +618,7 @@ namespace Mmorpg.Client.Ui
             if (!open)
             {
                 dragCoordinator.Cancel();
-                dialog.Close();
+                CloseOwnQuestion();
             }
 
             window.SetOpen(open);
@@ -652,6 +629,16 @@ namespace Mmorpg.Client.Ui
 
             ShowPreviewWhileEquipmentIsOpen();
             Refresh();
+        }
+
+        // Closes the question the windows asked in the window manager's dialog, which another
+        // window's question leaves open, and which may be gone first when the scene unloads.
+        private void CloseOwnQuestion()
+        {
+            if (dialog != null)
+            {
+                dialog.CloseFor(this);
+            }
         }
 
         // The preview draws only while the Equipment window shows it.
@@ -742,11 +729,6 @@ namespace Mmorpg.Client.Ui
             OpenStorage(context, InventoryStorageSource.Development);
         }
 
-        private void ReadPlayerInput()
-        {
-            localPlayerInput = localPlayers != null ? localPlayers.Input : null;
-        }
-
         private void BuildUi()
         {
             if (theme == null)
@@ -754,21 +736,9 @@ namespace Mmorpg.Client.Ui
                 theme = UiTheme.Load(out _);
             }
 
-            TemporaryUiKit.EnsureEventSystem();
-            var canvasObject = new GameObject(
-                "InventoryCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            // The canvas draws the tooltip and the dragged item over every window; each window
+            // has a canvas of its own in the Windows layer below.
+            var canvasObject = UiCanvas.Create(transform, "InventoryCanvas", UiLayer.Tooltips, false).gameObject;
             dragCoordinator = canvasObject.AddComponent<InventoryDragCoordinator>();
             dragCoordinator.Configure(canvasObject.GetComponent<RectTransform>(), theme);
             dragCoordinator.DroppedOutside += OnDroppedOutside;
@@ -801,10 +771,13 @@ namespace Mmorpg.Client.Ui
             inventory.Window.CloseRequested += () => SetInventoryOpen(false);
             storage.Window.CloseRequested += () => CloseStorage();
             tooltip.transform.SetAsLastSibling();
-            dialog = UiDialog.Create(theme, root, texts);
+            dialog = windowManager.Dialog;
             equipment.Window.SetOpen(false);
             inventory.Window.SetOpen(false);
             storage.Window.SetOpen(false);
+            equipment.Window.Attach(windowManager, UiLayer.Windows);
+            inventory.Window.Attach(windowManager, UiLayer.Windows);
+            storage.Window.Attach(windowManager, UiLayer.Windows);
         }
 
         private static InventoryContextKind ContextOf(RealtimeWorldActorCapabilityKind kind)

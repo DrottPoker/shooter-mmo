@@ -72,7 +72,7 @@ largest, is split by area:
 | `Gameplay/Cloth` | The cloth chains on the bodies with their solver and scheduler; the cloth math itself is the assembly `Mmorpg.Client.Cloth` |
 | `Gameplay/Diagnostics` | The Debug menu's collision and path overlay and its settings |
 | `Networking/Channels` | A channel per feature of the realtime client, each an interface with its implementation; see [Realtime Networking Layer](#realtime-networking-layer) |
-| `Ui/Kit` | The themed widgets of the permanent UI; see [UI Kit And Theme](#ui-kit-and-theme) |
+| `Ui/Kit` | The themed widgets of the permanent UI, the layer table, and the window manager; see [UI Kit And Theme](#ui-kit-and-theme) and [UI Window Manager](#ui-window-manager) |
 | `Ui/Inventory` | The inventory windows and the logic of what their actions send; see [Inventory UI](#inventory-ui) |
 
 ### Editor
@@ -433,19 +433,21 @@ as [Local Player Lifecycle](#local-player-lifecycle) describes. No runtime code
 searches the scene for a service or the player, or asks for `Camera.main`, except
 in three places that `ClientServiceAccessTests` lists with their reasons: the
 bootstrap's guard against a second bootstrap, its `AddSceneComponentIfMissing`,
-which keeps a component that a scene already has, and `TemporaryUiKit`, which
-adds the EventSystem that uGUI needs when the scene has none. The cloth
+which keeps a component that a scene already has, and `UiCanvas` of the UI kit,
+which adds the EventSystem that uGUI needs when the scene has none. The cloth
 scheduler, which serves every body, gets the camera that renders the World from
 `WorldSceneContext` with the local player.
 
-When a scene loads, the bootstrap composes it. LoginMenu gets `LoginMenuPanel`
-and CharacterSelect gets `CharacterSelectPanel`, each with the text of the code
-that `ClientNotices` holds, which it takes so the notice shows once, as
-[Entry Screen Notices](#entry-screen-notices) describes. In a World scene, the
-scene-authored `WorldSceneContext` receives the client session, the realtime
-session and its movement, player, look, and admin channels, the local player
-source, the pointer focus, and the body settings before `Start` runs, and the
-bootstrap adds the runtime components listed in
+When a scene loads, the bootstrap composes it. Every composed scene first gets
+its one `UiWindowManager`, which the bootstrap hands to the scene's windows and
+panels, as [UI Window Manager](#ui-window-manager) describes. LoginMenu gets
+`LoginMenuPanel` and CharacterSelect gets `CharacterSelectPanel`, each with the
+text of the code that `ClientNotices` holds, which it takes so the notice shows
+once, as [Entry Screen Notices](#entry-screen-notices) describes. In a World
+scene, the scene-authored `WorldSceneContext` receives the client session, the
+realtime session and its movement, player, look, and admin channels, the local
+player source, the pointer focus, and the body settings before `Start` runs, and
+the bootstrap adds the runtime components listed in
 [Runtime Structure](#runtime-structure). A component the scene already has is
 kept.
 
@@ -1415,15 +1417,15 @@ unloads, so a return to a built-in scene needs no explicit release.
 ### Account Entry Screens
 
 LoginMenu and CharacterSelect are built in code on `TemporaryEntryScreen`, a
-full-screen canvas at sorting order 10 with a dark backdrop and cards on it. It
-holds the keyboard rules of a form: `Tab` and `Shift+Tab` move between the
-visible text fields in the order they were added, and `Enter` runs the screen's
-main action. It clears the EventSystem selection whenever a button holds it, so
-the UI module's `Submit` can never click a button a second time. Each screen
-disables its controls through a `CanvasGroup` while its `ClientOperationState`
-runs an operation. The texts, such as `Human_Male` read as `Human Male`, an
-error with its code, and why Enter World cannot run, come from
-`AccountEntryPresentation`, which EditMode tests cover without a scene.
+full-screen canvas in the `EntryScreen` layer with a dark backdrop and cards on
+it. It holds the keyboard rules of a form: `Tab` and `Shift+Tab` move between
+the visible text fields in the order they were added, and `Enter` runs the
+screen's main action. It clears the EventSystem selection whenever a button
+holds it, so the UI module's `Submit` can never click a button a second time.
+Each screen disables its controls through a `CanvasGroup` while its
+`ClientOperationState` runs an operation. The texts, such as `Human_Male` read
+as `Human Male`, an error with its code, and why Enter World cannot run, come
+from `AccountEntryPresentation`, which EditMode tests cover without a scene.
 
 `AccountEntryPreferences` keeps, in `PlayerPrefs`, the login name of the last
 successful login and the character and shard of the last accepted join, never a
@@ -1503,29 +1505,18 @@ and the first view is ready, as [Body Content](#body-content) and
 [Crowd Performance](#crowd-performance) describe. Every panel
 of a World scene is runtime uGUI, so `WorldPointerFocus` can tell from the
 EventSystem whether the pointer is over interface. No scene authors an
-EventSystem: `TemporaryUiKit.EnsureEventSystem` makes one for the first panel
-that needs it, with the Input System UI module, and keeps it across scene loads.
-The canvases sort from the bottom up:
-
-| Sorting order | Canvas |
-| ---: | --- |
-| 10 | `WorldNameplates` |
-| 20 | `TemporaryCombatHud` |
-| 35 | `TemporaryGameMessagePanel` |
-| 40 | `TemporaryWorldInteractionPanel` |
-| 85 | `SavingPausedNotice`, without a raycaster, so it takes no click |
-| 90 | `QuestWindows` |
-| 100 | `InventoryWindows` |
-| 120 | `TemporaryDebugMenu` and `TemporaryAdminMenu` |
-| 130 | `ReconnectNotice`, without a raycaster, so it takes no click |
-| 140 | `TemporaryWorldContextMenu` |
-| 150 | The death overlay, a nested canvas of the combat HUD |
+EventSystem: `UiCanvas.EnsureEventSystem` makes one for the first canvas that
+takes the pointer, with the Input System UI module, and keeps it across scene
+loads. Every canvas sorts by its layer, and the windows, menus, and panels by
+the window manager's stack, as [UI Window Manager](#ui-window-manager) describes.
 
 The Debug and Admin menus are built in code on `TemporaryMenuWindow`: a window
 with a header that names its key and has a close button, a row of tabs, one
 scrolling page per tab, and a footer with a status line. Pages are built once and
 keep the `Text`, `Toggle`, and `Button` components that change, so a refresh sets
 text and lays nothing out, and a closed menu draws nothing. Both start closed.
+Each menu's canvas stands on the window manager's stack in the `Menus` layer, so
+the newer menu draws over the older, and Escape closes the newest.
 The Admin menu's Quests tab, `TemporaryAdminQuestTab`, is the exception: it
 builds its rows again on a quest state change while the open menu shows the
 tab, and once it shows after a change while it was hidden. It sends its tools
@@ -1534,19 +1525,20 @@ quest intent with abandoning, and reports their refusals itself.
 What they show is in [Debug Menu (F2)](GAME_FEATURES.md#debug-menu-f2) and
 [Admin Menu (F3)](GAME_FEATURES.md#admin-menu-f3).
 
-`TemporaryDebugMenu`, toggled by `ToggleDebugMenu`, refreshes four times a second
-from client state only. Its Leave Shard action runs `WorldExit.Leave`, which
-waits for an exact-session UDP leave acknowledgement before loading
-CharacterSelect, and it runs the World scene's session check, which sends a
-player build without a World back to CharacterSelect and leaves a World whose
-connection is no longer joined through `WorldExit`. `IRealtimeDiagnostics`
-counts application-level realtime packets and bytes, owner snapshot sequences,
-remote snapshot chunks, and estimated missing owner sequences, and
-`WorldDebugTelemetryTracker` derives rolling frame percentiles and half-second
-network rates from those counters. The menu labels payload rates as application
-payload rather than total socket bandwidth. Its `Show in the world` settings live
-in `WorldDebugViewSettings`, which `ClientBootstrap` owns, so they last across
-World scenes and are off whenever the client starts.
+`TemporaryDebugMenu`, toggled by `ToggleDebugMenu` through the window manager,
+refreshes four times a second from client state only. Its Leave Shard action
+runs `WorldExit.Leave`, which waits for an exact-session UDP leave
+acknowledgement before loading CharacterSelect, and it runs the World scene's
+session check, which sends a player build without a World back to
+CharacterSelect and leaves a World whose connection is no longer joined through
+`WorldExit`. `IRealtimeDiagnostics` counts application-level realtime packets
+and bytes, owner snapshot sequences, remote snapshot chunks, and estimated
+missing owner sequences, and `WorldDebugTelemetryTracker` derives rolling frame
+percentiles and half-second network rates from those counters. The menu labels
+payload rates as application payload rather than total socket bandwidth. Its
+`Show in the world` settings live in `WorldDebugViewSettings`, which
+`ClientBootstrap` owns, so they last across World scenes and are off whenever
+the client starts.
 
 `CollisionDebugOverlay` draws, while the Debug menu is open and its toggles are
 on, the baked collision around the local player and the rest of its route.
@@ -1562,22 +1554,140 @@ and the configured debug line material, whose `_BaseColor` it sets per kind.
 About 4,500 terrain triangles of the Development World 2 highlands draw in the
 Editor at well over 100 FPS.
 
-`TemporaryAdminMenu`, toggled by `ToggleAdminMenu`, holds the development admin
-tools in three tabs, Look, Movement, and Combat. They are available while
-`IRealtimeAdminChannel.AdminState` is set, which a worker that allows the tools
-sends after every join; otherwise the tabs are greyed out and the footer says
-why. Look steps the stored body model and look through `PlayerBodyLookSetting`;
-Movement sends `SetMovementSpeed` and `Teleport`; Combat sends `RestoreHealth`
-and `SetInvulnerable`. The menu is a world menu provider: while it is open, the
-right-click menu offers `Teleport here` after `Walk here`, and after `Pick a
-spot` that option comes first, so a left click on the ground teleports and
-Escape cancels. The footer shows the worker's answer to each request. What the
-worker does with them is in
-[Development Admin Tools](SERVICE_FEATURES.md#development-admin-tools).
+`TemporaryAdminMenu`, toggled by `ToggleAdminMenu` through the window manager,
+holds the development admin tools in three tabs, Look, Movement, and Combat.
+They are available while `IRealtimeAdminChannel.AdminState` is set, which a
+worker that allows the tools sends after every join; otherwise the tabs are
+greyed out and the footer says why. Look steps the stored body model and look
+through `PlayerBodyLookSetting`; Movement sends `SetMovementSpeed` and
+`Teleport`; Combat sends `RestoreHealth` and `SetInvulnerable`. The menu is a
+world menu provider: while it is open, the right-click menu offers `Teleport
+here` after `Walk here`, and after `Pick a spot` that option comes first, so a
+left click on the ground teleports and Escape cancels the pick before it closes
+anything else. The footer shows the worker's answer to each request. What the
+worker does with them is in [Development Admin
+Tools](SERVICE_FEATURES.md#development-admin-tools).
 
 The gameplay protocol does not carry SimulationWorker process diagnostics. Worker
 CPU, memory, population, capacity, and internal timing stay in the worker metrics
 and logs instead of being disclosed to every connected game client.
+
+### UI Window Manager
+
+`UiWindowManager` in `Scripts/Ui/Kit` is the one window manager of a scene. The
+composition root creates it first in LoginMenu, CharacterSelect, and every World
+scene and hands it to every window and panel through `Initialize`; it goes with
+its scene, and nothing finds it or holds it in a static. It keeps the order of
+the interface, the stack of open windows, Escape, the keys of the interface, and
+the one dialog. A frame allocates nothing in it.
+
+**Layers.** `UiLayers` names every layer and its sorting order in one table, and
+`UiCanvas.Create` makes every canvas of the game: a screen-space overlay at the
+order of its layer, with the one scaler setting of the permanent windows, 1920 by
+1080 matched halfway between width and height. No other code makes a canvas or
+sets a canvas order. From the bottom up:
+
+| Layer | Order | Canvas |
+| --- | ---: | --- |
+| `EntryScreen` | 100 | `TemporaryEntryScreen`: the content check, LoginMenu, and CharacterSelect |
+| `WorldNameplates` | 200 | `WorldNameplates` |
+| `WorldQuestMarkers` | 300 | `WorldQuestMarkers` |
+| `Hud` | 400 | `TemporaryCombatHud` |
+| `QuestTracker` | 500 | The quest canvas, which draws the quest tracker |
+| `GameMessages` | 600 | `TemporaryGameMessagePanel` |
+| `Notices` | 700 | `SavingPausedNotice` |
+| `Panels` | 800, stacked | `TemporaryWorldInteractionPanel` |
+| `Windows` | 900, stacked | Equipment, Inventory, the storage window, the quest dialog, and the quest log |
+| `Menus` | 1000, stacked | The Debug and Admin menus |
+| `Tooltips` | 1100 | The inventory canvas, which draws the item tooltip and the dragged item |
+| `ContextMenu` | 1200 | `TemporaryWorldContextMenu`: the world menu and its hover hint |
+| `Dialogs` | 1300 | The window manager's dialog host |
+| `DeathOverlay` | 1400 | The death overlay, a nested canvas of the combat HUD |
+| `ReconnectNotice` | 1500 | `ReconnectNotice` |
+
+No two layers tie. The nameplates, the quest markers, the HUD, the tracker, the
+game messages, and both notices have no raycaster, so they take no click.
+
+**The stack.** A window, menu, or panel of a stacked layer registers with
+`Register` and gets a `UiStackEntry` with a canvas of its own: a `UiWindow` adds
+a nested canvas through `Attach`, and the temporary menus and the interaction
+panel register their own canvas. Its owner tells the entry when it shows or
+hides it, and the manager keeps the open entries in the order they were opened
+or focused. In a layer the oldest open entry sorts one above the layer's order
+and each newer one above it, within `UiLayers.StackBand` (50), so the newest is
+on top of its layer and no layer reaches the next. A left or right press on an
+open entry focuses it, to the top of the stack and of its layer; the manager
+finds it with one raycast of the EventSystem on the frame of the press. Opening
+the storage window on new content and opening the quest dialog for an NPC focus
+them too.
+
+**Escape.** Only the manager reads Escape, and each press closes one thing, the
+top-most first, so the order never depends on the update order of the
+components:
+
+1. The dialog, which cancels its question.
+2. The text field the player types in, when a window, menu, or panel holds it:
+   the field loses its focus and keeps its text.
+3. The world menu.
+4. What rides on the pointer: a held or carried item, which goes back, or the
+   Admin menu's `Pick a spot`.
+5. The newest open window, menu, or panel, the way its close button closes it.
+   The interaction panel stops the approach and closes the interaction, or
+   dismisses the message it shows alone.
+6. With nothing open, what the scene does with Escape: in a World combat ends
+   the attack through `CombatTargetingController.ClearTarget`, and world
+   interaction stops the approach and closes the open interaction or corpse
+   through `WorldInteractionTargetingController.Cancel`; on LoginMenu the wait to
+   send a busy login again stops.
+
+The world menu, the pointer, and the scenes add their part with
+`AddEscapeHandler` and a `UiEscapeLevel`; the composition root adds those of
+combat and world interaction, which cannot see the UI assembly.
+
+**Keys.** The manager reads the keys of the interface from the local player's
+input actions, `Cancel`, `ToggleInventory`, `ToggleCharacterInventory`,
+`ToggleEquipmentInventory`, `ToggleQuestLog`, `ToggleDebugMenu`, and
+`ToggleAdminMenu`, and runs the action that a window bound to its `UiCommand`
+with `SetCommand`: `B` and `I` toggle the Inventory window, `C` the Equipment
+window, `L` the quest log, `F2` the Debug menu, and `F3` the Admin menu. Without
+a local player, as on the entry screens, it reads only Escape, from the
+keyboard. `Press` runs a command as its key does and `FocusAt` focuses what lies
+under a screen point, for tools and tests.
+
+**The typing guard.** `IsTyping` is true while a TextMesh Pro field has focus, or
+had it when the last frame ended, so a key that the field already took this frame
+counts as typed whichever update ran first. While it is true no hotkey runs, and
+Escape follows the order above: it cancels the dialog from the dialog's own
+field, leaves a field of a window, and reaches its screen from an entry screen's
+form, as the busy login documents. The kit's fields keep their text on Escape.
+The arrow keys turn the camera and are no key of the interface, so they still
+turn it while a field has focus.
+
+**The dialog host.** `Dialog` is the scene's one `UiDialog`, on a canvas of the
+`Dialogs` layer, built when it is first asked for. The inventory windows ask in
+it how many items to carry and whether to destroy an item, and the quest log
+whether to abandon a quest. A question names its owner, and `CloseFor` closes
+only the owner's question, so an inventory window that closes leaves the quest
+log's question open. A new question replaces an open one.
+
+**Kits.** The permanent windows are built on the
+[UI Kit And Theme](#ui-kit-and-theme): the inventory and storage windows, the
+quest dialog, the quest log, the tracker, the dialog, the reconnect and saving
+notices, and the nameplates and quest markers with their `WorldLabels`. The
+panels named `Temporary`, which are the entry screens, the combat HUD, the game
+messages, the interaction panel, the world menu, and the Debug and Admin menus,
+keep their look from `TemporaryUiKit` and take their canvas, layer, Escape, keys,
+and typing guard from the kit and the window manager.
+
+`UiWindowManagerTests` pin the layer table, the source rule that only the kit
+makes a canvas or sets its order, the stack, the Escape order, the typing guard,
+and the dialog host. `UiWindowManagerPlayModeTests` open the real windows of a
+World without a GameService and pin the Escape order over the inventory, the
+quest log, a vendor, and a dialog, a focusing click, every key while the search
+field has focus, and that every canvas of the World takes its order from the
+table. `ImmediateModeGuiTests` fail on a runtime script of the client that
+defines `OnGUI` or uses `GUILayout`, `GUI.`, or `UnityEngine.UI.Text`; the test
+lists the scripts that may, and none may today.
 
 ## Operation Serialization
 
@@ -1988,6 +2098,7 @@ control schemes:
 | `ToggleInventory` | Button | `<Keyboard>/i` |
 | `ToggleCharacterInventory` | Button | `<Keyboard>/b` |
 | `ToggleEquipmentInventory` | Button | `<Keyboard>/c` |
+| `ToggleQuestLog` | Button | `<Keyboard>/l` |
 
 `Assets/Prefabs/Player/LocalPlayer.prefab`:
 
@@ -2253,16 +2364,20 @@ refresh to resolve the committed outcome.
 runtime uGUI below a World-scene controller and reads the persistent state
 without embedding API, protocol, revision, or item-rule ownership; it shows
 predicted item operations and never owns item custody. It owns the canvas, the
-window keys, the tooltip, the drag coordinator, the dialog, and the storage
-context, and it builds three windows on the [UI Kit](#ui-kit-and-theme):
+actions of the window keys, the tooltip, the drag coordinator, and the storage
+context, asks its questions in the window manager's dialog, and builds three
+windows on the [UI Kit](#ui-kit-and-theme):
 `EquipmentWindow`, `CharacterInventoryWindow`, and `StorageWindow` with its
 vendor partial. Each window opens and closes on its own and sits at a fixed
 anchor from the theme's measures; the layout is
 [Inventory UI Layout](INVENTORY_AND_DEATH_LOOT_DESIGN.md#inventory-ui-layout).
-The canvas root only groups the windows and draws no graphic, so
-`WorldPointerFocus` sees the pointer over interface only above a shown window,
-and world input works beside and between them. A key typed into the search field
-is text, so `B`, `C`, and `I` do nothing while it has focus.
+Each window stands on the window manager's stack with a canvas of its own in
+the `Windows` layer, and the inventory canvas itself draws only the tooltip and
+the dragged item, in the `Tooltips` layer above them. The canvas root only groups
+the windows and draws no graphic, so `WorldPointerFocus` sees the pointer over
+interface only above a shown window, and world input works beside and between
+them. `B`, `I`, and `C` reach the windows through the window manager, so a key
+typed into any text field, such as the search field, is text.
 
 `StorageWindow` shows one context of `InventoryContextKind`. What opened it,
 `InventoryStorageSource`, decides its tabs and what closes it: the capabilities
@@ -2378,12 +2493,19 @@ code change; what goes where stays in the windows' code.
   what it draws.
 - `UiWindow` is a framed window with a header, a body that grows with its content
   up to a maximum and scrolls beyond it, and a footer that shows only with
-  content.
+  content. Its title takes the room that the icon, the detail, and the close
+  button leave: a long title shrinks to `UiWindow.TitleFitFloor` (0.7) of its
+  size and ends with an ellipsis beyond that, so it never draws over the detail
+  or the close button. `Attach` puts it on the window manager's stack.
 - `ItemSlotView` is one slot, built once and bound again from an `ItemSlotSpec`
   whenever what it shows changes, and `ItemSlotGrid` keeps a grid of them and
   adds or hides slots only when the count changes.
-- `UiDialog` asks for a quantity or a confirmation; `Enter` confirms and
-  `Escape` cancels through `InventoryWindows`.
+- `UiDialog` asks for a quantity or a confirmation for an owner; `Enter`
+  confirms and `Escape` cancels through the window manager, which hosts the
+  scene's one dialog.
+- `UiLayers` and `UiCanvas` are the layer table and the canvas builder of the
+  [UI Window Manager](#ui-window-manager), and `UiFactory.AddOutline` draws the
+  thin outline of the nameplates' bars.
 - `UiPulse` breathes a graphic's alpha between a floor and its color's alpha,
   for the drop target glow with the theme's `DropTargetGlowColor`,
   `DropTargetPulseSeconds`, and `DropTargetGlowFloor`.
@@ -3678,7 +3800,8 @@ The client keeps permanent state below replaceable presentation:
 - `TemporaryWorldInteractionPanel` is a replaceable uGUI action list over the
   permanent controller and capability contracts. It grows with its content,
   draws the approach and the gathering progress, and shares its colors and
-  buttons with the inventory panel through `TemporaryUiKit`.
+  buttons with the other temporary panels through `TemporaryUiKit`. While it
+  shows, it stands on the window manager's stack in the `Panels` layer.
 
 The presentation registry
 `Assets/Content/WorldActors/WorldActorPresentationRegistry.asset` maps
@@ -3795,15 +3918,13 @@ the pointer is over the world it builds the menu for the pointer ray:
 
 A left click runs the top option at once, and a right click copies the options
 into the open menu at the pointer. While the menu is open the controller takes no
-world action: a press in the world, Escape, or the pointer leaving the menu closes
-it, and a press over interface may choose a row. The controller runs before the
-features, at execution order -50, so combat, world interaction, and the inventory
-windows ignore an Escape whose frame reports `CancelConsumedThisFrame`, the Escape
-that closed the menu. The inventory windows run at -40, and an Escape that
-dismisses their dialog calls `ConsumeCancel`, so it neither closes the open
-interaction nor drops the combat target. `UiDialogEscape` runs just before them,
-at -41, and does the same for a dialog that another window owns, so that Escape
-leaves the inventory windows open too. `RunDefault` and `OpenMenu` run a left or right click for a
+world action: a press in the world, `CloseMenu`, or the pointer leaving the menu
+closes it, and a press over interface may choose a row. Escape reaches the menu
+through the window manager, after an open dialog and before any window, and an
+Escape that closed it does nothing else, as
+[UI Window Manager](#ui-window-manager) describes. The controller runs before the
+features and the local player, at execution order -50, so a click acts in its
+frame. `RunDefault` and `OpenMenu` run a left or right click for a
 given ray, for tools and harnesses. Options are plain values with their provider,
 an action code, the pointer candidate, an entity id, an argument such as a
 capability id, and the ray, so building the menu every frame allocates nothing. A
@@ -3848,8 +3969,9 @@ nothing ends nothing either.
   open, the capability starts without a walk. A newer option or stop cancels the
   approach. A target without a route gives up at once, and an approach that ends
   out of range gives up after 1.5 seconds, both with a game message. Choosing
-  another target first closes the active interaction, and the cancel action,
-  Escape, closes it.
+  another target first closes the active interaction. Escape closes it through
+  the interaction panel, and with nothing of the interface open through
+  `Cancel`.
 - `CombatTargetingController` adds Attack for a target that
   `CombatClickRules.CanAttack` accepts, described in
   [Combat Targeting And Approach](#combat-targeting-and-approach).
@@ -4160,7 +4282,7 @@ Its decisions live in pure classes:
   a stored Attack asks it again, so a target that died or left, or a character
   that died, while the menu stayed open sends no attack. Every other option except
   Examine, such as Walk here, Talk-to, or Mine, sends `ClearTarget` when there is
-  a target, and so does Escape.
+  a target, and so does Escape while nothing of the interface is open.
 - `CombatTargetSelection` names the target the client acts on. The worker owns
   the target, so it is the owner state's target, except while a request is on its
   way, when it is the requested target. A confirmed request keeps its target until
@@ -4241,8 +4363,8 @@ blocks a world click. It draws:
   health numbers.
 - The death overlay while the owner state says dead, with a countdown from
   `RespawnTick` and `CombatServerClock` that rounds up to whole seconds. The
-  overlay is a nested canvas that overrides the sorting order with
-  `DeathOverlaySortingOrder`, so an open inventory or corpse view never hides it.
+  overlay is a nested canvas in the `DeathOverlay` layer, above every window and
+  the dialog, so an open inventory or corpse view never hides it.
 
 `CombatDeathPresentation` is not temporary: it plays the handmade `Death` clip on
 the body of every player who dies in view, as described in
@@ -4413,8 +4535,9 @@ the final interface art.
 - Size: `NameplatePresentation.MobNameplateScale` scales a nameplate around its
   bottom edge with the distance from the local character, from `FarScale` (0.55)
   at the edge of the range to full size within `FullSizeDistanceMetres` (10).
-- Canvas: its own screen-space canvas at sorting order 10, below the combat HUD,
-  so damage numbers and frames draw over it. Nothing on it takes a raycast.
+- Canvas: its own screen-space canvas in the `WorldNameplates` layer, below the
+  combat HUD, so damage numbers and frames draw over it. Nothing on it takes a
+  raycast.
 
 ## Quest Client
 
@@ -4506,8 +4629,9 @@ Choosing the `quests` capability raises
 opens the quest dialog for the NPC of the open interaction and clears the
 message of an earlier interaction action. The dialog stands at the screen's
 left edge, or beside the Equipment window while that is open, because the
-Equipment window stands there too: the quest canvas has sorting order 90, above
-the interaction panel and below the inventory, whose windows would cover it.
+Equipment window stands there too. The dialog and the log stand on the window
+manager's stack in the `Windows` layer with the inventory windows, so the newest
+of them draws on top, and the quest canvas itself draws only the tracker.
 The dialog lists the entries; an entry shows its text, the
 current step's objectives, an offer through `QuestProgress.OfferedObjectives`
 with the carried items of its collect objectives, and the rewards, with `Accept`, `Complete` after a
@@ -4520,24 +4644,22 @@ dialog closes with its interaction. The temporary interaction panel's `Quests`
 button opens it again.
 
 `QuestWindows` also owns the quest log, `QuestLogWindow` beside the dialog,
-which the `ToggleQuestLog` action on `L` opens and closes unless a text field
-has focus and which shows only the refusals of abandoning, and `QuestTracker`,
-a panel at the right edge of the screen that takes no raycasts and keeps its
-lines while the same character's log is read again. `Abandon` asks through a
-`UiDialog`, and its
-`UiDialogEscape` closes that dialog alone on Escape, before the inventory
-windows see the key. Otherwise an Escape closes the log with the other windows.
-The quest windows run right after the inventory windows, so an Escape that an
-inventory dialog took reaches them as taken.
+which the `ToggleQuestLog` action on `L` opens and closes through the window
+manager unless a text field has focus and which shows only the refusals of
+abandoning, and `QuestTracker`, a panel at the right edge of the screen that
+takes no raycasts and keeps its lines while the same character's log is read
+again. `Abandon` asks in the window manager's dialog, which an Escape closes
+alone; the next Escape closes the newest window, which may be the log. Escape
+closes the quest dialog and leaves its interaction open.
 
-`WorldQuestMarkers` draws the markers over the NPCs within 40 m as TextMesh
-Pro world labels on a canvas of its own with the nameplates' sorting order,
-and nothing on it takes a raycast. It runs at `ScreenAnchoredInterface`, after
-the camera moved, places each marker 0.3 m above the NPC's interaction bounds,
-and shrinks it with distance like a nameplate. It reads the actor definition id
-from each `NpcView`, derives that NPC's marker once, and keeps it until the
-quest state or the inventory changes, so a frame derives nothing and rebuilds
-no text mesh.
+`WorldQuestMarkers` draws the markers over the NPCs within 40 m as TextMesh Pro
+world labels on a canvas of its own in the `WorldQuestMarkers` layer, just above
+the nameplates', and nothing on it takes a raycast. It runs at
+`ScreenAnchoredInterface`, after the camera moved, places each marker 0.3 m
+above the NPC's interaction bounds, and shrinks it with distance like a
+nameplate. It reads the actor definition id from each `NpcView`, derives that
+NPC's marker once, and keeps it until the quest state or the inventory changes,
+so a frame derives nothing and rebuilds no text mesh.
 
 ## Test Architecture
 
@@ -4686,8 +4808,15 @@ How to run the suites, in the Editor or headless, is in
   addresses through `ClientAddresses`, release every handle you own, and never
   add a `Resources` folder.
 - Draw every text with TextMesh Pro, never with the legacy uGUI `Text` or
-  `InputField`, panel texts through `TemporaryUiKit` and every text over the
-  world through `WorldLabels`, as [Text And Fonts](#text-and-fonts) describes.
+  `InputField`, and never with IMGUI: the texts of a permanent window through
+  the UI kit, those of a `Temporary` panel through `TemporaryUiKit`, and every
+  text over the world through `WorldLabels`, as [Text And Fonts](#text-and-fonts)
+  describes.
+- Make every canvas with `UiCanvas` in a layer of `UiLayers`, put a window, menu,
+  or panel that the player closes on the window manager's stack, and run its keys
+  and its part of Escape through the `UiWindowManager` it is handed; never read
+  Escape or a key of the interface in a window, as
+  [UI Window Manager](#ui-window-manager) describes.
 - Change scenes only through `ClientSceneLoader`. A new World scene needs its
   catalog entry and `MMORPG > Tools > Addressables > Apply Client Layout`.
 - Create runtime primitives only through `RuntimePrimitives` with the configured

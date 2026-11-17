@@ -11,13 +11,12 @@ namespace Mmorpg.Client.Ui
 {
     // Temporary presentation of the world menu: the left-click option next to the pointer,
     // and the right-click menu with a row per option and Cancel last, as in RuneScape. Target
-    // names are colored by kind. The menu closes when the pointer moves away from it.
+    // names are colored by kind. The menu closes when the pointer moves away from it, and
+    // Escape closes it, through the window manager, before any window. It draws in the
+    // ContextMenu layer, above the windows and menus and below the dialog.
     [DisallowMultipleComponent]
     public sealed class TemporaryWorldContextMenu : MonoBehaviour
     {
-        // Above every panel and below the death overlay.
-        public const int CanvasSortingOrder = InventoryWindows.CanvasSortingOrder + 40;
-
         public static readonly Color NpcNameColor = new Color(1f, 1f, 0f, 1f);
         public static readonly Color ObjectNameColor = new Color(0f, 1f, 1f, 1f);
         public static readonly Color CorpseNameColor = new Color(1f, 0.56f, 0.25f, 1f);
@@ -29,6 +28,7 @@ namespace Mmorpg.Client.Ui
 
         private readonly Vector3[] panelCorners = new Vector3[4];
         private WorldMenuController menu;
+        private UiWindowManager windowManager;
         private RectTransform canvasRect;
         private RectTransform hoverRect;
         private TextMeshProUGUI hoverText;
@@ -61,9 +61,10 @@ namespace Mmorpg.Client.Ui
         }
 
         // Called by the composition root before the component is activated.
-        public void Initialize(WorldMenuController worldMenu)
+        public void Initialize(WorldMenuController worldMenu, UiWindowManager manager)
         {
             menu = worldMenu;
+            windowManager = manager != null ? manager : throw new ArgumentNullException(nameof(manager));
         }
 
         public static Color NameColor(WorldMenuTargetStyle style)
@@ -106,6 +107,7 @@ namespace Mmorpg.Client.Ui
                 menu.MenuChanged += OnMenuChanged;
             }
 
+            windowManager.AddEscapeHandler(UiEscapeLevel.ContextMenu, CloseByEscape);
             OnMenuChanged();
         }
 
@@ -115,6 +117,22 @@ namespace Mmorpg.Client.Ui
             {
                 menu.MenuChanged -= OnMenuChanged;
             }
+
+            if (windowManager != null)
+            {
+                windowManager.RemoveEscapeHandler(CloseByEscape);
+            }
+        }
+
+        private bool CloseByEscape()
+        {
+            if (menu == null || !menu.IsMenuOpen)
+            {
+                return false;
+            }
+
+            menu.CloseMenu();
+            return true;
         }
 
         private void Update()
@@ -311,19 +329,7 @@ namespace Mmorpg.Client.Ui
 
         private void BuildUi()
         {
-            var canvasObject = new GameObject(
-                "TemporaryWorldMenuCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            var canvasObject = UiCanvas.Create(transform, "TemporaryWorldMenuCanvas", UiLayer.ContextMenu, true).gameObject;
             canvasRect = canvasObject.GetComponent<RectTransform>();
 
             var hoverObject = TemporaryUiKit.CreateUiObject("HoverOption", canvasObject.transform);

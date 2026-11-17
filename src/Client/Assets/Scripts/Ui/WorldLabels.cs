@@ -83,7 +83,7 @@ namespace Mmorpg.Client.Ui
             VerticalAlignmentOptions vertical,
             Color color)
         {
-            var label = TemporaryUiKit.CreateUiObject(name, parent).AddComponent<TextMeshProUGUI>();
+            var label = UiFactory.Create(name, parent).gameObject.AddComponent<TextMeshProUGUI>();
             label.font = Font;
             label.fontSharedMaterial = OutlinedMaterial;
             label.fontSize = fontSize;

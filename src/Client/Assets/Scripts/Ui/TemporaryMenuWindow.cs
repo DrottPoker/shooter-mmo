@@ -10,11 +10,9 @@ namespace Mmorpg.Client.Ui
     // key that toggles it, and a close button; a row of tabs; one scrolling page per tab; and a
     // footer with a status line and optional buttons. Pages are built once and keep the Text,
     // Toggle, and Button components that change, so an update sets text and lays out nothing.
+    // Its canvas stands on the window manager's stack in the Menus layer.
     public sealed class TemporaryMenuWindow
     {
-        // Above the inventory, below the world context menu.
-        public const int CanvasSortingOrder = InventoryWindows.CanvasSortingOrder + 20;
-
         public const float LabelWidth = 150f;
 
         private const float HeaderHeight = 40f;
@@ -27,6 +25,7 @@ namespace Mmorpg.Client.Ui
         private readonly List<Button> tabButtons = new List<Button>();
         private readonly List<RectTransform> pages = new List<RectTransform>();
         private GameObject canvasObject;
+        private UiStackEntry entry;
         private RectTransform window;
         private RectTransform tabs;
         private RectTransform footerButtons;
@@ -63,9 +62,10 @@ namespace Mmorpg.Client.Ui
         }
 
         // A window anchored at a corner of the screen, such as (1, 1) for the top right; the
-        // offset moves it from that corner. The close button calls close.
+        // offset moves it from that corner. The close button and Escape call close.
         public static TemporaryMenuWindow Create(
             Transform parent,
+            UiWindowManager windowManager,
             string name,
             string title,
             string keyHint,
@@ -75,22 +75,15 @@ namespace Mmorpg.Client.Ui
             bool withFooterButtons,
             Action close)
         {
-            TemporaryUiKit.EnsureEventSystem();
+            if (windowManager == null)
+            {
+                throw new ArgumentNullException(nameof(windowManager));
+            }
+
             var menu = new TemporaryMenuWindow();
-            menu.canvasObject = new GameObject(
-                name + "Canvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            menu.canvasObject.transform.SetParent(parent, false);
-            var canvas = menu.canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = CanvasSortingOrder;
-            var scaler = menu.canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            var canvas = UiCanvas.Create(parent, name + "Canvas", UiLayer.Menus, true);
+            menu.canvasObject = canvas.gameObject;
+            menu.entry = windowManager.Register(name, UiLayer.Menus, canvas, close);
 
             menu.window = TemporaryUiKit.CreateUiObject(name, menu.canvasObject.transform).GetComponent<RectTransform>();
             menu.window.anchorMin = anchor;
@@ -114,11 +107,13 @@ namespace Mmorpg.Client.Ui
             if (canvasObject != null)
             {
                 canvasObject.SetActive(visible);
+                entry.SetOpen(visible);
             }
         }
 
         public void Destroy()
         {
+            entry.Remove();
             if (canvasObject != null)
             {
                 UnityEngine.Object.Destroy(canvasObject);
