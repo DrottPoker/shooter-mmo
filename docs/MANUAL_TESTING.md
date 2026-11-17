@@ -3063,10 +3063,11 @@ Expected result:
   its nameplate.
 - The script prints one table per kind and `Client crowd measured`, and exits
   with code 0. In the standing table every size keeps the columns of the
-  baseline; the arrival and Mob tables have a `World activation frame` column,
-  the length of the frame in which the World scene became active, which the
-  arrival does not count; the arrival table has a `first` and a `return` row
-  per size, the `return` row without an activation frame; the
+  baseline; the arrival and Mob tables have a `World entry / activation frame`
+  column, the time from the start of the frame in which the World scene became
+  active until the World showed and that frame's own length, which the arrival
+  does not count; the arrival table has a `first` and a `return` row per size,
+  the `return` row without an entry; the
   memory table has three rows per size, `with the crowd`, `crowd gone`, and
   `crowd back`, with the bots the client knew, 0 once the crowd left, and the
   entries of the body caches and of the body content; the churn

@@ -312,6 +312,24 @@ function Format-Memory($Memory) {
         (Format-Number $Memory.managedHeapMegabytes "0")
 }
 
+# The entry into the World of a result: the time from the start of the frame in which the World
+# scene became active until the World showed, and that frame's own length; a result from before
+# the entry was measured has only the frame, and an older one neither.
+function Format-WorldEntry {
+    param($Result)
+
+    if ($null -eq $Result.activationFrameMilliseconds) {
+        return "-"
+    }
+
+    $frame = Format-Number $Result.activationFrameMilliseconds "0.0"
+    if ($null -eq $Result.entryMilliseconds) {
+        return "- / $frame ms"
+    }
+
+    return "$(Format-Number $Result.entryMilliseconds "0.0") / $frame ms"
+}
+
 # The tables of crowd-summary.md, one per selected kind of measurement that the results hold:
 # Standing, Arrival with a second table of the memory at the departure and the return, Churn,
 # and Mobs. Each entry has the Kind (crowd, churn, or mobs), its Count, the test's Result, the
@@ -347,17 +365,17 @@ function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     if ($arrivals.Count -gt 0) {
         if ($lines.Count -gt 0) { $lines += "" }
         $lines += Get-MachineLine "Crowd arrival, from standing in the arena until the whole crowd is shown, and again when it comes back" $arrivals[0].Result
-        $lines += "| Bots | Arrival | World activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |"
+        $lines += "| Bots | Arrival | World entry / activation frame | Shown after | Longest frame | Frames over 33.3 ms | Frames over 16.7 ms | Frame p50 / p95 / p99 | Machine busy |"
         $lines += "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
         foreach ($entry in $arrivals) {
-            # Only the first arrival follows a World scene's activation.
-            foreach ($stretch in @(@("first", $entry.Result.arrival, $entry.Loads['Arrival'], $entry.Result.activationFrameMilliseconds), @("return", $entry.Result.returnArrival, $entry.Loads['Return'], $null))) {
+            # Only the first arrival follows an entry into the World.
+            foreach ($stretch in @(@("first", $entry.Result.arrival, $entry.Loads['Arrival'], (Format-WorldEntry $entry.Result)), @("return", $entry.Result.returnArrival, $entry.Loads['Return'], "-"))) {
                 if ($null -eq $stretch[1] -or -not $stretch[1].measured) {
                     continue
                 }
 
                 $s = $stretch[1].summary
-                $activation = if ($null -eq $stretch[3]) { "-" } else { "$(Format-Number $stretch[3] "0.0") ms" }
+                $activation = $stretch[3]
                 $lines += ("| {0} | {1} | {2} | {3} s | {4} ms | {5} | {6} | {7} / {8} / {9} ms | {10} % |" -f
                     $entry.Count, $stretch[0], $activation,
                     (Format-Number $stretch[1].shownSeconds "0.0"),
@@ -412,13 +430,13 @@ function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     if ($mobs.Count -gt 0) {
         if ($lines.Count -gt 0) { $lines += "" }
         $lines += Get-MachineLine "Walking Mobs in view, without bots" $mobs[0].Result
-        $lines += "| Mobs | World activation frame | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |"
+        $lines += "| Mobs | World entry / activation frame | Shown after | Arrival longest frame / over 33.3 ms | Frame p50 / p95 / p99 / max | Frames over 33.3 ms | Remote starved | Allocated / reserved / managed | Player private memory | Machine busy |"
         $lines += "| ---: | ---: | ---: | --- | --- | ---: | --- | --- | ---: | ---: |"
         foreach ($entry in $mobs) {
             $r = $entry.Result
             $s = $r.summary
             $a = $r.arrival.summary
-            $activation = if ($null -eq $r.activationFrameMilliseconds) { "-" } else { "$(Format-Number $r.activationFrameMilliseconds "0.0") ms" }
+            $activation = Format-WorldEntry $r
             $lines += ("| {0} | {1} | {2} s | {3} ms / {4} | {5} / {6} / {7} / {8} ms | {9} | {10} | {11} | {12} MB | {13} % |" -f
                 $entry.Count,
                 $activation,
