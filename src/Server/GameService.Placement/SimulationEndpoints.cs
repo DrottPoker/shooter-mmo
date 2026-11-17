@@ -17,7 +17,7 @@ internal static class SimulationEndpoints
         {
             var result = await shardService.ListShardsAsync(cancellationToken);
             return result.ToHttpResult();
-        });
+        }).RequireRateLimiting(PublicRateLimitPolicy.PolicyName);
 
         shardGroup.MapPost("/{shardId}/join", async (
             string shardId,
@@ -38,6 +38,7 @@ internal static class SimulationEndpoints
             return result.ToHttpResult();
         })
             .RequireAuthorization(AuthenticationConstants.AccountSessionPolicy)
+            .RequireRateLimiting(AccountRateLimitPolicies.Action)
             .WithMetadata(new SensitiveResponseAttribute());
 
         var workerGroup = app.MapGroup("/api/simulation-workers");

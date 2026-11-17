@@ -36,12 +36,12 @@ internal sealed record GameServiceConfiguration(
         ArgumentNullException.ThrowIfNull(environment);
 
         var core = GameServiceCoreConfiguration.FromConfiguration(configuration);
-        var retentionErrors = core.Platform.Retention.WindowErrors(environment.IsDevelopment());
-        if (retentionErrors.Count > 0)
+        var environmentErrors = EnvironmentErrors(core, environment.IsDevelopment());
+        if (environmentErrors.Count > 0)
         {
             throw new InvalidOperationException(
                 "GameService configuration is invalid:" + Environment.NewLine
-                + string.Join(Environment.NewLine, retentionErrors.Select(error => $"- {error}")));
+                + string.Join(Environment.NewLine, environmentErrors.Select(error => $"- {error}")));
         }
 
         // Self-contained option sets report their own errors, in the original order.
@@ -93,6 +93,23 @@ internal sealed record GameServiceConfiguration(
         {
             Telemetry = telemetry
         };
+    }
+
+    // The rules that differ outside the Development environment: retention windows that only a
+    // soak may shorten, real host names, real PostgreSQL and Redis passwords, and one secret
+    // per worker. Development keeps today's local settings.
+    internal static IReadOnlyList<string> EnvironmentErrors(
+        GameServiceCoreConfiguration core,
+        bool isDevelopment)
+    {
+        var errors = new List<string>(core.Platform.Retention.WindowErrors(isDevelopment));
+        if (!isDevelopment)
+        {
+            errors.AddRange(core.Platform.ErrorsOutsideDevelopment());
+            errors.AddRange(core.Accounts.SimulationWorkerCredentials.ErrorsOutsideDevelopment());
+        }
+
+        return errors;
     }
 }
 
