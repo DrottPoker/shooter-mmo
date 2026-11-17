@@ -66,7 +66,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     var where = definition.Id + " on " + catalog.name;
                     var attachment = catalog.AttachmentNamed(entry.attachment);
                     Assert.That(attachment, Is.Not.Null, where + " names the attachment " + entry.attachment + ", which the body's catalog lacks");
-                    Assert.That(attachment.Model, Is.Not.Null, where);
+                    Assert.That(TestBodyContent.ModelOf(attachment), Is.Not.Null, where);
                     if (attachment.IsTool)
                     {
                         // A tool is held only while it is used; see ToolInUseTests.
@@ -95,10 +95,10 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(catalog.Attachments, Is.Not.Empty);
             foreach (var attachment in catalog.Attachments)
             {
-                var grip = attachment.Model.transform.Find(PlayerBodyMeshes.AttachmentRoot);
+                var grip = TestBodyContent.ModelOf(attachment).transform.Find(PlayerBodyMeshes.AttachmentRoot);
                 Assert.That(grip, Is.Not.Null, attachment.Name);
                 // Beside Grip, a skinned model has only its meshes, which Unity puts at the root.
-                foreach (Transform child in attachment.Model.transform)
+                foreach (Transform child in TestBodyContent.ModelOf(attachment).transform)
                 {
                     Assert.That(child == grip || (attachment.IsSkinned && child.GetComponent<SkinnedMeshRenderer>() != null && child.childCount == 0),
                         Is.True, attachment.Name + " has the root object " + child.name);
@@ -107,11 +107,11 @@ namespace Mmorpg.Client.Tests.EditMode
                 // The model's own frame is the socket's, as the review sheet holds it in Blender.
                 Assert.That(grip.localPosition.magnitude, Is.LessThan(1e-5f), attachment.Name);
                 Assert.That(Quaternion.Angle(grip.localRotation, Quaternion.identity), Is.LessThan(0.01f), attachment.Name);
-                Assert.That(attachment.Model.GetComponentsInChildren<MeshFilter>().All(filter => filter.sharedMesh.isReadable), Is.True,
+                Assert.That(TestBodyContent.ModelOf(attachment).GetComponentsInChildren<MeshFilter>().All(filter => filter.sharedMesh.isReadable), Is.True,
                     attachment.Name + " must import readable, since the body combines it");
-                Assert.That(attachment.Model.GetComponentsInChildren<SkinnedMeshRenderer>().All(skinned => skinned.sharedMesh.isReadable), Is.True,
+                Assert.That(TestBodyContent.ModelOf(attachment).GetComponentsInChildren<SkinnedMeshRenderer>().All(skinned => skinned.sharedMesh.isReadable), Is.True,
                     attachment.Name + " must import readable, since the body combines it");
-                Assert.That(attachment.Model.GetComponentsInChildren<SkinnedMeshRenderer>().Any(), Is.EqualTo(attachment.IsSkinned), attachment.Name);
+                Assert.That(TestBodyContent.ModelOf(attachment).GetComponentsInChildren<SkinnedMeshRenderer>().Any(), Is.EqualTo(attachment.IsSkinned), attachment.Name);
             }
         }
 
@@ -156,8 +156,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
                     var body = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
@@ -173,8 +174,8 @@ namespace Mmorpg.Client.Tests.EditMode
                         .Concat(new[] { "Bow_Riser", BowRig.NockBone })));
                     Assert.That(bowBones.All(bone => bone.IsChildOf(socket)), Is.True, "the bow's bones lie below its socket");
                     var riser = bowBones.Single(bone => bone.name == "Bow_Riser");
-                    var modelRiser = PlayerBodyMeshes.FindDescendant(catalogBow().Model.transform, "Bow_Riser");
-                    Assert.That((socket.InverseTransformPoint(riser.position) - catalogBow().Model.transform.InverseTransformPoint(modelRiser.position)).magnitude,
+                    var modelRiser = PlayerBodyMeshes.FindDescendant(TestBodyContent.ModelOf(catalogBow()).transform, "Bow_Riser");
+                    Assert.That((socket.InverseTransformPoint(riser.position) - TestBodyContent.ModelOf(catalogBow()).transform.InverseTransformPoint(modelRiser.position)).magnitude,
                         Is.LessThan(1e-4f), "the riser stands on the socket as on the model's root");
                     var animator = body.GetComponent<Animator>();
                     Assert.That(animator.GetLayerWeight(animator.GetLayerIndex(HumanLocomotion.OffHandGripLayer)), Is.EqualTo(1f));
@@ -204,8 +205,9 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath);
                     var body = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
@@ -240,7 +242,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     foreach (var attachment in appearance.Held)
                     {
                         var socket = body.GetComponentsInChildren<Transform>().Single(bone => bone.name == attachment.Bone);
-                        foreach (var expected in ModelVertices(attachment.Model, socket.localToWorldMatrix))
+                        foreach (var expected in ModelVertices(TestBodyContent.ModelOf(attachment), socket.localToWorldMatrix))
                         {
                             var nearest = actual.Min(vertex => (vertex - expected).sqrMagnitude);
                             Assert.That(Mathf.Sqrt(nearest), Is.LessThan(0.001f), attachment.Name + " at " + expected);

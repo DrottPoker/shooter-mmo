@@ -113,8 +113,9 @@ namespace Mmorpg.Client.Tests.EditMode
             CharacterPreview preview = null;
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
-                using (var materials = new PlayerBodyMaterials())
+                using (var content = TestBodyContent.Loaded())
+                using (var meshes = new PlayerBodyMeshes(false, content))
+                using (var materials = new PlayerBodyMaterials(content))
                 {
                     preview = CharacterPreview.Create(root.transform);
                     Assert.That(preview.gameObject.scene, Is.EqualTo(scene));

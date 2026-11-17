@@ -1,0 +1,163 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Body Content Shared
+  m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.AddressableAssetGroup
+  m_GroupName: Body Content Shared
+  m_GUID: 6609dab9e997615448092d435ab7aeb4
+  m_SerializeEntries:
+  - m_GUID: 008bebc790804cc40a4d4053c1a4d02c
+    m_Address: Assets/Art/Materials/Garments/M_Garment_WoolTrousers.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 053a462ad7fd64046b8ea4646c7534cb
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LinenShirt.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 06440e7751180ab468bc2a5ead60472c
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LeatherBoots.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0b62422db1f788d4785e1a4c27bb86d1
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LeatherGloves.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0cf6a4955e252bd4489fe90277010d56
+    m_Address: Assets/Art/Materials/Garments/M_Garment_NasalHelm.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0dfb924088d9b1444938932b26a391b7
+    m_Address: Assets/Art/Materials/Garments/M_Garment_HoodUp.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1654f11f7618c9c49a36f95f8fc965f1
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LongShirt.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2ce3f0f21cfe4a5489df9e96500f079d
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Robe.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2fb60f8f080634e4ab483f68df00c818
+    m_Address: Assets/Art/Materials/Garments/M_Garment_HoodDown.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 38504e921cdc62f44a43b623f50dbe2e
+    m_Address: Assets/Art/Models/Garments/Shirt_Male.fbx
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3882ff6e9e0255c44b9a9ed46258cbcf
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Cloak.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 392606f70857b3048a022709fad33ba2
+    m_Address: Assets/Art/Materials/Garments/M_Garment_WoolHoodDown.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3b0dce7b46f2949459ce766af6ed391d
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Boots.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3bf30e1fdbba75b42b6bec07853e7626
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LeatherJerkin.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3fd00dd361fd7964180403a7d37365ba
+    m_Address: Assets/Art/Materials/Garments/M_Garment_WoolHoodUp.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 41bbb93071249774c87ad4e6b46cbe5c
+    m_Address: Assets/Art/Materials/Garments/M_Garment_DarkBrownHair.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 496ff9fec5670a34d98807b3a8fa26a5
+    m_Address: Assets/Art/Materials/Garments/M_Garment_ShoulderHair.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 69e9ba4c33687fe44b3974f6babfd28a
+    m_Address: Assets/Art/Materials/Garments/M_Garment_IronNasalHelm.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7183dc3e469e331468f081f2caf3d103
+    m_Address: Assets/Art/Materials/Garments/M_Garment_WoolRobe.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7c872e295b3ce2245a63f3c512db9bd1
+    m_Address: Assets/Art/Materials/Garments/M_Garment_NetShirt.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 933532a4fcc9baf4fa0491de14d08ed7
+    m_Address: Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 95b4928f72c151c438ccdf9fea800e1e
+    m_Address: Assets/Art/Shaders/Garment.shader
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d5aa7e56cfcaedf4b80e7a6349fca0b2
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Gloves.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d616e4437db4a4a4eb5b5af31b992ccf
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Shirt.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e16906f9da57e7b4c99b3f65e0f4a7ae
+    m_Address: Assets/Art/Models/Garments/Shirt_Female.fbx
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e1ffb7870f8ce8443a878868790b40e6
+    m_Address: Assets/Art/Materials/Garments/M_Garment_WoolCloak.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e4f0f7001f353814ca35e1a20d4a2641
+    m_Address: Assets/Art/Materials/Garments/M_Garment_LinenLongShirt.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f6c149a4126ab1d44bc5d39bd247110e
+    m_Address: Assets/Art/Materials/Garments/M_Garment_Trousers.mat
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 7a3ecd208bfb7dc4f9c03da909e4feec, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: be95c59019edecd4ba7653d13a863b9b, type: 2}
+    - {fileID: 11400000, guid: f8427827246bb1143b335581a86b64ff, type: 2}

@@ -63,6 +63,21 @@ namespace Mmorpg.Client.Core
             return true;
         }
 
+        // Starts an asynchronous load as TryLoadAsync does, for code that polls it without the
+        // Addressables types. The caller releases the load.
+        public static bool TryStartLoad<T>(string address, out IAssetLoad load, out string error)
+            where T : UnityEngine.Object
+        {
+            load = null;
+            if (!TryLoadAsync<T>(address, out var handle, out error))
+            {
+                return false;
+            }
+
+            load = new AddressablesLoad<T>(address, handle);
+            return true;
+        }
+
         public static bool TryReadText(string address, out string text, out string error)
         {
             text = null;
@@ -125,5 +140,77 @@ namespace Mmorpg.Client.Core
                 + address + "'.";
             return false;
         }
+
+        private sealed class AddressablesLoad<T> : IAssetLoad
+            where T : UnityEngine.Object
+        {
+            private readonly string address;
+            private AsyncOperationHandle<T> handle;
+
+            public AddressablesLoad(string address, AsyncOperationHandle<T> handle)
+            {
+                this.address = address;
+                this.handle = handle;
+            }
+
+            public bool IsDone
+            {
+                get { return !handle.IsValid() || handle.IsDone; }
+            }
+
+            public UnityEngine.Object Result
+            {
+                get
+                {
+                    return handle.IsValid() && handle.IsDone && handle.Status == AsyncOperationStatus.Succeeded
+                        ? handle.Result
+                        : null;
+                }
+            }
+
+            public string Error
+            {
+                get
+                {
+                    if (!handle.IsValid())
+                    {
+                        return "The load of Addressables asset '" + address + "' was released.";
+                    }
+
+                    return "Addressables asset '" + address + "' could not be loaded as " + typeof(T).Name
+                        + (handle.OperationException != null ? ": " + handle.OperationException.Message : ".");
+                }
+            }
+
+            // A load that still runs is released once it is done, since an operation destroyed in
+            // flight may still complete into it.
+            public void Release()
+            {
+                if (handle.IsValid() && !handle.IsDone)
+                {
+                    handle.Completed += ClientAssets.Release;
+                }
+                else
+                {
+                    ClientAssets.Release(handle);
+                }
+
+                handle = default;
+            }
+        }
+    }
+
+    // A load of one asset that its owner polls until it is done and then releases.
+    public interface IAssetLoad
+    {
+        bool IsDone { get; }
+
+        // The asset once the load succeeded, or null.
+        UnityEngine.Object Result { get; }
+
+        // Why a done load has no result.
+        string Error { get; }
+
+        void Release();
     }
 }

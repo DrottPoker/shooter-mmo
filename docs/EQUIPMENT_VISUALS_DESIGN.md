@@ -1259,6 +1259,19 @@ to the face it comes from when the catalog is written in the Editor; see
 [Unity Import Rules](ART_PIPELINE.md#unity-import-rules). How the client does
 all this is in [Player Bodies](UNITY_CLIENT_ARCHITECTURE.md#player-bodies).
 
+The catalog holds what these rules need as data and names the content, each
+garment's model and material, each attachment's model and clips, and the images
+of the options and paint layers, by address, so a client holds the content of
+the looks in view, plus a few seconds of grace, and nothing else, however many
+garments the game has. A character is shown only once the content of its whole
+look is loaded, never in its underwear and never half dressed: a player that
+comes into view appears when its look is loaded, a character whose look changes
+keeps the old look until the new one is loaded and put together, the World shows
+once the local character's look is loaded, and a corpse shows the body as it
+died. A piece whose content cannot be loaded is left out rather than keeping the
+character from showing. How the content loads is in
+[Body Content](UNITY_CLIENT_ARCHITECTURE.md#body-content).
+
 ## Budgets
 
 | Slot | Triangles per body type |

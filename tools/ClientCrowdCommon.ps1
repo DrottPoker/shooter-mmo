@@ -373,16 +373,18 @@ function New-CrowdSummary($Entries, [string[]]$Kinds = $CrowdKinds) {
     if ($returns.Count -gt 0) {
         if ($lines.Count -gt 0) { $lines += "" }
         $lines += Get-MachineLine "Crowd departure and return, the memory with the crowd, once it left, and with it back" $returns[0].Result
-        $lines += "| Bots | Moment | Bots known | Allocated / reserved / managed | Player private memory | Body meshes / materials |"
-        $lines += "| ---: | --- | ---: | --- | ---: | --- |"
+        $lines += "| Bots | Moment | Bots known | Allocated / reserved / managed | Player private memory | Body meshes / materials | Body garments / attachments |"
+        $lines += "| ---: | --- | ---: | --- | ---: | --- | --- |"
         foreach ($entry in $returns) {
             $rows = @($entry.Result.memory)
             for ($index = 0; $index -lt $rows.Count; $index++) {
                 $memory = $rows[$index]
                 $private = if ($index -lt @($entry.PrivateMemory).Count) { @($entry.PrivateMemory)[$index] } else { $null }
-                $lines += ("| {0} | {1} | {2} | {3} | {4} MB | {5} / {6} |" -f
+                # A result from before the content of looks loaded on demand counts no entries.
+                $content = if ($null -ne $memory.bodyGarments) { "$($memory.bodyGarments) / $($memory.bodyAttachments)" } else { "-" }
+                $lines += ("| {0} | {1} | {2} | {3} | {4} MB | {5} / {6} | {7} |" -f
                     $entry.Count, $memory.moment, $memory.knownBots, (Format-Memory $memory), (Format-Number $private "0"),
-                    $memory.bodyMeshes, $memory.bodyMaterials)
+                    $memory.bodyMeshes, $memory.bodyMaterials, $content)
             }
         }
     }

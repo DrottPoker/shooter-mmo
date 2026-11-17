@@ -26,6 +26,8 @@ namespace Mmorpg.Client.Editor
         public const string WorldActorPrefabsGroup = "World Actor Prefabs";
         public const string WorldCollisionGroup = "World Collision";
         public const string WorldScenesGroup = "World Scenes";
+        public const string BodyContentGroup = "Body Content";
+        public const string BodyContentSharedGroup = "Body Content Shared";
         public const string WorldActorPrefabFolder = "Assets/Prefabs/WorldActors";
         public const string WorldActorPrefabsAddress = "WorldActorPrefabs";
         public const string WorldCollisionFolder =
@@ -48,7 +50,11 @@ namespace Mmorpg.Client.Editor
             new GroupLayout(ItemIconsGroup, BundledAssetGroupSchema.BundlePackingMode.PackTogether),
             new GroupLayout(WorldActorPrefabsGroup, BundledAssetGroupSchema.BundlePackingMode.PackTogether),
             new GroupLayout(WorldCollisionGroup, BundledAssetGroupSchema.BundlePackingMode.PackTogether),
-            new GroupLayout(WorldScenesGroup, BundledAssetGroupSchema.BundlePackingMode.PackSeparately)
+            new GroupLayout(WorldScenesGroup, BundledAssetGroupSchema.BundlePackingMode.PackSeparately),
+            // The content of looks, one bundle per garment, attachment, and image, and what two of
+            // them share; ArtAppearanceCatalogs writes their entries, see ArtBodyContentEntries.
+            new GroupLayout(BodyContentGroup, BundledAssetGroupSchema.BundlePackingMode.PackSeparately),
+            new GroupLayout(BodyContentSharedGroup, BundledAssetGroupSchema.BundlePackingMode.PackSeparately)
         };
 
         private static readonly FolderLayout[] Folders =
@@ -92,21 +98,7 @@ namespace Mmorpg.Client.Editor
 
             foreach (var layout in Groups)
             {
-                var group = settings.FindGroup(layout.Name)
-                    ?? settings.CreateGroup(
-                        layout.Name,
-                        false,
-                        false,
-                        true,
-                        null,
-                        typeof(BundledAssetGroupSchema),
-                        typeof(ContentUpdateGroupSchema));
-                var schema = group.GetSchema<BundledAssetGroupSchema>();
-                schema.IncludeInBuild = true;
-                schema.BundleMode = layout.Packing;
-                schema.BuildPath.SetVariableByName(settings, AddressableAssetSettings.kLocalBuildPath);
-                schema.LoadPath.SetVariableByName(settings, AddressableAssetSettings.kLocalLoadPath);
-                EditorUtility.SetDirty(schema);
+                EnsureGroup(settings, layout);
             }
 
             settings.DefaultGroup = settings.FindGroup(ClientContentGroup);
@@ -158,6 +150,40 @@ namespace Mmorpg.Client.Editor
                 .ToArray();
             EditorUtility.SetDirty(settings);
             AssetDatabase.SaveAssets();
+        }
+
+        // The group of the layout with this name, created or corrected when it is missing or
+        // differs.
+        public static AddressableAssetGroup EnsureGroup(AddressableAssetSettings settings, string name)
+        {
+            return EnsureGroup(settings, Groups.Single(layout => layout.Name == name));
+        }
+
+        private static AddressableAssetGroup EnsureGroup(AddressableAssetSettings settings, GroupLayout layout)
+        {
+            var group = settings.FindGroup(layout.Name)
+                ?? settings.CreateGroup(
+                    layout.Name,
+                    false,
+                    false,
+                    true,
+                    null,
+                    typeof(BundledAssetGroupSchema),
+                    typeof(ContentUpdateGroupSchema));
+            var schema = group.GetSchema<BundledAssetGroupSchema>();
+            if (!schema.IncludeInBuild
+                || schema.BundleMode != layout.Packing
+                || schema.BuildPath.GetName(settings) != AddressableAssetSettings.kLocalBuildPath
+                || schema.LoadPath.GetName(settings) != AddressableAssetSettings.kLocalLoadPath)
+            {
+                schema.IncludeInBuild = true;
+                schema.BundleMode = layout.Packing;
+                schema.BuildPath.SetVariableByName(settings, AddressableAssetSettings.kLocalBuildPath);
+                schema.LoadPath.SetVariableByName(settings, AddressableAssetSettings.kLocalLoadPath);
+                EditorUtility.SetDirty(schema);
+            }
+
+            return group;
         }
 
         // Lists every difference between the committed settings and the layout.

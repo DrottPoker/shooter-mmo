@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Mmorpg.Client.Editor;
 using Mmorpg.Client.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
@@ -227,16 +228,20 @@ namespace Mmorpg.Client.Tests.EditMode
                 Assert.That(held.Count, Is.EqualTo(2));
                 Assert.That(held.Any(attachment => attachment.IsSkinned), Is.True);
                 var parts = PlayerBodyMeshes.PartsOf(appearance);
-                var main = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, worn, held);
-                var worker = PlayerBodyMeshes.BuildOnWorkerThread(parts, appearance.transform, catalog, worn, held);
-                try
+                using (var content = EditorBodyContent.Create())
                 {
-                    AssertSameMesh(main, worker);
-                }
-                finally
-                {
-                    Object.DestroyImmediate(main.Mesh);
-                    Object.DestroyImmediate(worker.Mesh);
+                    Assert.That(EditorBodyContent.Load(content, catalog, look), Is.True);
+                    var main = PlayerBodyMeshes.Build(parts, appearance.transform, catalog, worn, held, content);
+                    var worker = PlayerBodyMeshes.BuildOnWorkerThread(parts, appearance.transform, catalog, worn, held, content);
+                    try
+                    {
+                        AssertSameMesh(main, worker);
+                    }
+                    finally
+                    {
+                        Object.DestroyImmediate(main.Mesh);
+                        Object.DestroyImmediate(worker.Mesh);
+                    }
                 }
             }
             finally
@@ -251,9 +256,11 @@ namespace Mmorpg.Client.Tests.EditMode
         public void AWantedCombinationIsBuiltOffTheMainThread()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BodyPrefabPath).GetComponent<PlayerBodyAppearance>();
-            using (var meshes = new PlayerBodyMeshes(true))
+            using (var content = EditorBodyContent.Create())
+            using (var meshes = new PlayerBodyMeshes(true, content))
             {
                 var look = BodyLook.Default.WithGarment("LeatherJerkin", true);
+                Assert.That(EditorBodyContent.Load(content, prefab.Catalog, look), Is.True);
                 var wanted = meshes.Want(prefab, look);
                 Assert.That(wanted.IsReady, Is.False);
                 Assert.That(meshes.Pending, Is.EqualTo(1));
@@ -353,12 +360,14 @@ namespace Mmorpg.Client.Tests.EditMode
             var scene = EditorSceneManager.NewPreviewScene();
             try
             {
-                using (var meshes = new PlayerBodyMeshes())
+                using (var content = EditorBodyContent.Create())
+                using (var meshes = new PlayerBodyMeshes(false, content))
                 {
                     var appearance = InstantiateBody(scene).GetComponent<PlayerBodyAppearance>();
                     var catalog = appearance.Catalog;
+                    Assert.That(EditorBodyContent.LoadAll(content, catalog), Is.True);
                     var parts = PlayerBodyMeshes.PartsOf(appearance);
-                    var garments = catalog.Garments.Where(garment => garment != null && garment.Model != null).ToArray();
+                    var garments = catalog.Garments.Where(garment => garment != null && garment.Address.Length > 0).ToArray();
                     // Every garment alone, then pairs of them, until there are two more combinations
                     // than the cap.
                     var combinations = garments.Select(garment => new[] { garment })

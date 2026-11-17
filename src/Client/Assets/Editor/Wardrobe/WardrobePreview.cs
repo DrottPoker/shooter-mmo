@@ -47,8 +47,10 @@ namespace Mmorpg.Client.Editor
         private static readonly int RateId = Animator.StringToHash(HumanLocomotion.RateParameter);
         private static readonly int DeadId = Animator.StringToHash(HumanLocomotion.DeadParameter);
 
-        private readonly PlayerBodyMeshes meshes = new PlayerBodyMeshes();
-        private readonly PlayerBodyMaterials materials = new PlayerBodyMaterials();
+        // The content of the looks it shows, read from the asset database at once.
+        private readonly PlayerBodyContent content;
+        private readonly PlayerBodyMeshes meshes;
+        private readonly PlayerBodyMaterials materials;
         private readonly List<UnityEngine.Object> owned = new List<UnityEngine.Object>();
         private readonly Animator animator;
         private readonly PlayerBodyAppearance appearance;
@@ -73,6 +75,9 @@ namespace Mmorpg.Client.Editor
         // A preview of this model with its appearance catalog; source names them in errors.
         public WardrobePreview(string source, GameObject model, BodyAppearanceCatalog catalog)
         {
+            content = EditorBodyContent.Create();
+            meshes = new PlayerBodyMeshes(false, content);
+            materials = new PlayerBodyMaterials(content);
             Catalog = catalog;
             var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
             if (model == null || Catalog == null || controller == null)
@@ -111,6 +116,7 @@ namespace Mmorpg.Client.Editor
                 properties.FindProperty("catalog").objectReferenceValue = Catalog;
                 properties.ApplyModifiedPropertiesWithoutUndo();
                 solver = Body.AddComponent<ClothChainSolver>();
+                EditorBodyContent.Load(content, Catalog, BodyLook.Default);
                 appearance.CombineParts(meshes);
 
                 ground = CreateGround();
@@ -131,6 +137,12 @@ namespace Mmorpg.Client.Editor
         }
 
         public BodyAppearanceCatalog Catalog { get; }
+
+        // The content of the looks the preview shows.
+        public PlayerBodyContent Content
+        {
+            get { return content; }
+        }
 
         public GameObject Body { get; }
 
@@ -215,6 +227,7 @@ namespace Mmorpg.Client.Editor
                 look = look.WithAttachment(attachment, true);
             }
 
+            EditorBodyContent.Load(content, Catalog, look);
             appearance.ApplyLook(look, materials);
             HoldWeapon(Playing);
             foreach (var pair in tuned)
@@ -488,6 +501,7 @@ namespace Mmorpg.Client.Editor
             owned.Clear();
             meshes.Dispose();
             materials.Dispose();
+            content.Dispose();
         }
 
         // A checkered floor of 40 by 40 squares, moved along under the body by whole squares.

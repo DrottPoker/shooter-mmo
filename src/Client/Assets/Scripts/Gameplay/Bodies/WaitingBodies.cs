@@ -5,7 +5,8 @@ using UnityEngine;
 namespace Mmorpg.Client.Gameplay
 {
     // The players in view whose body, or whose new look, waits to be put on, each with the look to
-    // show and the combined mesh it asked for, and the order their bodies go on in a frame: the
+    // show, the content of the look and the combined mesh it asked for, and the order their bodies
+    // go on in a frame: the
     // nearest to the eye first. A frame measures every waiting player once and heaps them by
     // distance, and each body taken costs a step down the heap, so a crowd that comes into view at
     // once is not scanned again for every body that goes on. A body whose mesh is not built yet
@@ -31,33 +32,39 @@ namespace Mmorpg.Client.Gameplay
         // The player waits for its body, which then shows this look.
         public void Set(ulong entityId, RealtimeCharacterAppearance look)
         {
-            looks[entityId] = new Waiting(look, null);
+            looks[entityId] = new Waiting(look, null, null);
         }
 
-        // The player waits for the mesh of this look, which it asked for.
-        public void Wait(ulong entityId, RealtimeCharacterAppearance look, PlayerBodyMeshes.Combined wanted)
+        // The player waits for the content and the mesh of this look, which it asked for.
+        public void Wait(ulong entityId, RealtimeCharacterAppearance look, PlayerBodyContent.Needs content,
+            PlayerBodyMeshes.Combined wanted)
         {
-            looks[entityId] = new Waiting(look, wanted);
+            looks[entityId] = new Waiting(look, content, wanted);
         }
 
-        // Every waiting player still asks for the mesh it asked for, also those that a frame did
-        // not reach. Allocates nothing.
-        public void Touch(PlayerBodyMeshes meshes)
+        // Every waiting player still asks for the content and the mesh it asked for, also those that
+        // a frame did not reach. Allocates nothing.
+        public void Touch(PlayerBodyMeshes meshes, PlayerBodyContent content)
         {
             foreach (var waiting in looks.Values)
             {
                 meshes.Touch(waiting.Wanted);
+                if (content != null)
+                {
+                    content.Touch(waiting.Content);
+                }
             }
         }
 
-        // Every waiting player asks for its mesh again, as when the looks wear other garments now.
+        // Every waiting player asks for its content and mesh again, as when the looks wear other
+        // garments now.
         public void ForgetWanted()
         {
             keys.Clear();
             keys.AddRange(looks.Keys);
             foreach (var key in keys)
             {
-                looks[key] = new Waiting(looks[key].Look, null);
+                looks[key] = new Waiting(looks[key].Look, null, null);
             }
         }
 
@@ -101,9 +108,10 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        // The nearest player in the order whose body still waits, with its look and the mesh it
-        // asked for; it waits no longer. False once the order is used up.
-        public bool TryTakeNext(out RemotePlayerView view, out RealtimeCharacterAppearance look, out PlayerBodyMeshes.Combined wanted)
+        // The nearest player in the order whose body still waits, with its look and the content and
+        // mesh it asked for; it waits no longer. False once the order is used up.
+        public bool TryTakeNext(out RemotePlayerView view, out RealtimeCharacterAppearance look,
+            out PlayerBodyContent.Needs content, out PlayerBodyMeshes.Combined wanted)
         {
             while (heap.Count > 0)
             {
@@ -117,6 +125,7 @@ namespace Mmorpg.Client.Gameplay
                     looks.Remove(nearest.EntityId);
                     view = nearest.View;
                     look = waiting.Look;
+                    content = waiting.Content;
                     wanted = waiting.Wanted;
                     return true;
                 }
@@ -124,6 +133,7 @@ namespace Mmorpg.Client.Gameplay
 
             view = null;
             look = null;
+            content = null;
             wanted = null;
             return false;
         }
@@ -166,13 +176,16 @@ namespace Mmorpg.Client.Gameplay
 
         private readonly struct Waiting
         {
-            public Waiting(RealtimeCharacterAppearance look, PlayerBodyMeshes.Combined wanted)
+            public Waiting(RealtimeCharacterAppearance look, PlayerBodyContent.Needs content, PlayerBodyMeshes.Combined wanted)
             {
                 Look = look;
+                Content = content;
                 Wanted = wanted;
             }
 
             public RealtimeCharacterAppearance Look { get; }
+
+            public PlayerBodyContent.Needs Content { get; }
 
             public PlayerBodyMeshes.Combined Wanted { get; }
         }

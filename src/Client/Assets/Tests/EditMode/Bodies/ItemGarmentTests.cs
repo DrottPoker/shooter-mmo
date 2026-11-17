@@ -64,7 +64,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         Assert.That(garment, Is.Not.Null, where + " names the garment " + name + ", which the body's catalog lacks");
                         Assert.That(definition.EquipmentSlots, Does.Contain(garment.Slot), where + ": " + name);
                         // Its dye colors tint channels the garment's texture has.
-                        Assert.That(entry.dyes.Length, Is.LessThanOrEqualTo(Mathf.RoundToInt(garment.Material.GetFloat("_DyeCount"))),
+                        Assert.That(entry.dyes.Length, Is.LessThanOrEqualTo(Mathf.RoundToInt(TestBodyContent.MaterialOf(garment).GetFloat("_DyeCount"))),
                             where + ": " + name + " has fewer dye channels than the item has colors");
                     }
 
@@ -164,7 +164,7 @@ namespace Mmorpg.Client.Tests.EditMode
         public void TheGarmentShaderTakesAnItemsDyeColors()
         {
             var cloak = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(BodyCatalogPaths[0]).GarmentNamed("WoolCloak");
-            var source = cloak.Material;
+            var source = TestBodyContent.MaterialOf(cloak);
             Assert.That(source.GetFloat("_DyeCount"), Is.EqualTo(1f));
             Assert.That(source.GetTexture("_DyeMask"), Is.Not.Null);
             using (var materials = new PlayerBodyMaterials())
@@ -188,8 +188,8 @@ namespace Mmorpg.Client.Tests.EditMode
             var boots = AssetDatabase.LoadAssetAtPath<BodyAppearanceCatalog>(BodyCatalogPaths[0]).GarmentNamed("LeatherBoots");
             using (var materials = new PlayerBodyMaterials())
             {
-                Assert.That(materials.For(boots.Material, null, Color.white, null, new[] { Rgb(0x2B, 0x43, 0x64) }),
-                    Is.SameAs(boots.Material));
+                Assert.That(materials.For(TestBodyContent.MaterialOf(boots), null, Color.white, null, new[] { Rgb(0x2B, 0x43, 0x64) }),
+                    Is.SameAs(TestBodyContent.MaterialOf(boots)));
             }
         }
 

@@ -299,7 +299,7 @@ World scene
   |   +-- LocalPlayer prefab, RemotePlayer prefab, and PlayerSpawn references
   |   +-- runtime LocalPlayer instance after an accepted join, set in LocalPlayerSource
   |   +-- runtime remote player views, each a root of the World scene
-  |   +-- PlayerBodyMeshes, PlayerBodyMaterials, PlayerCorpseBodies
+  |   +-- PlayerBodyContent, PlayerBodyMeshes, PlayerBodyMaterials, PlayerCorpseBodies
   +-- runtime components that ClientBootstrap adds:
       +-- WorldMenuController
       +-- WorldActorPresentationController and CorpsePresentationController
@@ -1324,6 +1324,8 @@ asset directly. `ClientAddresses` lists every fixed address:
 | World Actor Prefabs | `Assets/Prefabs/WorldActors` | `WorldActorPrefabs/<file>`, loaded by GUID through the registry | Together |
 | World Collision | `Packages/com.mmorpg.world-data/Generated/WorldCollision` | `WorldCollision/<WorldId>/manifest.json` and `<chunk>.bytes` | Together |
 | World Scenes | One entry per catalog World scene | The scene name | Separately, one bundle per scene |
+| Body Content | One entry per garment content asset per body, per attachment content asset, and per image of an option or a paint layer | `Bodies/Garments/<Model>/<Garment>.asset`, `Bodies/Attachments/<Attachment>.asset`, `Bodies/Options/<file>`, `Bodies/Paints/<file>` | Separately, one bundle per entry |
+| Body Content Shared | Every asset that two bundles would otherwise both hold, such as a garment texture's material, a template model that several garments share, and the garment shader | The asset path | Separately, one bundle per entry |
 
 A player build also builds `Config/client-build.json` into Client Content, the
 environment and build stamp that only exist while the build runs, as
@@ -1333,7 +1335,12 @@ environment and build stamp that only exist while the build runs, as
 catalogs, icons, and collision chunks. It locates an address first, so a missing
 address becomes a structured error instead of an Addressables exception, and the
 caller releases every handle it owns. Scenes and actor prefabs load
-asynchronously where they are used.
+asynchronously where they are used, and so does the content of the bodies' looks,
+through `ClientAssets.TryStartLoad`, as [Body Content](#body-content) describes.
+The entries of the two body content groups are not folder entries: the art
+pipeline's appearance catalog command writes them, as
+[Unity Import Rules](ART_PIPELINE.md#unity-import-rules) describes, and
+`ClientAddressablesLayout` only defines the two groups.
 
 All groups build locally into the player. A normal player build builds the
 Addressables content first. The build content state is written to
@@ -2519,9 +2526,11 @@ presence entry and updates it from server position, facing, and presentation key
   corpses costs no animation or skinning; the corpse has a box collider around it
   for the pointer. The hidden copy of the body takes the look from the shared
   `PlayerBodyMaterials` before it is baked, since the underwear is paint over the
-  skin. A corpse whose look changes, such as when someone loots its robe, swaps
-  to the body of its new look, and a baked body that no corpse in view shows any
-  more is destroyed. While a body that shows its character dead lies within
+  skin. A body is baked once the content of its look is loaded, and the corpse
+  shows nothing until then; the baked body holds that content while it exists, as
+  [Body Content](#body-content) describes. A corpse whose look changes, such as
+  when someone loots its robe, swaps to the body of its new look once that is
+  loaded, and a baked body that no corpse in view shows any more is destroyed. While a body that shows its character dead lies within
   1.5 m, the corpse stays hidden, so the dying body and its remains never show
   twice; it appears when the character respawns at the World spawn. While a
   player corpse is in view, the presentation collects the dead bodies of the
@@ -2708,7 +2717,8 @@ them; each body binds it to its own bones. 200 combined bodies cost about 6 ms,
 with skinning down from 4.3 to 0.3 ms and culling from 3.4 to 0.35 ms.
 
 A build has three steps. `Gather` reads on the main thread what the build needs
-of its renderers, models, transforms, and the catalog: the bones and their bind
+of its renderers, models, transforms, the catalog, and the loaded content of its
+garments and attachments: the bones and their bind
 poses, the material slots, and the matrices, with the data of every source
 mesh, a body part's, a garment's, or an attachment's, which a set reads once and
 then shares. `Compute` joins the vertices, weights, and triangles, touches no
@@ -2762,6 +2772,92 @@ skin materials of the body, which `PlayerBodyAppearance` lists, by a faint
 version of the color, 35 percent of the way from white, and leaves the eyes,
 teeth, and tongue alone. The colors are in `PlayerBodyColors`.
 
+### Body Content
+
+The appearance catalogs hold what the rules need as data, the names, slots,
+layers, hides, covered and underlay faces, pull-ins, cloth kinds, sockets, clip
+names, grips, and paint crops, and name the content of a look by Addressables
+address: a garment's `BodyPieceContent` per body with the template's model for
+that body and the texture's material, an attachment's `BodyPieceContent` with its
+model and the clips of a skinned one, and the images of the options and paint
+layers. The material's own image of a slot, the body models, their skin
+materials, and their own images stay referenced by the player prefabs, since every
+body draws with them. One garment is one load and one release: Addressables loads
+the bundles of the assets a content asset references with it. How the entries and
+bundles are made is in [Content Loading With Addressables](#content-loading-with-addressables).
+
+`PlayerBodyContent`, which `WorldSceneContext` creates for its World visit beside
+`PlayerBodyMeshes` and `PlayerBodyMaterials`, which take their content from it,
+loads that content and keeps it while a look shows it:
+
+- **Needs.** `PlayerBodyContent.NeedsOf` lists the content of a look of a
+  catalog: the garments it draws, the attachments it holds, the paint layers it
+  shows, its underwear included, and the options it names. Whoever waits for a
+  look asks for its needs every frame (`Want`), which starts the loads it lacks
+  and is true once every entry is ready; asking for an entry that loads starts no
+  second load.
+- **Users.** Every body that shows a look, the local and every remote body, the
+  [Character Preview](#character-preview)'s copy, every lying corpse, and the
+  warm-up's bodies count as users of every entry of their look (`AddUser`) until
+  they show another or go (`Release`). An entry without users that nobody asked
+  for within `WantedFrames`, 30 frames, goes after `GraceSeconds`, 4 s, the
+  grace time of the meshes, so a player who changes back and forth or a crowd
+  that comes back within seconds loads nothing again.
+- **Ready.** `Update`, which the context calls every frame within the frame's
+  [presentation budget](#crowd-performance), takes the loads that finished and
+  prepares at least one loaded entry a frame: it measures a garment's loose cloth
+  (`ClothChainSolver.PrepareReaches`), which every body that wears it shares while
+  the content is loaded, and asks the warm-up whether the content's materials drew
+  once; an entry is ready when both are done. Nothing waits for a load:
+  `WaitForCompletion` is never called for body content.
+- **Release order.** An entry that goes raises `Releasing` before its load is
+  released: `PlayerBodyMeshes` drops every combined mesh that draws the content,
+  and the source mesh data read of it, and `PlayerBodyMaterials` every copy of the
+  content's material or image, so no mesh or material outlives the bundle it
+  points into; one that a body still shows goes with that body. A combined mesh is
+  keyed by the names and addresses of its garments and attachments, not by their
+  objects, so a look builds under the same key after its content loads again. A
+  load released while it runs is released once it is done and is never taken.
+- **Failures.** An address without an entry, or a load that fails, logs one
+  `[BODY CONTENT] <address> cannot be loaded` error per address and World visit,
+  and the entry counts as ready without content: the body shows without that
+  piece instead of never showing. `BodyContentValidationTests` makes a broken
+  address a build defect.
+
+A body is shown only once the content of its whole look is loaded, never in its
+underwear and never half dressed:
+
+- **Players coming into view** wait in `WaitingBodies` until the content of
+  their look is loaded and then until its combination is built, the nearest
+  first within the presentation budget, as
+  [Crowd Performance](#crowd-performance) describes; until then the player has
+  no body.
+- **A look that changes**, by equipment, a tool in the hands, the hood, or the
+  Admin menu, keeps the old look on the body until the new look's content is
+  loaded and its combination built, for remote bodies, the local body, and the
+  preview alike.
+- **Entering a World** waits for the content of the local player's look, of the
+  preview's, and of every model's default look. `TryEnterWorld` spawns the local
+  player at once and puts a camera after the player camera that draws black over
+  the World (`WorldEntryCover`); the screen-space interface draws over it. Once
+  the content is loaded, the warm-up prepares the bodies, the local body and the
+  preview show their looks, also when the character lies dead already, the cover
+  goes, and the log shows `[CLIENT] Entered the World with the content of the
+  local look loaded ... ms after the scene started.` `IsWorldShown` says when.
+  A look the server sends later is a look that changes.
+- **A player corpse** waits for the content of its look before its lying body is
+  baked and shows nothing until then, and a corpse whose look changed shows the
+  old lying body until then; a lying body holds its content while it exists.
+- The character creation chooser shows no body, and the Admin menu's Look tab
+  asks the worker for a look, which the local body and the preview then show as
+  any look that changes.
+
+In the Editor's `Use Asset Database` play mode script every load takes the
+simulated load delay of the Addressables settings, 0.1 s, so Play Mode shows the
+waiting, which `WorldBodyContentPlayModeTests` holds. The Wardrobe and the
+EditMode tests read content from the asset database at once through
+`EditorBodyContent`, which only the Editor has.
+
 ### Looks
 
 A body also shows a look: the options of its model's
@@ -2771,7 +2867,8 @@ references the model's `BodyAppearanceCatalog`, such as
 `Assets/Art/Appearance/Human_Male_Appearance.asset`, which the art pipeline
 writes: one slot per material with variants, such as `Eye` and `Face`, with its
 options, the material's own image first, and the body's paint layers and
-garments. A `BodyLook` is a value that names one option per slot, with a stable
+garments, whose content it names by address, as [Body Content](#body-content)
+describes. A `BodyLook` is a value that names one option per slot, with a stable
 key such as `Eye=Brown;Face=Clean`; a slot it does not name shows the material's
 own image.
 
@@ -2814,8 +2911,9 @@ skin shader.
 A look also names the garments its body wears, such as `Garment=LeatherJerkin`
 in its key. A garment is a [garment texture](ART_PIPELINE.md#garment-textures) on
 its [template](ART_PIPELINE.md#garments), named after the texture. The catalog
-lists every garment that fits the body with its template's name and model for
-that body, the texture's material, the visual slot, layer, and the slots it
+lists every garment that fits the body with its template's name, the address of
+its content, the template's model for that body and the texture's material, the
+visual slot, layer, and the slots it
 hides, the body faces it covers, the body face under each of its triangles, and
 its pull-in, from the texture's own masks when it has transparent parts and from
 the template's otherwise, and every body part with the face of the body's
@@ -2905,8 +3003,9 @@ camera never draws, and the window shows no figure.
   it dresses the local body: at the spawn, when the equipment changes, and when
   the look or the model changes. The copy wears the same
   `EquipmentGarments.Dress` look but holds no gathering tool, and it waits while
-  the local body lies dead, as the local body does, and while the combination of
-  its look is built, as every body does. Another model puts in another copy.
+  the local body lies dead, as the local body does, and while the content of its
+  look loads and its combination is built, as every body does. Another model
+  puts in another copy.
 - `ClientBootstrap` passes the preview to `InventoryWindows`, whose Equipment
   window shows the texture in a `RawImage` over the pedestal, as tall as the slot
   columns, with an `AspectRatioFitter`. The camera is enabled only while the
@@ -2934,9 +3033,11 @@ from these parts:
   stays unused. With no garment on a chain the solver does nothing. It measures
   the body from its own mesh in the bind pose, and each worn garment's model that
   `PlayerBodyAppearance` hands it, once, shares the measures per model, and
-  describes them to a `ClothWorld`. A World measures every body model and every
-  garment with loose parts while it loads (`PrepareMeasures`), as
-  [Crowd Performance](#crowd-performance) describes.
+  describes them to a `ClothWorld`. A World measures every body model before it
+  shows (`PrepareMeasures`), as [Crowd Performance](#crowd-performance)
+  describes, and a garment with loose parts when its content loads
+  (`PrepareReaches`), keeping the measure while the content stays, as
+  [Body Content](#body-content) describes.
 - `ClothChainScheduler` owns the one `ClothWorld` of every body in play and puts
   itself in play with the first solver. Once a frame after the camera moved
   (`PresentationExecutionOrder.Cloth`), it lays every body the camera sees within
@@ -3102,18 +3203,25 @@ bounded:
   look, the cloth measures of the body and of every garment with loose parts and
   the cloth world, and the GPU pipeline states that the graphics driver makes the
   first time a material draws, skinned on the GPU, in a pass, and into targets of
-  a format. `PlayerBodyWarmUp` does that work while the World loads: in
-  `WorldSceneContext.Start`, after the local player spawned and before the players
-  already in view are presented, it puts every body model of the player prefabs on
-  a stage far below the World, at `(0, -11000, 0)`, combines it with its default
-  look, measures its cloth, and lets one material of every other shader variant a
-  garment or attachment of its catalog draws with draw on its combined mesh; a
-  camera that renders as the player camera does (`CameraRendering.CopyFrom`) draws
-  them once in a corner of the screen before the player camera draws over it, and
-  the stage goes in the next frame. The context keeps the meshes of the default
-  looks with the World, since every body that comes into view starts from one.
-  `[CLIENT] Prepared 2 body models and 2 material variants for the World in ...
-  ms.` reports the work, without the draw.
+  a format. `PlayerBodyWarmUp` does the work of the bodies before the World is
+  shown: once the content of the entry is loaded, as [Body Content](#body-content)
+  describes, it puts every body model of the player prefabs on a stage far below
+  the World, at `(0, -11000, 0)`, combines it with its default look, measures its
+  cloth and makes the cloth world, and draws it and the materials of the content
+  loaded so far, such as the local player's garments; a camera that renders as the
+  player camera does (`CameraRendering.CopyFrom`) draws them once in a corner of
+  the screen before the player camera draws over it, and the stage rests hidden
+  from the next frame on. It reads no garment or attachment of the catalogs. Their
+  content brings its materials when it loads: a loaded garment's cloth is measured
+  within the presentation budget, and the first garment or attachment of a shader
+  variant that no body drew yet makes the stage draw that material once on a
+  body's combined mesh before the content counts as ready, two frames later, so
+  the first body that wears it draws no new variant. The context keeps the meshes
+  of the default looks and the stage's bodies, which hold the content of the
+  default looks, with the World, since every body that comes into view starts
+  from one. `[CLIENT] Prepared 2 body models and 0 material variants for the World
+  in ... ms.` reports the work, without the draw; the variants count the content
+  loaded before the World showed.
 - **Bodies come into view a few per frame.** Putting a body on a spawned player
   takes about 1.75 ms, since the cloth measures are shared per model, and several
   players often come into interest in one frame, so `WorldSceneContext` puts
@@ -3134,7 +3242,8 @@ bounded:
   same way, a few a frame.
 - **Memory comes back when a crowd leaves.** The meshes and material copies that
   no body shows go after their grace time, as [Combined Bodies](#combined-bodies)
-  describes.
+  describes, and so does the content of the looks that no body shows, with its
+  bundles, as [Body Content](#body-content) describes.
 - **One budget for what comes into view.** `PresentationBudget`, which
   `ClientBootstrap` makes for every World scene it composes, is the time a frame
   gives to putting things into view, 3 ms, and the players' bodies, the world
@@ -3226,15 +3335,19 @@ describes. It makes four kinds of measurement, each with a table of its own in
   the activation frame is a value of its own, the `World activation frame`
   column of the arrival and Mob tables. That frame holds the scene's
   activation, the `Start` of its components with the panels that the
-  composition root builds, the local player's spawn with its body and look, the
-  body warm-up described above, the views of the players already in view,
-  without their bodies, and the frame's drawing with the warm-up's camera.
+  composition root builds, the local player's spawn with its body, and the views
+  of the players already in view, without their bodies. The local player's look
+  and the body warm-up come in the later frame in which the content of the entry
+  is loaded and the World shows, which the arrival counts.
   After the standing recording the bots stop, and once their bodies are gone
   and the client settled for 5 seconds the memory is read again, with the
   entries of the shared body caches, `PlayerBodyMeshes` and
-  `PlayerBodyMaterials`, which `WorldSceneContext` counts for it
-  (`BodyMeshCount`, `BodyMaterialCount`, the corpse bakes' readable meshes
-  included) and nothing reads per frame. Then the same number of bots joins
+  `PlayerBodyMaterials`, and the loaded garment and attachment entries of
+  `PlayerBodyContent`, which `WorldSceneContext` counts for it (`BodyMeshCount`,
+  `BodyMaterialCount`, the corpse bakes' readable meshes included,
+  `BodyGarmentCount`, and `BodyAttachmentCount`) and nothing reads per frame; the
+  memory table shows them as `Body meshes / materials` and `Body garments /
+  attachments`. Then the same number of bots joins
   again, 20 a second, and their arrival, from the first bot the client knows,
   and the memory a third time are recorded. The three memory rows of a size
   show whether memory comes back when a crowd leaves and whether a second crowd

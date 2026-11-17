@@ -478,8 +478,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             fewest(Mathf.Min(smallest, count()));
         }
 
-        // The memory now, the bots the client knows, and the entries of its body caches. The
-        // first row is also the result's memory.
+        // The memory now, the bots the client knows, and the entries of its body caches and body
+        // content. The first row is also the result's memory.
         private static void ReadMemory(Run run, string moment, bool isResultMemory)
         {
             ShownBots(run.Context, out var known);
@@ -492,7 +492,9 @@ namespace Mmorpg.Client.Tests.PlayMode
                 reservedMegabytes = Profiler.GetTotalReservedMemoryLong() / (1024f * 1024f),
                 managedHeapMegabytes = Profiler.GetMonoUsedSizeLong() / (1024f * 1024f),
                 bodyMeshes = run.Context.BodyMeshCount,
-                bodyMaterials = run.Context.BodyMaterialCount
+                bodyMaterials = run.Context.BodyMaterialCount,
+                bodyGarments = run.Context.BodyGarmentCount,
+                bodyAttachments = run.Context.BodyAttachmentCount
             };
             run.Memory.Add(memory);
             if (isResultMemory)
@@ -745,8 +747,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             ReportStretch("return", result.returnArrival);
             foreach (var memory in result.memory)
             {
-                Report(string.Format(invariant, "  memory {0}: allocated/reserved/managed {1:0}/{2:0}/{3:0} MB, {4} bots known, body caches {5} meshes and {6} materials",
-                    memory.moment, memory.allocatedMegabytes, memory.reservedMegabytes, memory.managedHeapMegabytes, memory.knownBots, memory.bodyMeshes, memory.bodyMaterials));
+                Report(string.Format(invariant, "  memory {0}: allocated/reserved/managed {1:0}/{2:0}/{3:0} MB, {4} bots known, body caches {5} meshes and {6} materials, body content {7} garments and {8} attachments",
+                    memory.moment, memory.allocatedMegabytes, memory.reservedMegabytes, memory.managedHeapMegabytes, memory.knownBots, memory.bodyMeshes, memory.bodyMaterials,
+                    memory.bodyGarments, memory.bodyAttachments));
             }
 
             Report(string.Format(invariant, "  vsync {0}, target frame rate {1}, quality {2}", result.vSyncCount, result.targetFrameRate, result.qualityLevel));
@@ -921,6 +924,8 @@ namespace Mmorpg.Client.Tests.PlayMode
             public float managedHeapMegabytes;
             public int bodyMeshes;
             public int bodyMaterials;
+            public int bodyGarments;
+            public int bodyAttachments;
         }
     }
 }
