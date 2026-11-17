@@ -77,6 +77,10 @@ $rules = @(
         Checks = @("unity", "art"); Reason = "exported art" },
     @{ Pattern = '^src/Client/'
         Checks = @("owner", "unity"); Reason = "the Unity client" },
+    # Only the Python run reads the test files themselves; Unity writes and reads the fixtures
+    # below them, which the next rule covers.
+    @{ Pattern = '^tools/art/blender/tests/[^/]+\.(py|txt)$'
+        Checks = @("blender-python"); Reason = "the art pipeline's Python tests" },
     # The Unity Editor reads the art manifests and skeletons, and a Unity test the clip speeds in
     # the Blender animation script.
     @{ Pattern = '^(art|tools/art/blender)/'
