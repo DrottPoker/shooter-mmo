@@ -592,11 +592,13 @@ characters, body models, options, and definitions at most
   order, and for a development bot from the look and outfit it picks from the
   bot's character id.
 - `EntityAppearanceChanged` (36) sends a player's new look, by its entity id, to
-  every connection that sees the player and to its owner. The owner gets its own
-  look after the join, since it never receives a spawn of its own player. The
-  worker sends it when the look, the visible equipment, the headwear, or the
-  tool in use changed, and the client drops a change for a player it does not
-  see.
+  every connection that sees the player and to its owner, at once within the
+  detail radius and as the newest look once a second beyond it, as
+  [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes. The owner gets
+  its own look after the join, since it never receives a spawn of its own
+  player. The worker sends it when the look, the visible equipment, the
+  headwear, or the tool in use changed, and the client drops a change for a
+  player it does not see.
 - `ToolInUse` names the item of the player's Tool slot while it gathers, and is
   empty otherwise and for every corpse; see
   [Tools In Use](EQUIPMENT_VISUALS_DESIGN.md#tools-in-use).
@@ -779,7 +781,9 @@ The world actor messages keep actor visibility apart from interaction state:
   pose and whether a Mob walks, as
   [World Actor Spawn Pose](#world-actor-spawn-pose) describes. A state update
   goes out only when replicated state changes, and a resource node's available
-  or depleted state reuses `IsActive`.
+  or depleted state reuses `IsActive`. A viewer beyond the detail radius gets
+  only the newest state, once a second, except a change of `IsActive`, as
+  [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes.
 - `WorldInteractionIntent` (23) opens, closes, or acts on an interaction. Every
   intent carries an operation id, the simulation session, the interaction
   session, the target kind, entity id, and runtime id, and the expected target
@@ -908,7 +912,10 @@ item-state revision that holds the yield.
   Mob, or is 0. It follows every `EntitySpawn` and `WorldActorSpawn` of a
   combatant, so a client never shows a combatant without health. A dead
   combatant has 0 health, no target, and no regeneration, and nobody targets or
-  tags itself.
+  tags itself. A viewer beyond the detail radius gets only the newest state,
+  once a second, except a change of the life state, so a client cannot count
+  on seeing every revision, as
+  [Detail Radius](SERVICE_FEATURES.md#detail-radius) describes.
   - Since protocol 44 the state describes the health between states:
     `HealthRegenerationAmount` (i32, at least 0) is the health the combatant
     gains at `HealthRegenerationTick` (u32, a server tick) and again every
@@ -924,7 +931,10 @@ item-state revision that holds the yield.
     across the wrap like the worker. The client reads no combat rule for it, so
     a later rate per combatant needs no client change.
 - `CombatEventBatch` (32) carries the events of one server tick that involve a
-  combatant the recipient sees or controls, in simulation order. Every
+  combatant the recipient sees within the detail radius or controls, and the
+  deaths of every combatant it sees, in simulation order. A recipient can
+  therefore get an attack's release or hit without its start, or a start
+  without its release, when the attacker crosses the detail radius. Every
   `CombatEvent` has a kind, source, target, `Tick`, damage, damage type, health
   afterwards, and attack style; unused fields are 0. More than
   `MaximumCombatEventsPerBatch` (32) events split into several batches.

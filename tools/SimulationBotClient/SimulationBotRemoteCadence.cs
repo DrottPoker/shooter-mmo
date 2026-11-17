@@ -20,7 +20,7 @@ namespace Mmorpg.Tools.SimulationBotClient;
 public sealed class SimulationBotRemoteCadence(float nearRadius = SimulationBotRemoteCadence.DefaultNearRadius)
 {
     // The worker's default InterestManagement:NearRadius.
-    public const float DefaultNearRadius = 48f;
+    public const float DefaultNearRadius = 50f;
 
     // Less than one step of the record does not move.
     private const float MovedDistanceSquared = 0.0001f;

@@ -182,7 +182,7 @@ Other players, NPCs, Mobs, and resource nodes appear when they come within
 128 m and disappear when they move beyond 144 m. Other characters move smoothly,
 at an even speed; after a network stall the delay recovers instead of growing:
 
-- Within about 48 m they move with every snapshot, 15 times a second, about
+- Within about 50 m they move with every snapshot, 15 times a second, about
   133 ms behind the server.
 - Farther away their positions come about five times a second, and they move
   as smoothly about 0.4 s behind. Crossing from one distance to the other
@@ -192,11 +192,18 @@ at an even speed; after a network stall the delay recovers instead of growing:
   and returns to its true place without a jump.
 - In a dense crowd the nearest stay at the full rate and the farther ones are
   updated less often, the farthest about once a second.
+- Fights show in full within about 70 m: every attack, arrow, bolt, damage
+  number, and health change. Beyond that a fight shows only its outcome: a
+  character's look and health catch up within a second, without the attacks
+  that led there, and a death, a respawn, a Mob that gives up the fight, and a
+  resource node that is used up or returns show at once. One's own target and
+  whoever attacks one's character show in full at any distance.
 
 Interest is described in
-[Interest Management](SERVICE_FEATURES.md#interest-management), and what is
-sent when in
-[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication).
+[Interest Management](SERVICE_FEATURES.md#interest-management), what is sent
+when in
+[Entity Registry And Replication](SERVICE_FEATURES.md#entity-registry-and-replication),
+and what a far viewer receives in [Detail Radius](SERVICE_FEATURES.md#detail-radius).
 
 ## Characters And Their Looks
 

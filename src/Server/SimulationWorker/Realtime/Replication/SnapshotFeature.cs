@@ -1,8 +1,8 @@
 namespace Mmorpg.SimulationWorker.Realtime;
 
-// The interest refresh on the tick before each snapshot tick and the movement snapshots of
-// players and Mobs on the snapshot ticks. Entity presence, which both follow, is part of
-// RealtimeCoreServices.
+// The interest refresh and the far states on the tick before each snapshot tick and the
+// movement snapshots of players and Mobs on the snapshot ticks. Entity presence, which all follow,
+// is part of RealtimeCoreServices.
 internal static class SnapshotFeature
 {
     public static void Add(RealtimeCoreServices core, CombatFeature combat)
@@ -11,6 +11,12 @@ internal static class SnapshotFeature
         var cadence = core.Registries.TickCadence;
         new InterestRefresher(core.EntityRegistry, core.Presence, core.PerformanceMetrics)
             .AddTickPhase(phases, cadence);
+        new FarStateRefresher(
+            core.Presence,
+            core.Peers,
+            core.Sender,
+            core.FailureIsolation,
+            core.Config.SnapshotRateHz).AddTickPhase(phases, cadence);
         new SnapshotReplicator(
             core.Config,
             combat.Mobs,

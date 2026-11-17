@@ -187,6 +187,85 @@ public sealed class AppearanceReplicatorTests
         Assert.Same(stopped, replicator.SpawnAppearanceOf(player.Entity));
     }
 
+    // A viewer within 70 m gets a changed look at once; one at 90 m gets the newest look once, on
+    // the player's slot, and nothing before.
+    [Fact]
+    public void AChangedLookReachesAViewerBeyondTheDetailRadiusOnThePlayersSlot()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        var looks = new CharacterLookStore();
+        var replicator = new AppearanceReplicator(
+            fixture.Registry,
+            fixture.Sender,
+            fixture.Presence,
+            fixture.Entities,
+            fixture.Bindings,
+            fixture.CharacterItemStateStore,
+            looks,
+            AppearanceReplicationSettings.Default,
+            fixture.FailureIsolation);
+        fixture.Presence.Appearances = replicator;
+        var hooded = fixture.ConnectPlayer(1, "Hooded At The Centre");
+        var near = fixture.ConnectPlayer(2, "Viewer At 60 Metres");
+        var far = fixture.ConnectPlayer(3, "Viewer At 90 Metres");
+        foreach (var player in new[] { hooded, near, far })
+        {
+            looks.Register(
+                player.Session.CharacterId,
+                player.Session.SimulationSessionId,
+                player.Session.SimulationSessionToken,
+                new CharacterLook(CharacterStateTestData.Appearance));
+        }
+
+        Place(hooded, 0f, 0f);
+        Place(near, 60f, 0f);
+        Place(far, -90f, 0f);
+        SpawnEveryoneForEveryone(fixture);
+        replicator.Broadcast();
+        Assert.True(fixture.Presence.IsVisibleTo(far.Context.PeerId, hooded.Entity.NetworkEntityId));
+
+        Assert.True(looks.TryApply(
+            hooded.Session.CharacterId,
+            hooded.Session.SimulationSessionId,
+            hooded.Session.SimulationSessionToken,
+            CharacterStateTestData.Appearance with { HeadwearLowered = true }));
+        replicator.Broadcast();
+        Assert.True(Assert.Single(LooksOf(near, hooded)).HeadwearLowered);
+        Assert.Empty(LooksOf(far, hooded));
+
+        var refresher = new FarStateRefresher(
+            fixture.Presence,
+            fixture.Registry,
+            fixture.Sender,
+            fixture.FailureIsolation,
+            fixture.Config.SnapshotRateHz);
+        var slots = (uint)fixture.Config.SnapshotRateHz;
+        var slot = (uint)(hooded.Entity.NetworkEntityId % slots);
+        refresher.Send((slot + 1) % slots);
+        Assert.Empty(LooksOf(far, hooded));
+        refresher.Send(slot);
+        Assert.True(Assert.Single(LooksOf(far, hooded)).HeadwearLowered);
+        refresher.Send(slot);
+        Assert.Single(LooksOf(far, hooded));
+        Assert.Single(LooksOf(near, hooded));
+    }
+
+    private static IReadOnlyList<RealtimeCharacterAppearance> LooksOf(ConnectedPlayer viewer, ConnectedPlayer player)
+    {
+        return Decode<RealtimeEntityAppearanceChanged>(
+                viewer.Peer,
+                RealtimeMessageType.EntityAppearanceChanged,
+                RealtimeProtocol.TryDecodeEntityAppearanceChanged)
+            .Where(change => change.EntityId == player.Entity.NetworkEntityId)
+            .Select(change => change.Appearance)
+            .ToArray();
+    }
+
+    private static void Place(ConnectedPlayer player, float x, float z)
+    {
+        player.Entity.Movement.Teleport(new PlayerMovementState(x, 0f, z, 0f, 0f, 0f, 0f, true));
+    }
+
     private static void SpawnEveryoneForEveryone(RealtimeLoopFixture fixture)
     {
         var players = new List<Mmorpg.SimulationWorker.Entities.PlayerSimulationEntity>();

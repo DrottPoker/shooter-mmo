@@ -28,6 +28,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "gathering",
                 "appearances",
                 "interest",
+                "far states",
                 "snapshots",
                 "corpse presence",
                 "game service availability",
@@ -47,6 +48,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 SimulationTickOrder.Gathering,
                 SimulationTickOrder.Appearances,
                 SimulationTickOrder.Interest,
+                SimulationTickOrder.FarStates,
                 SimulationTickOrder.Snapshots,
                 SimulationTickOrder.CorpsePresence,
                 SimulationTickOrder.GameServiceAvailability,
@@ -57,8 +59,8 @@ public sealed class RealtimeFeatureRegistrationTests
 
     // Runs every composed phase for two seconds of ticks and records which did their work on which
     // tick. On a snapshot tick only the snapshots and the phases of every tick work, the interest
-    // refresh and the looks work on the tick before each snapshot tick, and the other periodic
-    // phases never share a tick. Fails when a phase picks its own ticks onto a snapshot tick.
+    // refresh, the looks, and the far states work on the tick before each snapshot tick, and the
+    // other periodic phases never share a tick. Fails when a phase picks its own ticks onto a snapshot tick.
     [Fact]
     public async Task NoPeriodicPhaseButTheSnapshotsWorksOnASnapshotTick()
     {
@@ -84,7 +86,7 @@ public sealed class RealtimeFeatureRegistrationTests
         Assert.Equal(2, cadence.SnapshotIntervalTicks);
         var periodic = worked.Where(pair => pair.Value.Count > 0 && pair.Value.Count < ticks).ToArray();
         Assert.Equal(
-            ["appearances", "corpse presence", "interaction revalidation", "interest", "snapshots"],
+            ["appearances", "corpse presence", "far states", "interaction revalidation", "interest", "snapshots"],
             periodic.Select(pair => pair.Key).Order(StringComparer.Ordinal));
         foreach (var (name, workedTicks) in periodic)
         {
@@ -99,6 +101,7 @@ public sealed class RealtimeFeatureRegistrationTests
         }
 
         Assert.Equal(worked[InterestRefresher.PhaseName], worked[AppearanceReplicator.PhaseName]);
+        Assert.Equal(worked[InterestRefresher.PhaseName], worked[FarStateRefresher.PhaseName]);
         Assert.All(worked[InterestRefresher.PhaseName], tick => Assert.True(cadence.IsSnapshotTick(tick + 1)));
         Assert.Equal(4, worked[CorpsePresenceReplicator.PhaseName].Count);
         Assert.Equal(10, worked["interaction revalidation"].Count);

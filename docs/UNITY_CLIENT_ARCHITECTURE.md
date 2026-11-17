@@ -4275,6 +4275,39 @@ the committed quantity always shows, even 0 or 1, and the tooltip says how many
 are left. The drawn slot updates in place when that count changes, so a shot
 never redraws the panel or cancels a drag.
 
+### Figures Beyond The Detail Radius
+
+The worker sends a figure beyond 70 m, as
+[Detail Radius](SERVICE_FEATURES.md#detail-radius) describes, only the newest
+combatant state, look, and world actor state once a second and no attack or
+hit, but a death, a life state, and a world actor's active flag at once. The
+client needs nothing of its own for that, because none of its presentation
+waits for an event that may not come:
+
+- An `AttackStarted` plays the attack clip once to its end, and the bow looses
+  at the clip's release time, whether or not its `AttackReleased` or
+  `AttackCancelled` arrives; the arrow on the string goes at the latest 5
+  seconds after the start. An `AttackReleased` without its start looses and
+  flies as usual, and a body that plays no clip only looses.
+- A projectile flies until its impact tick and goes; no `Hit` removes it, and
+  a `Hit` without its release draws no projectile. A damage number comes only
+  from a `Hit`, so a figure beyond 70 m shows none.
+- Health comes from the newest combatant state with `HealthAt`, so a lower
+  health without its hits simply shows, and a figure that comes within 70 m
+  shows its current health at once, since the worker sends what it missed at
+  that moment. The health bars and nameplates reach only 60 and 40 m from the
+  camera, so they show figures within the detail radius but for a camera far
+  behind the character, where a bar may lag up to a second; the target frame
+  shows the client's own target, which is always in detail.
+- The death pose follows the combatant state's life state, which goes at once
+  at any distance, and so do a respawn and a Mob that gives up the fight.
+- The tool in hand and the gathering swing follow the newest look, so they end
+  at most a second late beyond 70 m.
+- A Mob's rest pose settles the snapshots as
+  [World Actor And Interaction Client](#world-actor-and-interaction-client)
+  describes. The worker holds a rest pose back from a viewer beyond 70 m while
+  the Mob walks again, so a late rest pose never pulls a walking Mob back.
+
 ### Text And Fonts
 
 Every text of the client is TextMesh Pro: the panels, the HUD, the menus, the

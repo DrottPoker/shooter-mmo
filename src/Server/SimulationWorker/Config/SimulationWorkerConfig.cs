@@ -533,6 +533,16 @@ public sealed record SimulationWorkerConfig(
                 ?? InterestManagementConfig.Default.NearExitRadius.ToString(CultureInfo.InvariantCulture),
             "SimulationWorker:InterestManagement:NearExitRadius",
             errors);
+        var interestDetailRadius = FiniteFloat(
+            interestSection["DetailRadius"]
+                ?? InterestManagementConfig.Default.DetailRadius.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:InterestManagement:DetailRadius",
+            errors);
+        var interestDetailExitRadius = FiniteFloat(
+            interestSection["DetailExitRadius"]
+                ?? InterestManagementConfig.Default.DetailExitRadius.ToString(CultureInfo.InvariantCulture),
+            "SimulationWorker:InterestManagement:DetailExitRadius",
+            errors);
         var snapshotReplicationSection = section.GetSection("SnapshotReplication");
         var replicationDefaults = SnapshotReplicationConfig.Default;
         var overloadTargetUtilizationBasisPoints = PositiveInt(
@@ -731,6 +741,15 @@ public sealed record SimulationWorkerConfig(
                 "SimulationWorker:InterestManagement:NearRadius must be positive, and NearExitRadius at least NearRadius and at most EnterRadius.");
         }
 
+        if (interestDetailRadius <= 0f
+            || interestDetailExitRadius < interestDetailRadius
+            || interestNearRadius > interestDetailRadius
+            || interestDetailExitRadius > interestExitRadius)
+        {
+            errors.Add(
+                "SimulationWorker:InterestManagement:DetailRadius must be positive and at least NearRadius, and DetailExitRadius at least DetailRadius and at most ExitRadius.");
+        }
+
         if (overloadTargetUtilizationBasisPoints > 10_000)
         {
             errors.Add(
@@ -906,7 +925,9 @@ public sealed record SimulationWorkerConfig(
                 interestExitRadius,
                 interestRefreshIntervalSnapshots,
                 interestNearRadius,
-                interestNearExitRadius),
+                interestNearExitRadius,
+                interestDetailRadius,
+                interestDetailExitRadius),
             SnapshotReplication = new SnapshotReplicationConfig(
                 overloadTargetUtilizationBasisPoints,
                 playerBytesPerSecond,
@@ -1096,14 +1117,19 @@ public sealed record AdmissionConfig(
 // recomputed every that many snapshots, the connections in turn. The exit radius beyond the
 // enter radius keeps an entity visible while its viewer waits for the next refresh. A visible
 // entity within NearRadius becomes near and stays near until it is beyond NearExitRadius;
-// the refresh decides it.
+// the refresh decides it. The same way an entity within DetailRadius comes into detail and
+// stays in it until it is beyond DetailExitRadius: a viewer gets every combat, look, and world
+// actor change of an entity in detail at once, and of one out of detail the newest state at
+// most once a second and no momentary combat events.
 public sealed record InterestManagementConfig(
     float CellSize,
     float EnterRadius,
     float ExitRadius,
     int RefreshIntervalSnapshots = 1,
-    float NearRadius = 48f,
-    float NearExitRadius = 56f)
+    float NearRadius = 50f,
+    float NearExitRadius = 58f,
+    float DetailRadius = 70f,
+    float DetailExitRadius = 78f)
 {
     public static InterestManagementConfig Default { get; } = new(64f, 128f, 144f, 3);
 }
