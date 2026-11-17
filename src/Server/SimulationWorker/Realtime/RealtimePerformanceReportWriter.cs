@@ -108,6 +108,11 @@ internal sealed record RealtimeSlowestTickEntry(
     IReadOnlyDictionary<string, double> Phases,
     IReadOnlyDictionary<string, double> PhaseParts)
 {
+    // The loop thread's CPU time inside the tick; Ms minus it is the time the thread did not
+    // run. Left out without a CPU clock.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CpuMs { get; init; }
+
     public static RealtimeSlowestTickEntry? From(RealtimeSlowestTick? tick)
     {
         return tick is null
@@ -118,7 +123,10 @@ internal sealed record RealtimeSlowestTickEntry(
                 tick.SpawnPackets,
                 tick.DespawnPackets,
                 ToEntries(tick.Phases),
-                ToEntries(tick.PhaseParts));
+                ToEntries(tick.PhaseParts))
+            {
+                CpuMs = tick.CpuMilliseconds
+            };
     }
 
     // In the order the worker timed them, which JSON keeps.
@@ -256,6 +264,13 @@ internal sealed record RealtimePerformanceReportEntry(
     // it waited for the next tick or poll.
     public double LoopBusyPercent { get; init; }
 
+    // The loop thread's CPU time summed over the interval's ticks, and per tick the time it did
+    // not run, the tick's wall time minus its CPU time, such as when other work preempted it.
+    // Null without a CPU clock.
+    public double? TickCpuMs { get; init; }
+
+    public RealtimeDurationEntry? TickNotRunning { get; init; }
+
     // The messages handed to the transport and the messages received in the interval, by their
     // RealtimeMessageType name, only kinds with a message, in ascending type byte order.
     public IReadOnlyDictionary<string, RealtimeMessageCountEntry> SentByMessage { get; init; } =
@@ -345,6 +360,8 @@ internal sealed record RealtimePerformanceReportEntry(
             LiveCorpses = interval.Corpses?.LiveCorpses,
             CollisionPendingSteps = performance.CollisionPendingSteps,
             LoopBusyPercent = interval.LoopBusyPercent,
+            TickCpuMs = performance.SimulationTickCpu is { } cpu ? cpu.AverageMilliseconds * cpu.Samples : null,
+            TickNotRunning = RealtimeDurationEntry.From(performance.SimulationTickNotRunning),
             SentByMessage = ToEntries(network.SentByMessage),
             ReceivedByMessage = ToEntries(network.ReceivedByMessage)
         };

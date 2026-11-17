@@ -90,7 +90,7 @@ namespace Mmorpg.Client.Tests.EditMode
             try
             {
                 var view = player.GetComponent<RemotePlayerView>();
-                view.Initialize(7, "character-7", "Hero", RealtimePlayerArchetypeIds.Player, 30, 4, null, null);
+                view.Initialize(7, "character-7", "Hero", RealtimePlayerArchetypeIds.Player, 30, 15, null, null);
                 Assert.That(view.ShowBody("Human_Female"), Is.True);
                 Assert.That(view.ShowBody("Human_Female"), Is.False);
                 var body = player.GetComponentInChildren<PlayerBodyAppearance>(true);

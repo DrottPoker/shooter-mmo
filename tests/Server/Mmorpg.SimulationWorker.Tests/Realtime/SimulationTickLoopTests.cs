@@ -94,6 +94,106 @@ public sealed class SimulationTickLoopTests
         Assert.True(slowest.Phases[1].Milliseconds >= 20d);
         Assert.NotNull(snapshot.SimulationTick!.GcPauses);
         Assert.All(snapshot.TickPhases, phase => Assert.NotNull(phase.Summary.GcPauses));
+        Assert.Null(slowest.CpuMilliseconds);
+        Assert.Null(snapshot.SimulationTickNotRunning);
+    }
+
+    // With a CPU clock every tick also measures how long the loop thread ran in it: the slowest
+    // tick keeps its CPU time, and the interval sums the CPU time and the time the thread did not
+    // run, the wall time minus the CPU time, per tick.
+    [Fact]
+    public void ATickMeasuresHowLongTheLoopThreadRanInIt()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var cpu = new ScriptedCpuClock();
+        var phases = new SimulationTickPhases();
+        phases.Add(SimulationTickOrder.Movement, "movement", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick == 2)
+            {
+                // The second tick runs 5 ms and waits at least 20 ms in which it does not run.
+                cpu.RunMilliseconds(5);
+                Thread.Sleep(20);
+            }
+        });
+        var guard = new RealtimeLoopGuard(SimulationWorkerConfig.DefaultTickPhaseFailureLimit, fixture.Clock, metrics, NullLogger.Instance);
+        var loop = new SimulationTickLoop(fixture.Clock, fixture.Entities, phases, metrics, guard, NullLogger.Instance, cpuClock: cpu);
+        var nextTick = TimeSpan.Zero;
+
+        RunTicks(loop, ref nextTick, 3);
+
+        var snapshot = metrics.CaptureAndReset();
+        var slowest = snapshot.SlowestTick!;
+        Assert.Equal(5d, slowest.CpuMilliseconds);
+        Assert.True(slowest.Milliseconds >= 20d);
+        Assert.Equal(3, snapshot.SimulationTickCpu!.Samples);
+        Assert.Equal(5d, snapshot.SimulationTickCpu.AverageMilliseconds * 3, 6);
+        var notRunning = snapshot.SimulationTickNotRunning!;
+        Assert.Equal(3, notRunning.Samples);
+        Assert.True(notRunning.MaximumMilliseconds >= 15d);
+        // Both sums round each sample up to a microsecond.
+        Assert.InRange(
+            (notRunning.AverageMilliseconds * 3) - ((snapshot.SimulationTick!.AverageMilliseconds * 3) - 5d),
+            -0.01d,
+            0.01d);
+    }
+
+    // The clock of this platform counts the CPU time of the thread that reads it: a spin is CPU
+    // time, a sleep is not, and no span is longer than its wall time.
+    [Fact]
+    public void TheThreadCpuClockCountsRunningButNotSleeping()
+    {
+        var clock = ThreadCpuClock.ForCurrentPlatform();
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.NotNull(clock);
+        }
+
+        if (clock is null)
+        {
+            return;
+        }
+
+        var start = clock.Read();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds < 5d)
+        {
+        }
+
+        var spun = clock.Read();
+        var spinWall = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        Thread.Sleep(30);
+        var slept = clock.Read();
+        var sleepWall = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds - spinWall;
+
+        var spinCpu = clock.Milliseconds(start, spun, spinWall);
+        Assert.InRange(spinCpu, 0.5d, spinWall);
+        Assert.InRange(clock.Milliseconds(spun, slept, sleepWall), 0d, 5d);
+        Assert.False(string.IsNullOrWhiteSpace(clock.Description));
+    }
+
+    // A CPU clock that counts what the phases say they ran, one unit per millisecond.
+    private sealed class ScriptedCpuClock : ThreadCpuClock
+    {
+        private long microseconds;
+
+        public override string Description => "scripted";
+
+        public void RunMilliseconds(double milliseconds)
+        {
+            microseconds += (long)(milliseconds * 1000d);
+        }
+
+        public override long Read()
+        {
+            return microseconds;
+        }
+
+        public override double Milliseconds(long start, long end, double wallMilliseconds)
+        {
+            return Math.Min(wallMilliseconds, (end - start) / 1000d);
+        }
     }
 
     // A phase that throws is logged once and skipped for this tick only: the later phases of the
@@ -468,8 +568,10 @@ public sealed class SimulationTickLoopTests
             RealtimeFailureIsolation.Code,
             RealtimeFailureIsolation.Message));
 
-        // The interval is 6,000 ticks, counted from the first tick.
-        RunTicks(loop, ref nextTick, 6_000 - 100 - (allocated.Count * 1_000) + 1);
+        // The interval is 6,000 ticks, counted from the first tick, so the checkpoint is due at
+        // tick 6,001 and waits for the first free tick: 6,001 is corpse presence's and 6,002 a
+        // snapshot tick, so it runs at 6,003.
+        RunTicks(loop, ref nextTick, 6_000 - 100 - (allocated.Count * 1_000) + 3);
         await harness.PollUntilAsync(() => harness.GameService.Checkpoints.Count == 1, "the due checkpoint");
         var states = Assert.Single(harness.GameService.Checkpoints).States;
         Assert.Equal(49, states.Count);

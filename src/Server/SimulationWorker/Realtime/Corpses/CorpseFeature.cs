@@ -89,7 +89,7 @@ internal sealed class CorpseFeature
             playerCombat.Authority);
 
         CorpseInteractionHandler.AddRoute(core.Registries.Routes, interactions.HandleIntent);
-        presence.AddTickPhase(core.Registries.TickPhases);
+        presence.AddTickPhase(core.Registries.TickPhases, core.Registries.TickCadence);
         var shutdown = core.Registries.ShutdownSteps;
         shutdown.Add(RealtimeShutdownOrder.CorpseViewers, "corpse viewers", core.CorpseViewers.Clear);
         shutdown.Add(RealtimeShutdownOrder.CorpseViews, "corpse views", views.ClearSnapshots);

@@ -101,7 +101,7 @@ namespace Mmorpg.Client.Tests.EditMode
             players.Add(player);
             player.transform.position = position;
             var view = player.AddComponent<RemotePlayerView>();
-            view.Initialize(entityId, "character-" + entityId, "Player " + entityId, "player.default", 30, 4, null, null);
+            view.Initialize(entityId, "character-" + entityId, "Player " + entityId, "player.default", 30, 15, null, null);
             return view;
         }
     }

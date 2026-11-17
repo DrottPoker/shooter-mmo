@@ -448,6 +448,35 @@ public sealed class SimulationWorkerConfigurationValidationTests
         Assert.Contains(expectedError, exception.Message);
     }
 
+    // The realtime loop thread runs at Normal priority unless the setting raises it.
+    [Theory]
+    [InlineData(null, ThreadPriority.Normal, null)]
+    [InlineData("Normal", ThreadPriority.Normal, null)]
+    [InlineData("aboveNormal", ThreadPriority.AboveNormal, null)]
+    [InlineData(" Highest ", ThreadPriority.Highest, null)]
+    [InlineData("BelowNormal", ThreadPriority.Normal, "SimulationWorker:Realtime:LoopThreadPriority must be Normal, AboveNormal, or Highest.")]
+    [InlineData("3", ThreadPriority.Normal, "SimulationWorker:Realtime:LoopThreadPriority must be Normal, AboveNormal, or Highest.")]
+    [InlineData("TimeCritical", ThreadPriority.Normal, "SimulationWorker:Realtime:LoopThreadPriority must be Normal, AboveNormal, or Highest.")]
+    public void TheLoopThreadPriorityIsNormalAboveNormalOrHighest(
+        string? value,
+        ThreadPriority expectedPriority,
+        string? expectedError)
+    {
+        var settings = WorkerSettings();
+        settings["SimulationWorker:Realtime:LoopThreadPriority"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        if (expectedError is null)
+        {
+            Assert.Equal(expectedPriority, SimulationWorkerConfig.FromConfiguration(configuration).LoopThreadPriority);
+            return;
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => SimulationWorkerConfig.FromConfiguration(configuration));
+        Assert.Contains(expectedError, exception.Message);
+    }
+
     // The steps follow the movement tick rate, 30 Hz here; 0 keeps the plain run-ahead.
     [Theory]
     [InlineData(null, 3, 90, null)]

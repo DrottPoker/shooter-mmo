@@ -103,13 +103,12 @@ function Write-Result($Result) {
 
     $rows | Format-List | Out-String -Width 200 | Write-Host
 
-    # Where a snapshot's time goes, per part of the snapshot phase.
-    Write-Step "Parts of the snapshot phase, average / exact p99 in ms:"
+    # Where the time of the interest refresh and of a snapshot goes, per part of their phases.
+    Write-Step "Parts of the interest and snapshot phases, average / exact p99 in ms:"
     $partRows = foreach ($layout in $Result.layouts) {
         $row = [ordered]@{ Layout = $layout.name }
         foreach ($part in $layout.timing.phasePartAverageMs.PSObject.Properties) {
-            $name = $part.Name -replace '^snapshots: ', ''
-            $row[$name] = (Format-Number $part.Value "0.00") + " / " + (Format-Number $layout.timing.phasePartP99Ms.($part.Name) "0.00")
+            $row[$part.Name] = (Format-Number $part.Value "0.00") + " / " + (Format-Number $layout.timing.phasePartP99Ms.($part.Name) "0.00")
         }
 
         [pscustomobject]$row

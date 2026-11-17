@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Mmorpg.GameProtocol;
@@ -186,15 +187,16 @@ internal sealed class EntityPresenceReplicator(
     }
 
     // Refreshes the connections whose turn it is; every connection gets one refresh per
-    // RefreshIntervalSnapshots calls. Joins refresh their connection at once.
-    public void RefreshInterests(int? excludedConnectionId)
+    // RefreshIntervalSnapshots calls. Joins refresh their connection at once. Returns the
+    // Stopwatch ticks it spent sending the spawns and despawns, for the interest phase's parts.
+    public long RefreshInterests()
     {
         var interval = interestManager.RefreshIntervalSnapshots;
         var turn = (int)(unchecked(refreshCycle++) % (uint)interval);
+        long presenceTicks = 0;
         foreach (var context in peers.Contexts)
         {
-            if (context.PeerId == excludedConnectionId
-                || context.PeerId % interval != turn
+            if (context.PeerId % interval != turn
                 || context.Session is null
                 || !connectionBindings.TryGetEntityId(context.PeerId, out var controlledEntityId)
                 || !peers.TryGetCurrentPeer(context, out var peer))
@@ -204,6 +206,12 @@ internal sealed class EntityPresenceReplicator(
 
             // Indexed loops, because enumerating the interfaces would allocate an enumerator.
             var update = interestManager.Refresh(context.PeerId, controlledEntityId);
+            if (update.Entered.Count == 0 && update.Exited.Count == 0)
+            {
+                continue;
+            }
+
+            var sendsStarted = Stopwatch.GetTimestamp();
             for (var index = 0; index < update.Entered.Count; index++)
             {
                 var enteredEntityId = update.Entered[index];
@@ -248,9 +256,12 @@ internal sealed class EntityPresenceReplicator(
                     SendDespawn(peer, exitedEntityId, "out_of_interest");
                 }
             }
+
+            presenceTicks += Stopwatch.GetTimestamp() - sendsStarted;
         }
 
         PruneDespawned();
+        return presenceTicks;
     }
 
     // Drops world actor tombstones that no connection still sees.

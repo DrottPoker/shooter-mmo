@@ -199,9 +199,9 @@ The instruments of `Mmorpg.SimulationWorker.Performance`:
 | `simulation_worker.simulation.tick.lag` | histogram, ms | How late a tick started against its schedule. |
 | `simulation_worker.simulation.tick.overruns` | counter | Ticks that took longer than the tick interval. |
 | `simulation_worker.simulation.tick.resynchronizations` | counter | Times the clock skipped time after five catch-up ticks. |
-| `simulation_worker.simulation.tick_phase.duration` | histogram, ms | Every tick phase, labeled `phase` with the name it registered under, such as `collision streaming`, `movement`, `mobs`, `combat`, or `snapshots`. A phase is timed only on the ticks on which it did its work: a periodic phase that was not due, such as the snapshots on every second tick, and a run that threw are no samples. |
-| `simulation_worker.simulation.tick_phase_part.duration` | histogram, ms | The parts of the tick phases that time where their own time goes, labeled `part` with `<phase>: <part>`, one sample per run of the phase. `snapshots`: `records` (the entity records and the owner states), `interest index` (the interest index brought to the entities' positions), `interest refresh` (the connections whose refresh is due, with the spawns and despawns they send), `owner snapshots` (gathering the recipients and their owner snapshots), and, summed over the recipients, `remote plans` (the scheduler's plan and its completion), `remote encoding` (the chunk packets), and `remote sends` (handing them to the transport). `corpse presence`: `collection` (the active corpses, sorted, and the views of expired ones closed), `selection` (every peer's corpses in range and its loot groups, compared with what it got last), and `sends` (the presences that changed, built and sent). |
-| `simulation_worker.simulation.collision_streaming.duration`, `.movement.duration`, `.interest.duration`, `.snapshot_broadcast.duration` | histogram, ms | Four tick phases timed inside themselves, kept for the dashboards and the load tooling. The snapshot broadcast is the complete snapshot pipeline and includes the separately reported interest phase. |
+| `simulation_worker.simulation.tick_phase.duration` | histogram, ms | Every tick phase, labeled `phase` with the name it registered under, such as `collision streaming`, `movement`, `mobs`, `combat`, `interest`, or `snapshots`. A phase is timed only on the ticks on which it did its work: a periodic phase that was not due, such as the snapshots on every second tick, and a run that threw are no samples. At 30 ticks and 15 snapshots per second the snapshots run on the even ticks and `appearances` and `interest` on the odd ones, as [Realtime Server Structure And Threading Contract](PROJECT_ARCHITECTURE.md#realtime-server-structure-and-threading-contract) describes, so the two kinds of tick can be told apart by their phases. |
+| `simulation_worker.simulation.tick_phase_part.duration` | histogram, ms | The parts of the tick phases that time where their own time goes, labeled `part` with `<phase>: <part>`, one sample per run of the phase. `interest`: `index` (the interest index brought to the entities' positions), `refresh` (the visibility of the connections whose refresh is due), and `spawns and despawns` (the spawns and despawns those refreshes send). `snapshots`: `records` (the entity records and the owner states), `owner snapshots` (gathering the recipients and their owner snapshots), and, summed over the recipients, `remote plans` (the scheduler's plan and its completion), `remote encoding` (the chunk packets), and `remote sends` (handing them to the transport). `corpse presence`: `collection` (the active corpses, sorted, and the views of expired ones closed), `selection` (every peer's corpses in range and its loot groups, compared with what it got last), and `sends` (the presences that changed, built and sent). |
+| `simulation_worker.simulation.collision_streaming.duration`, `.movement.duration`, `.interest.duration`, `.snapshot_broadcast.duration` | histogram, ms | Four tick phases timed inside themselves, kept for the dashboards and the load tooling. The interest duration is the `interest` phase's index and refresh with their spawns and despawns, on the tick before each snapshot tick; the snapshot broadcast is the snapshot pipeline of the snapshot tick without it. |
 | `simulation_worker.simulation.collision_streaming.pending_steps` | counter | Steps that a player or Mob did not take because collision chunks around it still loaded on the streaming loader, as [Collision Data And Streaming](SERVICE_FEATURES.md#collision-data-and-streaming) describes. With the default radii it stays at zero in play; a value above zero means the loader fell behind the movers. |
 | `simulation_worker.loop.step.duration` | histogram, ms | Every step of a loop iteration outside the tick, labeled `step`: `network poll`, `completed operations`, `peer supervision`, `orphan sweep`, and `send flush`. |
 | `simulation_worker.loop.network_poll.duration`, `.completed_operations.duration` | histogram, ms | Transport polling and completion processing of one loop iteration, also in `simulation_worker.loop.step.duration`. |
@@ -414,7 +414,15 @@ entries of both processes, and the trace share one id.
   start of its own, such as the last one of a background collection, counts as
   generation 2. At its start the worker logs how its garbage collector runs,
   such as `workstation, concurrent, latency mode Interactive`, the default of
-  the worker, which sets nothing about it.
+  the worker, which sets nothing about it, and the priority of the realtime
+  loop thread, `SimulationWorker:Realtime:LoopThreadPriority`, with the clock
+  that measures the thread's CPU time per tick: on Windows the thread's cycle
+  count from `QueryThreadCycleTime`, turned into time at the rate of the
+  processor's time stamp counter, which the worker measures with short spins
+  at its start and raises whenever a tick of at least 2 ms ran faster; on
+  64-bit Linux `CLOCK_THREAD_CPUTIME_ID`; elsewhere none, and the CPU fields
+  below stay empty. The two reads around a tick cost 0.7 to 1 microsecond on
+  Windows.
 - With `SimulationWorker:PerformanceReportPath` set, environment form
   `SimulationWorker__PerformanceReportPath`, the worker also appends each
   interval of these three lines to that file as one JSON object per line,
@@ -431,11 +439,17 @@ entries of both processes, and the trace share one id.
   them, and `p99WithoutGcPausesMs` and `maximumWithoutGcPausesMs`, the p99
   bucket and the longest sample once each sample's own pauses are taken out
   of it, so a sample that is long only by a pause shows as such;
-  `slowestTick`, the interval's slowest tick with `ms`, its `gcPauseMs`, the
-  `spawnPackets` and `despawnPackets` it sent, and the milliseconds of every
-  phase and phase part that ran in it, in `phases` and `phaseParts`; `loopBusyPercent`, the share of the
-  interval that the loop thread spent in its ticks and loop steps, beside the
-  process CPU, which also holds the transport's threads; `gcPauseMs`, the
+  `slowestTick`, the interval's slowest tick with `ms`, `cpuMs`, the loop
+  thread's CPU time inside it, its `gcPauseMs`, the `spawnPackets` and
+  `despawnPackets` it sent, and the milliseconds of every phase and phase part
+  that ran in it, in `phases` and `phaseParts`; `loopBusyPercent`, the share of
+  the interval that the loop thread spent in its ticks and loop steps, beside
+  the process CPU, which also holds the transport's threads; `tickCpuMs`, the
+  loop thread's CPU time summed over the interval's ticks, and
+  `tickNotRunning`, per tick the time the loop thread did not run, the tick's
+  wall time minus its CPU time, such as when other work on the machine
+  preempted it, with samples, average, bucket bounds, and maximum, so the
+  interval's lost time is its samples times its average; `gcPauseMs`, the
   garbage collection pauses of the interval, and `gcPauses`,
   `gcGeneration0Pauses`, `gcGeneration1Pauses`, `gcGeneration2Pauses`, and
   `gcLongestPauseMs`, the pauses one by one; `collisionPendingSteps`, the

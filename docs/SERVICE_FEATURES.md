@@ -971,22 +971,26 @@ authentication, and domain failures to structured results:
 ## Interest Management
 
 `SimulationInterestManager` maintains a spatial hash from authoritative entity
-positions. Every snapshot brings it to the players and world actors as they
-are: an entity that stays in its cell only gets its new position, one that
-changed cells moves, a new one is added, and one that is gone leaves. Joins add
-one entity at once and update only the nearby observers. Each peer has a
-visibility set:
+positions. The tick before every snapshot tick brings it to the players and
+world actors as they are: an entity that stays in its cell only gets its new
+position, one that changed cells moves, a new one is added, and one that is
+gone leaves. Joins add one entity at once and update only the nearby
+observers. Each peer has a visibility set:
 
 - The enter radius, 128 m by default, adds entities.
 - A larger exit radius, 144 m by default, prevents boundary flapping.
-- Visibility changes emit reliable spawn or despawn.
+- Visibility changes emit reliable spawn or despawn. The refresh runs on the
+  tick before each snapshot tick, so its spawns leave one tick before the
+  snapshot that carries the first record of their entities, and each spawn
+  carries that tick and the entity's pose at it. A despawn follows the last
+  record of its entity, and no snapshot carries the entity after it.
 - Snapshots contain only visible entity ids.
 - Each connection keeps its visible entities ascending by id, each with its
   tier and its place in the index; the set changes only by what entered and
   left.
 - Each connection's visibility set is recomputed every
   `RefreshIntervalSnapshots` snapshots, 3 by default, the connections in turn,
-  so a 15 Hz snapshot rate refreshes a third of them per snapshot. The band
+  so a 15 Hz snapshot rate refreshes a third of them per snapshot interval. The band
   between the enter and exit radius keeps an entity visible while its viewer
   waits for its turn, and joins and leaves still update visibility at once.
 - The same refresh decides which visible entities are near: within
@@ -2419,6 +2423,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `CharacterCheckpointSeconds` | `30` | Interval of the checkpoint that saves the changed place and vitals of the players, 1 to 3,600 seconds |
 | `LingeringBodySeconds` | `20` | How long a character's body stays in the world after its connection ended and after every hit it takes, 1 to 3,600 seconds, as [Lingering Bodies](#lingering-bodies) describes |
 | `TickPhaseFailureLimit` | `30` | How many runs in a row one tick phase or loop step may fail before the worker stops itself, at least 1, as [Realtime UDP Transport](#realtime-udp-transport) describes |
+| `Realtime:LoopThreadPriority` | `Normal` | The scheduling priority of the realtime loop thread, `Normal`, `AboveNormal`, or `Highest`; any other value stops the start. A higher one lets other work on a busy machine preempt the ticks less often; the performance file shows per tick how long the thread did not run, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes |
 | `UdpQuotas:InboundPacketsPerSecond`, `InboundPacketBurst` | `120`, `240` | Inbound packets per peer |
 | `UdpQuotas:InboundBytesPerSecond`, `InboundByteBurst` | 128 KiB, 256 KiB | Inbound bytes per peer |
 | `UdpQuotas:SnapshotBytesPerSecond`, `SnapshotByteBurst` | 256 KiB, 512 KiB | Unreliable snapshot bytes per peer |

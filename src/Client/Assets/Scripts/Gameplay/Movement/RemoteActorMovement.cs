@@ -123,11 +123,7 @@ namespace Mmorpg.Client.Gameplay
             snapshotIntervalTicks = Mathf.Max(
                 1,
                 Mathf.RoundToInt(ticks / (float)Mathf.Max(1, snapshotRateHz)));
-            presenter.Configure(
-                ticks,
-                RemoteMovementPresenter.InterpolationDelayTicks(ticks, snapshotRateHz),
-                collisionWorld,
-                collisionSettings);
+            presenter.Configure(ticks, snapshotRateHz, collisionWorld, collisionSettings);
             resting = false;
             ForgetStart();
             IsConfigured = true;

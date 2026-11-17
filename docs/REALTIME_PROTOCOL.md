@@ -834,9 +834,10 @@ value without a despawn is an identity conflict. The level limit is public, and
 Since protocol 45 `WorldActorSpawn` says what a client cannot know about a Mob
 that comes into view while it walks. After `ActivityTier` it carries:
 
-- `PoseTick` (`u32`): the server tick at which the worker read the pose, the
-  tick that the snapshots of that moment name, as `EntitySpawn.ServerTick` does
-  for a player.
+- `PoseTick` (`u32`): the server tick at which the worker read the pose, as
+  `EntitySpawn.ServerTick` does for a player. It need not be a tick that a
+  snapshot names: the interest refresh sends its spawns on the tick before a
+  snapshot tick.
 - `IsMoving` (`bool`): whether the Mob walks at that tick, so its pose is not a
   rest pose. The hand-written rule accepts it only for an active Mob; an NPC, a
   resource node, and a hidden Mob send false.

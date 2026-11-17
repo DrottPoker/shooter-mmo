@@ -1,6 +1,5 @@
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Appearance;
-using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Entities;
 using Mmorpg.SimulationWorker.Items;
 
@@ -27,7 +26,13 @@ internal sealed class AppearanceReplicator(
 
     private readonly List<PlayerSimulationEntity> playerBuffer = [];
     private readonly HashSet<ulong> seen = [];
+    private readonly List<ulong> gone = [];
     private readonly Dictionary<ulong, Sent> sent = [];
+
+    // The look each player's spawns carry, built once and kept until the player's session, look
+    // version, item-state revision, or used equipment slot moves, so the many spawns of an
+    // interest refresh build no look.
+    private readonly Dictionary<ulong, SpawnLook> spawnLooks = [];
 
     // The look a spawn of the player carries. A spawn can come before the first broadcast that
     // sees the player, so the look of its first spawn counts as sent: a change before that
@@ -35,14 +40,20 @@ internal sealed class AppearanceReplicator(
     public RealtimeCharacterAppearance SpawnAppearanceOf(PlayerSimulationEntity entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        var appearance = AppearanceOf(entity);
-        if (!sent.ContainsKey(entity.NetworkEntityId))
+        var (lookVersion, itemRevision) = VersionsOf(entity);
+        if (!spawnLooks.TryGetValue(entity.NetworkEntityId, out var look)
+            || !look.Matches(entity, lookVersion, itemRevision))
         {
-            var (lookVersion, itemRevision) = VersionsOf(entity);
-            sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, -1, entity.UsedEquipmentSlot, KeyOf(appearance));
+            look = SpawnLook.Of(entity, lookVersion, itemRevision, AppearanceOf(entity));
+            spawnLooks[entity.NetworkEntityId] = look;
         }
 
-        return appearance;
+        if (!sent.ContainsKey(entity.NetworkEntityId))
+        {
+            sent[entity.NetworkEntityId] = new Sent(lookVersion, itemRevision, -1, entity.UsedEquipmentSlot, KeyOf(look.Appearance));
+        }
+
+        return look.Appearance;
     }
 
     private RealtimeCharacterAppearance AppearanceOf(PlayerSimulationEntity entity)
@@ -79,17 +90,17 @@ internal sealed class AppearanceReplicator(
             toolInUse);
     }
 
-    // Sends the looks that changed at the snapshot rate, so they reach the peers with the
-    // snapshots of the same tick.
-    public void AddTickPhase(SimulationTickPhases phases, SimulationWorkerConfig config)
+    // Sends the looks that changed on the tick before each snapshot tick, ahead of the interest
+    // refresh of that tick, so they reach the peers just before the next snapshot.
+    public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence)
     {
-        var intervalTicks = config.MovementSimulation.TickRateHz / config.SnapshotRateHz;
+        ArgumentNullException.ThrowIfNull(cadence);
         phases.AddPeriodic(
             SimulationTickOrder.Appearances,
             PhaseName,
             (in SimulationTick tick) =>
             {
-                if (tick.ServerTick % intervalTicks != 0)
+                if (!cadence.IsBeforeSnapshotTick(tick.ServerTick))
                 {
                     return false;
                 }
@@ -119,12 +130,30 @@ internal sealed class AppearanceReplicator(
             }
         }
 
-        if (sent.Count > seen.Count)
+        Forget(sent);
+        Forget(spawnLooks);
+    }
+
+    // Drops what the replicator keeps of the players that are gone.
+    private void Forget<T>(Dictionary<ulong, T> byEntity)
+    {
+        if (byEntity.Count <= seen.Count)
         {
-            foreach (var entityId in sent.Keys.Where(entityId => !seen.Contains(entityId)).ToArray())
+            return;
+        }
+
+        gone.Clear();
+        foreach (var entityId in byEntity.Keys)
+        {
+            if (!seen.Contains(entityId))
             {
-                sent.Remove(entityId);
+                gone.Add(entityId);
             }
+        }
+
+        foreach (var entityId in gone)
+        {
+            byEntity.Remove(entityId);
         }
     }
 
@@ -143,6 +172,7 @@ internal sealed class AppearanceReplicator(
         }
 
         var appearance = AppearanceOf(entity);
+        spawnLooks[entity.NetworkEntityId] = SpawnLook.Of(entity, lookVersion, itemRevision, appearance);
         var key = KeyOf(appearance);
         var changed = known && !string.Equals(previous.Key, key, StringComparison.Ordinal);
         byte[]? packet = null;
@@ -163,6 +193,7 @@ internal sealed class AppearanceReplicator(
     public void Clear()
     {
         sent.Clear();
+        spawnLooks.Clear();
     }
 
     // The player's look version and item-state revision; a look changes only when one of them moves.
@@ -229,6 +260,24 @@ internal sealed class AppearanceReplicator(
     }
 
     private readonly record struct Sent(long LookVersion, long ItemRevision, int Owner, string UsedSlot, string Key);
+
+    // A built look with what it was built from.
+    private readonly record struct SpawnLook(
+        Guid SessionId,
+        long LookVersion,
+        long ItemRevision,
+        string UsedSlot,
+        RealtimeCharacterAppearance Appearance)
+    {
+        public static SpawnLook Of(PlayerSimulationEntity entity, long lookVersion, long itemRevision, RealtimeCharacterAppearance appearance) =>
+            new(entity.Session.SimulationSessionId, lookVersion, itemRevision, entity.UsedEquipmentSlot, appearance);
+
+        public bool Matches(PlayerSimulationEntity entity, long lookVersion, long itemRevision) =>
+            SessionId == entity.Session.SimulationSessionId
+            && LookVersion == lookVersion
+            && ItemRevision == itemRevision
+            && string.Equals(UsedSlot, entity.UsedEquipmentSlot, StringComparison.Ordinal);
+    }
 }
 
 // What the appearance replicator takes from content: the body model of a player whose look is not

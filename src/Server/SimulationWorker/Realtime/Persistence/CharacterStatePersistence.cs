@@ -55,9 +55,10 @@ internal sealed class CharacterStatePersistence(
     private bool checkpointScheduled;
     private bool checkpointInFlight;
 
-    public void AddTickPhase(SimulationTickPhases phases)
+    public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence)
     {
-        phases.AddPeriodic(SimulationTickOrder.CharacterCheckpoint, "character checkpoint", (in SimulationTick tick) => Checkpoint(in tick));
+        ArgumentNullException.ThrowIfNull(cadence);
+        phases.AddPeriodic(SimulationTickOrder.CharacterCheckpoint, "character checkpoint", (in SimulationTick tick) => Checkpoint(in tick, cadence));
     }
 
     // Where a joining session's new entity starts. A reconnect keeps its entity and its place.
@@ -207,11 +208,12 @@ internal sealed class CharacterStatePersistence(
     }
 
     // Runs every tick and does nothing until the interval is due, so it allocates nothing per
-    // player per tick. A due checkpoint waits while the previous call is in flight. A player
-    // whose session the worker no longer holds is left out: a session that an exception in the
-    // player's own step invalidated has a state that may be broken, and its entity stays until
-    // the end of the tick. Returns whether the checkpoint was due.
-    private bool Checkpoint(in SimulationTick tick)
+    // player per tick. A due checkpoint waits while the previous call is in flight, and then for
+    // a tick that no snapshot and no other periodic pass takes. A player whose session the worker
+    // no longer holds is left out: a session that an exception in the player's own step
+    // invalidated has a state that may be broken, and its entity stays until the end of the tick.
+    // Returns whether the checkpoint was due.
+    private bool Checkpoint(in SimulationTick tick, SimulationTickCadence cadence)
     {
         if (operations is null)
         {
@@ -233,7 +235,9 @@ internal sealed class CharacterStatePersistence(
             return false;
         }
 
-        if (checkpointInFlight || !CombatTicks.IsReached(tick.ServerTick, nextCheckpointTick))
+        if (checkpointInFlight
+            || !CombatTicks.IsReached(tick.ServerTick, nextCheckpointTick)
+            || !cadence.IsFreeFor(tick.ServerTick, nextCheckpointTick))
         {
             return false;
         }

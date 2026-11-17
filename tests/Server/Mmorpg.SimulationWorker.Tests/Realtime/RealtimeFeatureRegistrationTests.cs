@@ -27,6 +27,7 @@ public sealed class RealtimeFeatureRegistrationTests
                 "interaction revalidation",
                 "gathering",
                 "appearances",
+                "interest",
                 "snapshots",
                 "corpse presence",
                 "game service availability",
@@ -45,12 +46,63 @@ public sealed class RealtimeFeatureRegistrationTests
                 SimulationTickOrder.InteractionRevalidation,
                 SimulationTickOrder.Gathering,
                 SimulationTickOrder.Appearances,
+                SimulationTickOrder.Interest,
                 SimulationTickOrder.Snapshots,
                 SimulationTickOrder.CorpsePresence,
                 SimulationTickOrder.GameServiceAvailability,
                 SimulationTickOrder.CharacterCheckpoint
             ],
             phases.Select(phase => phase.Order));
+    }
+
+    // Runs every composed phase for two seconds of ticks and records which did their work on which
+    // tick. On a snapshot tick only the snapshots and the phases of every tick work, the interest
+    // refresh and the looks work on the tick before each snapshot tick, and the other periodic
+    // phases never share a tick. Fails when a phase picks its own ticks onto a snapshot tick.
+    [Fact]
+    public async Task NoPeriodicPhaseButTheSnapshotsWorksOnASnapshotTick()
+    {
+        await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions { EnableWorldActors = true });
+        var phases = harness.Service.Server.TickPhases;
+        var cadence = harness.Service.Server.Registries.TickCadence;
+        var ticks = 2 * harness.Config.MovementSimulation.TickRateHz;
+        var worked = phases.ToDictionary(phase => phase.Name, _ => new List<uint>());
+        var grid = new Mmorpg.SimulationWorker.WorldActors.PlayerSpatialGrid();
+        var players = new List<Mmorpg.SimulationWorker.Entities.PlayerSimulationEntity>();
+        for (var serverTick = 1u; serverTick <= ticks; serverTick++)
+        {
+            var tick = new SimulationTick(serverTick, new SimulationTickPlayers(players), grid);
+            foreach (var phase in phases)
+            {
+                if (phase.Run(in tick))
+                {
+                    worked[phase.Name].Add(serverTick);
+                }
+            }
+        }
+
+        Assert.Equal(2, cadence.SnapshotIntervalTicks);
+        var periodic = worked.Where(pair => pair.Value.Count > 0 && pair.Value.Count < ticks).ToArray();
+        Assert.Equal(
+            ["appearances", "corpse presence", "interaction revalidation", "interest", "snapshots"],
+            periodic.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+        foreach (var (name, workedTicks) in periodic)
+        {
+            if (name == SnapshotReplicator.PhaseName)
+            {
+                Assert.All(workedTicks, tick => Assert.True(cadence.IsSnapshotTick(tick)));
+                Assert.Equal(ticks / 2, workedTicks.Count);
+                continue;
+            }
+
+            Assert.All(workedTicks, tick => Assert.False(cadence.IsSnapshotTick(tick), $"{name} worked on snapshot tick {tick}."));
+        }
+
+        Assert.Equal(worked[InterestRefresher.PhaseName], worked[AppearanceReplicator.PhaseName]);
+        Assert.All(worked[InterestRefresher.PhaseName], tick => Assert.True(cadence.IsSnapshotTick(tick + 1)));
+        Assert.Equal(4, worked[CorpsePresenceReplicator.PhaseName].Count);
+        Assert.Equal(10, worked["interaction revalidation"].Count);
+        Assert.Empty(worked[CorpsePresenceReplicator.PhaseName].Intersect(worked["interaction revalidation"]));
     }
 
     [Fact]

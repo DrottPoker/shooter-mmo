@@ -125,9 +125,11 @@ public sealed class RealtimeLoopFailureTests
             fixture.PerformanceMetrics,
             fixture.Clock,
             fixture.FailureIsolation);
+        var interest = new InterestRefresher(fixture.Entities, fixture.Presence, fixture.PerformanceMetrics);
         // Every peer sees the others once each connection had its visibility turn.
         for (var broadcast = 0; broadcast < fixture.Config.InterestManagement.RefreshIntervalSnapshots + 1; broadcast++)
         {
+            interest.Refresh();
             replicator.Broadcast();
         }
 
@@ -210,8 +212,10 @@ public sealed class RealtimeLoopFailureTests
 
         // Visibility refreshes one connection per snapshot in turn, so remote snapshots follow
         // within one refresh interval.
+        var interest = new InterestRefresher(fixture.Entities, fixture.Presence, fixture.PerformanceMetrics);
         for (var broadcast = 0; broadcast < fixture.Config.InterestManagement.RefreshIntervalSnapshots + 1; broadcast++)
         {
+            interest.Refresh();
             replicator.Broadcast();
         }
 

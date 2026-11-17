@@ -128,6 +128,12 @@ public sealed record SimulationWorkerConfig(
     // How many runs in a row one tick phase or loop step may fail before the worker stops.
     public int TickPhaseFailureLimit { get; init; } = DefaultTickPhaseFailureLimit;
 
+    // The scheduling priority of the realtime loop thread: Normal, AboveNormal, or Highest, so
+    // other work on a busy machine preempts the ticks less often.
+    public ThreadPriority LoopThreadPriority { get; init; } = DefaultLoopThreadPriority;
+
+    public const ThreadPriority DefaultLoopThreadPriority = ThreadPriority.Normal;
+
     public const int DefaultTickPhaseFailureLimit = 30;
 
     public UdpQuotaConfig UdpQuotas { get; init; } = UdpQuotaConfig.Default;
@@ -436,6 +442,9 @@ public sealed record SimulationWorkerConfig(
                 section["TickPhaseFailureLimit"],
                 "SimulationWorker:TickPhaseFailureLimit",
                 errors);
+        var loopThreadPriority = LoopThreadPriorityOf(
+            section.GetSection("Realtime")["LoopThreadPriority"],
+            errors);
         var udpQuotaSection = section.GetSection("UdpQuotas");
         var inboundPacketsPerSecond = PositiveInt(
             udpQuotaSection["InboundPacketsPerSecond"],
@@ -875,6 +884,7 @@ public sealed record SimulationWorkerConfig(
             PathContinuationSeconds = pathContinuationSeconds,
             GracefulDisconnectMaximum = TimeSpan.FromMilliseconds(gracefulDisconnectMaximumMilliseconds),
             TickPhaseFailureLimit = tickPhaseFailureLimit,
+            LoopThreadPriority = loopThreadPriority,
             UdpQuotas = new UdpQuotaConfig(
                 inboundPacketsPerSecond,
                 inboundPacketBurst,
@@ -975,6 +985,26 @@ public sealed record SimulationWorkerConfig(
         {
             errors.Add($"{key} must be a valid identifier.");
         }
+    }
+
+    // Normal when unset; a priority below Normal or above Highest is no choice.
+    private static ThreadPriority LoopThreadPriorityOf(string? value, ICollection<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return DefaultLoopThreadPriority;
+        }
+
+        foreach (var priority in (ReadOnlySpan<ThreadPriority>)[ThreadPriority.Normal, ThreadPriority.AboveNormal, ThreadPriority.Highest])
+        {
+            if (string.Equals(value.Trim(), priority.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return priority;
+            }
+        }
+
+        errors.Add("SimulationWorker:Realtime:LoopThreadPriority must be Normal, AboveNormal, or Highest.");
+        return DefaultLoopThreadPriority;
     }
 
     private static string? First(string? primary, string? alias)

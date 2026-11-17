@@ -3,6 +3,13 @@ namespace Mmorpg.SimulationWorker.Realtime;
 // The one place that orders the phases of a simulation tick. A feature registers its phase
 // under one of these positions, and the loop runs the phases from the lowest to the highest.
 // The gaps leave room for a new phase, which takes a new constant here with its reason.
+//
+// A phase that does not work on every tick takes its ticks from SimulationTickCadence, never
+// from a modulo of its own, so the snapshot ticks carry the snapshots and no other periodic
+// pass: the interest refresh and the changed looks run on the tick before each snapshot tick,
+// every other pass with a period on a lane off the snapshot ticks and off the other lanes, and
+// the character checkpoint on a free tick. RealtimeFeatureRegistrationTests runs the composed
+// phases and fails when a periodic phase works on a snapshot tick.
 internal static class SimulationTickOrder
 {
     // Loads the collision chunks around the players, the World spawn, and the moving Mobs
@@ -34,27 +41,36 @@ internal static class SimulationTickOrder
     // they get another snapshot of it.
     public const int LingeringBodies = 650;
 
-    // Revalidates open world interactions against this tick's positions, five times a second.
+    // Revalidates open world interactions against this tick's positions, five times a second on
+    // its lane.
     public const int InteractionRevalidation = 700;
 
     // Advances gathering after the revalidation, so an interaction it closed stops gathering
     // in the same tick.
     public const int Gathering = 800;
 
-    // Sends the looks that changed at the snapshot rate, ahead of the snapshots.
+    // Sends the looks that changed on the tick before each snapshot tick, ahead of the interest
+    // refresh, so a spawn it sends carries the look the viewers just got.
     public const int Appearances = 900;
 
-    // Sends the movement snapshots at the snapshot rate, after everything that moved.
+    // Brings the interest index to this tick's positions and refreshes the visibility of the
+    // connections whose turn it is, with their spawns and despawns, on the tick before each
+    // snapshot tick, after everything that moved, so the snapshot after it carries every entity
+    // that came into view.
+    public const int Interest = 950;
+
+    // Sends the movement snapshots on the snapshot ticks, after everything that moved.
     public const int Snapshots = 1000;
 
-    // Sends corpse presence twice a second.
+    // Sends corpse presence twice a second on its lane.
     public const int CorpsePresence = 1100;
 
     // Tells the joined players once when GameService stops or starts answering, so their clients
     // show while saving is paused.
     public const int GameServiceAvailability = 1150;
 
-    // Collects the players whose place or vitals changed at the checkpoint interval, last, so it
-    // sees this tick's movement, damage, deaths, and respawns.
+    // Collects the players whose place or vitals changed at the checkpoint interval, on the first
+    // free tick once it is due, last, so it sees this tick's movement, damage, deaths, and
+    // respawns.
     public const int CharacterCheckpoint = 1200;
 }

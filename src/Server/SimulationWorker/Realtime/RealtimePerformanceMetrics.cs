@@ -36,6 +36,10 @@ public sealed record RealtimeSlowestTick(
     public long SpawnPackets { get; init; }
 
     public long DespawnPackets { get; init; }
+
+    // The loop thread's CPU time inside the tick; the rest of the tick it did not run. Null
+    // without a CPU clock.
+    public double? CpuMilliseconds { get; init; }
 }
 
 public sealed record RealtimeNamedMilliseconds(string Name, double Milliseconds);
@@ -101,6 +105,12 @@ public sealed record RealtimePerformanceMetricsSnapshot(
     // The time the loop thread spent in its timed work: every tick and every loop step.
     public double LoopBusyMilliseconds { get; init; }
 
+    // Per tick, the loop thread's CPU time and the time it did not run, wall time minus CPU
+    // time; null without a CPU clock.
+    public RealtimeDurationSummary? SimulationTickCpu { get; init; }
+
+    public RealtimeDurationSummary? SimulationTickNotRunning { get; init; }
+
     // Steps that players and Mobs skipped because collision chunks around them still loaded.
     public long CollisionPendingSteps { get; init; }
 }
@@ -150,6 +160,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     private readonly DurationAccumulator joinFinalization = new();
     private readonly DurationAccumulator simulationTick = new();
     private readonly GcPauseAccumulator simulationTickGcPauses = new();
+    private readonly DurationAccumulator simulationTickCpu = new();
+    private readonly DurationAccumulator simulationTickNotRunning = new();
     private readonly DurationAccumulator simulationTickLag = new();
     private readonly DurationAccumulator collisionStreaming = new();
     private readonly DurationAccumulator movementSimulation = new();
@@ -289,18 +301,28 @@ public sealed class RealtimePerformanceMetrics : IDisposable
     // A tick that takes longer than its fixed interval is an overrun, even when the
     // catch-up budget later absorbs the delay without a resynchronization. gcPause is the
     // garbage collection pause time that fell inside the tick, and the packets are the spawns
-    // and despawns it sent. The tick ends the breakdown of the phases and parts timed since the
-    // previous one.
+    // and despawns it sent. cpuMilliseconds is the loop thread's CPU time inside the tick, null
+    // without a CPU clock; the rest of the tick the thread did not run. The tick ends the
+    // breakdown of the phases and parts timed since the previous one.
     public void RecordSimulationTick(
         TimeSpan duration,
         TimeSpan budget,
         TimeSpan gcPause = default,
         long spawnPackets = 0,
-        long despawnPackets = 0)
+        long despawnPackets = 0,
+        double? cpuMilliseconds = null)
     {
         var milliseconds = Record(simulationTick, simulationTickHistogram, duration);
         var pauseMilliseconds = simulationTickGcPauses.Record(milliseconds, gcPause);
-        slowestTick.EndTick(milliseconds, pauseMilliseconds, spawnPackets, despawnPackets);
+        var cpu = double.NaN;
+        if (cpuMilliseconds is { } measured)
+        {
+            cpu = Math.Clamp(measured, 0d, milliseconds);
+            simulationTickCpu.Record(cpu);
+            simulationTickNotRunning.Record(milliseconds - cpu);
+        }
+
+        slowestTick.EndTick(milliseconds, pauseMilliseconds, spawnPackets, despawnPackets, cpu);
         if (duration > budget)
         {
             Interlocked.Increment(ref tickOverruns);
@@ -495,6 +517,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             TickOverrunsWithoutGcPauses = Interlocked.Exchange(ref tickOverrunsWithoutGcPauses, 0),
             SlowestTick = slowest,
             LoopBusyMilliseconds = loopBusyMilliseconds,
+            SimulationTickCpu = simulationTickCpu.CaptureAndReset(),
+            SimulationTickNotRunning = simulationTickNotRunning.CaptureAndReset(),
             CollisionPendingSteps = Interlocked.Exchange(ref collisionPendingSteps, 0)
         };
     }
@@ -868,7 +892,13 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             running[slot] = double.IsNaN(value) ? milliseconds : value + milliseconds;
         }
 
-        public void EndTick(double milliseconds, double gcPauseMilliseconds, long spawnPackets, long despawnPackets)
+        // cpuMilliseconds is NaN without a CPU clock.
+        public void EndTick(
+            double milliseconds,
+            double gcPauseMilliseconds,
+            long spawnPackets,
+            long despawnPackets,
+            double cpuMilliseconds = double.NaN)
         {
             // Said with a full fence before the interval is read: the reporter either sees it and
             // waits, or has started the next interval already, which this tick then reads.
@@ -883,6 +913,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 slot.Interval = stamp;
                 slot.Milliseconds = milliseconds;
                 slot.GcPauseMilliseconds = gcPauseMilliseconds;
+                slot.CpuMilliseconds = cpuMilliseconds;
                 slot.SpawnPackets = spawnPackets;
                 slot.DespawnPackets = despawnPackets;
                 Array.Copy(running, slot.Timings, Capacity);
@@ -911,6 +942,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             long slotInterval;
             double milliseconds;
             double gcPauseMilliseconds;
+            double cpuMilliseconds;
             long spawnPackets;
             long despawnPackets;
             var spinner = new SpinWait();
@@ -922,6 +954,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                     slotInterval = slot.Interval;
                     milliseconds = slot.Milliseconds;
                     gcPauseMilliseconds = slot.GcPauseMilliseconds;
+                    cpuMilliseconds = slot.CpuMilliseconds;
                     spawnPackets = slot.SpawnPackets;
                     despawnPackets = slot.DespawnPackets;
                     Array.Copy(slot.Timings, timings, Capacity);
@@ -940,7 +973,8 @@ public sealed class RealtimePerformanceMetrics : IDisposable
                 : new RealtimeSlowestTick(milliseconds, gcPauseMilliseconds, Named(phases, timings), Named(parts, timings))
                 {
                     SpawnPackets = spawnPackets,
-                    DespawnPackets = despawnPackets
+                    DespawnPackets = despawnPackets,
+                    CpuMilliseconds = double.IsNaN(cpuMilliseconds) ? null : cpuMilliseconds
                 };
         }
 
@@ -972,6 +1006,7 @@ public sealed class RealtimePerformanceMetrics : IDisposable
             public long Interval;
             public double Milliseconds;
             public double GcPauseMilliseconds;
+            public double CpuMilliseconds = double.NaN;
             public long SpawnPackets;
             public long DespawnPackets;
         }
