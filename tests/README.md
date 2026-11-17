@@ -49,6 +49,10 @@ namespace.
   SimulationWorker together, goes into `Mmorpg.Integration.Tests`.
 - Shared runtime code that also compiles into Unity is tested in
   `Mmorpg.Shared.Tests`.
+- A test of the art pipeline's Python code goes into `tools/art/blender/tests`
+  and runs without Blender; how its modules are read, and what each file pins,
+  is in
+  [Python Tests Of The Pipeline](../docs/ART_PIPELINE.md#python-tests-of-the-pipeline).
 - Helpers used by one project stay in that project. Move a helper into a
   `Testing` library only when a second project needs it: generic helpers into
   `Mmorpg.Testing`, content loaders into `Mmorpg.Testing.Content`, and helpers
