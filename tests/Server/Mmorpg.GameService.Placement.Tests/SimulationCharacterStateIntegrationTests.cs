@@ -267,7 +267,7 @@ public sealed class SimulationCharacterStateIntegrationTests
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(join.Value!.JoinTicket, workerId, runtimeId, shardId),
+            JoinTicketProofs.Consume(join.Value!, workerId, runtimeId, shardId),
             CancellationToken.None);
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;
@@ -303,7 +303,7 @@ public sealed class SimulationCharacterStateIntegrationTests
                 CollisionRevision));
         Assert.True(issued.Succeeded, issued.Error?.Message);
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(issued.Value!.JoinTicket, WorkerId, RuntimeId, ShardId),
+            JoinTicketProofs.Consume(issued.Value!, WorkerId, RuntimeId, ShardId),
             out var consumed));
         Assert.True(consumed.Value!.IsSyntheticBot);
         Assert.Null(consumed.Value.SavedState);

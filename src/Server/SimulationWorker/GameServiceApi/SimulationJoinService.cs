@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Appearance;
 using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Items;
@@ -27,15 +28,16 @@ public sealed class SimulationJoinService(
     // store counts the join as in flight until it registered its session or failed, because a
     // reconnect's consumption rotates the session's token at GameService before that.
     public async Task<SimulationJoinResult<ActiveSimulationSession>> JoinAsync(
-        string joinTicket,
+        RealtimeJoinRequest joinRequest,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(joinRequest);
         using var activity = SimulationWorkerTelemetry.StartOperation("simulation.join");
         var join = sessionStore.BeginJoin();
         SimulationJoinResult<ActiveSimulationSession> result;
         try
         {
-            result = await JoinCoreAsync(joinTicket, cancellationToken);
+            result = await JoinCoreAsync(joinRequest, cancellationToken);
         }
         finally
         {
@@ -51,10 +53,10 @@ public sealed class SimulationJoinService(
     }
 
     private async Task<SimulationJoinResult<ActiveSimulationSession>> JoinCoreAsync(
-        string joinTicket,
+        RealtimeJoinRequest joinRequest,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(joinTicket))
+        if (joinRequest.TicketId == Guid.Empty)
         {
             return SimulationJoinResult<ActiveSimulationSession>.BadRequest(
                 "missing_join_ticket",
@@ -63,7 +65,7 @@ public sealed class SimulationJoinService(
 
         var requestedAt = DateTime.UtcNow;
         var consumedTicket = await gameServiceClient.ConsumeJoinTicketAsync(
-            joinTicket.Trim(),
+            joinRequest,
             config.SimulationWorkerId,
             identity.RuntimeId,
             config.ShardId,
@@ -77,15 +79,45 @@ public sealed class SimulationJoinService(
                 consumedTicket.Error.Message);
         }
 
-        if (!string.Equals(consumedTicket.Value!.WorkerId, config.SimulationWorkerId, StringComparison.Ordinal)
-            || !string.Equals(consumedTicket.Value.WorkerRuntimeId, identity.RuntimeId, StringComparison.Ordinal)
-            || !string.Equals(consumedTicket.Value.ShardId, config.ShardId, StringComparison.Ordinal)
-            || !string.Equals(consumedTicket.Value.WorldId, config.WorldId, StringComparison.Ordinal))
+        // The worker keeps only the keys of the datagrams; the transport key and the proof key go.
+        var transportKeys = RealtimeTransportKeys.Derive(consumedTicket.Value!.TransportKey);
+        Array.Clear(consumedTicket.Value.TransportKey);
+        Array.Clear(transportKeys.ProofKey);
+        SimulationJoinResult<ActiveSimulationSession> result;
+        try
+        {
+            result = await RegisterConsumedTicketAsync(consumedTicket.Value, requestedAt, cancellationToken);
+        }
+        catch (Exception)
+        {
+            transportKeys.Dispose();
+            throw;
+        }
+
+        if (!result.Succeeded)
+        {
+            transportKeys.Dispose();
+            return result;
+        }
+
+        return result with { TransportKeys = transportKeys };
+    }
+
+    private async Task<SimulationJoinResult<ActiveSimulationSession>> RegisterConsumedTicketAsync(
+        ConsumedSimulationJoinTicketResponse consumedTicket,
+        DateTime requestedAt,
+        CancellationToken cancellationToken)
+    {
+
+        if (!string.Equals(consumedTicket.WorkerId, config.SimulationWorkerId, StringComparison.Ordinal)
+            || !string.Equals(consumedTicket.WorkerRuntimeId, identity.RuntimeId, StringComparison.Ordinal)
+            || !string.Equals(consumedTicket.ShardId, config.ShardId, StringComparison.Ordinal)
+            || !string.Equals(consumedTicket.WorldId, config.WorldId, StringComparison.Ordinal))
         {
             await gameServiceClient.ReleaseSimulationSessionAsync(
-                consumedTicket.Value.SimulationSessionId,
+                consumedTicket.SimulationSessionId,
                 identity.RuntimeId,
-                consumedTicket.Value.SimulationSessionToken,
+                consumedTicket.SimulationSessionToken,
                 cancellationToken);
 
             return SimulationJoinResult<ActiveSimulationSession>.Conflict(
@@ -95,17 +127,17 @@ public sealed class SimulationJoinService(
 
         // GameService does not know the worker's outage tolerance, so the worker checks that a
         // session it grants outlasts a whole tolerated outage and the round that renews it after.
-        if (consumedTicket.Value.SessionLeaseDurationMilliseconds < config.MinimumSessionLease.TotalMilliseconds)
+        if (consumedTicket.SessionLeaseDurationMilliseconds < config.MinimumSessionLease.TotalMilliseconds)
         {
             logger?.LogError(
                 "Refused the join of simulation session {SimulationSessionId}: GameService granted a session lease of {LeaseMilliseconds} ms, shorter than SimulationWorker:GameServiceOutageToleranceSeconds plus SimulationWorker:SimulationSessionHeartbeatSeconds ({MinimumMilliseconds} ms). Raise Simulation:SessionLeaseLifetimeSeconds in GameService or lower the tolerance.",
-                consumedTicket.Value.SimulationSessionId,
-                consumedTicket.Value.SessionLeaseDurationMilliseconds,
+                consumedTicket.SimulationSessionId,
+                consumedTicket.SessionLeaseDurationMilliseconds,
                 (long)config.MinimumSessionLease.TotalMilliseconds);
             await gameServiceClient.ReleaseSimulationSessionAsync(
-                consumedTicket.Value.SimulationSessionId,
+                consumedTicket.SimulationSessionId,
                 identity.RuntimeId,
-                consumedTicket.Value.SimulationSessionToken,
+                consumedTicket.SimulationSessionToken,
                 cancellationToken);
 
             return SimulationJoinResult<ActiveSimulationSession>.Failure(
@@ -114,10 +146,10 @@ public sealed class SimulationJoinService(
                 "The session lease is shorter than this worker's GameService outage tolerance.");
         }
 
-        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket.Value, requestedAt);
+        var session = ActiveSimulationSession.FromJoinTicket(consumedTicket, requestedAt);
         try
         {
-            return await RegisterAsync(session, consumedTicket.Value, cancellationToken);
+            return await RegisterAsync(session, consumedTicket, cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -216,7 +248,8 @@ public sealed class SimulationJoinService(
 
         sessionStore.TryGet(session.CharacterId, out var registeredSession);
 
-        return SimulationJoinResult<ActiveSimulationSession>.Success(registeredSession!);
+        // The caller adds the transport keys.
+        return new SimulationJoinResult<ActiveSimulationSession>(registeredSession!, null, 200);
     }
 
     // A join that cannot go on releases the session it consumed. A body of the session that went

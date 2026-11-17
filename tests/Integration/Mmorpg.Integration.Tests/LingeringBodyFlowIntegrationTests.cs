@@ -213,13 +213,13 @@ public sealed class LingeringBodyFlowIntegrationTests
             cancellationToken);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await client.ConsumeJoinTicketAsync(
-            join.Value!.JoinTicket,
+            JoinTicketProofs.JoinRequest(join.Value!),
             WorkerId,
             WorkerRuntimeId,
             ShardId,
             cancellationToken);
         Assert.True(consumed.Succeeded, consumed.Error?.Code + ": " + consumed.Error?.Message);
-        Assert.Equal(join.Value.IsReconnect, consumed.Value!.IsReconnect);
+        Assert.Equal(join.Value!.IsReconnect, consumed.Value!.IsReconnect);
         return ActiveSimulationSession.FromJoinTicket(consumed.Value, DateTime.UtcNow);
     }
 

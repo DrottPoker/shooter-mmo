@@ -44,6 +44,11 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public string ConnectedEndpoint { get; private set; }
 
+        // The datagram keys that the session connected with.
+        public byte[] ConnectedClientToWorkerKey { get; private set; }
+
+        public byte[] ConnectedWorkerToClientKey { get; private set; }
+
         public List<SentPacket> Sent { get; } = new List<SentPacket>();
 
         public int RoundTripTimeMilliseconds
@@ -69,10 +74,14 @@ namespace Mmorpg.Client.Tests.EditMode
             return true;
         }
 
-        public void Connect(string host, int port, string connectionKey)
+        public void Connect(string host, int port, string connectionKey, RealtimeTransportKeys keys)
         {
             record("Connect");
             ConnectedEndpoint = host + ":" + port + " " + connectionKey;
+
+            // A copy, as the real transport keeps its own; the session zeroes the keys after.
+            ConnectedClientToWorkerKey = (byte[])keys.ClientToWorkerKey.Clone();
+            ConnectedWorkerToClientKey = (byte[])keys.WorkerToClientKey.Clone();
             if (ConnectException != null)
             {
                 throw ConnectException;

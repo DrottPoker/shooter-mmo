@@ -1,17 +1,22 @@
 using System.Net;
 using System.Net.Sockets;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
-// A UDP relay on loopback between one test client and the worker that loses, on request, every
-// packet from the worker that carries reliable data, so a test can lose a reliable message for
-// good while the disconnect, acknowledgements, pings, and snapshots still pass.
+// A UDP relay on loopback between one test client and the worker: what sits on the path. It loses,
+// on request, every datagram from the worker that carries reliable data, so a test can lose a
+// reliable message for good while the disconnect, acknowledgements, pings, and snapshots still
+// pass; it sees through the seal only with the worker-to-client key that the test hands it. It
+// keeps every datagram it relayed, and it sends what a test injects from its own sockets, so the
+// worker and the client take an injected datagram as one of the other's.
 internal sealed class LossyUdpRelay : IDisposable
 {
     // LiteNetLib 2.1.4 packet properties, the low five bits of the first byte.
     private const int PropertyMask = 0x1F;
     private const byte Channeled = 1;
     private const byte ReliableMerged = 2;
+    private const byte Disconnect = 8;
     private const byte Merged = 13;
 
     // A channeled packet names its channel at byte 3 as channel times four plus the delivery, so
@@ -24,8 +29,13 @@ internal sealed class LossyUdpRelay : IDisposable
     private readonly IPEndPoint worker;
     private readonly Thread toWorker;
     private readonly Thread toClient;
+    private readonly object sync = new();
+    private readonly List<byte[]> toWorkerDatagrams = [];
+    private readonly List<byte[]> toClientDatagrams = [];
     private volatile IPEndPoint? client;
     private volatile bool loseReliableToClient;
+    private volatile bool loseFirstDisconnectToClient;
+    private IRealtimeAead? workerToClient;
     private int lostToClient;
 
     public LossyUdpRelay(int workerPort)
@@ -45,10 +55,64 @@ internal sealed class LossyUdpRelay : IDisposable
     // How many packets from the worker the relay lost.
     public int LostToClient => Volatile.Read(ref lostToClient);
 
-    // From now on every packet from the worker that carries reliable data is lost.
-    public void LoseReliableToClient()
+    // The datagrams that the relay passed on, in order.
+    public IReadOnlyList<byte[]> ToWorker
     {
+        get
+        {
+            lock (sync)
+            {
+                return [.. toWorkerDatagrams];
+            }
+        }
+    }
+
+    public IReadOnlyList<byte[]> ToClient
+    {
+        get
+        {
+            lock (sync)
+            {
+                return [.. toClientDatagrams];
+            }
+        }
+    }
+
+    // From now on every datagram from the worker that carries reliable data is lost; a sealed one
+    // is opened with the worker-to-client key of the ticket to look inside.
+    public void LoseReliableToClient(string ticket)
+    {
+        using (var keys = RealtimeTestTickets.KeysOf(ticket))
+        {
+            Volatile.Write(ref workerToClient, new RealtimeManagedChaCha20Poly1305(keys.WorkerToClientKey));
+        }
+
         loseReliableToClient = true;
+    }
+
+    // The first disconnect datagram from the worker from now on is lost, so the client can only
+    // learn of the disconnect from LiteNetLib's next send of it.
+    public void LoseFirstDisconnectToClient(string ticket)
+    {
+        using (var keys = RealtimeTestTickets.KeysOf(ticket))
+        {
+            Volatile.Write(ref workerToClient, new RealtimeManagedChaCha20Poly1305(keys.WorkerToClientKey));
+        }
+
+        loseFirstDisconnectToClient = true;
+    }
+
+    // Sends the datagram to the worker as if the client sent it.
+    public void InjectToWorker(byte[] datagram)
+    {
+        back.SendTo(datagram, worker);
+    }
+
+    // Sends the datagram to the client as if the worker sent it.
+    public void InjectToClient(byte[] datagram)
+    {
+        var destination = client ?? throw new InvalidOperationException("No client used the relay yet.");
+        front.SendTo(datagram, destination);
     }
 
     public void Dispose()
@@ -57,6 +121,7 @@ internal sealed class LossyUdpRelay : IDisposable
         back.Dispose();
         toWorker.Join(TimeSpan.FromSeconds(5));
         toClient.Join(TimeSpan.FromSeconds(5));
+        workerToClient?.Dispose();
     }
 
     // Whether a LiteNetLib packet carries reliable data: a reliable channeled packet, merged
@@ -100,6 +165,48 @@ internal sealed class LossyUdpRelay : IDisposable
         }
     }
 
+    private bool DatagramCarriesReliableData(byte[] buffer, int length)
+    {
+        return TryReadPacket(buffer, length, out var packet) && CarriesReliableData(packet);
+    }
+
+    private bool DatagramIsADisconnect(byte[] buffer, int length)
+    {
+        return TryReadPacket(buffer, length, out var packet)
+            && packet.Length > 0
+            && (packet[0] & PropertyMask) == Disconnect;
+    }
+
+    // The LiteNetLib packet inside a datagram from the worker: a clear one after its marker, a
+    // sealed one opened on a copy, so the datagram itself passes unchanged.
+    private bool TryReadPacket(byte[] buffer, int length, out byte[] packet)
+    {
+        packet = [];
+        if (length < 1)
+        {
+            return false;
+        }
+
+        if (buffer[0] == RealtimeDatagram.ClearMarker)
+        {
+            packet = buffer[1..length];
+            return true;
+        }
+
+        var aead = Volatile.Read(ref workerToClient);
+        var copy = buffer[..length];
+        var opened = length;
+        if (aead is null
+            || !RealtimeDatagram.TryReadCounter(copy, length, out var counter)
+            || !RealtimeDatagram.TryOpen(aead, counter, copy, ref opened))
+        {
+            return false;
+        }
+
+        packet = copy[..opened];
+        return true;
+    }
+
     private void RelayToWorker()
     {
         var buffer = new byte[2048];
@@ -122,6 +229,11 @@ internal sealed class LossyUdpRelay : IDisposable
             }
 
             client = (IPEndPoint)from;
+            lock (sync)
+            {
+                toWorkerDatagrams.Add(buffer[..length]);
+            }
+
             try
             {
                 back.SendTo(buffer.AsSpan(0, length), worker);
@@ -159,10 +271,22 @@ internal sealed class LossyUdpRelay : IDisposable
                 continue;
             }
 
-            if (loseReliableToClient && CarriesReliableData(buffer.AsSpan(0, length)))
+            if (loseReliableToClient && DatagramCarriesReliableData(buffer, length))
             {
                 Interlocked.Increment(ref lostToClient);
                 continue;
+            }
+
+            if (loseFirstDisconnectToClient && DatagramIsADisconnect(buffer, length))
+            {
+                loseFirstDisconnectToClient = false;
+                Interlocked.Increment(ref lostToClient);
+                continue;
+            }
+
+            lock (sync)
+            {
+                toClientDatagrams.Add(buffer[..length]);
             }
 
             try

@@ -9,14 +9,20 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // keeps the codes, the messages and the delayed disconnect exactly as they are.
 public sealed class RealtimeProtocolRejectionTests
 {
+    // What reaches the dispatcher of a peer without keys: the reliable ordered session channel.
     public static TheoryData<string, string> UnauthenticatedRejections => new()
     {
         { "invalid_header", "invalid_packet" },
-        { "movement_before_join", "join_required" },
-        { "join_on_movement_channel", "join_required" },
-        { "join_unordered", "join_required" },
         { "invalid_join_payload", "invalid_join_request" },
         { "server_message_before_join", "join_required" }
+    };
+
+    // Clear packets on any other channel never reach it: the sealing layer drops them.
+    public static TheoryData<string> UnauthenticatedDrops => new()
+    {
+        "movement_before_join",
+        "join_on_movement_channel",
+        "join_unordered"
     };
 
     public static TheoryData<string, string> AuthenticatedRejections => new()
@@ -53,22 +59,8 @@ public sealed class RealtimeProtocolRejectionTests
             case "invalid_header":
                 client.Send([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
                 break;
-            case "movement_before_join":
-                client.SendMoveTo(1, 0f, 1f);
-                break;
-            case "join_on_movement_channel":
-                client.Send(
-                    RealtimeProtocol.EncodeJoinRequest("ticket"),
-                    DeliveryMethod.ReliableOrdered,
-                    RealtimeProtocol.MovementInputChannel);
-                break;
-            case "join_unordered":
-                client.Send(
-                    RealtimeProtocol.EncodeJoinRequest("ticket"),
-                    DeliveryMethod.ReliableUnordered);
-                break;
             case "invalid_join_payload":
-                client.Send(WithTrailingByte(RealtimeProtocol.EncodeJoinRequest("ticket")));
+                client.Send(WithTrailingByte(RealtimeTestTickets.EncodeJoin("ticket")));
                 break;
             case "server_message_before_join":
                 client.Send(RealtimeProtocol.EncodeLeaveAccepted(0));
@@ -77,7 +69,49 @@ public sealed class RealtimeProtocolRejectionTests
                 throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
         }
 
-        await AssertRejectedAsync(harness, client, expectedCode, expectLastReliable: true);
+        await AssertRejectedAsync(harness, client, expectedCode, beforeKeys: true);
+    }
+
+    // A forged clear packet on another channel could otherwise wait in LiteNetLib until the
+    // session sealed and then count as the player's, so the layer drops it unanswered.
+    [Theory]
+    [MemberData(nameof(UnauthenticatedDrops))]
+    public async Task ClearPacketsOffTheSessionChannelAreDroppedBeforeTheKeys(string scenario)
+    {
+        await using var harness = RealtimeServerHarness.Create();
+        await harness.StartAsync();
+        var client = harness.Connect("unauthenticated");
+        await harness.PollUntilAsync(() => client.IsConnected, "the client to connect");
+        var droppedBefore = harness.NetworkMetrics!.Capture().DroppedDatagrams;
+
+        switch (scenario)
+        {
+            case "movement_before_join":
+                client.SendMoveTo(1, 0f, 1f);
+                break;
+            case "join_on_movement_channel":
+                client.Send(
+                    RealtimeTestTickets.EncodeJoin("ticket"),
+                    DeliveryMethod.ReliableOrdered,
+                    RealtimeProtocol.MovementInputChannel);
+                break;
+            case "join_unordered":
+                client.Send(
+                    RealtimeTestTickets.EncodeJoin("ticket"),
+                    DeliveryMethod.ReliableUnordered);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+        }
+
+        await harness.PollUntilAsync(
+            () => harness.NetworkMetrics.Capture().DroppedDatagrams > droppedBefore,
+            "the worker to drop the clear packet");
+        await harness.PollForAsync(TimeSpan.FromMilliseconds(300));
+        Assert.True(client.IsConnected);
+        Assert.Empty(client.Packets);
+        Assert.Equal(0, harness.NetworkMetrics.Capture().ReceivedPackets);
+        Assert.Equal(0, harness.GameService.ConsumeCount);
     }
 
     [Fact]
@@ -103,7 +137,7 @@ public sealed class RealtimeProtocolRejectionTests
                 harness,
                 client,
                 "join_required",
-                expectLastReliable: true);
+                beforeKeys: true);
             Assert.Equal(
                 "A single join request must complete before other messages are accepted.",
                 client.ServerDisconnect!.Message);
@@ -136,7 +170,7 @@ public sealed class RealtimeProtocolRejectionTests
             harness,
             client,
             "worker_registry_lease_unavailable",
-            expectLastReliable: true);
+            beforeKeys: true);
         Assert.Equal(0, harness.GameService.ConsumeCount);
     }
 
@@ -164,15 +198,16 @@ public sealed class RealtimeProtocolRejectionTests
             var client = harness.Connect("quota");
             await harness.PollUntilAsync(() => client.IsConnected, "the client to connect");
 
-            // The pending join spends the only token, so the next packet exceeds the quota.
+            // The pending join spends the only token, so the next packet exceeds the quota. Before
+            // its keys a peer reaches the worker only on the session channel.
             client.SendJoin(character.Ticket);
-            client.SendLeave(character.SimulationSessionId.ToString("D"));
+            client.Send(RealtimeProtocol.EncodeLeaveAccepted(0));
 
             await AssertRejectedAsync(
                 harness,
                 client,
                 "udp_rate_limited",
-                expectLastReliable: true);
+                beforeKeys: true);
             Assert.Equal(1, harness.NetworkMetrics!.Capture().QuotaRejectedPackets);
         }
         finally
@@ -356,30 +391,33 @@ public sealed class RealtimeProtocolRejectionTests
     // A rejected peer keeps its session until the disconnect, so broadcasts such as corpse
     // presence may still follow the ServerDisconnect. Only a peer without a bound session is
     // guaranteed to receive the ServerDisconnect as its last reliable message.
+    // A joined, sealed peer gets the reason on its channel and again in the disconnect, which waits
+    // for the client to acknowledge it. A peer without keys drops every clear packet on a channel,
+    // so it gets the reason only in the disconnect, which follows at once.
     internal static async Task AssertRejectedAsync(
         RealtimeServerHarness harness,
         RealtimeRecordingClient client,
         string expectedCode,
-        bool expectLastReliable = false)
+        bool beforeKeys = false)
     {
         await harness.PollUntilAsync(
             () => client.ServerDisconnect is not null && client.IsDisconnected,
             $"{client.Name} to be rejected with {expectedCode}");
         var reliable = client.ReliablePackets;
-        if (expectLastReliable)
-        {
-            Assert.Equal(RealtimeMessageType.ServerDisconnect, reliable[^1].Type);
-        }
-
         Assert.Equal(expectedCode, client.ServerDisconnect!.Code);
         var rejections = harness.Logger.Entries
             .Where(entry => entry.Template == "[SIMULATION] Disconnecting UDP peer {PeerId} with code {Code}: {Message}"
                 && entry.Message.Contains(expectedCode, StringComparison.Ordinal))
             .ToArray();
         Assert.NotEmpty(rejections);
+        if (beforeKeys)
+        {
+            Assert.DoesNotContain(reliable, packet => packet.Type == RealtimeMessageType.ServerDisconnect);
+            Assert.True(RealtimeProtocol.TryReadMessageType(client.DisconnectData!, out var type));
+            Assert.Equal(RealtimeMessageType.ServerDisconnect, type);
+            return;
+        }
 
-        // The disconnect waits for the client to acknowledge the ServerDisconnect, so it arrives
-        // after it, and carries it as its data.
         var reason = Assert.Single(reliable, packet => packet.Type == RealtimeMessageType.ServerDisconnect);
         Assert.True(client.DisconnectedAtUtc >= reason.ReceivedAtUtc);
         Assert.Equal(reason.Data, client.DisconnectData);

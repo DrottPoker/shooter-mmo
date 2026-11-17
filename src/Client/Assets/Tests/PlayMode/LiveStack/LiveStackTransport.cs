@@ -50,9 +50,9 @@ namespace Mmorpg.Client.Tests.PlayMode
             return inner.Start(disconnectTimeoutMilliseconds);
         }
 
-        public void Connect(string host, int port, string connectionKey)
+        public void Connect(string host, int port, string connectionKey, RealtimeTransportKeys keys)
         {
-            inner.Connect(host, port, connectionKey);
+            inner.Connect(host, port, connectionKey, keys);
         }
 
         public void Send(byte[] packet, byte channel, DeliveryMethod deliveryMethod)

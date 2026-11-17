@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.SimulationWorker.Realtime;
 
@@ -27,6 +28,24 @@ public readonly record struct RealtimeNetworkMetricsSnapshot(
     public IReadOnlyList<RealtimeMessageKindTraffic> SentByMessage { get; init; } = [];
 
     public IReadOnlyList<RealtimeMessageKindTraffic> ReceivedByMessage { get; init; } = [];
+
+    // The UDP datagrams that crossed the transport's sealing layer, which carries every message,
+    // LiteNetLib's headers, acknowledgements, and pings, merged or alone: received ones count
+    // also when the layer dropped them. Their bytes include the layer's own bytes, which
+    // SealingOverheadBytes holds for both directions. All 0 without a transport.
+    public long DatagramsReceived { get; init; }
+
+    public long DatagramsSent { get; init; }
+
+    public long DatagramBytesReceived { get; init; }
+
+    public long DatagramBytesSent { get; init; }
+
+    public long SealingOverheadBytes { get; init; }
+
+    // The received datagrams that the layer dropped: malformed, unauthenticated, replayed, or
+    // clear where only sealed ones count.
+    public long DroppedDatagrams { get; init; }
 }
 
 public sealed class RealtimeNetworkMetrics : IDisposable
@@ -35,6 +54,18 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     // The tag of the per-kind message counters, the RealtimeMessageType name.
     public const string MessageTagName = "message";
+
+    // The tag of the dropped datagram counter.
+    public const string DropReasonTagName = "reason";
+
+    private static readonly (RealtimeDatagramDrop Reason, string Name)[] DropReasons =
+    [
+        (RealtimeDatagramDrop.Malformed, "malformed"),
+        (RealtimeDatagramDrop.Unauthenticated, "unauthenticated"),
+        (RealtimeDatagramDrop.Replayed, "replayed"),
+        (RealtimeDatagramDrop.ClearAfterSealing, "clear_after_sealing"),
+        (RealtimeDatagramDrop.ClearNotAllowed, "clear_not_allowed")
+    ];
 
     private readonly Meter meter = new(MeterName);
     private long activePeers;
@@ -63,6 +94,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private readonly long[] sentMessagesByKind = new long[RealtimeMessageKinds.Count];
     private readonly long[] sentBytesByKind = new long[RealtimeMessageKinds.Count];
 
+    // The transport's datagram counts, once the transport started.
+    private RealtimeTransportSecurityCounters? datagrams;
+
     public RealtimeNetworkMetrics()
     {
         meter.CreateObservableGauge("simulation_worker.realtime.peers", () => Volatile.Read(ref activePeers));
@@ -86,6 +120,19 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         meter.CreateObservableCounter("simulation_worker.realtime.snapshot.bytes", () => Volatile.Read(ref snapshotBytes));
         meter.CreateObservableCounter("simulation_worker.realtime.received.messages", () => ObserveKinds(receivedMessagesByKind));
         meter.CreateObservableCounter("simulation_worker.realtime.sent.messages", () => ObserveKinds(sentMessagesByKind));
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.received", () => Volatile.Read(ref datagrams)?.DatagramsReceived ?? 0);
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.sent", () => Volatile.Read(ref datagrams)?.DatagramsSent ?? 0);
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.received.bytes", () => Volatile.Read(ref datagrams)?.BytesReceived ?? 0);
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.sent.bytes", () => Volatile.Read(ref datagrams)?.BytesSent ?? 0);
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.overhead.bytes", () => OverheadBytes(Volatile.Read(ref datagrams)));
+        meter.CreateObservableCounter("simulation_worker.realtime.datagrams.dropped", ObserveDrops);
+    }
+
+    // The counts of the transport's sealing layer, which the transport attaches when it starts.
+    public void AttachTransport(RealtimeTransportSecurityCounters counters)
+    {
+        ArgumentNullException.ThrowIfNull(counters);
+        Volatile.Write(ref datagrams, counters);
     }
 
     public void SetActivePeers(long value) => Interlocked.Exchange(ref activePeers, value);
@@ -163,6 +210,7 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     public RealtimeNetworkMetricsSnapshot Capture()
     {
+        var transport = Volatile.Read(ref datagrams);
         return new RealtimeNetworkMetricsSnapshot(
             Volatile.Read(ref activePeers),
             Volatile.Read(ref activeEntities),
@@ -184,8 +232,43 @@ public sealed class RealtimeNetworkMetrics : IDisposable
             Volatile.Read(ref snapshotBytes))
         {
             SentByMessage = CaptureKinds(sentMessagesByKind, sentBytesByKind),
-            ReceivedByMessage = CaptureKinds(receivedMessagesByKind, receivedBytesByKind)
+            ReceivedByMessage = CaptureKinds(receivedMessagesByKind, receivedBytesByKind),
+            DatagramsReceived = transport?.DatagramsReceived ?? 0,
+            DatagramsSent = transport?.DatagramsSent ?? 0,
+            DatagramBytesReceived = transport?.BytesReceived ?? 0,
+            DatagramBytesSent = transport?.BytesSent ?? 0,
+            SealingOverheadBytes = OverheadBytes(transport),
+            DroppedDatagrams = transport?.Dropped ?? 0
         };
+    }
+
+    private static long OverheadBytes(RealtimeTransportSecurityCounters? counters)
+    {
+        return counters is null ? 0 : counters.OverheadBytesSent + counters.OverheadBytesReceived;
+    }
+
+    // Runs when a metrics reader collects: every reason with a dropped datagram.
+    private IEnumerable<Measurement<long>> ObserveDrops()
+    {
+        var measurements = new List<Measurement<long>>();
+        var counters = Volatile.Read(ref datagrams);
+        if (counters is null)
+        {
+            return measurements;
+        }
+
+        foreach (var (reason, name) in DropReasons)
+        {
+            var count = counters.DroppedFor(reason);
+            if (count > 0)
+            {
+                measurements.Add(new Measurement<long>(
+                    count,
+                    new KeyValuePair<string, object?>(DropReasonTagName, name)));
+            }
+        }
+
+        return measurements;
     }
 
     private static RealtimeMessageKindTraffic[] CaptureKinds(long[] messages, long[] bytes)

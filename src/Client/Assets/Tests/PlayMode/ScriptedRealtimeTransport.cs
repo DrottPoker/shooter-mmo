@@ -51,7 +51,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             return true;
         }
 
-        public void Connect(string host, int port, string connectionKey)
+        public void Connect(string host, int port, string connectionKey, RealtimeTransportKeys keys)
         {
             pending.Add(() => Connected?.Invoke());
         }

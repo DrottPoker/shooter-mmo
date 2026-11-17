@@ -30,6 +30,19 @@ public sealed class ActiveSimulationBotAuthorityClientTests
         Assert.Equal("invalid_authority_response", result.ErrorCode);
     }
 
+    // Without the transport key the bot could neither prove its ticket nor seal its datagrams.
+    [Fact]
+    public async Task ATicketWithoutATransportKeyIsARejection()
+    {
+        var ticket = Ticket();
+        ticket["transportKey"] = Convert.ToBase64String(new byte[16]);
+
+        var result = await IssueAsync(ticket);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_authority_response", result.ErrorCode);
+    }
+
     [Fact]
     public async Task RejectsATicketForAnotherShard()
     {
@@ -93,7 +106,8 @@ public sealed class ActiveSimulationBotAuthorityClientTests
                 ["simulationRevision"] = "simulation-revision",
                 ["collisionRevision"] = "collision-revision"
             },
-            ["joinTicket"] = "development-bot.ticket",
+            ["joinTicketId"] = Guid.NewGuid(),
+            ["transportKey"] = Convert.ToBase64String(new byte[32]),
             ["expiresAt"] = "2026-10-25T12:00:30Z"
         };
     }

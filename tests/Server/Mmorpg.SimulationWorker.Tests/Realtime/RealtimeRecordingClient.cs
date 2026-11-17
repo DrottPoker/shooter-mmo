@@ -19,14 +19,17 @@ internal sealed record RecordedRealtimePacket(
 }
 
 // A LiteNetLib client that records every received realtime packet in arrival order, so
-// tests can assert ordered message families instead of reacting inside callbacks.
+// tests can assert ordered message families instead of reacting inside callbacks. It seals its
+// datagrams as the Unity client does, with the keys of the ticket it joins with.
 internal sealed class RealtimeRecordingClient : IDisposable
 {
     private readonly object sync = new();
     private readonly EventBasedNetListener listener = new();
+    private readonly RealtimeClientTransportSecurity security = new();
     private readonly NetManager client;
     private readonly List<RecordedRealtimePacket> packets = [];
     private readonly string? joinTicket;
+    private string? keyedTicket;
     private NetPeer? peer;
     private Exception? failure;
 
@@ -34,11 +37,17 @@ internal sealed class RealtimeRecordingClient : IDisposable
     {
         Name = name;
         this.joinTicket = joinTicket;
-        client = new NetManager(listener)
+        if (joinTicket is not null)
+        {
+            UseKeysOf(joinTicket);
+        }
+
+        client = new NetManager(listener, new RealtimeTestSealingLayer(security))
         {
             ChannelsCount = RealtimeProtocol.ChannelCount,
             // Keeps the server-side LiteNetLib timeout from racing short handshake timeouts.
-            PingInterval = 100
+            PingInterval = 100,
+            MtuOverride = RealtimeDatagram.LiteNetLibMtu
         };
         listener.PeerConnectedEvent += OnPeerConnected;
         listener.PeerDisconnectedEvent += OnPeerDisconnected;
@@ -46,6 +55,9 @@ internal sealed class RealtimeRecordingClient : IDisposable
     }
 
     public string Name { get; }
+
+    // The client's sealing layer: whether the worker's sealed datagrams arrived, and the counts.
+    public RealtimeClientTransportSecurity Security => security;
 
     public bool IsConnected { get; private set; }
 
@@ -103,9 +115,23 @@ internal sealed class RealtimeRecordingClient : IDisposable
         connectedPeer.Send(packet, resolved, deliveryMethod);
     }
 
+    // Joins with the ticket's id and proof, with the ticket's keys installed first.
     public void SendJoin(string ticket)
     {
-        Send(RealtimeProtocol.EncodeJoinRequest(ticket));
+        if (!string.Equals(keyedTicket, ticket, StringComparison.Ordinal))
+        {
+            UseKeysOf(ticket);
+        }
+
+        Send(RealtimeTestTickets.EncodeJoin(ticket));
+    }
+
+    // Installs the keys of another ticket, as a client that joins with it does before it connects.
+    public void UseKeysOf(string ticket)
+    {
+        using var keys = RealtimeTestTickets.KeysOf(ticket);
+        security.Install(keys);
+        keyedTicket = ticket;
     }
 
     public void SendLeave(string simulationSessionId)
@@ -202,17 +228,21 @@ internal sealed class RealtimeRecordingClient : IDisposable
                 RealtimeProtocol.TryDecodeJoinAccepted)
             .FirstOrDefault();
 
+    // From its channel, or from the disconnect's data, which alone carries the reason to a peer
+    // that the worker refused before its keys.
     public RealtimeError? ServerDisconnect =>
         Decode<RealtimeError>(
                 RealtimeMessageType.ServerDisconnect,
                 RealtimeProtocol.TryDecodeServerDisconnect)
-            .LastOrDefault();
+            .LastOrDefault()
+        ?? FromDisconnectData(RealtimeProtocol.TryDecodeServerDisconnect);
 
     public RealtimeError? JoinRejected =>
         Decode<RealtimeError>(
                 RealtimeMessageType.JoinRejected,
                 RealtimeProtocol.TryDecodeJoinRejected)
-            .LastOrDefault();
+            .LastOrDefault()
+        ?? FromDisconnectData(RealtimeProtocol.TryDecodeJoinRejected);
 
     public IReadOnlyList<RealtimeError> LeaveRejections =>
         Decode<RealtimeError>(
@@ -313,6 +343,13 @@ internal sealed class RealtimeRecordingClient : IDisposable
     public void Dispose()
     {
         client.Stop();
+        security.Dispose();
+    }
+
+    private RealtimeError? FromDisconnectData(RealtimeTestDecoder<RealtimeError> decoder)
+    {
+        var data = DisconnectData;
+        return data is { Length: > 0 } && decoder(data, out var error, out _) ? error : null;
     }
 
     private void OnPeerConnected(NetPeer connectedPeer)

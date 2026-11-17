@@ -8,15 +8,20 @@ public sealed class RealtimeProtocolTests
     [Fact]
     public void JoinRequestRoundTripsThroughVersionedPacket()
     {
-        var packet = RealtimeProtocol.EncodeJoinRequest("join-ticket-value");
+        var ticketId = Guid.NewGuid();
+        var nonce = Enumerable.Range(0, RealtimeProtocol.JoinNonceSize).Select(value => (byte)value).ToArray();
+        var proof = Enumerable.Range(100, RealtimeProtocol.JoinProofSize).Select(value => (byte)value).ToArray();
+        var packet = RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(ticketId, nonce, proof));
 
         var decoded = RealtimeProtocol.TryDecodeJoinRequest(
             packet,
-            out var joinTicket,
+            out var joinRequest,
             out var error);
 
         Assert.True(decoded, error);
-        Assert.Equal("join-ticket-value", joinTicket);
+        Assert.Equal(ticketId, joinRequest.TicketId);
+        Assert.Equal(nonce, joinRequest.ClientNonce);
+        Assert.Equal(proof, joinRequest.Proof);
         Assert.True(RealtimeProtocol.TryReadMessageType(packet, out var messageType));
         Assert.Equal(RealtimeMessageType.JoinRequest, messageType);
     }
@@ -70,7 +75,10 @@ public sealed class RealtimeProtocolTests
     [Fact]
     public void DecoderRejectsUnsupportedProtocolVersion()
     {
-        var packet = RealtimeProtocol.EncodeJoinRequest("join-ticket-value");
+        var packet = RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(
+            Guid.NewGuid(),
+            new byte[RealtimeProtocol.JoinNonceSize],
+            new byte[RealtimeProtocol.JoinProofSize]));
         packet[4] = (byte)(RealtimeProtocol.Version + 1);
 
         var decoded = RealtimeProtocol.TryDecodeJoinRequest(

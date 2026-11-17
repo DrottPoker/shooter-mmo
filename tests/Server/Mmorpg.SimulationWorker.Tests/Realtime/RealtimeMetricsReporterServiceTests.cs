@@ -128,7 +128,7 @@ public sealed class RealtimeMetricsReporterServiceTests : IDisposable
         var reporter = CreateReporter(network, performance, path, new RecordingLogger());
         var disconnect = RealtimeProtocol.EncodeServerDisconnect("code", "message");
         var leaveAccepted = RealtimeProtocol.EncodeLeaveAccepted(30);
-        var joinRequest = RealtimeProtocol.EncodeJoinRequest("ticket");
+        var joinRequest = RealtimeTestTickets.EncodeJoin("ticket");
         network.RecordSent(disconnect);
         network.RecordSent(leaveAccepted);
         network.RecordSent(leaveAccepted);

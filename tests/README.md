@@ -165,11 +165,24 @@ Expected result: every test passes inside its five-second regression budget,
 among them spatial selection and snapshot encoding and decoding for 25,000
 entities and 1,000 observers.
 
-The `Category=Benchmark` test is `ReplicationBenchmarkTests.MeasureTheReplicationLayouts`
+The `Category=Benchmark` tests are `ReplicationBenchmarkTests.MeasureTheReplicationLayouts`
 in `Mmorpg.SimulationWorker.Tests`, the
 [Replication Benchmark](../docs/STACK_STRESS_TESTING.md#replication-benchmark),
-which `tools/Measure-Replication.ps1` runs. A run of a whole test project
-without a filter runs it too, in about ten seconds; it writes nothing unless
+which `tools/Measure-Replication.ps1` runs, and
+`RealtimeTransportSecurityTests.MeasureTheCipherPerDatagram` in
+`Mmorpg.Shared.Tests`, which seals and opens datagrams of 60, 300, and 1,200
+bytes with both ChaCha20-Poly1305 implementations and writes the nanoseconds per
+datagram to the test output, and to a file when `MMORPG_CIPHER_BENCHMARK_RESULT`
+names one:
+
+```powershell
+dotnet test tests/Shared/Mmorpg.Shared.Tests --configuration Release `
+  --filter "FullyQualifiedName~MeasureTheCipherPerDatagram" `
+  --logger "console;verbosity=detailed"
+```
+
+A run of a whole test project without a filter runs them too; the replication
+benchmark takes about ten seconds and writes nothing unless
 `MMORPG_REPLICATION_RESULT` names a file. Its fast companion,
 `ASmallLayoutKeepsItsDeterministicNumbers`, runs with every test run.
 
@@ -538,6 +551,16 @@ Error texts are not pinned, only the accept or reject outcome. The vectors
 change only together with an intended protocol change and a protocol version
 bump, as [Versioning](../docs/REALTIME_PROTOCOL.md#versioning) describes. Never
 update them to make a failing refactor pass.
+
+`RealtimeTransportSecurityCases.cs` beside them holds the cases of the sealed
+transport, run by `Mmorpg.Shared.Tests`, the EditMode tests, and the `Player`
+category: the RFC 8439 vectors of ChaCha20-Poly1305, the RFC 5869 vectors of
+HKDF, the pinned key schedule, join proof, and sealed datagram of fixed inputs,
+the join proof against every other input, the replay window, and the client and
+worker layer cores with clear, sealed, replayed, altered, and foreign
+datagrams. Only .NET has the platform implementation, so `Mmorpg.Shared.Tests`
+also checks it against the vectors and against the managed one with random
+inputs, and the managed HKDF against the platform's.
 
 `RealtimeProtocolGolden.EncodeVectors()` returns the packet of every vector by
 name for tests of a receiver. `Mmorpg.Tools.Tests` links the golden files and

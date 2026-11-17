@@ -7,21 +7,34 @@ using Mmorpg.GameProtocol;
 namespace Mmorpg.Client.Networking
 {
     // The LiteNetLib transport of RealtimeSimulationClient: one NetManager with the protocol's
-    // channels and LiteNetLib's synchronized events, which fire only inside PollEvents.
+    // channels and LiteNetLib's synchronized events, which fire only inside PollEvents. Every
+    // datagram passes the sealing layer with the keys of the current join, as Transport Security
+    // in docs/REALTIME_PROTOCOL.md describes.
     internal sealed class LiteNetLibRealtimeTransport : IRealtimeTransport
     {
         private readonly NetManager manager;
+        private readonly RealtimeClientTransportSecurity security = new RealtimeClientTransportSecurity();
         private NetPeer serverPeer;
 
         public LiteNetLibRealtimeTransport()
         {
             var listener = new EventBasedNetListener();
-            manager = new NetManager(listener);
+            manager = new NetManager(listener, new RealtimeSealingPacketLayer(security));
             listener.PeerConnectedEvent += OnPeerConnected;
             listener.PeerDisconnectedEvent += OnPeerDisconnected;
             listener.NetworkReceiveEvent += OnNetworkReceive;
             listener.NetworkErrorEvent += OnNetworkError;
             manager.ChannelsCount = RealtimeProtocol.ChannelCount;
+
+            // The layer's bytes come on top of LiteNetLib's packets, which keep their limits.
+            manager.MtuOverride = RealtimeDatagram.LiteNetLibMtu;
+        }
+
+        // The datagrams of the connection and the ones the sealing layer dropped, and whether the
+        // worker's sealed datagrams arrived.
+        internal RealtimeClientTransportSecurity Security
+        {
+            get { return security; }
         }
 
         public event Action Connected;
@@ -44,8 +57,9 @@ namespace Mmorpg.Client.Networking
             return manager.Start();
         }
 
-        public void Connect(string host, int port, string connectionKey)
+        public void Connect(string host, int port, string connectionKey, RealtimeTransportKeys keys)
         {
+            security.Install(keys);
             manager.Connect(host, port, connectionKey);
         }
 
@@ -64,10 +78,12 @@ namespace Mmorpg.Client.Networking
             manager.TriggerUpdate();
         }
 
+        // The keys of the connection are zeroed once the socket closed.
         public void Stop()
         {
             manager.Stop();
             serverPeer = null;
+            security.Reset();
         }
 
         // Closes the socket without the disconnect message, so the worker sees a lost line and
@@ -76,6 +92,7 @@ namespace Mmorpg.Client.Networking
         {
             manager.Stop(false);
             serverPeer = null;
+            security.Reset();
         }
 
         private void OnPeerConnected(NetPeer peer)

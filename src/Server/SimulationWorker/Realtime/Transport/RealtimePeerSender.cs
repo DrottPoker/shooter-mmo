@@ -75,7 +75,9 @@ internal sealed class RealtimePeerSender(
     // once the client acknowledged the message or the wait reached
     // GracefulDisconnectMaximumMilliseconds. The disconnect carries the message as its data, so a
     // client whose reliable copy was lost or held back still learns why. A peer that already goes
-    // keeps its first reason and gets no second message.
+    // keeps its first reason and gets no second message. A peer whose datagrams are not sealed
+    // yet drops every clear one that carries a channel, so it gets the reason only in the
+    // disconnect, which follows at once.
     public void SendAndDisconnect(IRealtimePeerConnection peer, RealtimePeerContext context, byte[] packet)
     {
         SendReason(peer, context, packet, reportFailure: true);
@@ -90,6 +92,12 @@ internal sealed class RealtimePeerSender(
         var disconnect = context.BeginDisconnect(RealtimeDisconnectData.Fit(packet), DateTime.UtcNow);
         if (disconnect is null)
         {
+            return;
+        }
+
+        if (!peer.IsSealed)
+        {
+            disconnect.MarkAcknowledged();
             return;
         }
 

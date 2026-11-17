@@ -243,17 +243,27 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
             cancellationToken);
     }
 
+    // Forwards the join request's ticket id, nonce, and proof. The call carries the transport key
+    // back, so it must reach GameService over TLS or a private network.
     public Task<GameServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeJoinTicketAsync(
-        string ticket,
+        RealtimeJoinRequest joinRequest,
         string workerId,
         string runtimeId,
         string shardId,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(joinRequest);
         return PostAsync<ConsumeSimulationJoinTicketRequest, ConsumedSimulationJoinTicketResponse>(
             "GameService.ConsumeJoinTicket",
             "/api/simulation-join-tickets/consume",
-            new ConsumeSimulationJoinTicketRequest(ticket, workerId, runtimeId, shardId),
+            new ConsumeSimulationJoinTicketRequest(
+                joinRequest.TicketId,
+                joinRequest.ClientNonce,
+                joinRequest.Proof,
+                RealtimeProtocol.Version,
+                workerId,
+                runtimeId,
+                shardId),
             response => IsValidConsumedTicket(response, workerId, runtimeId, shardId),
             cancellationToken);
     }
@@ -632,6 +642,7 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
             && string.Equals(response.WorkerId, workerId, StringComparison.Ordinal)
             && string.Equals(response.WorkerRuntimeId, runtimeId, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(response.SimulationSessionToken)
+            && response.TransportKey is { Length: RealtimeTransportKeys.TransportKeySize }
             && response.SessionExpiresAt != default
             && response.SessionLeaseDurationMilliseconds > 0
             && IsValidCarryState(

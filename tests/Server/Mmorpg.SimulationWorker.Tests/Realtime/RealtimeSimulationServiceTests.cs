@@ -97,13 +97,10 @@ public sealed class RealtimeSimulationServiceTests
         var leaveAccepted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var listener = new EventBasedNetListener();
-        var client = new NetManager(listener)
-        {
-            ChannelsCount = RealtimeProtocol.ChannelCount
-        };
+        var client = RealtimeTestTickets.CreateClient(listener, "item-operation-ticket");
 
         listener.PeerConnectedEvent += peer => peer.Send(
-            RealtimeProtocol.EncodeJoinRequest("item-operation-ticket"),
+            RealtimeTestTickets.EncodeJoin("item-operation-ticket"),
             DeliveryMethod.ReliableOrdered);
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
         {
@@ -273,15 +270,12 @@ public sealed class RealtimeSimulationServiceTests
         var carryStateChanged = new TaskCompletionSource<RealtimeCarryState>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var listener = new EventBasedNetListener();
-        var client = new NetManager(listener)
-        {
-            ChannelsCount = RealtimeProtocol.ChannelCount
-        };
+        var client = RealtimeTestTickets.CreateClient(listener, "test-join-ticket");
 
         listener.PeerConnectedEvent += peer =>
         {
             peer.Send(
-                RealtimeProtocol.EncodeJoinRequest("test-join-ticket"),
+                RealtimeTestTickets.EncodeJoin("test-join-ticket"),
                 DeliveryMethod.ReliableOrdered);
         };
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
@@ -543,12 +537,9 @@ public sealed class RealtimeSimulationServiceTests
         var joinAccepted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var listener = new EventBasedNetListener();
-        var client = new NetManager(listener)
-        {
-            ChannelsCount = RealtimeProtocol.ChannelCount
-        };
+        var client = RealtimeTestTickets.CreateClient(listener, "unavailable-release-ticket");
         listener.PeerConnectedEvent += peer => peer.Send(
-            RealtimeProtocol.EncodeJoinRequest("unavailable-release-ticket"),
+            RealtimeTestTickets.EncodeJoin("unavailable-release-ticket"),
             DeliveryMethod.ReliableOrdered);
         listener.NetworkReceiveEvent += (peer, reader, channel, deliveryMethod) =>
         {
@@ -680,7 +671,8 @@ public sealed class RealtimeSimulationServiceTests
                 {
                     SessionLeaseDurationMilliseconds = 150_000,
                     IsSyntheticBot = isSyntheticBot,
-                    Appearance = isSyntheticBot ? null : CharacterStateTestData.Appearance
+                    Appearance = isSyntheticBot ? null : CharacterStateTestData.Appearance,
+                    TransportKey = RealtimeTestTickets.TransportKeyOf("test-join-ticket")
                 }));
             }
 
@@ -750,7 +742,8 @@ public sealed class RealtimeSimulationServiceTests
                         false)
                     {
                         SessionLeaseDurationMilliseconds = 150_000,
-                        Appearance = CharacterStateTestData.Appearance
+                        Appearance = CharacterStateTestData.Appearance,
+                        TransportKey = RealtimeTestTickets.TransportKeyOf("unavailable-release-ticket")
                     })
                 });
             }
@@ -807,7 +800,8 @@ public sealed class RealtimeSimulationServiceTests
                     false)
                 {
                     SessionLeaseDurationMilliseconds = 150_000,
-                    Appearance = CharacterStateTestData.Appearance
+                    Appearance = CharacterStateTestData.Appearance,
+                    TransportKey = RealtimeTestTickets.TransportKeyOf("item-operation-ticket")
                 });
             }
 

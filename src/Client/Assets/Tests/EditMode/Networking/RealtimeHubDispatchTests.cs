@@ -320,7 +320,10 @@ namespace Mmorpg.Client.Tests.EditMode
         {
             get
             {
-                yield return Client(RealtimeProtocol.EncodeJoinRequest("ticket-1"));
+                yield return Client(RealtimeProtocol.EncodeJoinRequest(new RealtimeJoinRequest(
+                    Guid.NewGuid(),
+                    new byte[RealtimeProtocol.JoinNonceSize],
+                    new byte[RealtimeProtocol.JoinProofSize])));
                 yield return Client(RealtimeProtocol.EncodeLeaveRequest(SessionId.ToString("D")));
                 yield return Client(RealtimeProtocol.EncodeMovementInputBatch(MovementInputs()));
                 yield return Client(RealtimeProtocol.EncodeItemOperationIntent(ItemIntent()));

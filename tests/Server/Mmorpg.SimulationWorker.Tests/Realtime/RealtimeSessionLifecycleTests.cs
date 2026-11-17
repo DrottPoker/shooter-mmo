@@ -12,7 +12,7 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 public sealed class RealtimeSessionLifecycleTests
 {
     [Fact]
-    public async Task JoinRejectedByGameServiceDisconnectsOnceTheClientAcknowledgedTheRejection()
+    public async Task JoinRejectedByGameServiceDisconnectsAtOnceWithTheRejectionInTheDisconnect()
     {
         await using var harness = RealtimeServerHarness.Create();
         harness.GameService.OnConsume = (_, _) => Task.FromResult(
@@ -30,9 +30,6 @@ public sealed class RealtimeSessionLifecycleTests
         var rejection = client.JoinRejected!;
         Assert.Equal("join_ticket_consumed", rejection.Code);
         Assert.Equal("The join ticket was already used.", rejection.Message);
-        var reliable = client.ReliablePackets;
-        var answer = Assert.Single(reliable);
-        Assert.Equal(RealtimeMessageType.JoinRejected, answer.Type);
         var metrics = harness.NetworkMetrics!.Capture();
         Assert.Equal(1, metrics.RejectedJoins);
         Assert.Equal(0, metrics.AcceptedJoins);
@@ -41,10 +38,13 @@ public sealed class RealtimeSessionLifecycleTests
             entry => entry.Level == LogLevel.Warning
                 && entry.Template == "[SIMULATION] UDP peer {PeerId} was denied shard access with code {Code}: {Message}");
 
-        // The rejection came first on the reliable channel, and the disconnect carries it too.
-        Assert.True(client.DisconnectedAtUtc >= answer.ReceivedAtUtc);
-        Assert.Equal(answer.Data, client.DisconnectData);
+        // GameService refused the ticket, so the peer has no keys and drops every clear packet on
+        // a channel: the rejection travels only in the disconnect, which needs no acknowledgement.
+        Assert.Empty(client.ReliablePackets);
+        Assert.True(RealtimeProtocol.TryReadMessageType(client.DisconnectData!, out var type));
+        Assert.Equal(RealtimeMessageType.JoinRejected, type);
         Assert.Equal(LiteNetLib.DisconnectReason.RemoteConnectionClose, client.DisconnectReason);
+        Assert.Equal(0, client.Security.Counters.SealedReceived);
     }
 
     [Fact]
@@ -98,12 +98,10 @@ public sealed class RealtimeSessionLifecycleTests
             harness,
             client,
             "join_timeout",
-            expectLastReliable: true);
+            beforeKeys: true);
 
         Assert.Equal("The join handshake timed out.", client.ServerDisconnect!.Message);
-        Assert.True(
-            client.ReliablePackets[^1].ReceivedAtUtc - connectedAt
-                >= TimeSpan.FromMilliseconds(500));
+        Assert.True(client.DisconnectedAtUtc - connectedAt >= TimeSpan.FromMilliseconds(500));
     }
 
     [Fact]
@@ -161,7 +159,7 @@ public sealed class RealtimeSessionLifecycleTests
         var gate = new TestGate();
         harness.GameService.OnConsume = async (request, _) =>
         {
-            if (request.Ticket == character.Ticket)
+            if (request.TicketId == RealtimeTestTickets.IdOf(character.Ticket))
             {
                 await gate.WaitAsync();
             }

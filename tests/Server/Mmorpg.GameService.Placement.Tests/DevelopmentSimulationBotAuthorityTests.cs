@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Placement.Development;
+using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Placement.Tests;
 
@@ -67,8 +68,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.True(issued.Succeeded);
         Assert.Equal("Active Bot 7", issued.Value!.CharacterName);
 
-        var consumeRequest = new ConsumeSimulationJoinTicketRequest(
-            issued.Value.JoinTicket,
+        var consumeRequest = JoinTicketProofs.Consume(
+            issued.Value,
             "worker-1",
             "runtime-1",
             "local-shard-1");
@@ -155,6 +156,38 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal("invalid_simulation_session", otherRuntime[renewed.SimulationSessionId].Error!.Code);
     }
 
+    // As a player's ticket: only the proof that the ticket's key makes consumes it, and the
+    // consume hands the worker that key.
+    [Fact]
+    public void AProofOfAnotherKeyLeavesTheBotTicketAndTheRightOneHandsOverItsKey()
+    {
+        var authority = new DevelopmentSimulationBotAuthority(
+            CreateOptions(),
+            new TestTimeProvider(DateTimeOffset.UtcNow));
+        var issued = authority.IssueTicket(
+            new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1"),
+            CreatePlacement());
+
+        Assert.True(authority.TryConsumeTicket(
+            JoinTicketProofs.Consume(
+                JoinTicketProofs.JoinRequest(
+                    issued.Value!.JoinTicketId,
+                    Mmorpg.GameProtocol.RealtimeTransportKeys.CreateTransportKey(),
+                    "local-shard-1"),
+                "worker-1",
+                "runtime-1",
+                "local-shard-1"),
+            out var forged));
+        Assert.Equal("invalid_join_ticket", forged.Error!.Code);
+        Assert.Equal(1, authority.CaptureSnapshot().PendingTickets);
+
+        Assert.True(authority.TryConsumeTicket(
+            JoinTicketProofs.Consume(issued.Value, "worker-1", "runtime-1", "local-shard-1"),
+            out var consumed));
+        Assert.True(consumed.Succeeded);
+        Assert.Equal(issued.Value.TransportKey, consumed.Value!.TransportKey);
+    }
+
     [Fact]
     public void WrongWorkerDoesNotConsumeTicket()
     {
@@ -169,8 +202,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
             CreatePlacement());
 
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                issued.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                issued.Value!,
                 "other-worker",
                 "runtime-1",
                 "local-shard-1"),
@@ -178,8 +211,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal("wrong_simulation_assignment", wrongWorker.Error!.Code);
 
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                issued.Value.JoinTicket,
+            JoinTicketProofs.Consume(
+                issued.Value!,
                 "worker-1",
                 "runtime-1",
                 "local-shard-1"),
@@ -202,16 +235,16 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         Assert.Equal(abandoned.Value!.CharacterId, reissued.Value!.CharacterId);
         Assert.Equal(1, authority.CaptureSnapshot().PendingTickets);
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                abandoned.Value.JoinTicket,
+            JoinTicketProofs.Consume(
+                abandoned.Value,
                 "worker-1",
                 "runtime-1",
                 "local-shard-1"),
             out var consumedAbandoned));
         Assert.Equal("invalid_join_ticket", consumedAbandoned.Error!.Code);
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                reissued.Value.JoinTicket,
+            JoinTicketProofs.Consume(
+                reissued.Value,
                 "worker-1",
                 "runtime-1",
                 "local-shard-1"),
@@ -247,8 +280,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
         var request = new DevelopmentSimulationBotTicketRequest(Guid.NewGuid(), 1, "local-shard-1");
         var issued = authority.IssueTicket(request, CreatePlacement());
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                issued.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                issued.Value!,
                 "worker-1",
                 "runtime-1",
                 "local-shard-1"),
@@ -275,8 +308,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
             CreatePlacement());
         Assert.True(first.Succeeded && second.Succeeded);
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(
-                first.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                first.Value!,
                 "worker-1",
                 "runtime-1",
                 "local-shard-1"),
@@ -357,8 +390,8 @@ public sealed class DevelopmentSimulationBotAuthorityTests
                 placement);
             Assert.True(issued.Succeeded);
             Assert.True(authority.TryConsumeTicket(
-                new ConsumeSimulationJoinTicketRequest(
-                    issued.Value!.JoinTicket,
+                JoinTicketProofs.Consume(
+                    issued.Value!,
                     "worker-1",
                     "runtime-1",
                     "local-shard-1"),
@@ -407,7 +440,7 @@ public sealed class DevelopmentSimulationBotAuthorityTests
             CreatePlacement());
         Assert.True(issued.Succeeded, issued.Error?.Message);
         Assert.True(authority.TryConsumeTicket(
-            new ConsumeSimulationJoinTicketRequest(issued.Value!.JoinTicket, "worker-1", "runtime-1", "local-shard-1"),
+            JoinTicketProofs.Consume(issued.Value!, "worker-1", "runtime-1", "local-shard-1"),
             out var consumed));
         Assert.True(consumed.Succeeded, consumed.Error?.Message);
         return consumed.Value!;

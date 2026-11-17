@@ -266,8 +266,8 @@ internal sealed class ItemScenarioWorld(PostgresIntegrationTestContext context)
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await Context.ShardService.ConsumeJoinTicketAsync(
-            new ConsumeSimulationJoinTicketRequest(
-                join.Value!.JoinTicket,
+            JoinTicketProofs.Consume(
+                join.Value!,
                 WorkerId,
                 WorkerRuntimeId,
                 ShardId),

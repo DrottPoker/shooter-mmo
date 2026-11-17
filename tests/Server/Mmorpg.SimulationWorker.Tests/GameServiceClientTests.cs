@@ -30,7 +30,8 @@ public sealed class GameServiceClientTests
             carriedWeight = 210,
             carryCapacity = 200,
             isReconnect = false,
-            appearance = Look()
+            appearance = Look(),
+            transportKey = TransportKey
         }));
         var client = CreateClient(handler);
 
@@ -38,17 +39,56 @@ public sealed class GameServiceClientTests
 
         Assert.True(result.Succeeded, result.Error?.Message);
         Assert.Equal(simulationSessionId, result.Value!.SimulationSessionId);
+        Assert.Equal(32, result.Value.TransportKey.Length);
         var request = Assert.Single(handler.Requests);
         Assert.Equal("/api/simulation-join-tickets/consume", request.Path);
 
+        // The ticket id, the nonce, and the proof of the join request, never a key.
         using var body = JsonDocument.Parse(request.Body);
-        Assert.Equal("join-ticket", body.RootElement.GetProperty("ticket").GetString());
+        Assert.Equal(JoinRequest.TicketId, body.RootElement.GetProperty("ticketId").GetGuid());
+        Assert.Equal(JoinRequest.ClientNonce, body.RootElement.GetProperty("clientNonce").GetBytesFromBase64());
+        Assert.Equal(JoinRequest.Proof, body.RootElement.GetProperty("proof").GetBytesFromBase64());
+        Assert.Equal(RealtimeProtocol.Version, body.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.False(body.RootElement.TryGetProperty("transportKey", out _));
         Assert.Equal(
             "local-simulation-worker-1",
             body.RootElement.GetProperty("workerId").GetString());
         Assert.Equal("runtime-1", body.RootElement.GetProperty("runtimeId").GetString());
         Assert.Equal("local-shard-1", body.RootElement.GetProperty("shardId").GetString());
         Assert.Matches("^[0-9a-f]{32}$", request.CorrelationId);
+    }
+
+    // Without the key the worker could not seal the peer's datagrams, so it never accepts the join.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(16)]
+    public async Task AConsumeAnswerWithoutA32ByteTransportKeyIsInvalid(int? keyBytes)
+    {
+        var handler = new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            accountId = Guid.NewGuid(),
+            characterId = Guid.NewGuid(),
+            characterName = "Hero One",
+            shardId = "local-shard-1",
+            worldId = "development-world-1",
+            workerId = "local-simulation-worker-1",
+            workerRuntimeId = "runtime-1",
+            simulationSessionId = Guid.NewGuid(),
+            simulationSessionToken = "simulation-session-token",
+            sessionExpiresAt = DateTime.UtcNow.AddMinutes(1),
+            sessionLeaseDurationMilliseconds = 30_000,
+            itemStateRevision = 1,
+            carriedWeight = 0,
+            carryCapacity = 200,
+            isReconnect = false,
+            appearance = Look(),
+            transportKey = keyBytes is { } count ? Convert.ToBase64String(new byte[count]) : null
+        }));
+
+        var result = await ConsumeAsync(CreateClient(handler));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(502, result.StatusCode);
     }
 
     [Fact]
@@ -218,7 +258,8 @@ public sealed class GameServiceClientTests
             isReconnect = false,
             isSyntheticBot = variant == "bot",
             appearance = variant == "bot" ? null : Look(),
-            savedState = variant == "none" ? null : savedState
+            savedState = variant == "none" ? null : savedState,
+            transportKey = TransportKey
         }));
 
         var result = await ConsumeAsync(CreateClient(handler));
@@ -1402,7 +1443,8 @@ public sealed class GameServiceClientTests
             carriedWeight = 348,
             carryCapacity = 200,
             isReconnect = false,
-            appearance = Look()
+            appearance = Look(),
+            transportKey = TransportKey
         }));
 
         var result = await ConsumeAsync(CreateClient(handler));
@@ -1434,7 +1476,8 @@ public sealed class GameServiceClientTests
             carryCapacity = 200,
             isReconnect = false,
             isSyntheticBot,
-            appearance = withLook ? Look() : null
+            appearance = withLook ? Look() : null,
+            transportKey = TransportKey
         }));
 
         var result = await ConsumeAsync(CreateClient(handler));
@@ -1489,7 +1532,8 @@ public sealed class GameServiceClientTests
             itemStateRevision = 1,
             carriedWeight = -1,
             carryCapacity = 200,
-            isReconnect = false
+            isReconnect = false,
+            transportKey = TransportKey
         }));
 
         var result = await ConsumeAsync(CreateClient(handler));
@@ -1561,11 +1605,18 @@ public sealed class GameServiceClientTests
         };
     }
 
+    private static readonly string TransportKey = Convert.ToBase64String(new byte[RealtimeTransportKeys.TransportKeySize]);
+
+    private static readonly RealtimeJoinRequest JoinRequest = new(
+        Guid.NewGuid(),
+        Enumerable.Range(0, RealtimeProtocol.JoinNonceSize).Select(value => (byte)value).ToArray(),
+        Enumerable.Range(100, RealtimeProtocol.JoinProofSize).Select(value => (byte)value).ToArray());
+
     private static Task<GameServiceResult<ConsumedSimulationJoinTicketResponse>> ConsumeAsync(
         GameServiceClient client)
     {
         return client.ConsumeJoinTicketAsync(
-            "join-ticket",
+            JoinRequest,
             "local-simulation-worker-1",
             "runtime-1",
             "local-shard-1",

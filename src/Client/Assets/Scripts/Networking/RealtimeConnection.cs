@@ -1,4 +1,5 @@
 using LiteNetLib;
+using Mmorpg.GameProtocol;
 
 namespace Mmorpg.Client.Networking
 {
@@ -47,9 +48,9 @@ namespace Mmorpg.Client.Networking
             return true;
         }
 
-        public void Connect(string connectionKey)
+        public void Connect(string connectionKey, RealtimeTransportKeys keys)
         {
-            transport.Connect(Host, Port, connectionKey);
+            transport.Connect(Host, Port, connectionKey, keys);
         }
 
         public void MarkServerConnected()
