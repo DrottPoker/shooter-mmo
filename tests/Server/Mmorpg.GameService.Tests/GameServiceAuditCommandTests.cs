@@ -156,43 +156,12 @@ public sealed class GameServiceAuditCommandTests
         return (exitCode, output.ToString(), error.ToString());
     }
 
+    // Valid in every environment, so the Production case passes the rules outside Development.
     private static Dictionary<string, string?> Settings()
     {
-        return new Dictionary<string, string?>
-        {
-            ["ConnectionStrings:Postgres"] =
-                "Host=localhost;Port=5432;Database=audit_settings_test;Username=test;Password=test",
-            ["ConnectionStrings:Redis"] = "localhost:6379",
-            ["HealthChecks:TimeoutMilliseconds"] = "1000",
-            ["Database:RunMigrationsOnStartup"] = "false",
-            ["Database:MaximumPoolSize"] = "8",
-            ["Auth:SessionIdleLifetimeDays"] = "14",
-            ["Auth:SessionMaximumLifetimeDays"] = "90",
-            ["Game:MaxCharactersPerAccount"] = "5",
-            ["Simulation:JoinTicketLifetimeSeconds"] = "30",
-            ["Simulation:SessionLeaseLifetimeSeconds"] = "30",
-            ["Simulation:WorkerHeartbeatTimeoutSeconds"] = "30",
-            ["Simulation:Topology:Fleets:0:Id"] = "local-fleet",
-            ["Simulation:Topology:Fleets:0:DisplayName"] = "Local Development",
-            ["Simulation:Topology:Fleets:0:RegionCode"] = "LOCAL",
-            ["Simulation:Topology:Nodes:0:Id"] = "local-node-1",
-            ["Simulation:Topology:Nodes:0:FleetId"] = "local-fleet",
-            ["Simulation:Topology:Nodes:0:DisplayName"] = "Local Node 1",
-            ["Simulation:Topology:Shards:0:Id"] = "local-shard-1",
-            ["Simulation:Topology:Shards:0:FleetId"] = "local-fleet",
-            ["Simulation:Topology:Shards:0:DisplayName"] = "Local Shard 1",
-            ["Simulation:Topology:Shards:0:RuleSet"] = "mvp-open-risk",
-            ["RateLimiting:Authentication:PermitLimit"] = "5",
-            ["RateLimiting:Authentication:WindowSeconds"] = "60",
-            ["ServiceAuthentication:SimulationWorkers:local-simulation-worker-1"] =
-                "test-simulation-worker-secret-at-least-32-characters",
-            ["WorldData:WorldsPath"] = RepositoryPaths.Worlds,
-            ["Items:NpcLifecycle:InsurancePrice"] = "100",
-            ["Items:NpcLifecycle:QuestGrantId"] = "quest.fixture.letter",
-            ["Items:NpcLifecycle:QuestItemDefinitionId"] = "fixture.letter",
-            ["Items:NpcLifecycle:QuestItemQuantity"] = "1",
-            [AuditOptions.IntervalSecondsKey] = "1800"
-        };
+        var settings = GameServiceHostSettings.Required();
+        settings[AuditOptions.IntervalSecondsKey] = "1800";
+        return settings;
     }
 
     private sealed class NextReleaseModule(DatabaseMigration migration) : IGameServiceModule
