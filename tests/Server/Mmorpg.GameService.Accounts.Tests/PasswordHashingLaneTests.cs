@@ -53,7 +53,9 @@ public sealed class PasswordHashingLaneTests
         var hashes = Enumerable.Range(0, 6)
             .Select(index => lane.HashAsync("wait-" + index, cancellationToken))
             .ToArray();
-        await WaitUntilAsync(() => metrics.Capture() is { InFlight: 2, Queued: 4 });
+        // The lane counts a hash as in flight when a thread takes it, which is before the thread
+        // enters the algorithm, so the test waits for the algorithm itself to hold both.
+        await WaitUntilAsync(() => algorithm.Running == 2 && metrics.Capture() is { InFlight: 2, Queued: 4 });
         algorithm.Release();
         await Task.WhenAll(hashes);
 
@@ -265,6 +267,8 @@ public sealed class PasswordHashingLaneTests
         public IReadOnlyList<string> Calls => [.. calls];
 
         public IReadOnlyCollection<string> Threads => [.. threads];
+
+        public int Running => Volatile.Read(ref running);
 
         public int MostAtOnce => Volatile.Read(ref mostAtOnce);
 
