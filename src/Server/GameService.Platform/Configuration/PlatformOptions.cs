@@ -1,3 +1,4 @@
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Retention;
 using Npgsql;
 
@@ -33,6 +34,10 @@ public sealed record PlatformOptions(
 
     // The Retention section, which the retention host and every module's retention tasks share.
     public RetentionOptions Retention { get; init; } = RetentionOptions.Default;
+
+    // The Audit section, which the audit host and every module's audit checks share. Its default
+    // depends on the environment, so the host reads it with AuditOptions.FromConfiguration.
+    public AuditOptions Audit { get; init; } = AuditOptions.Default;
 
     public static PlatformOptions Read(IConfiguration configuration, ICollection<string> errors)
     {

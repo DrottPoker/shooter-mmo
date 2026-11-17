@@ -38,6 +38,8 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal("hunt", Assert.Single((await ReadQuestLogAsync(context, characterId)).ActiveQuests).StepId);
         Assert.Empty(first.ItemChanges ?? []);
         Assert.NotNull(world);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // An active quest that the catalog does not hold, such as one a manual database change left
@@ -62,6 +64,8 @@ public sealed class QuestProgressIntegrationTests
         var credited = await KillAsync(context, session, characterId, "mob.feral_wolf");
 
         Assert.Equal(1, Progress(credited, Wolves, "wolves"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A kill credit carries every tag an actor may have, and no more.
@@ -83,6 +87,8 @@ public sealed class QuestProgressIntegrationTests
 
         Assert.Equal(1, Progress(fullyTagged, Wolves, "wolves"));
         Assert.Equal(ItemTransactionErrorCodes.SimulationOperationInvalid, overTagged.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -114,6 +120,8 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal("return", quest.StepId);
         Assert.Empty(quest.Objectives);
         Assert.Equal(QuestTransactionErrorCodes.QuestObjectiveInvalid, stale.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -140,6 +148,8 @@ public sealed class QuestProgressIntegrationTests
         var ledger = await LastLedgerRowAsync(context, characterId);
         Assert.Equal((CurrencySourceKinds.QuestReward, Errand, 5L, turnedIn.OperationId), ledger);
         Assert.Equal(before + 5, Assert.Single(turnedIn.CharacterRevisions).Currency);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -169,6 +179,8 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal(
             QuestTransactionErrorCodes.QuestAlreadyCompleted,
             (await ExecuteAsync(context, session, new AcceptQuestCommand(characterId, Wolves), Mira)).Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -187,6 +199,8 @@ public sealed class QuestProgressIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.InventoryFull, result.Error!.Code);
         Assert.Equal(before, await CurrencyAsync(context, characterId));
         Assert.Equal(Wolves, Assert.Single((await ReadQuestLogAsync(context, characterId)).ActiveQuests).QuestId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -212,6 +226,8 @@ public sealed class QuestProgressIntegrationTests
         ItemScenarioWorld.AssertCommitted(again);
         var quest = Assert.Single(QuestLogSection.Read(again)!.Quests);
         Assert.Equal(("deliver", 1), (quest.StepId, quest.CompletionCount));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -235,6 +251,8 @@ public sealed class QuestProgressIntegrationTests
         Assert.True(turnedIn.Succeeded, turnedIn.Error?.Message);
         Assert.Equal(1, Assert.Single(QuestLogOf(turnedIn.Value!)!.Quests).CompletionCount);
         Assert.NotNull(turnedIn.Value!.CharacterState);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<(ItemScenarioWorld World, IntegrationPlayer Player, ConsumedSimulationJoinTicketResponse Session)> JoinAsync(

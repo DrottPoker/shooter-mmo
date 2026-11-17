@@ -67,6 +67,8 @@ public sealed class LingeringBodyFlowIntegrationTests
         Assert.Same(body, resumed.Entity);
         Assert.Equal(second.SimulationSessionToken, resumed.Entity.Session.SimulationSessionToken);
         Assert.Equal(1, entities.PlayerCount);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The player leaves and logs out: the body stays, GameService's heartbeat tells the worker that
@@ -113,6 +115,8 @@ public sealed class LingeringBodyFlowIntegrationTests
         Assert.Same(body, resumed.Entity);
         var renewed = await RenewAsync(client, second, cancellationToken);
         Assert.Null(renewed.AccountSessionEnded);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The same flow, but after the new login the account asks for another character, which stays
@@ -145,6 +149,8 @@ public sealed class LingeringBodyFlowIntegrationTests
 
         Assert.False(blocked.Succeeded);
         Assert.Equal("account_character_already_active", blocked.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The renewed lease of the session in the worker's session heartbeat, as the worker sends it.

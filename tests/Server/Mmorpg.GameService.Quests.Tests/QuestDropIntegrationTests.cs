@@ -49,6 +49,8 @@ public sealed class QuestDropIntegrationTests
         var trophies = await LineageItemsAsync(context, characterId, Trophies);
         Assert.Equal(2, trophies.Count);
         Assert.All(trophies, trophy => Assert.Equal((Trophy, 1, inventoryId), (trophy.DefinitionId, trophy.Quantity, trophy.ContainerId)));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -78,6 +80,8 @@ public sealed class QuestDropIntegrationTests
             [ore.GrantId, trophies[0].GrantId, trophies[1].GrantId],
             await GrantedAsync(world, [ore.GrantId, .. trophies.Select(trophy => trophy.GrantId)]));
         Assert.Equal(ItemTransactionErrorCodes.QuestItemNotNeeded, nothingNeeded.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -128,6 +132,8 @@ public sealed class QuestDropIntegrationTests
         ItemScenarioWorld.AssertCommitted(lootAll);
         Assert.Equal(2, (await LineageItemsAsync(context, characterId, Trophies)).Count);
         Assert.NotEqual(inventoryId, (await world.LoadItemAsync(secondTrophyId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // Two trophies of one corpse share what the quest still needs, at creation and in Loot all.
@@ -157,6 +163,8 @@ public sealed class QuestDropIntegrationTests
 
         Assert.Equal(2, (await LineageItemsAsync(context, characterId, Trophies)).Count);
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A corpse almost full of the Mob's own loot keeps the trophy the owner needs in its last
@@ -187,6 +195,8 @@ public sealed class QuestDropIntegrationTests
         Assert.Equal(24, await CountCorpseItemsAsync(world, corpseId));
         Assert.Equal(1, await CountCorpseItemsAsync(world, corpseId, Trophy));
         Assert.Equal([new ItemTransactionQuestDrop(Trophies, Trophy, 1)], QuestDropSection.Read(created));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker learns which quest drops a durable corpse kept, so it can tell the owner, also
@@ -225,6 +235,8 @@ public sealed class QuestDropIntegrationTests
         Assert.Equal(kept, replayed.Value!.QuestDrops);
         Assert.True(oreOnly.Succeeded, oreOnly.Error?.Message);
         Assert.Empty(oreOnly.Value!.QuestDrops);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // The worker's read before it lays out a live corpse: the drops that the owner's quests still
@@ -259,6 +271,8 @@ public sealed class QuestDropIntegrationTests
         Assert.Empty(otherMob.Value!.Drops);
         Assert.Equal([new(Trophies, Trophy, 1)], afterOne.Value!.Drops);
         Assert.Equal(("simulation_session_invalid", 401), (stranger.Error!.Code, stranger.StatusCode));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<ServiceResult<SimulationQuestDropResponse>> ResolveAsync(

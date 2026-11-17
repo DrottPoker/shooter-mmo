@@ -1770,6 +1770,42 @@ sessions hold fails this way without applying anything; run `migrate` again
 when that traffic has passed. What the command does is in
 [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations).
 
+### Audit The Economy
+
+The `audit` command runs the
+[economy audit](GAME_SERVICE_MODULES.md#economy-audit) once against the
+configured database and prints its report. It reads the same configuration as
+a start, runs no web host, and writes nothing, so it can run beside a live
+GameService. GameService runs the same audit on a schedule outside the
+Development environment; locally, run it by hand:
+
+```powershell
+dotnet run --project src/Server/GameService -- audit
+$LASTEXITCODE
+dotnet run --project src/Server/GameService -- audit --json
+```
+
+Next to a build, the same is `Mmorpg.GameService audit` and
+`Mmorpg.GameService audit --json`. Configuration arguments follow the command,
+such as `audit --Audit:ExampleLimit=20`. Beside a GameService that runs from the
+same checkout, add `--no-build` before `--`, because a build cannot replace the
+files that the running service holds.
+
+Expected result: the report names the snapshot's database time and every check
+with what it examined, its violations, and its time, and ends with
+`The economy is consistent.`; `$LASTEXITCODE` is `0`. A check that found a
+violation is marked `VIOLATED` with its description and up to
+`Audit:ExampleLimit` examples by id, the report ends with
+`Violations found by <n> checks: <ids>.`, and the exit code is `1`. When the
+audit could not run, because the database cannot be reached, `migrate` would
+still change it, or a check hit `Audit:StatementTimeoutSeconds`, the check is
+marked `FAILED` or the report says why, `audit failed:` follows on the error
+stream, and the exit code is `2`. `--json` prints the same report as one JSON
+object with `outcome` (`clean`, `violations`, or `failed`), `exitCode`,
+`snapshotAt`, `violations`, `error`, and `checks`, each with its `id`,
+`description`, `ran`, `examined`, `violations`, `durationMilliseconds`,
+`error`, and `examples`.
+
 ### Reset The Local Development Database
 
 GameService refuses to start when a catalog change would invalidate live item

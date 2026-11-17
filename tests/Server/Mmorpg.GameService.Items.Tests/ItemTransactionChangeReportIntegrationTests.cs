@@ -113,6 +113,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             ItemOperationKinds.Destroy,
             snapshot,
             Item(snapshot.PermanentInventory, 7)));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -215,6 +217,8 @@ public sealed class ItemTransactionChangeReportIntegrationTests
             Equipped(snapshot, "bag")) with
         { DestinationContainerId = inventory, DestinationSlotIndex = 7 });
         Assert.Null(snapshot.EquippedBag);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<CharacterInventorySnapshotResponse> AssertReportedAsync(

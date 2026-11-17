@@ -101,6 +101,8 @@ public sealed class QuestItemLineageIntegrationTests
             Assert.Single(reaccepted.ItemRevisions).ItemInstanceId,
             Assert.Single(replayed.ItemRevisions).ItemInstanceId);
         Assert.Equal(1, await CountQuestItemsAsync(context, "quest-alpha"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -157,6 +159,8 @@ public sealed class QuestItemLineageIntegrationTests
             CancellationToken.None);
         Assert.True(recovery.Succeeded, recovery.Error?.Message);
         Assert.Empty(recovery.Value!.RecoveryStorage.Deliveries);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<int> CountRecoveryRowsAsync(

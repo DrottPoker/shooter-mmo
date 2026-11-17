@@ -3,8 +3,8 @@ using Mmorpg.GameService.Testing;
 
 namespace Mmorpg.GameService.Tests.Architecture;
 
-// A module publishes only its module class, its options, and its Contracts namespace.
-// Everything else is internal, so other modules cannot reach past the contracts.
+// A module publishes only its module class, its options, its audit checks, and its Contracts
+// namespace. Everything else is internal, so other modules cannot reach past the contracts.
 public sealed class ModulePublicSurfaceTests
 {
     private static readonly IReadOnlyDictionary<string, string[]> PublishedTypes =
@@ -20,6 +20,7 @@ public sealed class ModulePublicSurfaceTests
             ],
             ["Mmorpg.GameService.Characters"] =
             [
+                "Mmorpg.GameService.Characters.CharactersAudit",
                 "Mmorpg.GameService.Characters.CharactersModule",
                 "Mmorpg.GameService.Characters.CharactersModuleOptions"
             ],
@@ -39,6 +40,7 @@ public sealed class ModulePublicSurfaceTests
                 "Mmorpg.GameService.Items.Development.DevelopmentItemPackageSource",
                 "Mmorpg.GameService.Items.ItemCatalogSource",
                 "Mmorpg.GameService.Items.ItemOperationsOptions",
+                "Mmorpg.GameService.Items.ItemsAudit",
                 "Mmorpg.GameService.Items.ItemsCommandLine",
                 "Mmorpg.GameService.Items.ItemsModule",
                 "Mmorpg.GameService.Items.ItemsModuleOptions",

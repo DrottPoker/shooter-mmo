@@ -72,6 +72,8 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
 
         ItemScenarioWorld.AssertCommitted(whole);
         Assert.Equal((10, looterInventory, 0), Location(await world.LoadItemAsync(stack.ItemInstanceId)));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -118,6 +120,8 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
         Assert.Equal((1, general, 1), Location(await world.LoadItemAsync(corpseSword.ItemInstanceId)));
         Assert.Equal((1, looterInventory, 0), Location(await world.LoadItemAsync(carriedPotion)));
         Assert.Null((await world.LoadItemAsync(equippedSword)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -144,6 +148,8 @@ public sealed class CreatureCorpseWholeItemsIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.InventoryFull, result.Error!.Code);
         Assert.Equal(40, (await world.LoadItemAsync(carriedOre)).Quantity);
         Assert.Equal(20, (await world.LoadItemAsync(corpseOre)).Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static void AssertWholeItemsOnly(ItemTransactionResult result)

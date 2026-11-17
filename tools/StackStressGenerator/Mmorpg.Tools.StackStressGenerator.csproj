@@ -4,6 +4,9 @@
     <ProjectReference Include="..\..\src\Shared\DotNet\GameProtocol\Mmorpg.GameProtocol.csproj" />
     <ProjectReference Include="..\..\src\Shared\DotNet\GameSimulation\Mmorpg.GameSimulation.csproj" />
     <ProjectReference Include="..\..\src\Server\Common\Mmorpg.Server.Common.csproj" />
+    <!-- After a full-stack run the generator runs GameService's economy audit, the same checks. -->
+    <ProjectReference Include="..\..\src\Server\GameService.Characters\Mmorpg.GameService.Characters.csproj" />
+    <ProjectReference Include="..\..\src\Server\GameService.Items\Mmorpg.GameService.Items.csproj" />
     <ProjectReference Include="..\SimulationBotClient\Mmorpg.Tools.SimulationBotClient.csproj" />
     <!-- The World variant runs the real content compilers into the run folder. -->
     <ProjectReference Include="..\ContentPipeline\Mmorpg.Tools.ContentPipeline.csproj" />

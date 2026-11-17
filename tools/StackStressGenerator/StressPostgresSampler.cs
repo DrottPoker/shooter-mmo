@@ -1,4 +1,7 @@
 using System.Globalization;
+using Mmorpg.GameService.Characters;
+using Mmorpg.GameService.Items;
+using Mmorpg.GameService.Platform.Audit;
 using Npgsql;
 
 namespace Mmorpg.Tools.StackStressGenerator;
@@ -29,27 +32,94 @@ public sealed record StressPostgresSummary(
     double BlockWriteMilliseconds,
     StressItemInvariantSummary? ItemInvariants);
 
+// The fixture quantities that a workload expects at the end of a run, and GameService's economy
+// audit over the whole database, the same checks that the service runs.
 public sealed record StressItemInvariantSummary(
     long ExpectedLootQuantity,
     long ActualLootQuantity,
     long ExpectedInventoryItemQuantity,
     long ActualInventoryItemQuantity,
-    int DuplicateContainerSlots,
-    int InvalidItemCustodyRows,
-    int PendingItemOperations)
+    StressEconomyAuditSummary Audit)
 {
-    public int Violations =>
+    public long Violations =>
         (ExpectedLootQuantity == ActualLootQuantity ? 0 : 1)
         + (ExpectedInventoryItemQuantity == ActualInventoryItemQuantity ? 0 : 1)
-        + DuplicateContainerSlots
-        + InvalidItemCustodyRows
-        + PendingItemOperations;
+        + Audit.Violations;
+
+    // Nothing was violated, and every check of the audit ran.
+    public bool Hold => Violations == 0 && Audit.Ran;
 }
+
+// One run of the economy audit: its outcome, its violations, and what every check found, with
+// examples by id.
+public sealed record StressEconomyAuditSummary(
+    string Outcome,
+    long Violations,
+    double DurationMilliseconds,
+    string? Error,
+    IReadOnlyList<StressEconomyAuditCheck> Checks)
+{
+    public bool Ran => Error is null && Checks.All(check => check.Error is null);
+
+    public IReadOnlyList<StressEconomyAuditCheck> ViolatedChecks =>
+        Checks.Where(check => check.Violations > 0).ToArray();
+
+    public static StressEconomyAuditSummary From(AuditReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return new StressEconomyAuditSummary(
+            AuditReportWriter.OutcomeName(report.Outcome),
+            report.Violations,
+            report.Duration.TotalMilliseconds,
+            report.Error,
+            report.Checks.Select(check => new StressEconomyAuditCheck(
+                check.Id,
+                check.Examined,
+                check.Violations,
+                check.Duration.TotalMilliseconds,
+                check.Error,
+                check.Examples.Select(AuditReportWriter.FormatExample).ToArray())).ToArray());
+    }
+
+    // The violated checks with their counts, and the checks that could not run.
+    public string Describe()
+    {
+        var parts = new List<string>
+        {
+            Violations == 0
+                ? $"economy audit {Outcome} over {Checks.Count} checks"
+                : "economy audit violations: " + string.Join(", ", ViolatedChecks.Select(check => $"{check.Id} {check.Violations}"))
+        };
+        var failed = Checks
+            .Where(check => check.Error is not null)
+            .Select(check => $"{check.Id} ({check.Error})")
+            .ToArray();
+        if (failed.Length > 0)
+        {
+            parts.Add("could not run: " + string.Join(", ", failed));
+        }
+
+        if (Error is not null)
+        {
+            parts.Add("the audit stopped: " + Error);
+        }
+
+        return string.Join("; ", parts);
+    }
+}
+
+public sealed record StressEconomyAuditCheck(
+    string Id,
+    long Examined,
+    long Violations,
+    double DurationMilliseconds,
+    string? Error,
+    IReadOnlyList<string> Examples);
 
 // The read-only sampler of the disposable database. Once a second it reads the database
 // statistics and the simulation sessions; every report interval it runs the drift checks; at
-// both ends of the steady interval it counts every table; after the run it checks the item
-// invariants. It keeps the first and last sample and running extremes, not the samples, so a
+// both ends of the steady interval it counts every table; after the run it checks the fixture
+// quantities and runs GameService's economy audit. It keeps the first and last sample and running extremes, not the samples, so a
 // long run does not grow the generator's memory.
 public sealed class StressPostgresSampler : IAsyncDisposable
 {
@@ -67,6 +137,14 @@ public sealed class StressPostgresSampler : IAsyncDisposable
     // Counting every table must stay cheap; a statement that takes longer fails the run instead
     // of holding it.
     private const int TableCountTimeoutSeconds = 60;
+
+    // The economy audit after a run: no operation may still be pending, and three examples of
+    // each violated check are enough to start looking.
+    public static readonly AuditOptions EconomyAuditOptions = AuditOptions.Default with
+    {
+        PendingOperationAge = TimeSpan.Zero,
+        ExampleLimit = 3
+    };
 
     private readonly NpgsqlDataSource dataSource;
     private readonly string expectedDatabase;
@@ -538,6 +616,9 @@ public sealed class StressPostgresSampler : IAsyncDisposable
         }
     }
 
+    // The workload's fixture quantities, then GameService's economy audit over the whole database:
+    // the same checks that the service runs, in one snapshot. The run is over, so no item
+    // operation may be pending at all.
     public async Task VerifyGameplayInvariantsAsync(
         StressWorkloadProfile workload,
         int inventoryFixtureBots,
@@ -550,48 +631,38 @@ public sealed class StressPostgresSampler : IAsyncDisposable
                 coalesce(sum(item.quantity) filter (
                     where item.definition_id = @LootDefinitionId), 0)::bigint,
                 coalesce(sum(item.quantity) filter (
-                    where item.definition_id = @InventoryDefinitionId), 0)::bigint,
-                (select count(*)::integer
-                 from (
-                     select duplicate.container_id, duplicate.container_slot_index
-                     from item_instances duplicate
-                     where duplicate.container_id is not null
-                     group by duplicate.container_id, duplicate.container_slot_index
-                     having count(*) > 1
-                 ) duplicate_slots),
-                count(*) filter (
-                    where not (
-                        (item.container_id is not null
-                         and item.container_slot_index is not null
-                         and item.equipped_character_id is null
-                         and item.equipment_slot_id is null)
-                        or
-                        (item.container_id is null
-                         and item.container_slot_index is null
-                         and item.equipped_character_id is not null
-                         and item.equipment_slot_id is not null)))::integer,
-                (select count(*)::integer
-                 from item_operations operation
-                 where operation.status = 'pending')
+                    where item.definition_id = @InventoryDefinitionId), 0)::bigint
             from item_instances item;
             """;
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.Parameters.AddWithValue(
-            "LootDefinitionId",
-            fixtureDefinitions?.LootDefinitionId ?? string.Empty);
-        command.Parameters.AddWithValue(
-            "InventoryDefinitionId",
-            fixtureDefinitions?.InventoryDefinitionId ?? string.Empty);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        long actualLoot;
+        long actualInventoryItem;
+        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
+        await using (var command = connection.CreateCommand())
         {
-            throw new InvalidOperationException(
-                "PostgreSQL did not return stack stress item invariants.");
+            command.CommandText = sql;
+            command.Parameters.AddWithValue(
+                "LootDefinitionId",
+                fixtureDefinitions?.LootDefinitionId ?? string.Empty);
+            command.Parameters.AddWithValue(
+                "InventoryDefinitionId",
+                fixtureDefinitions?.InventoryDefinitionId ?? string.Empty);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "PostgreSQL did not return stack stress item invariants.");
+            }
+
+            actualLoot = reader.GetInt64(0);
+            actualInventoryItem = reader.GetInt64(1);
         }
 
+        var audit = await AuditRunner.RunAsync(
+            dataSource,
+            [.. CharactersAudit.Checks, .. ItemsAudit.Checks],
+            EconomyAuditOptions,
+            cancellationToken);
         var expectedLoot = workload is StressWorkloadProfile.LootHotspot
             or StressWorkloadProfile.MixedGameplay
                 ? inventoryFixtureBots + lootHotspotQuantity
@@ -602,12 +673,10 @@ public sealed class StressPostgresSampler : IAsyncDisposable
                 : 0L;
         itemInvariants = new StressItemInvariantSummary(
             expectedLoot,
-            reader.GetInt64(0),
+            actualLoot,
             expectedInventoryItem,
-            reader.GetInt64(1),
-            reader.GetInt32(2),
-            reader.GetInt32(3),
-            reader.GetInt32(4));
+            actualInventoryItem,
+            StressEconomyAuditSummary.From(audit));
     }
 
     // The drift checks keep their worst values from here until MarkSteadyEnd.

@@ -79,6 +79,8 @@ public sealed class ItemPolicyLifecycleIntegrationTests
                     "select count(*) from item_instances where id = @ItemInstanceId;",
                     new { item.ItemInstanceId }));
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<PolicyRow> LoadPolicyAsync(

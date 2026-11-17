@@ -5,8 +5,8 @@ compiler-enforced modular monolith: a host and eight module projects. This
 document owns the module projects, their public surface and composition, table
 ownership with the foreign key rule, the access rules, the contracts between
 modules, the items transaction kernel, the lock order, the migrations,
-retention, the module configuration, the cross-module statements, and the guard
-tests.
+retention, the economy audit, the module configuration, the cross-module
+statements, and the guard tests.
 
 The process boundary is in
 [Project Architecture](PROJECT_ARCHITECTURE.md#gameservice), the durable data
@@ -26,11 +26,11 @@ Platform <- Accounts <- Characters <- Placement <- Items <- Quests <- Economy <-
 
 | Project | Path | References | Owns |
 | --- | --- | --- | --- |
-| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, `IGameServiceModule`, and the retention host with its `IRetentionTask` contract and its settings. No domain model. |
+| `Mmorpg.GameService.Platform` | `src/Server/GameService.Platform` | `Mmorpg.Server.Common` | Problem Details results and the HTTP pipeline, token hashing, the Redis connection, `PostgresTransactionScope`, the migration runner, `IDatabaseSeeder`, platform options, `IGameServiceModule`, the retention host with its `IRetentionTask` contract and its settings, and the economy audit's host, runner, and report with its `IAuditCheck` contract and its settings. No domain model. |
 | `Mmorpg.GameService.Accounts` | `src/Server/GameService.Accounts` | Platform | Accounts, account sessions, account and worker authentication, authorization policies, login and registration rate limits, and Redis session acceleration |
-| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger, character level, character looks, and every character's saved place and vitals |
+| `Mmorpg.GameService.Characters` | `src/Server/GameService.Characters` | Platform, Accounts | Characters, ownership, character currency with its ledger and the audit checks of the ledger, character level, character looks, and every character's saved place and vitals |
 | `Mmorpg.GameService.Placement` | `src/Server/GameService.Placement` | Platform, Accounts, Characters, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | World definitions, Fleets, Nodes, Shards, the worker registry, SimulationAssignments, join tickets, simulation session leases, the worker appearance route, and Development simulation bots. It decides where a character plays right now. |
-| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery with its expiry, policies, the retention tasks of item history, the stack stress fixtures, and the Development item tools |
+| `Mmorpg.GameService.Items` | `src/Server/GameService.Items` | Platform, Accounts, Characters, Placement, `Mmorpg.WorldData` | The item catalog with item values, tool kinds, and vendor profiles, item state, the item transaction kernel with its item commands including ammunition batches, the worker item route with its operation kinds, corpses, the death partition, Recovery with its expiry, policies, the retention tasks of item history, the audit checks of item custody and history, the stack stress fixtures, and the Development item tools |
 | `Mmorpg.GameService.Quests` | `src/Server/GameService.Quests` | Platform, Accounts, Characters, Placement, Items, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | The quest catalog that GameService runs, its mirrored revision and quest identities, every character's quest log with its owner and worker reads, and the quest commands with their worker routes, which run in Items' item transaction kernel |
 | `Mmorpg.GameService.Economy` | `src/Server/GameService.Economy` | Platform, Accounts, Characters, Placement, Items, Quests, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | NPC vendor purchases and sales and gathering yields: their item commands, which run in Items' item transaction kernel, and their operation kinds on Items' worker item route. It owns no table, migration, meter, route, or setting. |
 | `Mmorpg.GameService.Content` | `src/Server/GameService.Content` | Platform, Placement, `Mmorpg.Server.Common`, `Mmorpg.WorldData` | Serving the compiled item catalog, quest catalog, and text tables by revision, exactly the files the other modules load, with the content rate limit. It owns no table and reads no text. |
@@ -48,7 +48,9 @@ gives the host.
 
 A module publishes only its module class, its options with their nested option
 records, and its `Contracts` namespace. Items also publishes `ItemsCommandLine`
-for the Development item commands. Everything else is internal. Test projects
+for the Development item commands, and Characters and Items publish their checks of
+the [economy audit](#economy-audit) as `CharactersAudit.Checks` and
+`ItemsAudit.Checks`, so the load tool runs the same checks as the service. Everything else is internal. Test projects
 reach internals through `InternalsVisibleTo` along the dependency direction, as
 [Backend Tests](../tests/README.md#internal-access) lists. A module never grants
 another module or any production assembly access to its internals.
@@ -56,9 +58,9 @@ another module or any production assembly access to its internals.
 | Module | Public types outside `Contracts` |
 | --- | --- |
 | Accounts | `AccountsModule`, `AccountsModuleOptions`, `SimulationWorkerCredentials`, `RedisAccelerationOptions` |
-| Characters | `CharactersModule`, `CharactersModuleOptions` |
+| Characters | `CharactersModule`, `CharactersModuleOptions`, `CharactersAudit` |
 | Placement | `PlacementModule`, `PlacementModuleOptions`, `SimulationTopologyConfig`, `FleetBootstrapConfig`, `SimulationNodeBootstrapConfig`, `ShardBootstrapConfig`, `WorldManifestCatalog`, `DevelopmentSimulationBotOptions` |
-| Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStress.StackStressFixtureOptions`, `Development.DevelopmentItemPackageSource`, `ItemsCommandLine` |
+| Items | `ItemsModule`, `ItemsModuleOptions`, `ItemCatalogSource`, `ItemOperationsOptions`, `NpcItemLifecycleOptions`, `StackStress.StackStressFixtureOptions`, `Development.DevelopmentItemPackageSource`, `ItemsCommandLine`, `ItemsAudit` |
 | Quests | `QuestsModule`, `QuestsModuleOptions`, `QuestCatalogSource` |
 | Economy | `EconomyModule` |
 | Content | `ContentModule`, `ContentModuleOptions` |
@@ -269,7 +271,7 @@ caller keeps its own check order, error codes, and messages.
 | `ICharacterAppearances` | Characters | Placement, Items | Read a character's body model, look, and headwear, also of deleted characters for their corpses, lower or raise the headwear, and store a development look, each checked against the appearance content |
 | `ICharacterSimulationStates` | Characters | Placement | Read a character's saved place and vitals, lock characters `FOR KEY SHARE` in ascending id order before a save, and save many states in one statement, as [Character Simulation States](#character-simulation-states) describes |
 | `ICharacterLifecycleHandler` | Characters (SPI) | implemented by Items | Create item state and credit the starting balance for a new character |
-| `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, and the currency balance fragment |
+| `CharactersSql` | Characters | Placement, Items | The active character derived table, the existing character id fragment, the character level fragment, the currency balance fragment, and the derived table of the ledger rows that name an item operation |
 | `SimulationWorkerLeasePolicy` | Placement | Items | The worker heartbeat timeout |
 | `ISimulationSessionAuthority` | Placement | Quests, Items | Lock a simulation session for an item mutation, or read it with its worker lease and assignment; both name whether the lease is live and how its account session ended, if it did |
 | `ISimulationWorkerAuthority` | Placement | Items | Read or lock a worker's runtime, lease, and Shard assignment; the live item authority's runtime read and assignment share lock are statements of the caller's batch |
@@ -288,18 +290,20 @@ caller keeps its own check order, error codes, and messages.
 | `IQuestCatalogRevisionProvider` | Placement (SPI) | implemented by Quests, also used by Content | Read the mirrored quest catalog revision that a placed worker must run and that Content must serve |
 | `IShardWorldLocalStateProbe` | Placement (SPI) | implemented by Items | Count open durable corpses that block a World rebind |
 | `IRetentionTask` | Platform (SPI) | implemented by Accounts, Placement, and Items | Delete a batch of a module's own history rows that are past their retention window, for the retention host, as [Retention](#retention) describes |
+| `IAuditCheck` | Platform (SPI) | implemented by Characters and Items | Check the module's own tables, read only, in the snapshot of an economy audit run, as [Economy Audit](#economy-audit) describes |
 | `IAccountSessionReferences` | Accounts (SPI) | implemented by Placement | The SQL condition that no simulation session or join ticket names an account session, so the retention of account sessions keeps every one they name, and the SQL condition that a live simulation session holds one, which the rule of an active account session reads |
 | `IDatabaseSeeder` | Platform | implemented by Characters, Placement, Items, and Quests | Plan or seed module data after the migrations: Characters checks the stored looks against changed appearance content, Placement mirrors the topology, Items has the quest catalog's item references checked, then mirrors the item catalog and recomputes carry state for a changed catalog, and Quests mirrors the quest catalog. `PlanAsync` names what `SeedAsync` would change and changes nothing |
 
 Every contract and every SPI except `IDatabaseSeeder`,
-`ISimulationItemOperationHandler`, and `IRetentionTask` has exactly one
+`ISimulationItemOperationHandler`, `IRetentionTask`, and `IAuditCheck` has exactly one
 implementation, registered as a stateless singleton, from the module that owns
 the data. The host composition fails at startup when one of the
 single-implementation SPIs has no implementation or more than one, because a
 missing one would silently skip required work. `IDatabaseSeeder` has one
 implementation per module that verifies or seeds data,
 `ISimulationItemOperationHandler` one per operation kind that a module adds to
-the worker item route, and `IRetentionTask` one per table that a module trims.
+the worker item route, `IRetentionTask` one per table that a module trims, and
+`IAuditCheck` one per check of the economy audit.
 
 No module publishes asynchronous events. Every flow above needs synchronous
 atomicity: a revoked session must lose its simulation access in the same
@@ -322,8 +326,11 @@ code. The source kinds in `CurrencySourceKinds` are `starting_balance`,
 `quest_reward`. The ledger
 also accepts `opening_balance`, which only the ledger migration wrote, once for
 each balance that existed before the ledger. A database check keeps the balance
-and every `balance_after` within the same range, so each character's ledger
-deltas sum to its balance. `CharactersSql.CurrencyOf` lets Items read the
+and every `balance_after` within the same range, which says nothing about their
+sum. Each character's ledger deltas sum to its balance because the wallet is the
+only writer of either and changes the balance and appends its row in one
+transaction; the [economy audit](#economy-audit) checks the sum and every row's
+running balance. `CharactersSql.CurrencyOf` lets Items read the
 balance in its own statements, such as the item-state snapshot and the
 Development item tool's character list.
 
@@ -1295,6 +1302,144 @@ GameService database therefore needs a database of its own rather than a
 schema, which is why every PostgreSQL test gets its own database, as
 [Backend Tests](../tests/README.md#databases-and-redis) describes.
 
+## Economy Audit
+
+The economy audit asks the whole database whether the economy holds together:
+whether every item instance is in exactly one place, whether every slot,
+stack, and definition is valid, whether every character's gold equals its
+ledger, and what the retained history says about conservation. Each operation
+is transactional and the schema has constraints, but only the audit looks
+across all of them. It reads and reports; it repairs nothing. Its maturity is in
+[Engineering Standard](PROJECT_OVERVIEW.md#engineering-standard).
+
+Platform holds the runner, the report, the metrics, the hosted service, and the
+`Audit:*` settings in `src/Server/GameService.Platform/Audit`; the module that
+owns the tables owns each check, as an `IAuditCheck`. A run opens one
+connection with one `REPEATABLE READ READ ONLY` transaction, so every check of
+the run reads the same snapshot, an operation that commits meanwhile causes no
+false alarm, and the run cannot write. Every statement runs under
+`Audit:StatementTimeoutSeconds` and a one-second lock timeout, and every check
+under a savepoint of its own: a check that fails, such as one that hits the
+timeout, is reported as not run, and the next check still reads the same
+snapshot. A check is one statement built by `AuditSql.Counted`, which counts
+what the check looked at, counts the rows that break it, and returns up to
+`Audit:ExampleLimit` of them as examples of ids, codes, and numbers, never a
+name. A run ends `clean`, `violations` when any check found one, also when
+another could not run, or `failed` when nothing was found but the run or a
+check could not run.
+
+Everything that audits runs `AuditRunner` with the checks that the modules
+register as `IAuditCheck`, Characters' before Items':
+
+- GameService's `AuditHostedService` runs it at start and then every
+  `Audit:IntervalSeconds` while `Audit:Enabled` is on, which it is by default
+  everywhere except in the Development environment. It logs and publishes the
+  audit metrics, as [Monitoring](MONITORING.md#gameservice) describes.
+- The `audit` command runs it once, as
+  [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy) describes. It
+  first plans like `migrate --plan` and refuses a database that `migrate` would
+  still change, because the checks read the current schema and compare items
+  with the catalog that the service runs with.
+- The load tool runs it after every full-stack run, through
+  `CharactersAudit.Checks` and `ItemsAudit.Checks`, as
+  [Stack Stress Testing](STACK_STRESS_TESTING.md#quality-boundary) describes.
+- The integration tests of items, corpses, deaths, vendors, gathering, and
+  quests end their scenarios with the test kit's `EconomyAudit.AssertCleanAsync`.
+
+### Audit Checks
+
+| Check | Module | Holds when |
+| --- | --- | --- |
+| `currency_balance_matches_ledger` | Characters | Every character's balance equals the sum of the deltas in its ledger |
+| `currency_ledger_running_balance` | Characters | Every ledger row's `balance_after` equals the sum of its character's deltas up to and including it, in the order the rows were written |
+| `currency_ledger_reason` | Characters | Every ledger row has a known source kind and a source id that is not blank, and names an item operation exactly when its kind changes gold inside an item transaction: `vendor_purchase`, `vendor_sale`, `insurance`, and `quest_reward` |
+| `item_custody_missing` | Items | Every item instance is in a live place, as [Custody Places](#custody-places) defines |
+| `item_custody_duplicated` | Items | No item instance is in two places: no container has two owners, and no Recovery delivery names an item that is not stored in it |
+| `item_slot_invalid` | Items | Every item's container slot exists and lies within its container's capacity, a corpse equipment slot names its equipment slot, an equipped item's slot is active, and an equipped item or one in a corpse equipment slot fits that slot by its definition |
+| `item_slot_shared` | Items | No two items share a container slot or a character's equipment slot. The unique constraints hold this; the check guards a migration that ever weakens them |
+| `item_quantity_out_of_range` | Items | Every quantity is at least 1 and at most the definition's stack size and, in an equipment slot or a corpse equipment slot, the slot's maximum quantity |
+| `item_definition_unknown` | Items | Every item's definition is active in the current mirrored catalog revision, which a start or `migrate` keeps equal to the catalog the service runs with |
+| `item_destroyed_but_present` | Items | No item that an `item_destructions` row names still exists |
+| `item_journal_removed_but_present` | Items | No item whose removal a committed operation's journal records still exists |
+| `item_journal_quantity_changed` | Items | Every retained committed operation of an Items kind changed quantities only as its kind allows, as [Conservation](#conservation) describes |
+| `item_operation_pending_too_long` | Items | No item operation has been pending for `Audit:PendingOperationSeconds` or longer |
+| `currency_change_operation_committed` | Items | Every ledger row that names a retained item operation belongs to a committed operation whose actor is the character whose gold changed |
+
+`ItemAuditTests` pins the ids of the Items checks, because the metrics, the
+alert, and the load tool's report name them.
+
+### Custody Places
+
+The schema keeps an item's own row in exactly one container slot or one
+equipment slot, so where an item is depends on who claims its container. A
+claim is live when its container is active and of the kind the claim names:
+
+| Claim | Live when |
+| --- | --- |
+| A character's item state names its permanent inventory, bank, or Recovery Storage | The container has that type and belongs to that character |
+| A corpse section names its container | The corpse is open, and the container is a corpse inventory, corpse equipment, or corpse Bag container as the section's kind says; the Bag section may instead be the contents of the Bag that the same corpse holds in its equipment section |
+| A Bag in a character's Bag slot claims its contents container | Always, while the container is active |
+
+An equipped item is in a place when its character has an item state. An item in
+Recovery Storage is in a place only through a link to an unclaimed delivery of
+that container and character, because a claim takes the delivery as a whole.
+`item_custody_missing` reports an item whose container no claim names
+(`container_without_owner`), whose only claim is not live
+(`container_not_live`, such as an item left in a closed corpse or in the
+contents of an unequipped Bag), an equipped item without an item state, and a
+Recovery item without its delivery. `item_custody_duplicated` reports an item
+whose container two claims name and an item that a Recovery delivery names
+while it lies elsewhere.
+
+### Conservation
+
+The journal records every item's state before and after each change, so a
+retained committed operation shows how it changed the total of each definition:
+the quantity after the last change of each item less the quantity before its
+first, with a created item counting from 0 and a removed one ending at 0.
+`ItemOperationQuantityEffects` gives every operation kind of Items its effect,
+and `ItemAuditTests` requires every kind to have exactly one:
+
+| Effect | Kinds | Holds when |
+| --- | --- | --- |
+| Moves | Relocations, container and Bag swaps, equips and unequips, splits and merges, adding and claiming Recovery deliveries, policy changes, and every corpse loot, deposit, move, Bag swap, and Loot all | Every definition keeps its total |
+| Creates | `grant`, `create_persistent_mob_corpse`, `grant_mob_loot`, `grant_mob_loot_all` | No total falls |
+| Removes | `destroy`, `consume_quantity`, `consume_equipped_ammunition`, `expire_corpse`, `expire_recovery_delivery`, and `process_player_death`, which spends the shots that were not committed yet | No total rises |
+
+The quest, vendor, and gathering kinds belong to Quests and Economy, which the
+Items module does not name, so the check leaves them out.
+
+### What The Audit Cannot Answer
+
+Retention trims item history after `Retention:ItemHistory`, as
+[Retention](#retention) describes, so no check needs a row that retention
+removes, and these questions stay open:
+
+- Whether the total of a definition in the world equals everything ever created
+  less everything ever destroyed. The operations, journal rows, and destruction
+  records of older creations and removals are gone, and no running count
+  exists, so conservation is checked only per retained operation.
+- Where the quantity of an item that left longer ago than the window went, and
+  whether an item that was destroyed or merged then existed at all.
+- Whether a quest, vendor, or gathering operation changed quantities only as it
+  should, and whether a committed vendor trade, insurance charge, or quest
+  reward wrote its ledger row: the audit checks only the other direction, that
+  every ledger row of a retained operation belongs to a committed one. A check
+  in Quests or Economy could answer the first two within the window.
+- Whether a ledger row's source event happened, once its operation is gone; the
+  ledger itself is never trimmed, so the balance and every running balance are
+  checked over all time.
+- Anything about live Mob loot, which stays in a worker's memory until a grant
+  commits it, and about a state that was wrong only between two runs and was
+  repaired before the next.
+
+The audit takes no lock beyond the share locks of its reads and keeps its
+snapshot open for one run. Every check reads its tables once, through hash
+joins or the existing indexes, and the conservation check groups the retained
+journal once; no check reads a table once per row of another, so none needs an
+index of its own, and the cost of a run grows with the item, ledger, and journal
+rows.
+
 ## Configuration
 
 Each module validates and owns the keys it reads, and services receive
@@ -1304,6 +1449,7 @@ immutable validated option records instead of reading `IConfiguration`:
 | --- | --- |
 | `ConnectionStrings:Postgres`, `ConnectionStrings:Redis`, `Database:*`, `HealthChecks:TimeoutMilliseconds`, `Redis:CommandTimeoutMilliseconds` | `PlatformOptions` |
 | `Retention:*` | `RetentionOptions` of Platform, which `PlatformOptions` carries |
+| `Audit:*` | `AuditOptions` of Platform, which `PlatformOptions` carries; the host reads it with the default of its environment |
 | `Auth:SessionIdleLifetimeDays`, `Auth:SessionMaximumLifetimeDays`, `Auth:PasswordHashing:*`, `RateLimiting:Authentication:*`, `ServiceAuthentication:SimulationWorkers:*`, `SIMULATION_WORKER_SERVICE_SECRET`, `RedisAcceleration:*` | `AccountsModuleOptions` |
 | `Game:MaxCharactersPerAccount`, `Characters:AppearancePath` | `CharactersModuleOptions` |
 | `Simulation:*`, `WorldData:WorldsPath`, `DevelopmentSimulationBots:*`, `ACTIVE_SIMULATION_BOTS_SECRET` | `PlacementModuleOptions` |
@@ -1404,6 +1550,7 @@ the statement ids.
 | S70 | The retention of account sessions keeps every account session that a simulation session or join ticket names | Plc R | `IAccountSessionReferences.IsUnreferenced`, the condition that Placement's `SimulationAccountSessionReferences` gives, in Accounts' `AccountSessionRetentionTask`, because Accounts lies below Placement and cannot reference `PlacementSql` |
 | S71 | The rule of an active account session reads whether a live simulation session holds it, in the token resolve and the extension of Accounts and in every Placement statement of S13 | Plc R | `IAccountSessionReferences.IsHeld`, given to `AccountsSql.IsActiveSession` |
 | S72 | The session heartbeat extends the account sessions of the renewed sessions after its renewal committed | Acc L, W | `IAccountSessionActivity.ExtendAsync` in `SimulationSessionService` |
+| S73 | The economy audit reads the gold ledger rows that name an item operation, to check that each belongs to a committed operation of the same character | Chr R | `CharactersSql.CurrencyLedgerItemOperations` in Items' `ItemHistoryAuditChecks` |
 
 Notes on specific statements:
 

@@ -11,6 +11,12 @@ public static class CharactersSql
     public const string ActiveCharacters =
         "(select id, account_id, name from characters where deleted_at is null)";
 
+    // A derived table of every gold ledger row that an item operation committed: its id, its
+    // character, and the operation, for the economy audit. Use it in a from or join clause with
+    // the caller's own alias.
+    public const string CurrencyLedgerItemOperations =
+        "(select id, character_id, item_operation_id from character_currency_ledger where item_operation_id is not null)";
+
     // The level of the character, or null when it does not exist.
     public static string LevelOf(string characterIdExpression)
     {

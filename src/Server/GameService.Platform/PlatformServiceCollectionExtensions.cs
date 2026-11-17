@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
@@ -11,7 +12,7 @@ namespace Mmorpg.GameService.Platform;
 public static class PlatformServiceCollectionExtensions
 {
     // One bounded PostgreSQL pool, one Redis multiplexer, the Problem Details pipeline,
-    // and the migration runner for the whole process.
+    // the migration runner, and the retention and audit hosts for the whole process.
     public static IServiceCollection AddGameServicePlatform(
         this IServiceCollection services,
         PlatformOptions options)
@@ -29,6 +30,9 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<RetentionMetrics>();
         services.AddSingleton<RetentionRunner>();
         services.AddHostedService<RetentionHostedService>();
+        services.AddSingleton(options.Audit);
+        services.AddSingleton<AuditMetrics>();
+        services.AddHostedService<AuditHostedService>();
         return services;
     }
 

@@ -4,11 +4,13 @@ using Mmorpg.GameProtocol;
 using Mmorpg.GameService.Accounts;
 using Mmorpg.GameService.Accounts.Contracts;
 using Mmorpg.GameService.Characters;
+using Mmorpg.GameService.Characters.Contracts;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Common.Quests;
@@ -311,6 +313,30 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
         Assert.Equal(simulationSessionId, result.SimulationSessionId);
         Assert.True((result.Lease is null) != (result.Error is null));
         return result;
+    }
+
+    // Sets a character's gold through the wallet, with a Development ledger row for the
+    // difference, as the Development item tool does, so the economy audit finds the ledger whole.
+    public async Task SetCurrencyAsync(Guid characterId, long balance)
+    {
+        var wallet = Services.GetRequiredService<ICharacterWallet>();
+        await using var connection = await DataSource.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand(
+            "select currency from characters where id = @CharacterId for no key update;",
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("CharacterId", characterId);
+        var current = (long)(await command.ExecuteScalarAsync())!;
+        var scope = new PostgresTransactionScope(connection, transaction);
+        var source = new CurrencyChangeSource(CurrencySourceKinds.Development, "integration_test", null);
+        var change = balance > current
+            ? await wallet.CreditAsync(scope, characterId, balance - current, source, CancellationToken.None)
+            : balance < current
+                ? await wallet.DebitAsync(scope, characterId, current - balance, source, CancellationToken.None)
+                : new CurrencyChange(true, current, current);
+        Assert.True(change.Succeeded);
+        await transaction.CommitAsync();
     }
 
     public async Task<int> ExecuteScalarIntAsync(string sql)

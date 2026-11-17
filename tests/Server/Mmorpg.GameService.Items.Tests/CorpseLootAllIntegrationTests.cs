@@ -39,6 +39,8 @@ public sealed class CorpseLootAllIntegrationTests
         Assert.Equal(looterInventory, (await world.LoadItemAsync(ore)).ContainerId);
         Assert.Equal(1, (await world.LoadItemAsync(ore)).ContainerSlotIndex);
         Assert.Equal(0, await CountCorpseItemsAsync(world, corpseId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -60,6 +62,8 @@ public sealed class CorpseLootAllIntegrationTests
         ItemScenarioWorld.AssertCommitted(result);
         Assert.Equal(46, (await world.LoadItemAsync(carriedOre)).Quantity);
         Assert.Equal(14, (await world.LoadItemAsync(corpseOre)).Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -82,6 +86,8 @@ public sealed class CorpseLootAllIntegrationTests
         Assert.Equal(packContents, (await world.LoadItemAsync(ore)).ContainerId);
         Assert.NotEqual(packContents, (await world.LoadCorpseSectionsAsync(corpseId)).BagContainerId);
         Assert.Equal(0, await CountCorpseItemsAsync(world, corpseId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -104,6 +110,8 @@ public sealed class CorpseLootAllIntegrationTests
         Assert.Equal(ItemTransactionErrorCodes.ItemStateConflict, stale.Error!.Code);
         Assert.Equal(ItemTransactionErrorCodes.InventoryFull, full.Error!.Code);
         Assert.Equal(5, (await world.LoadItemAsync(corpseOre)).Quantity);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -130,6 +138,8 @@ public sealed class CorpseLootAllIntegrationTests
         Assert.Equal(packContents, (await world.LoadItemAsync(ore)).ContainerId);
         Assert.NotEqual(packContents, (await world.LoadCorpseSectionsAsync(corpseId)).BagContainerId);
         Assert.Equal(looterInventory, (await world.LoadItemAsync(sparePack)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -156,6 +166,8 @@ public sealed class CorpseLootAllIntegrationTests
         Assert.Equal(3, (await world.LoadItemAsync(await world.FindItemAsync(inventoryId, 0))).Quantity);
         Assert.Equal(ItemTransactionErrorCodes.ItemAlreadyLooted, single.Error!.Code);
         Assert.Equal(2, await CountGrantsAsync(world, [arrows.GrantId, ore.GrantId]));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<ItemTransactionResult> LootAllAsync(

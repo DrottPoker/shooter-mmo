@@ -176,9 +176,12 @@ account, and carry the fixture secret in the `X-Stack-Stress-Fixture-Key`
 header.
 
 Fixture creation uses `ItemTransactionService` and the durable corpse service.
-It does not write inventory rows directly. The generator validates final item
-quantity, slot uniqueness, custody, and pending-operation invariants through its
-separate read-only PostgreSQL sampler.
+It does not write inventory rows directly. After the run the generator checks the
+fixture quantities through its separate read-only PostgreSQL sampler and runs
+GameService's [economy audit](GAME_SERVICE_MODULES.md#economy-audit) over the
+whole database: the same checks that GameService runs, which the generator calls
+through `CharactersAudit.Checks` and `ItemsAudit.Checks` instead of copying their
+queries, with no operation allowed to be pending.
 
 The generator does not delete accounts or other durable rows. Recreate the
 disposable stack before every full-stack run. Never point this mode at a normal
@@ -1299,7 +1302,8 @@ these two, the most sessions close to expiry, the least lease left, the least
 registration headroom, the most pending operations and connections, and the
 oldest idle transaction. The existing rules judge where one fits:
 `expired_unreleased_sessions` the leases, `deadlocks` the contention, and
-`item_invariant_violations` the pending operations at the end.
+`item_invariant_violations` the pending operations at the end, through the
+economy audit's `item_operation_pending_too_long`.
 
 ### Service Log Classes
 
@@ -1413,10 +1417,12 @@ Full-stack reports additionally contain:
   temporary-file, I/O timing, and deadlock statistics.
 - Maximum active and expired unreleased simulation sessions, minimum observed
   lease headroom, and session-table insert and update counts.
-- Final expected and actual item quantities, duplicate occupied slots, invalid
-  item custody, and pending item-operation counts. The `playing` workload has
-  no fixed quantity to expect, because Mobs drop loot and arrows are spent, so
-  only the slot, custody, and pending-operation invariants judge it.
+- Final expected and actual fixture quantities and `audit`, the economy audit
+  at the end: its outcome, its violations, its time, and every check with what
+  it examined, its violations, its time, the error of a check that could not
+  run, and up to three examples by id. The summary prints the violated checks
+  with their examples. The `playing` workload has no fixed quantity to expect,
+  because Mobs drop loot and arrows are spent, so only the audit judges it.
 - `playing`, for the `playing` workload: the role and kit counts; the counters
   `kills`, `mobDamageTaken`, `botDeaths` and the deaths of every role,
   `corpsesRecovered`, `corpsesLost`, `lootRefusedOwned`, `gatherAttempts`,
@@ -1601,7 +1607,7 @@ worker-only mode, passes and says so.
 | `owner_snapshot_gaps` | 0 | A player's own state stays at the full rate |
 | `expired_unreleased_sessions` | 0 | Worker registration and session leases remain valid |
 | `deadlocks` | 0 | PostgreSQL contention stays bounded |
-| `item_invariant_violations` | 0 | Exact item quantities, unique occupied slots, valid custody, and no pending item operation |
+| `item_invariant_violations` | 0 fixture quantities that differ and 0 violations of the [economy audit](GAME_SERVICE_MODULES.md#economy-audit), whose every check must run; the note names the violated checks | A duplicated, lost, or invalid item, gold that does not match its ledger, or an operation left pending is a broken economy, whatever the load |
 | `process_memory_growth` | Last fifth's average at most 20 MiB above the second fifth's, of the working set for the worker and GameService and of the managed heap for the generator, whose server GC working set moves on a flat heap, as [Memory And GC Trend](#memory-and-gc-trend) explains, when the planned steady interval lasts ten minutes or more; not applicable otherwise. The plan decides, so a measured interval that ends a little early cannot take the rule away from `soak-10min` | A leak grows the working set steadily after the warm-up, which the first fifth holds. The limit is set from the `soak-10min` rehearsal, as [Memory Limit](#memory-limit) explains, and errs on the side of catching a leak |
 | `retained_table_growth` | `item_operations` and `item_operation_changes`, without the operations of deaths, which stay until their corpse is gone, grow at most 25 percent from the retention sample to the end of the steady interval, the worse table judged, when GameService's retention window and two passes leave two minutes of the planned steady interval; not applicable otherwise | While retention keeps up, the tables hold one window of operations and stay level, apart from how play varies; without it they grow with every operation, by more than half over the rest of `soak-10min` |
 | `retention_lag` | At most 60 s in every drift check of the steady interval, for the same runs | An operation becomes due at most one pass interval, 15 s in the soaks, before the next pass deletes it; a lag beyond a minute means the passes do not drain what is due |
@@ -2639,7 +2645,8 @@ session tokens, and generated passwords stay random for every run.
 
 Exit codes: 0 when every requested bot joined and left cleanly, every admitted
 account logged out, no gameplay operation failed unexpectedly, the item
-invariants held, and the run passed the quality boundary when one was given; 1
+invariants held and every check of the economy audit ran, and the run passed
+the quality boundary when one was given; 1
 for any other result or failure of those own checks; 2 for an invalid option; 3
 when the run passed its own checks but failed the quality boundary; 4 when a
 [validity rule](#validity) failed, so the run could not measure, whatever the

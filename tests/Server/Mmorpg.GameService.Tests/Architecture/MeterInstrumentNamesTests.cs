@@ -3,6 +3,7 @@ using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Placement;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Retention;
 
 namespace Mmorpg.GameService.Tests.Architecture;
@@ -18,6 +19,10 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Accounts|1.0.0|Histogram`1|game_service.accounts.password_hashing.wait.duration|ms",
         "Mmorpg.GameService.Accounts|1.0.0|ObservableGauge`1|game_service.accounts.password_hashing.in_flight|",
         "Mmorpg.GameService.Accounts|1.0.0|ObservableGauge`1|game_service.accounts.password_hashing.queue_length|",
+        "Mmorpg.GameService.Audit|1.0.0|Counter`1|game_service.audit.runs|",
+        "Mmorpg.GameService.Audit|1.0.0|ObservableGauge`1|game_service.audit.last_run_duration|s",
+        "Mmorpg.GameService.Audit|1.0.0|ObservableGauge`1|game_service.audit.last_run_timestamp|s",
+        "Mmorpg.GameService.Audit|1.0.0|ObservableGauge`1|game_service.audit.violations|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.cleanup|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.conflicts|",
         "Mmorpg.GameService.Items||Counter`1|game_service.items.death_partitions|",
@@ -47,6 +52,7 @@ public sealed class MeterInstrumentNamesTests
             InstrumentPublished = (instrument, _) =>
             {
                 if (instrument.Meter.Name is "Mmorpg.GameService.Accounts"
+                    or "Mmorpg.GameService.Audit"
                     or "Mmorpg.GameService.Items"
                     or "Mmorpg.GameService.Placement"
                     or "Mmorpg.GameService.Redis"
@@ -72,6 +78,7 @@ public sealed class MeterInstrumentNamesTests
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();
         using var retentionMetrics = new RetentionMetrics();
+        using var auditMetrics = new AuditMetrics();
 
         string[] actual;
         lock (published)

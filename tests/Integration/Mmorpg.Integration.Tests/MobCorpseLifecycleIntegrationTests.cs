@@ -75,6 +75,8 @@ public sealed class MobCorpseLifecycleIntegrationTests
             await connection.ExecuteScalarAsync<Guid>(
                 "select container_id from item_instances where id = @ItemId;",
                 new { ItemId = itemId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -122,6 +124,8 @@ public sealed class MobCorpseLifecycleIntegrationTests
             CancellationToken.None);
         Assert.False(duplicate.Succeeded);
         Assert.Equal(ItemTransactionErrorCodes.ItemOperationConflict, duplicate.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static SimulationMobLootGrantRequest CreateGrantRequest(
@@ -288,6 +292,8 @@ public sealed class MobCorpseLifecycleIntegrationTests
                 "select expires_at from corpses where id = @CorpseId;",
                 new { CorpseId = corpseId }),
             replayAfterExpiry.Value.Corpse.ExpiresAt);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -357,6 +363,8 @@ public sealed class MobCorpseLifecycleIntegrationTests
         Assert.DoesNotContain(
             (await GetSnapshotAsync(context, other)).PermanentInventory.Slots,
             slot => slot.Item?.DefinitionId == "fixture.ore");
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A world boss leaves a durable corpse for every player it credited, all in one loot group,
@@ -397,6 +405,8 @@ public sealed class MobCorpseLifecycleIntegrationTests
         Assert.True((await OpenAsync(context, secondSession, secondCorpseId)).Succeeded);
         Assert.Equal("corpse_not_lootable", (await OpenAsync(context, firstSession, secondCorpseId)).Error!.Code);
         Assert.Equal("corpse_not_lootable", (await OpenAsync(context, secondSession, firstCorpseId)).Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task<Guid> CreateContributorCorpseAsync(

@@ -31,6 +31,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.Empty(result.ItemChanges ?? []);
         var active = Assert.Single((await ReadQuestLogAsync(context, player.Character.Id)).ActiveQuests);
         Assert.Equal((Wolves, "hunt"), (active.QuestId, active.StepId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -53,6 +55,8 @@ public sealed class QuestCommandIntegrationTests
         var quest = Assert.Single(QuestLogSection.Read(result)!.Quests);
         Assert.Equal(("work", 0), (quest.StepId, quest.CompletionCount));
         Assert.Equal(["hand_over", "ore", "report"], quest.Objectives.Select(objective => objective.ObjectiveId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -85,6 +89,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal(QuestTransactionErrorCodes.QuestAlreadyCompleted, again.Error!.Code);
         ItemScenarioWorld.AssertCommitted(repeated);
         Assert.Equal(1, Assert.Single(QuestLogSection.Read(repeated)!.Quests).CompletionCount);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -105,6 +111,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.DoesNotContain(
             (await ReadQuestLogAsync(context, characterId)).ActiveQuests,
             quest => quest.QuestId == Errand);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -133,6 +141,8 @@ public sealed class QuestCommandIntegrationTests
         var log = await ReadQuestLogAsync(context, characterId);
         Assert.Empty(log.ActiveQuests);
         Assert.Equal([Wolves], log.CompletedQuests.Select(completed => completed.QuestId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -160,6 +170,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal((Letter, 1), (letter.DefinitionId, letter.Quantity));
         Assert.Equal(QuestTransactionErrorCodes.QuestNpcAccessRequired, wrongNpc.Error!.Code);
         Assert.Equal(QuestTransactionErrorCodes.QuestNotActive, inactive.Error!.Code);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -181,6 +193,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal(QuestLogSection.Read(first)!.Revision, QuestLogSection.Read(retry)!.Revision);
         Assert.Single(await LineageItemsAsync(context, characterId, Errand));
         Assert.Equal(QuestLogSection.Read(first)!.Revision, (await ReadQuestLogAsync(context, characterId)).Revision);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -207,6 +221,8 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal(400, unsupported.StatusCode);
         Assert.True(abandoned.Succeeded, abandoned.Error?.Message);
         Assert.Null(Assert.Single(QuestLogOf(abandoned.Value!)!.Quests).StepId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A worker that runs another quest catalog would build on other rules, so its quest
@@ -240,5 +256,7 @@ public sealed class QuestCommandIntegrationTests
         Assert.Equal((409, QuestCatalogFence.MismatchCode), (otherCatalog.StatusCode, otherCatalog.Error!.Code));
         Assert.Empty((await ReadQuestLogAsync(context, player.Character.Id)).ActiveQuests);
         Assert.Equal((400, ItemApiErrorCodes.SimulationOperationInvalid), (overTagged.StatusCode, overTagged.Error!.Code));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 }

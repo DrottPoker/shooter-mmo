@@ -109,6 +109,46 @@ public sealed class PasswordHashingLaneTests
         Assert.False((await running).Refused);
     }
 
+    // A caller has its answer only once the lane's thread counts as free again: with a hash that
+    // fits no wait, a request that followed an answer at once was refused while the thread that
+    // answered still counted as busy. The lane records a hash's duration before it frees the
+    // thread, so a listener that holds that recording holds the thread there.
+    [Fact]
+    public async Task ACallerHasItsAnswerOnlyOnceTheThreadIsFree()
+    {
+        using var algorithm = new GatedAlgorithm();
+        using var metrics = new PasswordHashingMetrics();
+        using var lane = CreateLane(algorithm, metrics, 1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var recorded = new SemaphoreSlim(0);
+        using var release = new ManualResetEventSlim(false);
+        using var listener = new System.Diagnostics.Metrics.MeterListener();
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (instrument.Meter.Name == PasswordHashingMetrics.MeterName && instrument.Name.Contains("hash", StringComparison.Ordinal))
+            {
+                meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((instrument, _, _, _) =>
+        {
+            if (instrument.Name.Contains("duration", StringComparison.Ordinal) && !instrument.Name.Contains("wait", StringComparison.Ordinal))
+            {
+                recorded.Release();
+                release.Wait(TimeSpan.FromSeconds(10));
+            }
+        });
+        listener.Start();
+
+        var first = lane.VerifyAsync("password", "stored", cancellationToken);
+        Assert.True(await recorded.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken), "The lane recorded no hash.");
+        await Task.Delay(50, cancellationToken);
+        Assert.False(first.IsCompleted, "The caller had its answer while the thread still counted as busy.");
+        release.Set();
+        Assert.False((await first).Refused);
+        Assert.False((await lane.VerifyAsync("password", "stored", cancellationToken)).Refused);
+    }
+
     // An unknown account is verified against the algorithm's unknown-account hash, and it is
     // refused exactly like a known account when the lane is full.
     [Fact]

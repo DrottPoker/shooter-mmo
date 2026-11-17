@@ -383,6 +383,8 @@ public sealed class ItemConcurrencyIntegrationTests
             "select count(*) from item_operations where status = 'committed';"));
         Assert.Equal(13, await connection.ExecuteScalarAsync<int>(
             "select count(*) from item_operation_changes;"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -501,6 +503,8 @@ public sealed class ItemConcurrencyIntegrationTests
             2,
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_operations where status = 'rejected';"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -580,6 +584,8 @@ public sealed class ItemConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_container_slots where container_id = @ContainerId;",
                 new { ContainerId = state.RecoveryStorageContainerId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -695,6 +701,8 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(secondBagContainer.ContainerId, (await LoadItemAsync(context, secondChildId)).ContainerId);
         Assert.Equal(firstState, await LoadStateAsync(context, player.Character.Id));
         Assert.Equal(secondState, await LoadStateAsync(context, secondCharacter.Id));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -766,6 +774,8 @@ public sealed class ItemConcurrencyIntegrationTests
         Assert.Equal(secondState, secondAfter);
         Assert.Equal(player.Character.Id, (await LoadItemAsync(context, higherBagId)).EquippedCharacterId);
         Assert.Equal(secondCharacter.Id, (await LoadItemAsync(context, lowerBagId)).EquippedCharacterId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -924,6 +934,8 @@ public sealed class ItemConcurrencyIntegrationTests
                   and status = 'active';
                 """,
                 new { ItemInstanceId = protectedQuestId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -980,6 +992,8 @@ public sealed class ItemConcurrencyIntegrationTests
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_instances where id = @ItemId;",
                 new { ItemId = itemId }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1106,6 +1120,8 @@ public sealed class ItemConcurrencyIntegrationTests
                   and equipment_slot_id = 'main_hand';
                 """,
                 new { CharacterId = secondPlayer.Character.Id }));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1172,6 +1188,8 @@ public sealed class ItemConcurrencyIntegrationTests
             Assert.Equal(13, quantity);
             Assert.Equal(1, itemCount);
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1223,6 +1241,8 @@ public sealed class ItemConcurrencyIntegrationTests
             1,
             await connection.ExecuteScalarAsync<int>(
                 "select count(*) from item_instances where definition_id = 'fixture.ore';"));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -1327,6 +1347,8 @@ public sealed class ItemConcurrencyIntegrationTests
             CancellationToken.None));
         Assert.Equal(secondCharacter.Id, (await LoadItemAsync(context, firstBagId)).EquippedCharacterId);
         Assert.Equal(firstBagContainer.ContainerId, (await LoadItemAsync(context, childId)).ContainerId);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static async Task AssertBlockedUntilCancelledAsync(

@@ -149,8 +149,13 @@ public sealed partial class TableOwnershipTests
     private static readonly IReadOnlySet<string> NonTableIdentifiers = new HashSet<string>(StringComparer.Ordinal)
     {
         "carried_containers",
+        "container_claim",
+        "container_place",
+        "definition_change",
         "extended_session",
         "generate_series",
+        "item_change",
+        "item_place",
         "locked_session",
         "pg_index",
         "recalculated",

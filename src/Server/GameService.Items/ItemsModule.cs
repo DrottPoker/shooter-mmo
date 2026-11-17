@@ -8,6 +8,7 @@ using Mmorpg.GameService.Items.StackStress;
 using Mmorpg.GameService.Items.Transactions;
 using Mmorpg.GameService.Items.Transactions.Handlers;
 using Mmorpg.GameService.Placement.Contracts;
+using Mmorpg.GameService.Platform.Audit;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Modules;
 using Mmorpg.GameService.Platform.Retention;
@@ -15,7 +16,8 @@ using Mmorpg.GameService.Platform.Retention;
 namespace Mmorpg.GameService.Items;
 
 // Items: the item catalog, item state and transactions, corpses, policies, Recovery expiry,
-// the retention of item history, the Development item tools, and the stack stress fixtures.
+// the retention of item history, the audit of item custody, the Development item tools, and the
+// stack stress fixtures.
 public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
 {
     public string Name => "Items";
@@ -56,6 +58,11 @@ public sealed class ItemsModule(ItemsModuleOptions options) : IGameServiceModule
         services.AddSingleton<IRetentionTask, ItemDestructionRetentionTask>();
         services.AddSingleton<IRetentionTask, ClaimedRecoveryDeliveryRetentionTask>();
         services.AddSingleton<IRetentionTask, LiveMobLootGrantRetentionTask>();
+        foreach (var check in ItemsAudit.Checks)
+        {
+            services.AddSingleton<IAuditCheck>(check);
+        }
+
         services.AddSingleton(options.DevelopmentItemPackages);
         services.AddScoped<DevelopmentItemPackageApplier>();
         services.AddScoped<DevelopmentItemToolService>();

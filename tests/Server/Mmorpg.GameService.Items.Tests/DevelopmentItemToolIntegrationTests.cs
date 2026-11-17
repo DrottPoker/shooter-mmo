@@ -66,6 +66,8 @@ public sealed class DevelopmentItemToolIntegrationTests
         Assert.All(
             inventory.Value.Bank.Slots.Where(slot => slot.Item is not null),
             slot => Assert.Equal("fixture.ore", slot.Item!.DefinitionId));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -113,6 +115,8 @@ public sealed class DevelopmentItemToolIntegrationTests
         var secondPackageError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(packageCommand, CancellationToken.None));
         Assert.Contains("require a character with no items", secondPackageError.Message);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -155,6 +159,8 @@ public sealed class DevelopmentItemToolIntegrationTests
             Assert.Equal(expectation.CarriedWeight, character.CarriedWeight);
             Assert.Equal(expectation.CarryCapacity, character.CarryCapacity);
         }
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -181,6 +187,8 @@ public sealed class DevelopmentItemToolIntegrationTests
         var aboveCap = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(LevelCommand(player.Character.Id, 201), CancellationToken.None));
         Assert.Contains("maximum level 200", aboveCap.Message, StringComparison.Ordinal);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -213,6 +221,8 @@ public sealed class DevelopmentItemToolIntegrationTests
         var overflow = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(CurrencyCommand(player.Character.Id, CurrencyRules.MaximumBalance), CancellationToken.None));
         Assert.Contains("maximum currency balance", overflow.Message, StringComparison.Ordinal);
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -257,6 +267,8 @@ public sealed class DevelopmentItemToolIntegrationTests
         Assert.Equal(
             new[] { "bag", "equipment", "general_inventory" },
             corpse.Sections.Select(section => section.SectionKind).Order().ToArray());
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     private static DevelopmentItemToolCommand LevelCommand(Guid characterId, int level)

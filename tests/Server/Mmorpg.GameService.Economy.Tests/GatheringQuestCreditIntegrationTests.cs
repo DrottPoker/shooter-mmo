@@ -58,6 +58,8 @@ public sealed partial class GatheringQuestCreditIntegrationTests
         Assert.Equal(2, Progress(again, Errand, "ore"));
         // Every yield lands in carried storage, whatever it counted for.
         Assert.Equal([(1, 4)], await InventoryStacksAsync(context, world, characterId, Ore));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     [PostgresIntegrationFact]
@@ -75,6 +77,8 @@ public sealed partial class GatheringQuestCreditIntegrationTests
 
         Assert.Equal(CountedGatherJson, WorkerJson(context, counted));
         Assert.Equal(UncountedGatherJson, WorkerJson(context, uncounted));
+
+        await EconomyAudit.AssertCleanAsync(context);
     }
 
     // A character at the errand's first step, with its letter: the wolves quest it requires is
