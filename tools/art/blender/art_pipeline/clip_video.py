@@ -10,7 +10,7 @@ import tempfile
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 from . import library, preview
 from .scene import ArtPipelineError, export_objects
@@ -70,6 +70,13 @@ def motion_numbers(heads: np.ndarray, tails: np.ndarray, root: np.ndarray, rest_
 
 
 def _play(arm: bpy.types.Object, action: bpy.types.Action | None) -> None:
+    """Plays the action on the armature from its rest pose, so a bone the clip does not key, such
+    as every bone but the fingers in a hand pose, is at rest and not where the last clip left it."""
+    for bone in arm.pose.bones:
+        bone.location = (0.0, 0.0, 0.0)
+        bone.rotation_quaternion = Quaternion()
+        bone.rotation_euler = (0.0, 0.0, 0.0)
+        bone.scale = (1.0, 1.0, 1.0)
     arm.animation_data_create()
     arm.animation_data.action = action
     if action is not None and action.slots:

@@ -1558,7 +1558,8 @@ How the clip is made:
   that rests in another pose, such as a T pose, moves as it does.
 - The hips move as the source's hips move, scaled by the ratio of the leg
   lengths, and the legs are solved again with the gait model's two-bone IK, so
-  each ankle is where the source's is, scaled, the knee toward the front of the
+  each ankle is where the source's is from the place its hips rest at, scaled,
+  wherever the source stands in its file, the knee toward the front of the
   retargeted leg.
 - Every bone but the cloth chains is keyed on every frame, linear, with the
   hips' location, and the action gets a fake user, a frame range from 0, and

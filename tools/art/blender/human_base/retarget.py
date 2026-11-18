@@ -8,7 +8,8 @@ Before that, the limbs, feet, and fingers are aligned along their length to the 
 and each hand takes the source hand's whole frame, so a rest pose that differs, such as an A pose
 against a T pose, is no part of the motion. The hips move as the source's hips move, scaled by the
 ratio of the leg lengths, and the legs are solved again with the gait model's two-bone IK so each
-ankle is where the source's is, scaled, the knee toward the retargeted leg's front. A hand that holds
+ankle is where the source's is from the place its hips rest at, scaled, wherever the source stands in
+its file, the knee toward the retargeted leg's front. A hand that holds
 something may take the library's Grip clip on its fingers instead. The result is one clip that does
 not loop, keyed on every frame as the gait model keys, and nothing replaces a clip the library has."""
 
@@ -199,6 +200,7 @@ class Retarget:
         hip, ankle = bones["UpperLeg_R"], bones["Foot_R"]
         self.scale = (head_t["UpperLeg_R"].z - head_t["Foot_R"].z) / (self.head_s[hip].z - self.head_s[ankle].z)
         self.ankle_lift = head_t["Foot_R"].z - self.scale * self.head_s[ankle].z
+        self.hips_t = head_t["Hips"].copy()
         self.order = [b for b in _ordered(target.data.bones) if b.name != "Hips" and b.name not in skip]
 
     def frame(self, world, grip):
@@ -220,8 +222,11 @@ class Retarget:
             side = name[-1]
             if name.startswith("UpperLeg_"):
                 hip = self.rig.child_base(name, parent).translation
-                ankle = (self.scale * (self.turn @ world[self.bones[f"Foot_{side}"]].translation)
-                         + Vector((0.0, 0.0, self.ankle_lift)))
+                # From the place the hips rest at, as the hips' own movement is, so a source that
+                # stands away from its file's origin gives the same legs.
+                foot = world[self.bones[f"Foot_{side}"]].translation
+                reach = self.scale * (self.turn @ (foot - self.head_s[hips_s]))
+                ankle = Vector((self.hips_t.x + reach.x, self.hips_t.y + reach.y, self.scale * foot.z + self.ankle_lift))
                 knee = want[name].col[2] + want[f"LowerLeg_{side}"].col[2]
                 want[name], want[f"LowerLeg_{side}"] = animate._leg_ik(self.rig, hip, ankle, knee)
             if name in grip:
