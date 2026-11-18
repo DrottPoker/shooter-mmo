@@ -372,6 +372,38 @@ alone, inside that tolerance, therefore costs the players a saving-paused notice
 else, while a change of the item or quest catalog needs both restarted: GameService places
 players only on a worker whose catalog revisions equal its own.
 
+### Players Who Have Not Updated
+
+Versions are exact. A player's client plays only on a worker that runs the realtime protocol
+version, the simulation revision, and the collision data of the World that the client was built
+with, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes, and one worker owns one Shard.
+So an update that changes any of the three takes the Shard away from every client that was not
+updated, and there is no overlap, no window of versions, and no update channel that fetches a new
+client: a player gets a new client build from whoever distributes it. Whichever side goes first is
+refused until the other follows, so the gap is shortest when the new client builds are ready when
+the new workers start.
+
+What players see at each moment of an update that changes a version:
+
+- While the workers are stopped, a connected player returns to character select with the text of
+  `server_shutdown`.
+- While an old worker still runs, an updated client that joins is refused with `shard_not_updated`,
+  "This shard has not been updated to your version of the game yet. Try again in a few minutes."
+- Once the new worker runs, a client that was not updated is refused with `incompatible_protocol`,
+  "Your game is out of date. Update it to play." A change of the simulation revision alone gives
+  `incompatible_simulation`, and a change of a World's collision data alone `incompatible_world_data`;
+  both texts tell the player to update the game, or to try again in a few minutes if it is up to
+  date.
+- A player whose connection dropped during the update meets the same refusal when the client
+  reconnects, and returns to character select with its text.
+- A rollback of the servers to an older version puts the updated clients behind, so they get
+  `shard_not_updated`.
+
+Every refusal happens at the join request, before a ticket exists, and counts in
+`game_service.placement.join.refusals` by Shard and reason, as [Monitoring](MONITORING.md#gameservice)
+describes: after an update, a rising `incompatible_protocol` is the number of players who have not
+updated yet.
+
 ## Back Up PostgreSQL
 
 PostgreSQL holds every account, character, item, and corpse; Redis holds nothing that cannot be

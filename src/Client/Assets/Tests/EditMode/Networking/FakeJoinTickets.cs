@@ -25,7 +25,7 @@ namespace Mmorpg.Client.Tests.EditMode
             Action<JoinShardResponse> onSuccess,
             Action<ApiError> onError)
         {
-            var pending = new Request(sessionToken, shardId, request.characterId);
+            var pending = new Request(sessionToken, shardId, request.characterId, request);
             Requests.Add(pending);
             while (!pending.IsAnswered)
             {
@@ -44,11 +44,12 @@ namespace Mmorpg.Client.Tests.EditMode
 
         public sealed class Request
         {
-            public Request(string sessionToken, string shardId, string characterId)
+            public Request(string sessionToken, string shardId, string characterId, JoinShardRequest sent)
             {
                 SessionToken = sessionToken;
                 ShardId = shardId;
                 CharacterId = characterId;
+                Sent = sent;
             }
 
             public string SessionToken { get; }
@@ -56,6 +57,9 @@ namespace Mmorpg.Client.Tests.EditMode
             public string ShardId { get; }
 
             public string CharacterId { get; }
+
+            // The whole request, with the versions of the client.
+            public JoinShardRequest Sent { get; }
 
             public bool IsAnswered { get; private set; }
 

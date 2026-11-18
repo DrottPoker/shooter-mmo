@@ -29,6 +29,21 @@ namespace Mmorpg.Client.Worlds
             return true;
         }
 
+        // The collision revision that this client baked for a World, read from the World's
+        // manifest alone: no chunk loads and no World scene, so a join can compare it with the
+        // worker's before it connects.
+        public static bool TryReadRevision(string worldId, out string revision, out string error)
+        {
+            revision = string.Empty;
+            if (!TryCreateStream(worldId, out var stream, out error))
+            {
+                return false;
+            }
+
+            revision = stream.CollisionWorld.Revision;
+            return true;
+        }
+
         public static bool TryCreateStream(
             string worldId,
             out UnityWorldCollisionStream collisionStream,

@@ -244,6 +244,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                     character.id,
                     character.name,
                     shard.id,
+                    shard.worldId,
                     ticket => string.IsNullOrEmpty(expectedRuntime) || ticket.endpoint.runtimeId == expectedRuntime,
                     value => join = value);
                 if (join.Status == WorldJoinStatus.Joined)

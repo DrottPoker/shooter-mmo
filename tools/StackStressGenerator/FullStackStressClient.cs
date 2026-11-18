@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
 namespace Mmorpg.Tools.StackStressGenerator;
 
@@ -150,7 +152,10 @@ public sealed class FullStackStressClient(
             "join_ticket",
             HttpMethod.Post,
             $"/api/shards/{Uri.EscapeDataString(shardId)}/join",
-            new FullStackJoinShardRequest(characterId),
+            new FullStackJoinShardRequest(
+                characterId,
+                RealtimeProtocol.Version,
+                GameSimulationCompatibility.Revision),
             sessionToken,
             cancellationToken);
     }
@@ -523,7 +528,12 @@ public sealed record FullStackShardResponse(
     int ActivePlayers,
     int Capacity);
 
-public sealed record FullStackJoinShardRequest(Guid CharacterId);
+// The join names the protocol version and simulation revision of this build, as a player's client
+// does, so a worker of other versions refuses it before a ticket exists.
+public sealed record FullStackJoinShardRequest(
+    Guid CharacterId,
+    int ProtocolVersion,
+    string SimulationRevision);
 
 public sealed record FullStackSimulationEndpointResponse(
     string WorkerId,

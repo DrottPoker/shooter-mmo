@@ -65,7 +65,29 @@ public sealed class ActiveSimulationBotAuthorityClientTests
         Assert.Equal("protocol_version_mismatch", result.ErrorCode);
     }
 
-    private static async Task<ActiveSimulationBotTicketResult> IssueAsync(JsonObject ticket)
+    // The ticket request names the versions of this build, so a worker of other versions refuses
+    // the bot with a code before a ticket exists, and the bot reports that code.
+    [Fact]
+    public async Task TheRequestNamesTheProtocolVersionAndSimulationRevisionOfThisBuild()
+    {
+        string? body = null;
+        var result = await IssueAsync(
+            new JsonObject { ["code"] = "incompatible_protocol", ["detail"] = "Update." },
+            HttpStatusCode.Conflict,
+            request => body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+
+        var sent = JsonNode.Parse(body!)!;
+        Assert.Equal(RealtimeProtocol.Version, (int)sent["protocolVersion"]!);
+        Assert.Equal(
+            Mmorpg.GameSimulation.GameSimulationCompatibility.Revision,
+            (string?)sent["simulationRevision"]);
+        Assert.Equal((409, "incompatible_protocol"), (result.StatusCode, result.ErrorCode));
+    }
+
+    private static async Task<ActiveSimulationBotTicketResult> IssueAsync(
+        JsonObject ticket,
+        HttpStatusCode status = HttpStatusCode.OK,
+        Action<HttpRequestMessage>? inspect = null)
     {
         var options = ActiveSimulationBotOptions.FromConfiguration(
             new ConfigurationBuilder()
@@ -76,7 +98,7 @@ public sealed class ActiveSimulationBotAuthorityClientTests
                     ["ActiveSimulationBots:ShardId"] = "local-shard-2"
                 })
                 .Build());
-        using var httpClient = new HttpClient(new StaticResponseHandler(ticket.ToJsonString()))
+        using var httpClient = new HttpClient(new StaticResponseHandler(ticket.ToJsonString(), status, inspect))
         {
             BaseAddress = options.AuthorityUrl
         };
@@ -112,13 +134,17 @@ public sealed class ActiveSimulationBotAuthorityClientTests
         };
     }
 
-    private sealed class StaticResponseHandler(string json) : HttpMessageHandler
+    private sealed class StaticResponseHandler(
+        string json,
+        HttpStatusCode status,
+        Action<HttpRequestMessage>? inspect) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            inspect?.Invoke(request);
+            return Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });

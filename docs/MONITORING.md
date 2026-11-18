@@ -276,7 +276,7 @@ own in `PlatformMeters.Names`:
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
-| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
+| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`, and the joins that a version mismatch refused. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, the failed passes by reason, and the lag. |
 | `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
@@ -285,6 +285,7 @@ own in `PlatformMeters.Names`:
 | Instrument | Type | Meaning |
 | --- | --- | --- |
 | `game_service.placement.shard.online`, `.shard.players`, `.shard.capacity` | gauge | Per Shard, labeled `shard.id`, refreshed every `Simulation:MetricsIntervalSeconds` from the same query as the public shard list. A failed refresh drops the values instead of keeping stale ones. Shard ids are labels because Shards are a small configured set. |
+| `game_service.placement.join.refusals` | counter | Joins that GameService refused with `409` because the client does not run exactly the Shard's worker's versions, labeled `shard.id` and `reason`: `incompatible_protocol` when the worker is ahead of the client or the client named no version, `shard_not_updated` when the worker is behind, `incompatible_simulation`, or `incompatible_world_data`, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes. Each is a client that needs an update or a Shard whose worker a deployment is still replacing, and none issued a ticket. The join of a Development bot counts too. |
 | `game_service.items.transactions` | counter | Item transactions, labeled `operation.kind` with the persisted operation kind from [Operation Kinds](GAME_SERVICE_MODULES.md#operation-kinds) and `outcome`: `committed`, `rejected`, `failed` for a transaction that threw, or `cancelled` when the caller cancelled it. |
 | `game_service.items.transactions.duration` | histogram, ms | Transaction duration with the same labels. |
 | `game_service.items.locks.wait.duration` | histogram, ms | Lock waits, labeled `scope`: `operation_claim`, `character_state`, `character_event`, `mutation_scope`, or `other`. |

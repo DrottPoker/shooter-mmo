@@ -206,7 +206,6 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("another character", "placement_mismatch")]
         [TestCase("another simulation revision", "placement_mismatch")]
         [TestCase("a session id that is no GUID", "invalid_join_response")]
-        [TestCase("a collision revision this client lacks", "invalid_movement_configuration")]
         public void AJoinAcceptanceThatTheClientCannotUseFailsTheJoin(string acceptance, string code)
         {
             var placement = RealtimeHubHarness.Placement();
@@ -229,8 +228,7 @@ namespace Mmorpg.Client.Tests.EditMode
                         simulationSessionId: "session-1");
                     break;
                 default:
-                    placement.endpoint.collisionRevision = "another-collision";
-                    accepted = JoinAccepted(GameSimulationCompatibility.Revision, "another-collision");
+                    Assert.Fail("Unknown acceptance " + acceptance);
                     break;
             }
 
@@ -300,6 +298,7 @@ namespace Mmorpg.Client.Tests.EditMode
         [TestCase("a newer protocol version", "incompatible_protocol")]
         [TestCase("an older protocol version", "shard_not_updated")]
         [TestCase("another simulation revision", "incompatible_simulation")]
+        [TestCase("other collision data for the World", "incompatible_world_data")]
         public void AJoinThatCannotStartFailsBeforeTheTransportStarts(string placementCase, string code)
         {
             var placement = RealtimeHubHarness.Placement();
@@ -323,8 +322,14 @@ namespace Mmorpg.Client.Tests.EditMode
                 case "an older protocol version":
                     placement.endpoint.protocolVersion = RealtimeProtocol.Version - 1;
                     break;
-                default:
+                case "another simulation revision":
                     placement.endpoint.simulationRevision = "another-simulation";
+                    break;
+                default:
+                    // The worker's collision revision of the World is not the one baked into this
+                    // client. The manifest alone says so: no transport starts, no ticket is spent,
+                    // and no body appears for other players.
+                    placement.endpoint.collisionRevision = "another-collision";
                     break;
             }
 

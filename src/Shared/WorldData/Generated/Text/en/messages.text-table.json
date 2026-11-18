@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "1f8b3819beea11ee1ebc1c43aea0a263a98c4b0c9e95af3780a1ecd8b790c7ec",
+  "revision": "7f3387a0765323047fff5bec92ea654e7b688cd377c1272e3ffa77f77b7fc6b2",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -223,6 +223,10 @@
     {
       "key": "message/incompatible_simulation",
       "text": "Your game and this shard are on different versions. Update the game, or try again in a few minutes if it is up to date."
+    },
+    {
+      "key": "message/incompatible_world_data",
+      "text": "The world data of your game does not match this shard. Update the game, or try again in a few minutes if it is up to date."
     },
     {
       "key": "message/insurance_applied",

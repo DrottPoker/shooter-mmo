@@ -261,7 +261,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                     BaseUrl,
                     sessionToken,
                     ShardId,
-                    new JoinShardRequest { characterId = characterId },
+                    WorldJoin.CreateRequest(characterId, null),
                     value => result = value,
                     value => error = value);
                 AssertNoApiError(error, "asking for a join ticket");

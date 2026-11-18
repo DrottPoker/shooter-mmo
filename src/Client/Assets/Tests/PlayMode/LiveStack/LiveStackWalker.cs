@@ -152,7 +152,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                     baseUrl,
                     account.sessionToken,
                     shardId,
-                    new JoinShardRequest { characterId = character.id },
+                    WorldJoin.CreateRequest(character.id, null),
                     value => result = value,
                     value => error = value);
                 ThrowOnError(error, "asking for the walker's join ticket");

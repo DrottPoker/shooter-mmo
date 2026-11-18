@@ -96,6 +96,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            // The notice said why the last World was left; this attempt gets its own answer.
+            ClearExitNotice();
             BeginOperation(
                 ClientOperation.JoinShard,
                 JoinSelectedShardRoutine(),
@@ -360,6 +362,7 @@ namespace Mmorpg.Client.Ui
                 character.id,
                 character.name,
                 shard.id,
+                shard.worldId,
                 ticket => AcceptTicket(shard, ticket, out worldSceneName),
                 result => join = result);
 

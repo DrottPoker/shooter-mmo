@@ -101,9 +101,10 @@ as the other:
    log in with another account.
 
 Expected result: the script ends with `Start check passed` and `Built
-local-development`, the player reaches LoginMenu with `Environment local ·
-Development build <commit>` in its footer, and it joins the same shard as the
-Editor client. Rebuild it after every change to the client, the protocol, or
+local-development`, its build summary names the realtime protocol version and
+the simulation revision of the code, the player reaches LoginMenu with
+`Environment local · Development build <commit>` and the same two versions in
+its footer, and it joins the same shard as the Editor client. Rebuild it after every change to the client, the protocol, or
 the shared simulation. [Build The Client](LOCAL_DEVELOPMENT.md#build-the-client)
 describes the script.
 
@@ -327,7 +328,9 @@ Close the Unity Editor of the checkout first.
 3. With the stack running, start `src\Client\Builds\local-release\MMORPG.exe`,
    log in, enter the World, and press `F3` and `F2`. Expected result: the
    login screen's footer shows `Environment local · Release build <commit> ·
-   Built <time> UTC`, no development login is filled in, `F3` opens nothing,
+   Built <time> UTC · Protocol <number> · Simulation <revision>`, which are the
+   realtime protocol version and the simulation revision that the servers must
+   run for this build to play, no development login is filled in, `F3` opens nothing,
    and `F2` opens the Debug menu, whose Network tab shows the environment and
    the stamp under Build and says that recording is available in the Editor
    and development builds only.
@@ -3690,11 +3693,13 @@ without a disconnect.
 With the worker running and the shard online:
 
 ```powershell
+$protocol = (Get-Content src/Shared/GameProtocol/Schema~/realtime-protocol.json -Raw | ConvertFrom-Json).protocol.version
+$simulation = (Select-String -Path src/Shared/GameSimulation/Runtime/GameSimulationCompatibility.cs -Pattern 'Revision = "([^"]+)"').Matches[0].Groups[1].Value
 $join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
   -Method Post `
   -Headers $headers `
   -ContentType "application/json" `
-  -Body (@{ characterId = $character.id } | ConvertTo-Json)
+  -Body (@{ characterId = $character.id; protocolVersion = $protocol; simulationRevision = $simulation } | ConvertTo-Json)
 $join.shard.id
 $join.shard.worldId
 $join.endpoint
@@ -3702,7 +3707,10 @@ $join.joinTicketId
 [Convert]::FromBase64String($join.transportKey).Length
 ```
 
-Expected result: `local-shard-1`, `development-world-2`, an endpoint that
+The request names the protocol version and simulation revision of the code that
+the stack runs, as a client does; without them GameService refuses the join, as
+[Versions Of A Join](#versions-of-a-join) shows. Expected result: `local-shard-1`,
+`development-world-2`, an endpoint that
 names `local-simulation-worker-1`, its current runtime, host `127.0.0.1`, and
 UDP port `27015`, which the public shard list never shows, a ticket id, and a
 transport key of `32` bytes. The ticket is short-lived and is consumed only by
@@ -3713,6 +3721,72 @@ until the consume or a newer ticket clears it:
 ```text
 select id, octet_length(transport_key) as key_bytes, consumed_at from simulation_join_tickets order by created_at desc limit 3;
 ```
+
+### Versions Of A Join
+
+A client plays only on a worker with exactly its protocol version, simulation
+revision, and collision data, as [Versioning](REALTIME_PROTOCOL.md#versioning)
+describes. With the worker running, the shard online, and `$join` from the
+check above, send the join with other versions:
+
+```powershell
+function Join-With($Fields) {
+  $body = (@{ characterId = $character.id } + $Fields) | ConvertTo-Json
+  try {
+    (Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join -Method Post `
+      -Headers $headers -ContentType "application/json" -Body $body).joinTicketId
+  }
+  catch { ($_.ErrorDetails.Message | ConvertFrom-Json).code }
+}
+$v = $join.endpoint.protocolVersion
+$sim = $join.endpoint.simulationRevision
+Join-With @{}
+Join-With @{ protocolVersion = $v - 1; simulationRevision = $sim }
+Join-With @{ protocolVersion = $v + 1; simulationRevision = $sim }
+Join-With @{ protocolVersion = $v; simulationRevision = "another-simulation" }
+Join-With @{ protocolVersion = $v; simulationRevision = $sim; worldId = $join.shard.worldId; collisionRevision = "another-collision" }
+Join-With @{ protocolVersion = $v; simulationRevision = $sim; worldId = "another-world"; collisionRevision = "another-collision" }
+```
+
+Expected result, in order: `incompatible_protocol` for a request without
+versions, `incompatible_protocol` for a worker ahead of the client,
+`shard_not_updated` for a worker behind it, `incompatible_simulation`,
+`incompatible_world_data`, and a ticket id for the last, whose World the shard
+does not run, so its collision revision is not judged. Every refusal is a `409`,
+leaves the ticket of the account as it was, and issues none. With the monitoring
+stack running, Prometheus shows `game_service_placement_join_refusals_total`
+labeled with the shard and each `reason`, five refusals in all.
+
+To see what a player sees, with the Unity Editor in Play Mode at CharacterSelect
+with the character and shard chosen:
+
+1. Stop SimulationWorker without a graceful stop, for example by closing its
+   terminal window. GameService counts it online until the heartbeat timeout, 30
+   seconds by default, and nothing renews its versions in that time.
+2. Within those 30 seconds change what the worker reported, in the local database
+   only, as [Look Into The Database](#look-into-the-database) runs a query, and
+   press `Enter World` after each change:
+
+   ```text
+   update simulation_workers set protocol_version = protocol_version + 1;
+   update simulation_workers set protocol_version = protocol_version - 2;
+   update simulation_workers set protocol_version = protocol_version + 1, simulation_revision = 'another-simulation';
+   update simulation_workers set simulation_revision = (select simulation_revision from simulation_workers limit 1), collision_revision = 'another-collision';
+   ```
+
+Expected result, in order: the status line says `Your game is out of date.
+Update it to play.`, `This shard has not been updated to your version of the
+game yet. Try again in a few minutes.`, `Your game and this shard are on
+different versions. Update the game, or try again in a few minutes if it is up
+to date.`, and `The world data of your game does not match this shard. Update the
+game, or try again in a few minutes if it is up to date.` No character appears in
+the World. Start SimulationWorker again afterwards, which reports its own
+versions again, and `Enter World` works.
+
+With the character in the World, stop the worker without a graceful stop, change
+its versions the same way, and wait for the Editor's connection to drop: its
+reconnect gives up at its first attempt and CharacterSelect shows the same text,
+not `The connection to the world was lost and could not be restored.`
 
 ### Logout And Session Revocation
 

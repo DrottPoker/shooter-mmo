@@ -382,8 +382,13 @@ script compilation finish. With GameService and a worker running, open
   [Configuration](UNITY_CLIENT_ARCHITECTURE.md#configuration) describes both.
 - After a change to the realtime protocol, the shared simulation, or the
   transport, exit Play Mode, restart SimulationWorker, and rebuild every
-  player, so that every process runs the same code. A worker rejects a client
-  of another protocol version at the join.
+  player, so that every process runs the same code. GameService refuses the
+  join of a client whose protocol version, simulation revision, or collision
+  data is not the worker's, with `incompatible_protocol`, `shard_not_updated`,
+  `incompatible_simulation`, or `incompatible_world_data`, as
+  [Versioning](REALTIME_PROTOCOL.md#versioning) describes. The Editor always
+  runs the code of its project, so only a restarted worker or a player build of
+  another commit meets one.
 - Player builds go to the ignored `Builds` folder below `src/Client`, as
   [Build The Client](#build-the-client) describes, and are never committed.
 - Run the Unity tests as [Run The Unity Tests](#run-the-unity-tests) describes.
@@ -414,8 +419,10 @@ The player goes to `src/Client/Builds/<environment>-<development|release>/`,
 which the script empties first, with `MMORPG.exe`. Beside that folder it
 writes `<build>.build-summary.txt`, the summary it prints: the result, the
 environment, the build kind, the commit and whether the working tree had
-changes, the build time, the scripting backend, the stripping level, the
-IL2CPP code generation and C++ compiler configuration, the time, the shipped
+changes, the build time, the realtime protocol version and the simulation
+revision of the code, which say which servers the build fits, the scripting
+backend, the stripping level, the IL2CPP code generation and C++ compiler
+configuration, the time, the shipped
 size and the size of the debug data that IL2CPP and Burst write beside the
 player, and the build errors and warnings and the C++ warnings of IL2CPP by
 count. `<build>.build-report.json` and `<build>.unity-build.log` keep the

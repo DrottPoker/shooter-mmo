@@ -65,6 +65,7 @@ namespace Mmorpg.Client.Tests.EditMode
             (Validation, "incompatible_protocol", RealtimeEnding.CharacterSelect),
             (Validation, "shard_not_updated", RealtimeEnding.CharacterSelect),
             (Validation, "incompatible_simulation", RealtimeEnding.CharacterSelect),
+            (Validation, "incompatible_world_data", RealtimeEnding.CharacterSelect),
             (Validation, "not_in_simulation", RealtimeEnding.CharacterSelect),
             (Validation, "missing_simulation_session", RealtimeEnding.CharacterSelect),
             (Busy, "realtime_busy", RealtimeEnding.CharacterSelect),
@@ -115,6 +116,7 @@ namespace Mmorpg.Client.Tests.EditMode
             (Validation, "incompatible_protocol", ReconnectAttemptFailure.GiveUp),
             (Validation, "shard_not_updated", ReconnectAttemptFailure.GiveUp),
             (Validation, "incompatible_simulation", ReconnectAttemptFailure.GiveUp),
+            (Validation, "incompatible_world_data", ReconnectAttemptFailure.GiveUp),
             (Validation, "invalid_join_parameters", ReconnectAttemptFailure.GiveUp),
             (Busy, "realtime_busy", ReconnectAttemptFailure.GiveUp),
             (Protocol, "invalid_join_response", ReconnectAttemptFailure.GiveUp),
@@ -137,6 +139,13 @@ namespace Mmorpg.Client.Tests.EditMode
             (ApiErrorKind.Http, 409, "character_already_active", ReconnectAttemptFailure.GiveUp),
             (ApiErrorKind.Http, 409, "simulation_worker_item_catalog_mismatch", ReconnectAttemptFailure.GiveUp),
             (ApiErrorKind.Http, 409, "simulation_worker_quest_catalog_mismatch", ReconnectAttemptFailure.GiveUp),
+
+            // GameService refuses a client whose versions differ from the Shard's worker with the
+            // same codes that the client's own check gives, so a reconnect gives up the same way.
+            (ApiErrorKind.Http, 409, "incompatible_protocol", ReconnectAttemptFailure.GiveUp),
+            (ApiErrorKind.Http, 409, "shard_not_updated", ReconnectAttemptFailure.GiveUp),
+            (ApiErrorKind.Http, 409, "incompatible_simulation", ReconnectAttemptFailure.GiveUp),
+            (ApiErrorKind.Http, 409, "incompatible_world_data", ReconnectAttemptFailure.GiveUp),
             (ApiErrorKind.Http, 404, "character_not_found", ReconnectAttemptFailure.GiveUp),
             (ApiErrorKind.Http, 404, "shard_not_found", ReconnectAttemptFailure.GiveUp),
             (ApiErrorKind.Http, 400, "invalid_shard_id", ReconnectAttemptFailure.GiveUp)
@@ -167,6 +176,55 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(
                 ReconnectRules.ClassifyAttempt(new ApiError(kind, status, code, "Diagnostic.", string.Empty)),
                 Is.EqualTo(failure));
+        }
+
+        // A refusal over versions is the same whether GameService gave it to the ticket request or
+        // the client's own check gave it to the join: the attempt gives up, and the notice that
+        // CharacterSelect shows is the refusal's own code, so the player learns which side to update.
+        [TestCaseSource(nameof(VersionRefusalCodeCases))]
+        public void AVersionRefusalGivesUpWithItsOwnNoticeFromGameServiceAndFromTheClientsCheck(string code)
+        {
+            var fromGameService = new ApiError(ApiErrorKind.Http, 409, code, "Diagnostic.", string.Empty);
+            var fromTheClient = Error(Validation, code);
+
+            Assert.That(ReconnectRules.ClassifyAttempt(fromGameService), Is.EqualTo(ReconnectAttemptFailure.GiveUp));
+            Assert.That(ReconnectRules.ClassifyAttempt(fromTheClient), Is.EqualTo(ReconnectAttemptFailure.GiveUp));
+            Assert.That(ReconnectRules.VersionRefusalCode(fromGameService), Is.EqualTo(code));
+            Assert.That(ReconnectRules.VersionRefusalCode(fromTheClient), Is.EqualTo(code));
+        }
+
+        // GameService decides the version question with these codes, and the client shows a text
+        // for each, so the two lists must be one.
+        [Test]
+        public void TheVersionRefusalCodesAreTheOnesGameServiceRefusesAJoinWith()
+        {
+            var source = File.ReadAllText(Path.Combine(
+                RepositoryLayout.FindRoot(), "src", "Server", "GameService.Placement", "JoinVersionCheck.cs"));
+            var codes = Regex.Matches(source, "public const string \\w+ = \"([a-z][a-z0-9_]*)\";")
+                .Cast<Match>()
+                .Select(match => match.Groups[1].Value)
+                .ToArray();
+
+            Assert.That(codes, Has.Length.EqualTo(4));
+            Assert.That(ReconnectRules.VersionRefusalCodes, Is.EquivalentTo(codes));
+        }
+
+        [Test]
+        public void OnlyAVersionRefusalNamesItsOwnNotice()
+        {
+            Assert.That(
+                ReconnectRules.VersionRefusalCode(
+                    new ApiError(ApiErrorKind.Http, 409, "character_already_active", "Diagnostic.", string.Empty)),
+                Is.Null);
+            Assert.That(
+                ReconnectRules.VersionRefusalCode(
+                    new ApiError(ApiErrorKind.Network, 0, "incompatible_protocol", "Diagnostic.", string.Empty)),
+                Is.Null,
+                "Only an answer of GameService is a refusal.");
+            Assert.That(ReconnectRules.VersionRefusalCode(Error(Server, "incompatible_protocol")), Is.Null);
+            Assert.That(ReconnectRules.VersionRefusalCode(Error(Validation, "join_ticket_expired")), Is.Null);
+            Assert.That(ReconnectRules.VersionRefusalCode((ApiError)null), Is.Null);
+            Assert.That(ReconnectRules.VersionRefusalCode((RealtimeClientError)null), Is.Null);
         }
 
         // The codes of a dropped line are the only network and timeout codes that reconnect, and
@@ -228,6 +286,11 @@ namespace Mmorpg.Client.Tests.EditMode
         private static string ClientScripts
         {
             get { return Path.Combine(RepositoryLayout.FindRoot(), "src", "Client", "Assets", "Scripts"); }
+        }
+
+        private static IEnumerable<string> VersionRefusalCodeCases()
+        {
+            return ReconnectRules.VersionRefusalCodes;
         }
 
         private static IEnumerable<TestCaseData> EndingCases()

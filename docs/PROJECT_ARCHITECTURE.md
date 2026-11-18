@@ -982,8 +982,8 @@ need a new build:
 
 | Agreement | What | Where the client has it | Must match |
 | --- | --- | --- | --- |
-| Code lockstep | The realtime protocol version and the simulation revision | In the build | Exactly, checked at placement and join, as [Realtime Admission](#realtime-admission) describes |
-| World build | The collision revision and the World scenes | In the build | Exactly, checked at join |
+| Code lockstep | The realtime protocol version and the simulation revision | In the build | Exactly, with no window of versions: GameService checks them at the join request and the client again at the placement, as [Realtime Admission](#realtime-admission) describes |
+| World build | The collision revision and the World scenes | In the build | Exactly: GameService checks the collision revision at the join request when the client names it, and the client checks it with the placement and again when the worker accepts the join |
 | Rules data | The item catalog and the quest catalog | Fetched by revision from GameService at start, the bundled copies as fallback | The client runs with the server's revision; a change while it runs asks for a restart |
 | Presentation | The text tables, fetched by revision at start; the item presentation catalog and every binary asset, in the build | Both | Never required to match |
 
@@ -1360,10 +1360,15 @@ join is sealed with keys derived from it, as
 path between client and worker is untrusted; GameService, the worker, and the
 service channel between them are trusted.
 
-The client validates placement protocol and simulation revisions before opening
-UDP. Join acceptance must match the placed character, shard, World, simulation
-revision, and collision revision. These are the in-build agreements of
-[Client And Server Agreement](#client-and-server-agreement).
+GameService decides the version question before it issues a ticket: the join
+request names the client's protocol version, simulation revision, and the
+collision revision of its World, and a worker that runs others gets no player.
+The client checks the placement again before opening UDP, as the second line of
+defence. Join acceptance must match the placed character, shard, World,
+simulation revision, and collision revision. These are the in-build agreements
+of [Client And Server Agreement](#client-and-server-agreement), and
+[Versioning](REALTIME_PROTOCOL.md#versioning) describes who checks what and what
+a player sees.
 
 ### Development Surfaces
 
@@ -1425,8 +1430,10 @@ adds a production code path:
 4. Unity requests `POST /api/shards/{shardId}/join` for an owned character.
 5. GameService locks the account and character, applies global active-session
    rules, reserves authoritative session and pending-ticket capacity under a
-   worker row lock, refuses a worker whose item or quest catalog revision
-   differs from the mirrored catalog, and creates a ticket.
+   worker row lock, refuses a client whose protocol version, simulation
+   revision, or collision revision is not the worker's, refuses a worker whose
+   item or quest catalog revision differs from the mirrored catalog, and creates
+   a ticket.
 6. The response contains the selected shard plus an exact worker runtime
    endpoint and compatibility metadata.
 

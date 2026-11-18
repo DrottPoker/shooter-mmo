@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "ui",
   "locale": "en",
-  "revision": "84fe3f94c5b07a3ad3a959c0966fe088f156545e18112f5e00a90eab221c072b",
+  "revision": "898b882f41528f6db0d3dee8a877c22343bb4acb63f51a04b0328a6b1c46b58f",
   "entries": [
     {
       "key": "ui/characters/body-in-world",
@@ -1238,7 +1238,7 @@
     },
     {
       "key": "ui/login/build-development",
-      "text": "Environment {environment}  \u00B7  Development build {commit}  \u00B7  Built {time} UTC"
+      "text": "Environment {environment}  \u00B7  Development build {commit}  \u00B7  Built {time} UTC  \u00B7  Protocol {protocol}  \u00B7  Simulation {simulation}"
     },
     {
       "key": "ui/login/build-editor",
@@ -1246,7 +1246,7 @@
     },
     {
       "key": "ui/login/build-release",
-      "text": "Environment {environment}  \u00B7  Release build {commit}  \u00B7  Built {time} UTC"
+      "text": "Environment {environment}  \u00B7  Release build {commit}  \u00B7  Built {time} UTC  \u00B7  Protocol {protocol}  \u00B7  Simulation {simulation}"
     },
     {
       "key": "ui/login/busy-retry",
