@@ -24,7 +24,7 @@ BLENDER_OPTIONS = {"--background", "--factory-startup", "--python-use-system-env
 
 scene = load("art_pipeline/scene.py", "ArtPipelineError", "parse_args")
 texture = load("art_pipeline/texture.py", "DYE_LEVEL")
-cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", texture=texture)
+cli = load("art_pipeline_cli.py", "_parser", "_bodies", "_pairs", "_clip_libraries", "_held_attachments", texture=texture)
 
 
 def subcommands() -> dict[str, argparse.ArgumentParser]:
@@ -78,7 +78,7 @@ class ParserTests(unittest.TestCase):
     def test_every_command_the_scripts_start_exists_and_every_command_is_started_by_a_script(self):
         text = all_powershell()
         started = set(re.findall(r'"--",\s*"([a-z][a-z-]+)"', text))
-        started |= set(re.findall(r'@\("(validate|export|preview)"', text))
+        started |= set(re.findall(r'@\("(validate|export|preview|reference|clips)"', text))
         self.assertEqual(started, set(subcommands()))
 
     def test_every_option_the_scripts_pass_is_an_option_of_some_command(self):
@@ -157,6 +157,22 @@ class ParserTests(unittest.TestCase):
         self.assertFalse(args.force)
         self.assertEqual(args.preview, [])
 
+    def test_a_reference_comparison_names_its_output_folder_and_its_root(self):
+        parser = subcommands()["reference"]
+        self.assertEqual(sorted(o for a in parser._actions if a.required for o in a.option_strings), ["--output", "--root"])
+        args = parse("reference", "--output", "out", "--root", "Wolf")
+        self.assertEqual((args.output, args.root), ("out", "Wolf"))
+
+    def test_clips_render_on_a_still_ground_without_a_skeleton_unless_told(self):
+        with self.assertRaises(SystemExit):
+            parse("clips", "--output", "out")
+        args = parse("clips", "--output", "out", "--armature", "Humanoid")
+        self.assertEqual((args.clip, args.speed, args.skeleton, args.held_attachment), ([], 0.0, None, []))
+        args = parse("clips", "--output", "out", "--armature", "Wolf", "--clip", "Walk", "--clip", "Run", "--speed", "1.4")
+        self.assertEqual((args.clip, args.speed), (["Walk", "Run"], 1.4))
+        with self.assertRaises(SystemExit):
+            parse("clips", "--output", "out", "--armature", "Wolf", "--speed", "fast")
+
 
 class ListArgumentTests(unittest.TestCase):
     def test_a_body_is_a_path_and_an_armature_split_at_the_last_equals_sign(self):
@@ -181,6 +197,12 @@ class ListArgumentTests(unittest.TestCase):
     def test_a_clip_library_is_a_path_and_its_clips_joined_by_plus(self):
         args = parse("validate", "--kind", "garment", "--roots", "Male", "--clip-library", "h.blend=Idle+Walk+Jog")
         self.assertEqual(cli._clip_libraries(args), [(os.path.abspath("h.blend"), ["Idle", "Walk", "Jog"])])
+
+    def test_a_held_attachment_is_a_path_a_clip_and_a_socket_bone(self):
+        args = parse("clips", "--output", "o", "--armature", "Humanoid", "--held-attachment", "art/a=b.blend=Mine:Socket_MainHand")
+        self.assertEqual(cli._held_attachments(args), [(os.path.abspath("art/a=b.blend"), "Mine", "Socket_MainHand")])
+        args = parse("preview", "--output", "o", "--held-attachment", "s.blend=SwordSlash:Socket_MainHand")
+        self.assertEqual(cli._held_attachments(args), [(os.path.abspath("s.blend"), "SwordSlash", "Socket_MainHand")])
 
     def test_no_lists_give_no_entries(self):
         args = parse("validate", "--kind", "static", "--roots", "Rock")
@@ -211,7 +233,9 @@ class ResultLineTests(unittest.TestCase):
 
     def test_the_lines_the_human_base_scripts_read_are_printed_by_its_command_line_file(self):
         python = self._printed("human_base_cli.py")
-        read = set(re.findall(r'"(HUMAN_BASE_[A-Z_]+)(?: \*)?"', powershell("Sync-HumanBase.ps1", "Sync-AnimationLibrary.ps1")))
+        read = set(re.findall(r'"(HUMAN_BASE_[A-Z_]+)(?: \*)?"',
+                              powershell("Sync-HumanBase.ps1", "Sync-AnimationLibrary.ps1", "Import-ArtClip.ps1")))
+        self.assertIn("HUMAN_BASE_MOTION", read)
         self.assertEqual(sorted(read - python), [])
 
 
@@ -238,13 +262,15 @@ class HumanBaseDispatchTests(unittest.TestCase):
             "review": types.SimpleNamespace(review_file=runner("review-file"), render=runner("render", ["a.png", "b.png"])),
             "rig": types.SimpleNamespace(sync=runner("sync"), weights=runner("weights"), rig=runner("rig")),
             "rig_review": types.SimpleNamespace(render=runner("rig-render", ["r.png"]), review_file=runner("rig-review-file", "rr.blend")),
+            "retarget": types.SimpleNamespace(import_clip=lambda *args: record.append(("import", args)) or cls.imported),
         }
-        cls.cli = load("human_base_cli.py", "main", "_count", "STEPS", "CHECKS", "RENDERS", **modules)
+        cls.cli = load("human_base_cli.py", "main", "_count", "STEPS", "CHECKS", "RENDERS", "IMPORTS", **modules)
         cls.modules = modules
 
     def setUp(self):
         self.calls.clear()
         type(self).compared = (["same content: a and b"], [])
+        type(self).imported = (["Block: 37 frames"], [], {"clip": "Block", "frames": 37})
 
     def _run(self, *argv: str) -> tuple[int, list[str]]:
         out = io.StringIO()
@@ -296,16 +322,29 @@ class HumanBaseDispatchTests(unittest.TestCase):
         self.assertEqual(self._run("rig-review-file", "m", "f", "out.blend"), (0, ["HUMAN_BASE_REPORT review file rr.blend"]))
         self.assertEqual(self._run("rig-review-file", "m"), (2, ["HUMAN_BASE_FAILED rig-review-file takes 3 arguments"]))
 
+    def test_an_imported_clip_prints_its_report_and_its_motion_numbers(self):
+        arguments = ("lib.blend", "Humanoid", "src.glb", "map.json", "A+B", "Block", "R", "s.json")
+        self.assertEqual(self._run("import-clip", *arguments),
+                         (0, ["HUMAN_BASE_REPORT Block: 37 frames", 'HUMAN_BASE_MOTION {"clip":"Block","frames":37}']))
+        self.assertEqual(self.calls, [("import", arguments)])
+
+    def test_an_import_that_breaks_a_rule_prints_it_and_fails_without_motion_numbers(self):
+        type(self).imported = ([], ["Block: the library has the clip already"], None)
+        self.assertEqual(self._run("import-clip", *"abcdefgh"), (1, ["HUMAN_BASE_FAILED Block: the library has the clip already"]))
+        self.assertEqual(self._run("import-clip", "a"), (2, ["HUMAN_BASE_FAILED import-clip takes 8 arguments"]))
+
     def test_the_argument_counts_are_the_ones_the_help_text_lists(self):
         doc = re.search(r'"""(.*?)"""', source_text("human_base_cli.py"), re.DOTALL).group(1)
         steps = doc.split("Steps:")[1].split("\n\n")[0]
         listed = {name: len(re.findall(r"<[^>]+>", rest)) for name, rest in re.findall(r"^    ([a-z-]+) ?(.*)$", steps, re.MULTILINE)}
-        tables = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS) for name, (count, _run) in table.items()}
+        tables = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS, self.cli.IMPORTS)
+                  for name, (count, _run) in table.items()}
         tables["rig-review-file"] = 3
         self.assertEqual(listed, tables)
 
     def test_every_step_the_scripts_start_exists_with_the_arguments_it_takes(self):
-        counts = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS) for name, (count, _run) in table.items()}
+        counts = {name: count for table in (self.cli.STEPS, self.cli.CHECKS, self.cli.RENDERS, self.cli.IMPORTS)
+                  for name, (count, _run) in table.items()}
         counts["rig-review-file"] = 3
         text = powershell("Sync-HumanBase.ps1")
         started = {}
@@ -319,6 +358,8 @@ class HumanBaseDispatchTests(unittest.TestCase):
         library = powershell("Sync-AnimationLibrary.ps1")
         for name in re.findall(r'@\("(generate-clips|check-clips)"', library):
             self.assertIn(name, counts)
+        imported = re.findall(r'@\("(import-clip)",([^)]*\([^)]*\)[^)]*)\)', powershell("Import-ArtClip.ps1"))
+        self.assertEqual([(name, len(_split_arguments(arguments))) for name, arguments in imported], [("import-clip", counts["import-clip"])])
 
 
 def _split_arguments(text: str) -> list[str]:

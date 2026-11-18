@@ -48,21 +48,7 @@ elseif ($null -ne $manifest.Socket) {
 elseif ($manifest.Kind -eq "animations") {
     # The sheet of an animation library shows each tool held in the rows of the clip it is used with,
     # and each weapon in the rows of its hold and attack clips.
-    foreach ($directory in @(Get-ArtAssetDirectories)) {
-        $json = Get-Content -Raw -LiteralPath (Join-Path $directory "asset.json") | ConvertFrom-Json
-        $named = @("useClip", "holdClip", "attackClip" | Where-Object {
-                $null -ne $json.PSObject.Properties[$_] -and $manifest.Clips -ccontains [string]$json.$_ })
-        if ($named.Count -eq 0) {
-            continue
-        }
-
-        $held = Read-ArtAssetManifest $directory
-        if ($held.Socket.Skeleton -ceq $manifest.Skeleton) {
-            foreach ($clip in @($held.UseClip, $held.HoldClip, $held.AttackClip | Where-Object { $null -ne $_ })) {
-                $arguments += @("--held-attachment", "$($held.SourcePath)=${clip}:$($held.Socket.Bone)")
-            }
-        }
-    }
+    $arguments += Get-ArtHeldAttachmentArguments $manifest
 }
 elseif ($manifest.Kind -eq "cage") {
     $arguments += @("--roots", ($manifest.RootObjects -join ","), "--manifest", $manifest.ManifestPath)

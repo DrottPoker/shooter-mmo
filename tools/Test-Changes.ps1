@@ -90,6 +90,8 @@ $rules = @(
         Checks = @("art", "blender-python", "unity"); Reason = "art sources, approvals, and Blender scripts that Unity reads" },
     @{ Pattern = '^tools/art/[^/]+\.ps1$'
         Checks = @("art"); Reason = "the art pipeline" },
+    @{ Pattern = '^tools/art/retarget/[^/]+\.json$'
+        Checks = @("blender-python"); Reason = "a retarget map, which the art pipeline's Python tests read" },
     @{ Pattern = '^tools/Verify-DependencyPolicy\.ps1$'
         Checks = @("deps"); Reason = "the dependency policy" },
     @{ Pattern = '^tools/load/client-crowd-mobs\.json$'

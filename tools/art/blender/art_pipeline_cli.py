@@ -6,8 +6,9 @@
 new-static writes the first file of a static asset, library-sync builds or updates an animation
 library, paint-sync a paint layer, garment-create and garment-sync a garment template,
 garment-review-file writes a template's review file, cage-create and cage-sync the garment cage,
-texture-create and texture-sync a garment texture, and texture-dyes makes it dyeable; they run without an open file. Every result
-line starts with ART_ so the PowerShell scripts can read it from Blender's log.
+texture-create and texture-sync a garment texture, and texture-dyes makes it dyeable; they run without an open file. reference
+compares the open model with its reference pictures, and clips renders the open file's clips as videos with their motion
+numbers; neither saves the file. Every result line starts with ART_ so the PowerShell scripts can read it from Blender's log.
 """
 
 import argparse
@@ -21,7 +22,8 @@ import bpy
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from art_pipeline import bodies, body_files, cage, coverage, garment, library, paint, preview, skinned, texture  # noqa: E402
+from art_pipeline import (bodies, body_files, cage, clip_video, coverage, garment, library, paint, preview,  # noqa: E402
+                          reference, skinned, texture)
 from art_pipeline import skeleton as skeleton_definition  # noqa: E402
 from art_pipeline.export import (clip_records, export_fbx, export_textures, material_records, parse_variants,  # noqa: E402
                                   variant_errors)
@@ -88,6 +90,17 @@ def _parser() -> argparse.ArgumentParser:
                          help="<file.blend>=<Clip>:<socket bone> of a tool the bodies of an animation library hold in a clip.")
     command.add_argument("--other-paint", action="append", default=[],
                          help="<file.blend>=<Name>:<layer> of a paint layer that a body always wears with it, such as underwear.")
+    command = commands.add_parser("reference")
+    command.add_argument("--output", required=True, help="Folder for the overlay images.")
+    command.add_argument("--root", required=True, help="The root object whose meshes are compared with the pictures.")
+    command = commands.add_parser("clips")
+    command.add_argument("--output", required=True, help="Folder for the videos.")
+    command.add_argument("--armature", required=True, help="The armature the clips play on.")
+    command.add_argument("--clip", action="append", default=[], help="A clip to render; every clip given once.")
+    command.add_argument("--speed", type=float, default=0.0, help="m/s the ground moves back at, so a sliding foot shows.")
+    command.add_argument("--skeleton", help="The skeleton definition, whose cloth chain bones the motion numbers leave out.")
+    command.add_argument("--held-attachment", action="append", default=[],
+                         help="<file.blend>=<Clip>:<socket bone> of a tool the bodies hold in a clip.")
     command = commands.add_parser("library-sync")
     command.add_argument("--library", required=True, help="The animation library .blend to build or update.")
     command.add_argument("--armature", required=True, help="The name of the armature the clips are keyed on.")
@@ -185,6 +198,11 @@ def _pairs(args) -> list[tuple[str, str, str]]:
 
 def _clip_libraries(args) -> list[tuple[str, list[str]]]:
     return [(os.path.abspath(path), clips.split("+")) for path, clips in (e.rsplit("=", 1) for e in args.clip_library)]
+
+
+def _held_attachments(args) -> list[tuple[str, str, str]]:
+    return [(os.path.abspath(path), rest.split(":", 1)[0], rest.split(":", 1)[1])
+            for path, rest in (entry.rsplit("=", 1) for entry in args.held_attachment)]
 
 
 def _texture(args) -> int:
@@ -378,13 +396,22 @@ def main() -> int:
             print(f"ART_PREVIEW {path}")
             return 0
         if args.kind == "animations":
-            held = [(os.path.abspath(path), rest.split(":", 1)[0], rest.split(":", 1)[1])
-                    for path, rest in (entry.rsplit("=", 1) for entry in args.held_attachment)]
-            path = preview.render_clip_sheet(os.path.abspath(args.output), args.cell_size, held)
+            path = preview.render_clip_sheet(os.path.abspath(args.output), args.cell_size, _held_attachments(args))
             print(f"ART_PREVIEW {path}")
             return 0
         path = preview.render_sheet(os.path.abspath(args.output), args.cell_size)
         print(f"ART_PREVIEW {path}")
+        return 0
+    if args.command == "reference":
+        name = os.path.splitext(os.path.basename(bpy.data.filepath))[0]
+        for result in reference.compare(name, args.root, os.path.abspath(args.output)):
+            print(f"ART_REFERENCE {json.dumps(result, separators=(',', ':'))}")
+        return 0
+    if args.command == "clips":
+        skip = skeleton_definition.load(args.skeleton).chain_bones if args.skeleton else set()
+        for result in clip_video.render_clips(os.path.abspath(args.output), args.armature, args.clip, args.speed, skip,
+                                              _held_attachments(args)):
+            print(f"ART_MOTION {json.dumps(result, separators=(',', ':'))}")
         return 0
     if args.command == "paint-sync":
         changed = paint.sync(os.path.abspath(args.file), args.paint, args.part, _bodies(args),

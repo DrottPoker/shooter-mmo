@@ -57,6 +57,8 @@ art has one how-to:
 | Change a human body: its shape, skin texture, or weights | the body's `.blend` file, then `Sync-HumanBase.ps1` | [Edit The Human Base Characters](#edit-the-human-base-characters) |
 | Add a face or an eye color | an image packed into the body's `.blend` file | [Add A Face Or Eye Variant](#add-a-face-or-eye-variant) |
 | Change a clip or add one | the library's `.blend` file, or `Sync-AnimationLibrary.ps1 -Generate` for a gait | [Make A Clip](#make-a-clip) |
+| Look at clips in motion, with numbers that show a sinking body, a whipping bone, a foot under the ground, or a loop that jumps | `Render-ArtClips.ps1` | [Render The Clips As Videos](#render-the-clips-as-videos) |
+| Start a clip from a clip of another skeleton, such as one of a clip library in a `.glb` file | `Import-ArtClip.ps1` with a map in `tools/art/retarget` | [Start A Clip From Another Skeleton](#start-a-clip-from-another-skeleton) |
 | Start an animation library | `New-ArtAsset.ps1 -Kind animations` | [Make A Clip](#make-a-clip) |
 | Paint onto the skin, such as a tattoo or a scar | `New-ArtAsset.ps1 -Kind paint`, then `Sync-PaintAsset.ps1` | [Make A Paint Layer](#make-a-paint-layer) |
 | Move a paint layer's canvas to another body, such as a new base model | `Sync-PaintAsset.ps1 -Canvas`, then `Test-PaintProjection.ps1` | [Make A Paint Layer](#make-a-paint-layer) |
@@ -65,6 +67,7 @@ art has one how-to:
 | Paint the look of a garment template, with holes where the skin shows | `New-ArtAsset.ps1 -Kind texture`, then `Sync-TextureAsset.ps1` | [Make A Garment Texture](#make-a-garment-texture) |
 | Review, approve, and export any of them | `Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | [Review, Approve, And Export An Asset](#review-approve-and-export-an-asset) |
 | Confirm that every source, approval, and export is current, such as after an edit of the bodies | the sync scripts and their review sheets | [Check That The Art Sources Are Current](#check-that-the-art-sources-are-current) |
+| Measure how closely a model follows its reference pictures | `Compare-ArtReference.ps1` | [Compare A Model With Its Reference Pictures](#compare-a-model-with-its-reference-pictures) |
 | Look at clothes and cloth in motion and tune the cloth's springs | `MMORPG > Tools > Art Pipeline > Wardrobe` in Unity | [The Wardrobe](#the-wardrobe) |
 | Change the look of the windows: frames, slots, icons, silhouettes, fonts | the SVG files in `Assets/Art/Ui/Sprites`, then `MMORPG > Tools > UI > Build UI Theme` | [UI Art](#ui-art) |
 
@@ -168,6 +171,9 @@ only you run Claude Code, and save your work before a live session.
 | `tools/art/Render-ArtPreview.ps1`, `Approve-ArtAsset.ps1`, `Export-ArtAsset.ps1` | Review, approval, and export commands. They share `tools/art/ArtPipelineCommon.ps1`. |
 | `tools/art/Verify-ArtAssets.ps1` | CI check of every asset without Blender. |
 | `tools/art/Sync-AnimationLibrary.ps1`, `tools/art/blender/art_pipeline/library.py` | Builds an animation library file from its rig, or updates it when the rig changed, and keeps its clips. |
+| `tools/art/Compare-ArtReference.ps1`, `tools/art/blender/art_pipeline/reference.py` | Compares a model with the reference pictures in its file: the overlap of their silhouettes per picture and an overlay image. It changes no file. |
+| `tools/art/Render-ArtClips.ps1`, `tools/art/blender/art_pipeline/clip_video.py` | Renders the clips of an animation library or a skinned asset as videos and measures their motion. It changes no file. |
+| `tools/art/Import-ArtClip.ps1`, `tools/art/blender/human_base/retarget.py`, `tools/art/retarget/<Source>.json` | Adds a clip to an animation library on the `Humanoid` skeleton from clips of another skeleton, with a map from the `Humanoid` bones to the source's bones, such as `UniversalAnimationLibrary.json`. |
 | `tools/art/Sync-PaintAsset.ps1`, `tools/art/blender/art_pipeline/paint.py` | Builds a paint layer file from its bodies, or updates it, keeps its canvas, and moves the canvas's paint to every body by projection; `-Canvas` moves the canvas to another body. |
 | `tools/art/Test-PaintProjection.ps1` | Checks the move that a body of another topology than a paint layer's canvas gets, through the garment cage, on subdivided copies of the bodies. It changes no file. |
 | `tools/art/Sync-CageAsset.ps1`, `tools/art/blender/art_pipeline/cage.py` | Fits the garment cage to every body from its reference, writes its review sheet, and checks it. |
@@ -437,6 +443,50 @@ reviewer approved. `Verify-ArtAssets.ps1` checks the records without Blender.
    result: in `UVMap` both halves of the chest lie on one island; in
    `UVMap_Paint` the left half lies in the left half of the map and the right
    half in the right half. Close Blender without saving.
+
+### Compare A Model With Its Reference Pictures
+
+A model built from concept pictures keeps them in its file as image empties in
+the `Reference` collection, each placed where it shows the model, such as
+`Concept_Side` and `Concept_Front` of the wolf. `Compare-ArtReference.ps1`
+measures how closely the model follows each of them, for a `static` or
+`skinned` asset:
+
+```powershell
+.\tools\art\Compare-ArtReference.ps1 -Asset art/Creatures/Wolf
+```
+
+Expected result: one line per picture, such as `Concept_Side: 77.2 % overlap;
+the model misses 20.6 % of the picture's figure and adds 3.0 % outside it:
+<path>` and `Concept_Front: 85.9 % overlap; ...`, and per picture an
+overlay `artifacts\art-previews\Wolf_reference_Concept_Side.png`: green where
+the model and the picture agree, red where only the picture has the figure,
+and blue where only the model has it. Both shares are of the picture's figure.
+The script never fails on a number and never saves the file; it is a measure
+for the reviewer, not a gate. An asset without a picture stops with
+`Wolf has no reference picture in its Reference collection.`
+
+How it measures:
+
+- An orthographic camera sees each picture as it faces: it has the empty's
+  world rotation, sits in front of the picture's middle along the empty's +Z,
+  and spans the picture's larger side, its display size times the empty's
+  scale. The render has the picture's pixel size, at most 2048 pixels on its
+  larger side.
+- The model is every mesh of the `Export` collection below the manifest's first
+  root object, or below `-Root`, such as `-Root Depleted` for a resource node.
+  It is rendered as it lies in the file, on a transparent film, and its pixels
+  above half alpha are its silhouette.
+- The picture's figure is its opaque part when it has transparency. On an opaque
+  picture it is every pixel whose color differs by more than 0.045 from the
+  background, both from that of its top corners and from that of its row's left
+  and right edges, so a soft gradient stays background; the bottom 2 % of the
+  rows, often a ground line, is left out.
+- The overlap is the intersection of both figures over their union.
+- A picture that is scaled unevenly or mirrored stops the script with `The
+  picture <name> is stretched, ...` or `... is mirrored; give it one scale, as
+  the model has.`, since the model would be measured against a figure the
+  picture does not show.
 
 ## Modeling Rules
 
@@ -1427,6 +1477,104 @@ changes the library, and it needs a new review and approval first. A clip that
 a weapon or a tool names needs a state in the controller as well; see
 [Make An Attachment](#make-an-attachment).
 
+### Render The Clips As Videos
+
+`Render-ArtClips.ps1` renders the clips of an animation library, or of a
+skinned asset with clips of its own such as the wolf, as videos to review in
+motion next to the review sheet, and measures each clip:
+
+```powershell
+.\tools\art\Render-ArtClips.ps1 -Asset art/Animations/Human_Actions -Clip SwordSlash,Walk
+.\tools\art\Render-ArtClips.ps1 -Asset art/Animations/Human_Actions -Clip Walk -Speed 1.4
+.\tools\art\Render-ArtClips.ps1 -Asset art/Creatures/Wolf -Clip Walk -Speed 1.4
+```
+
+Expected result: per clip one line, such as `SwordSlash: 1.00 s; root travels
+0.18 m and sinks to 91 %; fastest Hand_R at 6.7 m/s; 29 % of the joints turn;
+lowest point 0.015 m: <path>`, and the video
+`artifacts\art-previews\Human_Actions_SwordSlash.mp4`: every body the file
+shows, for a library its rig's body and its preview bodies, from the front
+right on a checkered ground of quarter-meter squares, the clip played three
+times, a looping clip without its last frame, which is its first again, so the
+loop runs on evenly, 960x540 at 30 frames per second in H.264. A tool or a weapon is held in
+the clips the review sheet holds it in, such as the iron sword in
+`SwordSlash`. Without `-Clip` every clip of the asset is rendered. With
+`-Speed` the ground moves back at that speed in m/s, the speed the game moves
+the body at, such as 1.4 for `Walk` and 5.0 for `Jog`, so a foot on the ground
+that slides shows against the checkers. The script never saves the file.
+
+The numbers are taken from the deforming bones of the armature, without the
+bones of cloth chains, in world space on every frame:
+
+- the clip's length in seconds;
+- how far the root bone's head travels horizontally, and the lowest it sinks as
+  a share of its rest height;
+- the bone whose head moves fastest between two frames, and its speed in m/s,
+  without the bones shorter than 5 cm, such as fingers and toes, which ride on
+  a hand or a foot and would always outrun it;
+- the share of the bones that turn in their joints, against their parents, by
+  more than 5 degrees from the clip's first frame, which is low when only a
+  part of the body moves, such as 29 % in `SwordSlash`, where the arm strikes
+  and the body stands, against 80 % in `Death`;
+- the lowest head or tail of those bones, below 0 under the ground;
+- for a looping clip that does not end where it starts, `the loop jumps` and
+  the largest distance of a bone head between its first and last frame.
+
+### Start A Clip From Another Skeleton
+
+`Import-ArtClip.ps1` adds a clip to an animation library on the `Humanoid`
+skeleton from clips of another skeleton, such as a clip of a clip library in a
+`.glb`, `.gltf`, `.fbx`, or `.bvh` file, as a starting point that a person then
+edits by hand, like the gait model's clips. A map in `tools/art/retarget` names
+the source bone of each `Humanoid` bone and the degrees the source turns about
+Z to face +Y; `UniversalAnimationLibrary.json` maps the Universal Animation
+Library (CC0), fingers included:
+
+```powershell
+.\tools\art\Import-ArtClip.ps1 -Asset art/Animations/Human_Actions -Source <clips>.glb -Map tools/art/retarget/UniversalAnimationLibrary.json -Clip Sword_Block -Name SwordBlock -Grip R
+```
+
+Expected result: `SwordBlock: 37 frames at 30 fps from Sword_Block of
+<clips>.glb, 52 bones mapped, 42 aligned to the source's rest pose, the fingers
+of R in Grip -> <library file>`, `Added SwordBlock to Human_Actions and its
+asset.json; edit it in Blender as you like.`, the clip's motion numbers as
+[Render The Clips As Videos](#render-the-clips-as-videos) prints them, and the
+reminder to review and approve. `-Clip` names one or more of the source's
+clips, played one after another, such as `-Clip
+Sword_Regular_B,Sword_Regular_B_Rec`. `-Grip` (`L`, `R`, or `LR`) gives the
+fingers of those hands the library's `Grip` clip, for a hand that holds a
+weapon or a tool. The script never replaces a clip: a library that has the
+clip stops it with `SwordBlock: Human_Actions has the clip already, and a clip
+is never replaced. Choose another -Name.` A library of another skeleton stops
+it as `-Generate` does, and a map that names a bone neither skeleton has, or
+lacks the hips, a thigh, a shin, or a foot, stops it with a message that names
+the bone.
+
+How the clip is made:
+
+- The source is imported into the library at 30 frames per second, so its
+  clips are sampled per frame, and the first frame of a later clip is left out.
+- Each mapped bone turns from its rest as its source bone turns from its rest,
+  in world space, after the source is turned by the map's `facing`. Unmapped
+  bones stay at rest.
+- The arms, legs, feet, and fingers are first aligned along their length to the
+  source's rest pose, and each hand takes the source hand's whole frame, from
+  the wrist and the bases of the index, middle, and little fingers, so a source
+  that rests in another pose, such as a T pose, moves as it does.
+- The hips move as the source's hips move, scaled by the ratio of the leg
+  lengths, and the legs are solved again with the gait model's two-bone IK, so
+  each ankle is where the source's is from the place its hips rest at, scaled,
+  wherever the source stands in its file, the knee toward the front of the
+  retargeted leg.
+- Every bone but the cloth chains is keyed on every frame, linear, with the
+  hips' location, and the action gets a fake user, a frame range from 0, and
+  `loop` false; set `loop` true by hand for a clip that loops.
+
+The script adds the clip to `clips` in `asset.json` and clears the export
+record, as `-Generate` does. Review the clip in Blender and as a video, edit it
+by hand where it needs it, then approve and export the library as
+[Make A Clip](#make-a-clip) describes from step 4.
+
 ## Appearance Layers
 
 Each layer of a character's look is made by hand in an asset of its own or in the
@@ -2146,7 +2294,9 @@ own, as `cloth_core.py` is, and the old module imports it back.
 | `test_geometry_helpers.py` | The cloth chain order, radii, the hanging of loose parts, rounding keys, and preview colors. |
 | `test_powershell_contract.py` | The tables that `tools/art/ArtPipelineCommon.ps1` keeps and the Blender code keeps again: regions, slots, bands, stages, patterns. |
 | `test_cli.py` | The arguments of `art_pipeline_cli.py` and the steps of `human_base_cli.py` against how the PowerShell scripts call them and read their result lines. |
-| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the file is skipped and the run says `skipped=1`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
+| `test_retarget_map.py` | The rules of a clip import's map, which `Humanoid` bones the retarget aligns, and every map in `tools/art/retarget` against the `Humanoid` skeleton. |
+| `test_reference.py`, `test_clip_motion.py` | The figure of a reference picture, the overlap and overlay of two figures, and where a picture's middle lies; the motion numbers of a clip. They need numpy, as `test_numeric_logic.py` does. |
+| `test_numeric_logic.py` | The cage's net and polygons, the weights of garments and bodies, dyes, the paint crop, and the coverage report. It needs numpy, which CI installs from `tools/art/blender/tests/requirements.txt` in the version that Blender bundles. Without numpy the three files that need it are skipped and the run says `skipped=3`: install it with `python -m pip install -r tools/art/blender/tests/requirements.txt`, or run the tests in Blender's own Python with `& (Join-Path (Split-Path $env:BLENDER_PATH) "5.2\python\bin\python.exe") -m unittest discover -s tools/art/blender/tests`. |
 
 A test says what must hold, with small inputs whose answer follows from the
 input, and where a table in Python must agree with the client, a content file,

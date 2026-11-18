@@ -368,16 +368,19 @@ def idle_frame(rig, frames, frame):
     return local, hips_loc
 
 
-def bake(arm, name, frames, frame_fn, skip=frozenset()):
-    """Writes one looping clip as an action: every frame keyed, and the last frame the first. The
-    bones in skip, such as the cloth chains that the runtime solver moves, get no keys."""
+def bake(arm, name, frames, frame_fn, skip=frozenset(), loop=True):
+    """Writes one clip of the given number of frames as an action: every frame keyed, linear. A
+    looping clip ends with its first frame again, one frame later; one that does not loop ends at
+    its last frame. The bones in skip, such as the cloth chains that the runtime solver moves, get
+    no keys."""
     keys = [frame_fn(f) for f in range(frames)]
+    last = frames if loop else frames - 1
     action = bpy.data.actions.new(name)
     action.use_fake_user = True
     arm.animation_data_create()
     arm.animation_data.action = action
     previous = {}
-    for f in range(frames + 1):
+    for f in range(last + 1):
         local, hips_loc = keys[f % frames]
         for pb in arm.pose.bones:
             if pb.name in skip:
@@ -385,7 +388,7 @@ def bake(arm, name, frames, frame_fn, skip=frozenset()):
             q = local.get(pb.name, Quaternion())
             if pb.name in previous and previous[pb.name].dot(q) < 0:
                 q = -q
-            if f == frames:
+            if loop and f == frames:
                 if previous[pb.name].dot(first[pb.name]) < 0:
                     raise RuntimeError(f"{name}: {pb.name} does not come back to its first rotation")
                 q = first[pb.name]
@@ -401,9 +404,9 @@ def bake(arm, name, frames, frame_fn, skip=frozenset()):
     for fc in channelbag.fcurves:
         for key in fc.keyframe_points:
             key.interpolation = "LINEAR"
-    action.frame_range = (0, frames)
+    action.frame_range = (0, last)
     action.use_frame_range = True
-    action["loop"] = True
+    action["loop"] = loop
     arm.animation_data.action = None
     for pb in arm.pose.bones:
         pb.rotation_quaternion = Quaternion()

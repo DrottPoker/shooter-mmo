@@ -198,7 +198,8 @@ public sealed class DeploySmokeTestTrustTests : IDisposable
     }
 
     // A root, an intermediate it signed, and leaves that the intermediate signs, as Caddy's local
-    // authority issues them.
+    // authority issues them: each certificate names its issuer's key, so a chain is built from the
+    // issuer with that key and not from another certificate of the same name.
     private sealed class CertificateAuthority : IDisposable
     {
         private readonly ECDsa intermediateKey;
@@ -220,6 +221,7 @@ public sealed class DeploySmokeTestTrustTests : IDisposable
             var rootRequest = new CertificateRequest($"CN={name}", rootKey, HashAlgorithmName.SHA256);
             rootRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
             rootRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+            rootRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(rootRequest.PublicKey, false));
             var notBefore = DateTimeOffset.UtcNow.AddDays(-1);
             var notAfter = DateTimeOffset.UtcNow.AddDays(30);
             using var rootWithKey = rootRequest.CreateSelfSigned(notBefore, notAfter);
@@ -230,6 +232,8 @@ public sealed class DeploySmokeTestTrustTests : IDisposable
             var intermediateRequest = new CertificateRequest($"CN={name} Intermediate", intermediateKey, HashAlgorithmName.SHA256);
             intermediateRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
             intermediateRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+            intermediateRequest.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(intermediateRequest.PublicKey, false));
+            intermediateRequest.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(rootWithKey, true, false));
             // A certificate may not outlive its issuer, so each level ends a day earlier.
             using var signedIntermediate = intermediateRequest.Create(rootWithKey, notBefore, notAfter.AddDays(-1), RandomNumberGenerator.GetBytes(8));
             var intermediate = X509CertificateLoader.LoadCertificate(signedIntermediate.Export(X509ContentType.Cert));
@@ -247,6 +251,8 @@ public sealed class DeploySmokeTestTrustTests : IDisposable
             var names = new SubjectAlternativeNameBuilder();
             names.AddDnsName(host);
             request.CertificateExtensions.Add(names.Build());
+            request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+            request.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(Intermediate, true, false));
             using var intermediateWithKey = Intermediate.CopyWithPrivateKey(intermediateKey);
             using var signed = request.Create(intermediateWithKey, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(20), RandomNumberGenerator.GetBytes(8));
             using var withKey = signed.CopyWithPrivateKey(key);
@@ -255,9 +261,24 @@ public sealed class DeploySmokeTestTrustTests : IDisposable
 
         public void Dispose()
         {
+            ForgetIntermediate();
             Root.Dispose();
             Intermediate.Dispose();
             intermediateKey.Dispose();
+        }
+
+        // On Windows a TLS server puts the intermediates of its certificate into the user's store of
+        // intermediate authorities, where they would stay after the test and pile up over the runs.
+        private void ForgetIntermediate()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return;
+            }
+
+            using var store = new X509Store(StoreName.CertificateAuthority, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadWrite | OpenFlags.OpenExistingOnly);
+            store.Remove(Intermediate);
         }
     }
 }
