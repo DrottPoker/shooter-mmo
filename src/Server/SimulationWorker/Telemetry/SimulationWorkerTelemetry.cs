@@ -32,6 +32,7 @@ public static class SimulationWorkerTelemetry
         CorpseRuntimeMetrics.MeterName,
         CombatMetrics.MeterName,
         GameServiceAvailabilityMetrics.MeterName,
+        GameServiceCallMetrics.MeterName,
         PresenceMetrics.MeterName
     ];
 

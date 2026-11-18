@@ -1016,6 +1016,11 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
     // The rule set that a worker heartbeat assigns to the Shard.
     public string WorkerRuleSet { get; set; } = "test";
 
+    // The session lease that every registry heartbeat answer reports: two hours, which outlasts the
+    // longest session heartbeat interval that a harness host configures, so the worker's check of
+    // the lease against its own timing never ends a test.
+    public const int SessionLeaseSeconds = 7_200;
+
     public int ConsumeCount => Volatile.Read(ref consumeCount);
 
     public int ReleaseCount => Volatile.Read(ref releaseCount);
@@ -1455,7 +1460,8 @@ internal sealed class ScriptedGameServiceHandler : HttpMessageHandler
                     heartbeat.ItemCatalogRevision,
                     heartbeat.QuestCatalogRevision,
                     now,
-                    now.AddSeconds(30)));
+                    now.AddSeconds(30),
+                    SessionLeaseSeconds));
             case "offline":
                 var offline = await request.Content!
                     .ReadFromJsonAsync<SimulationWorkerOfflineRequest>(cancellationToken);
@@ -1578,18 +1584,29 @@ internal sealed class CapturingLogger<T> : ILogger<T>
     }
 }
 
+// A clock that moves only when a test advances it, on the wall clock and on the timestamps alike.
 internal sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
 {
     private long utcNowTicks = utcNow.UtcTicks;
+    private long elapsedTicks;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
     public void Advance(TimeSpan duration)
     {
         Interlocked.Add(ref utcNowTicks, duration.Ticks);
+        Interlocked.Add(ref elapsedTicks, duration.Ticks);
     }
 
     public override DateTimeOffset GetUtcNow()
     {
         return new DateTimeOffset(Interlocked.Read(ref utcNowTicks), TimeSpan.Zero);
+    }
+
+    public override long GetTimestamp()
+    {
+        // Above zero, so no code mistakes the start for an unset timestamp.
+        return TimeSpan.TicksPerDay + Interlocked.Read(ref elapsedTicks);
     }
 }
 

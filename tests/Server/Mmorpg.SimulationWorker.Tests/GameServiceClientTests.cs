@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Contracts;
 using Mmorpg.SimulationWorker.GameServiceApi;
 
 namespace Mmorpg.SimulationWorker.Tests;
@@ -872,7 +873,8 @@ public sealed class GameServiceClientTests
             itemCatalogRevision = requestBody.ItemCatalogRevision,
             questCatalogRevision = requestBody.QuestCatalogRevision,
             lastHeartbeatAt = DateTime.UtcNow,
-            onlineUntil = DateTime.UtcNow.AddSeconds(30)
+            onlineUntil = DateTime.UtcNow.AddSeconds(30),
+            sessionLeaseSeconds = 150
         }));
         var client = CreateClient(handler);
 
@@ -900,6 +902,46 @@ public sealed class GameServiceClientTests
         Assert.Equal(
             "quest-catalog-revision-1",
             body.RootElement.GetProperty("questCatalogRevision").GetString());
+        Assert.Equal(
+            ServiceContract.Version,
+            body.RootElement.GetProperty("serviceContractVersion").GetInt32());
+        Assert.Equal(150, result.Value!.SessionLeaseSeconds);
+    }
+
+    // The answer must say how long GameService leases a session, or the worker cannot check its own
+    // timing against it, so an answer without the lease is invalid.
+    [Fact]
+    public async Task AHeartbeatAnswerWithoutASessionLeaseIsInvalid()
+    {
+        var requestBody = CreateHeartbeatRequest();
+        var client = CreateClient(new RecordingHttpMessageHandler(_ => CreateJsonResponse(new
+        {
+            workerId = "local-simulation-worker-1",
+            runtimeId = requestBody.RuntimeId,
+            fleetId = requestBody.FleetId,
+            nodeId = requestBody.NodeId,
+            shardId = requestBody.ShardId,
+            worldId = "development-world-1",
+            ruleSet = "mvp-open-risk",
+            host = requestBody.Host,
+            udpPort = requestBody.UdpPort,
+            maxConnections = requestBody.MaxConnections,
+            activeConnections = requestBody.ActiveConnections,
+            protocolVersion = requestBody.ProtocolVersion,
+            simulationRevision = requestBody.SimulationRevision,
+            collisionRevision = requestBody.CollisionRevision,
+            itemCatalogRevision = requestBody.ItemCatalogRevision,
+            questCatalogRevision = requestBody.QuestCatalogRevision,
+            lastHeartbeatAt = DateTime.UtcNow,
+            onlineUntil = DateTime.UtcNow.AddSeconds(30)
+        })));
+
+        var result = await client.HeartbeatSimulationWorkerAsync(
+            "local-simulation-worker-1",
+            requestBody,
+            CancellationToken.None);
+
+        Assert.Equal("invalid_auth_response", result.Error!.Code);
     }
 
     [Fact]
@@ -925,7 +967,8 @@ public sealed class GameServiceClientTests
             itemCatalogRevision = requestBody.ItemCatalogRevision,
             questCatalogRevision = "quest-catalog-revision-2",
             lastHeartbeatAt = DateTime.UtcNow,
-            onlineUntil = DateTime.UtcNow.AddSeconds(30)
+            onlineUntil = DateTime.UtcNow.AddSeconds(30),
+            sessionLeaseSeconds = 150
         }));
         var client = CreateClient(handler);
 
@@ -1640,7 +1683,8 @@ public sealed class GameServiceClientTests
             GameSimulationCompatibility.Revision,
             "collision-revision-1",
             "item-catalog-revision-1",
-            "quest-catalog-revision-1");
+            "quest-catalog-revision-1",
+            ServiceContract.Version);
     }
 
     private static object[] CreateCorpseSections()

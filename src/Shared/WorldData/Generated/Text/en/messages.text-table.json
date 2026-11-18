@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "7f3387a0765323047fff5bec92ea654e7b688cd377c1272e3ffa77f77b7fc6b2",
+  "revision": "1d630d7ce4533debc2f35262acd778b0514adfd4c6b1a90ec47b324ffaded869",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -41,6 +41,14 @@
       "text": "The game service is busy. Try again in a moment."
     },
     {
+      "key": "message/auth_service_authentication_failed",
+      "text": "The shard could not work with the game service and closed the connection. Try joining again in a moment, or pick another shard."
+    },
+    {
+      "key": "message/auth_service_rejected",
+      "text": "The game service refused that. Try again."
+    },
+    {
       "key": "message/auth_service_timeout",
       "text": "The game service did not answer in time. Try again shortly."
     },
@@ -55,6 +63,14 @@
     {
       "key": "message/bag_state_changed",
       "text": "The Bag changed before the move. Try again."
+    },
+    {
+      "key": "message/carry_state_conflict",
+      "text": "Your items changed while you were joining. Try joining again."
+    },
+    {
+      "key": "message/carry_state_missing",
+      "text": "Your items are not ready on this shard. Try joining again."
     },
     {
       "key": "message/carry_weight_limit_exceeded",
@@ -125,6 +141,10 @@
       "text": "The corpse is gone."
     },
     {
+      "key": "message/corpse_interaction_active",
+      "text": "Close what you have open before you open a corpse."
+    },
+    {
       "key": "message/corpse_invalidated",
       "text": "The corpse is no longer available."
     },
@@ -163,6 +183,10 @@
     {
       "key": "message/currency_limit_exceeded",
       "text": "You cannot hold that much Gold."
+    },
+    {
+      "key": "message/database_unavailable",
+      "text": "The game service cannot read or save anything right now. Try again shortly."
     },
     {
       "key": "message/death_not_saved",
@@ -217,6 +241,10 @@
       "text": "Gathering is not available right now."
     },
     {
+      "key": "message/http_error",
+      "text": "The game service could not complete the request. Try again shortly."
+    },
+    {
       "key": "message/incompatible_protocol",
       "text": "Your game is out of date. Update it to play."
     },
@@ -245,6 +273,14 @@
       "text": "The shard ran into a problem and closed the connection. Try again."
     },
     {
+      "key": "message/internal_server_error",
+      "text": "The game service ran into a problem. Try again shortly."
+    },
+    {
+      "key": "message/invalid_auth_response",
+      "text": "The shard got an answer from the game service that it could not use and closed your connection. Try joining again in a moment."
+    },
+    {
       "key": "message/invalid_character_appearance",
       "text": "That look is not available."
     },
@@ -263,6 +299,10 @@
     {
       "key": "message/invalid_login",
       "text": "Enter your login and your password."
+    },
+    {
+      "key": "message/invalid_packet",
+      "text": "The shard could not read a message from your game and closed the connection. Try again."
     },
     {
       "key": "message/invalid_password",
@@ -469,6 +509,10 @@
       "text": "Choose one of the rewards."
     },
     {
+      "key": "message/rate_limit_exceeded",
+      "text": "You are doing that too often. Wait a moment and try again."
+    },
+    {
       "key": "message/realtime_busy",
       "text": "Another connection to a shard is still active. Wait a moment and try again."
     },
@@ -501,6 +545,10 @@
       "text": "The shard shut down. Try joining again in a moment."
     },
     {
+      "key": "message/session_cache_invalidation_unavailable",
+      "text": "Your login could not be changed safely right now. Try again shortly."
+    },
+    {
       "key": "message/session_expired",
       "text": "The connection to the shard was lost for too long."
     },
@@ -525,8 +573,28 @@
       "text": "This shard has not been updated to your version of the game yet. Try again in a few minutes."
     },
     {
+      "key": "message/shard_unavailable",
+      "text": "This shard is offline or full right now. Try again in a moment, or pick another shard."
+    },
+    {
       "key": "message/simulation_session_changed",
       "text": "The character entered the world from another client. Try again."
+    },
+    {
+      "key": "message/simulation_session_invalid",
+      "text": "The shard no longer knows this connection. Join again."
+    },
+    {
+      "key": "message/simulation_session_worker_unavailable",
+      "text": "Your character is still on a shard that is not answering. Try again in a moment."
+    },
+    {
+      "key": "message/simulation_worker_item_catalog_mismatch",
+      "text": "This shard is being updated, and its items do not match the game service yet. Try again in a few minutes, or pick another shard."
+    },
+    {
+      "key": "message/simulation_worker_quest_catalog_mismatch",
+      "text": "This shard is being updated, and its quests do not match the game service yet. Try again in a few minutes, or pick another shard."
     },
     {
       "key": "message/udp_connect_failed",
@@ -569,12 +637,24 @@
       "text": "The vendor does not buy that."
     },
     {
+      "key": "message/worker_registry_lease_unavailable",
+      "text": "The shard is not ready to take players right now. Try again in a moment."
+    },
+    {
+      "key": "message/worker_runtime_changed",
+      "text": "The shard restarted, so your connection was closed. Try joining again in a moment."
+    },
+    {
       "key": "message/world_actor_not_found",
       "text": "That is no longer there."
     },
     {
       "key": "message/world_actor_unavailable",
       "text": "That is not available right now."
+    },
+    {
+      "key": "message/world_interaction_active",
+      "text": "Close what you have open before you open something else."
     },
     {
       "key": "message/world_interaction_capability_deferred",
@@ -619,6 +699,14 @@
     {
       "key": "message/world_scene_unavailable",
       "text": "This World is not part of this client. Update the client to play on this shard."
+    },
+    {
+      "key": "message/wrong_simulation_assignment",
+      "text": "That join ticket was for another shard. Try joining again."
+    },
+    {
+      "key": "message/wrong_simulation_worker",
+      "text": "That does not belong to this shard. If it keeps happening, join again."
     }
   ]
 }

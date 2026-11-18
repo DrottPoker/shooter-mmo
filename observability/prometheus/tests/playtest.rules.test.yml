@@ -249,3 +249,206 @@ tests:
               severity: warning
             exp_annotations:
               summary: Sessions of a worker that still answers are past their lease and unreleased, so it neither renews nor releases every session it holds; the worker log names them.
+
+  - name: A worker that lost GameService alerts after a minute, one that answers does not
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_available{instance="w1"}'
+        values: '1x8 0x32'
+      - series: 'simulation_worker_game_service_heartbeat_age_seconds{instance="w1"}'
+        values: '0+1x8 8+15x32'
+      - series: 'simulation_worker_game_service_available{instance="w2"}'
+        values: '1x40'
+      - series: 'simulation_worker_game_service_heartbeat_age_seconds{instance="w2"}'
+        values: '3x40'
+    alert_rule_test:
+      - eval_time: 2m30s
+        alertname: WorkerLostGameService
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WorkerLostGameService
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+            exp_annotations:
+              summary: The worker w1 has had no answer from GameService for more than a minute, so items, trade, and quests are paused for its players, and it stops by itself once its outage tolerance has passed.
+
+  - name: A worker whose heartbeat is old alerts even before it counts GameService as unavailable
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_available{instance="w1"}'
+        values: '1x40'
+      - series: 'simulation_worker_game_service_heartbeat_age_seconds{instance="w1"}'
+        values: '0+1x8 60x32'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WorkerLostGameService
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WorkerLostGameService
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+            exp_annotations:
+              summary: The worker w1 has had no answer from GameService for more than a minute, so items, trade, and quests are paused for its players, and it stops by itself once its outage tolerance has passed.
+
+  - name: One abandoned durable operation alerts at once
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_abandoned_operations_total{instance="w1", kind="player_death"}'
+        values: '0x10 1x30'
+      - series: 'simulation_worker_game_service_abandoned_operations_total{instance="w2", kind="mob_corpse"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AbandonedDurableOperations
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: AbandonedDurableOperations
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+              kind: player_death
+            exp_annotations:
+              summary: The worker w1 gave up a durable operation of the kind player_death that never committed, which is lost progress; its error line names the operation id.
+
+  - name: Refused intents alert only when they are sustained
+    interval: 15s
+    input_series:
+      # A burst of refusals that ends, and a steady stream of one per second.
+      - series: 'simulation_worker_game_service_refused_intents_total{instance="w1", kind="item_operation"}'
+        values: '0+0x4 5+0x60'
+      - series: 'simulation_worker_game_service_refused_intents_total{instance="w2", kind="item_operation"}'
+        values: '0+15x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DurableActionsRefused
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w2
+            exp_annotations:
+              summary: The worker w2 keeps refusing durable player actions because GameService does not answer.
+
+  - name: Failed calls to GameService alert by route group and reason
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_call_failures_total{instance="w1", route="item", reason="timeout"}'
+        values: '0+3x60'
+      - series: 'simulation_worker_game_service_call_failures_total{instance="w1", route="checkpoint", reason="timeout"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WorkerCallsToGameServiceFail
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+              route: item
+              reason: timeout
+            exp_annotations:
+              summary: Calls of the worker w1 to GameService keep failing on the route group item with the reason timeout.
+
+  - name: A worker that withholds its renewal alerts at once
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_registry_renewals_withheld_total{instance="w1"}'
+        values: '0x10 1x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+            exp_annotations:
+              summary: The realtime loop of the worker w1 went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
+
+  - name: A worker whose first withheld renewal comes before its first report still alerts
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_registry_renewals_withheld_total{instance="w1"}'
+        values: '_x8 1x60'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+            exp_annotations:
+              summary: The realtime loop of the worker w1 went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
+      - eval_time: 14m
+        alertname: WorkerRenewalsWithheld
+        exp_alerts: []
+
+  - name: The first abandoned operation of a kind alerts although its series begins at one
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_game_service_abandoned_operations_total{instance="w1", kind="death"}'
+        values: '_x8 1x60'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AbandonedDurableOperations
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: w1
+              kind: death
+            exp_annotations:
+              summary: The worker w1 gave up a durable operation of the kind death that never committed, which is lost progress; its error line names the operation id.
+
+  - name: Sustained auth_busy alerts when only the password hashing lane ever refused
+    interval: 15s
+    input_series:
+      - series: 'game_service_accounts_password_hashing_refusals_total{operation="verify"}'
+        values: '0+15x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LoginsRefusedAsBusy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.
+
+  - name: Sustained auth_busy alerts when only the revocation slots ever refused
+    interval: 15s
+    input_series:
+      - series: 'game_service_redis_session_cache_operations_total{result="revocation_refused"}'
+        values: '0+15x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LoginsRefusedAsBusy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.
+
+  - name: Sustained auth_busy counts the password hashing lane and the revocation slots together
+    interval: 15s
+    input_series:
+      - series: 'game_service_accounts_password_hashing_refusals_total{operation="verify"}'
+        values: '0x60'
+      - series: 'game_service_redis_session_cache_operations_total{result="revocation_refused"}'
+        values: '0+15x60'
+      - series: 'game_service_redis_session_cache_operations_total{result="hit"}'
+        values: '0+1000x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LoginsRefusedAsBusy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.

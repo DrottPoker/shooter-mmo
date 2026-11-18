@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Mmorpg.SimulationWorker.Config;
 using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.Health;
 using Mmorpg.SimulationWorker.Realtime;
@@ -21,6 +23,20 @@ public static class SimulationWorkerHostedServices
     // stops any hosted service: its shutdown commits the uncommitted arrow shots and quest
     // credits and saves the place and vitals of every remaining player while the sessions and
     // the registration still hold.
+    // The host stops every hosted service within one shutdown timeout, which would otherwise be the
+    // host's default of 30 seconds. The orderly stop can spend one call timeout on each of its steps
+    // that call GameService, so the worker sets the timeout from them, as SimulationWorkerConfig
+    // validates, and a container's stop grace period must stay longer than it.
+    public static IServiceCollection AddSimulationWorkerShutdownTimeout(
+        this IServiceCollection services,
+        SimulationWorkerConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(config);
+        services.Configure<HostOptions>(options => options.ShutdownTimeout = config.ShutdownTimeout);
+        return services;
+    }
+
     public static IServiceCollection AddSimulationWorkerHostedServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

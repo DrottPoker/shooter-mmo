@@ -2,6 +2,7 @@ using Dapper;
 using Mmorpg.GameService.Placement.Contracts;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameService.Platform.Http;
+using Mmorpg.Server.Common.Contracts;
 using Mmorpg.Server.Common.Identity;
 using Npgsql;
 
@@ -33,7 +34,8 @@ internal sealed class SimulationWorkerRegistryService(
                   item_catalog_revision as "ItemCatalogRevision",
                   quest_catalog_revision as "QuestCatalogRevision",
                   last_heartbeat_at as "LastHeartbeatAt",
-                  last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil";
+                  last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) as "OnlineUntil",
+                  @SessionLeaseSeconds as "SessionLeaseSeconds";
         """;
 
     public async Task<ServiceResult<SimulationWorkerHeartbeatResponse>> HeartbeatAsync(
@@ -41,6 +43,14 @@ internal sealed class SimulationWorkerRegistryService(
         SimulationWorkerHeartbeatRequest request,
         CancellationToken cancellationToken)
     {
+        // First, since a worker of another version may send a request of another shape.
+        if (request.ServiceContractVersion != ServiceContract.Version)
+        {
+            return ServiceResult<SimulationWorkerHeartbeatResponse>.Conflict(
+                ServiceContract.MismatchCode,
+                ServiceContract.MismatchMessage(request.ServiceContractVersion));
+        }
+
         var validationError = Validate(workerId, request);
         if (validationError is not null)
         {
@@ -420,7 +430,8 @@ internal sealed class SimulationWorkerRegistryService(
             ShardId = shardId,
             WorldId = worldId,
             RuleSet = ruleSet,
-            HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds
+            HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds,
+            SessionLeaseSeconds = options.SessionLeaseLifetimeSeconds
         };
     }
 

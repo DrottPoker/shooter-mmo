@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Reflection;
 using Mmorpg.GameService;
+using Mmorpg.GameService.Accounts.PasswordHashing;
 using Mmorpg.GameService.Accounts.Redis;
 using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Items;
@@ -74,6 +75,7 @@ public sealed class GameServiceTelemetryTests
         };
         listener.Start();
         using var redisMetrics = new RedisAccelerationMetrics();
+        using var passwordHashingMetrics = new PasswordHashingMetrics();
         using var itemMetrics = new ItemOperationsMetrics();
         using var placementMetrics = new PlacementMetrics();
         using var retentionMetrics = new RetentionMetrics();

@@ -40,6 +40,7 @@ public sealed class AccountsModule(AccountsModuleOptions options) : IGameService
         services.AddSingleton<PasswordHashingLane>();
         services.AddSingleton<RedisAccelerationMetrics>();
         services.AddSingleton<IAccountSessionCache, RedisAccountSessionCache>();
+        services.AddSingleton<SessionRevocationBulkhead>();
         services.AddSingleton<RedisAuthenticationRateLimiter>();
         services.AddSingleton<IAccountLocks, AccountLocks>();
         services.AddSingleton<IAccountSessionActivity, AccountSessionActivity>();

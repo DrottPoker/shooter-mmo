@@ -3928,6 +3928,94 @@ terminal plays a proxy on the same host.
    `Remove-Item Env:ASPNETCORE_ENVIRONMENT` and start GameService again as
    usual.
 
+### The Health Routes Carry No Limit
+
+With GameService running, lower the public limit and read the health routes
+more often than that limit:
+
+```powershell
+$env:RateLimiting__Public__PermitLimit = "2"
+dotnet run --project src/Server/GameService
+```
+
+In another terminal:
+
+```powershell
+1..3 | ForEach-Object {
+    try { [int](Invoke-WebRequest http://localhost:5000/api/shards -UseBasicParsing).StatusCode }
+    catch { [int]$_.Exception.Response.StatusCode }
+}
+1..30 | ForEach-Object { [int](Invoke-WebRequest http://localhost:5000/health/live -UseBasicParsing).StatusCode } |
+    Sort-Object -Unique
+```
+
+Expected result: the shard list answers `200`, `200`, and `429` with a `Retry-After`, and every
+one of the 30 liveness checks answers `200` although that address spent its public limit.
+Readiness answers `200` or `503` with the state of its dependencies, never `429`. Clear the
+variable with `Remove-Item Env:RateLimiting__Public__PermitLimit` and start GameService again as
+usual.
+
+### A Proxy's Error Page Is An Outage
+
+This checks [GameService Outage](SERVICE_FEATURES.md#gameservice-outage) against what a proxy
+answers while GameService restarts behind it, not against a lost connection. Join with the Unity
+client, as [Join With The Unity Client](#join-with-the-unity-client) describes. Stop GameService with
+Ctrl+C and, in its place, listen on its port with a stand-in that answers every request like a
+proxy's error page:
+
+```powershell
+$listener = [System.Net.HttpListener]::new()
+$listener.Prefixes.Add("http://localhost:5000/")
+$listener.Start()
+while ($true) {
+    $context = $listener.GetContext()
+    $context.Response.StatusCode = 502
+    $context.Response.ContentType = "text/html"
+    $bytes = [Text.Encoding]::UTF8.GetBytes("<html><body>502 Bad Gateway</body></html>")
+    $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+    $context.Response.Close()
+}
+```
+
+Wait about 20 seconds, press Ctrl+C in the stand-in's terminal, and start GameService again.
+
+Expected result: the worker logs `Simulation worker registry heartbeat failed ... auth_service_unavailable`
+and `GameService does not answer the registry heartbeat (auth_service_unavailable)`, never
+`invalid_auth_response`. The client shows the saving-paused line, the character stays in the World
+without a disconnect, and once GameService answers the worker logs `GameService answers the registry
+heartbeat again`, the line goes away, and the session heartbeat renews the lease. In the monitoring
+stack, `simulation_worker_game_service_call_failures_total` counts the failed calls under the route
+group `registry` with the reason `no_problem`.
+
+### Timing Settings That Cannot Work
+
+1. Start GameService with a session lease shorter than the worker's outage tolerance and start the
+   worker:
+
+   ```powershell
+   $env:Simulation__SessionLeaseLifetimeSeconds = "60"
+   dotnet run --project src/Server/GameService
+   dotnet run --project src/Server/SimulationWorker
+   ```
+
+   Expected result: the worker registers, logs one critical message `The timing settings of worker
+   local-simulation-worker-1 and of GameService cannot work together` that names `session lease of 60 s
+   (Simulation:SessionLeaseLifetimeSeconds)` and `SimulationWorker:GameServiceOutageToleranceSeconds`,
+   goes offline, and exits. `GET /api/shards` shows the Shard offline. Clear the variable and start
+   GameService again.
+
+2. Start the worker with a shutdown timeout that cannot cover its stop:
+
+   ```powershell
+   $env:SimulationWorker__ShutdownTimeoutSeconds = "10"
+   dotnet run --project src/Server/SimulationWorker
+   ```
+
+   Expected result: the worker does not start. Its error `SimulationWorker configuration is invalid`
+   says that `SimulationWorker:ShutdownTimeoutSeconds` must be at least 6 times
+   `SimulationWorker:GameServiceTimeoutSeconds` plus 3 seconds, 33 with the default call timeout.
+   Remove the variable with `Remove-Item Env:SimulationWorker__ShutdownTimeoutSeconds`.
+
 ### Database Checks
 
 Read the item foundation as

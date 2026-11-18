@@ -663,6 +663,15 @@ order:
    offline through `/offline`.
 4. The session heartbeat releases every local session.
 
+The steps that call GameService each may spend a call timeout, so the host's
+shutdown timeout is a setting of the worker, `SimulationWorker:ShutdownTimeoutSeconds`,
+40 seconds by default and validated to be at least 6 call timeouts plus 3 seconds:
+the in-flight operations, the arrow batch and the quest credits of the combat
+flush, the last checkpoint, going offline, and the session releases. The host's
+own default of 30 seconds would not cover them, and a container's stop grace
+period must stay longer than the setting, as [Deployment](DEPLOYMENT.md#settings-that-must-be-set)
+says.
+
 The combat work and the last state of a session are therefore committed before
 the session is released or the runtime goes offline. Going offline releases
 every session of the runtime, so a release that follows saves no final state;
@@ -1290,6 +1299,22 @@ GameService considers this runtime fresh: UDP connection requests and joins are
 refused without it, so nobody joins a worker that GameService may already have
 replaced, and durable corpse restoration waits for it.
 
+The deadline of the local registration lease is a monotonic timestamp of the
+host plus the duration that GameService granted, never a wall clock time, so a
+step of the host clock, a VM that resumes or a manual correction, neither drops
+the lease at once nor extends it past what GameService honours.
+
+A worker whose realtime loop has been silent for longer than the limit of its
+health file, 5 seconds, sends no registry renewal, though its heartbeat service
+is alive. The lease ends, GameService takes the Shard offline by the rules above,
+and durable actions pause until the worker registers again, which it does with
+its next heartbeat once the loop ticks. GameService renews the same runtime
+however long it was gone, so a hang of any length that no other runtime followed
+loses no assignment, and the sessions that the worker holds stay as they are,
+those whose own lease ran out meanwhile excepted, which the session heartbeat
+refuses and ends like any refused session. The worker never stops itself for a
+hung loop, and the outage monitor does not count a silence that it chose.
+
 The end of the local lease does not stop the worker. The worker plays on
 through a GameService outage of up to
 `SimulationWorker:GameServiceOutageToleranceSeconds`, 120 by default, counted
@@ -1316,6 +1341,22 @@ runtime, so nobody new joins the old one; and the old runtime's players lose
 only what was not saved, their position and vitals since the last checkpoint.
 Simulation session leases, 150 seconds by default, outlast the tolerance, so a
 worker that comes back within it still holds every session.
+
+Known limit: two live runtimes of one worker id are ordered by the start time
+that each reports, which comes from host clocks that nothing synchronizes, and the
+registry rejects a start time more than ten minutes in the future. A runtime that
+a replacement took over, and that still runs because it was cut off, registers
+again when it reaches GameService; if its host clock is ahead of the
+replacement's, its reported start time is the later one, and the registration
+that should have ended with `worker_runtime_changed` evicts the live replacement
+instead, which then gets `worker_runtime_changed` itself and stops. The skew that
+causes it is bounded by the ten minutes, and the old runtime has stopped itself
+after its outage tolerance in any case, so it needs a partition that heals within
+that time and a host clock that is minutes wrong. What would close it is an
+ordering that does not come from host clocks: the registry numbers every
+registration of a worker id with a generation that only it increases, a runtime
+renews and registers only with the generation that it was given, and a runtime
+that holds an older generation is refused whatever its clock says.
 
 ## Trust Boundaries
 
@@ -1418,14 +1459,21 @@ adds a production code path:
    runtime.
 2. It binds UDP and reports transport readiness.
 3. It sends worker, runtime, topology, desired World, endpoint, capacity,
-   protocol, simulation, collision, and item catalog metadata to GameService.
+   protocol, simulation, collision, item catalog, and quest catalog metadata, and
+   the service contract version, to GameService. GameService refuses another
+   version, or none, with `service_contract_mismatch`, and the worker, which plays
+   nobody meanwhile, logs which side is older and tries again.
 4. GameService validates the World database entry and fleet boundaries, safely
    binds or rebinds the shard, creates the assignment, and returns a
-   database-timed online lease with the Shard's rule set.
-5. The worker renews its local registration lease and continues heartbeats,
+   database-timed online lease with the Shard's rule set and the lease of every
+   simulation session.
+5. The worker checks that both leases can work with its own timing, and stops
+   before it plays anyone when they cannot, as
+   [GameService Outage](SERVICE_FEATURES.md#gameservice-outage) describes.
+6. The worker renews its local registration lease and continues heartbeats,
    every `SimulationWorker:RegistryHeartbeatSeconds` and every
    `RegistryHeartbeatRetryMilliseconds` after one that GameService did not
-   answer.
+   answer, unless its realtime loop is silent.
 
 ### Shard Discovery And Placement
 
@@ -1761,16 +1809,19 @@ process. The options and their defaults are in
 ## Health And Operations
 
 GameService exposes `/health/live` and `/health/ready`, and `/` redirects to
-readiness. Liveness confirms the process. Readiness runs a real PostgreSQL
-`select 1` query and Redis `PING`, after `AUTH` when Redis has a password,
-within `HealthChecks:TimeoutMilliseconds`, and returns HTTP 503 when an
-obligatory dependency fails, and from the stop signal on, so a proxy drains
-GameService before it stops, as
+readiness. The health routes carry no rate limit, so a prober is never answered
+429 and taken for a service that is down, and readiness shares one dependency
+check among the callers that ask within a second. Liveness confirms the process.
+Readiness runs a real PostgreSQL `select 1` query and Redis `PING`, after `AUTH`
+when Redis has a password, within `HealthChecks:TimeoutMilliseconds`, and returns
+HTTP 503 when an obligatory dependency fails, and from the stop signal on, so a
+proxy drains GameService before it stops, as
 [Orderly Shutdown](SERVICE_FEATURES.md#orderly-shutdown) describes. Redis
 accelerates account-session validation and authentication rate limits, as
 [Redis Account-Session Acceleration](SERVICE_FEATURES.md#redis-account-session-acceleration)
 describes, but it never decides item custody, simulation authority, or durable
-session truth.
+session truth. With `RedisAcceleration:Enabled=false` readiness neither probes nor
+lists Redis.
 
 SimulationWorker has no HTTP server. `--health-check-only` loads and validates
 its configuration and content like a normal start, then checks GameService

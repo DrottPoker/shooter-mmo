@@ -304,7 +304,9 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     HeartbeatRequest.ItemCatalogRevision,
                     HeartbeatRequest.QuestCatalogRevision,
                     now,
-                    now.AddSeconds(30)));
+                    // The heartbeat interval of this test is an hour, which the lease must outlast.
+                    now.AddHours(2),
+                    150));
             }
 
             OfflineRequest = await request.Content!.ReadFromJsonAsync<SimulationWorkerOfflineRequest>(
@@ -430,7 +432,8 @@ public sealed class SimulationWorkerHeartbeatServiceTests
                     heartbeat.ItemCatalogRevision,
                     heartbeat.QuestCatalogRevision,
                     now,
-                    now.AddSeconds(30)))
+                    now.AddSeconds(30),
+                    150))
             };
         }
     }

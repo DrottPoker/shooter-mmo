@@ -185,6 +185,7 @@ builder.Services.AddSingleton<RealtimeLoopLiveness>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SimulationWorkerRegistrationLease>();
 builder.Services.AddSingleton<GameServiceAvailabilityMetrics>();
+builder.Services.AddSingleton<GameServiceCallMetrics>();
 builder.Services.AddSingleton<GameServiceAvailability>();
 builder.Services.AddSingleton<SimulationWorkerStopReason>();
 builder.Services.AddSingleton(new SimulationInterestManager(config.InterestManagement));
@@ -211,6 +212,7 @@ CombatDependencies.Register(builder.Services);
 AppearanceDependencies.Register(builder.Services);
 QuestDependencies.Register(builder.Services);
 PersistenceDependencies.Register(builder.Services);
+builder.Services.AddSimulationWorkerShutdownTimeout(config);
 builder.Services.AddSimulationWorkerHostedServices();
 
 using var host = builder.Build();

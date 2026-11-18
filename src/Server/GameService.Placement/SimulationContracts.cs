@@ -40,7 +40,9 @@ internal sealed record SimulationWorkerHeartbeatRequest(
     string? SimulationRevision,
     string? CollisionRevision,
     string? ItemCatalogRevision,
-    string? QuestCatalogRevision = null);
+    string? QuestCatalogRevision = null,
+    // ServiceContract.Version of the worker; a heartbeat of another version, or of none, is refused.
+    int? ServiceContractVersion = null);
 
 internal sealed record SimulationWorkerHeartbeatResponse(
     string WorkerId,
@@ -60,7 +62,10 @@ internal sealed record SimulationWorkerHeartbeatResponse(
     string ItemCatalogRevision,
     string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
-    DateTime OnlineUntil);
+    DateTime OnlineUntil,
+    // The lease of every simulation session of this Shard, which the worker checks against its
+    // own timing settings.
+    int SessionLeaseSeconds);
 
 internal sealed record SimulationWorkerOfflineRequest(string? RuntimeId);
 

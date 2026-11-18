@@ -79,7 +79,7 @@ public sealed class GameServiceConfigurationValidationTests
 
         Assert.Equal(TimeSpan.FromSeconds(2), defaults.Platform.RedisCommandTimeout);
         Assert.Equal(TimeSpan.FromSeconds(10), defaults.Accounts.PasswordHashing.MaxWait);
-        Assert.Equal(TimeSpan.FromSeconds(5), acceleration.SessionRevocationDeadline);
+        Assert.Equal(TimeSpan.FromSeconds(2), acceleration.SessionRevocationDeadline);
         Assert.Contains("Redis:CommandTimeoutMilliseconds must be an integer from 100 to 60000", exception.Message);
         Assert.Contains("Auth:PasswordHashing:MaxWaitSeconds must be an integer from 1 to 10", exception.Message);
         Assert.Contains("SessionRevocationDeadlineMilliseconds must be between 100 and 30000", deadline.Message);

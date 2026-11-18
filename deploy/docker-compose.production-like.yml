@@ -175,9 +175,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # The host's shutdown timeout is 30 seconds: the last checkpoint, the session releases, and
-    # the offline call must fit in it.
-    stop_grace_period: 45s
+    # SimulationWorker:ShutdownTimeoutSeconds is 40: the notice to the players, the commit of what
+    # waits, the last checkpoint, the offline call, and the session releases, each of which may spend
+    # a call timeout of 5 seconds, must fit in it, so the runtime must wait longer.
+    stop_grace_period: 60s
     restart: unless-stopped
     logging: *logging
 

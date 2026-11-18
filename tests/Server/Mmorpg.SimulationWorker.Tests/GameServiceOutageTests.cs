@@ -141,6 +141,137 @@ public sealed class GameServiceOutageTests
         Assert.False(worker.Availability.IsAvailable);
     }
 
+    // A worker whose realtime loop hangs keeps its port bound and its heartbeat service alive, so
+    // without this GameService would go on placing players on a worker that simulates nothing. The
+    // renewal stops while the loop is silent beyond the limit, the registry lease ends, and GameService
+    // takes the Shard offline by its rules; the worker neither stops itself nor loses what it holds.
+    [Fact]
+    public async Task ASilentLoopStopsTheRenewalsSoTheRegistryLeaseEndsAndTheWorkerNeitherStopsNorLetsGoOfItsSessions()
+    {
+        using var renewals = new RenewalCounter();
+        await using var worker = await OutageWorker.StartAsync(new RealtimeLoopLiveness());
+        var session = worker.AddSession();
+        await worker.AdvanceWithTicksAsync(TimeSpan.FromSeconds(25));
+        var beforeHang = worker.GameService.Heartbeats.Length;
+        Assert.True(worker.Lease.IsValid);
+        Assert.True(worker.Availability.IsAvailable);
+        Assert.True(beforeHang >= 3);
+
+        // The loop hangs: no tick completes from here on, for far longer than the outage tolerance.
+        await worker.AdvanceAsync(TimeSpan.FromSeconds(200));
+
+        // At most the one heartbeat that was already due went out before the silence passed the limit.
+        Assert.InRange(worker.GameService.Heartbeats.Length - beforeHang, 0, 1);
+        Assert.False(worker.Lease.IsValid, "The registry lease must end, so GameService takes the Shard offline.");
+        // Durable actions pause as in an outage, since a lease that is stale at GameService would end
+        // the sessions of the players who ask.
+        Assert.False(worker.Availability.IsAvailable);
+        // The worker never kills itself: the outage monitor does not count a silence that the worker chose.
+        Assert.False(worker.Lifetime.StopRequested.Task.IsCompleted);
+        Assert.True(worker.Availability.TimeSinceLastHeartbeat is { } age && age < Tolerance);
+        Assert.Single(worker.Sessions.ListActiveSessions());
+        Assert.True(worker.Sessions.IsCurrentGeneration(session));
+        // One error line for the whole episode, and one count.
+        Assert.Single(worker.HeartbeatLogger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.Equal(1, renewals.Count);
+    }
+
+    // When the loop ticks again the worker registers again, as after any lapse: the next heartbeat
+    // renews the same runtime, GameService accepts it however long it was gone, and the sessions that
+    // the worker holds are untouched by it. A session whose own lease ran out meanwhile is refused by
+    // the session heartbeat and ended there, as every refused session is.
+    [Fact]
+    public async Task ALoopThatTicksAgainRegistersAgainAndKeepsItsSessions()
+    {
+        await using var worker = await OutageWorker.StartAsync(new RealtimeLoopLiveness());
+        var session = worker.AddSession();
+        await worker.AdvanceWithTicksAsync(TimeSpan.FromSeconds(15));
+        await worker.AdvanceAsync(TimeSpan.FromSeconds(60));
+        Assert.False(worker.Lease.IsValid);
+        Assert.False(worker.Availability.IsAvailable);
+        var silent = worker.GameService.Heartbeats.Length;
+
+        // The loop completes a tick, and the next look of the heartbeat service finds it alive.
+        worker.Liveness!.TickCompleted(worker.Time.GetTimestamp());
+        await worker.AdvanceWithTicksAsync(TimeSpan.FromSeconds(3));
+
+        Assert.True(worker.GameService.Heartbeats.Length > silent, "The worker did not register again.");
+        Assert.True(worker.Lease.IsValid);
+        Assert.True(worker.Availability.IsAvailable);
+        Assert.False(worker.Lifetime.StopRequested.Task.IsCompleted);
+        Assert.Single(worker.Sessions.ListActiveSessions());
+        Assert.True(worker.Sessions.IsCurrentGeneration(session));
+        Assert.Single(
+            worker.HeartbeatLogger.Entries,
+            entry => entry.Level == LogLevel.Warning && entry.Message.Contains("ticks again", StringComparison.Ordinal));
+        // The heartbeat is back on its interval.
+        var registered = worker.GameService.Heartbeats.Last();
+        await worker.AdvanceWithTicksAsync(Interval);
+        Assert.Equal(registered + Interval, worker.GameService.Heartbeats.Last());
+    }
+
+    // A pause shorter than the limit, such as a garbage collection or a long catch-up, is not a hang.
+    [Fact]
+    public async Task ALoopThatIsSilentForLessThanTheLimitIsNotHeldBack()
+    {
+        await using var worker = await OutageWorker.StartAsync(new RealtimeLoopLiveness());
+        await worker.AdvanceWithTicksAsync(TimeSpan.FromSeconds(12));
+
+        // A silence of four seconds, which a ready worker allows, over the time of one heartbeat.
+        await worker.AdvanceAsync(TimeSpan.FromSeconds(4));
+        var heartbeats = worker.GameService.Heartbeats.Length;
+        await worker.AdvanceWithTicksAsync(TimeSpan.FromSeconds(20));
+
+        Assert.True(worker.GameService.Heartbeats.Length >= heartbeats + 2);
+        Assert.True(worker.Lease.IsValid);
+        Assert.True(worker.Availability.IsAvailable);
+        Assert.DoesNotContain(worker.HeartbeatLogger.Entries, entry => entry.Level == LogLevel.Error);
+    }
+
+    // A loop that never completes a tick is counted from the moment the transport listened: the worker
+    // that is only starting is not held back, and one whose loop never starts does not register anew.
+    [Fact]
+    public async Task ALoopThatNeverTicksIsCountedFromTheMomentTheTransportListened()
+    {
+        await using var worker = await OutageWorker.StartAsync(new RealtimeLoopLiveness());
+        // The first heartbeat went out at once, before any silence could be counted.
+        Assert.Single(worker.GameService.Heartbeats);
+
+        await worker.AdvanceAsync(TimeSpan.FromSeconds(40));
+
+        Assert.Single(worker.GameService.Heartbeats);
+        Assert.False(worker.Lease.IsValid);
+        Assert.False(worker.Lifetime.StopRequested.Task.IsCompleted);
+    }
+
+    // Counts the episodes of a withheld renewal that the heartbeat service reports.
+    private sealed class RenewalCounter : IDisposable
+    {
+        private readonly System.Diagnostics.Metrics.MeterListener listener = new();
+        private long count;
+
+        public RenewalCounter()
+        {
+            listener.InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (instrument.Meter.Name == GameServiceCallMetrics.MeterName
+                    && instrument.Name == "simulation_worker.registry.renewals_withheld")
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            };
+            listener.SetMeasurementEventCallback<long>((_, value, _, _) => Interlocked.Add(ref count, value));
+            listener.Start();
+        }
+
+        public long Count => Interlocked.Read(ref count);
+
+        public void Dispose()
+        {
+            listener.Dispose();
+        }
+    }
+
     // The registry heartbeat, the outage monitor, and the session heartbeat of one worker, all on
     // a stepped clock, against a GameService that answers or stays silent.
     private sealed class OutageWorker : IAsyncDisposable
@@ -153,8 +284,9 @@ public sealed class GameServiceOutageTests
         private readonly SimulationSessionHeartbeatService sessionHeartbeat;
         private readonly RealtimeTransportReadiness readiness = new();
 
-        private OutageWorker()
+        private OutageWorker(RealtimeLoopLiveness? liveness)
         {
+            Liveness = liveness;
             Sessions = new ActiveSimulationSessionStore(Time);
             GameService = new OutageGameService(Time);
             httpClient = new HttpClient(GameService) { BaseAddress = new Uri("http://game-service.test") };
@@ -182,7 +314,9 @@ public sealed class GameServiceOutageTests
                 Lifetime,
                 Availability,
                 StopReason,
-                Time);
+                Time,
+                liveness,
+                CallMetrics);
             monitor = new GameServiceOutageMonitor(Availability, config, StopReason, Lifetime, MonitorLogger, Time);
             sessionHeartbeat = new SimulationSessionHeartbeatService(
                 Client,
@@ -200,6 +334,11 @@ public sealed class GameServiceOutageTests
         }
 
         public SteppedTimeProvider Time { get; } = new(Start);
+
+        // Null in the tests of the outage, where no loop runs; the tests of a silent loop give one.
+        public RealtimeLoopLiveness? Liveness { get; }
+
+        public GameServiceCallMetrics CallMetrics { get; } = new();
 
         public DateTime UtcNow => Time.GetUtcNow().UtcDateTime;
 
@@ -228,9 +367,9 @@ public sealed class GameServiceOutageTests
         public CapturingLogger<GameServiceOutageMonitor> MonitorLogger { get; } = new();
 
         // Starts the services and lets the first heartbeat register the worker.
-        public static async Task<OutageWorker> StartAsync()
+        public static async Task<OutageWorker> StartAsync(RealtimeLoopLiveness? liveness = null)
         {
-            var worker = new OutageWorker();
+            var worker = new OutageWorker(liveness);
             worker.Lifetime.Time = worker.Time;
             await worker.heartbeat.StartAsync(CancellationToken.None);
             await worker.monitor.StartAsync(CancellationToken.None);
@@ -239,6 +378,21 @@ public sealed class GameServiceOutageTests
             await worker.SettleAsync();
             Assert.True(worker.Lease.IsValid);
             return worker;
+        }
+
+        // Moves the clock like AdvanceAsync, and the realtime loop completes a tick every second of it,
+        // as a loop that runs does.
+        public async Task AdvanceWithTicksAsync(TimeSpan duration)
+        {
+            var remaining = duration;
+            while (remaining > TimeSpan.Zero)
+            {
+                var step = remaining < TimeSpan.FromSeconds(1) ? remaining : TimeSpan.FromSeconds(1);
+                Liveness!.TickCompleted(Time.GetTimestamp());
+                Time.Advance(step);
+                remaining -= step;
+                await SettleAsync();
+            }
         }
 
         // A session that joined now with the lease GameService grants.
@@ -292,6 +446,7 @@ public sealed class GameServiceOutageTests
             monitor.Dispose();
             sessionHeartbeat.Dispose();
             httpClient.Dispose();
+            CallMetrics.Dispose();
         }
     }
 
@@ -395,7 +550,8 @@ public sealed class GameServiceOutageTests
                     heartbeat.ItemCatalogRevision,
                     heartbeat.QuestCatalogRevision,
                     now,
-                    now.AddSeconds(30)));
+                    now.AddSeconds(30),
+                    150));
             }
 
             if (path.EndsWith("/session-heartbeat", StringComparison.Ordinal))

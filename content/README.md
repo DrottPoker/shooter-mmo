@@ -419,7 +419,12 @@ English diagnostic of the server or the client is in the client log.
 `MessageTextTests` fails for a text whose code neither a server sends nor the
 client code names and for a placeholder that no server fills, and
 `MessageCoverageTests` fails when a code of the worker's notices, gathering,
-combat, or corpse closures has no text.
+combat, or corpse closures has no text, when a code that GameService's API or
+the worker makes has neither a text nor a listed reason that a player never meets
+it, and when a code that ends a session has no text. A text says in the player's
+words what happened and what to do, such as wait and try again, pick another
+shard, or log in again, and never names an internal such as a lease, the registry,
+or a catalog revision.
 
 ### Client Texts
 
