@@ -61,7 +61,7 @@ namespace Mmorpg.Client.App
         private Material waterRingMaterial;
         private Material waterSprayMaterial;
         private readonly LocalPlayerSource localPlayer = new LocalPlayerSource();
-        private readonly WorldPointerFocus pointerFocus = new WorldPointerFocus();
+        private readonly WorldInputFocus inputFocus = new WorldInputFocus();
         private readonly GameMessageLog gameMessages = new GameMessageLog();
         private readonly InventoryWindowRequests inventoryWindowRequests = new InventoryWindowRequests();
         private UiTheme uiTheme;
@@ -104,6 +104,13 @@ namespace Mmorpg.Client.App
 
         // True once the content is resolved and the controllers exist.
         public bool IsContentReady { get; private set; }
+
+        // The one focus that tells world input whether the interface has the pointer or the
+        // keyboard.
+        public WorldInputFocus InputFocus
+        {
+            get { return inputFocus; }
+        }
 
         public ClientContentReport ContentReport
         {
@@ -557,7 +564,7 @@ namespace Mmorpg.Client.App
             // Every window and panel of the scene stands on its one window manager, which also
             // runs Escape and the interface's keys.
             var windowManager = AddSceneComponentIfMissing<UiWindowManager>(
-                manager => manager.Initialize(uiTheme, texts, localPlayer));
+                manager => manager.Initialize(uiTheme, texts, localPlayer, inputFocus));
             if (scene.name == SceneNames.LoginMenu)
             {
                 AddSceneComponentIfMissing<LoginMenuPanel>(
@@ -596,7 +603,7 @@ namespace Mmorpg.Client.App
                         realtime.Looks,
                         realtime.Admin,
                         localPlayer,
-                        pointerFocus,
+                        inputFocus,
                         bodyTint,
                         bodyLook,
                         playerEquipment,
@@ -656,7 +663,7 @@ namespace Mmorpg.Client.App
                     texts,
                     bodyLook,
                     sceneContext != null ? sceneContext.Preview : null,
-                    pointerFocus));
+                    inputFocus));
             AddSceneComponentIfMissing<QuestWindows>(
                 windows => windows.Initialize(
                     uiTheme,

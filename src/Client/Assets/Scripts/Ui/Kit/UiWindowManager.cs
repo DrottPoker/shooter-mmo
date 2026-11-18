@@ -53,6 +53,8 @@ namespace Mmorpg.Client.Ui
         private UiTheme theme;
         private TextCatalog texts = TextCatalog.Empty(TextTableFormat.SourceLocale);
         private LocalPlayerSource localPlayers;
+        private WorldInputFocus inputFocus;
+        private Func<bool> keyboardCapture;
         private UiDialog dialog;
         private TMP_InputField fieldAtFrameEnd;
 
@@ -91,12 +93,25 @@ namespace Mmorpg.Client.Ui
         }
 
         // Called by the composition root before the component is activated. Without a local
-        // player, as on the entry screens, the keyboard's Escape is the only key.
-        public void Initialize(UiTheme uiTheme, TextCatalog uiTexts, LocalPlayerSource localPlayerSource)
+        // player, as on the entry screens, the keyboard's Escape is the only key. With a focus,
+        // world input that reads keys, such as the camera's arrow keys, rests while the player
+        // types.
+        public void Initialize(
+            UiTheme uiTheme,
+            TextCatalog uiTexts,
+            LocalPlayerSource localPlayerSource,
+            WorldInputFocus focus = null)
         {
             theme = uiTheme;
             texts = uiTexts ?? throw new ArgumentNullException(nameof(uiTexts));
             localPlayers = localPlayerSource;
+            ReleaseKeyboard();
+            inputFocus = focus;
+            if (inputFocus != null)
+            {
+                keyboardCapture = () => IsTyping;
+                inputFocus.AddKeyboardCapture(keyboardCapture);
+            }
         }
 
         // Puts a window, menu, or panel of a stacked layer on the stack, closed. Its canvas
@@ -424,6 +439,22 @@ namespace Mmorpg.Client.Ui
         private void LateUpdate()
         {
             fieldAtFrameEnd = FocusedField();
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseKeyboard();
+        }
+
+        // The focus outlives the scene, so a manager that goes takes its capture with it.
+        private void ReleaseKeyboard()
+        {
+            if (inputFocus != null && keyboardCapture != null)
+            {
+                inputFocus.RemoveKeyboardCapture(keyboardCapture);
+            }
+
+            keyboardCapture = null;
         }
 
         private void BuildDialog()

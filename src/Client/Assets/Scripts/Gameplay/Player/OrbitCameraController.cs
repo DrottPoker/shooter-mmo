@@ -36,7 +36,7 @@ namespace Mmorpg.Client.Gameplay
         private readonly RaycastHit[] collisionHits = new RaycastHit[CollisionHitCapacity];
         private Camera controlledCamera;
         private LocalPlayerInput playerInput;
-        private WorldPointerFocus pointerFocus;
+        private WorldInputFocus inputFocus;
         private Transform collisionIgnoreRoot;
         private float yaw;
         private float pitch;
@@ -104,11 +104,13 @@ namespace Mmorpg.Client.Gameplay
             if (playerInput != null)
             {
                 // Scrolling a panel must not zoom the camera behind it.
-                var overInterface = pointerFocus != null
-                    && pointerFocus.IsPointerOverInterface(playerInput.PointerPosition);
+                var overInterface = inputFocus != null
+                    && inputFocus.IsPointerOverInterface(playerInput.PointerPosition);
+                // The arrow keys move the caret of a text field, not the camera behind it.
+                var typing = inputFocus != null && inputFocus.IsKeyboardHeldByInterface;
                 ApplyInput(
                     playerInput.CameraOrbitHeld ? playerInput.CameraOrbitDelta : Vector2.zero,
-                    playerInput.CameraRotate,
+                    typing ? Vector2.zero : playerInput.CameraRotate,
                     overInterface ? 0f : playerInput.CameraZoom,
                     Time.unscaledDeltaTime);
             }
@@ -129,9 +131,9 @@ namespace Mmorpg.Client.Gameplay
             }
         }
 
-        public void SetPointerFocus(WorldPointerFocus focus)
+        public void SetInputFocus(WorldInputFocus focus)
         {
-            pointerFocus = focus;
+            inputFocus = focus;
         }
 
         public Ray ScreenPointToRay(Vector2 screenPosition)

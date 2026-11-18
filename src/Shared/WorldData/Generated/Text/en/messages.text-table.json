@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "tableId": "messages",
   "locale": "en",
-  "revision": "84ea51afdd2a27d2e8deb7e97048e4a95f1f4908604f3a80536b1982ea46cb41",
+  "revision": "1f8b3819beea11ee1ebc1c43aea0a263a98c4b0c9e95af3780a1ecd8b790c7ec",
   "entries": [
     {
       "key": "message-unlisted/text",
@@ -218,11 +218,11 @@
     },
     {
       "key": "message/incompatible_protocol",
-      "text": "This client is out of date. Update it to play on this shard."
+      "text": "Your game is out of date. Update it to play."
     },
     {
       "key": "message/incompatible_simulation",
-      "text": "This client is out of date. Update it to play on this shard."
+      "text": "Your game and this shard are on different versions. Update the game, or try again in a few minutes if it is up to date."
     },
     {
       "key": "message/insurance_applied",
@@ -515,6 +515,10 @@
     {
       "key": "message/shard_not_found",
       "text": "That shard was not found."
+    },
+    {
+      "key": "message/shard_not_updated",
+      "text": "This shard has not been updated to your version of the game yet. Try again in a few minutes."
     },
     {
       "key": "message/simulation_session_changed",

@@ -242,9 +242,14 @@ namespace Mmorpg.Client.Networking
 
             if (placement.endpoint.protocolVersion != RealtimeProtocol.Version)
             {
+                // A worker ahead of this client means the player must update the game. A worker
+                // behind it still runs the release before, which a deployment is replacing, so
+                // the player can only wait.
                 var error = new RealtimeClientError(
                     RealtimeClientErrorKind.Validation,
-                    "incompatible_protocol",
+                    placement.endpoint.protocolVersion > RealtimeProtocol.Version
+                        ? "incompatible_protocol"
+                        : "shard_not_updated",
                     "The assigned SimulationWorker uses realtime protocol version "
                     + placement.endpoint.protocolVersion + ", but this client requires version "
                     + RealtimeProtocol.Version + ".");

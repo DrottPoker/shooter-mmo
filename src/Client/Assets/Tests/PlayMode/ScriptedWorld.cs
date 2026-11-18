@@ -56,7 +56,7 @@ namespace Mmorpg.Client.Tests.PlayMode
             yield return hub.Session.Join(Placement(collisionRevision), value => joined = value, error => Assert.Fail(error.ToDiagnostic()));
             session.EnterWorld(joined);
             Context.Initialize(session, hub.Session, hub.Movement, hub.Players, hub.Looks, hub.Admin, new LocalPlayerSource(),
-                new WorldPointerFocus(), null, null, null, budget);
+                new WorldInputFocus(), null, null, null, budget);
             Context.enabled = true;
         }
 

@@ -87,7 +87,7 @@ namespace Mmorpg.Client.Gameplay
         private IRealtimeLookChannel realtimeLooks;
         private IRealtimeAdminChannel realtimeAdmin;
         private LocalPlayerSource localPlayers;
-        private WorldPointerFocus pointerFocus;
+        private WorldInputFocus inputFocus;
         private PlayerBodyTintSetting bodyTint;
         private PlayerBodyLookSetting bodyLook;
         private PlayerEquipment equipment;
@@ -274,7 +274,7 @@ namespace Mmorpg.Client.Gameplay
             IRealtimeLookChannel looks,
             IRealtimeAdminChannel admin,
             LocalPlayerSource localPlayerSource,
-            WorldPointerFocus focus,
+            WorldInputFocus focus,
             PlayerBodyTintSetting tintSetting,
             PlayerBodyLookSetting lookSetting,
             PlayerEquipment playerEquipment = null,
@@ -288,7 +288,7 @@ namespace Mmorpg.Client.Gameplay
             realtimeLooks = looks;
             realtimeAdmin = admin;
             localPlayers = localPlayerSource;
-            pointerFocus = focus;
+            inputFocus = focus;
             bodyTint = tintSetting;
             bodyLook = lookSetting;
             equipment = playerEquipment;
@@ -1425,8 +1425,8 @@ namespace Mmorpg.Client.Gameplay
             }
 
             localPlayer.PlayerCamera.SetTarget(localPlayer.CameraTarget, localPlayer.PlayerInput);
-            localPlayer.PlayerCamera.SetPointerFocus(pointerFocus);
-            localPlayer.SetPointerFocus(pointerFocus);
+            localPlayer.PlayerCamera.SetInputFocus(inputFocus);
+            localPlayer.SetInputFocus(inputFocus);
             localPlayers?.Set(localPlayer);
 
             // The cloth is laid from the camera that renders the World.
