@@ -99,6 +99,13 @@ def _hand_frame(wrist, middle, index, little):
 
 
 def _play(obj, action):
+    """Plays the action on the armature from its rest pose, so a bone the clip does not key is at
+    rest and not where the clip sampled before it left it."""
+    for bone in obj.pose.bones:
+        bone.location = (0.0, 0.0, 0.0)
+        bone.rotation_quaternion = Quaternion()
+        bone.rotation_euler = (0.0, 0.0, 0.0)
+        bone.scale = (1.0, 1.0, 1.0)
     obj.animation_data_create()
     obj.animation_data.action = action
     if action is not None and action.slots:
@@ -307,6 +314,11 @@ def import_clip(path, label, source_path, map_path, clips, name, grip, skeleton_
     action = animate.bake(target, name, len(frames), lambda f: retarget.frame(frames[f], held), skip, loop=False)
     motion = clip_video.measure(target, action, skip)
     _remove(objects, actions, added)
+    # A source clip of the same name had the name first, so Blender numbered the new action.
+    action.name = name
+    if action.name != name:
+        return [], [f"{name}: Blender named the new clip {action.name}; choose another name."], None
+    motion["clip"] = name
     # The FBX export bakes every action as a take only for an object that has animation data.
     target.animation_data.action = active
     scene.frame_start, scene.frame_end = 0, max(int(a.frame_range[1]) for a in bpy.data.actions)
