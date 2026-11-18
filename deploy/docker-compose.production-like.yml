@@ -49,7 +49,7 @@ x-game-service-environment: &game-service-environment
 
 services:
   postgres:
-    image: postgres:16.16-alpine
+    image: postgres:18.7-alpine
     environment:
       POSTGRES_DB: shooter_mmo
       POSTGRES_USER: shooter_mmo
@@ -72,7 +72,7 @@ services:
     logging: *logging
 
   redis:
-    image: redis:7.4.12-alpine
+    image: redis:8.10.3-alpine
     # The password reaches the server through its environment, not through a process argument.
     command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly no --save ""']
     environment:
