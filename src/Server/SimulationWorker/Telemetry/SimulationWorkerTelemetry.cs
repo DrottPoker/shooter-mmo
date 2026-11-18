@@ -30,7 +30,8 @@ public static class SimulationWorkerTelemetry
         WorldActorMetrics.MeterName,
         CorpseRuntimeMetrics.MeterName,
         CombatMetrics.MeterName,
-        GameServiceAvailabilityMetrics.MeterName
+        GameServiceAvailabilityMetrics.MeterName,
+        GameServiceCallMetrics.MeterName
     ];
 
     public static TelemetryResource CreateResource(

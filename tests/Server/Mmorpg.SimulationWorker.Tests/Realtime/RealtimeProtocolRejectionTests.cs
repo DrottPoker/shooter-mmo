@@ -153,7 +153,7 @@ public sealed class RealtimeProtocolRejectionTests
     {
         var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
         var lease = new SimulationWorkerRegistrationLease(time);
-        lease.Renew(time.GetUtcNow(), TimeSpan.FromMinutes(1));
+        lease.Renew(lease.CaptureRenewalStart(), TimeSpan.FromMinutes(1));
         await using var harness = RealtimeServerHarness.Create(new RealtimeServerHarnessOptions
         {
             RegistrationLease = lease

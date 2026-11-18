@@ -12,6 +12,7 @@ using Mmorpg.GameService.Placement;
 using Mmorpg.GameService.Platform.Configuration;
 using Mmorpg.GameService.Platform.Database;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Contracts;
 using Mmorpg.Server.Common.Items;
 using Mmorpg.Server.Common.Quests;
 using Mmorpg.Server.Common.Worlds;
@@ -238,7 +239,8 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             GameSimulationCompatibility.Revision,
             "integration-collision-revision",
             FixtureItemCatalogRevision,
-            FixtureQuestCatalogRevision);
+            FixtureQuestCatalogRevision,
+            ServiceContract.Version);
     }
 
     public async Task<IntegrationPlayer> RegisterPlayerAsync(

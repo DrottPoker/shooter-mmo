@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameService.Testing;
+using Mmorpg.Server.Common.Contracts;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.Tools.StackStressGenerator;
 
@@ -54,7 +55,8 @@ public sealed class StressAuthorityContractTests
                 "simulation-revision",
                 "collision-revision",
                 "item-catalog-revision",
-                "quest-catalog-revision"),
+                "quest-catalog-revision",
+                ServiceContract.Version),
             cancellationToken);
         Assert.True(registration.Succeeded, registration.Error?.Code);
 

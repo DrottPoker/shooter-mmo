@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,18 +68,41 @@ public sealed class BehindAProxyTests
         Assert.Equal((HttpStatusCode.Unauthorized, "invalid_development_bot_authority"), local);
     }
 
+    // The root redirect is a public route: it counts per client address, and answers 429 past its limit.
     [Fact]
     public async Task ThePublicRoutesCountPerClientAddress()
     {
         var settings = Settings(trustedProxies: "127.0.0.1");
         settings["RateLimiting:Public:PermitLimit"] = "2";
         await using var application = await GameServiceHostSettings.StartAsync(settings);
-        using var client = GameServiceHostSettings.CreateClient(application);
+        using var client = CreateClientWithoutRedirects(application);
 
-        Assert.Equal(HttpStatusCode.OK, await LiveAsync(client, FirstClient));
-        Assert.Equal(HttpStatusCode.OK, await LiveAsync(client, FirstClient));
-        Assert.Equal(HttpStatusCode.TooManyRequests, await LiveAsync(client, FirstClient));
-        Assert.Equal(HttpStatusCode.OK, await LiveAsync(client, SecondClient));
+        Assert.Equal(HttpStatusCode.Redirect, await RootAsync(client, FirstClient));
+        Assert.Equal(HttpStatusCode.Redirect, await RootAsync(client, FirstClient));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await RootAsync(client, FirstClient));
+        Assert.Equal(HttpStatusCode.Redirect, await RootAsync(client, SecondClient));
+    }
+
+    // The proxy and the container ask for health every few seconds from one address, and a prober
+    // that is answered 429 is taken for a service that is down. The health routes carry no limit, so
+    // they answer as often as they are asked, also when the public limit of their address is spent.
+    [Fact]
+    public async Task TheHealthRoutesAreNotCountedByThePublicLimit()
+    {
+        var settings = Settings(trustedProxies: "127.0.0.1");
+        settings["RateLimiting:Public:PermitLimit"] = "2";
+        await using var application = await GameServiceHostSettings.StartAsync(settings);
+        using var client = CreateClientWithoutRedirects(application);
+
+        Assert.Equal(HttpStatusCode.Redirect, await RootAsync(client, FirstClient));
+        Assert.Equal(HttpStatusCode.Redirect, await RootAsync(client, FirstClient));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await RootAsync(client, FirstClient));
+
+        for (var request = 0; request < 12; request++)
+        {
+            Assert.Equal(HttpStatusCode.OK, await LiveAsync(client, FirstClient));
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, await ReadyAsync(client, FirstClient));
+        }
     }
 
     [Fact]
@@ -127,10 +152,37 @@ public sealed class BehindAProxyTests
 
     private static async Task<HttpStatusCode> LiveAsync(HttpClient client, string forwardedFor)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        return await GetAsync(client, "/health/live", forwardedFor);
+    }
+
+    // Readiness answers 200 or 503 with the state of its dependencies, never 429.
+    private static async Task<HttpStatusCode> ReadyAsync(HttpClient client, string forwardedFor)
+    {
+        return await GetAsync(client, "/health/ready", forwardedFor);
+    }
+
+    private static async Task<HttpStatusCode> RootAsync(HttpClient client, string forwardedFor)
+    {
+        return await GetAsync(client, "/", forwardedFor);
+    }
+
+    private static async Task<HttpStatusCode> GetAsync(HttpClient client, string path, string forwardedFor)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Add("X-Forwarded-For", forwardedFor);
         using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
         return response.StatusCode;
+    }
+
+    private static HttpClient CreateClientWithoutRedirects(WebApplication application)
+    {
+        var address = application.Services
+            .GetRequiredService<IServer>()
+            .Features
+            .Get<IServerAddressesFeature>()!
+            .Addresses
+            .Single();
+        return new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = new Uri(address) };
     }
 
     private static async Task<(HttpStatusCode Status, string? Code)> BotTicketAsync(HttpClient client, string? forwardedFor)

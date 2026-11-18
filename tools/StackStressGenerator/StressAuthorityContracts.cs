@@ -34,7 +34,9 @@ public sealed record StressWorkerHeartbeatResponse(
     string ItemCatalogRevision,
     string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
-    DateTime OnlineUntil);
+    DateTime OnlineUntil,
+    // The lease of every session, which the worker checks against its own timing settings.
+    int SessionLeaseSeconds);
 
 public sealed record StressWorkerOfflineRequest(string RuntimeId);
 

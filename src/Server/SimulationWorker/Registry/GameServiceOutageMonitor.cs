@@ -17,15 +17,13 @@ public sealed class GameServiceOutageMonitor(
     ILogger<GameServiceOutageMonitor> logger,
     TimeProvider? timeProvider = null) : BackgroundService
 {
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(1);
-
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(CheckInterval, time, stoppingToken);
+            await Task.Delay(SimulationWorkerConfig.OutageMonitorPollInterval, time, stoppingToken);
             if (availability.TimeSinceLastHeartbeat is not { } age
                 || age <= config.GameServiceOutageTolerance)
             {

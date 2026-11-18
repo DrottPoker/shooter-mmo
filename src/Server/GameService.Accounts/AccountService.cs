@@ -9,6 +9,7 @@ internal sealed class AccountService(
     NpgsqlDataSource dataSource,
     SessionService sessionService,
     PasswordHashingLane passwordHashing,
+    SessionRevocationBulkhead revocationBulkhead,
     ILogger<AccountService> logger)
 {
     public const string AuthBusyCode = "auth_busy";
@@ -169,26 +170,39 @@ internal sealed class AccountService(
             return ServiceResult<AuthResponse>.Unauthorized("invalid_credentials", "Login or password is incorrect.");
         }
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        (Guid SessionId, string Token, DateTime ExpiresAt, int ReplacedSessionCount) session;
-        try
+        // The revocation writes the tombstones of the replaced sessions to Redis inside the
+        // transaction, so the slot that bounds how many callers may be in that section is taken
+        // before the connection. It is held until the login ends, which also bounds the cache write
+        // after the commit; that write holds no connection, since the connection goes back first.
+        using var revocationSlot = await revocationBulkhead.TryEnterAsync(cancellationToken);
+        if (revocationSlot is null)
         {
-            session = await sessionService.ReplaceSessionAsync(
-                connection,
-                transaction,
-                account.Id,
-                cancellationToken);
-        }
-        catch (SessionCacheInvalidationUnavailableException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return ServiceResult<AuthResponse>.ServiceUnavailable(
-                "session_cache_invalidation_unavailable",
-                "Login could not replace the active session safely because the distributed session cache is unavailable.");
+            return Busy<AuthResponse>(SessionRevocationBulkhead.RetryAfter);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        (Guid SessionId, string Token, DateTime ExpiresAt, int ReplacedSessionCount) session;
+        await using (var connection = await dataSource.OpenConnectionAsync(cancellationToken))
+        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
+        {
+            try
+            {
+                session = await sessionService.ReplaceSessionAsync(
+                    connection,
+                    transaction,
+                    account.Id,
+                    cancellationToken);
+            }
+            catch (SessionCacheInvalidationUnavailableException)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return ServiceResult<AuthResponse>.ServiceUnavailable(
+                    "session_cache_invalidation_unavailable",
+                    "Login could not replace the active session safely because the distributed session cache is unavailable.");
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
         await sessionService.TryCacheSessionAsync(
             account.Id,
             account.Username,

@@ -263,6 +263,15 @@ The instruments of `Mmorpg.SimulationWorker.GameService`, which
 | `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
 | `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `quest_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
+The instruments of `Mmorpg.SimulationWorker.GameService.Calls`, which count how the calls to
+GameService fail, as [Service Features](SERVICE_FEATURES.md#realtime-udp-transport)
+describes, and when the worker holds its registration back:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.game_service.call_failures` | counter | Calls that failed for a reason of the channel, labeled `route` and `reason`. `route` is the group of the call: `registry`, `session`, `join`, `checkpoint`, `item`, `corpse`, `quest`, or `appearance`. `reason` is `timeout`, `unreachable` when no connection came, `server_error` for a 5xx that GameService made, `no_problem` for an error status without a code, such as a proxy's error page, `invalid_response` for a success whose body failed its validation, or `authentication` for refused credentials. A refusal of the domain, such as a taken slot, is the call working and is not counted. |
+| `simulation_worker.registry.renewals_withheld` | counter | Episodes in which the worker stopped renewing its registry lease because its realtime loop was silent for more than 5 seconds. Each also writes one error line, and any value above zero needs a restart of that worker. |
+
 ### GameService
 
 A GameService module declares every meter it creates in
@@ -295,7 +304,7 @@ own in `PlatformMeters.Names`:
 | `game_service.accounts.password_hashing.wait.duration` | histogram, ms | How long a hash waited in the queue before a lane thread took it. |
 | `game_service.accounts.password_hashing.duration` | histogram, ms | How long one hash or check took on its lane thread; the lane's queue limit follows it. |
 | `game_service.accounts.password_hashing.refusals` | counter | Requests refused with `auth_busy` because they would have waited longer than `Auth:PasswordHashing:MaxWaitSeconds`, labeled `operation`: `hash` for a registration or `verify` for a login. |
-| `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, or `invalidation`. |
+| `game_service.redis.session_cache.operations` | counter | Session cache results, labeled `result`: `hit`, `miss`, `tombstone_bypass`, `database_fallback`, `store`, `invalidation`, or `revocation_refused` for a login or logout that found every slot of the revocation bulkhead taken and was refused with `auth_busy`. |
 | `game_service.redis.failures` | counter | Failed Redis operations, labeled `operation`, such as `session_cache_revoke` for revocation tombstones that could not be stored and `session_cache_revoke_retry` for a first attempt that failed for a transient reason and was sent again. |
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 | `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
@@ -600,11 +609,19 @@ look before it becomes critical.
 | `ItemTransactionFailures` | warning | An item transaction failed with an unexpected error in the last five minutes. |
 | `ItemTransactionTimeouts` | warning | An item transaction hit its lock or transaction timeout in the last five minutes. |
 | `RedisFailures` | warning | GameService could not reach Redis in the last five minutes. |
+| `WorkerLostGameService` | critical | A worker has had no answer from GameService for a minute, by `simulation_worker.game_service.available` or by the age of its last registry heartbeat above 45 seconds: durable actions are paused, and the worker stops itself after its outage tolerance. |
+| `AbandonedDurableOperations` | critical | A worker gave up a durable operation that never committed in the last ten minutes, which is lost progress; its error line names the operation id. |
+| `DurableActionsRefused` | warning | A worker refuses durable player actions at more than one every ten seconds for five minutes, because GameService does not answer. |
+| `WorkerCallsToGameServiceFail` | warning | The calls of a worker keep failing, more than one in twenty seconds for five minutes, on one route group for one reason. |
+| `WorkerRenewalsWithheld` | critical | A worker's realtime loop went silent and it stopped renewing its registration, so GameService takes its Shard offline; the worker needs a restart. |
+| `LoginsRefusedAsBusy` | warning | GameService answers logins, registrations, or logouts with `auth_busy` at more than one every twenty seconds for five minutes, because its password hashing is full or too many sessions wait for Redis. |
 | `EconomyAuditViolations` | critical | A check of the economy audit found a violation in its latest run: an item lost or in two places, an invalid stack or slot, or gold that does not match its ledger. The GameService log names the examples by id. |
 | `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, pool, and economy audit rules.
+tests for the availability, tick, error-rate, pool, resilience, and economy
+audit rules. What each resilience alert means for a crash, and what repairs
+itself, is in [Deployment](DEPLOYMENT.md#after-a-crash).
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull

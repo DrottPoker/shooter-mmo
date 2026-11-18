@@ -388,7 +388,14 @@ public sealed class SimulationWorkerConfigurationValidationTests
             Assert.Equal(TimeSpan.FromSeconds(expectedTolerance), config.GameServiceOutageTolerance);
             Assert.Equal(TimeSpan.FromSeconds(expectedHorizon), config.UncertainOperationRetryHorizon);
             Assert.Equal(TimeSpan.FromMilliseconds(expectedRetryMilliseconds), config.RegistryHeartbeatRetryDelay);
-            Assert.Equal(config.GameServiceOutageTolerance + config.SimulationSessionHeartbeatInterval, config.MinimumSessionLease);
+            Assert.Equal(
+                config.GameServiceOutageTolerance
+                    + SimulationWorkerConfig.OutageMonitorPollInterval
+                    + config.RegistryHeartbeatRetryDelay
+                    + config.GameServiceTimeout
+                    + config.SimulationSessionHeartbeatInterval
+                    + config.SimulationSessionHeartbeatRetryDelay,
+                config.MinimumSessionLease);
             return;
         }
 

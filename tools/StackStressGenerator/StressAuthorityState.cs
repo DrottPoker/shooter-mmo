@@ -466,7 +466,8 @@ public sealed class StressAuthorityState
             registration.ItemCatalogRevision!,
             registration.QuestCatalogRevision!,
             registration.LastHeartbeatAt,
-            registration.OnlineUntil);
+            registration.OnlineUntil,
+            (int)SessionLeaseDuration.TotalSeconds);
     }
 
     private static StressSessionLeaseResponse ToLeaseResponse(

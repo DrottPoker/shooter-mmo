@@ -39,7 +39,7 @@ public sealed class GameServiceAvailability
         this.timeProvider = timeProvider;
         this.logger = logger;
         this.metrics = metrics;
-        state = new AvailabilityState(true, 0, timeProvider.GetTimestamp(), TimeSpan.Zero);
+        state = new AvailabilityState(true, 0, timeProvider.GetTimestamp(), TimeSpan.Zero, false);
         returned.SetResult(true);
         metrics?.Observe(this);
     }
@@ -89,6 +89,7 @@ public sealed class GameServiceAvailability
         Interlocked.Exchange(ref lastHeartbeatTimestamp, Math.Max(1, timeProvider.GetTimestamp()));
         TaskCompletionSource<bool>? waiters = null;
         TimeSpan outage;
+        bool withheld;
         lock (sync)
         {
             var current = state;
@@ -99,12 +100,21 @@ public sealed class GameServiceAvailability
 
             var now = timeProvider.GetTimestamp();
             outage = timeProvider.GetElapsedTime(current.SinceTimestamp, now);
-            state = new AvailabilityState(true, current.Version + 1, now, current.AvailableBefore);
+            withheld = current.Withheld;
+            state = new AvailabilityState(true, current.Version + 1, now, current.AvailableBefore, false);
             waiters = returned;
         }
 
         waiters.TrySetResult(true);
         metrics?.RecordChange(available: true);
+        if (withheld)
+        {
+            logger.LogInformation(
+                "The worker registered again after {Outage} without a registry heartbeat; durable actions resume.",
+                outage);
+            return;
+        }
+
         logger.LogInformation(
             "GameService answers the registry heartbeat again after {Outage}; durable actions resume.",
             outage);
@@ -126,7 +136,8 @@ public sealed class GameServiceAvailability
                 false,
                 current.Version + 1,
                 now,
-                current.AvailableBefore + timeProvider.GetElapsedTime(current.SinceTimestamp, now));
+                current.AvailableBefore + timeProvider.GetElapsedTime(current.SinceTimestamp, now),
+                false);
             if (!waitsEnded)
             {
                 returned = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -137,6 +148,47 @@ public sealed class GameServiceAvailability
         logger.LogWarning(
             "GameService does not answer the registry heartbeat ({Code}); items, trade, and quests are paused until it answers again.",
             code);
+    }
+
+    // The worker holds its registry heartbeat back on purpose, because its realtime loop is silent,
+    // so GameService may let the registry lease end and no durable action may reach it with a lease
+    // that is stale there. Durable actions pause as in an outage, until the heartbeat succeeded
+    // again. The outage clock restarts at every call, since an outage is time that the worker
+    // asked and got no answer, so the outage monitor never stops a worker for a silence that it
+    // chose; a worker that never registered has no clock to restart. Called at every round that
+    // withholds, and it logs only when it changes the state.
+    public void RegistrationWithheld()
+    {
+        var timestamp = Interlocked.Read(ref lastHeartbeatTimestamp);
+        if (timestamp != 0)
+        {
+            Interlocked.Exchange(ref lastHeartbeatTimestamp, Math.Max(1, timeProvider.GetTimestamp()));
+        }
+
+        lock (sync)
+        {
+            var current = state;
+            if (!current.IsAvailable)
+            {
+                return;
+            }
+
+            var now = timeProvider.GetTimestamp();
+            state = new AvailabilityState(
+                false,
+                current.Version + 1,
+                now,
+                current.AvailableBefore + timeProvider.GetElapsedTime(current.SinceTimestamp, now),
+                true);
+            if (!waitsEnded)
+            {
+                returned = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        metrics?.RecordChange(available: false);
+        logger.LogWarning(
+            "The worker withholds its registry heartbeat while its realtime loop is silent; items, trade, and quests are paused until it registers again.");
     }
 
     // A GameService call other than the registry heartbeat failed for a passing reason. While
@@ -228,10 +280,12 @@ public sealed class GameServiceAvailability
         return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    // SinceTimestamp is when the state began; AvailableBefore the available time before it.
+    // SinceTimestamp is when the state began; AvailableBefore the available time before it;
+    // Withheld says that the worker, not GameService, ended the availability.
     private sealed record AvailabilityState(
         bool IsAvailable,
         int Version,
         long SinceTimestamp,
-        TimeSpan AvailableBefore);
+        TimeSpan AvailableBefore,
+        bool Withheld);
 }

@@ -9,7 +9,9 @@
 #   - no secret has a default: the Compose file does not render without each of the three;
 #   - PostgreSQL and Redis publish no port, and every published port binds a chosen address;
 #   - every service has a health check and a restart policy, a read-only root file system, GameService
-#     and the worker a grace period longer than their shutdown timeout, and the services that run
+#     and the worker a grace period at least 5 seconds longer than their shutdown timeout, which is
+#     30 seconds for GameService and 40 for the worker unless the Compose file sets it, and the
+#     services that run
 #     .NET or the proxy drop every capability;
 #   - Git ignores the secrets file, and the build context holds no client, art, or tests;
 #   - the generator makes distinct random secrets of enough length and prints none.
@@ -134,11 +136,24 @@ else {
             Add-Problem "$name does not drop its capabilities."
         }
 
-        if ($name -in @("game-service", "simulation-worker")) {
+        # The host's shutdown timeout, from the setting that the Compose file gives it or else the
+        # default of the service, which docs/SERVICE_FEATURES.md lists. The runtime must wait for the
+        # whole orderly stop and then some, or it kills the process while it still saves its players.
+        $shutdowns = @{
+            "game-service"      = @{ Key = "Http__ShutdownTimeoutSeconds"; Default = 30 }
+            "simulation-worker" = @{ Key = "SimulationWorker__ShutdownTimeoutSeconds"; Default = 40 }
+        }
+        if ($shutdowns.ContainsKey($name)) {
             $grace = [string]$service.stop_grace_period
-            $seconds = if ($grace -match '^(\d+)s$') { [int]$Matches[1] } elseif ($grace -match '^(\d+)m$') { 60 * [int]$Matches[1] } else { 0 }
-            if ($seconds -lt 35) {
-                Add-Problem "$name waits $grace for its stop; the host's shutdown timeout is 30 s, so the grace period must be longer."
+            # Compose renders a duration as 45s, 1m0s, or 2m30s.
+            $seconds = if ($grace -match '^(?:(\d+)m)?(?:(\d+)s)?$' -and $grace) {
+                (60 * [int]"0$($Matches[1])") + [int]"0$($Matches[2])"
+            } else { 0 }
+            $timeout = $shutdowns[$name].Default
+            $configured = $service.environment.PSObject.Properties[$shutdowns[$name].Key]
+            if ($configured -and "$($configured.Value)" -match '^\d+$') { $timeout = [int]"$($configured.Value)" }
+            if ($seconds -lt $timeout + 5) {
+                Add-Problem "$name waits $grace for its stop; the host's shutdown timeout is $timeout s, so the grace period must be at least 5 s longer."
             }
         }
     }

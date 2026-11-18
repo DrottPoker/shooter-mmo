@@ -66,8 +66,8 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/development/stack-stress/characters/{characterId}/inventory-fixture` | Account session and Development loopback secret | Seed the starting items of a stack stress inventory workload for an owned empty character when explicitly enabled |
 | `POST /api/development/stack-stress/characters/{characterId}/kit` | Account session and Development loopback secret | Grant an owned empty character the configured kit of its stack stress role, such as a weapon and its arrows, when explicitly enabled |
 | `POST /api/development/stack-stress/loot-hotspot` | Account session and Development loopback secret | Create the shared loot corpse of a stack stress workload when explicitly enabled |
-| `GET /health/live` | Public, rate limited | Report process liveness |
-| `GET /health/ready` | Public, rate limited | Verify obligatory dependencies; `503` with the status `stopping` from the stop signal on, as [Orderly Shutdown](#orderly-shutdown) describes |
+| `GET /health/live` | Public, no rate limit | Report process liveness |
+| `GET /health/ready` | Public, no rate limit | Verify obligatory dependencies; `503` with the status `stopping` from the stop signal on, as [Orderly Shutdown](#orderly-shutdown) describes |
 
 Every route's limit is in [Rate Limits](#rate-limits). Route parameters named
 `characterId`, `sessionId`, `simulationSessionId`, and `corpseId` must be GUIDs. The public shard list never exposes a
@@ -112,7 +112,8 @@ share a window.
 | --- | --- | --- | --- |
 | `POST /api/accounts/register`, `POST /api/accounts/login` | Anonymous | Once per client start, and again after a mistyped password | `register` and `login`: `RateLimiting:Authentication`, 5 per 60 s per client address, each route in a window of its own, also in Redis across replicas as [Redis Account-Session Acceleration](#redis-account-session-acceleration) describes |
 | `GET /api/content` and the two content file routes | Anonymous | The manifest and about seven files at each client start | `content`: `RateLimiting:Content`, 120 per 60 s per client address, one window for the three routes |
-| `GET /api/shards`, `GET /`, `GET /health/live`, `GET /health/ready` | Anonymous: the client's Shard list, and the health checks of a proxy or an orchestrator | The Shard list when character select opens or refreshes; a health check every few seconds | `public`: `RateLimiting:Public`, 300 per 60 s per client address, one window for the four routes |
+| `GET /api/shards`, `GET /` | Anonymous: the client's Shard list and the root redirect | The Shard list when character select opens or refreshes | `public`: `RateLimiting:Public`, 300 per 60 s per client address, one window for the two routes |
+| `GET /health/live`, `GET /health/ready` | The health checks of a proxy or an orchestrator | A health check every few seconds | None: a prober that is answered `429` is taken for a service that is down, and the routes answer from the stop signal on. Readiness shares one dependency check among the callers that ask within a second, so asking as often as possible costs one check a second, and it lists Redis only while something uses it, as [Redis Account-Session Acceleration](#redis-account-session-acceleration) describes |
 | `POST /api/shards/{shardId}/join`, `POST /api/characters`, `POST /api/accounts/logout`, `DELETE /api/accounts/sessions/{sessionId}`, and the four offline `item-operations` routes | Account session | Once per join, new character, logout, revoke, or item move, with a few retries | `account-action`: `RateLimiting:AccountActions`, 20 per 60 s per account, each route in a window of its own |
 | `GET /api/accounts/me`, `GET /api/accounts/session`, `GET /api/characters`, `GET /api/character-appearance`, and the character's `item-state`, `bank`, `recovery`, and `quests` | Account session | A few at login and character select, and when a window opens | `account-read`: `RateLimiting:AccountReads`, 300 per 60 s per account, one window for these routes |
 | The worker routes | SimulationWorker with its service credentials | Every heartbeat, checkpoint, and player action of a Shard | None: they need worker credentials, and the worker bounds its own requests |
@@ -480,11 +481,54 @@ applies the rule set with that id from its combat rules and stops with
 `shard_rule_set_unknown` when its rules do not define it.
 
 SimulationWorker stores the database-issued lease duration locally, measured
-from the moment the heartbeat request was sent. It rejects new UDP joins without
-a valid registration lease. The end of that lease does not stop the worker: it
-plays on without GameService for the outage tolerance, as
+from the moment the heartbeat request was sent and on the monotonic clock, so a
+step of the host's wall clock, a VM that resumes or a manual correction, neither
+ends the lease early nor extends it past what GameService honours. It rejects
+new UDP joins without a valid registration lease. The end of that lease does not
+stop the worker: it plays on without GameService for the outage tolerance, as
 [GameService Outage](#gameservice-outage) describes. A definitive topology,
 assignment, runtime, or service credential rejection stops the process at once.
+
+The registry heartbeat also carries two checks. The worker sends the service
+contract version, a number that both sides compile from
+`Mmorpg.Server.Common`, with every heartbeat, and GameService refuses a heartbeat
+of another version, or of none, with `409` `service_contract_mismatch` and a
+message that names both versions. The worker logs that as an error that says
+which side is older, plays nobody, since without a renewed registration no join
+is accepted, and tries again at its normal pace; it neither stops nor counts the
+refusal as a credential failure. The version is bumped in the change that makes
+the call incompatible, as the comment of `ServiceContract` says, and the order of
+an update is in [Deployment](DEPLOYMENT.md#update-a-deployment).
+
+The first answer also tells what GameService grants, which the worker cannot
+know before: the registry lease, from `lastHeartbeatAt` to `onlineUntil`, and
+`sessionLeaseSeconds`, the lease of every simulation session. The worker stops
+before it plays anyone, with one critical message that names the settings of both
+sides, when either lease cannot work with its own timing:
+
+- The registry lease must exceed `SimulationWorker:RegistryHeartbeatSeconds`
+  plus `SimulationWorker:GameServiceTimeoutSeconds` plus the one second margin
+  that the local lease keeps, so the lease never ends between two heartbeats that
+  go on time. GameService's `Simulation:WorkerHeartbeatTimeoutSeconds` sets it.
+- The session lease must be at least the sum that
+  [GameService Outage](#gameservice-outage) gives. GameService's
+  `Simulation:SessionLeaseLifetimeSeconds` sets it, and a join checks it again
+  against the lease that it grants.
+
+A worker whose realtime loop has completed no tick for longer than 5 seconds, the
+limit of its health file, sends no renewal. Its registry lease ends, GameService
+takes the Shard offline by its rules, and players are not placed on a worker that
+simulates nothing. Durable actions pause as in an outage meanwhile, since a lease
+that is stale at GameService would end the sessions of the players who ask. The
+heartbeat service writes one error line for the episode and counts it in
+`simulation_worker.registry.renewals_withheld`, and the outage monitor does not
+count the silence, so the worker never stops itself for a hung loop; a restart is
+the operator's, as [Deployment](DEPLOYMENT.md#after-a-crash) describes. A loop that
+ticks again gets the next heartbeat at once: GameService renews the same runtime
+however long it was gone, as long as no other runtime replaced it, and the
+sessions that the worker holds are untouched, except those whose own lease ran out
+meanwhile, which the session heartbeat then ends like any refused session. A loop
+that never ticks is counted from the moment the transport listened.
 
 ## GameService Outage
 
@@ -562,13 +606,19 @@ replication go on; everything durable is paused.
   the last checkpoint. A normal stop and a lost authority tell the peers
   `server_shutdown` instead.
 - The session leases outlast the tolerance: `Simulation:SessionLeaseLifetimeSeconds`
-  must exceed the worker's outage tolerance plus one session heartbeat interval
-  plus one retry, so GameService still holds every session when the worker
-  comes back within the tolerance. GameService does not know the worker's
-  tolerance, so the worker checks it when a join grants a lease: a lease
-  shorter than `GameServiceOutageToleranceSeconds` plus
-  `SimulationSessionHeartbeatSeconds` is refused with `join_failed` and one
-  error line that names both settings, and the session is released.
+  must be at least the sum of everything that passes between the outage and the
+  renewal that follows it, so GameService still holds every session when the
+  worker comes back within the tolerance: `GameServiceOutageToleranceSeconds`,
+  the one second poll of the outage monitor, `RegistryHeartbeatRetryMilliseconds`
+  for the heartbeat that notices the return, `GameServiceTimeoutSeconds` for its
+  call, `SimulationSessionHeartbeatSeconds` for the round that renews the
+  leases, and `SimulationSessionHeartbeatRetryMilliseconds` for a request of it
+  that fails once. GameService does not know these settings, so the worker
+  checks the lease that GameService reports in its first registry answer and
+  stops before it plays anyone when it is shorter, as the registry paragraph above
+  says, and checks it again when a join grants a lease: a shorter lease is refused
+  with `join_failed` and one error line that names both settings, and the session
+  is released.
 
 ## Shard Discovery And Placement
 
@@ -1093,7 +1143,30 @@ control, spawn, despawn, and leave traffic does not consume this snapshot
 budget.
 
 HTTP calls to GameService map timeout, connection, invalid-response,
-authentication, and domain failures to structured results:
+authentication, and domain failures to structured results. GameService answers
+every failure with Problem Details that carry a `code`; an error status without
+one, such as a proxy's HTML error page or an empty `502`, `503`, or `504` while
+GameService restarts behind it, was not made by GameService and is read from
+its status alone:
+
+- A status of 500 or more without a code is the outage: `auth_service_unavailable`,
+  with the status that came, transient, so it marks GameService unavailable as a
+  lost connection does and ends no session.
+- A `401` or `407` without a code is `auth_service_authentication_failed`, as
+  `invalid_service_credentials` is.
+- Any other error status without a code is `auth_service_rejected` with the status
+  `400`, a rejection of that call that ends no session. The status is never the
+  proxy's own, because a release reads `401`, `404`, and `409` as GameService's
+  answers about a session.
+- `invalid_auth_response` stays for a success status whose body does not hold
+  what the call needs, which ends the player's session as below.
+- Every call that fails for a reason of the channel, a timeout, no connection, an
+  error without a code, a server error, an invalid answer, or refused
+  credentials, is counted by route group and reason in
+  `simulation_worker.game_service.call_failures`, as [Monitoring](MONITORING.md#simulationworker)
+  lists.
+
+The codes of a failed call:
 
 - `auth_service_timeout` and `auth_service_unavailable` are uncertain outcomes,
   because GameService may have committed the operation before the response was
@@ -2480,6 +2553,19 @@ change. GameService returns its codes in RFC Problem Details as the `code`
 extension, SimulationWorker returns realtime codes in the `Error` of protocol
 results and closures, and Unity adds `item_catalog_update_required`.
 
+A code that a player can meet in normal play has a text in
+`content/text/messages.json` that says in the player's words what happened and what
+to do, such as wait and try again, pick another shard, or log in again.
+`shard_unavailable` means that no healthy worker has room, which one text covers for
+a shard that is offline and one that is full. `MessageCoverageTests` fails for a
+code of GameService's host, Accounts, Characters, Content, Placement, and Platform
+projects, of Server Common, and of the worker that has neither a text nor a listed
+reason that it needs none, and for any code that ends a session without a text. It
+finds a code where the source writes it as a literal in a call that builds an
+error, in a constant named for a code, or in the code member of Problem Details;
+the Items, Economy, and Quests transaction codes, codes that arrive through a
+variable, and codes composed at run time are not seen by it.
+
 ### HTTP Error Responses
 
 - A malformed request body returns `400` with `invalid_request`, a transient
@@ -2521,7 +2607,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced`, `auth_busy` |
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
 | Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
-| Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
+| Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed`, `service_contract_mismatch` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_heartbeat`, `invalid_simulation_session_request`, `invalid_character_state`, `invalid_character_checkpoint`, `invalid_appearance_change`, `development_look_disabled` |
 | Content files | `content_not_found` |
 | Item reads and requests | `character_inventory_not_found`, `character_bank_not_found`, `character_recovery_not_found`, `item_operation_id_required` |
@@ -2600,21 +2686,41 @@ PostgreSQL. A session that is past its end but held by a live simulation
 session is never cached. A cache miss, corrupt value, tombstone, or Redis read
 failure falls back to PostgreSQL. `RedisAcceleration:SessionCacheEnabled=false` measures the
 PostgreSQL validation path without disabling the distributed rate limit, and
-`RedisAcceleration:Enabled=false` stops every Redis use except the readiness
-check.
+`RedisAcceleration:Enabled=false` stops every Redis use, the readiness check
+included: readiness neither probes nor lists Redis, so a Redis that is down cannot
+take out of rotation a GameService that never talks to it. A deployment without
+Redis acceleration has no session cache, so every authenticated request reads
+PostgreSQL, and its authentication rate limits count per instance, not across
+instances; it needs no Redis for anything else.
 
 Logout, manual revocation, and login replacement write a session-id tombstone
 before committing the PostgreSQL revocation, then delete the cached token key.
 The tombstones of one revocation go to Redis together, in one round trip, and
 the token keys after them. A write that fails for a transient reason, a
 timeout or a lost connection, is sent once more, and both attempts together
-keep to `RedisAcceleration:SessionRevocationDeadlineMilliseconds`; a tombstone
-write is idempotent, so the second attempt is safe. The tombstone lives
+keep to `RedisAcceleration:SessionRevocationDeadlineMilliseconds`, 2 seconds by
+default and well below the 5 seconds that a worker gives each call, since a login
+or logout that waits for Redis holds a pooled connection and the row locks of its
+account and sessions for as long; a tombstone write is idempotent, so the second
+attempt is safe. The tombstone lives
 `SessionRevocationTombstoneSeconds`, at least as long as any token cache
 entry. If GameService cannot store the required tombstone, it returns
 `503 session_cache_invalidation_unavailable` and does not commit the durable
 revocation. This prevents a successfully revoked session from remaining usable
 through stale cache state.
+
+The write stays inside the transaction on purpose, so a Redis that stalls instead
+of refusing keeps every login and logout in that section for the deadline. A
+bulkhead bounds them: at most `RedisAcceleration:SessionRevocationMaxConcurrency`
+logins and logouts together, a quarter of `Database:MaximumPoolSize` by default and
+at most half of it, may be inside, so the pool always has connections for the
+workers' registry heartbeat. The slot is taken before the database connection is
+opened, and a caller that finds none within
+`RedisAcceleration:SessionRevocationWaitMilliseconds`, 250, is refused with
+`503 auth_busy` and `Retry-After: 1`, the answer that a full password hashing lane
+gives, which the client retries for a login. The refusals count in
+`game_service.redis.session_cache.operations` with the result `revocation_refused`.
+A deployment without Redis acceleration writes no tombstone and bounds nothing.
 
 Login and registration also use a Redis fixed-window rate limit keyed by a hash
 of the [client address](#the-clients-address) and policy name. The process-local ASP.NET rate limit
@@ -2672,13 +2778,15 @@ telemetry settings are in [Monitoring](MONITORING.md#configuration).
 | `RedisAcceleration:KeyPrefix` | `shooter-mmo` | Prefix of every Redis key, 1 to 64 letters, digits, `-`, `_`, or `.` |
 | `RedisAcceleration:SessionCacheTtlSeconds` | `60` | Lifetime of a cached session, 1 to 300 seconds |
 | `RedisAcceleration:SessionRevocationTombstoneSeconds` | `120` | Lifetime of a revocation tombstone, at least the cache lifetime and at most 3,600 seconds |
-| `RedisAcceleration:SessionRevocationDeadlineMilliseconds` | `5000` | How long storing the tombstones of one revocation may take, a retry of a transient failure included, 100 to 30,000 |
+| `RedisAcceleration:SessionRevocationDeadlineMilliseconds` | `2000` | How long storing the tombstones of one revocation may take, a retry of a transient failure included, 100 to 30,000. Keep it well below the workers' `GameServiceTimeoutSeconds`, 5 by default; a test pins the defaults at half of it at most |
+| `RedisAcceleration:SessionRevocationMaxConcurrency` | a quarter of `Database:MaximumPoolSize`, at least 1 | How many logins and logouts may be inside the section that writes the tombstones at once, from 1 to half of `Database:MaximumPoolSize` |
+| `RedisAcceleration:SessionRevocationWaitMilliseconds` | `250` | How long a login or logout waits for a slot before it is refused with `auth_busy`, 0 to 5,000 |
 | `RedisAcceleration:MetricsIntervalSeconds` | `30` | Interval of the Redis counter log |
 | `SIMULATION_WORKER_SERVICE_SECRET` or `ServiceAuthentication:SimulationWorkers:<workerId>` | from `.env` | The shared worker secret, which only the Development environment accepts, or one secret per worker id |
 | `Game:MaxCharactersPerAccount` | `5` | Characters an account may own |
 | `Characters:AppearancePath` | `WorldData/Characters/appearance.json` in the output | The character appearance content |
 | `Simulation:JoinTicketLifetimeSeconds` | `30` | Join ticket lifetime |
-| `Simulation:SessionLeaseLifetimeSeconds` | `150` | Simulation session lease that each heartbeat renews. It must exceed every worker's `GameServiceOutageToleranceSeconds` plus one session heartbeat interval plus one retry, so a worker that comes back within its tolerance still holds its sessions; a worker refuses a join whose lease is shorter, as [GameService Outage](#gameservice-outage) describes |
+| `Simulation:SessionLeaseLifetimeSeconds` | `150` | Simulation session lease that each heartbeat renews, which every registry answer reports to the worker. It must be at least the sum of every worker's `GameServiceOutageToleranceSeconds`, the one second poll of its outage monitor, its `RegistryHeartbeatRetryMilliseconds`, `GameServiceTimeoutSeconds`, `SimulationSessionHeartbeatSeconds`, and `SimulationSessionHeartbeatRetryMilliseconds`, 140 seconds with the defaults, so a worker that comes back within its tolerance still holds its sessions; a worker refuses to start with a shorter lease and refuses a join whose lease is shorter, as [GameService Outage](#gameservice-outage) describes |
 | `Simulation:WorkerHeartbeatTimeoutSeconds` | `30` | Time after the last heartbeat until a worker counts as gone and another runtime may take its worker id over |
 | `Simulation:MetricsIntervalSeconds` | `15` | Refresh interval of the Shard gauges, 1 to 3,600 seconds |
 | `Simulation:Topology` | `local-fleet`, `local-node-1`, `local-shard-1`, `local-shard-2` | Fleets, Nodes, and Shards, as [Topology Bootstrap](#topology-bootstrap) describes |
@@ -2712,7 +2820,7 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `WorldDataPath` | `WorldData/Worlds` | The World directories in the output |
 | `UdpPort`, `AdvertisedHost`, `AdvertisedUdpPort` | `27015`, `127.0.0.1`, `27015` | UDP endpoint and the endpoint that placement hands out |
 | `MaxConnections` | `1000` | Connection slots, at most 10,000 |
-| `JoinHandshakeTimeoutSeconds` | `10` | Time for a new peer to send its join request; also LiteNetLib's disconnect timeout |
+| `JoinHandshakeTimeoutSeconds` | `10` | Time for a new peer to send its join request; also LiteNetLib's disconnect timeout. It covers the wait for the join request only: a join that started is bounded by its own GameService calls, each with its call timeout, and ends in an acceptance or a rejection |
 | `NetworkPollIntervalMilliseconds` | `15` | Longest wait between transport polls, at most 1,000 |
 | `GracefulDisconnectMaximumMilliseconds` | `2000` | Longest wait for the client to acknowledge the message that says why the worker ends its connection, before the disconnect, from 1 to the `JoinHandshakeTimeoutSeconds` that is also LiteNetLib's disconnect timeout, as [Realtime UDP Transport](#realtime-udp-transport) describes |
 | `GameServiceBaseUrl`, `GameServiceTimeoutSeconds` | `http://localhost:5000`, `5` | GameService address and HTTP timeout |
@@ -2723,7 +2831,8 @@ and endpoint settings, as the `StressArena` launch profile does.
 | `RegistryHeartbeatSeconds` | `10` | Worker heartbeat interval |
 | `RegistryHeartbeatRetryMilliseconds` | `2000` | How soon a worker heartbeat that timed out, could not reach GameService, or got a server error goes again, until one succeeds; shorter than the heartbeat interval |
 | `RegistryAcquireTimeoutSeconds` | `120` | How long a new runtime waits for a previous runtime's lease, longer than the heartbeat interval and at most 3,600 seconds |
-| `GameServiceOutageToleranceSeconds` | `120` | How long the worker plays on after its last successful worker heartbeat before it stops in order, 10 to 600 seconds. GameService's `Simulation:SessionLeaseLifetimeSeconds` must exceed it plus one session heartbeat interval plus one retry, as [GameService Outage](#gameservice-outage) describes |
+| `GameServiceOutageToleranceSeconds` | `120` | How long the worker plays on after its last successful worker heartbeat before it stops in order, 10 to 600 seconds. GameService's `Simulation:SessionLeaseLifetimeSeconds` must be at least this plus the call timeout, the heartbeat intervals, and the retries around it, as [GameService Outage](#gameservice-outage) describes |
+| `ShutdownTimeoutSeconds` | `40` | The host's shutdown timeout, which the whole orderly stop shares, at least 6 times `GameServiceTimeoutSeconds` plus 3 seconds and at most 600: the steps that call GameService, in-flight operations, the combat flush with its arrow batch and quest credits, the last checkpoint, going offline, and the session releases, may each spend a call timeout. A container's stop grace period must stay longer, as [Deployment](DEPLOYMENT.md#settings-that-must-be-set) says |
 | `UncertainOperationRetryHorizonSeconds` | `600` | How long a death, a quest kill credit, or a Mob corpse whose outcome stays uncertain is retried, counted only while GameService answers, at least `GameServiceOutageToleranceSeconds` plus 60 and at most 3,600 seconds. GameService's `Retention:ItemHistory` must stay far above it |
 | `NetworkMetricsLogSeconds` | `30` | Interval of the network, status, and performance logs |
 | `PerformanceReportPath` | none | File that the worker appends every metrics interval to as one JSON line, for the load tooling, as [Monitoring](MONITORING.md#periodic-and-routine-logs) describes; a relative path starts at the working directory |

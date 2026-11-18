@@ -7,9 +7,9 @@ using Mmorpg.SimulationWorker.Sessions;
 namespace Mmorpg.SimulationWorker.Realtime;
 
 // Runs once per loop iteration: completes delayed disconnects, drops peers that stop
-// acknowledging, times out joins, detaches invalidated or superseded sessions, ends the
-// connection of a session whose account session ended, and releases sessions that neither a
-// peer nor a lingering body owns. Loop-confined.
+// acknowledging, times out peers that send no join request, detaches invalidated or superseded
+// sessions, ends the connection of a session whose account session ended, and releases sessions
+// that neither a peer nor a lingering body owns. Loop-confined.
 internal sealed class RealtimePeerSupervisor(
     SimulationWorkerConfig config,
     RealtimePeerRegistry peers,
@@ -79,7 +79,11 @@ internal sealed class RealtimePeerSupervisor(
             var activeSession = context.Session;
             if (activeSession is null)
             {
-                if (now - context.ConnectedAtUtc > config.JoinHandshakeTimeout)
+                // The timeout covers the wait for the join request only. A join that started is
+                // bounded by its own GameService calls, each with its call timeout, and always ends
+                // in a completion that accepts the peer or rejects it, so a slow consume or quest
+                // log read is not mistaken for a silent peer.
+                if (!context.JoinStarted && now - context.ConnectedAtUtc > config.JoinHandshakeTimeout)
                 {
                     sender.RejectProtocol(peer, context, "join_timeout", "The join handshake timed out.");
                 }

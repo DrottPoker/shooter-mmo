@@ -158,6 +158,62 @@ groups:
         annotations:
           summary: GameService could not reach Redis in the last five minutes and fell back to PostgreSQL and local rate limits.
 
+  # What a crash or an outage costs the players. The facts and the repair of each are in
+  # docs/DEPLOYMENT.md under After A Crash.
+  - name: mmorpg-resilience
+    rules:
+      - alert: WorkerLostGameService
+        expr: |
+          max by (instance) (simulation_worker_game_service_available) == 0
+            or
+          max by (instance) (simulation_worker_game_service_heartbeat_age_seconds) > 45
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: The worker {{ $labels.instance }} has had no answer from GameService for more than a minute, so items, trade, and quests are paused for its players, and it stops by itself once its outage tolerance has passed.
+
+      - alert: AbandonedDurableOperations
+        expr: sum by (instance, kind) (increase(simulation_worker_game_service_abandoned_operations_total[10m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: The worker {{ $labels.instance }} gave up a durable operation of the kind {{ $labels.kind }} that never committed, which is lost progress; its error line names the operation id.
+
+      - alert: DurableActionsRefused
+        expr: sum by (instance) (rate(simulation_worker_game_service_refused_intents_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The worker {{ $labels.instance }} keeps refusing durable player actions because GameService does not answer.
+
+      - alert: WorkerCallsToGameServiceFail
+        expr: sum by (instance, route, reason) (rate(simulation_worker_game_service_call_failures_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Calls of the worker {{ $labels.instance }} to GameService keep failing on the route group {{ $labels.route }} with the reason {{ $labels.reason }}.
+
+      - alert: WorkerRenewalsWithheld
+        expr: sum by (instance) (increase(simulation_worker_registry_renewals_withheld_total[10m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: The realtime loop of the worker {{ $labels.instance }} went silent, so it stopped renewing its registration and GameService takes its Shard offline; a worker that stays silent needs a restart.
+
+      - alert: LoginsRefusedAsBusy
+        expr: |
+          sum(rate(game_service_accounts_password_hashing_refusals_total[5m]))
+            + sum(rate(game_service_redis_session_cache_operations_total{result="revocation_refused"}[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: GameService keeps answering logins, registrations, or logouts with auth_busy, because its password hashing is full or too many sessions wait for Redis.
+
   - name: mmorpg-economy
     rules:
       - alert: EconomyAuditViolations

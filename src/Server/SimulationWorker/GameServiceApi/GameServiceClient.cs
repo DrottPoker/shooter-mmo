@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,8 +16,13 @@ namespace Mmorpg.SimulationWorker.GameServiceApi;
 
 // A call that fails for a passing reason asks the availability for a registry heartbeat at once,
 // so the worker learns of an outage within about one timeout; the heartbeat itself reports
-// its outcome there.
-public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailability? availability = null)
+// its outcome there. Every call that fails for a reason of the channel, a timeout, no connection,
+// an error that GameService did not make, a server error, an invalid answer, or refused
+// credentials, is counted by route group and reason.
+public sealed class GameServiceClient(
+    HttpClient httpClient,
+    GameServiceAvailability? availability = null,
+    GameServiceCallMetrics? callMetrics = null)
 {
     private const string HeartbeatOperation = "GameService.HeartbeatSimulationWorker";
 
@@ -113,7 +119,8 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
                     request.QuestCatalogRevision,
                     StringComparison.Ordinal)
                 && response.LastHeartbeatAt != default
-                && response.OnlineUntil > response.LastHeartbeatAt,
+                && response.OnlineUntil > response.LastHeartbeatAt
+                && response.SessionLeaseSeconds > 0,
             cancellationToken);
     }
 
@@ -451,6 +458,11 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
         if (!result.Succeeded)
         {
             SimulationWorkerTelemetry.RecordFailure(activity, result.Error!.Code);
+            if (result.FailureReason is { } reason)
+            {
+                callMetrics?.RecordCallFailure(operation, reason);
+            }
+
             if (availability is not null
                 && !string.Equals(operation, HeartbeatOperation, StringComparison.Ordinal)
                 && GameServiceOutcome.IsTransient(result.Error.Code, result.StatusCode))
@@ -487,27 +499,7 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
                     : InvalidResponse<TResponse>();
             }
 
-            var problem = await ReadJsonAsync<GameServiceProblemDetails>(response, cancellationToken);
-            if (problem is null || string.IsNullOrWhiteSpace(problem.Code))
-            {
-                return InvalidResponse<TResponse>();
-            }
-
-            if (string.Equals(
-                    problem.Code,
-                    "invalid_service_credentials",
-                    StringComparison.Ordinal))
-            {
-                return GameServiceResult<TResponse>.Failure(
-                    (int)HttpStatusCode.BadGateway,
-                    "auth_service_authentication_failed",
-                    "Simulation worker could not authenticate with GameService.");
-            }
-
-            return GameServiceResult<TResponse>.Failure(
-                (int)response.StatusCode,
-                NormalizeForwardedErrorCode(problem.Code),
-                NormalizeForwardedErrorMessage(problem.Detail ?? problem.Message));
+            return await ReadFailureAsync<TResponse>(response, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -518,14 +510,20 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
             return GameServiceResult<TResponse>.Failure(
                 (int)HttpStatusCode.GatewayTimeout,
                 "auth_service_timeout",
-                "GameService did not respond before the timeout.");
+                "GameService did not respond before the timeout.") with
+            {
+                FailureReason = GameServiceCallMetrics.TimeoutReason
+            };
         }
         catch (HttpRequestException)
         {
             return GameServiceResult<TResponse>.Failure(
                 (int)HttpStatusCode.ServiceUnavailable,
                 "auth_service_unavailable",
-                "GameService could not be reached.");
+                "GameService could not be reached.") with
+            {
+                FailureReason = GameServiceCallMetrics.UnreachableReason
+            };
         }
         catch (JsonException)
         {
@@ -557,27 +555,7 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
                     : InvalidResponse<TResponse>();
             }
 
-            var problem = await ReadJsonAsync<GameServiceProblemDetails>(response, cancellationToken);
-            if (problem is null || string.IsNullOrWhiteSpace(problem.Code))
-            {
-                return InvalidResponse<TResponse>();
-            }
-
-            if (string.Equals(
-                    problem.Code,
-                    "invalid_service_credentials",
-                    StringComparison.Ordinal))
-            {
-                return GameServiceResult<TResponse>.Failure(
-                    (int)HttpStatusCode.BadGateway,
-                    "auth_service_authentication_failed",
-                    "Simulation worker could not authenticate with GameService.");
-            }
-
-            return GameServiceResult<TResponse>.Failure(
-                (int)response.StatusCode,
-                NormalizeForwardedErrorCode(problem.Code),
-                NormalizeForwardedErrorMessage(problem.Detail ?? problem.Message));
+            return await ReadFailureAsync<TResponse>(response, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -588,14 +566,20 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
             return GameServiceResult<TResponse>.Failure(
                 (int)HttpStatusCode.GatewayTimeout,
                 "auth_service_timeout",
-                "GameService did not respond before the timeout.");
+                "GameService did not respond before the timeout.") with
+            {
+                FailureReason = GameServiceCallMetrics.TimeoutReason
+            };
         }
         catch (HttpRequestException)
         {
             return GameServiceResult<TResponse>.Failure(
                 (int)HttpStatusCode.ServiceUnavailable,
                 "auth_service_unavailable",
-                "GameService could not be reached.");
+                "GameService could not be reached.") with
+            {
+                FailureReason = GameServiceCallMetrics.UnreachableReason
+            };
         }
         catch (JsonException)
         {
@@ -619,12 +603,113 @@ public sealed class GameServiceClient(HttpClient httpClient, GameServiceAvailabi
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken);
     }
 
+    // Only an answer with a success status whose body fails its validation is invalid, which ends
+    // the session of the player that asked: GameService and the worker disagree about the call.
     private static GameServiceResult<T> InvalidResponse<T>()
     {
         return GameServiceResult<T>.Failure(
             (int)HttpStatusCode.BadGateway,
             "invalid_auth_response",
-            "GameService returned an invalid response.");
+            "GameService returned an invalid response.") with
+        {
+            FailureReason = GameServiceCallMetrics.InvalidResponseReason
+        };
+    }
+
+    // GameService answers every failure with Problem Details that carry a code, which this keeps.
+    // An error status without a usable code was not made by GameService, so what it says is read
+    // from its status alone, as WithoutProblemCode does.
+    private static async Task<GameServiceResult<TResponse>> ReadFailureAsync<TResponse>(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var status = (int)response.StatusCode;
+        var problem = await TryReadProblemAsync(response, cancellationToken);
+        if (problem is null || string.IsNullOrWhiteSpace(problem.Code))
+        {
+            return WithoutProblemCode<TResponse>(status);
+        }
+
+        if (string.Equals(
+                problem.Code,
+                "invalid_service_credentials",
+                StringComparison.Ordinal))
+        {
+            return AuthenticationFailed<TResponse>(
+                "Simulation worker could not authenticate with GameService.");
+        }
+
+        var failure = GameServiceResult<TResponse>.Failure(
+            status,
+            NormalizeForwardedErrorCode(problem.Code),
+            NormalizeForwardedErrorMessage(problem.Detail ?? problem.Message));
+        // A domain refusal is the call working as designed; only a server error counts as failed.
+        return status >= (int)HttpStatusCode.InternalServerError
+            ? failure with { FailureReason = GameServiceCallMetrics.ServerErrorReason }
+            : failure;
+    }
+
+    // A proxy error page or an empty body is no Problem Details, and neither is it a GameService
+    // that disagrees with the worker, so it is never invalid_auth_response:
+    //   - 500 and above: the outage that the status says, with the code of an unreachable
+    //     GameService, which is transient, flips the availability as a lost connection does, and
+    //     ends no session;
+    //   - 401 and 407: the credentials are wrong, as GameService's own invalid_service_credentials;
+    //   - anything else: a rejection of this call that ends no session. Its status is 400 whatever
+    //     the intermediary sent, because a caller reads 401, 404, and 409 as GameService's own
+    //     answers about a session, and a proxy 404 page says nothing about one.
+    private static GameServiceResult<T> WithoutProblemCode<T>(int status)
+    {
+        var detail = $"GameService answered HTTP {status.ToString(CultureInfo.InvariantCulture)} without an error code.";
+        if (status >= (int)HttpStatusCode.InternalServerError)
+        {
+            return GameServiceResult<T>.Failure(status, "auth_service_unavailable", detail) with
+            {
+                FailureReason = GameServiceCallMetrics.NoProblemReason
+            };
+        }
+
+        if (status is (int)HttpStatusCode.Unauthorized or (int)HttpStatusCode.ProxyAuthenticationRequired)
+        {
+            return AuthenticationFailed<T>(detail);
+        }
+
+        return GameServiceResult<T>.Failure(
+            (int)HttpStatusCode.BadRequest,
+            "auth_service_rejected",
+            detail) with
+        {
+            FailureReason = GameServiceCallMetrics.NoProblemReason
+        };
+    }
+
+    private static GameServiceResult<T> AuthenticationFailed<T>(string message)
+    {
+        return GameServiceResult<T>.Failure(
+            (int)HttpStatusCode.BadGateway,
+            "auth_service_authentication_failed",
+            message) with
+        {
+            FailureReason = GameServiceCallMetrics.AuthenticationReason
+        };
+    }
+
+    private static async Task<GameServiceProblemDetails?> TryReadProblemAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadJsonAsync<GameServiceProblemDetails>(response, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private static bool IsValidConsumedTicket(

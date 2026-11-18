@@ -172,7 +172,12 @@ at start and every hour, as [The Economy Audit](#the-economy-audit) describes.
 database up to date before GameService starts, and a start refuses a database that is not current.
 `Http:ShutdownDrainSeconds`, 10 by default, must be longer than the proxy's health check interval
 times the failures it needs, and `Http:ShutdownTimeoutSeconds`, 30, must be shorter than the
-runtime's stop grace period.
+runtime's stop grace period. `RedisAcceleration:SessionRevocationMaxConcurrency`, a quarter of
+`Database:MaximumPoolSize` by default and at most half of it, bounds the logins and logouts that
+wait for Redis at once, as
+[Redis Account-Session Acceleration](SERVICE_FEATURES.md#redis-account-session-acceleration)
+describes, and `Simulation:WorkerHeartbeatTimeoutSeconds` and `Simulation:SessionLeaseLifetimeSeconds`
+must fit the workers' timing, as the paragraph after the worker table says.
 
 SimulationWorker:
 
@@ -186,6 +191,16 @@ SimulationWorker:
 | `SimulationWorker:AdvertisedHost`, `AdvertisedUdpPort` | `127.0.0.1`, `28015` | The endpoint that placement hands to players, which must be reachable from the player's side, so never a wildcard address |
 | `ConnectionStrings:Redis` | as GameService's | Redis for its health check; the password must be real |
 | `SimulationWorker:HealthFilePath` | `/tmp/worker-ready` | The file that its health check reads |
+| `SimulationWorker:ShutdownTimeoutSeconds` | `40` | The host's shutdown timeout, which the whole orderly stop shares: at least 6 times `GameServiceTimeoutSeconds` plus 3 seconds, the worker refuses to start with less. The container's `stop_grace_period`, 60 seconds in the stack, must stay at least 5 seconds longer; `tools/Verify-Deployment.ps1` holds the Compose file to it |
+
+The timing of the two sides must hold together, and the worker checks it against the first answer
+of the registry, stopping before it plays anyone with one message that names the settings of both
+sides when it does not: GameService's `Simulation:WorkerHeartbeatTimeoutSeconds`, 30, must exceed the
+worker's `RegistryHeartbeatSeconds` plus `GameServiceTimeoutSeconds` plus one second, and
+`Simulation:SessionLeaseLifetimeSeconds`, 150, must be at least the sum that
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage) gives: the outage tolerance, 120, and
+the call timeout, the heartbeat intervals, and the retries around it, 140 seconds with the defaults.
+Raise a tolerance or a timeout on the worker only together with the lease.
 
 The worker also refuses, outside Development, the shared secret variable, a secret or Redis
 password that is a placeholder or that the repository publishes, and plain HTTP to a public IP
@@ -314,9 +329,12 @@ What it does not mean: unhealthy is a label, not an action. Compose's `restart: 
 restarts a container that exits and does nothing for one that is only unhealthy, so in the stack a
 hung worker stays unhealthy, and so stays out of `up --wait`, until someone restarts it. An
 orchestrator that restarts or replaces unhealthy containers, which a real deployment needs, turns
-the label into a recovery. Until then a hung worker goes on heartbeating, because its heartbeat is
-another service, so GameService keeps its Shard online and keeps placing players on it while its
-connected players receive no snapshots.
+the label into a recovery. Until then a hung worker gives up its Shard by itself: while its loop has
+been silent for more than 5 seconds its registry heartbeat sends no renewal, so after the lease, 30
+seconds, GameService takes the Shard offline and places nobody on it, and the worker counts the
+episode in `simulation_worker.registry.renewals_withheld` and logs it once. It does not stop itself,
+so the container stays up and unhealthy until someone restarts it, and its connected players receive
+no snapshots meanwhile. If the loop ticks again, the worker registers again with its next heartbeat.
 
 `--health-check-only` of the worker does not fit a running container. It loads and validates all
 configuration and content, which takes seconds, and it needs the UDP port that the running worker
@@ -341,7 +359,12 @@ matters:
 4. Run `migrate --plan` to see what the new version would change, then `migrate`. A migration
    that waits too long for a lock fails and applies nothing; run it again.
 5. Start GameService, then the workers. GameService starts only against a current database, and a
-   worker registers when GameService answers.
+   worker registers when GameService answers. The two must run the same service contract version,
+   which the registry heartbeat checks: GameService refuses a heartbeat of another version with
+   `service_contract_mismatch`, and the worker logs an error that says which side is older, plays
+   nobody, and tries again every heartbeat interval until the older side is updated. That is why the
+   workers stop first and start last: no worker of the old version ever calls a GameService of the
+   new one, or the other way round, while players are on it.
 6. Run `audit` once the workers are back, as [The Economy Audit](#the-economy-audit) describes,
    so an update that left the economy inconsistent shows at once and not at the next hour.
 
@@ -429,6 +452,31 @@ checks and what they cannot answer are in
   [Audit The Economy](LOCAL_DEVELOPMENT.md#audit-the-economy) describes. Run it before and after
   an update and after a restore, and keep the report of a violation: the examples name ids and
   never a name.
+
+## After A Crash
+
+What a crash leaves behind, what repairs itself and after how long, what to check, and what is
+lost. The leases are the clocks: the registry lease, `Simulation:WorkerHeartbeatTimeoutSeconds`, 30
+seconds; the session lease, `Simulation:SessionLeaseLifetimeSeconds`, 150 seconds; the join ticket,
+`Simulation:JoinTicketLifetimeSeconds`, 30 seconds; the checkpoint interval,
+`SimulationWorker:CharacterCheckpointSeconds`, 30 seconds; the outage tolerance,
+`SimulationWorker:GameServiceOutageToleranceSeconds`, 120 seconds; and the retry horizon of a durable
+operation, `SimulationWorker:UncertainOperationRetryHorizonSeconds`, 600 seconds. The facts are owned
+by [Project Architecture](PROJECT_ARCHITECTURE.md#runtime-identity-and-assignment-safety) and
+[GameService Outage](SERVICE_FEATURES.md#gameservice-outage); this section says what an operator
+sees.
+
+| Crash of | What it leaves | What repairs itself | What to check | What is lost |
+| --- | --- | --- | --- | --- |
+| The worker | Its players' connections time out. At GameService the Shard stays assigned to the dead runtime, and its sessions stay held, so a character cannot join again and the account cannot start another character | The Shard shows offline once the registry lease ended, within 30 seconds. A restarted worker keeps retrying while the previous runtime's lease is live and takes the Shard over then, which releases the old runtime's sessions and tickets at once; without a restart the sessions end when their leases do, within 150 seconds. Players join again once the worker is back | The alerts `SimulationWorkerDown` and `ShardOffline`; `docker compose ps` and the worker's log; `GET /api/shards` after the restart | Place and vitals since the last checkpoint, at most 30 seconds, and the durable work that only the dead process held: arrow shots and quest credits that had not committed. An item action in flight at GameService either committed or did not, and the player sees which after joining |
+| GameService | Every route answers 503 from the proxy. Players cannot log in or join; a joined player keeps playing | A worker plays on for the outage tolerance, 120 seconds, with everything durable paused and the players told that saving is paused, then goes on as before when GameService answers, since the session leases outlast the tolerance. A worker that waited longer stops in order, telling its players `game_service_outage`, and its sessions end by lease or by the replacement that releases them. Work that waits for GameService is retried for up to 600 seconds of GameService answering | `docker compose ps`, GameService's log, `GET /health/ready` through the proxy; the alerts `GameServiceDown`, `WorkerLostGameService`, and, after a long outage, `AbandonedDurableOperations` | Nothing that was committed. An operation that never committed within its horizon is given up and counted in `abandoned_operations`, which is lost progress: a kill credit or a Mob corpse is dropped, and a death ends the session without a lingering body |
+| PostgreSQL | GameService answers `database_unavailable` or 503 for everything that needs the database, and its readiness is 503, so the proxy takes it out of rotation. The workers see server errors, which count as an outage | Connections come back by themselves when the database answers. A transaction that was open rolled back, and an item operation that is repeated with its operation id returns the committed result. Within the outage tolerance the workers go on as after a GameService restart | The database's own log and health; `docker compose run --rm migrate migrate --plan` shows nothing pending; the alerts `GameServiceErrorRate` and `DatabasePoolSaturated`; then `audit` | What the database did not acknowledge; its durability is its configuration, not the service's, and backups are in [Back Up PostgreSQL](#back-up-postgresql) |
+| Redis | The session cache and the distributed rate limits are gone and nothing durable, since Redis never decides item custody, simulation authority, or durable session truth. GameService validates sessions in PostgreSQL and limits per instance. A login or logout writes revocation tombstones to Redis before it commits, so while Redis refuses connections it is answered `session_cache_invalidation_unavailable`, and while Redis stalls only a bounded number at once may wait for it and the rest are answered `auth_busy`. Readiness lists Redis, so it is 503 | The cache refills within its lifetime, 60 seconds, once Redis answers again, and a restarted Redis holds no stale entry that a tombstone would have to guard. A running worker does not use Redis | `docker compose ps`; the alerts `RedisFailures` and `LoginsRefusedAsBusy`. With `RedisAcceleration:Enabled=false` GameService never contacts Redis, readiness ignores it, and a deployment loses the session cache, so every authenticated request reads PostgreSQL, and the limits that span instances, which become per instance | Nothing durable |
+
+A crash of the proxy takes the front door and nothing else: the workers call GameService directly,
+and players already in the world are connected to their worker over UDP. Whatever the crash, run
+`audit` once everything is back, as [The Economy Audit](#the-economy-audit) describes, and read the
+alerts of [Monitoring](MONITORING.md#alerts) that fired.
 
 ## What To Watch
 

@@ -14,7 +14,8 @@ internal sealed class SessionService(
     IAccountSessionLifecycleHandler lifecycleHandler,
     IAccountSessionReferences references,
     IAccountSessionCache? configuredSessionCache = null,
-    RedisAccelerationMetrics? redisMetrics = null)
+    RedisAccelerationMetrics? redisMetrics = null,
+    SessionRevocationBulkhead? revocationBulkhead = null)
 {
     private readonly IAccountSessionCache sessionCache =
         configuredSessionCache ?? NullAccountSessionCache.Instance;
@@ -253,6 +254,19 @@ internal sealed class SessionService(
             or AccountSessionRevocationReason.ManualRevoke))
         {
             throw new ArgumentException("Revocation reason is invalid.", nameof(revocationReason));
+        }
+
+        // The tombstones go to Redis inside the transaction, so the slot that bounds how many
+        // callers may be in that section is taken before the connection, as a login takes it.
+        using var revocationSlot = revocationBulkhead is null
+            ? null
+            : await revocationBulkhead.TryEnterAsync(cancellationToken);
+        if (revocationBulkhead is not null && revocationSlot is null)
+        {
+            return ServiceResult<bool>.ServiceUnavailable(
+                AccountService.AuthBusyCode,
+                "Too many logins and logouts are being processed. Try again after the Retry-After interval.",
+                SessionRevocationBulkhead.RetryAfter);
         }
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

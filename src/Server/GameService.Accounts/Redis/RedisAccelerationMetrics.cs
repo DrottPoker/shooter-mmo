@@ -13,7 +13,8 @@ internal sealed record RedisAccelerationMetricsSnapshot(
     long RedisFailures,
     long DistributedRateLimitAllowed,
     long DistributedRateLimitRejected,
-    long DistributedRateLimitFallbacks);
+    long DistributedRateLimitFallbacks,
+    long SessionRevocationRefusals);
 
 internal sealed class RedisAccelerationMetrics : IDisposable
 {
@@ -36,6 +37,7 @@ internal sealed class RedisAccelerationMetrics : IDisposable
     private long distributedRateLimitAllowed;
     private long distributedRateLimitRejected;
     private long distributedRateLimitFallbacks;
+    private long sessionRevocationRefusals;
 
     public RedisAccelerationMetrics()
     {
@@ -81,6 +83,14 @@ internal sealed class RedisAccelerationMetrics : IDisposable
     {
         Interlocked.Increment(ref sessionCacheInvalidations);
         sessionCacheCounter.Add(1, new KeyValuePair<string, object?>("result", "invalidation"));
+    }
+
+    // A login or logout that found every slot of the revocation bulkhead taken and was refused
+    // with auth_busy.
+    public void RecordSessionRevocationRefused()
+    {
+        Interlocked.Increment(ref sessionRevocationRefusals);
+        sessionCacheCounter.Add(1, new KeyValuePair<string, object?>("result", "revocation_refused"));
     }
 
     public bool RecordRedisFailure(string operation)
@@ -142,7 +152,8 @@ internal sealed class RedisAccelerationMetrics : IDisposable
             Volatile.Read(ref redisFailures),
             Volatile.Read(ref distributedRateLimitAllowed),
             Volatile.Read(ref distributedRateLimitRejected),
-            Volatile.Read(ref distributedRateLimitFallbacks));
+            Volatile.Read(ref distributedRateLimitFallbacks),
+            Volatile.Read(ref sessionRevocationRefusals));
     }
 
     public void Dispose()

@@ -502,7 +502,10 @@ public sealed record SimulationWorkerHeartbeatResponse(
     string ItemCatalogRevision,
     string QuestCatalogRevision,
     DateTime LastHeartbeatAt,
-    DateTime OnlineUntil);
+    DateTime OnlineUntil,
+    // The lease that every simulation session of this Shard gets from a join and from each
+    // session heartbeat, so the worker can check it against its own timing settings.
+    int SessionLeaseSeconds);
 
 public sealed record SimulationWorkerHeartbeatRequest(
     string FleetId,
@@ -519,7 +522,9 @@ public sealed record SimulationWorkerHeartbeatRequest(
     string SimulationRevision,
     string CollisionRevision,
     string ItemCatalogRevision,
-    string QuestCatalogRevision);
+    string QuestCatalogRevision,
+    // ServiceContract.Version of the worker; GameService refuses a heartbeat of another version.
+    int ServiceContractVersion);
 
 public sealed record SimulationWorkerOfflineRequest(string RuntimeId);
 
@@ -682,6 +687,10 @@ public sealed record GameServiceProblemDetails(string? Code, string? Detail, str
 public sealed record GameServiceResult<T>(T? Value, SimulationWorkerErrorResponse? Error, int StatusCode)
 {
     public bool Succeeded => Error is null;
+
+    // Set when the call failed for a reason of the channel and not by a refusal of GameService's
+    // own; one of the reasons of GameServiceCallMetrics, which counts it.
+    public string? FailureReason { get; init; }
 
     public static GameServiceResult<T> Success(T value)
     {

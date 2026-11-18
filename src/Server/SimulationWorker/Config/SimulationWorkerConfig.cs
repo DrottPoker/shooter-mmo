@@ -7,6 +7,7 @@ using Mmorpg.GameSimulation;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Networking;
 using Mmorpg.Server.Common.Worlds;
+using Mmorpg.SimulationWorker.Registry;
 using Mmorpg.WorldData.Worlds;
 
 namespace Mmorpg.SimulationWorker.Config;
@@ -85,9 +86,53 @@ public sealed record SimulationWorkerConfig(
     // The horizon must leave this much more than the outage tolerance.
     public const int MinimumUncertainOperationRetryHorizonMarginSeconds = 60;
 
-    // The shortest session lease that a join may grant: the worker must hold the session through
-    // a whole outage that it tolerates and the session heartbeat round that renews it afterwards.
-    public TimeSpan MinimumSessionLease => GameServiceOutageTolerance + SimulationSessionHeartbeatInterval;
+    // How often the outage monitor reads the age of the last registry heartbeat.
+    public static readonly TimeSpan OutageMonitorPollInterval = TimeSpan.FromSeconds(1);
+
+    // The shortest session lease that a join may grant, and the one that GameService reports with
+    // every registry heartbeat answer. The worker must hold a session through everything that can
+    // pass before it renews it once GameService answers again, within the tolerance at the latest:
+    //   - the outage that it tolerates, GameServiceOutageTolerance, and the poll of the monitor
+    //     that would stop it just after, OutageMonitorPollInterval;
+    //   - a registry heartbeat that notices the return: one retry delay, and the call that
+    //     answers within the call timeout, GameServiceTimeout;
+    //   - the session heartbeat round that renews the leases, one SimulationSessionHeartbeatInterval
+    //     after the last round before the outage, and one SimulationSessionHeartbeatRetryDelay for a
+    //     request of the round that fails once.
+    public TimeSpan MinimumSessionLease =>
+        GameServiceOutageTolerance
+        + OutageMonitorPollInterval
+        + RegistryHeartbeatRetryDelay
+        + GameServiceTimeout
+        + SimulationSessionHeartbeatInterval
+        + SimulationSessionHeartbeatRetryDelay;
+
+    // The registry lease that GameService grants must outlast one heartbeat interval, the longest
+    // that a heartbeat takes to answer, GameServiceTimeout, and the margin that the local lease
+    // keeps, so a worker that heartbeats on time never sees its own lease end between two answers.
+    public TimeSpan MinimumRegistryLease =>
+        RegistryHeartbeatInterval + GameServiceTimeout + SimulationWorkerRegistrationLease.MaximumSafetyMargin;
+
+    // The host's shutdown timeout, which the whole orderly stop shares: after the peers are told
+    // and the transport stopped, the steps that call GameService, in-flight operations, the combat
+    // flush with its arrow batch and its quest credits, the last checkpoint, going offline, and the
+    // session releases, each may spend one GameServiceTimeout. A stop that outlasts it is cut off.
+    public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(DefaultShutdownTimeoutSeconds);
+
+    public const int DefaultShutdownTimeoutSeconds = 40;
+    public const int MaximumShutdownTimeoutSeconds = 600;
+
+    // The steps of the stop that each may spend a whole call timeout.
+    public const int ShutdownStepsWithCalls = 6;
+
+    // The notice to the peers and the transport's stop, and a margin.
+    public const int ShutdownFixedSeconds = 3;
+
+    // The shortest shutdown timeout that covers every step for a call timeout.
+    public static TimeSpan MinimumShutdownTimeoutFor(TimeSpan gameServiceTimeout)
+    {
+        return (gameServiceTimeout * ShutdownStepsWithCalls) + TimeSpan.FromSeconds(ShutdownFixedSeconds);
+    }
 
     public TimeSpan NetworkMetricsLogInterval { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -418,6 +463,13 @@ public sealed record SimulationWorkerConfig(
                 section["GameServiceOutageToleranceSeconds"],
                 "SimulationWorker:GameServiceOutageToleranceSeconds",
                 errors);
+        var shutdownTimeoutSeconds = string.IsNullOrWhiteSpace(
+                section["ShutdownTimeoutSeconds"])
+            ? DefaultShutdownTimeoutSeconds
+            : PositiveInt(
+                section["ShutdownTimeoutSeconds"],
+                "SimulationWorker:ShutdownTimeoutSeconds",
+                errors);
         var uncertainOperationRetryHorizonSeconds = string.IsNullOrWhiteSpace(
                 section["UncertainOperationRetryHorizonSeconds"])
             ? DefaultUncertainOperationRetryHorizonSeconds
@@ -695,6 +747,14 @@ public sealed record SimulationWorkerConfig(
                 $"SimulationWorker:UncertainOperationRetryHorizonSeconds must be at least GameServiceOutageToleranceSeconds plus {MinimumUncertainOperationRetryHorizonMarginSeconds} and must not exceed {MaximumUncertainOperationRetryHorizonSeconds}.");
         }
 
+        if (shutdownTimeoutSeconds > MaximumShutdownTimeoutSeconds
+            || TimeSpan.FromSeconds(shutdownTimeoutSeconds)
+                < MinimumShutdownTimeoutFor(TimeSpan.FromSeconds(authTimeoutSeconds)))
+        {
+            errors.Add(
+                $"SimulationWorker:ShutdownTimeoutSeconds must be at least {ShutdownStepsWithCalls} times SimulationWorker:GameServiceTimeoutSeconds plus {ShutdownFixedSeconds} seconds ({(int)MinimumShutdownTimeoutFor(TimeSpan.FromSeconds(authTimeoutSeconds)).TotalSeconds} with the current call timeout), so the orderly stop can spend one call timeout on each of its steps, and must not exceed {MaximumShutdownTimeoutSeconds}. The container's stop grace period must stay longer than it.");
+        }
+
         if (networkMetricsLogSeconds > 3_600)
         {
             errors.Add("SimulationWorker:NetworkMetricsLogSeconds must not exceed 3600.");
@@ -910,6 +970,7 @@ public sealed record SimulationWorkerConfig(
             SimulationSessionHeartbeatRetryDelay = TimeSpan.FromMilliseconds(sessionHeartbeatRetryMilliseconds),
             RegistryAcquireTimeout = TimeSpan.FromSeconds(registryAcquireTimeoutSeconds),
             RegistryHeartbeatRetryDelay = TimeSpan.FromMilliseconds(registryHeartbeatRetryMilliseconds),
+            ShutdownTimeout = TimeSpan.FromSeconds(shutdownTimeoutSeconds),
             GameServiceOutageTolerance = TimeSpan.FromSeconds(gameServiceOutageToleranceSeconds),
             UncertainOperationRetryHorizon = TimeSpan.FromSeconds(uncertainOperationRetryHorizonSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),

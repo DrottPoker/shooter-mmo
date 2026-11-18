@@ -65,6 +65,8 @@ public sealed class SimulationWorkerTelemetryTests
         using var worldActors = new WorldActorMetrics();
         using var corpses = new CorpseRuntimeMetrics();
         using var combat = new CombatMetrics();
+        using var gameServiceAvailability = new GameServiceAvailabilityMetrics();
+        using var gameServiceCalls = new GameServiceCallMetrics();
 
         var referenced = ObservabilityAssets.ReferencedMetricNames("simulation_worker_");
 
