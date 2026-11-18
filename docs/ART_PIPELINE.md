@@ -483,6 +483,10 @@ How it measures:
   and right edges, so a soft gradient stays background; the bottom 2 % of the
   rows, often a ground line, is left out.
 - The overlap is the intersection of both figures over their union.
+- A picture that is scaled unevenly or mirrored stops the script with `The
+  picture <name> is stretched, ...` or `... is mirrored; give it one scale, as
+  the model has.`, since the model would be measured against a figure the
+  picture does not show.
 
 ## Modeling Rules
 

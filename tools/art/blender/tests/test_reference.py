@@ -17,7 +17,7 @@ except ImportError:
     raise unittest.SkipTest("numpy is not installed; see requirements.txt") from None
 
 reference = load("art_pipeline/reference.py", "figure_mask", "resample", "overlap", "overlay", "picture_middle",
-                 "render_size", "BACKGROUND_DISTANCE", "MAX_SIZE", "BOTH_COLOR", "PICTURE_COLOR", "MODEL_COLOR",
+                 "render_size", "scale_problem", "UNEVEN_SCALE", "BACKGROUND_DISTANCE", "MAX_SIZE", "BOTH_COLOR", "PICTURE_COLOR", "MODEL_COLOR",
                  "NEITHER_GREY", numpy=True)
 
 
@@ -121,6 +121,15 @@ class PictureTests(unittest.TestCase):
         self.assertEqual(reference.render_size(1240, 790), (1240, 790))
         self.assertEqual(reference.render_size(reference.MAX_SIZE * 2, reference.MAX_SIZE), (reference.MAX_SIZE, reference.MAX_SIZE // 2))
         self.assertEqual(reference.render_size(1000, 4096), (500, reference.MAX_SIZE))
+
+    def test_a_picture_with_one_scale_is_compared(self):
+        self.assertIsNone(reference.scale_problem(1.0, 1.0, False))
+        self.assertIsNone(reference.scale_problem(2.5, 2.5 * (1.0 + reference.UNEVEN_SCALE / 2.0), False))
+
+    def test_a_stretched_or_mirrored_picture_is_refused(self):
+        self.assertIn("stretched", reference.scale_problem(2.0, 1.0, False))
+        self.assertIn("2.000 along its width and 1.000 along its height", reference.scale_problem(2.0, 1.0, False))
+        self.assertEqual(reference.scale_problem(1.0, 1.0, True), "is mirrored")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ BOTH_COLOR = (0.25, 0.75, 0.3)
 PICTURE_COLOR = (0.9, 0.2, 0.2)
 MODEL_COLOR = (0.2, 0.4, 0.95)
 NEITHER_GREY = 0.12
+# The scales of a picture along its width and its height may differ by this share at most.
+UNEVEN_SCALE = 0.001
 
 
 def figure_mask(pixels: np.ndarray) -> np.ndarray:
@@ -99,6 +101,17 @@ def render_size(width: int, height: int) -> tuple[int, int]:
     return max(1, round(width * scale)), max(1, round(height * scale))
 
 
+def scale_problem(x: float, y: float, mirrored: bool) -> str | None:
+    """Why a picture with these world scales along its width and its height cannot be compared: it
+    is stretched when they differ, and flipped when it is mirrored, and then the model would be
+    measured against a figure the picture does not show."""
+    if mirrored:
+        return "is mirrored"
+    if abs(x - y) > UNEVEN_SCALE * max(abs(x), abs(y)):
+        return f"is stretched, scaled {x:.3f} along its width and {y:.3f} along its height"
+    return None
+
+
 def pictures() -> list[bpy.types.Object]:
     """The image empties of the Reference collection that show an image."""
     collection = bpy.data.collections.get(REFERENCE_COLLECTION)
@@ -162,11 +175,14 @@ def compare(name: str, root_name: str, output: str) -> list[dict]:
             # A camera looks along its local -Z with its local Y up, which is how a picture's front is seen.
             rotation = empty.matrix_world.to_3x3().normalized()
             scale = empty.matrix_world.to_scale()
+            problem = scale_problem(abs(scale.x), abs(scale.y), empty.matrix_world.is_negative)
+            if problem:
+                raise ArtPipelineError(f"The picture {empty.name} {problem}; give it one scale, as the model has.")
             back = rotation @ Vector((0.0, 0.0, 1.0))
             distance = max((c - middle).length for c in corners) + 1.0
             camera.matrix_world = rotation.to_4x4()
             camera.location = middle + back * distance
-            camera.data.ortho_scale = empty.empty_display_size * abs(scale.x if width >= height else scale.y)
+            camera.data.ortho_scale = empty.empty_display_size * abs(scale.x)
             camera.data.clip_start = 0.01
             camera.data.clip_end = distance * 2.0
             size = render_size(width, height)
