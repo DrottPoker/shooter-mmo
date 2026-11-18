@@ -48,34 +48,24 @@ Task Workflow. These notes override the app's defaults where they differ.
 
 ## Delegating To Subagents
 
-The session Victor talks to owns the task: the design decisions, the review,
-the pull request loop, and the summary. It decides for every part of a task,
-without asking, whether a subagent does the part or the session does it
-itself. The goal is the best result for the least usage. A subagent runs
-inside the session, in the same checkout, so this is not the splitting into
-sessions that `AGENTS.md` forbids.
+The delegation rules are global, so they hold in every project of Victor's:
+Delegation in `~/.claude/CLAUDE.md`, and the `delegate` skill with the roles
+`implementer`, `surveyor`, and `reviewer`, the brief template, and the checks
+after each agent. The session Victor talks to owns the task and answers for
+what its subagents do and leave behind. A subagent runs inside the session, in
+the same checkout, so this is not the splitting into sessions that `AGENTS.md`
+forbids. This project adds:
 
-- Do the part in the session when it is small (about ten tool calls or fewer),
-  when the work is mostly design, or when it is subtle: simulation determinism,
+- The subtle parts that the session does itself are simulation determinism,
   protocol changes, a Foundation contract, hard debugging, and art that Victor
   approves stage by stage.
-- Delegate the part to a subagent on a cheaper model (Opus) when it is large
-  and mechanical, follows a pattern that already exists, and fits in a short
-  brief. Send a broad code search to a search agent when only the conclusion
-  is needed.
-- Never run a subagent on a model below Sonnet 5.5, also not for a search.
-- The session picks the effort level of each subagent: the lowest level that
-  does the part well, lower for mechanical work after an exact brief, higher
-  when the subagent has to reason on its own. `xhigh` is welcome for a part
-  that needs real reasoning; do not use `max`: a part that would need it is one
-  the session does itself. Victor picks the effort level of the session itself.
-- The brief names the files, the pattern to follow, what done looks like, the
-  focused tests to run, and the repository rules that apply. A subagent never
-  commits, pushes, or opens a pull request.
-- A subagent's report is not proof. Read the diff itself, then run
-  `tools/Test-Changes.ps1` in the session before the push.
-- The task summary lists who did what: every agent with its model, its effort
-  level, and its part, including the session itself.
+- The brief names the focused tests to run and the repository rules that
+  apply.
+- An agent may run tests in the checkout, so never start
+  `tools/Test-Changes.ps1` while an agent still works there. After the agent,
+  read the diff itself, then run `tools/Test-Changes.ps1` in the session before
+  the push.
+- Victor picks the model and the effort level of the session itself.
 
 ## Verification
 
