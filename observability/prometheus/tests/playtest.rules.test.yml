@@ -64,6 +64,27 @@ tests:
             exp_annotations:
               summary: More than 1 percent of the fixed ticks on w1 take longer than the tick interval.
 
+  - name: A worker that used more than half of its entity ids warns, one that did not stays quiet
+    interval: 15s
+    input_series:
+      # Half of 4,294,967,295 rounded down is 2,147,483,647: the third sample is the first above it.
+      - series: 'simulation_worker_realtime_entity_ids_used{job="mmorpg/simulation-worker", instance="w1"}'
+        values: '1000 2147483647 2147483648 2147483649'
+      - series: 'simulation_worker_realtime_entity_ids_used{job="mmorpg/simulation-worker", instance="w2"}'
+        values: '1000 1001 1002 1003'
+    alert_rule_test:
+      - eval_time: 15s
+        alertname: SimulationEntityIdsHalfUsed
+        exp_alerts: []
+      - eval_time: 30s
+        alertname: SimulationEntityIdsHalfUsed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+            exp_annotations:
+              summary: The worker on w1 used more than half of its entity ids; restart it at a quiet hour, as docs/MONITORING.md describes under Entity Ids.
+
   - name: GameService 5xx responses above one percent
     interval: 15s
     input_series:

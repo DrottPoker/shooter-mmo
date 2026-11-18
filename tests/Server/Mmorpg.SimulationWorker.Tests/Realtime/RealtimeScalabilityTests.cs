@@ -19,12 +19,29 @@ public sealed class RealtimeScalabilityTests
 
         for (var index = 1; index <= entityCount; index++)
         {
+            // A connection sees a join at once only while its entries since its last refresh
+            // are within the budget, and a joiner sees at most the budget on its first refresh.
+            // Every connection that joined sees the first budget of joins, and none sees more
+            // before its next refresh.
             var enteredConnections = manager.AddEntity(
                 new SimulationInterestEntity((ulong)index, 0f, 0f));
-            Assert.Equal(index - 1, enteredConnections.Count);
+            Assert.Equal(
+                index <= SimulationInterestManager.MaximumEnteredPerRefresh ? index - 1 : 0,
+                enteredConnections.Count);
 
             var joiningInterest = manager.Refresh(index, (ulong)index);
-            Assert.Equal(index, joiningInterest.Visible.Count);
+            Assert.Equal(
+                Math.Min(index, SimulationInterestManager.MaximumEnteredPerRefresh),
+                joiningInterest.Visible.Count);
+        }
+
+        // The rest enters at the refreshes of the connections, a budget at a time.
+        for (var round = 0; round < entityCount / SimulationInterestManager.MaximumEnteredPerRefresh; round++)
+        {
+            for (var connectionId = 1; connectionId <= entityCount; connectionId++)
+            {
+                manager.Refresh(connectionId, (ulong)connectionId);
+            }
         }
 
         stopwatch.Stop();

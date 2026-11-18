@@ -22,9 +22,12 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.realtime.datagrams.sent.bytes",
         "simulation_worker.realtime.despawn.packets",
         "simulation_worker.realtime.entities",
+        "simulation_worker.realtime.entity_ids.used",
+        "simulation_worker.realtime.interest.entries_deferred",
         "simulation_worker.realtime.joins.accepted",
         "simulation_worker.realtime.joins.rejected",
         "simulation_worker.realtime.peers",
+        "simulation_worker.realtime.peers.disconnected",
         "simulation_worker.realtime.peers.unauthenticated",
         "simulation_worker.realtime.players.real",
         "simulation_worker.realtime.players.synthetic",
@@ -39,6 +42,7 @@ public sealed class RealtimeMetricNamesTests
         "simulation_worker.realtime.snapshot.entity_records",
         "simulation_worker.realtime.snapshot_backpressure_dropped.packets",
         "simulation_worker.realtime.snapshot_dropped.packets",
+        "simulation_worker.realtime.spawn.failures",
         "simulation_worker.realtime.spawn.packets"
     ];
 

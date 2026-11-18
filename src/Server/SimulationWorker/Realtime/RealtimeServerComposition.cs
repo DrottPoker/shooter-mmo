@@ -162,16 +162,25 @@ internal static class RealtimeServerComposition
             host.EntityRegistry,
             networkMetrics);
         var sender = new RealtimePeerSender(networkMetrics, logger, peers, loopGuard);
+        // Entries to a view follow the room of the connection's reliable queue below its high-water
+        // mark, so a client that acknowledges slowly sees a crowd fill in slowly instead of being
+        // disconnected for the queue.
+        var interestManager = host.InterestManager ?? new SimulationInterestManager(config.InterestManagement);
+        interestManager.EntriesAllowedSource ??= new ReliableQueueEntryBudget(
+            peers,
+            ReliableQueueEntryBudget.HighWaterOf(config.Admission.MaxReliableQueuedPackets)).EntriesAllowed;
         var presence = new EntityPresenceReplicator(
             peers,
             sender,
             host.EntityRegistry,
             host.ConnectionBindings,
             host.WorldActorStore,
-            host.InterestManager ?? new SimulationInterestManager(config.InterestManagement),
+            interestManager,
             networkMetrics,
             clock,
-            registries.Hooks);
+            registries.Hooks,
+            logger);
+        networkMetrics.AttachEntityIds(() => host.EntityRegistry.IssuedEntityIds);
         var bodies = new LingeringBodies(config.LingeringBodySeconds, config.MovementSimulation.TickRateHz, clock);
         var sessionOperations = new SessionAuthorityOperations(
             host.JoinService,

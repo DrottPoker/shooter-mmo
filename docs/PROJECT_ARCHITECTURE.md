@@ -740,7 +740,11 @@ Movement replication is built to this contract, on the single realtime loop:
   its near tier once every three snapshots, the connections in turn, and the
   work of a refresh grows with the entities around the observer, not with the
   World, as [Interest Management](SERVICE_FEATURES.md#interest-management)
-  describes.
+  describes. A connection also gets only a budget of entities into its view per
+  refresh, the nearest first, and only while its reliable queue has room for
+  them, so a crowd that enters a view is a few bursts of reliable spawns that
+  follow what the client acknowledges, and never one that fills the connection's
+  reliable queue.
 - Each entity's remote record is quantized once per snapshot, and a recipient
   gets a record only when it is due: new in view, changed, stopping, or due
   for its refresh, near entities at the snapshot rate and far ones at a third

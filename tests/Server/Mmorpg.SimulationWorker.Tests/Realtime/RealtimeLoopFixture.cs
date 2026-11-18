@@ -72,7 +72,8 @@ internal sealed class RealtimeLoopFixture : IDisposable
             new SimulationInterestManager(Config.InterestManagement),
             Metrics,
             Clock,
-            Hooks);
+            Hooks,
+            Logger);
         CarrySync = new CarryStateSynchronizer(CharacterItemStateStore, Bindings, Registry, Sender);
         Teardown = new RealtimeSessionTeardown(
             Registry,

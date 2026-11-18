@@ -27,7 +27,8 @@ internal sealed class SnapshotReplicator(
     RealtimePerformanceMetrics performanceMetrics,
     RealtimeSimulationClock clock,
     RealtimeFailureIsolation isolation,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    uint lastSnapshotSequence = 0)
 {
     public const string PhaseName = "snapshots";
 
@@ -58,7 +59,9 @@ internal sealed class SnapshotReplicator(
         performanceMetrics.TickPhasePartTimer(PhaseName, "remote encoding");
     private readonly RealtimePerformanceMetrics.DurationTimer remoteSendsTimer =
         performanceMetrics.TickPhasePartTimer(PhaseName, "remote sends");
-    private uint snapshotSequence;
+
+    // The sequence of the last broadcast, which wraps; a test starts it near the end of the range.
+    private uint snapshotSequence = lastSnapshotSequence;
 
     // Sends the snapshots on the snapshot ticks.
     public void AddTickPhase(SimulationTickPhases phases, SimulationTickCadence cadence)
@@ -88,7 +91,11 @@ internal sealed class SnapshotReplicator(
         long deferredEntityUpdateCount = 0;
         try
         {
+            // The sequence is committed before anything reports under it: a broadcast that fails
+            // afterwards must not let the next one reuse it, since the records refuse a second
+            // report of one sequence and the snapshot phase would then fail on every run.
             var sequence = unchecked(snapshotSequence + 1u);
+            snapshotSequence = sequence;
             records.BeginSnapshot(sequence);
             ownerStates.Clear();
             entityRegistry.CopyPlayersTo(playerBuffer);
@@ -122,8 +129,6 @@ internal sealed class SnapshotReplicator(
             records.EndReports();
             var recordsEnded = Stopwatch.GetTimestamp();
             recordsTimer.Record(Stopwatch.GetElapsedTime(broadcastStarted, recordsEnded));
-
-            snapshotSequence = sequence;
 
             snapshotRecipientBuffer.Clear();
             foreach (var context in peers.Contexts)

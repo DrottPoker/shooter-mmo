@@ -100,6 +100,14 @@ groups:
         annotations:
           summary: More than 20 percent of the joins on {{ $labels.instance }} are rejected.
 
+      # The ids are 32 bits and never given out twice; 2147483647 is half of 4294967295, rounded down.
+      - alert: SimulationEntityIdsHalfUsed
+        expr: max by (instance) (simulation_worker_realtime_entity_ids_used) > 2147483647
+        labels:
+          severity: warning
+        annotations:
+          summary: The worker on {{ $labels.instance }} used more than half of its entity ids; restart it at a quiet hour, as docs/MONITORING.md describes under Entity Ids.
+
   - name: mmorpg-game-service
     rules:
       - alert: GameServiceErrorRate

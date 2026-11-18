@@ -48,6 +48,13 @@ public readonly record struct RealtimeNetworkMetricsSnapshot(
     public long DroppedDatagrams { get; init; }
 }
 
+// Why the worker ended a connection by itself, as the peers.disconnected counter names it.
+public enum RealtimePeerDisconnectReason
+{
+    // The peer's reliable queues held more packets than Admission:MaxReliableQueuedPackets.
+    ReliableQueueFull
+}
+
 public sealed class RealtimeNetworkMetrics : IDisposable
 {
     public const string MeterName = "Mmorpg.SimulationWorker.Realtime";
@@ -57,6 +64,12 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     // The tag of the dropped datagram counter.
     public const string DropReasonTagName = "reason";
+
+    // The tag of the disconnect counter.
+    public const string DisconnectReasonTagName = "reason";
+
+    // The tag of the counter of entities that waited to enter a view.
+    public const string DeferralCauseTagName = "cause";
 
     private static readonly (RealtimeDatagramDrop Reason, string Name)[] DropReasons =
     [
@@ -87,6 +100,10 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     private long despawnPackets;
     private long snapshotEntityRecords;
     private long snapshotBytes;
+    private long interestEntriesDeferredByBurst;
+    private long interestEntriesDeferredByQueue;
+    private long spawnFailures;
+    private readonly long[] disconnectedPeers = new long[Enum.GetValues<RealtimePeerDisconnectReason>().Length];
 
     // Indexed by the type byte of the message, as RealtimeMessageKinds reads it.
     private readonly long[] receivedMessagesByKind = new long[RealtimeMessageKinds.Count];
@@ -96,6 +113,9 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     // The transport's datagram counts, once the transport started.
     private RealtimeTransportSecurityCounters? datagrams;
+
+    // The entity ids given out so far, once the registry that gives them out is attached.
+    private Func<long>? entityIdsUsed;
 
     public RealtimeNetworkMetrics()
     {
@@ -126,6 +146,10 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         meter.CreateObservableCounter("simulation_worker.realtime.datagrams.sent.bytes", () => Volatile.Read(ref datagrams)?.BytesSent ?? 0);
         meter.CreateObservableCounter("simulation_worker.realtime.datagrams.overhead.bytes", () => OverheadBytes(Volatile.Read(ref datagrams)));
         meter.CreateObservableCounter("simulation_worker.realtime.datagrams.dropped", ObserveDrops);
+        meter.CreateObservableCounter("simulation_worker.realtime.interest.entries_deferred", ObserveDeferrals);
+        meter.CreateObservableCounter("simulation_worker.realtime.spawn.failures", () => Volatile.Read(ref spawnFailures));
+        meter.CreateObservableCounter("simulation_worker.realtime.peers.disconnected", ObserveDisconnects);
+        meter.CreateObservableGauge("simulation_worker.realtime.entity_ids.used", () => Volatile.Read(ref entityIdsUsed)?.Invoke() ?? 0);
     }
 
     // The counts of the transport's sealing layer, which the transport attaches when it starts.
@@ -133,6 +157,13 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     {
         ArgumentNullException.ThrowIfNull(counters);
         Volatile.Write(ref datagrams, counters);
+    }
+
+    // The registry whose ids the entity_ids.used gauge reads, once it exists.
+    public void AttachEntityIds(Func<long> idsUsed)
+    {
+        ArgumentNullException.ThrowIfNull(idsUsed);
+        Volatile.Write(ref entityIdsUsed, idsUsed);
     }
 
     public void SetActivePeers(long value) => Interlocked.Exchange(ref activePeers, value);
@@ -173,6 +204,10 @@ public sealed class RealtimeNetworkMetrics : IDisposable
 
     public void RecordConnectionRejected() => Interlocked.Increment(ref rejectedConnections);
 
+    // Counts one peer that the worker disconnected by itself, under the reason.
+    public void RecordPeerDisconnected(RealtimePeerDisconnectReason reason) =>
+        Interlocked.Increment(ref disconnectedPeers[(int)reason]);
+
     public void RecordSnapshotDropped(int packetCount = 1)
     {
         if (packetCount <= 0)
@@ -194,6 +229,17 @@ public sealed class RealtimeNetworkMetrics : IDisposable
     public void RecordJoinRejected() => Interlocked.Increment(ref rejectedJoins);
 
     public void RecordSpawnPacket() => Interlocked.Increment(ref spawnPackets);
+
+    // Counts one spawn that could not be built for a connection, which then does not see the entity.
+    public void RecordSpawnFailure() => Interlocked.Increment(ref spawnFailures);
+
+    // Counts entities that waited for a later refresh before they could enter a view: those that
+    // one burst could not hold, and those that the connection's reliable queue had no room for.
+    public void RecordInterestEntriesDeferred(long byBurst, long byQueue)
+    {
+        Interlocked.Add(ref interestEntriesDeferredByBurst, byBurst);
+        Interlocked.Add(ref interestEntriesDeferredByQueue, byQueue);
+    }
 
     public void RecordDespawnPacket() => Interlocked.Increment(ref despawnPackets);
 
@@ -269,6 +315,53 @@ public sealed class RealtimeNetworkMetrics : IDisposable
         }
 
         return measurements;
+    }
+
+    // Runs when a metrics reader collects: the entities that waited, by cause, each cause that
+    // held one back.
+    private IEnumerable<Measurement<long>> ObserveDeferrals()
+    {
+        var measurements = new List<Measurement<long>>();
+        var byBurst = Volatile.Read(ref interestEntriesDeferredByBurst);
+        if (byBurst > 0)
+        {
+            measurements.Add(new Measurement<long>(byBurst, new KeyValuePair<string, object?>(DeferralCauseTagName, "burst")));
+        }
+
+        var byQueue = Volatile.Read(ref interestEntriesDeferredByQueue);
+        if (byQueue > 0)
+        {
+            measurements.Add(new Measurement<long>(byQueue, new KeyValuePair<string, object?>(DeferralCauseTagName, "queue")));
+        }
+
+        return measurements;
+    }
+
+    // Runs when a metrics reader collects: every reason that ended a connection.
+    private IEnumerable<Measurement<long>> ObserveDisconnects()
+    {
+        var measurements = new List<Measurement<long>>();
+        foreach (var reason in Enum.GetValues<RealtimePeerDisconnectReason>())
+        {
+            var count = Volatile.Read(ref disconnectedPeers[(int)reason]);
+            if (count > 0)
+            {
+                measurements.Add(new Measurement<long>(
+                    count,
+                    new KeyValuePair<string, object?>(DisconnectReasonTagName, DisconnectReasonName(reason))));
+            }
+        }
+
+        return measurements;
+    }
+
+    private static string DisconnectReasonName(RealtimePeerDisconnectReason reason)
+    {
+        return reason switch
+        {
+            RealtimePeerDisconnectReason.ReliableQueueFull => "reliable_queue_full",
+            _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown disconnect reason.")
+        };
     }
 
     private static RealtimeMessageKindTraffic[] CaptureKinds(long[] messages, long[] bytes)
