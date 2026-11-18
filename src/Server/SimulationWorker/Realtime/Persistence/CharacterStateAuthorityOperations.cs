@@ -24,7 +24,8 @@ internal sealed class CharacterStateAuthorityOperations(
     GameServiceClient gameServiceClient,
     string workerId,
     RealtimeCompletionQueue completions,
-    ILogger logger)
+    ILogger logger,
+    PresenceMetrics? metrics = null)
 {
     // GameService takes at most this many states per request.
     public const int MaximumStatesPerRequest = 500;
@@ -62,6 +63,7 @@ internal sealed class CharacterStateAuthorityOperations(
                         entry.State.Mana);
                 }
 
+                metrics?.RecordCheckpointStates(PresenceMetrics.CheckpointSent, count);
                 var result = await gameServiceClient.CheckpointCharacterStatesAsync(
                     workerId,
                     new SimulationCharacterCheckpointRequest(entries[answered].Session.WorkerRuntimeId, states),
@@ -75,11 +77,14 @@ internal sealed class CharacterStateAuthorityOperations(
                     break;
                 }
 
-                if (result.Value!.Skipped > 0)
+                var answer = result.Value!;
+                metrics?.RecordCheckpointStates(PresenceMetrics.CheckpointSaved, answer.Accepted);
+                metrics?.RecordCheckpointStates(PresenceMetrics.CheckpointSkipped, answer.Skipped);
+                if (answer.Skipped > 0)
                 {
                     logger.LogDebug(
                         "[SIMULATION] GameService skipped {Skipped} of {Count} character states whose session ended or that were not newer.",
-                        result.Value.Skipped,
+                        answer.Skipped,
                         count);
                 }
 
@@ -94,6 +99,7 @@ internal sealed class CharacterStateAuthorityOperations(
                 entries.Count - answered);
         }
 
+        metrics?.RecordCheckpointStates(PresenceMetrics.CheckpointFailed, entries.Count - answered);
         return answered;
     }
 }

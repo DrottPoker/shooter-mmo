@@ -40,7 +40,8 @@ internal sealed class RealtimeSessionHandler(
     RealtimePerformanceMetrics performanceMetrics,
     ILogger logger,
     SimulationShardRules? shardRules = null,
-    PlayerCombatAuthority? combatAuthority = null) : IRealtimeCompletionHandler
+    PlayerCombatAuthority? combatAuthority = null,
+    PresenceMetrics? presenceMetrics = null) : IRealtimeCompletionHandler
 {
     // A peer without a session may send one join request, and a joined peer a leave request, which
     // ends its session on the peer at once.
@@ -120,7 +121,7 @@ internal sealed class RealtimeSessionHandler(
         // A leave follows the rule of a lost connection: while the session goes on, the character
         // stays in the world as a lingering body, and the session is released when the body goes.
         // A session that ended already takes its entity with it.
-        var lingers = sessionStore.IsCurrent(session, DateTime.UtcNow)
+        var lingers = sessionStore.IsCurrent(session)
             || sessionStore.IsSupersededByReconnect(session);
         if (lingers)
         {
@@ -294,7 +295,17 @@ internal sealed class RealtimeSessionHandler(
 
         // A reconnect resumes the lingering body of its session where it stands, with its
         // vitals, and its time ends.
-        bodies.Remove(entity.NetworkEntityId);
+        if (bodies.Remove(entity.NetworkEntityId))
+        {
+            presenceMetrics?.RecordBodyEnded(PresenceMetrics.BodyResumed);
+        }
+
+        if (session.IsReconnect && !session.IsSyntheticBot)
+        {
+            presenceMetrics?.RecordReconnect(
+                registration.IsNewEntity ? PresenceMetrics.ReconnectNewEntity : PresenceMetrics.ReconnectResumed);
+        }
+
         admissionGuard.OnPeerAuthenticated(completed.Context.PeerId);
         peers.RefreshPopulationMetrics();
         teardown.DisconnectReplacedConnection(binding.ReplacedConnectionId);
@@ -388,22 +399,47 @@ internal sealed class RealtimeSessionHandler(
         }
     }
 
-    // A join whose peer went before it was bound. A reconnect of a lingering body keeps the body
-    // in the world under the session's new generation, since the session goes on; any other join
-    // releases its session.
+    // A join whose peer went before it was bound. Its ticket's consumption rotated the session's
+    // token at GameService and registered the new generation here, so whoever holds the session
+    // already lost the old token. The session goes on while the worker holds anything of it: the
+    // entity, a lingering body or the connected player that the join meant to take over, or
+    // combat work that has not committed. Each is renewed with the new generation, and a
+    // connected player whose generation was replaced becomes a body through the peer supervisor,
+    // so it can come back within the body's time. Only a join of a session that nothing holds
+    // releases it; so does a join whose generation is not the current one any more, unless a
+    // newer generation of the session holds it, which then belongs to that join.
     private void EndUnboundJoin(ActiveSimulationSession session)
     {
-        if (bodies.TryGet(session.CharacterId, out var body)
-            && body.Session.SimulationSessionId == session.SimulationSessionId
-            && IsCurrentSession(session))
+        if (!IsCurrentSession(session))
         {
-            body.Session = session;
-            body.Entity.RefreshSession(session);
-            combatAuthority?.RenewSession(session);
+            if (!sessionStore.IsSupersededByReconnect(session))
+            {
+                sessionOperations.ReleaseDetachedInBackground(session);
+            }
+
             return;
         }
 
-        sessionOperations.ReleaseDetachedInBackground(session);
+        var holdsEntity = entityRegistry.TryGetPlayerByCharacterId(session.CharacterId, out var entity)
+            && entity!.Session.SimulationSessionId == session.SimulationSessionId;
+        if (!holdsEntity && combatAuthority?.HoldsDurableWork(session.SimulationSessionId) != true)
+        {
+            sessionOperations.ReleaseDetachedInBackground(session);
+            return;
+        }
+
+        if (holdsEntity)
+        {
+            if (bodies.TryGet(session.CharacterId, out var body)
+                && body.Session.SimulationSessionId == session.SimulationSessionId)
+            {
+                body.Session = session;
+            }
+
+            entity!.RefreshSession(session);
+        }
+
+        combatAuthority?.RenewSession(session);
     }
 
     // A reconnect of the same session keeps its entity where it stands.
@@ -415,6 +451,6 @@ internal sealed class RealtimeSessionHandler(
 
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
-        return sessionStore.IsCurrent(session, DateTime.UtcNow);
+        return sessionStore.IsCurrent(session);
     }
 }

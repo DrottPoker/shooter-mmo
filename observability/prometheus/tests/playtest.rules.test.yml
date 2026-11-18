@@ -205,3 +205,47 @@ tests:
               task: item_operations
             exp_annotations:
               summary: The oldest due row of retention task item_operations had waited more than 15 minutes when its latest pass began, so the task falls behind its table.
+
+  - name: Checkpoints that keep failing alert, a worker whose checkpoints are saved stays quiet
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w1", outcome="failed"}'
+        values: '0+4x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w1", outcome="saved"}'
+        values: '0+10x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w2", outcome="failed"}'
+        values: '0x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w2", outcome="saved"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CharacterCheckpointsFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CharacterCheckpointsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+            exp_annotations:
+              summary: GameService keeps refusing or failing the place and vitals that w1 sends, so a crash now loses more than the checkpoint interval of play.
+
+  - name: Sessions past their lease on a live worker alert after five minutes
+    interval: 15s
+    input_series:
+      - series: 'game_service_placement_sessions_expired_unreleased{job="mmorpg/game-service", instance="g1"}'
+        values: '0x12 2x28'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Sessions of a worker that still answers are past their lease and unreleased, so it neither renews nor releases every session it holds; the worker log names them.

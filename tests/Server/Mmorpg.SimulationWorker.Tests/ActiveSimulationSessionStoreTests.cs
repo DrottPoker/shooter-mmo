@@ -60,9 +60,10 @@ public sealed class ActiveSimulationSessionStoreTests
         };
         var requestedAt = new DateTime(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
 
-        var session = ActiveSimulationSession.FromJoinTicket(ticket, requestedAt);
+        var session = ActiveSimulationSession.FromJoinTicket(ticket, requestedAt, requestedTimestamp: 1_234);
 
         Assert.Equal(requestedAt.AddSeconds(30), session.SessionExpiresAt);
+        Assert.Equal(new SessionLease(1_234, TimeSpan.FromSeconds(30)), session.Lease);
     }
 
     [Fact]
@@ -105,7 +106,8 @@ public sealed class ActiveSimulationSessionStoreTests
             first.CharacterId,
             simulationSessionId,
             "first-token",
-            DateTime.UtcNow.AddMinutes(2)));
+            store.GetTimestamp(),
+            TimeSpan.FromMinutes(2)));
         Assert.Single(store.List());
     }
 
@@ -130,19 +132,22 @@ public sealed class ActiveSimulationSessionStoreTests
         var session = CreateSession();
         var store = new ActiveSimulationSessionStore();
         store.Register(session);
-        var refreshedExpiry = DateTime.UtcNow.AddMinutes(1);
+        var refreshedAt = store.GetTimestamp();
 
         Assert.False(store.Refresh(
             session.CharacterId,
             Guid.NewGuid(),
             session.SimulationSessionToken,
-            refreshedExpiry));
+            refreshedAt,
+            TimeSpan.FromMinutes(1)));
         Assert.True(store.Refresh(
             session.CharacterId,
             session.SimulationSessionId,
             session.SimulationSessionToken,
-            refreshedExpiry));
-        Assert.Equal(refreshedExpiry, store.List().Single().SessionExpiresAt);
+            refreshedAt,
+            TimeSpan.FromMinutes(1)));
+        Assert.True(store.TryGet(session.CharacterId, out var refreshed));
+        Assert.Equal(new SessionLease(refreshedAt, TimeSpan.FromMinutes(1)), refreshed!.Lease);
         Assert.False(store.Remove(
             session.CharacterId,
             Guid.NewGuid(),
@@ -184,16 +189,74 @@ public sealed class ActiveSimulationSessionStoreTests
     [Fact]
     public void IsCurrentExpiresTheExactSessionAndPreservesItsDisconnectReason()
     {
-        var session = CreateSession(sessionExpiresAt: DateTime.UtcNow.AddSeconds(1));
-        var store = new ActiveSimulationSessionStore();
+        var time = new SteppedTimeProvider(new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero));
+        var session = CreateSession(sessionExpiresAt: time.GetUtcNow().UtcDateTime.AddSeconds(1));
+        var store = new ActiveSimulationSessionStore(time);
         store.Register(session);
 
-        Assert.True(store.IsCurrent(session, session.SessionExpiresAt.AddTicks(-1)));
-        Assert.False(store.IsCurrent(session, session.SessionExpiresAt));
+        time.Advance(TimeSpan.FromSeconds(1) - TimeSpan.FromTicks(1));
+        Assert.True(store.IsCurrent(session));
+        time.Advance(TimeSpan.FromTicks(1));
+        Assert.False(store.IsCurrent(session));
         Assert.Empty(store.ListActiveSessions());
         Assert.True(store.TryTakeInvalidation(session.SimulationSessionId, out var invalidation));
         Assert.Equal("session_expired", invalidation!.Code);
         Assert.Equal("The simulation session lease expired.", invalidation.Message);
+    }
+
+    // The lease counts from the request's send time on the monotonic clock. A host that steps its
+    // wall clock forward must not drop every session at once, and one that steps it back must not
+    // extend a lease beyond the one GameService keeps.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(-1)]
+    public void ALeaseDoesNotFollowTheWallClock(int stepHours)
+    {
+        var time = new SteppedTimeProvider(new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero));
+        var store = new ActiveSimulationSessionStore(time);
+        var session = CreateSession() with { Lease = new SessionLease(store.GetTimestamp(), TimeSpan.FromSeconds(150)) };
+        store.Register(session);
+        time.Advance(TimeSpan.FromSeconds(100));
+
+        time.StepWallClock(TimeSpan.FromHours(stepHours));
+        Assert.True(store.IsCurrent(session));
+        time.Advance(TimeSpan.FromSeconds(49));
+        Assert.True(store.IsCurrent(session));
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.False(store.IsCurrent(session));
+        Assert.True(store.TryTakeInvalidation(session.SimulationSessionId, out var invalidation));
+        Assert.Equal("session_expired", invalidation!.Code);
+    }
+
+    // A renewal counts from the timestamp of the request, not from the answer, and a step of the
+    // wall clock between the two moves nothing; the time the client is told follows the lease.
+    [Fact]
+    public void ARenewalCountsFromTheSendTimestampWhateverTheWallClockDid()
+    {
+        var time = new SteppedTimeProvider(new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero));
+        var store = new ActiveSimulationSessionStore(time);
+        var session = CreateSession() with { Lease = new SessionLease(store.GetTimestamp(), TimeSpan.FromSeconds(150)) };
+        store.Register(session);
+        time.Advance(TimeSpan.FromSeconds(100));
+        var sentAt = store.GetTimestamp();
+        time.Advance(TimeSpan.FromSeconds(5));
+        time.StepWallClock(TimeSpan.FromHours(-3));
+
+        Assert.True(store.Refresh(
+            session.CharacterId,
+            session.SimulationSessionId,
+            session.SimulationSessionToken,
+            sentAt,
+            TimeSpan.FromSeconds(150)));
+
+        // 150 seconds from the send, 5 of which passed: 145 remain.
+        var reported = store.List().Single().SessionExpiresAt;
+        Assert.Equal(time.GetUtcNow().UtcDateTime.AddSeconds(145), reported);
+        time.Advance(TimeSpan.FromSeconds(144));
+        Assert.True(store.IsCurrent(session));
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.False(store.IsCurrent(session));
     }
 
     [Fact]
@@ -233,7 +296,7 @@ public sealed class ActiveSimulationSessionStoreTests
 
         Assert.True(store.TryGetAccountSessionEnd(session, out var code));
         Assert.Equal("account_session_replaced", code);
-        Assert.True(store.IsCurrent(session, DateTime.UtcNow));
+        Assert.True(store.IsCurrent(session));
         Assert.False(store.TryTakeInvalidation(session.SimulationSessionId, out _));
         Assert.False(store.TryGetAccountSessionEnd(session with { SimulationSessionToken = "older-token" }, out _));
 
@@ -310,25 +373,95 @@ public sealed class ActiveSimulationSessionStoreTests
         }
 
         var later = store.BeginJoin();
-        Assert.True(store.IsCurrent(reconnecting, DateTime.UtcNow));
-        Assert.True(store.IsCurrent(ending, DateTime.UtcNow));
+        Assert.True(store.IsCurrent(reconnecting));
+        Assert.True(store.IsCurrent(ending));
 
         var reconnected = reconnecting with { SimulationSessionToken = "reconnected-token" };
         Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(reconnected));
         store.EndJoin(first);
         Assert.Empty(endedSessions);
-        Assert.True(store.IsCurrent(ending, DateTime.UtcNow));
+        Assert.True(store.IsCurrent(ending));
 
         store.EndJoin(second);
         Assert.Equal([ending.SimulationSessionId], endedSessions);
         Assert.False(store.IsCurrentGeneration(ending));
         Assert.True(store.TryTakeInvalidation(ending.SimulationSessionId, out _));
-        Assert.True(store.IsCurrent(reconnected, DateTime.UtcNow));
+        Assert.True(store.IsCurrent(reconnected));
         Assert.False(store.TryTakeInvalidation(reconnecting.SimulationSessionId, out _));
 
         store.EndJoin(later);
         store.EndJoin(later);
         Assert.Single(endedSessions);
+    }
+
+    // Two joins of one session consume their tickets at GameService in one order and register
+    // here in the other: the generation that GameService issued first is refused, and the newer
+    // one stays untouched, whichever order the registrations come in.
+    [Fact]
+    public void ARegistrationOfAnOlderGenerationIsRefusedAndTheNewerOneStays()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var first = CreateSession(sessionToken: "token-1") with { Generation = 1 };
+        var second = first with { SimulationSessionToken = "token-2", Generation = 2 };
+        var third = first with { SimulationSessionToken = "token-3", Generation = 3 };
+
+        // The losing order: the join that consumed last registers first.
+        Assert.Equal(ActiveSimulationSessionRegistration.Joined, store.Register(second));
+        Assert.Equal(ActiveSimulationSessionRegistration.StaleGeneration, store.Register(first));
+        Assert.True(store.TryGet(first.CharacterId, out var held));
+        Assert.Equal("token-2", held!.SimulationSessionToken);
+        Assert.True(store.IsCurrent(second));
+        Assert.False(store.IsCurrent(first));
+
+        // The refused generation did not touch what the held one carries.
+        Assert.False(store.MarkAccountSessionEnded(first.CharacterId, first.SimulationSessionId, "token-1", "account_session_ended"));
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(third));
+        Assert.Equal(ActiveSimulationSessionRegistration.StaleGeneration, store.Register(second));
+        Assert.True(store.TryGet(first.CharacterId, out held));
+        Assert.Equal("token-3", held!.SimulationSessionToken);
+
+        // The order they consumed in: both register, the later one wins.
+        var other = new ActiveSimulationSessionStore();
+        Assert.Equal(ActiveSimulationSessionRegistration.Joined, other.Register(first));
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, other.Register(second));
+        Assert.True(other.TryGet(first.CharacterId, out held));
+        Assert.Equal("token-2", held!.SimulationSessionToken);
+    }
+
+    // A generation of 0 is one that GameService did not number, such as a development bot's: it
+    // is never refused and never refuses, as before generations existed.
+    [Fact]
+    public void AnUnnumberedGenerationIsNeverOrdered()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var numbered = CreateSession(sessionToken: "token-1") with { Generation = 5 };
+        var unnumbered = numbered with { SimulationSessionToken = "token-2", Generation = 0 };
+        Assert.Equal(ActiveSimulationSessionRegistration.Joined, store.Register(numbered));
+
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(unnumbered));
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(numbered with { SimulationSessionToken = "token-3", Generation = 1 }));
+        Assert.True(store.TryGet(numbered.CharacterId, out var held));
+        Assert.Equal("token-3", held!.SimulationSessionToken);
+    }
+
+    // The per-session state goes with the generation that ends, never with a newer one that
+    // registered meanwhile; the check and the removal are one step against Register.
+    [Fact]
+    public void StateOfASessionIsRemovedOnlyWhileNoNewerGenerationHoldsIt()
+    {
+        var store = new ActiveSimulationSessionStore();
+        var older = CreateSession(sessionToken: "token-1") with { Generation = 1 };
+        var newer = older with { SimulationSessionToken = "token-2", Generation = 2 };
+        store.Register(older);
+        var removed = 0;
+
+        Assert.True(store.RunUnlessSuperseded(older, () => removed++));
+        Assert.Equal(ActiveSimulationSessionRegistration.Reconnected, store.Register(newer));
+        Assert.False(store.RunUnlessSuperseded(older, () => removed++));
+        Assert.True(store.RunUnlessSuperseded(newer, () => removed++));
+        Assert.True(store.RunUnlessSuperseded(CreateSession(), () => removed++));
+
+        Assert.Equal(3, removed);
     }
 
     private static ActiveSimulationSession CreateSession(

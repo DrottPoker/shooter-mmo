@@ -169,6 +169,7 @@ entity, peer, or runtime id as a label.
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
 | `Mmorpg.SimulationWorker.GameService` | Whether GameService answers the registry heartbeat, its changes, the age of the last successful registry heartbeat, the durable actions refused while it did not answer, and the operations given up at the retry horizon. |
+| `Mmorpg.SimulationWorker.Presence` | The characters whose bodies stand in the world without a peer, how bodies end, what a reconnect did with the entity, the place and vitals that checkpoints send, the age of the oldest unsaved change, the session heartbeat rounds that failed, the sessions that ended locally, the releases, and the joins that lost a session. |
 
 `RealtimeMetricNamesTests` pins every instrument name of these meters.
 
@@ -267,6 +268,27 @@ The instruments of `Mmorpg.SimulationWorker.GameService`, which
 | `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
 | `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `quest_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
+The instruments of `Mmorpg.SimulationWorker.Presence`, which
+[Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) and
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+explain. A connected player and a body are told apart:
+`simulation_worker.realtime.players.real` counts the connected players,
+`simulation_worker.presence.lingering_bodies` the bodies, and
+`simulation_worker.realtime.entities` every entity of the World, which holds the
+players, the bodies among them, and the world actors:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.presence.lingering_bodies` | gauge | Bodies that stand in the world without a peer now. |
+| `simulation_worker.presence.bodies_ended` | counter | Bodies that left the world, labeled `reason`: `time_up` when the time ran out, `died` when the death committed, `session_ended` when GameService or the lease ended the session, `resumed` when a reconnect took the body over, and `worker_stopped` when the stop took it with the world. |
+| `simulation_worker.presence.reconnects` | counter | Joins of a reconnect, labeled `result`: `resumed` when the entity of the session stood in the world, as a body or under another connection, and `new_entity` when the body had gone and the join placed a new entity from the state the session kept. Development bots count in neither. |
+| `simulation_worker.presence.checkpoint_states` | counter | The states of the checkpoints, labeled `outcome`: `sent`, `saved` and `skipped`, as GameService answered, and `failed` for the states of a call that failed, which go again with the next checkpoint. A steady `failed` means that saving does not work; `skipped` is states of a session that ended or that were not newer. |
+| `simulation_worker.presence.checkpoint_oldest_unsaved_age` | gauge, s | How long the oldest state that GameService has not confirmed has been waiting, as of the latest checkpoint pass: the time since that player's last confirmed save. Nothing while every state of the latest pass is confirmed; it grows while checkpoints fail. |
+| `simulation_worker.presence.session_heartbeat_rounds` | counter | Session heartbeat rounds that had sessions to renew, labeled `outcome`: `renewed` when every request went through, also after a retry, and `failed` when the round gave up with requests that did not, whose leases then run to their local deadline. |
+| `simulation_worker.presence.sessions_ended_locally` | counter | Sessions that the worker ended without GameService's release, labeled `reason`: `lease_expired` when the local lease ran out and `invalidated` when a refusal, an authority failure, or a carry conflict ended it. |
+| `simulation_worker.presence.releases` | counter | Releases of sessions that no peer owns any more, labeled `outcome`: `released`, `failed` after the retries, and `gave_up` when GameService did not answer and the worker stopped first. |
+| `simulation_worker.presence.joins_refused` | counter | Joins that lost their session, labeled `reason`: `stale_generation` for a join that consumed its ticket before another join of the same session and registered after it, as [Reconnect Token Rotation](SERVICE_FEATURES.md#reconnect-token-rotation) describes. |
+
 ### GameService
 
 A GameService module declares every meter it creates in
@@ -276,7 +298,7 @@ own in `PlatformMeters.Names`:
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
-| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`, and the joins that a version mismatch refused. |
+| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`; the joins that a version mismatch refused; the character states that workers save, by source and outcome; and the sessions past their lease that a live worker left unreleased. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
 | `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, the failed passes by reason, and the lag. |
 | `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
@@ -286,6 +308,8 @@ own in `PlatformMeters.Names`:
 | --- | --- | --- |
 | `game_service.placement.shard.online`, `.shard.players`, `.shard.capacity` | gauge | Per Shard, labeled `shard.id`, refreshed every `Simulation:MetricsIntervalSeconds` from the same query as the public shard list. A failed refresh drops the values instead of keeping stale ones. Shard ids are labels because Shards are a small configured set. |
 | `game_service.placement.join.refusals` | counter | Joins that GameService refused with `409` because the client does not run exactly the Shard's worker's versions, labeled `shard.id` and `reason`: `incompatible_protocol` when the worker is ahead of the client or the client named no version, `shard_not_updated` when the worker is behind, `incompatible_simulation`, or `incompatible_world_data`, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes. Each is a client that needs an update or a Shard whose worker a deployment is still replacing, and none issued a ticket. The join of a Development bot counts too. |
+| `game_service.placement.character_states` | counter | The places and vitals that workers save, labeled `source`, `checkpoint` or `release`, and `outcome`: `saved`, `session_not_active` for a state whose session is not an unreleased, unexpired session of the worker runtime that sent it, `not_newer` for a state of a session that stored an equal or higher sequence, and `already_released` for a release's state when an earlier release ended the session. The worker's `skipped` count is the three skip reasons together. |
+| `game_service.placement.sessions.expired_unreleased` | gauge | Sessions that nothing released although their lease ran out, on a worker runtime that still answers its registry heartbeat, refreshed every `Simulation:MetricsIntervalSeconds` with the shard gauges by one count over the partial index of unreleased sessions. A live worker renews or releases every session it holds, so each one is a leak. Sessions of a worker that stopped answering are not counted, since the crash explains them and they stay unreleased until their account joins again or retention deletes them, so the load tool's `expired_unreleased_sessions`, which counts every one, differs after a crash. A failed refresh drops the value. |
 | `game_service.items.transactions` | counter | Item transactions, labeled `operation.kind` with the persisted operation kind from [Operation Kinds](GAME_SERVICE_MODULES.md#operation-kinds) and `outcome`: `committed`, `rejected`, `failed` for a transaction that threw, or `cancelled` when the caller cancelled it. |
 | `game_service.items.transactions.duration` | histogram, ms | Transaction duration with the same labels. |
 | `game_service.items.locks.wait.duration` | histogram, ms | Lock waits, labeled `scope`: `operation_claim`, `character_state`, `character_event`, `mutation_scope`, or `other`. |
@@ -618,10 +642,12 @@ look before it becomes critical.
 | `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
 | `RetentionTaskFailing` | warning | A retention task failed at least five times in the last ten minutes and has kept doing so for five minutes. A pass runs every minute by default, so a task that fails in each pass shows here while a lone lock timeout does not. The GameService log names the task and why. |
 | `RetentionLagHigh` | warning | The oldest due row of a retention task had waited more than 15 minutes when its latest pass began, and this has held for ten minutes, so the task falls behind its table. The lag stays within about one `Retention:IntervalSeconds` while a task keeps up, 60 seconds by default, so raise the threshold in the rule with the interval. A task whose last pass failed has no lag series, which `RetentionTaskFailing` covers. |
+| `CharacterCheckpointsFailing` | warning | A worker's checkpoints keep failing for three minutes, so GameService does not save the places and vitals and a crash would lose more than the checkpoint interval. |
+| `SessionsUnreleasedPastLease` | warning | Sessions of a worker that still answers are past their lease and unreleased for five minutes. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, entity id, pool, economy audit, and
-retention rules.
+tests for the availability, tick, error-rate, entity id, pool, economy audit,
+retention, and presence rules.
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull

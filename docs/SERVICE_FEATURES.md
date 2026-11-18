@@ -559,8 +559,10 @@ replication go on; everything durable is paused.
   credits, nor the last checkpoint, the worker tries once to go offline, and
   the sessions are not released; their leases expire, or a runtime that
   replaces this one releases them. Players lose their place and vitals since
-  the last checkpoint. A normal stop and a lost authority tell the peers
-  `server_shutdown` instead.
+  the last checkpoint, and a player whose death had not committed returns
+  alive where it last was alive, with its items, as
+  [Character Place And Vitals](#character-place-and-vitals) describes. A normal
+  stop and a lost authority tell the peers `server_shutdown` instead.
 - The session leases outlast the tolerance: `Simulation:SessionLeaseLifetimeSeconds`
   must exceed the worker's outage tolerance plus one session heartbeat interval
   plus one retry, so GameService still holds every session when the worker
@@ -683,7 +685,12 @@ Development bot tickets in GameService memory follow the same rules, as
 
 Consumption locks the account, character, and character item-state row,
 validates account session status, checks exact placement binding, and creates or
-rotates the simulation-session token in one transaction. The response includes
+rotates the simulation-session token in one transaction. The session row counts
+the tokens it issued in `session_generation`, 1 when the session is created and
+one more with every reconnect's consumption, and the response carries it as
+`sessionGeneration`: of two joins of one session, the higher number consumed
+last, whatever order their answers reach the worker in, as
+[Reconnect Token Rotation](#reconnect-token-rotation) describes. The response includes
 the fenced item-state revision, carried weight, capacity, and equipment: every
 occupied equipment slot with its item id, definition id, quantity, and item
 revision at that item-state revision. It also carries the character's look and
@@ -715,7 +722,11 @@ Simulation session properties:
 The worker also enforces cached lease expiry locally so a GameService outage
 cannot leave a connected player or a body active forever. The local deadline is the
 request send time plus the lease duration that GameService returns, so it does
-not depend on the database clock. The lease outlasts the worker's outage
+not depend on the database clock. It is kept as the monotonic timestamp of the
+send and the duration, never as a wall clock time: a step of the host's wall
+clock neither drops every session at once nor extends a lease beyond the one
+GameService keeps. The time that the join answer tells the client as
+`SessionExpiresAt` only reports it. The lease outlasts the worker's outage
 tolerance, as [GameService Outage](#gameservice-outage) describes.
 
 SimulationWorker keeps each character's item state by exact simulation-session
@@ -760,7 +771,7 @@ SimulationWorker sends every active session once per
 `SimulationSessionHeartbeatBatchSize` sessions,
 `SimulationSessionHeartbeatMaxConcurrency` requests at a time. It applies every
 entry on its own: a lease moves the session's local deadline to the request's
-send time plus the lease duration and carries the account session end and the
+send timestamp plus the lease duration and carries the account session end and the
 carry state, and an error ends the session as an expired lease does; while a
 join is in flight, the error first waits for it, as
 [Reconnect Token Rotation](#reconnect-token-rotation) describes. A request
@@ -884,8 +895,21 @@ placed from it, as [Reconnect Token Rotation](#reconnect-token-rotation)
 describes. At shutdown the worker
 first saves every remaining player in one last checkpoint while the sessions
 still hold, because going offline releases them. A dead player is saved as its
-respawn leaves it: at the World spawn with full health and mana. A worker crash
-or a GameService outage loses at most the time since the last saved state.
+respawn leaves it, at the World spawn with full health and mana, once its death
+committed at GameService, with its corpse and the items on it. Before that the
+death is not real: a checkpoint leaves the player out, and the release of its
+body, which waits for the death, carries no state, so what GameService holds
+stays the last state the character had alive. What a pending death costs, by how
+the worker ends:
+
+| The worker | Pending death | The character returns |
+| --- | --- | --- |
+| Stops in order, GameService answers | The combat flush gives it one more attempt, with the operation id that every retry uses, so a death that did commit replays its result. An answer that arrived but was never finalized counts as committed | Committed: at the World spawn with full vitals, the corpse where it fell. Not committed: alive where it last was alive, with its items |
+| Stops after the outage tolerance, or while GameService does not answer | Nothing is sent: the death is lost | Alive where it last was alive, with its items |
+| Crashes before the commit | The death was never sent or its answer is lost | Alive where the last checkpoint left it, with its items; a death that GameService committed without the worker's save leaves it there with the corpse |
+
+A worker crash or a GameService outage loses at most the time since the last
+saved state.
 
 ### Lingering Bodies
 
@@ -985,6 +1009,35 @@ ended session by its own joins:
   `ServerDisconnect` at once, but its entity stays as a lingering body until
   the refusal is decided, so the join resumes the entity where it stands with
   its vitals instead of placing a new one from the last checkpoint.
+- A takeover whose client is gone before its join bound, because it aborted or
+  timed out, must not end the player who is connected. The consumption rotated
+  the token at GameService, so the connected player's generation is replaced
+  whatever became of the join, and the join that ends without a peer releases
+  the session only when the worker holds nothing of it: no entity, connected or
+  lingering, and no combat work that has not committed. Otherwise the session
+  is renewed with the new generation exactly as for a body. The connected
+  player then gets `ServerDisconnect` with `session_reconnected`, as for any
+  takeover, and its entity stands as a lingering body for its full time with the
+  generation that GameService holds, so the player can come back and the
+  body's release carries a token that GameService accepts.
+- Generations of one session have an order. GameService numbers the tokens it
+  issues for a session, and the consume answer carries the number as
+  `sessionGeneration`; 0, as for a development bot, is not ordered. Two joins of
+  the same session can consume their tickets in one order and register on the
+  worker in the other, since the work after the consumption differs. The
+  session store refuses the registration of a generation that GameService
+  issued before the one it holds and leaves the held one untouched, so the
+  worker never ends up with the older token, whose next heartbeat GameService
+  would refuse. The join that lost is told `simulation_session_changed`, which
+  the client's reconnect rules give up on: the session belongs to the join that
+  consumed last, and a retry would only take it over again. Nothing is released
+  for it, since its token is refused everywhere.
+- The end of an entity removes the character's per-session state, its item
+  state, look, and quest log, only for the generation that ends. Whoever ends an
+  entity of an older generation, a body that goes or a connected player whose
+  session ended, does so in one step with the check that no newer generation
+  holds the session, and a join registers its generation before it stores its
+  state, so a reconnect that registered in the same instant finds its state.
 - The death, the spent arrows, and the kill credits of a session belong to the
   session, not to one token of it. Each attempt remembers the generation it
   went with. When GameService refuses its credentials and the session goes on,
@@ -1010,10 +1063,14 @@ ended session by its own joins:
 So a reconnect ends in one of the outcomes that
 [Lingering Bodies](#lingering-bodies) names, whatever the order of the killing
 hit, the death's commit, the body's end, the release, the heartbeat, and the
-reconnect's join: the join resumes the body's entity; or the body died and went,
+reconnect's join, and of a body's end against the registration of the join's
+generation: the join resumes the body's entity; or the body died and went,
 and the join gives a new entity at the World spawn with full health and mana
 while the corpse lies where the body fell; or the body's time ended, and the
-join gives a new entity where the body stood, with its vitals.
+join gives a new entity where the body stood, with its vitals. A join that
+consumed its ticket before another join of the same session and registers after
+it is refused with `simulation_session_changed` and ends nothing; it is not a
+fourth outcome of the reconnect, which the join that consumed last has.
 
 ## Realtime UDP Transport
 

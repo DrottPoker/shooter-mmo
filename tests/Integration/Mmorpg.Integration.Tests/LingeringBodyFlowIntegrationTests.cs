@@ -99,7 +99,7 @@ public sealed class LingeringBodyFlowIntegrationTests
             first.SimulationSessionId,
             first.SimulationSessionToken,
             heartbeat.AccountSessionEnded!));
-        Assert.True(sessions.IsCurrent(first, DateTime.UtcNow));
+        Assert.True(sessions.IsCurrent(first));
 
         var account = await LogInAsync(context, "relogin_player", cancellationToken);
         var second = await JoinAsync(context, client, account, player.Character.Id, cancellationToken);

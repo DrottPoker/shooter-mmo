@@ -25,7 +25,7 @@ internal sealed class OperationCompletionTargets(
         target = default;
         if (!sessionStore.TryGet(session.CharacterId, out var current)
             || current!.SimulationSessionId != session.SimulationSessionId
-            || !sessionStore.IsCurrent(current, DateTime.UtcNow)
+            || !sessionStore.IsCurrent(current)
             || !entityRegistry.TryGetPlayerByCharacterId(session.CharacterId, out var entity)
             || entity!.Session.SimulationSessionId != session.SimulationSessionId)
         {

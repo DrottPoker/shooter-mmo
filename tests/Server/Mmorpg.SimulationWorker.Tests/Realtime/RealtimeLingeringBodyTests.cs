@@ -337,7 +337,8 @@ public sealed class RealtimeLingeringBodyTests
                 character.CharacterId,
                 character.SimulationSessionId,
                 character.SimulationSessionToken,
-                DateTime.UtcNow.AddSeconds(-1)));
+                harness.SessionStore.GetTimestamp() - TimeProvider.System.TimestampFrequency,
+                TimeSpan.FromMilliseconds(500)));
         }
         else
         {

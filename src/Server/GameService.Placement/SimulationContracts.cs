@@ -126,6 +126,12 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
     // differences between the worker and the database never move the deadline.
     public long SessionLeaseDurationMilliseconds { get; init; }
 
+    // How many times GameService issued the session's token: it grows with every reconnect's
+    // consumption of a ticket, which rotates the token, so of two joins of one session the one with
+    // the higher number consumed last, whatever order their answers arrive in. 0 when GameService
+    // gives none, as for a development bot, and then the join is not ordered.
+    public long SessionGeneration { get; init; }
+
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];
 

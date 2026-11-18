@@ -43,7 +43,8 @@ internal sealed record RealtimeHostDependencies(
     DevelopmentAdminOptions? DevelopmentAdmin = null,
     GameServiceAvailability? GameServiceAvailability = null,
     SimulationWorkerStopReason? StopReason = null,
-    RealtimeLoopLiveness? LoopLiveness = null)
+    RealtimeLoopLiveness? LoopLiveness = null,
+    PresenceMetrics? PresenceMetrics = null)
 {
     // Registers the record from the services that Program.cs registers.
     public static void Register(IServiceCollection services)
@@ -73,6 +74,7 @@ internal sealed record RealtimeHostDependencies(
             provider.GetRequiredService<DevelopmentAdminOptions>(),
             provider.GetRequiredService<GameServiceAvailability>(),
             provider.GetRequiredService<SimulationWorkerStopReason>(),
-            provider.GetRequiredService<RealtimeLoopLiveness>()));
+            provider.GetRequiredService<RealtimeLoopLiveness>(),
+            provider.GetRequiredService<PresenceMetrics>()));
     }
 }

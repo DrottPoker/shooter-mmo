@@ -11,6 +11,7 @@ using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.Telemetry;
 using Mmorpg.SimulationWorker.WorldActors;
 using Mmorpg.Testing;
@@ -65,6 +66,7 @@ public sealed class SimulationWorkerTelemetryTests
         using var worldActors = new WorldActorMetrics();
         using var corpses = new CorpseRuntimeMetrics();
         using var combat = new CombatMetrics();
+        using var presence = new PresenceMetrics();
 
         var referenced = ObservabilityAssets.ReferencedMetricNames("simulation_worker_");
 

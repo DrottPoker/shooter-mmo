@@ -529,6 +529,7 @@ internal sealed class ShardService(
                 isReconnect)
             {
                 SessionLeaseDurationMilliseconds = leaseLifetimeSeconds * 1_000L,
+                SessionGeneration = simulationSession.Generation,
                 Equipment = carryState.Equipment,
                 Appearance = appearance is null ? null : SimulationAppearance.From(appearance),
                 SavedState = savedState is null ? null : SimulationSavedCharacterState.From(savedState),
@@ -946,7 +947,8 @@ internal sealed class ShardService(
                        shard_id as "ShardId",
                        simulation_worker_id as "SimulationWorkerId",
                        worker_runtime_id as "WorkerRuntimeId",
-                       expires_at as "ExpiresAt"
+                       expires_at as "ExpiresAt",
+                       session_generation as "Generation"
                 from character_simulation_sessions
                 where account_id = @AccountId
                   and released_at is null
@@ -991,7 +993,8 @@ internal sealed class ShardService(
                       shard_id as "ShardId",
                       simulation_worker_id as "SimulationWorkerId",
                       worker_runtime_id as "WorkerRuntimeId",
-                      expires_at as "ExpiresAt";
+                      expires_at as "ExpiresAt",
+                      session_generation as "Generation";
             """;
 
         return await connection.QuerySingleAsync<ActiveSimulationSessionRow>(new CommandDefinition(
@@ -1031,6 +1034,7 @@ internal sealed class ShardService(
                 simulation_worker_id = @WorkerId,
                 worker_runtime_id = @WorkerRuntimeId,
                 last_heartbeat_at = clock_timestamp(),
+                session_generation = session_generation + 1,
                 expires_at = clock_timestamp() + make_interval(secs => @LeaseLifetimeSeconds)
             where id = @SimulationSessionId
               and released_at is null
@@ -1039,7 +1043,8 @@ internal sealed class ShardService(
                       shard_id as "ShardId",
                       simulation_worker_id as "SimulationWorkerId",
                       worker_runtime_id as "WorkerRuntimeId",
-                      expires_at as "ExpiresAt";
+                      expires_at as "ExpiresAt",
+                      session_generation as "Generation";
             """;
 
         return await connection.QuerySingleAsync<ActiveSimulationSessionRow>(new CommandDefinition(
@@ -1120,7 +1125,8 @@ internal sealed class ShardService(
         string ShardId,
         string SimulationWorkerId,
         string WorkerRuntimeId,
-        DateTime ExpiresAt);
+        DateTime ExpiresAt,
+        long Generation);
 
     private sealed record PlacementRow(
         string ShardId,

@@ -50,7 +50,7 @@ public sealed class WorldInteractionAuthorityService(
         var started = Stopwatch.GetTimestamp();
         WorldInteractionAuthorityResult result;
         if (intent.SimulationSessionId != player.Session.SimulationSessionId
-            || !sessionStore.IsCurrent(player.Session, DateTime.UtcNow))
+            || !sessionStore.IsCurrent(player.Session))
         {
             result = Reject(
                 intent,
@@ -99,7 +99,7 @@ public sealed class WorldInteractionAuthorityService(
             string code;
             string message;
             WorldActorRuntimeState? actor = null;
-            if (player is null || !sessionStore.IsCurrent(player.Session, DateTime.UtcNow))
+            if (player is null || !sessionStore.IsCurrent(player.Session))
             {
                 code = "world_interaction_session_invalid";
                 message = "The simulation session is no longer active.";

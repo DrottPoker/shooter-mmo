@@ -54,7 +54,7 @@ public sealed class RealtimeAccountSessionEndTests
             "the body to stay without a connection");
         Assert.Equal(2, harness.EntityRegistry.PlayerCount);
         Assert.True(harness.SessionStore.TryGet(character.CharacterId, out var current));
-        Assert.True(harness.SessionStore.IsCurrent(current!, DateTime.UtcNow));
+        Assert.True(harness.SessionStore.IsCurrent(current!));
         Assert.False(harness.SessionStore.TryTakeInvalidation(character.SimulationSessionId, out _));
         Assert.DoesNotContain(observer.Despawns, despawn => despawn.EntityId == entityId);
         Assert.Empty(harness.GameService.Releases);
@@ -216,7 +216,7 @@ public sealed class RealtimeAccountSessionEndTests
         Assert.NotNull(player.Context.PendingDisconnect);
         Assert.True(fixture.Bodies.IsBody(player.Entity.NetworkEntityId));
         Assert.Equal(1, fixture.Entities.PlayerCount);
-        Assert.True(fixture.SessionStore.IsCurrent(player.Session, DateTime.UtcNow));
+        Assert.True(fixture.SessionStore.IsCurrent(player.Session));
         Assert.False(fixture.SessionStore.TryTakeInvalidation(player.Session.SimulationSessionId, out _));
         Assert.True(fixture.SessionStore.TryGetAccountSessionEnd(player.Session, out var recorded));
         Assert.Equal(code, recorded);
@@ -239,7 +239,7 @@ public sealed class RealtimeAccountSessionEndTests
         Assert.Empty(player.Peer.Sent);
         Assert.True(fixture.Bodies.IsBody(player.Entity.NetworkEntityId));
         Assert.Equal(1, fixture.Entities.PlayerCount);
-        Assert.True(fixture.SessionStore.IsCurrent(player.Session, DateTime.UtcNow));
+        Assert.True(fixture.SessionStore.IsCurrent(player.Session));
         Assert.False(fixture.SessionStore.TryTakeInvalidation(player.Session.SimulationSessionId, out _));
         Assert.False(player.Context.AuthorityOperationInFlight);
     }

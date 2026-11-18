@@ -183,6 +183,7 @@ internal static class RealtimeServerComposition
             logger);
         networkMetrics.AttachEntityIds(() => host.EntityRegistry.IssuedEntityIds);
         var bodies = new LingeringBodies(config.LingeringBodySeconds, config.MovementSimulation.TickRateHz, clock);
+        host.PresenceMetrics?.ObserveBodies(() => bodies.Count);
         var sessionOperations = new SessionAuthorityOperations(
             host.JoinService,
             host.ReleaseService,
@@ -251,6 +252,7 @@ internal static class RealtimeServerComposition
                 registries.Hooks,
                 bodies),
             Bodies = bodies,
+            PresenceMetrics = host.PresenceMetrics,
             CompletionTargets = new OperationCompletionTargets(
                 peers,
                 host.ConnectionBindings,

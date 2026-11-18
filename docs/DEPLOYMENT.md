@@ -480,6 +480,36 @@ the tick time of the worker, the Shard gauges, the database and Redis counters, 
 alert means. The alerts have no notification target yet, as
 [Not There Yet](#not-there-yet) says, so someone has to look at the dashboards.
 
+### What Players See When A Worker Crashes
+
+A player on a worker that crashed loses the connection and tries to reconnect.
+While no worker answers for its session, GameService refuses the ticket with
+`simulation_session_worker_unavailable`, which the client treats as "try
+again", as [Restoring A Lost Connection](UNITY_CLIENT_ARCHITECTURE.md#restoring-a-lost-connection)
+describes. The refusal starts when the worker's last heartbeat is older than
+`Simulation:WorkerHeartbeatTimeoutSeconds`, 30 seconds, and ends at the first of
+two moments:
+
+- A replacement runtime registers, which it can once the old registration is
+  stale, so about 30 seconds after the crash plus its own start. Its
+  registration invalidates the sessions of the old runtime, and the player
+  joins the replacement from its last saved state, as
+  [Worker Registration And Assignment](SERVICE_FEATURES.md#worker-registration-and-assignment) and
+  [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+  describe.
+- The session's lease runs out, `Simulation:SessionLeaseLifetimeSeconds`, 150
+  seconds after its last renewal. The next join of the account then releases the
+  expired session and places the player on a worker of the Shard that answers,
+  or refuses it with `shard_unavailable` while none does.
+
+The player returns alive where the last checkpoint saved it, at most
+`SimulationWorker:CharacterCheckpointSeconds`, 30 seconds, of play behind, and a
+death that GameService had not committed is lost with it, as
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+describes. The alerts `SessionsUnreleasedPastLease` and `CharacterCheckpointsFailing`
+of [Monitoring](MONITORING.md#alerts) show a worker that lets sessions lapse or
+cannot save, before a crash makes it matter.
+
 ## Sizing
 
 [Stack Stress Testing](STACK_STRESS_TESTING.md#measured-tiers) owns the measurements, taken on one
