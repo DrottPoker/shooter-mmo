@@ -49,6 +49,17 @@ FACE_FRONT = 0.085
 EAR_SIDE = 0.072
 LIP_SHARES = (0.0, 0.45, 0.90)
 EAR_SURROUND = 0.014
+# The cage's ear stands out more than a real one: it is laid this much flatter against the head.
+EAR_FLATTEN = 0.62
+# The lid's inner edge continues this far around the eyeball, in radians.
+LID_TUCK = 0.32
+# The mouth cavity's rings behind the line between the lips, at 1.79 m: how far back, how wide as a
+# share of the mouth's half width, and how far above and below the line. It holds the teeth.
+MOUTH_ROWS = ((0.005, 0.80, 0.0025, 0.0025), (0.022, 1.35, 0.014, 0.016), (0.054, 1.30, 0.012, 0.014))
+# The teeth and the tongue behind the lips, at 1.79 m.
+TEETH_BEHIND_LIPS, TEETH_HALF_WIDTH, TEETH_DEPTH, TEETH_THICKNESS = 0.008, 0.024, 0.040, 0.005
+UPPER_TEETH_HEIGHT, LOWER_TEETH_HEIGHT = 0.009, 0.008
+TONGUE_BEHIND_LIPS, TONGUE_BELOW_LIPS, TONGUE_LENGTH, TONGUE_HALF_WIDTH, TONGUE_THICKNESS = 0.014, 0.007, 0.042, 0.016, 0.006
 # The right ear: the vertices that stand out from the head, the ring of the head's side it stands
 # on, and its faces. The ear keeps the cage's plain form and is moved as one stiff piece.
 EAR_FACES = (265, 266, 267, 271, 272, 273, 274, 275, 276, 298, 299, 303, 304, 305, 306, 307)
@@ -150,7 +161,13 @@ class Head:
         grow = float(np.clip((ear_high[2] - ear_low[2]) / (high[2] - low[2]), 0.9, 1.2))
         middle = np.array([high[0], (low[1] + high[1]) / 2, (low[2] + high[2]) / 2])
         for v in EAR_INNER + EAR_LOOP:
-            anchors[v] = ear_target + (placed[v] - middle) * grow
+            offset = (placed[v] - middle) * grow
+            anchors[v] = ear_target + offset
+        inner = low[0] - middle[0]
+        for v in EAR_INNER:
+            # Flatter: nearer to the plane the ear stands on.
+            offset = (placed[v] - middle) * grow
+            anchors[v] = ear_target + offset * (1.0, 1.0, 1.0) + X * ((1.0 - EAR_FLATTEN) * (inner * grow - offset[0]))
         neck = self.neck_ring()
         for v, q in zip(NECK_RING, neck):
             anchors[v] = q
@@ -204,6 +221,28 @@ class Head:
             turn = math.sin(math.radians(azimuth)) ** 2
             z = side + ((front if azimuth > 0 else back) - side) * turn
             out.append(m.column_point(z, azimuth, 0.03 * s))
+        return out
+
+    def inner_parts(self):
+        """The eyeballs, the teeth, and the tongue as (name, points, faces, uvs)."""
+        from . import parts
+        s = self.scale
+        lips = self.lip_point(0.0)
+        out = []
+        for side, sign in (("R", 1.0), ("L", -1.0)):
+            centre = self.eye_centre * (sign, 1.0, 1.0)
+            points, faces, uvs = parts.eyeball(centre, EYEBALL_RADIUS * s)
+            out.append((f"Eye_{side}", points, faces, uvs))
+        front = lips - Y * (TEETH_BEHIND_LIPS * s)
+        points, faces = parts.teeth(front - Z * (0.0015 * s), TEETH_HALF_WIDTH * s, TEETH_DEPTH * s,
+                                    UPPER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, upper=True)
+        out.append(("Teeth_Upper", points, faces, None))
+        points, faces = parts.teeth(front - Y * (0.0015 * s) - Z * (0.001 * s), (TEETH_HALF_WIDTH - 0.001) * s,
+                                    (TEETH_DEPTH - 0.001) * s, LOWER_TEETH_HEIGHT * s, TEETH_THICKNESS * s, upper=False)
+        out.append(("Teeth_Lower", points, faces, None))
+        tip = lips - Y * (TONGUE_BEHIND_LIPS * s) - Z * (TONGUE_BELOW_LIPS * s)
+        points, faces = parts.tongue(tip, TONGUE_LENGTH * s, TONGUE_HALF_WIDTH * s, TONGUE_THICKNESS * s)
+        out.append(("Tongue", points, faces, None))
         return out
 
     def skins(self):
@@ -268,12 +307,13 @@ def build_head(net: Net, head: Head):
     forward = _unit(middle - centre)
     under = []
     for v in ring:
-        point = np.asarray(net.points[v], float)
-        outward = point - middle
-        outward -= (outward @ forward) * forward
-        tucked = point + _unit(outward) * (0.004 * s) - forward * (0.002 * s)
-        offset = tucked - centre
-        under.append(net.add(centre + _unit(offset) * (EYEBALL_RADIUS * s + LID_CLEARANCE), RIGID))
+        # Each point of the lid's edge continues around the eyeball, away from the line of sight,
+        # so the pocket stays hidden under the lid also at the corners.
+        direction = _unit(np.asarray(net.points[v], float) - centre)
+        polar = math.acos(float(np.clip(direction @ forward, -1.0, 1.0))) + LID_TUCK
+        radial = _unit(direction - (direction @ forward) * forward)
+        tucked = forward * math.cos(polar) + radial * math.sin(polar)
+        under.append(net.add(centre + tucked * (EYEBALL_RADIUS * s + LID_CLEARANCE), RIGID))
     # Seen from in front the ring runs clockwise for the right eye, so the pocket's faces look
     # into the opening.
     net.strip(ring, under, zone, None)
@@ -287,7 +327,7 @@ def build_head(net: Net, head: Head):
     line = np.asarray(net.points[vertex[286]], float)
     half = head.half_mouth
     rows = [upper]
-    for depth, width, up, down in ((0.005, 0.80, 0.0025, 0.0025), (0.022, 1.15, 0.013, 0.016), (0.048, 0.9, 0.010, 0.014)):
+    for depth, width, up, down in MOUTH_ROWS:
         back_y = line[1] - depth * s
         z = line[2]
         row = [

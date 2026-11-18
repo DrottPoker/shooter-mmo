@@ -108,6 +108,24 @@ def build(label, out_path, parts):
     _object(f"Cage_{label}", net, collection)
     _object(f"Net_{label}", whole, collection, distances)
     triangles = 2 * len(whole.faces)
+    if head is not None:
+        for name, part_points, part_faces, uvs in head.inner_parts():
+            mesh = bpy.data.meshes.new(f"{label}_{name}")
+            mesh.from_pydata([tuple(p) for p in part_points], [], [tuple(f) for f in part_faces])
+            mesh.update()
+            if uvs is not None:
+                layer = mesh.uv_layers.new(name="UVMap")
+                for loop in mesh.loops:
+                    layer.data[loop.index].uv = uvs[loop.vertex_index]
+            for polygon in mesh.polygons:
+                polygon.use_smooth = True
+            old = bpy.data.objects.get(mesh.name)
+            if old is not None:
+                bpy.data.objects.remove(old, do_unlink=True)
+            collection.objects.link(bpy.data.objects.new(mesh.name, mesh))
+            part_triangles = sum(len(f) - 2 for f in part_faces)
+            triangles += part_triangles
+            print(f"HUMAN_BUILD {label}_{name}: {len(part_points)} vertices, {part_triangles} triangles")
     print(f"HUMAN_BUILD {label}: cage {len(net.faces)} faces, net {len(whole.points)} vertices, {len(whole.faces)} faces, "
           f"{triangles} triangles, distance median {np.median(distances) * 1000:.2f} mm, 95 % {np.percentile(distances, 95) * 1000:.2f} mm, "
           f"max {distances.max() * 1000:.2f} mm, {time.time() - started:.0f} s")
