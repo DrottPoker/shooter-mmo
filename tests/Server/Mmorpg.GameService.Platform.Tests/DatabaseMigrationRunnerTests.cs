@@ -356,6 +356,62 @@ public sealed class DatabaseMigrationRunnerTests
         return run.Applied;
     }
 
+    // The operation lock is held on a connection outside the pool, so a pool of one connection,
+    // which Database:MaximumPoolSize allows, still has its connection for the migrations.
+    [PostgresIntegrationFact]
+    public async Task TheOperationLockLeavesAPoolOfOneConnectionToTheMigrations()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        var connectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
+        {
+            MaxPoolSize = 1,
+            Timeout = 3
+        }.ConnectionString;
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        var options = new PlatformOptions(
+            connectionString,
+            "127.0.0.1:6379",
+            TimeSpan.FromSeconds(1),
+            RunMigrationsOnStartup: true);
+        var runner = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+        var migration = new DatabaseMigration(
+            "209912310001_pool_of_one",
+            "create table pool_of_one (id integer primary key);");
+
+        MigrationRun run;
+        await using (await runner.HoldOperationLockAsync(TestContext.Current.CancellationToken))
+        {
+            run = await runner.ApplyAsync([migration], TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal([migration.Id], run.Applied);
+    }
+
+    // Two holders of the operation lock never overlap: the second waits until the first let go.
+    [PostgresIntegrationFact]
+    public async Task TheOperationLockIsHeldByOneProcessAtATime()
+    {
+        await using var database = await PostgresTestDatabase.LeaseAsync(PostgresTestTemplate.Empty);
+        await using var dataSource = NpgsqlDataSource.Create(database.ConnectionString);
+        var options = new PlatformOptions(
+            database.ConnectionString,
+            "127.0.0.1:6379",
+            TimeSpan.FromSeconds(1),
+            RunMigrationsOnStartup: true);
+        var first = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+        var second = new DatabaseMigrationRunner(dataSource, options, NullLogger<DatabaseMigrationRunner>.Instance);
+
+        Task<IAsyncDisposable> waiting;
+        await using (await first.HoldOperationLockAsync(TestContext.Current.CancellationToken))
+        {
+            waiting = second.HoldOperationLockAsync(TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+            Assert.False(waiting.IsCompleted);
+        }
+
+        await using var held = await waiting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
     private static DatabaseMigrationRunner Runner(
         NpgsqlDataSource dataSource,
         TimeSpan? lockTimeout = null,

@@ -1165,8 +1165,9 @@ can run on a newer database.
 
 A migrate-and-seed, which the `migrate` command and a start with
 `Database:RunMigrationsOnStartup` run, first takes a second advisory lock,
-`7104202611180900`, as a session lock on a connection of its own, and holds it
-until its last seed is written. So two processes never migrate and seed at the
+`7104202611180900`, as a session lock on a connection of its own outside the
+pool, so a pool of one connection still has its connection for the work, and
+holds it until its last seed is written. So two processes never migrate and seed at the
 same time, and a build that waited for a newer release reads that release's
 ids when its turn comes and refuses, as
 [Rolling Back A Release](#rolling-back-a-release) describes, instead of seeding

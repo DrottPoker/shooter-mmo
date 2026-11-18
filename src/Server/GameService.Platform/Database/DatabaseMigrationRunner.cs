@@ -29,12 +29,16 @@ public sealed class DatabaseMigrationRunner(
     public const long OperationLockId = 7_104_202_611_180_900;
 
     // Waits for the operation lock, as long as another process holds it, and holds it until the
-    // result is disposed.
+    // result is disposed. The connection that holds it is outside the pool: it stays open for the
+    // whole operation, and with Database:MaximumPoolSize at 1 a pooled one would leave the
+    // migrations and the seeders none.
     public async Task<IAsyncDisposable> HoldOperationLockAsync(CancellationToken cancellationToken)
     {
-        var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var connection = new NpgsqlConnection(
+            new NpgsqlConnectionStringBuilder(options.PostgresConnectionString) { Pooling = false }.ConnectionString);
         try
         {
+            await connection.OpenAsync(cancellationToken);
             await connection.ExecuteAsync(new CommandDefinition(
                 "select pg_advisory_lock(@OperationLockId);",
                 new { OperationLockId },
@@ -55,12 +59,11 @@ public sealed class DatabaseMigrationRunner(
         {
             try
             {
-                // The connection goes back to the pool without the lock.
                 await connection.ExecuteAsync("select pg_advisory_unlock(@OperationLockId);", new { OperationLockId });
             }
             catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
             {
-                // A broken session has lost the lock already.
+                // A broken session has lost the lock already, and closing the session frees it too.
             }
             finally
             {
