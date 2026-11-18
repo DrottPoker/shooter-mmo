@@ -231,6 +231,17 @@ The script:
    proxy's UDP 27035 or 27026, so it never meets a stack it did not start.
 3. Builds SimulationWorker, GameService in full-stack mode, and the network
    impairment proxy under a network profile, in Release.
+   Then it samples for ten seconds what every other program uses of the
+   processors, prints the sum and the three largest, and keeps them in
+   `machine-before.json` of the run folder. When they use more than
+   `-QuietMachineProcessors` together, 2.5 by default, or one of them more
+   than `-QuietProgramProcessors`, 0.75 of one processor, it warns before the
+   run and again beside the verdict that the numbers are not comparable with
+   a baseline. The run goes on, since a look at a change does not need a quiet
+   machine and a baseline does: on 2026-11-18 a forgotten search through the
+   disk used one processor through three runs and made every phase of the
+   tick 25 to 55 percent slower, which failed a soak that passed an hour
+   later without it.
 4. In full-stack mode, recreates the disposable stack with
    `docker compose -f docker-compose.stack-stress.yml down` and
    `up -d --wait`. Under a network profile it starts the proxy next and waits
@@ -624,9 +635,14 @@ masked. The local secrets and the connection string are the test values that
   `Retention:IntervalSeconds`, read from its checked-in
   `Config/appsettings.json` unless the scenario's `gameServiceSettings` set
   them.
+- The worker of every run, in both modes: `DOTNET_ENVIRONMENT=Development`,
+  because outside it the worker refuses the shared worker secret, a secret
+  that the repository publishes, and a Redis without a password, as
+  GameService does, with `DevelopmentAdmin__Enabled=false` and
+  `DevelopmentItemInteractions__GlobalBankAndRecoveryAccess=false`, the two
+  options that its Development settings would turn on.
 - A `playing` scenario with `teleportToGrounds`: the worker gets
-  `DOTNET_ENVIRONMENT=Development`, `DevelopmentAdmin__Enabled=true`, and
-  `DevelopmentItemInteractions__GlobalBankAndRecoveryAccess=false`, as
+  `DevelopmentAdmin__Enabled=true` instead, as
   [The Teleport To The Home Ground](#the-teleport-to-the-home-ground)
   explains, and the generator gets `--scenario-file` with the scenario.
 - A run under a network profile: the proxy listens on the worker's port plus
@@ -865,8 +881,9 @@ its join to the ground under the center of its home ground; everything after
 that is walking, also the way back after a death.
 
 The worker carries out admin intents only with `DevelopmentAdmin:Enabled`,
-which it accepts only in the Development environment, so the plan sets both on
-the worker. The Development environment also changes this on the worker:
+which it accepts only in the Development environment, where the worker of every
+load run starts, so the plan turns the option on for these runs. The
+Development environment also changes this on the worker:
 
 - It loads `Config/appsettings.Development.json`, which turns on
   `DevelopmentItemInteractions:GlobalBankAndRecoveryAccess`; the plan turns it
@@ -1712,9 +1729,10 @@ baselines that are checked in.
 
 ## Measured Tiers
 
-These are the checked-in baselines in `tools/load/baselines`, all recorded on
+These are the checked-in baselines in `tools/load/baselines`, recorded on
 2026-11-16 at commit `e5d50ea4`, after the worker and network phase of the
-hardening plan. Every summary says that the tree had changes: they were the
+hardening plan, except the two of 2026-11-18 that the text below the table
+describes. Every summary says that the tree had changes: they were the
 baseline files that the runs before it had recorded, so every run measured
 that commit's code. The machine is an AMD Ryzen 7 5800 with 16 logical
 processors and 31.9 GiB of memory under Windows, with the generator, the
@@ -1739,9 +1757,34 @@ names its commit.
 | `soak-30min` | passed | 16 ms | 47 / 99 ms | 14.9 | rejoin 386 ms | 37% | 9.5 KiB/s |
 | `soak-500-30min`, later that day | failed | **50 ms** | 54 / 108 ms | 14.9 | rejoin 451 ms | 82% | 14 KiB/s |
 | `soak-500-30min`, 2026-11-17 | passed | 24 ms | 49 / 100 ms | 14.9 | rejoin 392 ms | 72% | 14 KiB/s |
+| `playing-500`, 2026-11-18, sealed | passed | 16 ms | 51 / 97 ms | 14.9 | equip 129 ms | 84% | 13.9 KiB/s and 0.8 of seal |
+| `soak-500-30min`, 2026-11-18, sealed | passed | 24 ms | 53 / 106 ms | 14.9 | rejoin 469 ms | 90% | 13.6 KiB/s and 0.8 of seal |
 | `login-burst` | passed | 1 ms | 35 / 66 ms | 15.0 | relocation 68 ms | 4% | 5.9 KiB/s |
 | `logout-burst` | passed | 1 ms | 40 / 75 ms | 15.0 | relocation 66 ms | 5% | 5.9 KiB/s |
 | `outage-60s`, no baseline | passed | 8 ms | 43 / 98 ms | 14.9 | equip 153 ms | 15% | 5.5 KiB/s |
+
+The two rows of 2026-11-18 are the checked-in baselines of `playing-500` and
+`soak-500-30min`, recorded at commit `c20bce80` on the same machine with nothing
+else running: other programs used 3 to 15 percent of all cores before the
+runs. Their last column is the payload the worker sent per player and second
+and, beside it, what the seal of
+[Transport Security](REALTIME_PROTOCOL.md#transport-security) added to it: 25
+bytes on each of about 33 datagrams a second to a player, 0.8 KiB per second,
+and 1.2 KiB per second on the 47 datagrams a second that a player sends. So a
+player receives 14.7 KiB per second on the line at 500 players, UDP and IP
+headers aside, against the 16 of the Scale Target, and no datagram was dropped
+in either run. The worker's share of a core is the cost of everything the
+phase added, the seal first: 82 to 84 percent in the five-minute run and 72 to
+90 percent in the soak.
+
+`outage-60s` with `-Bots 500` ran twice that day and does not count as
+measured. Every rule of the server held both times: 500 of 500 bots heard one
+unavailable and one available notice, the worker noticed the return within
+0.3 seconds, durable actions resumed 0.7 and 1.2 seconds after the notice, the
+tick p99 bucket was 24 ms, and no service logged an error. But the generator
+fell behind, with a poll lateness p99 of 58 and 65 ms against its limit of
+16.67, so by the [validity](#validity) rules neither run is a measurement. On
+one machine the outage is measured at 100 players only.
 
 The tick p99 is a bucket upper bound, and bold numbers fail their rule. No
 full-stack run had a PostgreSQL deadlock or a lock wait longer than the
@@ -1765,9 +1808,18 @@ What the tiers say about the [Scale Target](PROJECT_ARCHITECTURE.md#scale-target
   after the periodic work moved off the snapshot ticks: one tick of 54,600
   went over its budget, and the tick p99 bucket was 16 ms in 178 of 182
   intervals and 24 ms in the other 4, as
-  [The 30 Minute Soak](#the-30-minute-soak) shows. So the Shard holds the
-  Scale Target on this machine in one soak; a second soak has not confirmed
-  it yet. Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
+  [The 30 Minute Soak](#the-30-minute-soak) shows. **On 2026-11-18 it passed
+  every rule again**, at commit `c20bce80`, the first tree with the sealed
+  transport and the fixes of the Foundation reviews: 4 ticks of 54,300 went
+  over their budget, the tick p99 bucket was 16 ms in 155 of 181 intervals
+  and 24 ms in the other 26, 1,433 leaves and returns kept their place, and
+  the worker used 90 percent of a core where it had used 72. So the Shard
+  holds the Scale Target on this machine in two soaks, with less room than
+  before the seal. A run of the same morning beside a stray process that used
+  one whole core failed the tick rule, with one interval in the 50 ms bucket
+  and 19 ticks over their budget, and every phase of the tick 25 to 55
+  percent slower: the tail has no room for a machine that does other work.
+  Entry 1 of [What Limits The Next Tier](#what-limits-the-next-tier)
   says what the tail was made of and what a larger tier would meet first.
 - **250 playing players pass a five-minute run and a 30-minute soak** with every
   rule, at 37 to 38 percent of a core for the worker. 100 players in one place

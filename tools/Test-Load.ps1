@@ -46,6 +46,12 @@ param(
     # Copies the run's summary.json to tools/load/baselines/<scenario>.json, or
     # <scenario>.<profile>.json under a network profile.
     [switch]$UpdateBaseline,
+    # How many processors other programs may use together in the seconds before the run without a
+    # warning. A desktop with a browser and chat programs uses one to two.
+    [double]$QuietMachineProcessors = 2.5,
+    # How much of one processor a single other program may use without a warning: a forgotten
+    # search or build uses a whole one.
+    [double]$QuietProgramProcessors = 0.75,
     # Prints what the script would start and run, and runs nothing.
     [switch]$Plan,
     # How long GameService and the worker may take to become ready.
@@ -373,6 +379,33 @@ function Write-WorkerWorstInterval($Summary) {
     }
 }
 
+# The processors that every other process used over some seconds, and the three that used the
+# most. A search through the disk that somebody forgot, a build, or a game slows every phase of
+# the tick, and the run then says more about the machine than about the code.
+function Measure-OtherPrograms([int]$Seconds) {
+    $before = @{}
+    foreach ($process in Get-Process) {
+        if ($null -ne $process.CPU) { $before[$process.Id] = $process.CPU }
+    }
+
+    Start-Sleep -Seconds $Seconds
+    $used = @(foreach ($process in Get-Process) {
+            if ($process.Id -ne $PID -and $before.ContainsKey($process.Id) -and $null -ne $process.CPU) {
+                [pscustomobject]@{
+                    name = $process.ProcessName
+                    processors = [math]::Max(0.0, [double]($process.CPU - $before[$process.Id]) / $Seconds)
+                }
+            }
+        })
+    $top = @($used | Sort-Object processors -Descending | Select-Object -First 3 | Where-Object { $_.processors -ge 0.05 })
+    [pscustomobject]@{
+        seconds = $Seconds
+        processors = [math]::Round(($used | Measure-Object processors -Sum).Sum, 2)
+        largest = [math]::Round(($used | Measure-Object processors -Maximum).Maximum, 2)
+        top = (($top | ForEach-Object { "{0} {1}" -f $_.name, (Format-Number ([math]::Round($_.processors, 1))) }) -join ", ")
+    }
+}
+
 function Write-BaselineDifference($Summary) {
     if (-not (Test-Path -LiteralPath $baselinePath)) {
         Write-Step "No checked-in baseline for $Scenario under the network profile $runNetwork; -UpdateBaseline records this run as one."
@@ -410,6 +443,7 @@ if (-not (Test-Path -LiteralPath $scenarioPath)) {
 
 $total = [Diagnostics.Stopwatch]::StartNew()
 $exitCode = 2
+$machineWarning = $null
 $generatorExit = $null
 $couldNotMeasure = $false
 $gameService = $null
@@ -498,6 +532,16 @@ try {
 
         if ($loadPlan.proxy) {
             Build-Project $projects.proxy (Join-Path $runFolder "build-network-proxy.log")
+        }
+
+        # After the builds and before anything of the run starts.
+        $machineBefore = Measure-OtherPrograms 10
+        $machineBefore | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runFolder "machine-before.json") -Encoding utf8
+        $machineLine = "Other programs used $(Format-Number $machineBefore.processors) processors in the $($machineBefore.seconds) s before the run$(if ($machineBefore.top) { ": $($machineBefore.top)" })."
+        Write-Step $machineLine
+        if ($machineBefore.processors -gt $QuietMachineProcessors -or $machineBefore.largest -gt $QuietProgramProcessors) {
+            $machineWarning = "WARNING: the machine was not quiet before the run. $machineLine Its numbers are not comparable with a baseline; stop what uses the processors and run it again."
+            Write-Step $machineWarning
         }
 
         if ($loadPlan.needsContainers) {
@@ -707,5 +751,9 @@ if ($summaryPath -and (Test-Path -LiteralPath $summaryPath)) {
 }
 
 $result = if ($exitCode -eq 0) { "passed" } elseif ($exitCode -eq 1) { "FAILED" } elseif ($couldNotMeasure) { "could not measure: the generator or the network proxy fell behind, see the validity rules" } else { "could not run" }
+if ($machineWarning) {
+    Write-Step $machineWarning
+}
+
 Write-Step ("Load scenario $Scenario under the network profile $runNetwork $result in {0:N0} s. Run folder: $runFolder" -f $total.Elapsed.TotalSeconds)
 exit $exitCode

@@ -247,6 +247,29 @@ public sealed class StressLoadPlanTests
         Assert.Equal("60", plan.GameServiceEnvironment["RateLimiting__Public__WindowSeconds"]);
     }
 
+    // The worker refuses the load stack's shared and published secrets and its Redis without a
+    // password outside the Development environment, so the worker of every shipped scenario
+    // starts there, in both modes, with the two options of its Development settings off unless
+    // the run teleports its bots.
+    [Fact]
+    public void TheWorkerOfEveryShippedScenarioRunsInTheDevelopmentEnvironmentWithItsOptionsOff()
+    {
+        var scenarios = Directory.GetFiles(Path.Combine(LoadDirectory, "scenarios"), "*.json").Select(Path.GetFileNameWithoutExtension).ToArray();
+
+        Assert.Contains("smoke", scenarios);
+        Assert.Contains("worker-only-200", scenarios);
+        Assert.All(scenarios, name =>
+        {
+            var scenario = LoadShipped(name!);
+            var plan = Plan(scenario);
+            Assert.Equal("Development", plan.WorkerEnvironment["DOTNET_ENVIRONMENT"]);
+            Assert.Equal("false", plan.WorkerEnvironment["DevelopmentItemInteractions__GlobalBankAndRecoveryAccess"]);
+            Assert.Equal(
+                scenario.Playing?.TeleportToGrounds == true ? "true" : "false",
+                plan.WorkerEnvironment["DevelopmentAdmin__Enabled"]);
+        });
+    }
+
     // The retention rules judge against GameService's own retention settings: the checked-in
     // ones, or the short windows that the soak scenarios give it.
     [Fact]
