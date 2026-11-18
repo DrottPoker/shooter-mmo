@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Mmorpg.GameProtocol;
+using Mmorpg.GameSimulation;
 
 namespace Mmorpg.Tools.ActiveSimulationBots;
 
@@ -23,7 +24,9 @@ public sealed class ActiveSimulationBotAuthorityClient(
                 new ActiveSimulationBotTicketRequest(
                     botInstanceId,
                     botIndex,
-                    options.ShardId),
+                    options.ShardId,
+                    RealtimeProtocol.Version,
+                    GameSimulationCompatibility.Revision),
                 options: JsonOptions)
         };
         request.Headers.TryAddWithoutValidation(
@@ -140,10 +143,14 @@ internal static class GameServiceHeaderNames
     public const string ActiveSimulationBotsKey = "X-Active-Simulation-Bots-Key";
 }
 
+// The request names the protocol version and simulation revision of this build, as a player's join
+// does, so a worker of other versions refuses the bot before a ticket exists.
 public sealed record ActiveSimulationBotTicketRequest(
     Guid BotInstanceId,
     int BotIndex,
-    string ShardId);
+    string ShardId,
+    int ProtocolVersion,
+    string SimulationRevision);
 
 public sealed record ActiveSimulationBotTicket(
     Guid AccountId,

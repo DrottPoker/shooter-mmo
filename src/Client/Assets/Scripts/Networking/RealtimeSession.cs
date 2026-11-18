@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using LiteNetLib;
 using Mmorpg.Client.Api;
 using Mmorpg.Client.Core;
+using Mmorpg.Client.Worlds;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
 
@@ -269,6 +270,27 @@ namespace Mmorpg.Client.Networking
                     "The assigned SimulationWorker uses simulation revision '"
                     + placement.endpoint.simulationRevision + "', but this client requires '"
                     + GameSimulationCompatibility.Revision + "'.");
+                LogFailure(error);
+                onError(error);
+                yield break;
+            }
+
+            // The World data of this client must be the worker's too. The manifest is read without
+            // loading the World, so a mismatch ends the join here, before the ticket is spent and a
+            // body appears for other players; a World whose manifest cannot be read is left to
+            // NetworkMovementSession, which says why.
+            if (UnityWorldCollisionLoader.TryReadRevision(placement.shard.worldId, out var bakedRevision, out _)
+                && !string.Equals(
+                    placement.endpoint.collisionRevision,
+                    bakedRevision,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var error = new RealtimeClientError(
+                    RealtimeClientErrorKind.Validation,
+                    "incompatible_world_data",
+                    "The assigned SimulationWorker uses collision revision '"
+                    + placement.endpoint.collisionRevision + "' for World '" + placement.shard.worldId
+                    + "', but this client baked '" + bakedRevision + "'.");
                 LogFailure(error);
                 onError(error);
                 yield break;

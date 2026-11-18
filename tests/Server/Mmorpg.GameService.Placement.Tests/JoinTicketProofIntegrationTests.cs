@@ -139,7 +139,7 @@ public sealed class JoinTicketProofIntegrationTests
         var ticket = await context.ShardService.CreateJoinTicketAsync(
             account,
             ShardId,
-            new JoinShardRequest(characterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(characterId),
             CancellationToken.None);
         Assert.True(ticket.Succeeded, ticket.Error?.Message);
         return ticket.Value!;

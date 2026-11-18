@@ -92,8 +92,11 @@ Each full-stack bot completes the normal public lifecycle:
    Redis cache and PostgreSQL fallback cost.
 6. List characters and shards.
 7. Request a normal join ticket through GameService placement. Like the Unity
-   client, the bot refuses a placement whose worker runs another protocol
-   version, with `protocol_version_mismatch`.
+   client, the request names the bot's protocol version and simulation
+   revision, so GameService refuses a bot whose worker runs other versions, as
+   [Versions Of A Join](SERVICE_FEATURES.md#versions-of-a-join) describes, and
+   the bot refuses a placement whose worker runs another protocol version, with
+   `protocol_version_mismatch`.
 8. Join SimulationWorker over UDP and run the same realtime workload as
    worker-only mode.
 9. Leave the simulation cleanly and log out the account session.

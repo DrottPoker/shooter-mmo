@@ -140,7 +140,7 @@ public sealed class PlacementRetentionIntegrationTests
         return context.ShardService.CreateJoinTicketAsync(
             account,
             ShardId,
-            new JoinShardRequest(characterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(characterId),
             CancellationToken.None);
     }
 

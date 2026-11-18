@@ -62,7 +62,7 @@ public sealed class ShardRowLockIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
                 player.Account,
                 ShardId,
-                new JoinShardRequest(player.Character.Id),
+                PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
                 CancellationToken.None)
             .WaitAsync(MustFinishWithin);
 
@@ -82,7 +82,7 @@ public sealed class ShardRowLockIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
                 player.Account,
                 ShardId,
-                new JoinShardRequest(player.Character.Id),
+                PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
                 CancellationToken.None)
             .WaitAsync(MustFinishWithin);
 
@@ -214,7 +214,7 @@ public sealed class ShardRowLockIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             ShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         await context.ExecuteScalarIntAsync(
@@ -271,7 +271,7 @@ public sealed class ShardRowLockIntegrationTests
         return context.ShardService.CreateJoinTicketAsync(
             player.Account,
             ShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
     }
 

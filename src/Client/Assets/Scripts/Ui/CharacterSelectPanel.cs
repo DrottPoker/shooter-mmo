@@ -360,6 +360,7 @@ namespace Mmorpg.Client.Ui
                 character.id,
                 character.name,
                 shard.id,
+                shard.worldId,
                 ticket => AcceptTicket(shard, ticket, out worldSceneName),
                 result => join = result);
 

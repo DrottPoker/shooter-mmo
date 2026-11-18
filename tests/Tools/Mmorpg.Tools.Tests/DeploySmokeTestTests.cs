@@ -206,6 +206,34 @@ public sealed class DeploySmokeTestTests
         Assert.Empty(statuses);
     }
 
+    // A join names the versions of this build, so a worker of other versions refuses it with a
+    // code before a ticket exists, and the smoke test reports that code.
+    [Fact]
+    public async Task AJoinNamesTheProtocolVersionAndSimulationRevisionOfThisBuildAndReportsItsRefusal()
+    {
+        string? body = null;
+        using var handler = new StubHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = new StringContent("""{"code":"incompatible_protocol"}""")
+            };
+        });
+        using var client = new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(Url) };
+        var api = new StackApi(client);
+
+        var exception = await Assert.ThrowsAsync<SmokeException>(
+            () => api.JoinAsync("token", "local-shard-1", Guid.NewGuid(), TestContext.Current.CancellationToken));
+
+        using var request = System.Text.Json.JsonDocument.Parse(body!);
+        Assert.Equal(RealtimeProtocol.Version, request.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(
+            Mmorpg.GameSimulation.GameSimulationCompatibility.Revision,
+            request.RootElement.GetProperty("simulationRevision").GetString());
+        Assert.Equal("join answered 409 incompatible_protocol.", exception.Message);
+    }
+
     [Fact]
     public async Task ARefusalThatStaysIsReportedWithItsStatusAndCodeButNeverTheRequest()
     {

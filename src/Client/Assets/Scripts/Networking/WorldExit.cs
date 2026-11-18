@@ -174,10 +174,12 @@ namespace Mmorpg.Client.Networking
         }
 
         // The reconnect gave up on the lost connection of this simulation session: the World of
-        // that session is left, and CharacterSelect says that the connection could not be restored.
-        public void LeaveLostWorld(string simulationSessionId)
+        // that session is left, and CharacterSelect says that the connection could not be restored,
+        // or, when the join was refused because the versions of the client and the Shard's worker
+        // differ, which side to update, as noticeCode names it.
+        public void LeaveLostWorld(string simulationSessionId, string noticeCode = ReconnectFailedCode)
         {
-            LeaveWorldScene(simulationSessionId, ReconnectFailedCode);
+            LeaveWorldScene(simulationSessionId, noticeCode);
         }
 
         private void LeaveWorldScene(string simulationSessionId, string noticeCode)

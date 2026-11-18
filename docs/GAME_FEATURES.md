@@ -47,7 +47,9 @@ bindings and player-configurable rebinding are not implemented.
   the new account in. The GameService address and the request and realtime
   timeouts show at the bottom of the screen, and above them the environment the
   client was built for and which build it is: the Unity Editor, or a
-  development or release build with its commit and build time. When the
+  development or release build with its commit, its build time, and the
+  protocol version and simulation revision of its code, which say which servers
+  it can play on. When the
   GameService address was overridden at start, a warning line says so.
 - `Log In` starts with the last login name used on this computer and puts the
   caret in the password. In the Editor and in development builds, the fields
@@ -115,6 +117,17 @@ character, progression, and statistics are not implemented.
   with its buttons disabled, until the World replaces it. A World that fails to
   load shows the error and leaves the shard. A refused join stays in
   CharacterSelect and shows the server's reason.
+- A game plays only on a shard that runs exactly its version, and a join that
+  finds another version is refused before anything happens in the World, with
+  the status line saying what to do: `Your game is out of date. Update it to
+  play.` when the shard is ahead of the game, `This shard has not been updated
+  to your version of the game yet. Try again in a few minutes.` when it is
+  behind, and `Your game and this shard are on different versions. Update the
+  game, or try again in a few minutes if it is up to date.` or `The world data of
+  your game does not match this shard. Update the game, or try again in a few
+  minutes if it is up to date.` when the versions differ in a way that has no
+  order. There is no way to play on a shard of another version, and no update
+  inside the game yet: a new game comes from where the game is distributed.
 - `Leave Shard` in the Debug menu waits until the worker confirms the leave and
   then returns to CharacterSelect. While a lost connection is restored, it
   returns at once.
@@ -129,7 +142,9 @@ character, progression, and statistics are not implemented.
   its body, if it was still there, or a new entity at the place it was saved.
 - When the 20 seconds pass without a join, or the shard or GameService refuses
   the join for good, the client returns to CharacterSelect, which says `The
-  connection to the world was lost and could not be restored.`
+  connection to the world was lost and could not be restored.` A join that is
+  refused because the game and the shard are on different versions, as after an
+  update of the shard, shows the text of that refusal instead.
 - Every other end of a World returns to CharacterSelect with its reason above
   the cards, such as `This character connected from another client.`, `The
   character is no longer in the world.`, or `The connection sent too much at

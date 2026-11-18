@@ -71,6 +71,18 @@ namespace Mmorpg.Client.Networking
             "simulation_session_worker_unavailable"
         };
 
+        // A join that GameService or the client's own check refused because the versions of this
+        // client and of the Shard's worker differ: the protocol version, the simulation revision,
+        // or the World data. Each has a text of its own that says what to do, and none gets better
+        // by trying again within a window.
+        public static readonly IReadOnlyList<string> VersionRefusalCodes = new[]
+        {
+            "incompatible_protocol",
+            "shard_not_updated",
+            "incompatible_simulation",
+            "incompatible_world_data"
+        };
+
         public static RealtimeEnding Classify(RealtimeClientError error)
         {
             if (error == null)
@@ -127,6 +139,26 @@ namespace Mmorpg.Client.Networking
             }
 
             return ReconnectAttemptFailure.GiveUp;
+        }
+
+        // The code of the version refusal that GameService gave a reconnect attempt's ticket request,
+        // or null for any other failure.
+        public static string VersionRefusalCode(ApiError error)
+        {
+            return error != null && error.Kind == ApiErrorKind.Http && Contains(VersionRefusalCodes, error.Code)
+                ? error.Code
+                : null;
+        }
+
+        // The code of the version refusal that the client's own check gave a reconnect attempt's
+        // join, or null for any other failure.
+        public static string VersionRefusalCode(RealtimeClientError error)
+        {
+            return error != null
+                && error.Kind == RealtimeClientErrorKind.Validation
+                && Contains(VersionRefusalCodes, error.Code)
+                    ? error.Code
+                    : null;
         }
 
         // Only the transport and the clock report a dropped line; a server that sends one of these

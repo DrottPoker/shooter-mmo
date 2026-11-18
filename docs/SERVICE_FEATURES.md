@@ -42,7 +42,7 @@ and what a player sees in [Game Features](GAME_FEATURES.md).
 | `POST /api/characters/{characterId}/item-operations/merge` | Owning offline account session, rate limited | Merge compatible stacks |
 | `POST /api/characters/{characterId}/item-operations/destroy` | Owning offline account session, rate limited | Perform allowed player destruction with a server-owned reason |
 | `GET /api/shards` | Public, rate limited | List logical shards, status, players, and capacity |
-| `POST /api/shards/{shardId}/join` | Account session, rate limited | Place an owned character and issue a ticket: its public id and its transport key |
+| `POST /api/shards/{shardId}/join` | Account session, rate limited | Place an owned character and issue a ticket: its public id and its transport key. The request names the client's protocol version and simulation revision, and a client that does not fit the Shard's worker gets `409`, as [Shard Discovery And Placement](#shard-discovery-and-placement) describes |
 | `POST /api/simulation-workers/{workerId}/heartbeat` | Worker service policy | Register or renew the exact worker runtime and return the lease and the Shard's rule set |
 | `POST /api/simulation-workers/{workerId}/offline` | Worker service policy | Release the exact worker runtime's authority |
 | `POST /api/simulation-workers/{workerId}/session-heartbeat` | Worker service policy | Renew the exact simulation leases of the worker runtime's sessions in one batch, and answer each session on its own: its lease with the end of its account session and its carry state, or its refusal |
@@ -584,9 +584,12 @@ Join placement:
 3. Releases expired account simulation sessions.
 4. Rejects another active character or cross-shard active session with
    `account_character_already_active` or `character_already_active`.
-5. Invalidates older pending tickets for the account, so a retried join is not
+5. Compares the versions of the request with the Shard's worker, as
+   [Versions Of A Join](#versions-of-a-join) describes, before anything is
+   superseded or issued.
+6. Invalidates older pending tickets for the account, so a retried join is not
    blocked by its own earlier ticket.
-6. Selects the assigned worker only when its heartbeat is fresh and it has room,
+7. Selects the assigned worker only when its heartbeat is fresh and it has room,
    or rejects with `shard_unavailable`; a reconnect whose owning worker is
    unavailable gets `simulation_session_worker_unavailable`. Capacity uses the
    greater of worker-reported connections and authoritative unexpired simulation
@@ -594,27 +597,59 @@ Join placement:
    already counted session is not added again. In Development, the in-memory
    sessions and pending tickets of synthetic bots are joined into the same
    query, so players and bots never reserve the same connections.
-7. Re-reads the assignment after locking the worker, so a worker that moved to
+8. Re-reads the assignment after locking the worker, so a worker that moved to
    another Shard in the meantime is never placed.
-8. Rejects the join, and a reconnect to the owning worker, with `409`
-   `simulation_worker_item_catalog_mismatch` when the worker's last heartbeat
-   reported another item catalog revision than the one GameService mirrors.
-   Combat data and Mob loot come from the worker's catalog and item custody
-   from GameService's, so both must be the same catalog. In the same way it
-   rejects them with `409` `simulation_worker_quest_catalog_mismatch` when the
-   worker reported another quest catalog revision, because the worker counts
-   quest progress that GameService commits with its own catalog.
-9. Stores a new ticket bound to shard, worker, runtime, character, and account
-   session: a public ticket id and a transport key of 32 random bytes.
-10. Computes expiry with `clock_timestamp()` after placement locks are acquired.
+9. Compares the versions again with the worker that the locked placement chose,
+   so a worker that was replaced since step 5 is judged by its own versions.
+10. Rejects the join, and a reconnect to the owning worker, with `409`
+    `simulation_worker_item_catalog_mismatch` when the worker's last heartbeat
+    reported another item catalog revision than the one GameService mirrors.
+    Combat data and Mob loot come from the worker's catalog and item custody
+    from GameService's, so both must be the same catalog. In the same way it
+    rejects them with `409` `simulation_worker_quest_catalog_mismatch` when the
+    worker reported another quest catalog revision, because the worker counts
+    quest progress that GameService commits with its own catalog.
+11. Stores a new ticket bound to shard, worker, runtime, character, and account
+    session: a public ticket id and a transport key of 32 random bytes.
+12. Computes expiry with `clock_timestamp()` after placement locks are acquired.
     Ticket consumption and session leases use the same clock, so time spent
     waiting for a lock never shortens or extends a ticket or lease.
-11. Returns the shard, the exact endpoint metadata, `joinTicketId`, and
+13. Returns the shard, the exact endpoint metadata, `joinTicketId`, and
     `transportKey` in base64, the only time the key reaches the client.
 
 Selection serializes reservations on the target shard, then locks the selected
 worker. A waiting request recalculates session and ticket usage from a fresh
 database snapshot before reserving capacity. Different shards remain parallel.
+
+### Versions Of A Join
+
+A client plays only on a worker that runs exactly its realtime protocol version
+and simulation revision, and exactly its collision revision of the Shard's
+World; there is no window of versions, as
+[Versioning](REALTIME_PROTOCOL.md#versioning) describes. The join request
+carries `protocolVersion`, `simulationRevision`, and optionally `worldId` and
+`collisionRevision`, the baked collision data of the World that the client
+believes the Shard runs. GameService compares them with the versions in the last
+heartbeat of the Shard's online worker, whatever its capacity, before it
+supersedes or issues anything, and refuses with `409`:
+
+| Code | When |
+| --- | --- |
+| `incompatible_protocol` | The worker's protocol version is newer than the request's, or the request names none or a number below 1, as a client from before the versions travelled in the request sends it |
+| `shard_not_updated` | The worker's protocol version is older than the request's: a deployment is still replacing it |
+| `incompatible_simulation` | The protocol versions are equal and the simulation revisions are not, or the request names none |
+| `incompatible_world_data` | Everything above matches, the request names the Shard's World, and its collision revision is not the worker's, compared without regard to case. A request that names another World, as one with an old Shard list does, or none, is not judged by its collision revision, so such a client is never told that its data is out of date |
+
+A refusal leaves every ticket of the account as it was, issues nothing, and
+counts in `game_service.placement.join.refusals` by Shard and reason, as
+[Monitoring](MONITORING.md#gameservice) describes. A Shard without a fresh online
+worker has nothing to compare with and answers `shard_unavailable`. The check
+covers a reconnect as well, because the worker that owns the session may have
+been replaced by another version. The Development bot ticket route takes
+`protocolVersion` and `simulationRevision` in its request and applies the same
+rules to the protocol version and the simulation revision; a bot has no baked
+World data to name. The client's texts for the codes and what each shows are in
+[Versioning](REALTIME_PROTOCOL.md#versioning).
 
 ## Join Tickets And Simulation Sessions
 
@@ -2520,7 +2555,7 @@ results and closures, and Unity adds `item_catalog_update_required`.
 | Requests and platform | `invalid_request`, `internal_server_error`, `database_unavailable`, `rate_limit_exceeded`, `session_cache_invalidation_unavailable` |
 | Accounts and sessions | `invalid_email`, `invalid_username`, `invalid_password`, `invalid_login`, `invalid_credentials`, `email_already_used`, `username_already_used`, `account_already_exists`, `account_not_found`, `invalid_session_token`, `account_session_replaced`, `auth_busy` |
 | Characters | `invalid_character_name`, `character_name_taken`, `character_limit_reached`, `invalid_character_appearance`, `character_not_found` |
-| Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
+| Placement and join tickets | `invalid_character_id`, `shard_not_found`, `shard_unavailable`, `simulation_session_worker_unavailable`, `account_character_already_active`, `character_already_active`, `simulation_worker_item_catalog_mismatch`, `simulation_worker_quest_catalog_mismatch`, `incompatible_protocol`, `shard_not_updated`, `incompatible_simulation`, `incompatible_world_data`, `invalid_ticket`, `invalid_simulation_target`, `simulation_session_changed`, `wrong_simulation_assignment` |
 | Worker authentication and registration | `invalid_service_credentials`, `service_worker_mismatch`, `invalid_simulation_worker_identity`, `invalid_worker_runtime`, `invalid_worker_started_at`, `invalid_worker_host`, `invalid_worker_port`, `invalid_worker_capacity`, `invalid_worker_revision`, `invalid_protocol_version`, `simulation_topology_mismatch`, `simulation_world_not_found`, `simulation_assignment_target_not_found`, `simulation_worker_not_found`, `shard_assignment_conflict`, `shard_world_rebind_blocked`, `worker_runtime_changed` |
 | Simulation sessions and looks | `invalid_simulation_session_id`, `invalid_simulation_session_token`, `invalid_simulation_session`, `invalid_simulation_session_heartbeat`, `invalid_simulation_session_request`, `invalid_character_state`, `invalid_character_checkpoint`, `invalid_appearance_change`, `development_look_disabled` |
 | Content files | `content_not_found` |

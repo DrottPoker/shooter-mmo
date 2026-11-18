@@ -166,10 +166,19 @@ namespace Mmorpg.Client.Api
         public string collisionRevision;
     }
 
+    // The join of a character with the versions of this client: the realtime protocol version and
+    // simulation revision, and, when the client has baked collision data for the World that it
+    // believes the Shard runs, that World and its collision revision. GameService compares them
+    // with the Shard's worker before it issues a ticket. A blank world id or collision revision
+    // says that the client has no collision data to name.
     [Serializable]
     public sealed class JoinShardRequest
     {
         public string characterId;
+        public int protocolVersion;
+        public string simulationRevision;
+        public string worldId;
+        public string collisionRevision;
     }
 
     [Serializable]

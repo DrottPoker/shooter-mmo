@@ -5,7 +5,6 @@ using Mmorpg.SimulationWorker.Items;
 using Mmorpg.SimulationWorker.Quests;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.Testing;
-using JoinShardRequest = Mmorpg.GameService.Placement.JoinShardRequest;
 
 namespace Mmorpg.Integration.Tests;
 
@@ -91,7 +90,7 @@ public sealed class CharacterStatePersistenceFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             ShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             cancellationToken);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await client.ConsumeJoinTicketAsync(

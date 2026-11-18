@@ -14,18 +14,29 @@ namespace Mmorpg.Client.Core
     }
 
     // Which build this is: its kind, the commit it was built from, whether the working tree had
-    // changes the commit does not hold, and when it was built. The Editor has no commit and time.
+    // changes the commit does not hold, when it was built, and which servers it fits: the realtime
+    // protocol version and simulation revision of the code it was built from, which a worker must
+    // run exactly for the client to play on it. The Editor has no commit, time, or versions: it
+    // always runs the code of its project.
     public sealed class ClientBuildStamp
     {
         public static readonly ClientBuildStamp Editor =
-            new ClientBuildStamp(ClientBuildKind.Editor, string.Empty, false, string.Empty);
+            new ClientBuildStamp(ClientBuildKind.Editor, string.Empty, false, string.Empty, 0, string.Empty);
 
-        public ClientBuildStamp(ClientBuildKind kind, string commit, bool dirty, string builtAtUtc)
+        public ClientBuildStamp(
+            ClientBuildKind kind,
+            string commit,
+            bool dirty,
+            string builtAtUtc,
+            int protocolVersion,
+            string simulationRevision)
         {
             Kind = kind;
             Commit = commit ?? string.Empty;
             Dirty = dirty;
             BuiltAtUtc = builtAtUtc ?? string.Empty;
+            ProtocolVersion = protocolVersion;
+            SimulationRevision = simulationRevision ?? string.Empty;
         }
 
         public ClientBuildKind Kind { get; }
@@ -37,6 +48,12 @@ namespace Mmorpg.Client.Core
 
         // ISO 8601 in UTC, such as 2026-11-14T09:30:00Z, empty in the Editor.
         public string BuiltAtUtc { get; }
+
+        // The realtime protocol version of the code of this build, 0 in the Editor.
+        public int ProtocolVersion { get; }
+
+        // The simulation revision of the code of this build, empty in the Editor.
+        public string SimulationRevision { get; }
 
         // The Editor and development builds have the development tools, such as the Admin menu and
         // the override of the GameService address; a release build has none of them.
@@ -68,7 +85,7 @@ namespace Mmorpg.Client.Core
         }
 
         // One line for logs and the Debug menu, such as "development build 0a1b2c3d4e (uncommitted
-        // changes), built 2026-11-14 09:30 UTC".
+        // changes), built 2026-11-14 09:30 UTC, protocol 46, simulation movement-simulation-v7".
         public string Describe()
         {
             if (Kind == ClientBuildKind.Editor)
@@ -78,7 +95,9 @@ namespace Mmorpg.Client.Core
 
             return ClientBuildInfo.KindName(Kind) + " build " + ShortCommit
                 + (Dirty ? " (uncommitted changes)" : string.Empty)
-                + ", built " + BuiltAtDisplay + " UTC";
+                + ", built " + BuiltAtDisplay + " UTC"
+                + ", protocol " + ProtocolVersion.ToString(CultureInfo.InvariantCulture)
+                + ", simulation " + SimulationRevision;
         }
     }
 
@@ -90,7 +109,7 @@ namespace Mmorpg.Client.Core
     // game files points a release build elsewhere.
     public sealed class ClientBuildInfo
     {
-        public const int FormatVersion = 1;
+        public const int FormatVersion = 2;
         public const string TimeFormat = "yyyy-MM-ddTHH:mm:ssZ";
         public const string DevelopmentKindName = "development";
         public const string ReleaseKindName = "release";
@@ -146,6 +165,8 @@ namespace Mmorpg.Client.Core
                 Debug.isDebugBuild ? ClientBuildKind.Development : ClientBuildKind.Release,
                 string.Empty,
                 false,
+                string.Empty,
+                0,
                 string.Empty));
 #endif
         }
@@ -231,9 +252,27 @@ namespace Mmorpg.Client.Core
                 return false;
             }
 
+            if (document.protocolVersion < 1 || document.protocolVersion > ushort.MaxValue)
+            {
+                error = "The build file names the realtime protocol version " + document.protocolVersion + ".";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(document.simulationRevision))
+            {
+                error = "The build file names no simulation revision.";
+                return false;
+            }
+
             info = new ClientBuildInfo(
                 environment,
-                new ClientBuildStamp(kind, document.commit, document.dirty, document.builtAtUtc));
+                new ClientBuildStamp(
+                    kind,
+                    document.commit,
+                    document.dirty,
+                    document.builtAtUtc,
+                    document.protocolVersion,
+                    document.simulationRevision));
             error = string.Empty;
             return true;
         }
@@ -254,7 +293,9 @@ namespace Mmorpg.Client.Core
                     kind = KindName(Stamp.Kind),
                     commit = Stamp.Commit,
                     dirty = Stamp.Dirty,
-                    builtAtUtc = Stamp.BuiltAtUtc
+                    builtAtUtc = Stamp.BuiltAtUtc,
+                    protocolVersion = Stamp.ProtocolVersion,
+                    simulationRevision = Stamp.SimulationRevision
                 },
                 true);
         }
@@ -274,5 +315,7 @@ namespace Mmorpg.Client.Core
         public string commit;
         public bool dirty;
         public string builtAtUtc;
+        public int protocolVersion;
+        public string simulationRevision;
     }
 }

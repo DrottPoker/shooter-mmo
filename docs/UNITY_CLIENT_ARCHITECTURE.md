@@ -169,8 +169,9 @@ the session caches Api contracts.
 
 The Editor-only `Mmorpg.Client.Editor` assembly references Core, Worlds,
 Gameplay, Cloth, and Ui, whose theme the UI builder fills, the shared WorldData editor, the WorldData actor editor,
-whose compiled World actors the collision bake adds resource nodes from, and the
-Addressables editor assemblies. It also holds the import side of the art
+whose compiled World actors the collision bake adds resource nodes from, the
+Addressables editor assemblies, and the shared protocol and simulation
+packages, whose versions the build stamp holds. It also holds the import side of the art
 pipeline, such as `ArtModelImportRules`, the import rules for every model the art
 pipeline exports to `Assets/Art/Models`, and `ArtAppearanceCatalogs`, which
 writes the appearance catalogs of the exported bodies; see
@@ -578,8 +579,11 @@ information, query, or fragment, kept without its trailing slash.
 
 `ClientBuildInfo.Load` gives the bootstrap the environment of the running
 client and its `ClientBuildStamp`: the kind, `Editor`, `Development`, or
-`Release`, the commit, whether the working tree had changes, and the UTC time
-of the build.
+`Release`, the commit, whether the working tree had changes, the UTC time of the
+build, and which servers the build fits: the realtime protocol version and the
+simulation revision of the code it was built from, which a worker must run
+exactly, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes. The Editor
+has none, because it runs the code of its own project.
 
 - The Editor reads `Environments/local.json` of its project itself, so it
   always runs `local` without a build step, and its stamp is the Editor's.
@@ -589,7 +593,8 @@ of the build.
   `Assets/Content/Config` before the Addressables content build of every player
   build and deletes it afterwards, so it never exists in the project
   otherwise, and Git ignores it. `ClientPlayerBuild` names the environment and
-  the stamp that `tools/Build-Client.ps1` asks for; any other build, from
+  the stamp that `tools/Build-Client.ps1` asks for, and adds the two versions
+  of the code that it builds; any other build, from
   `File > Build Profiles` or a test player, bakes `local` with the commit of the
   checkout, and its kind follows the build's Development flag. Nothing a player
   does on its machine changes it short of changing the game files.
@@ -608,7 +613,9 @@ ignored with a warning.
 `GameServiceOverride`, and `GameServiceBaseUrl`, the override or else the
 environment's address, which every request uses. The bootstrap logs the
 environment, the stamp, and the address at start. The login screen's footer
-shows the environment and the stamp from the `ui` texts `ui/login/build-*`, and
+shows the environment and the stamp, the protocol version and simulation
+revision of a development or release build included, from the `ui` texts
+`ui/login/build-*`, and
 a warning line with `ui/login/address-override` while an override is active,
 and logs the same lines as `Login screen shown`; the F2 Debug menu's Network
 tab shows them under Build. `ClientEnvironmentTests`, `ClientBuildInfoTests`,
@@ -860,8 +867,10 @@ Idle -> Pausing -> RequestingTicket -> Joining -> Idle
   a definite refusal and gives up at once.
 - **Giving up.** At the end of the window, also during a join, which is
   aborted, and after a definite refusal, the window ends and
-  `WorldExit.LeaveLostWorld` leaves the lost World. A join that the worker
-  accepted before the deadline completes.
+  `WorldExit.LeaveLostWorld` leaves the lost World, with the notice
+  `reconnect_failed`, or with the code of a version refusal, which has a text of
+  its own, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes. A join
+  that the worker accepted before the deadline completes.
 
 An attempt that is over never acts again: every attempt has a number, and the
 window's end, a success, and leaving the World raise the current number, so a
@@ -1311,18 +1320,38 @@ session. The join response must also match the client's compiled
 movement-simulation revision and baked collision revision. Either mismatch
 aborts activation with a structured client error.
 
-Client and worker must run the same protocol and simulation code, as
-[Versioning](REALTIME_PROTOCOL.md#versioning) describes; what to restart and
-rebuild after such a change is in [Unity Client](LOCAL_DEVELOPMENT.md#unity-client).
-A join that finds another version fails before the transport starts, and the
-character screen tells the player which side is behind. A worker on a newer
-protocol than the client gives `incompatible_protocol`, "Your game is out of
-date. Update it to play." A worker on an older protocol, which a deployment is
-still replacing, gives `shard_not_updated`, "This shard has not been updated to
-your version of the game yet. Try again in a few minutes." A simulation revision
-that differs at the same protocol has no order, so `incompatible_simulation`
-names both ways out. A reconnect that meets one of them gives up and returns to
-the character screen with the same text.
+Client and worker must run exactly the same protocol and simulation code and the
+same collision data, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes;
+what to restart and rebuild after such a change is in
+[Unity Client](LOCAL_DEVELOPMENT.md#unity-client). The client checks it twice
+before it opens UDP. `WorldJoin` names the client's protocol version and
+simulation revision in the join request, and the baked collision revision of the
+World that the Shard's list entry names, which `UnityWorldCollisionLoader.TryReadRevision`
+reads from the World's collision manifest without loading a chunk or the World
+scene, so GameService refuses a mismatch before it issues a ticket. A World
+whose collision data the client does not have is not named. Then
+`RealtimeSession.Join` checks the placement that GameService answered, as the
+second line of defence, before the transport starts, before any ticket is spent
+and before a body appears for other players; the check of the acceptance in
+`NetworkMovementSession.TryCreate` stays as the last. Each mismatch fails the
+join with a code and the status line of the character screen shows its text:
+
+- A worker on a newer protocol than the client gives `incompatible_protocol`,
+  "Your game is out of date. Update it to play."
+- A worker on an older protocol, which a deployment is still replacing, gives
+  `shard_not_updated`, "This shard has not been updated to your version of the
+  game yet. Try again in a few minutes."
+- A simulation revision that differs at the same protocol has no order, so
+  `incompatible_simulation` names both ways out.
+- Another collision revision for the Shard's World has no order either, so
+  `incompatible_world_data` names both ways out.
+
+A reconnect meets the same refusals from GameService and from its own check, and
+both give up at once, because waiting does not change them. The notice that
+CharacterSelect shows is then the text of the refusal instead of `reconnect_failed`,
+so the player learns which side to update. `ReconnectRules.VersionRefusalCodes`
+lists the four codes, and `ReconnectRulesTests` keeps the list equal to the codes
+that GameService refuses a join with.
 
 ## Content Loading With Addressables
 
