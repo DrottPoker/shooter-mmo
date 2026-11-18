@@ -96,6 +96,8 @@ namespace Mmorpg.Client.Ui
                 return;
             }
 
+            // The notice said why the last World was left; this attempt gets its own answer.
+            ClearExitNotice();
             BeginOperation(
                 ClientOperation.JoinShard,
                 JoinSelectedShardRoutine(),

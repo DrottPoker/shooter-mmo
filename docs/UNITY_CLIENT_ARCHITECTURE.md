@@ -929,7 +929,8 @@ of a World it leaves for an ending, or `reconnect_failed`, and
 `account_session_replaced`. The bootstrap takes the code when it composes
 LoginMenu or CharacterSelect and passes the panel its text from the messages
 table, the same way it passes the login card the notice that the client is
-out of date, so a notice shows once.
+out of date, so a notice shows once. On CharacterSelect the notice goes when
+the player starts a join, so it never stands beside the answer of that attempt.
 
 An accepted leave keeps the character and its `BodySeconds` there too.
 `ClientNotices.TryGetBody` gives the whole seconds left, rounded up, against
