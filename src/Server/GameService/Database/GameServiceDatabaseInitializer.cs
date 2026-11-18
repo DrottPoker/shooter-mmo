@@ -13,7 +13,9 @@ namespace Mmorpg.GameService.Database;
 // because a newer release migrated it. A start tolerates that, because the expand rule promises
 // that the version before runs on the next schema, and reports the ids. The migrate command and
 // its plan refuse it, because mirroring this build's catalogs over a newer release's would undo
-// that release.
+// that release. A migrate-and-seed holds the runner's operation lock from its read of the
+// recorded ids to its last seed, so a build that found the database not ahead cannot seed after
+// a newer release migrated meanwhile: it waits for that release and then sees its ids.
 public sealed class GameServiceDatabaseInitializer(
     GameServiceSchema schema,
     DatabaseMigrationRunner migrationRunner,
@@ -131,6 +133,7 @@ public sealed class GameServiceDatabaseInitializer(
         bool refuseWhenAhead,
         CancellationToken cancellationToken)
     {
+        await using var operation = await migrationRunner.HoldOperationLockAsync(cancellationToken);
         var run = refuseWhenAhead
             ? await migrationRunner.ApplyUnlessAheadAsync(schema.Migrations, cancellationToken)
             : await migrationRunner.ApplyAsync(schema.Migrations, cancellationToken);

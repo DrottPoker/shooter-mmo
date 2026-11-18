@@ -227,6 +227,42 @@ public sealed class GameServiceDatabaseCommandTests
             await context.ExecuteScalarStringAsync("select revision from quest_catalogs where catalog_id = 'core';"));
     }
 
+    // Two releases migrate at once: the older build must not seed after the newer one finished.
+    // A migrate-and-seed holds the operation lock, so the older build waits for the newer release
+    // and then reads its ids, instead of deciding from a read it made before.
+    [PostgresIntegrationFact]
+    public async Task AMigrateThatWaitedForANewerReleaseSeesItsMigrationsAndRefuses()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync(heartbeatSeedShard: false);
+        var older = new string('a', 64);
+        var runner = context.Services.GetRequiredService<DatabaseMigrationRunner>();
+        var initializer = InitializerWith(context, NextMigration);
+
+        Task<(int ExitCode, string Output, string Error)> migrate;
+        await using (await runner.HoldOperationLockAsync(TestContext.Current.CancellationToken))
+        {
+            // The newer release is in the middle of its migrate-and-seed.
+            migrate = Task.Run(() => RunAsync(initializer, GameServiceDatabaseCommand.Migrate), TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+            Assert.False(migrate.IsCompleted, "The older build's migrate waits while another migrate-and-seed runs.");
+            await context.ExecuteAsync($"update quest_catalogs set revision = '{older}' where catalog_id = 'core';");
+            await context.ExecuteAsync($"insert into schema_migrations (id) values ('{NewerRelease}');");
+        }
+
+        var result = await migrate;
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains(NewerRelease, result.Error, StringComparison.Ordinal);
+        Assert.Contains("newer than this build", result.Error, StringComparison.Ordinal);
+        Assert.Equal(
+            0,
+            await context.ExecuteScalarIntAsync(
+                $"select count(*) from schema_migrations where id = '{NextMigration.Id}';"));
+        Assert.Equal(
+            older,
+            await context.ExecuteScalarStringAsync("select revision from quest_catalogs where catalog_id = 'core';"));
+    }
+
     // The expand rule promises that the version before runs on the next schema, so a start without
     // migrations goes on while nothing else is pending, and says so once.
     [PostgresIntegrationFact]

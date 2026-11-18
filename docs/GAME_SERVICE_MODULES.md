@@ -173,7 +173,7 @@ inside the modules.
 
 | Owner | Tables and objects |
 | --- | --- |
-| Platform | `schema_migrations`; advisory lock `7104202607071600` |
+| Platform | `schema_migrations`; advisory locks `7104202607071600` (one migration) and `7104202611180900` (one whole migrate-and-seed) |
 | Accounts | `accounts`, `account_sessions` |
 | Characters | `characters`, including `currency` and `level`, `character_currency_ledger`, `character_appearances`, `character_simulation_states`, and `character_data_steps` |
 | Placement | `world_definitions`, `fleets`, `simulation_nodes`, `shards`, `simulation_workers`, `simulation_assignments`, `simulation_join_tickets`, `character_simulation_sessions` |
@@ -1163,7 +1163,17 @@ wrote right: it could report violations that are not there or miss ones that
 are. [Rolling Back A Release](#rolling-back-a-release) says when an older build
 can run on a newer database.
 
-The runner first reads the recorded ids, so a database without a pending
+A migrate-and-seed, which the `migrate` command and a start with
+`Database:RunMigrationsOnStartup` run, first takes a second advisory lock,
+`7104202611180900`, as a session lock on a connection of its own, and holds it
+until its last seed is written. So two processes never migrate and seed at the
+same time, and a build that waited for a newer release reads that release's
+ids when its turn comes and refuses, as
+[Rolling Back A Release](#rolling-back-a-release) describes, instead of seeding
+from a read it made before. `migrate --plan` and a start without migrations only
+read and do not take it.
+
+The runner then reads the recorded ids, so a database without a pending
 migration sees one read. Each pending migration runs in its own transaction: it
 takes the transaction form of the advisory lock, then sets the transaction's
 `lock_timeout` to `Database:MigrationLockTimeoutMilliseconds`, checks that no

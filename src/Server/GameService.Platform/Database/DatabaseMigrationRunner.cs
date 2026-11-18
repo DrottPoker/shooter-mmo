@@ -21,6 +21,54 @@ public sealed class DatabaseMigrationRunner(
     // lasts as long as the table needs.
     private const int NoCommandTimeout = 0;
 
+    // The lock of one whole migrate-and-seed. The migration lock above serializes single
+    // migrations; this one serializes the complete operation of a process, from its read of the
+    // recorded ids to its last seed, so what one process decided about the database still holds
+    // when it seeds. It is a session lock on a connection of its own, so the migrations and the
+    // seeders, which use other connections, never wait for it.
+    public const long OperationLockId = 7_104_202_611_180_900;
+
+    // Waits for the operation lock, as long as another process holds it, and holds it until the
+    // result is disposed.
+    public async Task<IAsyncDisposable> HoldOperationLockAsync(CancellationToken cancellationToken)
+    {
+        var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select pg_advisory_lock(@OperationLockId);",
+                new { OperationLockId },
+                commandTimeout: NoCommandTimeout,
+                cancellationToken: cancellationToken));
+            return new OperationLock(connection);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private sealed class OperationLock(NpgsqlConnection connection) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                // The connection goes back to the pool without the lock.
+                await connection.ExecuteAsync("select pg_advisory_unlock(@OperationLockId);", new { OperationLockId });
+            }
+            catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+            {
+                // A broken session has lost the lock already.
+            }
+            finally
+            {
+                await connection.DisposeAsync();
+            }
+        }
+    }
+
     // The ids of the migrations that the database has not recorded, in order, and the recorded
     // ids that these migrations do not contain, which a newer release recorded. Reads only
     // schema_migrations, and a database without it has recorded none.
