@@ -622,10 +622,12 @@ store.
 `SimulationWorkerHostedServices` registers the hosted services in their start
 order: `RealtimeSimulationService`, `SimulationSessionHeartbeatService`,
 `SimulationWorkerHeartbeatService`, `GameServiceOutageMonitor`,
-`DurableCorpseRestorationService`, and `RealtimeMetricsReporterService`. The
-realtime service binds the UDP port before anything else runs, so a port it
-cannot bind fails the start before the worker registers. The worker heartbeat
-registers once the transport listens, and corpse restoration waits for the
+`DurableCorpseRestorationService`, `RealtimeMetricsReporterService`, and
+`SimulationWorkerHealthFileService`, which writes the file that a container
+health check reads. The realtime service binds the UDP port before anything
+else runs, so a port it cannot bind fails the start before the worker
+registers. The worker heartbeat registers once the transport listens, and
+corpse restoration waits for the
 registration lease that the heartbeat renews. The outage monitor stops the
 worker when no registry heartbeat succeeded for the outage tolerance, as
 [Runtime Identity And Assignment Safety](#runtime-identity-and-assignment-safety)
@@ -1733,9 +1735,14 @@ session truth.
 SimulationWorker has no HTTP server. `--health-check-only` loads and validates
 its configuration and content like a normal start, then checks GameService
 readiness, Redis, and UDP port availability, prints each dependency, and exits
-with code 0 when all pass and 1 otherwise.
+with code 0 when all pass and 1 otherwise. It needs the UDP port, so it checks
+a worker that does not run; a running worker's container health check reads the
+file that the worker writes while it is ready, as
+[Container Health Checks](SERVICE_FEATURES.md#container-health-checks) describes.
 
-Local Compose ports bind to `127.0.0.1`.
+Local Compose ports bind to `127.0.0.1`. How the server is deployed, in two
+images behind a TLS proxy, with the update order, the backups, and what is not
+there yet, is in [Deployment](DEPLOYMENT.md).
 
 Both processes build their OpenTelemetry pipeline through
 `src/Server/Telemetry` and push metrics, traces, and logs over OTLP to one

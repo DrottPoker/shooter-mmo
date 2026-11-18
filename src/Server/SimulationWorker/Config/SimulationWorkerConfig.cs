@@ -1,7 +1,10 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
 using Mmorpg.GameProtocol;
 using Mmorpg.GameSimulation;
+using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Networking;
 using Mmorpg.Server.Common.Worlds;
 using Mmorpg.SimulationWorker.Realtime;
@@ -93,6 +96,12 @@ public sealed record SimulationWorkerConfig(
     // load tooling. Null writes no file.
     public string? PerformanceReportPath { get; init; }
 
+    // Optional file that the worker touches every few seconds while it is ready, meaning its UDP
+    // port is bound and its registration lease is valid, and deletes when it is not. The
+    // container health check reads it, because the worker has no HTTP surface and its image no
+    // shell. Null writes no file.
+    public string? HealthFilePath { get; init; }
+
     // How often the realtime loop saves the place and vitals of the players whose state changed.
     public TimeSpan CharacterCheckpointInterval { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -176,6 +185,9 @@ public sealed record SimulationWorkerConfig(
     // The character appearance content: the equipment slots others see and the looks of bots.
     public string CharacterAppearancePath { get; init; } = string.Empty;
 
+    // The environment variable that holds the one secret that every worker shares in Development.
+    public const string SharedSecretKey = "SIMULATION_WORKER_SERVICE_SECRET";
+
     public static SimulationWorkerConfig FromConfiguration(IConfiguration configuration)
     {
         var errors = new List<string>();
@@ -206,7 +218,7 @@ public sealed record SimulationWorkerConfig(
             "SimulationWorker:GameServiceBaseUrl",
             errors);
         var gameServiceSecret = Require(
-            First(section["GameServiceSecret"], configuration["SIMULATION_WORKER_SERVICE_SECRET"]),
+            First(section["GameServiceSecret"], configuration[SharedSecretKey]),
             "SimulationWorker:GameServiceSecret",
             errors);
         var worldDataPath = Require(
@@ -421,6 +433,10 @@ public sealed record SimulationWorkerConfig(
         var performanceReportPath = OptionalFullPath(
             section["PerformanceReportPath"],
             "SimulationWorker:PerformanceReportPath",
+            errors);
+        var healthFilePath = OptionalFullPath(
+            section["HealthFilePath"],
+            "SimulationWorker:HealthFilePath",
             errors);
         var characterCheckpointSeconds = string.IsNullOrWhiteSpace(
                 section["CharacterCheckpointSeconds"])
@@ -910,6 +926,7 @@ public sealed record SimulationWorkerConfig(
             UncertainOperationRetryHorizon = TimeSpan.FromSeconds(uncertainOperationRetryHorizonSeconds),
             NetworkMetricsLogInterval = TimeSpan.FromSeconds(networkMetricsLogSeconds),
             PerformanceReportPath = performanceReportPath,
+            HealthFilePath = healthFilePath,
             CharacterCheckpointInterval = TimeSpan.FromSeconds(characterCheckpointSeconds),
             LingeringBodySeconds = lingeringBodySeconds,
             PathContinuationSeconds = pathContinuationSeconds,
@@ -961,6 +978,75 @@ public sealed record SimulationWorkerConfig(
         };
     }
 
+    // The rules that only the Development environment may break, as GameService has them: the
+    // secret and the Redis password must be real, the one shared worker secret is for the local
+    // stack only, and the call to GameService must not carry the secret in the clear over an
+    // address that is not private. Development keeps today's local settings.
+    public IReadOnlyList<string> ErrorsOutsideDevelopment(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var errors = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuration[SharedSecretKey]))
+        {
+            errors.Add(
+                $"{SharedSecretKey} is accepted only in the Development environment; give the worker its own secret in SimulationWorker:GameServiceSecret, the one that GameService holds for this worker id, and remove {SharedSecretKey}.");
+        }
+
+        if (PlaceholderSecrets.IsPlaceholderServiceSecret(GameServiceSecret))
+        {
+            errors.Add(
+                "SimulationWorker:GameServiceSecret is a placeholder or a secret that the repository publishes; outside the Development environment it needs a real secret.");
+        }
+
+        if (PlaceholderSecrets.IsPlaceholderPassword(
+                Mmorpg.Server.Common.Networking.RedisConnectionString.ParseCredentials(RedisConnectionString).Password))
+        {
+            errors.Add(
+                "ConnectionStrings:Redis has no password or a placeholder one; outside the Development environment Redis needs a real secret in password=.");
+        }
+
+        if (AdvertisedHost is "0.0.0.0" or "::" or "[::]")
+        {
+            errors.Add(
+                "SimulationWorker:AdvertisedHost is a wildcard address, which no client can connect to; outside the Development environment it must be the address or name that clients reach this worker at.");
+        }
+
+        if (GameServiceBaseUrl.Scheme == Uri.UriSchemeHttp
+            && IPAddress.TryParse(GameServiceBaseUrl.IdnHost, out var address)
+            && !IsPrivateAddress(address))
+        {
+            errors.Add(
+                "SimulationWorker:GameServiceBaseUrl is plain HTTP to a public address, which would send the worker secret in the clear; use HTTPS, or an address on a private network.");
+        }
+
+        return errors;
+    }
+
+    // Loopback, link-local, and private addresses: the networks that a call may cross without TLS.
+    private static bool IsPrivateAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address) || address.IsIPv6LinkLocal || address.IsIPv6UniqueLocal)
+        {
+            return true;
+        }
+
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10
+            || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
+            || (bytes[0] == 192 && bytes[1] == 168)
+            || (bytes[0] == 169 && bytes[1] == 254);
+    }
     // A relative path is below the worker's output, where the build copies the content.
     private static string ResolveOutputPath(string? configuredPath, string defaultPath)
     {

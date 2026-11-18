@@ -94,6 +94,7 @@ checks for a change and the pull request workflow, and the test projects are des
 | `tests` | Backend tests. See [Backend Tests](tests/README.md) |
 | `tools` | Checks, compilers, generators, load tools, and the art pipeline. See [Tools](tools/README.md) |
 | `observability` | Configuration of the local monitoring stack. See [Monitoring](docs/MONITORING.md) |
+| `deploy` | The Dockerfile of the two server images and the production-like stack that runs them behind a TLS proxy. See [Deployment](docs/DEPLOYMENT.md) |
 | `docs` | Design, architecture, features, and guides. See [Documentation](docs/README.md) |
 
 Repository-wide Compose, SDK, solution, build, and environment files stay in the root. Service

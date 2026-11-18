@@ -1,0 +1,25 @@
+# Optional overlay of the production-like stack: GameService and the SimulationWorker export their
+# metrics, traces, and logs to the monitoring stack of docker-compose.observability.yml. Start that
+# stack first, then start this one with tools/Start-DeployStack.ps1 -Telemetry. A Compose profile
+# selects services and cannot change the settings of one, so the export is an overlay file.
+# docs/MONITORING.md describes what the export carries.
+
+services:
+  game-service:
+    environment:
+      Telemetry__OtlpEndpoint: http://otel-collector:4317
+    networks:
+      - observability
+
+  simulation-worker:
+    environment:
+      Telemetry__OtlpEndpoint: http://otel-collector:4317
+    networks:
+      - observability
+
+networks:
+  # The network of the monitoring stack, which makes it when it starts. Another monitoring stack,
+  # under another Compose project name, sets OBSERVABILITY_NETWORK.
+  observability:
+    name: ${OBSERVABILITY_NETWORK:-shooter-mmo-observability_default}
+    external: true

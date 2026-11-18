@@ -14,6 +14,8 @@ artifacts/
 .env
 .env.local
 .claude/settings.local.json
+# The secrets of the production-like stack, which tools/New-DeploySecrets.ps1 makes.
+deploy/stack.env
 
 # Unity generated files
 src/Client/[Ll]ibrary/

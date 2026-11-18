@@ -1,0 +1,58 @@
+# The TLS proxy of the production-like stack. It ends TLS for GameService with a certificate that
+# Caddy's own local certificate authority issues for localhost, so the stack needs no manual
+# step, and it forwards to GameService over the private edge network. docs/DEPLOYMENT.md
+# describes the stack and what changes for a real host name and certificate.
+{
+	# The admin API listens on the container's loopback only, where the health check reads it.
+	admin 127.0.0.1:2019
+
+	# Every certificate comes from the local authority, and the proxy opens no port 80 for
+	# redirects: the stack serves HTTPS on one port only.
+	local_certs
+	auto_https disable_redirects
+
+	# The container has no trust store to put the local authority into, and clients get its root
+	# certificate from the proxy's data volume instead, as docs/DEPLOYMENT.md describes.
+	skip_install_trust
+
+	servers {
+		timeouts {
+			read_header 15s
+			idle 120s
+		}
+	}
+}
+
+localhost:8443 {
+	tls internal
+
+	# GameService limits request bodies itself; the proxy refuses a large one earlier.
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy game-service:8080 {
+		# A proxy that is not behind another one sets X-Forwarded-For to the address it saw
+		# and replaces whatever the client wrote, and sets X-Forwarded-Proto and
+		# X-Forwarded-Host. GameService trusts exactly this proxy, as Http:TrustedProxies says.
+
+		# GameService answers 503 from the stop signal on, so a stopping instance leaves
+		# rotation within one interval; its drain is longer than the interval.
+		health_uri /health/ready
+		health_interval 3s
+		health_timeout 2s
+		health_status 2xx
+
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 30s
+		}
+	}
+
+	header -Server
+
+	log {
+		output stdout
+		format json
+	}
+}

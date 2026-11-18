@@ -98,6 +98,38 @@ public sealed class SimulationTickLoopTests
         Assert.Null(snapshot.SimulationTickNotRunning);
     }
 
+    // The health file of the worker reads when the loop last completed a tick: every tick stamps
+    // it at its end, also a tick in which a phase failed, and a loop that never ticked has none.
+    [Fact]
+    public void EveryCompletedTickStampsTheLoopLiveness()
+    {
+        using var fixture = new RealtimeLoopFixture();
+        using var metrics = new RealtimePerformanceMetrics();
+        var liveness = new RealtimeLoopLiveness();
+        var phases = new SimulationTickPhases();
+        phases.Add(SimulationTickOrder.Movement, "movement", (in SimulationTick tick) =>
+        {
+            if (tick.ServerTick == 2)
+            {
+                throw new InvalidOperationException("A phase fails in the second tick.");
+            }
+        });
+        var guard = new RealtimeLoopGuard(SimulationWorkerConfig.DefaultTickPhaseFailureLimit, fixture.Clock, metrics, NullLogger.Instance);
+        var loop = new SimulationTickLoop(fixture.Clock, fixture.Entities, phases, metrics, guard, NullLogger.Instance, liveness: liveness);
+        var nextTick = TimeSpan.Zero;
+        Assert.False(liveness.HasTicked);
+
+        RunTicks(loop, ref nextTick, 1);
+        var afterFirst = liveness.SilenceFor(TimeProvider.System);
+        Thread.Sleep(300);
+        RunTicks(loop, ref nextTick, 1);
+        var afterFailing = liveness.SilenceFor(TimeProvider.System);
+
+        Assert.NotNull(afterFirst);
+        Assert.True(liveness.HasTicked);
+        // The failing tick stamped the liveness again: the silence since it is shorter than the pause.
+        Assert.True(afterFailing < TimeSpan.FromMilliseconds(250), $"The silence after the failing tick was {afterFailing}.");
+    }
     // With a CPU clock every tick also measures how long the loop thread ran in it: the slowest
     // tick keeps its CPU time, and the interval sums the CPU time and the time the thread did not
     // run, the wall time minus the CPU time, per tick.

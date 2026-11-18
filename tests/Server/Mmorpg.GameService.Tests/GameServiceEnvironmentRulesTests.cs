@@ -38,6 +38,21 @@ public sealed class GameServiceEnvironmentRulesTests
         Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
     }
 
+    // The load tooling publishes its worker secret, so it protects nothing in a deployment either.
+    [Fact]
+    public void APublishedWorkerSecretStopsTheStart()
+    {
+        var settings = GameServiceHostSettings.Required();
+        settings["ServiceAuthentication:SimulationWorkers:local-simulation-worker-1"] = "stack-stress-local-worker-secret-2026";
+
+        var exception = Assert.Throws<InvalidOperationException>(() => Load(Environments.Production, settings));
+
+        Assert.Contains(
+            "ServiceAuthentication:SimulationWorkers:local-simulation-worker-1 is a secret that the repository publishes",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     // Without any worker secret the refusal names the per-worker setting too, so a production
     // operator learns which key to set.
     [Fact]
