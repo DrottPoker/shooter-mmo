@@ -34,13 +34,45 @@ function Test-DeployDocker {
     }
 }
 
-# The text of the ports that the stack publishes, with the defaults of the Compose file and the
-# overrides of the environment.
+# One value of the stack's environment file, or $null when the file or the name is not there.
+# The file holds NAME=value lines and comments, as Compose reads it; quotes around a value go.
+function Get-DeployEnvFileValue([string]$Name) {
+    if (-not (Test-Path -LiteralPath $script:DeployEnvFile)) {
+        return $null
+    }
+
+    $value = $null
+    foreach ($line in [IO.File]::ReadAllLines($script:DeployEnvFile)) {
+        if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$' -and $Matches[1] -eq $Name) {
+            $value = $Matches[2].Trim()
+            if ($value.Length -ge 2 -and (($value[0] -eq '"' -and $value[-1] -eq '"') -or ($value[0] -eq "'" -and $value[-1] -eq "'"))) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+        }
+    }
+
+    $value
+}
+
+# The value that Compose gives a variable of the Compose file: the shell environment first, then
+# the stack's environment file, then the default of the Compose file.
+function Get-DeploySetting([string]$Name, [string]$Default) {
+    $fromShell = [Environment]::GetEnvironmentVariable($Name)
+    if ($fromShell) {
+        return $fromShell
+    }
+
+    $fromFile = Get-DeployEnvFileValue $Name
+    if ($fromFile) { $fromFile } else { $Default }
+}
+
+# The text of the ports that the stack publishes, resolved as Compose resolves them, so the port
+# checks, the printed addresses, and the smoke test speak of the stack that really runs.
 function Get-DeployEndpoints {
-    $bind = if ($env:STACK_BIND_ADDRESS) { $env:STACK_BIND_ADDRESS } else { "127.0.0.1" }
-    $https = if ($env:PROXY_HTTPS_PORT) { $env:PROXY_HTTPS_PORT } else { "8443" }
-    $udp = if ($env:WORKER_UDP_PORT) { $env:WORKER_UDP_PORT } else { "28015" }
-    $advertised = if ($env:WORKER_ADVERTISED_HOST) { $env:WORKER_ADVERTISED_HOST } else { "127.0.0.1" }
+    $bind = Get-DeploySetting "STACK_BIND_ADDRESS" "127.0.0.1"
+    $https = Get-DeploySetting "PROXY_HTTPS_PORT" "8443"
+    $udp = Get-DeploySetting "WORKER_UDP_PORT" "28015"
+    $advertised = Get-DeploySetting "WORKER_ADVERTISED_HOST" "127.0.0.1"
     [pscustomobject]@{
         Bind = $bind
         HttpsPort = [int]$https
@@ -50,10 +82,40 @@ function Get-DeployEndpoints {
     }
 }
 
+# The names of the secrets that the Compose file requires, and what stands in for them in a call
+# that needs none. The stand-in is a placeholder that GameService and the worker refuse to start
+# with outside Development.
+$script:DeploySecretNames = @("POSTGRES_PASSWORD", "REDIS_PASSWORD", "WORKER_1_SECRET")
+$script:DeployStandInSecret = "replace-with-a-secret-the-stack-never-started"
+
+# Runs the action with what the Compose file requires. Without the environment file, which only a
+# stack that never started lacks, the calls that need no secret, such as stop and down, still
+# work: the required variables get the stand-in for this one call, and the environment is put
+# back afterwards, because Compose reads the shell before the file and a value left behind would
+# become the secret of a stack started later in the same shell.
+function Invoke-WithDeployEnvironment([scriptblock]$Action) {
+    $supplied = @()
+    if (-not (Test-Path -LiteralPath $script:DeployEnvFile)) {
+        foreach ($name in $script:DeploySecretNames) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) {
+                [Environment]::SetEnvironmentVariable($name, $script:DeployStandInSecret)
+                $supplied += $name
+            }
+        }
+    }
+
+    try {
+        & $Action
+    }
+    finally {
+        foreach ($name in $supplied) {
+            [Environment]::SetEnvironmentVariable($name, $null)
+        }
+    }
+}
+
 # The arguments that start every Docker Compose call of the stack, with the telemetry overlay when
-# asked. Without the environment file, which only a stack that never started lacks, the calls that
-# need no secret, such as stop and down, still work: the required variables get a placeholder
-# value in this process only.
+# asked.
 function Get-DeployComposeArguments([switch]$Telemetry) {
     $arguments = @("compose", "-p", $script:DeployProject, "-f", $script:DeployComposeFile)
     if ($Telemetry) {
@@ -62,13 +124,6 @@ function Get-DeployComposeArguments([switch]$Telemetry) {
 
     if (Test-Path -LiteralPath $script:DeployEnvFile) {
         $arguments += @("--env-file", $script:DeployEnvFile)
-    }
-    else {
-        foreach ($name in @("POSTGRES_PASSWORD", "REDIS_PASSWORD", "WORKER_1_SECRET")) {
-            if (-not [Environment]::GetEnvironmentVariable($name)) {
-                [Environment]::SetEnvironmentVariable($name, "not-a-secret-the-stack-never-started")
-            }
-        }
     }
 
     $arguments
@@ -82,8 +137,10 @@ function Invoke-DeployCompose([string[]]$Arguments, [switch]$Telemetry) {
     $ErrorActionPreference = "Continue"
     try {
         $all = @(Get-DeployComposeArguments -Telemetry:$Telemetry) + $Arguments
-        & docker @all | Out-Host
-        $LASTEXITCODE
+        Invoke-WithDeployEnvironment {
+            & docker @all | Out-Host
+            $LASTEXITCODE
+        }
     }
     finally {
         $ErrorActionPreference = $previousPreference
@@ -97,9 +154,11 @@ function Get-DeployComposeLines([string[]]$Arguments, [switch]$Telemetry) {
     $ErrorActionPreference = "Continue"
     try {
         $all = @(Get-DeployComposeArguments -Telemetry:$Telemetry) + $Arguments
-        $lines = @(& docker @all)
-        $exitCode = $LASTEXITCODE
-        [pscustomobject]@{ ExitCode = $exitCode; Lines = @($lines | ForEach-Object { "$_" }) }
+        Invoke-WithDeployEnvironment {
+            $lines = @(& docker @all)
+            $exitCode = $LASTEXITCODE
+            [pscustomobject]@{ ExitCode = $exitCode; Lines = @($lines | ForEach-Object { "$_" }) }
+        }
     }
     finally {
         $ErrorActionPreference = $previousPreference

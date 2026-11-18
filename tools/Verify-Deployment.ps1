@@ -221,9 +221,45 @@ try {
     }
 
     if (@($values.Values | Select-Object -Unique).Count -ne $values.Count) { Add-Problem "The generated secrets are not distinct." }
+
+    # The scripts speak of the endpoints that Compose really uses: the shell first, then the file.
+    $savedPort = $env:PROXY_HTTPS_PORT
+    $savedUdp = $env:WORKER_UDP_PORT
+    try {
+        $env:PROXY_HTTPS_PORT = $null
+        $env:WORKER_UDP_PORT = $null
+        [IO.File]::AppendAllText($temporary, "PROXY_HTTPS_PORT=9443`n# WORKER_UDP_PORT=1`nWORKER_UDP_PORT = `"29015`"`n")
+        $fromFile = Get-DeployEndpoints
+        if ($fromFile.HttpsPort -ne 9443 -or $fromFile.Url -ne "https://localhost:9443") { Add-Problem "The endpoints ignore PROXY_HTTPS_PORT of the environment file." }
+        if ($fromFile.UdpPort -ne 29015) { Add-Problem "The endpoints ignore WORKER_UDP_PORT of the environment file." }
+        $env:PROXY_HTTPS_PORT = "9555"
+        if ((Get-DeployEndpoints).HttpsPort -ne 9555) { Add-Problem "The shell does not override the environment file for PROXY_HTTPS_PORT, as it does in Compose." }
+    }
+    finally {
+        $env:PROXY_HTTPS_PORT = $savedPort
+        $env:WORKER_UDP_PORT = $savedUdp
+    }
 }
 finally {
     Remove-Item -LiteralPath $temporary -ErrorAction SilentlyContinue
+}
+
+# Without the environment file a call gets stand-in secrets for that call only, and they are
+# placeholders that the services refuse.
+$saved = @{}
+foreach ($name in $script:DeploySecretNames) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
+try {
+    $script:DeployEnvFile = Join-Path ([IO.Path]::GetTempPath()) ("verify-deploy-missing-" + [Guid]::NewGuid().ToString("N") + ".env")
+    foreach ($name in $script:DeploySecretNames) { [Environment]::SetEnvironmentVariable($name, $null) }
+    $env:REDIS_PASSWORD = "set-by-the-caller"
+    $during = Invoke-WithDeployEnvironment { "$($env:POSTGRES_PASSWORD)|$($env:REDIS_PASSWORD)|$($env:WORKER_1_SECRET)" }
+    if ($during -ne "$($script:DeployStandInSecret)|set-by-the-caller|$($script:DeployStandInSecret)") { Add-Problem "A call without the environment file does not get the stand-in secrets, or loses a value the caller set." }
+    if ($env:POSTGRES_PASSWORD -or $env:WORKER_1_SECRET) { Add-Problem "A call without the environment file leaves its stand-in secrets in the shell, where a later start would use them." }
+    if ($env:REDIS_PASSWORD -ne "set-by-the-caller") { Add-Problem "A call without the environment file removes a secret that the caller set." }
+    if (-not $script:DeployStandInSecret.StartsWith("replace-with-")) { Add-Problem "The stand-in secret is not a placeholder that the services refuse." }
+}
+finally {
+    foreach ($name in $script:DeploySecretNames) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
 }
 
 if ($problems.Count -gt 0) {

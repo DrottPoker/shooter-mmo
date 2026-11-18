@@ -117,7 +117,9 @@ store of its platform instead.
 
 ### The Variables
 
-These have defaults that are no secret and are set in the shell or in `deploy/stack.env`:
+These have defaults that are no secret and are set in the shell or in `deploy/stack.env`. A value in
+the shell wins over the file, as Compose reads them, and the stack's scripts resolve them the same
+way, so the port checks, the printed addresses, and the smoke test follow the file too:
 
 | Variable | Default | Sets |
 | --- | --- | --- |
