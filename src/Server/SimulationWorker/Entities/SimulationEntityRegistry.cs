@@ -1,24 +1,50 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 
 namespace Mmorpg.SimulationWorker.Entities;
 
+// The players of the Shard by network entity id and by character, and the counter that gives out
+// the ids of players and world actors. An id is never given out twice, not even after its entity
+// left, so a client never mistakes a new entity for an old one; the counter therefore only grows,
+// and a worker that has used all of them cannot take a player or respawn a Mob until it restarts.
 public sealed class SimulationEntityRegistry
 {
+    // An exhausted counter logs once a minute at most, since every join and respawn then fails.
+    private static readonly TimeSpan ExhaustionLogInterval = TimeSpan.FromMinutes(1);
+
     private readonly object syncRoot = new();
     private readonly Dictionary<ulong, PlayerSimulationEntity> playersByEntityId = [];
     private readonly Dictionary<Guid, ulong> entityIdsByCharacterId = [];
+    private readonly ILogger? logger;
     private ulong nextEntityId = 1;
+    private long lastExhaustionLogTimestamp;
 
-    public SimulationEntityRegistry()
+    public SimulationEntityRegistry(ILogger<SimulationEntityRegistry>? logger = null)
     {
+        this.logger = logger;
     }
 
     // Starts the id counter elsewhere, so a test can reach the end of the id space.
-    internal SimulationEntityRegistry(ulong nextEntityId)
+    internal SimulationEntityRegistry(ulong nextEntityId, ILogger? logger = null)
+        : this(null)
     {
         ArgumentOutOfRangeException.ThrowIfZero(nextEntityId);
         this.nextEntityId = nextEntityId;
+        this.logger = logger;
+    }
+
+    // The ids given out since the worker started, the share of the id space that is gone.
+    public long IssuedEntityIds
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return (long)Math.Min(nextEntityId - 1, uint.MaxValue);
+            }
+        }
     }
 
     public int PlayerCount
@@ -151,11 +177,26 @@ public sealed class SimulationEntityRegistry
     {
         if (nextEntityId > uint.MaxValue)
         {
+            LogExhaustion();
             throw new InvalidOperationException(
                 $"Simulation entity ids are exhausted: a snapshot record carries at most {uint.MaxValue} as an entity id.");
         }
 
         return nextEntityId++;
+    }
+
+    private void LogExhaustion()
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (lastExhaustionLogTimestamp != 0 && Stopwatch.GetElapsedTime(lastExhaustionLogTimestamp, now) < ExhaustionLogInterval)
+        {
+            return;
+        }
+
+        lastExhaustionLogTimestamp = now;
+        logger?.LogCritical(
+            "[SIMULATION] All {IdCount} simulation entity ids are used, so no player can join and no Mob can respawn on this worker. Restart the worker, which starts the ids again, as docs/MONITORING.md describes.",
+            uint.MaxValue);
     }
 
     private PlayerSimulationEntity CreatePlayer(

@@ -1236,7 +1236,7 @@
     },
     {
       "key": "ui/login/build-development",
-      "text": "Environment {environment}  ·  Development build {commit}  ·  Built {time} UTC"
+      "text": "Environment {environment}  ·  Development build {commit}  ·  Built {time} UTC  ·  Protocol {protocol}  ·  Simulation {simulation}"
     },
     {
       "key": "ui/login/build-editor",
@@ -1244,7 +1244,7 @@
     },
     {
       "key": "ui/login/build-release",
-      "text": "Environment {environment}  ·  Release build {commit}  ·  Built {time} UTC"
+      "text": "Environment {environment}  ·  Release build {commit}  ·  Built {time} UTC  ·  Protocol {protocol}  ·  Simulation {simulation}"
     },
     {
       "key": "ui/login/busy-retry",

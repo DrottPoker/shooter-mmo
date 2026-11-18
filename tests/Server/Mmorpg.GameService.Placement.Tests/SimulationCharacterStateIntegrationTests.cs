@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Microsoft.AspNetCore.Http;
 using Mmorpg.GameService.Placement.Development;
 using Mmorpg.GameService.Platform.Http;
@@ -88,6 +89,53 @@ public sealed class SimulationCharacterStateIntegrationTests
         Assert.Equal((1, 0), (newer.Value!.Accepted, newer.Value.Skipped));
         Assert.Equal("10 61 3", await StoredAsync(context, active.CharacterId));
         Assert.Equal("22 50 40", await StoredAsync(context, stale.CharacterId));
+    }
+
+    // The operator sees what became of every state: saved, or skipped for the reason that kept it
+    // out, from a checkpoint and from a release.
+    [PostgresIntegrationFact]
+    public async Task EveryCharacterStateIsCountedBySourceAndOutcome()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var active = await JoinAsync(context, await context.RegisterPlayerAsync("active@example.com", "active_player", "Active Saver"));
+        var stale = await JoinAsync(context, await context.RegisterPlayerAsync("stale@example.com", "stale_player", "Stale Saver"));
+        var released = await JoinAsync(context, await context.RegisterPlayerAsync("gone@example.com", "gone_player", "Gone Saver"));
+        Assert.True((await CheckpointAsync(context, Entry(stale, 5, 1f))).Succeeded);
+        Assert.True((await ReleaseAsync(context, released, null)).Succeeded);
+        using var counts = new CharacterStateCounts();
+
+        await CheckpointAsync(context, Entry(active, 1, 10f), Entry(stale, 5, 20f), Entry(released, 2, 30f), Entry(ConsumeBotSession(), 1, 50f));
+        Assert.True((await ReleaseAsync(context, stale, new SimulationCharacterStateRequest(4, 0f, 0f, 0f, 0f, 10, 10))).Succeeded);
+        Assert.True((await ReleaseAsync(context, active, new SimulationCharacterStateRequest(2, 0f, 0f, 0f, 0f, 10, 10))).Succeeded);
+        Assert.True((await ReleaseAsync(context, released, new SimulationCharacterStateRequest(9, 0f, 0f, 0f, 0f, 10, 10))).Succeeded);
+
+        Assert.Equal(1, counts.Of(PlacementMetrics.CheckpointSource, PlacementMetrics.SavedOutcome));
+        Assert.Equal(1, counts.Of(PlacementMetrics.CheckpointSource, PlacementMetrics.NotNewerOutcome));
+        Assert.Equal(2, counts.Of(PlacementMetrics.CheckpointSource, PlacementMetrics.SessionNotActiveOutcome));
+        Assert.Equal(1, counts.Of(PlacementMetrics.ReleaseSource, PlacementMetrics.SavedOutcome));
+        Assert.Equal(1, counts.Of(PlacementMetrics.ReleaseSource, PlacementMetrics.NotNewerOutcome));
+        Assert.Equal(1, counts.Of(PlacementMetrics.ReleaseSource, PlacementMetrics.AlreadyReleasedOutcome));
+    }
+
+    // A live worker renews or releases every session it holds, so a session past its lease on a
+    // worker that still answers is a leak. A session of a worker that stopped answering is not: the
+    // crash explains it.
+    [PostgresIntegrationFact]
+    public async Task ASessionPastItsLeaseIsCountedOnlyWhileItsWorkerStillAnswers()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var expired = await JoinAsync(context, await context.RegisterPlayerAsync("expired@example.com", "expired_player", "Expired Holder"));
+        await JoinAsync(context, await context.RegisterPlayerAsync("live@example.com", "live_player", "Live Holder"));
+        var released = await JoinAsync(context, await context.RegisterPlayerAsync("freed@example.com", "freed_player", "Freed Holder"));
+        Assert.True((await ReleaseAsync(context, released, null)).Succeeded);
+        Assert.Equal(0, await context.SimulationSessionService.CountExpiredUnreleasedAsync(CancellationToken.None));
+
+        await context.ExecuteAsync(
+            $"update character_simulation_sessions set expires_at = created_at + interval '1 millisecond' where id = '{expired.SimulationSessionId}';");
+        Assert.Equal(1, await context.SimulationSessionService.CountExpiredUnreleasedAsync(CancellationToken.None));
+
+        await context.ExecuteAsync("update simulation_workers set last_heartbeat_at = now() - interval '1 hour';");
+        Assert.Equal(0, await context.SimulationSessionService.CountExpiredUnreleasedAsync(CancellationToken.None));
     }
 
     [PostgresIntegrationFact]
@@ -263,7 +311,7 @@ public sealed class SimulationCharacterStateIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             shardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await context.ShardService.ConsumeJoinTicketAsync(
@@ -344,5 +392,63 @@ public sealed class SimulationCharacterStateIntegrationTests
     {
         return context.ExecuteScalarIntAsync(
             "select count(*) from character_simulation_sessions where released_at is null;");
+    }
+}
+
+// The character states of the placement counter, by source and outcome, while it lives.
+internal sealed class CharacterStateCounts : IDisposable
+{
+    private readonly object sync = new();
+    private readonly Dictionary<(string Source, string Outcome), long> counts = [];
+    private readonly MeterListener listener;
+
+    public CharacterStateCounts()
+    {
+        listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (instrument.Meter.Name == PlacementMetrics.MeterName
+                    && instrument.Name == "game_service.placement.character_states")
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            string? source = null;
+            string? outcome = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "source")
+                {
+                    source = tag.Value as string;
+                }
+                else if (tag.Key == "outcome")
+                {
+                    outcome = tag.Value as string;
+                }
+            }
+
+            lock (sync)
+            {
+                counts[(source!, outcome!)] = counts.GetValueOrDefault((source!, outcome!)) + value;
+            }
+        });
+        listener.Start();
+    }
+
+    public long Of(string source, string outcome)
+    {
+        lock (sync)
+        {
+            return counts.GetValueOrDefault((source, outcome));
+        }
+    }
+
+    public void Dispose()
+    {
+        listener.Dispose();
     }
 }

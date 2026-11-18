@@ -22,7 +22,8 @@ public sealed class SimulationSessionHeartbeatService(
     SimulationWorkerConfig config,
     ILogger<SimulationSessionHeartbeatService> logger,
     GameServiceAvailability? availability = null,
-    TimeProvider? timeProvider = null) : BackgroundService
+    TimeProvider? timeProvider = null,
+    PresenceMetrics? metrics = null) : BackgroundService
 {
     private readonly CommittedCarryApplier carryApplier = new(itemStateStore, sessionStore);
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
@@ -128,6 +129,7 @@ public sealed class SimulationSessionHeartbeatService(
                 cancellationToken);
             if (failed.IsEmpty)
             {
+                metrics?.RecordHeartbeatRound(true);
                 return;
             }
 
@@ -138,12 +140,14 @@ public sealed class SimulationSessionHeartbeatService(
                 logger.LogWarning(
                     "Could not renew the leases of {Count} simulation sessions in this heartbeat round; the next round sends them again.",
                     failed.Sum(batch => batch.Length));
+                metrics?.RecordHeartbeatRound(false);
                 return;
             }
 
             await Task.Delay(config.SimulationSessionHeartbeatRetryDelay, time, cancellationToken);
             if (availability is { IsAvailable: false })
             {
+                metrics?.RecordHeartbeatRound(false);
                 return;
             }
 
@@ -172,7 +176,7 @@ public sealed class SimulationSessionHeartbeatService(
                     session.SimulationSessionToken))
                 .ToArray());
         GameServiceResult<SimulationSessionHeartbeatResponse> result;
-        var requestedAt = time.GetUtcNow().UtcDateTime;
+        var requestedTimestamp = sessionStore.GetTimestamp();
         try
         {
             result = await gameServiceClient.HeartbeatSimulationSessionsAsync(
@@ -204,7 +208,7 @@ public sealed class SimulationSessionHeartbeatService(
 
         for (var index = 0; index < batch.Length; index++)
         {
-            Apply(batch[index], result.Value!.Sessions[index], requestedAt);
+            Apply(batch[index], result.Value!.Sessions[index], requestedTimestamp);
         }
 
         return false;
@@ -214,7 +218,7 @@ public sealed class SimulationSessionHeartbeatService(
     private void Apply(
         ActiveSimulationSession session,
         SimulationSessionHeartbeatResult result,
-        DateTime requestedAt)
+        long requestedTimestamp)
     {
         if (result.Lease is not { } lease)
         {
@@ -260,7 +264,8 @@ public sealed class SimulationSessionHeartbeatService(
             session.CharacterId,
             session.SimulationSessionId,
             session.SimulationSessionToken,
-            requestedAt.AddMilliseconds(lease.LeaseDurationMilliseconds));
+            requestedTimestamp,
+            TimeSpan.FromMilliseconds(lease.LeaseDurationMilliseconds));
         if (!refreshed)
         {
             return;

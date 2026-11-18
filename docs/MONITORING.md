@@ -163,12 +163,13 @@ entity, peer, or runtime id as a label.
 
 | Meter | What it measures |
 | --- | --- |
-| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; spawn, despawn, and snapshot entity records. |
+| `Mmorpg.SimulationWorker.Realtime` | Joined real players, synthetic bots, unauthenticated peers, peers, and entities; sent and received packets and bytes, and messages by message kind; UDP datagrams sent and received, their bytes, the sealing overhead, and the datagrams dropped by reason; snapshot payload bytes; quota rejections; snapshot drops and the backpressure share; accepted and rejected joins; rejected connections; peers that the worker disconnected by reason; spawn, despawn, and snapshot entity records, spawns that could not be built, and entities that waited to enter a view; the entity ids used. |
 | `Mmorpg.SimulationWorker.Performance` | Fixed-tick duration, tick lag, overruns (ticks longer than the tick interval), resynchronizations, the duration of every tick phase, of the parts of the phases that time themselves, and of every step of a loop iteration, join queue delay and finalization, the completed-operation and corpse-mutation backlogs, the recipients of remote snapshots, encoded and sent snapshot packets, and deferred remote records, and the realtime loop's failures. |
 | `Mmorpg.SimulationWorker.WorldActors` | NPC, Mob, and resource node population, population by activity tier, open interaction leases, accepted and rejected interactions, interaction latency, depleted resource nodes, active gatherers, and gathering cycles by outcome. |
 | `Mmorpg.SimulationWorker.Corpses` | Active live and durable corpses held by the worker. |
 | `Mmorpg.SimulationWorker.Combat` | Attacks, hits, and deaths by combatant kind, arrow batches and player death partitions by outcome, dropped shots, the combat and Mob phase durations, active combatants, shots that are not committed yet, engaged and moving Mobs, and Mob routes by outcome and in the planning queue. |
 | `Mmorpg.SimulationWorker.GameService` | Whether GameService answers the registry heartbeat, its changes, the age of the last successful registry heartbeat, the durable actions refused while it did not answer, and the operations given up at the retry horizon. |
+| `Mmorpg.SimulationWorker.Presence` | The characters whose bodies stand in the world without a peer, how bodies end, what a reconnect did with the entity, the place and vitals that checkpoints send, the age of the oldest unsaved change, the session heartbeat rounds that failed, the sessions that ended locally, the releases, and the joins that lost a session. |
 
 `RealtimeMetricNamesTests` pins every instrument name of these meters.
 
@@ -178,6 +179,7 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | --- | --- | --- |
 | `simulation_worker.realtime.peers` | gauge | Connected peers. |
 | `simulation_worker.realtime.entities` | gauge | Simulated player entities. |
+| `simulation_worker.realtime.entity_ids.used` | gauge | The entity ids that the worker gave out since it started, for players and world actors alike. An id is never given out twice, so the number only grows, up to 4,294,967,295; [Entity Ids](#entity-ids) says what happens then and what `SimulationEntityIdsHalfUsed` asks for. |
 | `simulation_worker.realtime.players.real` | gauge | Joined real players. |
 | `simulation_worker.realtime.players.synthetic` | gauge | Joined synthetic development bots. |
 | `simulation_worker.realtime.peers.unauthenticated` | gauge | Peers that have not joined yet. |
@@ -191,10 +193,13 @@ The instruments of `Mmorpg.SimulationWorker.Realtime`:
 | `simulation_worker.realtime.snapshot.bytes` | counter | Snapshot payload bytes among the sent bytes. |
 | `simulation_worker.realtime.quota_rejected.packets` | counter | Packets rejected by a per-peer quota. |
 | `simulation_worker.realtime.connections.rejected` | counter | Connection requests that the admission guard refused. |
+| `simulation_worker.realtime.peers.disconnected` | counter | Peers that the worker disconnected by itself, labeled `reason`: `reliable_queue_full` when the peer's reliable queues held more than `Admission:MaxReliableQueuedPackets` packets, which a client that stops acknowledging reaches in about a second. Every one also writes a warning line with the queued count, so a player who was cut off can be found. Entities enter a view only while the connection's queue has room for them, as [Interest Management](SERVICE_FEATURES.md#interest-management) describes, so a crowd never reaches it, however slow the client acknowledges; a value above zero means reliable traffic of another kind that no budget bounds. |
 | `simulation_worker.realtime.snapshot_dropped.packets` | counter | Dropped snapshot packets. |
 | `simulation_worker.realtime.snapshot_backpressure_dropped.packets` | counter | The snapshot packets among them that the aggregate snapshot budget dropped. |
 | `simulation_worker.realtime.joins.accepted`, `.joins.rejected` | counter | Accepted and rejected joins. |
 | `simulation_worker.realtime.spawn.packets`, `.despawn.packets` | counter | Spawn and despawn packets. |
+| `simulation_worker.realtime.spawn.failures` | counter | Spawns that could not be built for one connection, which then does not see that entity, as [Interest Management](SERVICE_FEATURES.md#interest-management) describes. Every one also writes an error line with the entity and the peer, so any value above zero needs a look. |
+| `simulation_worker.realtime.interest.entries_deferred` | counter | Entities within a connection's enter radius that had to wait for a later refresh, labeled `cause`: `burst` when more entities waited than one burst of entries holds, and `queue` when the connection's reliable queue had no room for them. A big crowd or a burst of joins raises `burst`, and a client that acknowledges slowly raises `queue`, which tells the two apart; a quiet world raises neither. |
 | `simulation_worker.realtime.snapshot.entity_records` | counter | Entity records in remote snapshots. |
 
 The instruments of `Mmorpg.SimulationWorker.Performance`:
@@ -263,6 +268,27 @@ The instruments of `Mmorpg.SimulationWorker.GameService`, which
 | `simulation_worker.game_service.refused_intents` | counter | Durable client actions refused with `game_service_unavailable`, labeled `kind`: `item_operation`, `corpse_interaction`, `world_interaction`, `quest_intent`, `gathering`, or `appearance`. |
 | `simulation_worker.game_service.abandoned_operations` | counter | Operations given up at the retry horizon, labeled `kind`: `player_death`, `quest_kill_credit`, or `mob_corpse`. Every one also writes an error line, so any value above zero needs a look. |
 
+The instruments of `Mmorpg.SimulationWorker.Presence`, which
+[Lingering Bodies](SERVICE_FEATURES.md#lingering-bodies) and
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+explain. A connected player and a body are told apart:
+`simulation_worker.realtime.players.real` counts the connected players,
+`simulation_worker.presence.lingering_bodies` the bodies, and
+`simulation_worker.realtime.entities` every entity of the World, which holds the
+players, the bodies among them, and the world actors:
+
+| Instrument | Type | Meaning |
+| --- | --- | --- |
+| `simulation_worker.presence.lingering_bodies` | gauge | Bodies that stand in the world without a peer now. |
+| `simulation_worker.presence.bodies_ended` | counter | Bodies that left the world, labeled `reason`: `time_up` when the time ran out, `died` when the death committed, `session_ended` when GameService or the lease ended the session, `resumed` when a reconnect took the body over, and `worker_stopped` when the stop took it with the world. |
+| `simulation_worker.presence.reconnects` | counter | Joins of a reconnect, labeled `result`: `resumed` when the entity of the session stood in the world, as a body or under another connection, and `new_entity` when the body had gone and the join placed a new entity from the state the session kept. Development bots count in neither. |
+| `simulation_worker.presence.checkpoint_states` | counter | The states of the checkpoints, labeled `outcome`: `sent`, `saved` and `skipped`, as GameService answered, and `failed` for the states of a call that failed, which go again with the next checkpoint. A steady `failed` means that saving does not work; `skipped` is states of a session that ended or that were not newer. |
+| `simulation_worker.presence.checkpoint_oldest_unsaved_age` | gauge, s | How long the oldest state that GameService has not confirmed has been waiting, as of the latest checkpoint pass: the time since that player's last confirmed save. Nothing while every state of the latest pass is confirmed; it grows while checkpoints fail. |
+| `simulation_worker.presence.session_heartbeat_rounds` | counter | Session heartbeat rounds that had sessions to renew, labeled `outcome`: `renewed` when every request went through, also after a retry, and `failed` when the round gave up with requests that did not, whose leases then run to their local deadline. |
+| `simulation_worker.presence.sessions_ended_locally` | counter | Sessions that the worker ended without GameService's release, labeled `reason`: `lease_expired` when the local lease ran out and `invalidated` when a refusal, an authority failure, or a carry conflict ended it. |
+| `simulation_worker.presence.releases` | counter | Releases of sessions that no peer owns any more, labeled `outcome`: `released`, `failed` after the retries, and `gave_up` when GameService did not answer and the worker stopped first. |
+| `simulation_worker.presence.joins_refused` | counter | Joins that lost their session, labeled `reason`: `stale_generation` for a join that consumed its ticket before another join of the same session and registered after it, as [Reconnect Token Rotation](SERVICE_FEATURES.md#reconnect-token-rotation) describes. |
+
 The instruments of `Mmorpg.SimulationWorker.GameService.Calls`, which count how the calls to
 GameService fail, as [Service Features](SERVICE_FEATURES.md#realtime-udp-transport)
 describes, and when the worker holds its registration back:
@@ -281,15 +307,18 @@ own in `PlatformMeters.Names`:
 | Meter | What it measures |
 | --- | --- |
 | `Mmorpg.GameService.Accounts` | The password hashing lane: hashes in flight, the queue, how long a hash waited and took, and the requests it refused with `auth_busy`. |
-| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`. |
+| `Mmorpg.GameService.Placement` | Per Shard, as the public shard list reports it: online (1 or 0), active players, and connection capacity, labeled by `shard.id`; the joins that a version mismatch refused; the character states that workers save, by source and outcome; and the sessions past their lease that a live worker left unreleased. |
 | `Mmorpg.GameService.Items` | Item transaction count and duration by operation kind and outcome, lock waits, conflicts by kind, death partitions, policy actions, Recovery expiry, open and closed corpses, and the Recovery backlog. |
-| `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, and the lag. |
+| `Mmorpg.GameService.Retention` | The retention host of Platform, per retention task: the rows deleted, the time of each pass, the failed passes by reason, and the lag. |
 | `Mmorpg.GameService.Audit` | The economy audit of Platform: when its last run ended, how long it took, its runs by outcome, and the violations that each check found. |
 | `Mmorpg.GameService.Redis` | Session cache results, Redis failures, and distributed authentication rate-limit decisions. |
 
 | Instrument | Type | Meaning |
 | --- | --- | --- |
 | `game_service.placement.shard.online`, `.shard.players`, `.shard.capacity` | gauge | Per Shard, labeled `shard.id`, refreshed every `Simulation:MetricsIntervalSeconds` from the same query as the public shard list. A failed refresh drops the values instead of keeping stale ones. Shard ids are labels because Shards are a small configured set. |
+| `game_service.placement.join.refusals` | counter | Joins that GameService refused with `409` because the client does not run exactly the Shard's worker's versions, labeled `shard.id` and `reason`: `incompatible_protocol` when the worker is ahead of the client or the client named no version, `shard_not_updated` when the worker is behind, `incompatible_simulation`, or `incompatible_world_data`, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes. Each is a client that needs an update or a Shard whose worker a deployment is still replacing, and none issued a ticket. The join of a Development bot counts too. |
+| `game_service.placement.character_states` | counter | The places and vitals that workers save, labeled `source`, `checkpoint` or `release`, and `outcome`: `saved`, `session_not_active` for a state whose session is not an unreleased, unexpired session of the worker runtime that sent it, `not_newer` for a state of a session that stored an equal or higher sequence, and `already_released` for a release's state when an earlier release ended the session. The worker's `skipped` count is the three skip reasons together. |
+| `game_service.placement.sessions.expired_unreleased` | gauge | Sessions that nothing released although their lease ran out, on a worker runtime that still answers its registry heartbeat, refreshed every `Simulation:MetricsIntervalSeconds` with the shard gauges by one count over the partial index of unreleased sessions. A live worker renews or releases every session it holds, so each one is a leak. Sessions of a worker that stopped answering are not counted, since the crash explains them and they stay unreleased until their account joins again or retention deletes them, so the load tool's `expired_unreleased_sessions`, which counts every one, differs after a crash. A failed refresh drops the value. |
 | `game_service.items.transactions` | counter | Item transactions, labeled `operation.kind` with the persisted operation kind from [Operation Kinds](GAME_SERVICE_MODULES.md#operation-kinds) and `outcome`: `committed`, `rejected`, `failed` for a transaction that threw, or `cancelled` when the caller cancelled it. |
 | `game_service.items.transactions.duration` | histogram, ms | Transaction duration with the same labels. |
 | `game_service.items.locks.wait.duration` | histogram, ms | Lock waits, labeled `scope`: `operation_claim`, `character_state`, `character_event`, `mutation_scope`, or `other`. |
@@ -309,11 +338,12 @@ own in `PlatformMeters.Names`:
 | `game_service.redis.authentication_rate_limit.operations` | counter | Distributed rate-limit decisions, labeled `result`: `allowed`, `rejected`, or `local_fallback`. |
 | `game_service.retention.deleted` | counter | Rows that a retention task deleted, labeled `task` with the task's name from [Retention](GAME_SERVICE_MODULES.md#retention), such as `item_operations` or `account_sessions`. Rows that go along by cascade, such as an operation's journal rows, are not counted. |
 | `game_service.retention.duration` | histogram, ms | The time one task spent in one pass, all its batches together, labeled `task`. |
+| `game_service.retention.failures` | counter | Passes in which a task's batch failed, labeled `task` and `reason`: `lock_timeout` for a lock that other sessions held longer than the batch's one-second lock timeout, `statement_timeout` for a statement that outlasted the batch's statement timeout, or `error` for anything else, such as a lost connection. A task fails at most once per pass, and waits for the next one while the others go on. One failure now and then is routine; a task that keeps failing is the `RetentionTaskFailing` alert. |
 | `game_service.audit.runs` | counter | Runs of the scheduled [economy audit](GAME_SERVICE_MODULES.md#economy-audit), labeled `outcome`: `clean`, `violations`, or `failed` when nothing was found but the run or a check could not run. |
 | `game_service.audit.last_run_timestamp` | gauge, s | The Unix time at which the latest run ended; nothing before the first run. |
 | `game_service.audit.last_run_duration` | gauge, s | How long the latest run took, all its checks in one snapshot. |
 | `game_service.audit.violations` | gauge | The violations that each check found in its latest run that ran, labeled `check` with the check's id from [Audit Checks](GAME_SERVICE_MODULES.md#audit-checks). A check that could not run keeps its count from before. Any value above 0 is a broken economy. |
-| `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
+| `game_service.retention.lag` | gauge, s | How long the oldest due row of a task had been due when the task's latest pass began, labeled `task`; 0 when nothing was due. While retention keeps up it stays within about one `Retention:IntervalSeconds`; a lag that grows from pass to pass means a task falls behind its table. A task whose pass failed before it measured a lag has no series: the oldest due row's age is what the failed batch would have read, so it is unknown, and a kept value would show a stuck task as a healthy one. The series returns with the task's next pass that measures one, and `game_service.retention.failures` and `RetentionTaskFailing` cover the time in between. `item_operations` leaves out the operations of deaths, which become due only when `closed_corpses` takes their death event along, as [Retention](GAME_SERVICE_MODULES.md#retention) describes. |
 
 The periodic item summary log counts only committed and rejected transactions.
 Vendor trades and gathering yields show in the transaction instruments by their
@@ -518,7 +548,14 @@ entries of both processes, and the trace share one id.
 - The retention host logs a pass that deleted rows at `Information`, with its
   rows and time and the rows of every task, a pass that used its budget with
   rows still due at `Warning`, naming the tasks, a batch that gave up on a lock
-  or statement timeout at `Warning`, and a task that failed at `Error`.
+  or statement timeout at `Warning`, and a task that failed at `Error`; every
+  failed batch is also counted in `game_service.retention.failures`.
+- A start against a database that a newer release migrated, which the build
+  runs on while nothing else is pending, logs one `Warning` that names the
+  migrations that the build does not know, as
+  [Rolling Back A Release](GAME_SERVICE_MODULES.md#rolling-back-a-release)
+  describes. The scheduled economy audit then logs a warning at each interval
+  instead of running, and records no audit run.
 - SimulationWorker filters routine successful `GameServiceClient` HTTP pipeline
   messages below `Warning`. Domain failures and HTTP warnings remain visible,
   but high-frequency bot join and release requests do not drown out worker
@@ -603,6 +640,7 @@ look before it becomes critical.
 | `SnapshotDrops` | warning | More than 5 percent of a worker's snapshot packets are dropped for five minutes. |
 | `CompletedOperationBacklog` | warning | More than 50 completed authority operations wait for the loop for one minute. |
 | `JoinRejections` | warning | More than 20 percent of a worker's joins are rejected for five minutes. |
+| `SimulationEntityIdsHalfUsed` | warning | A worker gave out more than half of its entity ids; [Entity Ids](#entity-ids) says what to do. |
 | `GameServiceErrorRate` | critical | More than 1 percent of GameService requests return 5xx for five minutes. |
 | `GameServiceSlowRoute` | warning | A route's p95 latency is above 500 ms for five minutes. |
 | `DatabasePoolSaturated` | warning | GameService uses more than 90 percent of its PostgreSQL pool for two minutes. |
@@ -617,15 +655,47 @@ look before it becomes critical.
 | `LoginsRefusedAsBusy` | warning | GameService answers logins, registrations, or logouts with `auth_busy` at more than one every twenty seconds for five minutes, because its password hashing is full or too many sessions wait for Redis. |
 | `EconomyAuditViolations` | critical | A check of the economy audit found a violation in its latest run: an item lost or in two places, an invalid stack or slot, or gold that does not match its ledger. The GameService log names the examples by id. |
 | `EconomyAuditFailed` | warning | A run of the economy audit could not run every check in the last two hours, such as one that hit its statement timeout. |
+| `RetentionTaskFailing` | warning | A retention task failed at least five times in the last ten minutes and has kept doing so for five minutes. A pass runs every minute by default, so a task that fails in each pass shows here while a lone lock timeout does not. The GameService log names the task and why. |
+| `RetentionLagHigh` | warning | The oldest due row of a retention task had waited more than 15 minutes when its latest pass began, and this has held for ten minutes, so the task falls behind its table. The lag stays within about one `Retention:IntervalSeconds` while a task keeps up, 60 seconds by default, so raise the threshold in the rule with the interval. A task whose last pass failed has no lag series, which `RetentionTaskFailing` covers. |
+| `CharacterCheckpointsFailing` | warning | A worker's checkpoints keep failing for three minutes, so GameService does not save the places and vitals and a crash would lose more than the checkpoint interval. |
+| `SessionsUnreleasedPastLease` | warning | Sessions of a worker that still answers are past their lease and unreleased for five minutes. |
 
 `observability/prometheus/tests/playtest.rules.test.yml` holds promtool unit
-tests for the availability, tick, error-rate, pool, resilience, and economy
-audit rules. What each resilience alert means for a crash, and what repairs
+tests for the availability, tick, error-rate, entity id, pool, resilience, economy audit,
+retention, and presence rules. What each resilience alert means for a crash, and what repairs
 itself, is in [Deployment](DEPLOYMENT.md#after-a-crash).
 `tools/Verify-Observability.ps1` validates the collector and Prometheus
 configuration, runs those tests, and checks the dashboard JSON with the pinned
 images. CI runs it in the `Observability configuration` job on every pull
 request and on every push to `development` and `main`.
+
+### Entity Ids
+
+A worker gives every player and every world actor a network entity id from a
+counter that starts at 1 when the worker starts. An id is never given out
+twice, not even after its entity left, so a client never mistakes a new entity
+for an old one: a joining player, a reconnect that replaces an entity, and a
+respawning Mob each take the next one. A remote snapshot record carries the id
+in 32 bits, so the counter stops at 4,294,967,295, and
+`simulation_worker.realtime.entity_ids.used` shows how far it is. Even 100 new
+ids a second, a rate of joins and respawns far above any playtest, use all of
+them only after 497 days. `SimulationEntityIdsHalfUsed` fires at half of them,
+which at that rate is after 248 days, or sooner when a join, respawn, or
+reconnect loop burns ids; the join and spawn counters show which.
+
+When every id is used, no player can join and no Mob can respawn: a join fails
+with `internal_error`, and the worker writes this critical line whenever an id
+was asked for, at most once a minute:
+
+```text
+[SIMULATION] All 4294967295 simulation entity ids are used, so no player can join and no Mob can respawn on this worker.
+```
+
+Restart the worker, which starts the counter at 1 again. A stop saves the
+remaining players in one last checkpoint and ends their sessions, as
+[Realtime UDP Transport](SERVICE_FEATURES.md#realtime-udp-transport) describes,
+and they join again. Restart it at a quiet hour once the alert fires, so the
+line never appears.
 
 ## During A Playtest
 

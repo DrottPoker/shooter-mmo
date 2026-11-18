@@ -661,9 +661,13 @@ that the client predicts with.
 ## Replication Messages
 
 `EntitySpawn` announces a player entity with its kind, persistent id, display
-name, archetype, server tick, initial state, and look. A remote simulation
-snapshot chunk carries the snapshot sequence, server tick, chunk index and
-count, and up to `MaximumSnapshotEntitiesPerChunk` (71) `EntitySnapshot`
+name, archetype, server tick, initial state, and look. It and the
+`WorldActorSpawn` and `CombatantState` that follow it travel on the world
+channel in bursts that a budget per connection bounds, so a crowd that enters a
+view can never fill the reliable queue that disconnects a peer, as
+[Interest Management](SERVICE_FEATURES.md#interest-management) describes. A
+remote simulation snapshot chunk carries the snapshot sequence, server tick,
+chunk index and count, and up to `MaximumSnapshotEntitiesPerChunk` (71) `EntitySnapshot`
 records, as many as fit the 1,023-byte unreliable packet: the 20 bytes of the
 frame header and chunk fields, and 14 bytes per record.
 
@@ -1181,12 +1185,52 @@ describes.
 
 ## Versioning
 
-Client and worker run in lockstep: both must use the same version. Decoders
-reject any other version. SimulationWorker reports its version in its heartbeat,
-GameService stores it with the worker, and the client refuses a placement whose
-worker runs another version before it connects. During a rolling deployment,
-old and new workers can therefore run side by side, and each client is placed
-only on a worker with its own version.
+Client and worker run in lockstep: a client plays on a worker only when both run
+exactly the same code, and there is no window of versions in which an older
+client plays on a newer worker or the other way around. One worker owns one
+Shard, so replacing a worker with a newer version takes that Shard away from
+every client that is not updated, and no update channel exists yet, as
+[Players Who Have Not Updated](DEPLOYMENT.md#players-who-have-not-updated) describes.
+Decoders reject a frame of any other version.
+
+Four things must match exactly:
+
+| What | Where it is | Who checks it, and when |
+| --- | --- | --- |
+| The realtime protocol version | `RealtimeProtocol.Version` in the client build; the worker reports it in its heartbeat and GameService stores it with the worker | GameService, when the join request names the client's version, before it issues a ticket; the client again with the placement, before it opens UDP |
+| The simulation revision | `GameSimulationCompatibility.Revision` in the client build; the worker reports it in its heartbeat | The same two, and the client once more in the worker's `JoinAccepted` |
+| The collision revision of the Shard's World | Baked into the client's collision data of that World; the worker reports its own in its heartbeat | GameService, when the join request names the client's World and its collision revision; the client again with the placement, before it opens UDP, and once more in the worker's `JoinAccepted`, which is the last line of defence |
+| The item and quest catalog revisions | The worker reports them in its heartbeat; GameService mirrors its own | GameService only, between itself and the worker: a worker whose catalog differs from GameService's gets no players, with `simulation_worker_item_catalog_mismatch` or `simulation_worker_quest_catalog_mismatch`. The client takes the catalogs from GameService, as [Client And Server Agreement](PROJECT_ARCHITECTURE.md#client-and-server-agreement) describes |
+
+The join request carries the client's protocol version and simulation revision,
+and, when the client has the collision data of the World it believes the Shard
+runs, that World and its collision revision, as
+[Shard Discovery And Placement](SERVICE_FEATURES.md#shard-discovery-and-placement)
+describes. GameService compares them with the Shard's worker before it
+supersedes or issues any ticket and refuses a mismatch with `409`, so nothing
+reaches UDP. A request without a protocol version, which is what a client from
+before the versions travelled in the request sends, is refused as a client that
+must update. The client shows the text of the refusal's code, and the same
+codes when its own check finds the difference:
+
+| Code | Meaning | What the player sees |
+| --- | --- | --- |
+| `incompatible_protocol` | The worker's protocol version is newer than the client's | `Your game is out of date. Update it to play.` |
+| `shard_not_updated` | The worker's protocol version is older than the client's: a deployment is still replacing it | `This shard has not been updated to your version of the game yet. Try again in a few minutes.` |
+| `incompatible_simulation` | The same protocol version with another simulation revision, which has no order | `Your game and this shard are on different versions. Update the game, or try again in a few minutes if it is up to date.` |
+| `incompatible_world_data` | The same code with other collision data for the Shard's World, which has no order either | `The world data of your game does not match this shard. Update the game, or try again in a few minutes if it is up to date.` |
+
+On CharacterSelect the text is the status line of the refused `Enter World`. A
+reconnect that meets one gives up at once and returns to CharacterSelect with
+the same text. A refused join consumes no ticket, spawns no body, and changes
+nothing, and GameService counts it by Shard and reason, as
+[Monitoring](MONITORING.md#gameservice) describes. A joined session is never
+ended by a version: the checks run before the join, so the only way a client
+meets a frame of another version is a worker that was replaced between the
+ticket and the connect. Such a worker answers the frame with a disconnect whose
+reason, encoded in the worker's version, the client cannot decode, so the
+player sees a lost connection or a failed packet and no text about versions; the
+next `Enter World` is refused with the codes above.
 
 - Bump `protocol.version` for every change to the bytes on the wire or to what
   a peer accepts, including limits, enum values, and validation rules.
@@ -1202,9 +1246,10 @@ only on a worker with its own version.
 - The connection key changes only when the framing of the datagrams changes,
   such as the marker and seal of [Transport Security](#transport-security), so
   a peer of another framing is refused at the connect, while a mismatch of the
-  protocol version alone is reported as a clear protocol error instead of a
-  refused connection. A client never connects to a worker of another version,
-  because it checks the placement first.
+  protocol version alone is not: the worker disconnects such a peer with a
+  reason that the peer cannot read, as above. A client does not connect to a
+  worker of another version, because GameService and the client check the
+  versions first.
 
 `Schema~/realtime-protocol.lock.json` enforces the first rule. It records the
 SHA-256 fingerprint of the wire contract of every version: the magic, the

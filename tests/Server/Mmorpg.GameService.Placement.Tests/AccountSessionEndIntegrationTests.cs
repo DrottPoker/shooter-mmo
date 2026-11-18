@@ -89,6 +89,35 @@ public sealed class AccountSessionEndIntegrationTests
         Assert.Equal("invalid_simulation_session", oldGeneration.Error!.Code);
     }
 
+    // Every consumption of a reconnect's ticket rotates the session's token and numbers the new
+    // one, so the worker can tell which of two joins of one session consumed last whatever order
+    // their answers arrive in. A session that ended starts over with a new id and number 1.
+    [PostgresIntegrationFact]
+    public async Task EveryReconnectOfASessionIssuesItsTokenWithTheNextNumber()
+    {
+        await using var context = await PostgresIntegrationTestContext.CreateAsync();
+        var player = await context.RegisterPlayerAsync();
+
+        var first = await JoinAsync(context, player.Account, player.Character.Id);
+        var second = await JoinAsync(context, player.Account, player.Character.Id);
+        var third = await JoinAsync(context, player.Account, player.Character.Id);
+
+        Assert.Equal([1L, 2L, 3L], [first.SessionGeneration, second.SessionGeneration, third.SessionGeneration]);
+        Assert.Equal(first.SimulationSessionId, third.SimulationSessionId);
+        Assert.NotEqual(first.SimulationSessionToken, third.SimulationSessionToken);
+        var release = await context.SimulationSessionService.ReleaseAsync(
+            third.SimulationSessionId,
+            WorkerId,
+            new SimulationSessionReleaseRequest(RuntimeId, third.SimulationSessionToken),
+            CancellationToken.None);
+        Assert.True(release.Succeeded, release.Error?.Message);
+
+        var fresh = await JoinAsync(context, player.Account, player.Character.Id);
+
+        Assert.NotEqual(third.SimulationSessionId, fresh.SimulationSessionId);
+        Assert.Equal(1L, fresh.SessionGeneration);
+    }
+
     [PostgresIntegrationFact]
     public async Task AnotherCharacterIsRefusedWhileTheMarkedSessionLives()
     {
@@ -284,7 +313,7 @@ public sealed class AccountSessionEndIntegrationTests
         return context.ShardService.CreateJoinTicketAsync(
             account,
             ShardId,
-            new JoinShardRequest(characterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(characterId),
             CancellationToken.None);
     }
 

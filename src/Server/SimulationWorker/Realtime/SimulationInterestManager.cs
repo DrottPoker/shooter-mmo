@@ -8,13 +8,16 @@ public readonly record struct SimulationInterestEntity(ulong EntityId, float X, 
 
 // What one refresh of a connection changed: the entities that entered and left its view, each
 // ascending by id, its visible set after the refresh, and the entities that stayed in view and
-// came into detail while the connection had missed a state of theirs, ascending by id. The lists
-// belong to the manager and hold until the connection's next refresh.
+// came into detail while the connection had missed a state of theirs, ascending by id. The
+// entities that entered also come nearest first, the connection's own entity before any other,
+// which is the order that their spawns are sent in. The lists belong to the manager and hold until
+// the connection's next refresh.
 public readonly record struct SimulationInterestUpdate(
     IReadOnlyList<ulong> Entered,
     IReadOnlyList<ulong> Exited,
     IReadOnlySet<ulong> Visible,
-    IReadOnlyList<ulong> DetailEntered);
+    IReadOnlyList<ulong> DetailEntered,
+    IReadOnlyList<ulong> EnteredNearestFirst);
 
 // One connection that held back states of an entity it sees out of detail, and which.
 internal readonly record struct SimulationInterestMissed(int ConnectionId, ulong EntityId, MissedStates States);
@@ -35,9 +38,35 @@ internal readonly record struct SimulationInterestMissed(int ConnectionId, ulong
 // connection. A pair holds a copy of the detail, which a refresh writes only when it changes, and
 // the states the replicators held back from the connection while it saw the entity out of
 // detail. A connection sees its own entity, its target, and whoever targets its entity in detail
-// whatever the distance. Loop-confined.
+// whatever the distance.
+//
+// Visibility is the only place that decides what a connection gets of an entity: the spawn, the
+// states, the combat events, the snapshot records, and the despawn all follow the visible set and
+// the viewer pairs. So an entity that waits for its entry, because the connection's budget of
+// entries is spent, simply is not visible yet: it has no pair, and nothing is sent about it, as
+// for an entity beyond the enter radius. Loop-confined.
 public sealed class SimulationInterestManager
 {
+    // The most entities that enter one connection's view between two of its refreshes, the refresh
+    // itself included, and so the most that one burst of spawns holds. Every entity that enters
+    // costs a reliable spawn and, for a combatant, a reliable combatant state: 2 packets on the
+    // world channel. The peer supervisor disconnects a peer whose reliable queues hold more than
+    // Admission:MaxReliableQueuedPackets, 1,024 by default, right after the tick, before the
+    // transport moved any packet of it into LiteNetLib's window of 64, so a burst of 128 entities,
+    // 256 packets, is a quarter of the limit. The rest is for what else is reliable meanwhile: the
+    // join's own messages, and the combat events and far states of the same tick.
+    //
+    // One burst is not enough: a crowd that keeps entering puts a burst into the queue at every
+    // refresh, five times a second, while the client acknowledges only a window of 64 packets per
+    // round trip. So the budget of a refresh is the smaller of this and what the connection's
+    // reliable queue has room for below its high-water mark, as EntriesAllowedSource tells: a
+    // queue over the mark lets nothing in but the connection's own entity, and the crowd fills in
+    // as the client acknowledges. What does not fit enters at the connection's next refresh, which
+    // comes after RefreshIntervalSnapshots snapshots, the nearest first: a crowd of 500 around a
+    // player is in its view after 4 refreshes on a line that keeps up, the first being the join's.
+    // Leaving the view is never delayed.
+    public const int MaximumEnteredPerRefresh = 128;
+
     private const int InitialSlotCapacity = 256;
     private const int InitialPairCapacity = 1024;
 
@@ -57,6 +86,7 @@ public sealed class SimulationInterestManager
     // position into its cell, is skipped by a refresh.
     private readonly float cellSkipDistanceSquared;
     private readonly int cellRadius;
+    private readonly int maximumEnteredPerRefresh;
     private readonly Dictionary<ulong, int> slotByEntityId = [];
     private readonly Stack<int> freeSlots = [];
     private readonly Dictionary<long, List<int>> slotsByCell = [];
@@ -68,8 +98,11 @@ public sealed class SimulationInterestManager
     private readonly Dictionary<ulong, EntityViewers> viewersByEntity = [];
     private readonly Dictionary<ulong, ulong> targetsByEntity = [];
 
-    // Scratch of one refresh: the visible entities it found, and the merged ordered lists.
+    // Scratch of one refresh: the visible entities it found, the entities within the enter radius
+    // that are not visible yet, and the merged ordered lists.
     private readonly List<int> candidateSlots = [];
+    private readonly List<EnteringCandidate> enteringCandidates = [];
+    private readonly List<ulong> staleWithheld = [];
     private readonly List<ulong> mergedIds = [];
     private readonly List<bool> mergedNear = [];
     private readonly List<bool> mergedDetail = [];
@@ -109,8 +142,16 @@ public sealed class SimulationInterestManager
     private ulong visibleVersion;
 
     public SimulationInterestManager(InterestManagementConfig config)
+        : this(config, MaximumEnteredPerRefresh)
+    {
+    }
+
+    // A test gives the budget of entries its own size.
+    internal SimulationInterestManager(InterestManagementConfig config, int maximumEnteredPerRefresh)
     {
         ArgumentNullException.ThrowIfNull(config);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumEnteredPerRefresh, 1);
+        this.maximumEnteredPerRefresh = maximumEnteredPerRefresh;
         if (!IsFinite(config.CellSize)
             || !IsFinite(config.EnterRadius)
             || !IsFinite(config.ExitRadius)
@@ -150,6 +191,21 @@ public sealed class SimulationInterestManager
     // The viewer pairs in use: every connection and entity it sees.
     internal int ViewerPairCount { get; private set; }
 
+    // Asks how many entities a connection may take into its view now, as its reliable queue has
+    // room for them, once per refresh of the connection. The manager takes it as at least 0 and
+    // at most MaximumEnteredPerRefresh, and the connection's own entity enters whatever it says.
+    // Without a source the answer is MaximumEnteredPerRefresh.
+    internal Func<int, int>? EntriesAllowedSource { get; set; }
+
+    // How often an entity within a connection's enter radius had to wait for a later refresh
+    // since the manager began, by why: more entities waited than one burst holds, or the
+    // connection's reliable queue left room for fewer than a burst.
+    internal long DeferredByBurstCount { get; private set; }
+
+    internal long DeferredByQueueCount { get; private set; }
+
+    internal long DeferredEntryCount => DeferredByBurstCount + DeferredByQueueCount;
+
     // Makes the index hold exactly these entities at these positions. An entity that stays in
     // its cell only gets its new position; one that changed cells moves, a new one is added, and
     // one that is no longer listed leaves the index. What the connections see changes only at
@@ -188,6 +244,9 @@ public sealed class SimulationInterestManager
         }
     }
 
+    // Adds an entity that joined or respawned, and returns the connections that see it at once. A
+    // connection whose entries since its last refresh reached what its last refresh allowed does
+    // not, and the entity enters its view at its next refresh.
     public IReadOnlyList<int> AddEntity(SimulationInterestEntity entity)
     {
         ValidateEntity(entity, nameof(entity));
@@ -221,11 +280,31 @@ public sealed class SimulationInterestManager
                     }
 
                     var distanceSquared = DistanceSquared(observerSlot, entitySlot);
-                    if (distanceSquared > enterRadiusSquared || !state.Visible.Add(entity.EntityId))
+                    if (distanceSquared > enterRadiusSquared)
                     {
                         continue;
                     }
 
+                    if (state.EnteredInWindow >= state.EntriesAllowed)
+                    {
+                        if (state.EntriesAllowed < maximumEnteredPerRefresh)
+                        {
+                            DeferredByQueueCount++;
+                        }
+                        else
+                        {
+                            DeferredByBurstCount++;
+                        }
+
+                        continue;
+                    }
+
+                    if (!state.Visible.Add(entity.EntityId))
+                    {
+                        continue;
+                    }
+
+                    state.EnteredInWindow++;
                     var index = state.OrderedVisible.BinarySearch(entity.EntityId);
                     if (index < 0)
                     {
@@ -264,7 +343,12 @@ public sealed class SimulationInterestManager
         if (!slotByEntityId.TryGetValue(controlledEntityId, out var observerSlot))
         {
             RemoveConnection(connectionId);
-            return new SimulationInterestUpdate(EmptyOrderedVisible, EmptyOrderedVisible, EmptyVisible, EmptyOrderedVisible);
+            return new SimulationInterestUpdate(
+                EmptyOrderedVisible,
+                EmptyOrderedVisible,
+                EmptyVisible,
+                EmptyOrderedVisible,
+                EmptyOrderedVisible);
         }
 
         if (!interestsByConnection.TryGetValue(connectionId, out var state))
@@ -274,6 +358,13 @@ public sealed class SimulationInterestManager
         }
 
         BindControlledEntity(connectionId, state, controlledEntityId);
+
+        // The room of the connection's reliable queue, asked once for this refresh; the joins
+        // until its next refresh enter within it too.
+        var allowed = EntriesAllowedSource is { } source
+            ? Math.Clamp(source(connectionId), 0, maximumEnteredPerRefresh)
+            : maximumEnteredPerRefresh;
+        state.EntriesAllowed = allowed;
         var stamp = NextRefreshStamp();
         var orderedIds = CollectionsMarshal.AsSpan(state.OrderedVisible);
         var orderedNear = CollectionsMarshal.AsSpan(state.OrderedNear);
@@ -294,8 +385,12 @@ public sealed class SimulationInterestManager
 
         // Within the enter radius an entity is visible either way, so only the band up to the
         // exit radius, and the bands up to the near and detail exit radii, need what was seen
-        // before.
+        // before. An entity within the enter radius that was not visible is only a candidate to
+        // enter, which the budget of entries decides below.
         candidateSlots.Clear();
+        enteringCandidates.Clear();
+        var ownEntityWaits = false;
+        var withheld = state.Withheld is { Count: > 0 } ? state.Withheld : null;
         var observerX = slotX[observerSlot];
         var observerZ = slotZ[observerSlot];
         var centerX = ToCell(observerX);
@@ -325,14 +420,35 @@ public sealed class SimulationInterestManager
                         continue;
                     }
 
+                    if (!wasVisible)
+                    {
+                        // An entity whose spawn could not be built stays out of this connection's
+                        // view for as long as it is within the enter radius.
+                        if (withheld is null || !withheld.Contains(slotEntityIds[slot]))
+                        {
+                            // The connection's own entity comes first, whoever stands as near.
+                            ownEntityWaits |= slot == observerSlot;
+                            enteringCandidates.Add(new EnteringCandidate(
+                                slot == observerSlot ? -1f : distanceSquared,
+                                slot));
+                        }
+
+                        continue;
+                    }
+
                     candidateSlots.Add(slot);
                     visibleStamps[slot] = stamp;
                     near[slot] = distanceSquared <= nearRadiusSquared
-                        || (distanceSquared <= nearExitRadiusSquared && wasVisible && wasNear[slot]);
+                        || (distanceSquared <= nearExitRadiusSquared && wasNear[slot]);
                     detail[slot] = distanceSquared <= detailRadiusSquared
-                        || (distanceSquared <= detailExitRadiusSquared && wasVisible && wasDetail[slot]);
+                        || (distanceSquared <= detailExitRadiusSquared && wasDetail[slot]);
                 }
             }
+        }
+
+        if (withheld is not null)
+        {
+            ForgetWithheldOutsideTheEnterRadius(state, observerSlot);
         }
 
         state.Exited.Clear();
@@ -345,15 +461,40 @@ public sealed class SimulationInterestManager
             }
         }
 
-        state.Entered.Clear();
-        foreach (var slot in candidateSlots)
+        // The nearest candidates that the budget lets in enter, the connection's own entity
+        // whatever the room of its queue; the others wait for the next refresh, as if they were
+        // still beyond the enter radius.
+        var entering = CollectionsMarshal.AsSpan(enteringCandidates);
+        if (entering.Length > 1)
         {
-            if (wasVisibleStamps[slot] != stamp)
-            {
-                state.Entered.Add(slotEntityIds[slot]);
-            }
+            entering.Sort(new EnteringOrder(slotEntityIds));
         }
 
+        var admitted = Math.Max(allowed, ownEntityWaits ? 1 : 0);
+        if (entering.Length > admitted)
+        {
+            // Those that one burst cannot hold wait because of the burst, and the rest of them
+            // because the queue has less room than a burst.
+            var burst = Math.Min(entering.Length, maximumEnteredPerRefresh);
+            DeferredByBurstCount += entering.Length - burst;
+            DeferredByQueueCount += Math.Max(0, burst - admitted);
+            entering = entering[..admitted];
+        }
+
+        state.Entered.Clear();
+        state.EnteredNearestFirst.Clear();
+        foreach (var candidate in entering)
+        {
+            var slot = candidate.Slot;
+            visibleStamps[slot] = stamp;
+            near[slot] = candidate.DistanceSquared <= nearRadiusSquared;
+            detail[slot] = candidate.DistanceSquared <= detailRadiusSquared;
+            state.Entered.Add(slotEntityIds[slot]);
+            state.EnteredNearestFirst.Add(slotEntityIds[slot]);
+        }
+
+        // The budget of the next entries by join starts with what this refresh let in.
+        state.EnteredInWindow = entering.Length;
         state.DetailEntered.Clear();
         if (state.Entered.Count == 0 && state.Exited.Count == 0)
         {
@@ -375,7 +516,12 @@ public sealed class SimulationInterestManager
             ApplyMembershipChange(state, stamp);
         }
 
-        return new SimulationInterestUpdate(state.Entered, state.Exited, state.Visible, state.DetailEntered);
+        return new SimulationInterestUpdate(
+            state.Entered,
+            state.Exited,
+            state.Visible,
+            state.DetailEntered,
+            state.EnteredNearestFirst);
     }
 
     public IReadOnlySet<ulong> GetVisible(int connectionId)
@@ -641,6 +787,35 @@ public sealed class SimulationInterestManager
         return affectedConnections;
     }
 
+    // Takes the entity out of the connection's view and keeps it out for as long as it is within
+    // the connection's enter radius, since its spawn could not be built: the connection then gets
+    // no state, event, record, or despawn of an entity that its client never got. False when the
+    // connection did not see the entity.
+    internal bool Withhold(int connectionId, ulong entityId)
+    {
+        if (!interestsByConnection.TryGetValue(connectionId, out var state))
+        {
+            return false;
+        }
+
+        var index = state.OrderedVisible.BinarySearch(entityId);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        RemovePair(state.OrderedPairs[index]);
+        state.Visible.Remove(entityId);
+        state.OrderedVisible.RemoveAt(index);
+        state.OrderedNear.RemoveAt(index);
+        state.OrderedDetail.RemoveAt(index);
+        state.OrderedSlots.RemoveAt(index);
+        state.OrderedPairs.RemoveAt(index);
+        state.Version = ++visibleVersion;
+        (state.Withheld ??= []).Add(entityId);
+        return true;
+    }
+
     public void Clear()
     {
         slotByEntityId.Clear();
@@ -732,6 +907,26 @@ public sealed class SimulationInterestManager
         state.OrderedPairs.Clear();
         state.OrderedPairs.AddRange(mergedPairs);
         state.Version = ++visibleVersion;
+    }
+
+    // A withheld entity that left the connection's enter radius, or the index, is a new entity
+    // again when it comes back.
+    private void ForgetWithheldOutsideTheEnterRadius(ConnectionInterestState state, int observerSlot)
+    {
+        staleWithheld.Clear();
+        foreach (var entityId in state.Withheld!)
+        {
+            if (!slotByEntityId.TryGetValue(entityId, out var slot)
+                || DistanceSquared(observerSlot, slot) > enterRadiusSquared)
+            {
+                staleWithheld.Add(entityId);
+            }
+        }
+
+        foreach (var entityId in staleWithheld)
+        {
+            state.Withheld.Remove(entityId);
+        }
     }
 
     private void AddMerged(ulong entityId, int slot, int pair)
@@ -1098,6 +1293,22 @@ public sealed class SimulationInterestManager
         public bool AnyMissed;
     }
 
+    // An entity within the enter radius that the connection does not see yet, and how far it is.
+    private readonly record struct EnteringCandidate(float DistanceSquared, int Slot);
+
+    // The nearest first, and by entity id between equal distances, so the order is the same on
+    // every run.
+    private readonly struct EnteringOrder(ulong[] slotEntityIds) : IComparer<EnteringCandidate>
+    {
+        public int Compare(EnteringCandidate left, EnteringCandidate right)
+        {
+            var byDistance = left.DistanceSquared.CompareTo(right.DistanceSquared);
+            return byDistance != 0
+                ? byDistance
+                : slotEntityIds[left.Slot].CompareTo(slotEntityIds[right.Slot]);
+        }
+    }
+
     private sealed class ConnectionInterestState(int connectionId)
     {
         public int ConnectionId { get; } = connectionId;
@@ -1125,7 +1336,19 @@ public sealed class SimulationInterestManager
         // The version of OrderedVisible.
         public ulong Version { get; set; }
 
+        // The entities that entered the view since this connection's last refresh, and by that
+        // refresh, which the budget of entries counts, and how many entries that refresh allowed.
+        public int EnteredInWindow { get; set; }
+
+        public int EntriesAllowed { get; set; }
+
+        // The entities whose spawn could not be built for this connection, or null.
+        public HashSet<ulong>? Withheld { get; set; }
+
         public List<ulong> Entered { get; } = [];
+
+        // The same entities, nearest first.
+        public List<ulong> EnteredNearestFirst { get; } = [];
 
         public List<ulong> Exited { get; } = [];
 

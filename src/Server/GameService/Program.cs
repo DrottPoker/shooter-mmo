@@ -3,6 +3,7 @@ using Mmorpg.GameService.Config;
 using Mmorpg.GameService.Database;
 using Mmorpg.GameService.Items;
 using Mmorpg.GameService.Platform.Configuration;
+using Mmorpg.GameService.Platform.Database;
 using Mmorpg.Server.Common.Configuration;
 using Mmorpg.Server.Common.Health;
 
@@ -14,7 +15,20 @@ if (ContainerProbe.IsProbe(args))
 }
 
 // `migrate`, `migrate --plan`, and `audit` run instead of the web host; the other arguments configure.
-var (databaseCommand, configurationArgs) = GameServiceDatabaseCommandLine.Parse(args);
+// A command line that names one of them but is not one it understands is refused here, before
+// the configuration or the database is touched.
+GameServiceDatabaseCommand? databaseCommand;
+string[] configurationArgs;
+try
+{
+    (databaseCommand, configurationArgs) = GameServiceDatabaseCommandLine.Parse(args);
+}
+catch (GameServiceDatabaseCommandLineException exception)
+{
+    await Console.Error.WriteLineAsync(exception.Message);
+    Environment.ExitCode = 1;
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -67,18 +81,11 @@ app.UseGameServicePipeline();
 
 // Without migrations at startup, a separate migrate run prepares the database, and a start
 // refuses a database that it would still change.
-if (configuration.Platform.RunMigrationsOnStartup)
-{
-    var changes = await databaseInitializer.InitializeAsync(CancellationToken.None);
-    foreach (var change in changes.SeedChanges)
-    {
-        app.Logger.LogInformation("Database seed change: {SeedChange}", change);
-    }
-}
-else
-{
-    await databaseInitializer.EnsureCurrentAsync(CancellationToken.None);
-}
+var unknownMigrations = await databaseInitializer.PrepareForStartAsync(
+    configuration.Platform.RunMigrationsOnStartup,
+    app.Logger,
+    CancellationToken.None);
+app.Services.GetRequiredService<DatabaseAheadState>().Record(unknownMigrations);
 
 var commandExitCode = await ItemsCommandLine.TryRunAsync(app.Services, args, app.Logger);
 if (commandExitCode is not null)

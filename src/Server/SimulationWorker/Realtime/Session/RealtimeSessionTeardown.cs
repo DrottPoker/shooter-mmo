@@ -43,7 +43,7 @@ internal sealed class RealtimeSessionTeardown(
             return;
         }
 
-        characterStores.Remove(session.CharacterId, session.SimulationSessionId);
+        ForgetSessionState(session);
         connectionBindings.UnbindConnection(context.PeerId, out _);
         presence.ForgetConnection(context.PeerId);
         // The entity is gone from here on, so the removal hooks run also when a despawn send
@@ -81,8 +81,13 @@ internal sealed class RealtimeSessionTeardown(
             return false;
         }
 
+        // The peer may hold a generation that a reconnect replaced. The body takes the entity's
+        // generation, which the join that registered the newer one renews when it ended without a
+        // peer, and which stays the old one while that join is still to finish: a body whose
+        // session a reconnect took over waits for that join, and a body that ended without
+        // one is released with the token that GameService holds.
         entity.Movement.Halt();
-        bodies.Begin(entity, session, context);
+        bodies.Begin(entity, entity.Session, context);
         hooks.RaiseConnectionEnded(context, session, entity);
         return true;
     }
@@ -99,7 +104,7 @@ internal sealed class RealtimeSessionTeardown(
             return;
         }
 
-        characterStores.Remove(session.CharacterId, session.SimulationSessionId);
+        ForgetSessionState(session);
         try
         {
             presence.BroadcastEntityDespawn(entityId, reason, null);
@@ -281,12 +286,23 @@ internal sealed class RealtimeSessionTeardown(
             code,
             message);
         RemoveBoundEntity(context, session, code);
-        characterStores.Remove(session.CharacterId, session.SimulationSessionId);
+        ForgetSessionState(session);
         context.AuthorityOperationQueue.Clear();
         corpseViewers.RemovePeer(context.PeerId);
         worldInteractionLeases?.RemovePeer(context.PeerId);
         context.Session = null;
         peers.RefreshPopulationMetrics();
+    }
+
+    // Takes the character's per-session state out of the registered stores when the entity of the
+    // generation that is ending goes. A reconnect that registered a newer generation of the
+    // session in the same instant keeps it: its join fills the state in right after it registered
+    // and finds it here, instead of finding none and releasing a session that is not over.
+    private void ForgetSessionState(ActiveSimulationSession session)
+    {
+        sessionStore.RunUnlessSuperseded(
+            session,
+            () => characterStores.Remove(session.CharacterId, session.SimulationSessionId));
     }
 
     // GameService said that the account session of the peer's session ended. The session goes on,

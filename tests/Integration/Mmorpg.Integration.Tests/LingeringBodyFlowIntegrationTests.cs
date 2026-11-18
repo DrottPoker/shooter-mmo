@@ -6,7 +6,6 @@ using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.Testing;
-using JoinShardRequest = Mmorpg.GameService.Placement.JoinShardRequest;
 
 namespace Mmorpg.Integration.Tests;
 
@@ -49,7 +48,7 @@ public sealed class LingeringBodyFlowIntegrationTests
         var blocked = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             ShardId,
-            new JoinShardRequest(other.Value!.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(other.Value!.Id),
             cancellationToken);
         Assert.False(blocked.Succeeded);
         Assert.Equal("account_character_already_active", blocked.Error!.Code);
@@ -100,7 +99,7 @@ public sealed class LingeringBodyFlowIntegrationTests
             first.SimulationSessionId,
             first.SimulationSessionToken,
             heartbeat.AccountSessionEnded!));
-        Assert.True(sessions.IsCurrent(first, DateTime.UtcNow));
+        Assert.True(sessions.IsCurrent(first));
 
         var account = await LogInAsync(context, "relogin_player", cancellationToken);
         var second = await JoinAsync(context, client, account, player.Character.Id, cancellationToken);
@@ -144,7 +143,7 @@ public sealed class LingeringBodyFlowIntegrationTests
         var blocked = await context.ShardService.CreateJoinTicketAsync(
             account,
             ShardId,
-            new JoinShardRequest(other.Value!.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(other.Value!.Id),
             cancellationToken);
 
         Assert.False(blocked.Succeeded);
@@ -209,7 +208,7 @@ public sealed class LingeringBodyFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             account,
             ShardId,
-            new JoinShardRequest(characterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(characterId),
             cancellationToken);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await client.ConsumeJoinTicketAsync(

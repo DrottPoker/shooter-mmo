@@ -32,6 +32,9 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Items||Histogram`1|game_service.items.transactions.duration|ms",
         "Mmorpg.GameService.Items||ObservableGauge`1|game_service.items.corpses|",
         "Mmorpg.GameService.Items||ObservableGauge`1|game_service.items.recovery.backlog|",
+        "Mmorpg.GameService.Placement||Counter`1|game_service.placement.character_states|",
+        "Mmorpg.GameService.Placement||Counter`1|game_service.placement.join.refusals|",
+        "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.sessions.expired_unreleased|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.capacity|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.online|",
         "Mmorpg.GameService.Placement||ObservableGauge`1|game_service.placement.shard.players|",
@@ -39,6 +42,7 @@ public sealed class MeterInstrumentNamesTests
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.failures|",
         "Mmorpg.GameService.Redis|1.0.0|Counter`1|game_service.redis.session_cache.operations|",
         "Mmorpg.GameService.Retention|1.0.0|Counter`1|game_service.retention.deleted|",
+        "Mmorpg.GameService.Retention|1.0.0|Counter`1|game_service.retention.failures|",
         "Mmorpg.GameService.Retention|1.0.0|Histogram`1|game_service.retention.duration|ms",
         "Mmorpg.GameService.Retention|1.0.0|ObservableGauge`1|game_service.retention.lag|s"
     ];

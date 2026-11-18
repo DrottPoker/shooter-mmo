@@ -225,6 +225,16 @@ internal sealed class CombatSystem : IOwnerAmmunitionSource
         return false;
     }
 
+    // Whether the player died and GameService has not committed the death yet, so that a saved
+    // state must not say that the character respawned. A player whose combat session is gone has
+    // no work left, so its death committed.
+    public bool IsDeathPending(ActiveSimulationSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return authority.TryGet(session.SimulationSessionId, out var combatSession)
+            && combatSession.Death is { Committed: false };
+    }
+
     // Gives a living player the health and mana that it had, as a join restores them, within 1 to
     // its maximum health and 0 to its maximum mana; false when it is dead.
     public bool TryRestoreVitals(Combatant combatant, int health, int mana)

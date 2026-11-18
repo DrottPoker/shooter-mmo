@@ -357,7 +357,9 @@ matters:
 3. Stop GameService. Readiness turns to 503 at once, the proxy takes it out of rotation, and
    GameService serves what is in flight for the drain, then stops.
 4. Run `migrate --plan` to see what the new version would change, then `migrate`. A migration
-   that waits too long for a lock fails and applies nothing; run it again.
+   that waits too long for a lock fails and applies nothing; run it again. The schema never rolls
+   back: what an older version can and cannot do against a database that a newer one migrated
+   is in [Rolling Back A Release](GAME_SERVICE_MODULES.md#rolling-back-a-release).
 5. Start GameService, then the workers. GameService starts only against a current database, and a
    worker registers when GameService answers. The two must run the same service contract version,
    which the registry heartbeat checks: GameService refuses a heartbeat of another version with
@@ -392,6 +394,38 @@ plays on for its outage tolerance, 120 seconds by default, with everything durab
 alone, inside that tolerance, therefore costs the players a saving-paused notice and nothing
 else, while a change of the item or quest catalog needs both restarted: GameService places
 players only on a worker whose catalog revisions equal its own.
+
+### Players Who Have Not Updated
+
+Versions are exact. A player's client plays only on a worker that runs the realtime protocol
+version, the simulation revision, and the collision data of the World that the client was built
+with, as [Versioning](REALTIME_PROTOCOL.md#versioning) describes, and one worker owns one Shard.
+So an update that changes any of the three takes the Shard away from every client that was not
+updated, and there is no overlap, no window of versions, and no update channel that fetches a new
+client: a player gets a new client build from whoever distributes it. Whichever side goes first is
+refused until the other follows, so the gap is shortest when the new client builds are ready when
+the new workers start.
+
+What players see at each moment of an update that changes a version:
+
+- While the workers are stopped, a connected player returns to character select with the text of
+  `server_shutdown`.
+- While an old worker still runs, an updated client that joins is refused with `shard_not_updated`,
+  "This shard has not been updated to your version of the game yet. Try again in a few minutes."
+- Once the new worker runs, a client that was not updated is refused with `incompatible_protocol`,
+  "Your game is out of date. Update it to play." A change of the simulation revision alone gives
+  `incompatible_simulation`, and a change of a World's collision data alone `incompatible_world_data`;
+  both texts tell the player to update the game, or to try again in a few minutes if it is up to
+  date.
+- A player whose connection dropped during the update meets the same refusal when the client
+  reconnects, and returns to character select with its text.
+- A rollback of the servers to an older version puts the updated clients behind, so they get
+  `shard_not_updated`.
+
+Every refusal happens at the join request, before a ticket exists, and counts in
+`game_service.placement.join.refusals` by Shard and reason, as [Monitoring](MONITORING.md#gameservice)
+describes: after an update, a rising `incompatible_protocol` is the number of players who have not
+updated yet.
 
 ## Back Up PostgreSQL
 
@@ -493,6 +527,36 @@ alerts of [Monitoring](MONITORING.md#alerts) that fired.
 the tick time of the worker, the Shard gauges, the database and Redis counters, and what each
 alert means. The alerts have no notification target yet, as
 [Not There Yet](#not-there-yet) says, so someone has to look at the dashboards.
+
+### What Players See When A Worker Crashes
+
+A player on a worker that crashed loses the connection and tries to reconnect.
+While no worker answers for its session, GameService refuses the ticket with
+`simulation_session_worker_unavailable`, which the client treats as "try
+again", as [Restoring A Lost Connection](UNITY_CLIENT_ARCHITECTURE.md#restoring-a-lost-connection)
+describes. The refusal starts when the worker's last heartbeat is older than
+`Simulation:WorkerHeartbeatTimeoutSeconds`, 30 seconds, and ends at the first of
+two moments:
+
+- A replacement runtime registers, which it can once the old registration is
+  stale, so about 30 seconds after the crash plus its own start. Its
+  registration invalidates the sessions of the old runtime, and the player
+  joins the replacement from its last saved state, as
+  [Worker Registration And Assignment](SERVICE_FEATURES.md#worker-registration-and-assignment) and
+  [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+  describe.
+- The session's lease runs out, `Simulation:SessionLeaseLifetimeSeconds`, 150
+  seconds after its last renewal. The next join of the account then releases the
+  expired session and places the player on a worker of the Shard that answers,
+  or refuses it with `shard_unavailable` while none does.
+
+The player returns alive where the last checkpoint saved it, at most
+`SimulationWorker:CharacterCheckpointSeconds`, 30 seconds, of play behind, and a
+death that GameService had not committed is lost with it, as
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+describes. The alerts `SessionsUnreleasedPastLease` and `CharacterCheckpointsFailing`
+of [Monitoring](MONITORING.md#alerts) show a worker that lets sessions lapse or
+cannot save, before a crash makes it matter.
 
 ## Sizing
 

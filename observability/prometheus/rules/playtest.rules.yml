@@ -100,6 +100,14 @@ groups:
         annotations:
           summary: More than 20 percent of the joins on {{ $labels.instance }} are rejected.
 
+      # The ids are 32 bits and never given out twice; 2147483647 is half of 4294967295, rounded down.
+      - alert: SimulationEntityIdsHalfUsed
+        expr: max by (instance) (simulation_worker_realtime_entity_ids_used) > 2147483647
+        labels:
+          severity: warning
+        annotations:
+          summary: The worker on {{ $labels.instance }} used more than half of its entity ids; restart it at a quiet hour, as docs/MONITORING.md describes under Entity Ids.
+
   - name: mmorpg-game-service
     rules:
       - alert: GameServiceErrorRate
@@ -229,3 +237,44 @@ groups:
           severity: warning
         annotations:
           summary: The economy audit could not run every check in the last two hours; the GameService log says why.
+
+  - name: mmorpg-retention
+    rules:
+      # A lone failure is routine, such as a lock timeout that the next pass retries, so only a task
+      # that keeps failing alerts: a pass runs every minute by default, and a stuck task fails in each.
+      - alert: RetentionTaskFailing
+        expr: sum by (task) (increase(game_service_retention_failures_total[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Retention task {{ $labels.task }} failed at least five times in the last ten minutes, so its table keeps growing; the GameService log says why.
+
+      # The lag stays within about one Retention:IntervalSeconds while a task keeps up, 60 seconds by
+      # default; raise this threshold with the interval. A task whose last pass failed has no lag
+      # series, which RetentionTaskFailing covers.
+      - alert: RetentionLagHigh
+        expr: max by (task) (game_service_retention_lag_seconds) > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The oldest due row of retention task {{ $labels.task }} had waited more than 15 minutes when its latest pass began, so the task falls behind its table.
+
+  - name: mmorpg-presence
+    rules:
+      - alert: CharacterCheckpointsFailing
+        expr: sum by (instance) (rate(simulation_worker_presence_checkpoint_states_total{outcome="failed"}[2m])) > 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: GameService keeps refusing or failing the place and vitals that {{ $labels.instance }} sends, so a crash now loses more than the checkpoint interval of play.
+
+      - alert: SessionsUnreleasedPastLease
+        expr: max(game_service_placement_sessions_expired_unreleased) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sessions of a worker that still answers are past their lease and unreleased, so it neither renews nor releases every session it holds; the worker log names them.

@@ -120,6 +120,15 @@ namespace Mmorpg.Client.Ui
             noticeText.gameObject.SetActive(exitNotice.Length > 0);
         }
 
+        private void ClearExitNotice()
+        {
+            exitNotice = string.Empty;
+            if (noticeText != null)
+            {
+                noticeText.gameObject.SetActive(false);
+            }
+        }
+
         private void BuildTopBar(RectTransform parent)
         {
             var bar = TemporaryUiKit.CreateUiObject("TopBar", parent).GetComponent<RectTransform>();

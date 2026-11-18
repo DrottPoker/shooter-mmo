@@ -199,6 +199,80 @@ namespace Mmorpg.Client.Tests.EditMode
             Assert.That(tickets.Requests, Has.Count.EqualTo(1), "No attempt follows.");
         }
 
+        // GameService refuses the ticket because the versions of the client and of the Shard's
+        // worker differ, and the client's own check refuses the placement for the same reason: both
+        // give up at once, and CharacterSelect says which side to update instead of only that the
+        // connection was lost.
+        [TestCase("incompatible_protocol")]
+        [TestCase("shard_not_updated")]
+        [TestCase("incompatible_simulation")]
+        [TestCase("incompatible_world_data")]
+        public void ATicketRefusedOverVersionsGivesUpAtOnceWithTheTextOfTheRefusal(string code)
+        {
+            LoseLine();
+
+            tickets.Last.Refuse(new ApiError(ApiErrorKind.Http, 409, code, "The versions differ.", string.Empty));
+            Frame();
+
+            Assert.That(reconnect.State, Is.EqualTo(WorldReconnectState.Idle));
+            Assert.That(session.ActiveSimulationSession, Is.Null);
+            Assert.That(notices.PendingCode, Is.EqualTo(code));
+            harness.Now += 5f;
+            Frame();
+            Assert.That(tickets.Requests, Has.Count.EqualTo(1), "No attempt follows.");
+        }
+
+        [TestCase("a newer protocol version", "incompatible_protocol")]
+        [TestCase("an older protocol version", "shard_not_updated")]
+        [TestCase("another simulation revision", "incompatible_simulation")]
+        [TestCase("other collision data for the World", "incompatible_world_data")]
+        public void APlacementThatTheClientsOwnCheckRefusesGivesUpAtOnceWithTheTextOfTheRefusal(
+            string placementCase,
+            string code)
+        {
+            LoseLine();
+            var placement = RealtimeHubHarness.Placement("ticket-2");
+            switch (placementCase)
+            {
+                case "a newer protocol version":
+                    placement.endpoint.protocolVersion = RealtimeProtocol.Version + 1;
+                    break;
+                case "an older protocol version":
+                    placement.endpoint.protocolVersion = RealtimeProtocol.Version - 1;
+                    break;
+                case "another simulation revision":
+                    placement.endpoint.simulationRevision = "another-simulation";
+                    break;
+                default:
+                    placement.endpoint.collisionRevision = "another-collision";
+                    break;
+            }
+
+            tickets.Last.Grant(placement);
+            Frame();
+
+            Assert.That(harness.TakeFailures(), Is.EqualTo(new[] { "CLIENT " + code }));
+            Assert.That(harness.Transport.IsStarted, Is.False, "No transport started for the refused placement.");
+            Assert.That(reconnect.State, Is.EqualTo(WorldReconnectState.Idle));
+            Assert.That(session.ActiveSimulationSession, Is.Null);
+            Assert.That(notices.PendingCode, Is.EqualTo(code));
+        }
+
+        // The ticket request of an attempt names the versions of this client and the baked
+        // collision revision of the lost World, as the first join does.
+        [Test]
+        public void TheTicketRequestOfAnAttemptNamesTheVersionsOfThisClient()
+        {
+            LoseLine();
+
+            var sent = tickets.Last.Sent;
+
+            Assert.That(sent.protocolVersion, Is.EqualTo(RealtimeProtocol.Version));
+            Assert.That(sent.simulationRevision, Is.EqualTo(GameSimulationCompatibility.Revision));
+            Assert.That(sent.worldId, Is.EqualTo(RealtimeHubMessages.WorldId));
+            Assert.That(sent.collisionRevision, Is.EqualTo(RealtimeHubHarness.BakedCollisionRevision));
+        }
+
         [Test]
         public void ARefusedJoinGivesUpAtOnce()
         {

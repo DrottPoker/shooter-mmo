@@ -382,7 +382,7 @@ public sealed class RealtimeInFlightOperationTests
                 "The simulation session is invalid, released, or expired.",
                 shouldDisconnect: true)));
 
-        Assert.False(fixture.SessionStore.IsCurrent(player.Session, DateTime.UtcNow));
+        Assert.False(fixture.SessionStore.IsCurrent(player.Session));
         Assert.True(fixture.SessionStore.TryTakeInvalidation(player.Session.SimulationSessionId, out var invalidation));
         Assert.Equal("simulation_session_invalid", invalidation!.Code);
         Assert.Empty(player.Peer.Sent);
@@ -417,7 +417,7 @@ public sealed class RealtimeInFlightOperationTests
 
         Assert.True(fixture.SessionStore.TryGet(player.Session.CharacterId, out var current));
         Assert.Equal("newer-token", current!.SimulationSessionToken);
-        Assert.True(fixture.SessionStore.IsCurrent(current, DateTime.UtcNow));
+        Assert.True(fixture.SessionStore.IsCurrent(current));
         Assert.Equal(5, current.CarryState.ItemStateRevision);
         Assert.True(fixture.CharacterItemStateStore.TryGetItemState(
             player.Session.CharacterId,

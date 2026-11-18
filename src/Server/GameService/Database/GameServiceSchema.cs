@@ -59,7 +59,8 @@ public sealed class GameServiceSchema
         "202611141400_character_data_steps",
         "202611141410_item_data_steps",
         "202611141420_character_item_state_backfill",
-        "202611171400_join_ticket_transport_key"
+        "202611171400_join_ticket_transport_key",
+        "202611181200_simulation_session_generation"
     ];
 
     private GameServiceSchema(IReadOnlyList<DatabaseMigration> migrations)

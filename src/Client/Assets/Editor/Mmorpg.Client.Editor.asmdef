@@ -3,6 +3,7 @@
   "rootNamespace": "Mmorpg.Client.Editor",
   "references": [
     "Mmorpg.Client.Worlds",
+    "Mmorpg.GameProtocol",
     "Mmorpg.GameSimulation",
     "Mmorpg.WorldData.Editor",
     "Mmorpg.WorldData.Actors.Editor",

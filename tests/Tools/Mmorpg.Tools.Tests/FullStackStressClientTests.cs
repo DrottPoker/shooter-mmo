@@ -291,6 +291,43 @@ public sealed class FullStackStressClientTests
         Assert.Equal(corpseId, response.CorpseId);
     }
 
+    // The join names the versions of this build, so a worker of other versions refuses it with a
+    // code before a ticket exists.
+    [Fact]
+    public async Task JoinNamesTheProtocolVersionAndSimulationRevisionOfThisBuild()
+    {
+        string? requestPath = null;
+        string? requestBody = null;
+        using var handler = new StubHttpMessageHandler(async request =>
+        {
+            requestPath = request.RequestUri?.AbsolutePath;
+            requestBody = await request.Content!.ReadAsStringAsync();
+            return new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = JsonContent.Create(new { code = "incompatible_protocol", detail = "Update." })
+            };
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5000") };
+        var client = new FullStackStressClient(httpClient, new FullStackStressMetrics(1337));
+        var characterId = Guid.NewGuid();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.JoinShardAsync(
+            "session-token",
+            "local-shard-1",
+            characterId,
+            CancellationToken.None));
+
+        Assert.Equal("/api/shards/local-shard-1/join", requestPath);
+        using var body = System.Text.Json.JsonDocument.Parse(requestBody!);
+        Assert.Equal(characterId, body.RootElement.GetProperty("characterId").GetGuid());
+        Assert.Equal(
+            Mmorpg.GameProtocol.RealtimeProtocol.Version,
+            body.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(
+            Mmorpg.GameSimulation.GameSimulationCompatibility.Revision,
+            body.RootElement.GetProperty("simulationRevision").GetString());
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {

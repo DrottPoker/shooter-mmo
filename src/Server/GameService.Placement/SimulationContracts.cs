@@ -74,7 +74,17 @@ internal sealed record SimulationWorkerOfflineResponse(
     string RuntimeId,
     DateTime OfflineAt);
 
-internal sealed record JoinShardRequest(Guid CharacterId);
+// The join of a character, with the versions of the client that asks: its realtime protocol
+// version and simulation revision, which GameService compares with the Shard's worker before it
+// issues a ticket, and, when the client has the baked collision data of the World that it believes
+// the Shard runs, that World and its collision revision. A request without versions is refused as
+// from a client that must update.
+internal sealed record JoinShardRequest(
+    Guid CharacterId,
+    int? ProtocolVersion = null,
+    string? SimulationRevision = null,
+    string? WorldId = null,
+    string? CollisionRevision = null);
 
 // A join ticket: its public id, which travels over UDP in clear, and the transport key, which
 // never does. The key travels only in this HTTPS response and, once the join proved it, in the
@@ -120,6 +130,12 @@ internal sealed record ConsumedSimulationJoinTicketResponse(
     // The lease duration lets the worker set a deadline on its own clock, so clock
     // differences between the worker and the database never move the deadline.
     public long SessionLeaseDurationMilliseconds { get; init; }
+
+    // How many times GameService issued the session's token: it grows with every reconnect's
+    // consumption of a ticket, which rotates the token, so of two joins of one session the one with
+    // the higher number consumed last, whatever order their answers arrive in. 0 when GameService
+    // gives none, as for a development bot, and then the join is not ordered.
+    public long SessionGeneration { get; init; }
 
     // What the character has equipped at ItemStateRevision.
     public IReadOnlyList<SimulationEquippedItem> Equipment { get; init; } = [];

@@ -273,7 +273,13 @@ namespace Mmorpg.Client.Tests.EditMode
             var release = new ClientSettings(
                 new ClientBuildInfo(
                     staging,
-                    new ClientBuildStamp(ClientBuildKind.Release, "0123456789abcdef", false, "2026-11-14T09:30:00Z")),
+                    new ClientBuildStamp(
+                        ClientBuildKind.Release,
+                        "0123456789abcdef",
+                        false,
+                        "2026-11-14T09:30:00Z",
+                        46,
+                        "movement-simulation-v7")),
                 string.Empty,
                 10,
                 10,
@@ -284,12 +290,20 @@ namespace Mmorpg.Client.Tests.EditMode
                     "ui/login/build-release",
                     MessageArgument.Text("environment", "staging"),
                     MessageArgument.Text("commit", "0123456789"),
-                    MessageArgument.Text("time", "2026-11-14 09:30"))));
+                    MessageArgument.Text("time", "2026-11-14 09:30"),
+                    MessageArgument.Text("protocol", "46"),
+                    MessageArgument.Text("simulation", "movement-simulation-v7"))));
 
             var development = new ClientSettings(
                 new ClientBuildInfo(
                     staging,
-                    new ClientBuildStamp(ClientBuildKind.Development, "0123456789abcdef", true, "2026-11-14T09:30:00Z")),
+                    new ClientBuildStamp(
+                        ClientBuildKind.Development,
+                        "0123456789abcdef",
+                        true,
+                        "2026-11-14T09:30:00Z",
+                        46,
+                        "movement-simulation-v7")),
                 "http://192.168.1.20:5000",
                 10,
                 10,
@@ -302,11 +316,16 @@ namespace Mmorpg.Client.Tests.EditMode
                     MessageArgument.Text(
                         "commit",
                         texts.Format("ui/login/build-commit-dirty", MessageArgument.Text("commit", "0123456789"))),
-                    MessageArgument.Text("time", "2026-11-14 09:30"))));
+                    MessageArgument.Text("time", "2026-11-14 09:30"),
+                    MessageArgument.Text("protocol", "46"),
+                    MessageArgument.Text("simulation", "movement-simulation-v7"))));
             Assert.That(
                 AccountEntryPresentation.OverrideLine(development, texts),
                 Is.EqualTo(texts.Format("ui/login/address-override", MessageArgument.Text("url", "https://staging.example.org"))));
             Assert.That(AccountEntryPresentation.BuildLine(development, texts), Does.Not.Contain("["));
+            Assert.That(
+                AccountEntryPresentation.BuildLine(release, texts),
+                Does.Contain("Protocol 46").And.Contain("Simulation movement-simulation-v7"));
         }
 
         private static string Summary(

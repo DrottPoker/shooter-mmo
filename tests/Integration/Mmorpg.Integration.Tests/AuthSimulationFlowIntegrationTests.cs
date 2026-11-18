@@ -49,7 +49,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
 
         Assert.True(join.Succeeded, join.Error?.Message);
@@ -146,7 +146,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             victim.Account,
             LocalShardId,
-            new JoinShardRequest(victim.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(victim.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
 
@@ -252,7 +252,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
@@ -294,7 +294,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         var reconnect = await ConsumeLocalTicketAsync(
@@ -355,7 +355,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var rejected = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.False(rejected.Succeeded);
         Assert.Equal(StatusCodes.Status409Conflict, rejected.StatusCode);
@@ -373,7 +373,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
         var consumed = await ConsumeLocalTicketAsync(context, join.Value!);
@@ -391,7 +391,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var reconnect = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.False(reconnect.Succeeded);
         Assert.Equal("simulation_worker_item_catalog_mismatch", reconnect.Error!.Code);
@@ -428,7 +428,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var rejected = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.False(rejected.Succeeded);
         Assert.Equal(StatusCodes.Status409Conflict, rejected.StatusCode);
@@ -446,7 +446,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var join = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(join.Succeeded, join.Error?.Message);
 
@@ -482,7 +482,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstAttempt = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(firstAttempt.Succeeded, firstAttempt.Error?.Message);
 
@@ -490,7 +490,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var retry = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
 
         Assert.True(retry.Succeeded, retry.Error?.Message);
@@ -543,7 +543,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstJoin = await shardService.CreateJoinTicketAsync(
             firstPlayer.Account,
             LocalShardId,
-            new JoinShardRequest(firstPlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(firstPlayer.Character.Id),
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
@@ -554,7 +554,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var secondJoin = await shardService.CreateJoinTicketAsync(
             secondPlayer.Account,
             LocalShardId,
-            new JoinShardRequest(secondPlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(secondPlayer.Character.Id),
             CancellationToken.None);
 
         Assert.False(secondJoin.Succeeded);
@@ -582,7 +582,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstJoin = await context.ShardService.CreateJoinTicketAsync(
             firstPlayer.Account,
             LocalShardId,
-            new JoinShardRequest(firstPlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(firstPlayer.Character.Id),
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
@@ -596,7 +596,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var rejectedJoin = await context.ShardService.CreateJoinTicketAsync(
             secondPlayer.Account,
             LocalShardId,
-            new JoinShardRequest(secondPlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(secondPlayer.Character.Id),
             CancellationToken.None);
 
         Assert.False(rejectedJoin.Succeeded);
@@ -624,7 +624,7 @@ public sealed class AuthSimulationFlowIntegrationTests
             .Select(_ => context.ShardService.CreateJoinTicketAsync(
                 player.Account,
                 LocalShardId,
-                new JoinShardRequest(player.Character.Id),
+                PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
                 CancellationToken.None));
 
         var tickets = await Task.WhenAll(ticketTasks);
@@ -657,7 +657,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var secondCharacterJoin = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(secondCharacter.Value!.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(secondCharacter.Value!.Id),
             CancellationToken.None);
         Assert.False(secondCharacterJoin.Succeeded);
         Assert.Equal("account_character_already_active", secondCharacterJoin.Error!.Code);
@@ -665,7 +665,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         Assert.True(reconnectTicket.Value!.IsReconnect);
@@ -685,7 +685,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var crossShardWhileActive = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             "local-shard-2",
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.False(crossShardWhileActive.Succeeded);
         Assert.Equal("character_already_active", crossShardWhileActive.Error!.Code);
@@ -708,7 +708,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var crossShardAfterRelease = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             "local-shard-2",
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(crossShardAfterRelease.Succeeded, crossShardAfterRelease.Error?.Message);
         Assert.Equal("worker-local-shard-2", crossShardAfterRelease.Value!.Endpoint.WorkerId);
@@ -769,7 +769,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstJoin = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
@@ -788,7 +788,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var pendingTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(pendingTicket.Succeeded, pendingTicket.Error?.Message);
         Assert.True(pendingTicket.Value!.IsReconnect);
@@ -820,7 +820,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var blockedJoin = await context.ShardService.CreateJoinTicketAsync(
             replacementAccount!,
             LocalShardId,
-            new JoinShardRequest(secondCharacterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(secondCharacterId),
             CancellationToken.None);
         Assert.Equal("account_character_already_active", blockedJoin.Error!.Code);
 
@@ -834,7 +834,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var replacementJoin = await context.ShardService.CreateJoinTicketAsync(
             replacementAccount!,
             LocalShardId,
-            new JoinShardRequest(secondCharacterId),
+            PostgresIntegrationTestContext.CreateJoinRequest(secondCharacterId),
             CancellationToken.None);
         Assert.True(replacementJoin.Succeeded, replacementJoin.Error?.Message);
 
@@ -1095,7 +1095,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var activeJoin = await context.ShardService.CreateJoinTicketAsync(
             activePlayer.Account,
             LocalShardId,
-            new JoinShardRequest(activePlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(activePlayer.Character.Id),
             CancellationToken.None);
         Assert.True(activeJoin.Succeeded, activeJoin.Error?.Message);
         var consumed = await ConsumeLocalTicketAsync(context, activeJoin.Value!);
@@ -1108,7 +1108,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var pendingJoin = await context.ShardService.CreateJoinTicketAsync(
             pendingPlayer.Account,
             LocalShardId,
-            new JoinShardRequest(pendingPlayer.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(pendingPlayer.Character.Id),
             CancellationToken.None);
         Assert.True(pendingJoin.Succeeded, pendingJoin.Error?.Message);
         var blocked = await context.SimulationWorkerRegistryService.HeartbeatAsync(
@@ -1264,7 +1264,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var firstJoin = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(firstJoin.Succeeded, firstJoin.Error?.Message);
 
@@ -1280,7 +1280,7 @@ public sealed class AuthSimulationFlowIntegrationTests
         var reconnectTicket = await context.ShardService.CreateJoinTicketAsync(
             player.Account,
             LocalShardId,
-            new JoinShardRequest(player.Character.Id),
+            PostgresIntegrationTestContext.CreateJoinRequest(player.Character.Id),
             CancellationToken.None);
         Assert.True(reconnectTicket.Succeeded, reconnectTicket.Error?.Message);
         Assert.True(reconnectTicket.Value!.IsReconnect);

@@ -625,6 +625,7 @@ namespace Mmorpg.Client.Tests.PlayMode
                 character.id,
                 character.name,
                 shard.id,
+                shard.worldId,
                 ticket => true,
                 value => join = value);
             Assert.That(join.Status, Is.EqualTo(WorldJoinStatus.Joined), "The join failed: " + join.Status);

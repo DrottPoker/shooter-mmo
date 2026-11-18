@@ -18,8 +18,8 @@ namespace Mmorpg.SimulationWorker.Tests.Realtime;
 // and when the loop finalizes an answer.
 public sealed class LingeringBodyReconnectOrderTests
 {
-    private const string ReconnectTicket = "ticket-of-the-reconnect";
-    private const string ReconnectToken = "token-after-the-reconnect";
+    internal const string ReconnectTicket = "ticket-of-the-reconnect";
+    internal const string ReconnectToken = "token-after-the-reconnect";
 
     // Bot 303 of the soak of 2026-11-16: a wolf killed its body, the death committed, and the body
     // went with the state its respawn would leave. GameService had consumed the reconnect's ticket
@@ -331,13 +331,13 @@ public sealed class LingeringBodyReconnectOrderTests
         Assert.Equal((60, 40), (combatant.Health, combatant.Mana));
         Assert.True(fixture.SessionStore.TryGet(session.CharacterId, out var current));
         Assert.Equal(ReconnectToken, current!.SimulationSessionToken);
-        Assert.True(fixture.SessionStore.IsCurrent(current, DateTime.UtcNow));
+        Assert.True(fixture.SessionStore.IsCurrent(current));
         Assert.DoesNotContain(peer.Sent, sent => sent.Type == RealtimeMessageType.ServerDisconnect);
         Assert.Equal(0, fixture.LoopGuard.TotalFailures);
     }
 
     // GameService's answer to a release whose token a reconnect rotated.
-    private static HttpResponseMessage RefusedCredentials()
+    internal static HttpResponseMessage RefusedCredentials()
     {
         return ScriptedGameServiceHandler.Problem(
             HttpStatusCode.Unauthorized,
@@ -347,7 +347,7 @@ public sealed class LingeringBodyReconnectOrderTests
 
     // GameService's answer to an item transaction, such as a death, whose token a reconnect
     // rotated.
-    private static HttpResponseMessage RefusedItemCredentials()
+    internal static HttpResponseMessage RefusedItemCredentials()
     {
         return ScriptedGameServiceHandler.Problem(
             HttpStatusCode.Unauthorized,
@@ -357,14 +357,17 @@ public sealed class LingeringBodyReconnectOrderTests
 
     // GameService's answer to the reconnect's ticket: the same session with a new token, the item
     // state of the character, and the state it saved last.
-    private static HttpResponseMessage Reconnect(
+    internal static HttpResponseMessage Reconnect(
         CombatTickFixture fixture,
         ActiveSimulationSession session,
         float x,
         float z,
         int health,
         int mana,
-        long itemStateRevision = 1)
+        long itemStateRevision = 1,
+        string ticket = ReconnectTicket,
+        string token = ReconnectToken,
+        long generation = 0)
     {
         return ScriptedGameServiceHandler.Json(new ConsumedSimulationJoinTicketResponse(
             session.AccountId,
@@ -375,7 +378,7 @@ public sealed class LingeringBodyReconnectOrderTests
             RealtimeServerHarness.WorkerId,
             RealtimeServerHarness.RuntimeId,
             session.SimulationSessionId,
-            ReconnectToken,
+            token,
             DateTime.UtcNow.AddMinutes(5),
             itemStateRevision,
             0,
@@ -384,7 +387,8 @@ public sealed class LingeringBodyReconnectOrderTests
         {
             SessionLeaseDurationMilliseconds = 150_000,
             Appearance = CharacterStateTestData.Appearance,
-            TransportKey = RealtimeTestTickets.TransportKeyOf(ReconnectTicket),
+            SessionGeneration = generation,
+            TransportKey = RealtimeTestTickets.TransportKeyOf(ticket),
             SavedState = new SimulationSavedCharacterState(
                 RealtimeServerHarness.WorldId,
                 fixture.Core.StaticCollisionWorld.Revision,
@@ -397,14 +401,14 @@ public sealed class LingeringBodyReconnectOrderTests
         });
     }
 
-    private static RealtimeJoinAccepted JoinAccepted(RecordingPeerConnection peer)
+    internal static RealtimeJoinAccepted JoinAccepted(RecordingPeerConnection peer)
     {
         var packet = Assert.Single(peer.Sent, sent => sent.Type == RealtimeMessageType.JoinAccepted);
         Assert.True(RealtimeProtocol.TryDecodeJoinAccepted(packet.Data, out var accepted, out var error), error);
         return accepted;
     }
 
-    private static void RunUntil(CombatTickFixture fixture, Func<bool> condition, string description, int? maximumTicks = null)
+    internal static void RunUntil(CombatTickFixture fixture, Func<bool> condition, string description, int? maximumTicks = null)
     {
         var limit = maximumTicks ?? (5 * fixture.TickRateHz);
         for (var tick = 0; tick < limit && !condition(); tick++)
@@ -415,7 +419,7 @@ public sealed class LingeringBodyReconnectOrderTests
         Assert.True(condition(), $"Waited {limit} ticks for {description}.");
     }
 
-    private static void RunTicks(CombatTickFixture fixture, int ticks)
+    internal static void RunTicks(CombatTickFixture fixture, int ticks)
     {
         for (var tick = 0; tick < ticks; tick++)
         {
@@ -425,7 +429,7 @@ public sealed class LingeringBodyReconnectOrderTests
 
     // Runs the loop as it runs with GameService's answers: every tick, the calls it started are
     // answered and their completions processed.
-    private static async Task RunUntilAsync(CombatTickFixture fixture, Func<bool> condition, string description)
+    internal static async Task RunUntilAsync(CombatTickFixture fixture, Func<bool> condition, string description)
     {
         var limit = 5 * fixture.TickRateHz;
         for (var tick = 0; tick < limit && !condition(); tick++)
@@ -439,7 +443,7 @@ public sealed class LingeringBodyReconnectOrderTests
     }
 
     // For what happens off the loop, such as a GameService call that started.
-    private static async Task WaitUntilAsync(Func<bool> condition, string description)
+    internal static async Task WaitUntilAsync(Func<bool> condition, string description)
     {
         var deadline = DateTime.UtcNow + RealtimeServerHarness.PollTimeout;
         while (!condition() && DateTime.UtcNow < deadline)

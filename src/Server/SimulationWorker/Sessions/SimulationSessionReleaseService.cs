@@ -14,7 +14,8 @@ public sealed class SimulationSessionReleaseService(
     IReadOnlyList<TimeSpan>? detachedReleaseRetryDelays = null,
     GameServiceAvailability? availability = null,
     SimulationWorkerConfig? config = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    PresenceMetrics? metrics = null)
 {
     // How long a final state stays for a reconnect's join after its release was refused: as long
     // as the session's lease can last without this worker renewing it. After that no join can
@@ -53,6 +54,28 @@ public sealed class SimulationSessionReleaseService(
     // spending a timeout, and goes as soon as it answers again; the session lease outlasts that
     // wait. A worker that stops first gives the release up.
     public async Task<SimulationSessionReleaseResult> ReleaseDetachedAsync(
+        ActiveSimulationSession session,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await ReleaseDetachedCoreAsync(session, cancellationToken);
+            metrics?.RecordRelease(
+                result.Succeeded
+                    ? PresenceMetrics.ReleaseReleased
+                    : result.Code == GameServiceAvailability.UnavailableCode
+                        ? PresenceMetrics.ReleaseGaveUp
+                        : PresenceMetrics.ReleaseFailed);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            metrics?.RecordRelease(PresenceMetrics.ReleaseGaveUp);
+            throw;
+        }
+    }
+
+    private async Task<SimulationSessionReleaseResult> ReleaseDetachedCoreAsync(
         ActiveSimulationSession session,
         CancellationToken cancellationToken)
     {

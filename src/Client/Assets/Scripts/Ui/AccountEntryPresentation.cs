@@ -245,7 +245,8 @@ namespace Mmorpg.Client.Ui
 
         // The login screen's footer line of the environment and the build that runs: the Editor,
         // or a development or release build with its commit, whether the working tree had
-        // changes, and when it was built.
+        // changes, when it was built, and the protocol version and simulation revision that it
+        // fits.
         public static string BuildLine(ClientSettings settings, TextCatalog texts)
         {
             var environment = MessageArgument.Text("environment", settings.Environment.Name);
@@ -262,7 +263,9 @@ namespace Mmorpg.Client.Ui
                 stamp.Kind == ClientBuildKind.Release ? "ui/login/build-release" : "ui/login/build-development",
                 environment,
                 MessageArgument.Text("commit", commit),
-                MessageArgument.Text("time", stamp.BuiltAtDisplay));
+                MessageArgument.Text("time", stamp.BuiltAtDisplay),
+                MessageArgument.Text("protocol", stamp.ProtocolVersion.ToString(CultureInfo.InvariantCulture)),
+                MessageArgument.Text("simulation", stamp.SimulationRevision));
         }
 
         // Says that the GameService address was overridden at start, with the environment's own

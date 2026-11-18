@@ -202,6 +202,7 @@ namespace Mmorpg.Client.Networking
                 lost.characterId,
                 lost.characterName,
                 lost.shardId,
+                lost.worldId,
                 ticket => AcceptTicket(attempt, lost, ticket),
                 value => result = value);
 
@@ -259,12 +260,16 @@ namespace Mmorpg.Client.Networking
                         return;
                     }
 
-                    Fail(ticketFailure, "the join ticket was refused: " + result.TicketError.ToDiagnostic());
+                    Fail(
+                        ticketFailure,
+                        "the join ticket was refused: " + result.TicketError.ToDiagnostic(),
+                        ReconnectRules.VersionRefusalCode(result.TicketError));
                     return;
                 case WorldJoinStatus.JoinFailed:
                     Fail(
                         ReconnectRules.ClassifyAttempt(result.JoinError),
-                        "the join failed: " + (result.JoinError != null ? result.JoinError.ToDiagnostic() : "no session"));
+                        "the join failed: " + (result.JoinError != null ? result.JoinError.ToDiagnostic() : "no session"),
+                        ReconnectRules.VersionRefusalCode(result.JoinError));
                     return;
                 default:
                     Fail(ReconnectAttemptFailure.GiveUp, "the join ticket cannot reconnect: " + result.Status);
@@ -272,11 +277,14 @@ namespace Mmorpg.Client.Networking
             }
         }
 
-        private void Fail(ReconnectAttemptFailure failure, string reason)
+        // noticeCode is the text that CharacterSelect shows when the attempt ends the window: the
+        // version refusal that caused it, or null for the lost connection that could not be
+        // restored.
+        private void Fail(ReconnectAttemptFailure failure, string reason, string noticeCode = null)
         {
             if (failure != ReconnectAttemptFailure.Retry)
             {
-                GiveUp(reason);
+                GiveUp(reason, noticeCode);
                 return;
             }
 
@@ -287,7 +295,7 @@ namespace Mmorpg.Client.Networking
             SetState(WorldReconnectState.Pausing);
         }
 
-        private void GiveUp(string reason)
+        private void GiveUp(string reason, string noticeCode = null)
         {
             var lost = lostWorld;
             Stop();
@@ -295,7 +303,7 @@ namespace Mmorpg.Client.Networking
                 ClientLogCategory.Client,
                 "The connection of simulation session '" + lost.simulationSessionId
                 + "' could not be restored: " + reason + ".");
-            worldExit.LeaveLostWorld(lost.simulationSessionId);
+            worldExit.LeaveLostWorld(lost.simulationSessionId, noticeCode ?? WorldExit.ReconnectFailedCode);
         }
 
         // Ends the window: every attempt is over, and a join that one runs is closed.

@@ -100,6 +100,10 @@ internal sealed record RealtimeCoreServices
 
     public required LingeringBodies Bodies { get; init; }
 
+    // Counts presence events: how bodies end, reconnects, checkpoints, and session leases; null
+    // when nothing counts them.
+    public PresenceMetrics? PresenceMetrics { get; init; }
+
     // Where the answer to a player's operation goes, with or without the peer that sent it.
     public required OperationCompletionTargets CompletionTargets { get; init; }
 }

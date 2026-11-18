@@ -649,9 +649,15 @@ order:
    Then the transport stops, the
    work that waits for GameService gives up, in-flight operations finish, the
    combat flush commits arrow shots and quest credits with the session
-   credentials, and the character state flush saves the place and vitals of
-   every remaining player, a lingering body like a connected one, in one last
-   checkpoint, while every session and the registration still hold.
+   credentials and gives a death that has not committed one more attempt, with
+   the operation id that every retry uses, and the character state flush saves
+   the place and vitals of every remaining player, a lingering body like a
+   connected one, in one last checkpoint, while every session and the
+   registration still hold. A death that committed, in that attempt or before,
+   is saved as the respawn leaves the character; one that did not leaves the
+   last state that the character had alive, as
+   [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+   describes.
 2. The metrics reporter, corpse restoration, and the outage monitor stop.
 3. The worker heartbeat clears the registration lease and marks the runtime
    offline through `/offline`.
@@ -751,7 +757,11 @@ Movement replication is built to this contract, on the single realtime loop:
   its near tier once every three snapshots, the connections in turn, and the
   work of a refresh grows with the entities around the observer, not with the
   World, as [Interest Management](SERVICE_FEATURES.md#interest-management)
-  describes.
+  describes. A connection also gets only a budget of entities into its view per
+  refresh, the nearest first, and only while its reliable queue has room for
+  them, so a crowd that enters a view is a few bursts of reliable spawns that
+  follow what the client acknowledges, and never one that fills the connection's
+  reliable queue.
 - Each entity's remote record is quantized once per snapshot, and a recipient
   gets a record only when it is due: new in view, changed, stopping, or due
   for its refresh, near entities at the snapshot rate and far ones at a third
@@ -987,8 +997,8 @@ need a new build:
 
 | Agreement | What | Where the client has it | Must match |
 | --- | --- | --- | --- |
-| Code lockstep | The realtime protocol version and the simulation revision | In the build | Exactly, checked at placement and join, as [Realtime Admission](#realtime-admission) describes |
-| World build | The collision revision and the World scenes | In the build | Exactly, checked at join |
+| Code lockstep | The realtime protocol version and the simulation revision | In the build | Exactly, with no window of versions: GameService checks them at the join request and the client again at the placement, as [Realtime Admission](#realtime-admission) describes |
+| World build | The collision revision and the World scenes | In the build | Exactly: GameService checks the collision revision at the join request when the client names it, and the client checks it with the placement and again when the worker accepts the join |
 | Rules data | The item catalog and the quest catalog | Fetched by revision from GameService at start, the bundled copies as fallback | The client runs with the server's revision; a change while it runs asks for a restart |
 | Presentation | The text tables, fetched by revision at start; the item presentation catalog and every binary asset, in the build | Both | Never required to match |
 
@@ -1281,9 +1291,10 @@ SimulationWorker renews a local registration lease from successful heartbeat
 responses. The local lease runs from the moment the heartbeat request was sent,
 minus a safety margin of at most one second, so it always ends before the
 database lease. Simulation session leases work the same way: GameService
-returns the lease duration, and the worker sets each session deadline on its own
-clock from the request send time. Clock differences between hosts therefore
-never extend or cut short a lease. The local registration lease means that
+returns the lease duration, and the worker keeps each session's lease as the
+monotonic timestamp of the request's send time plus that duration, so neither
+clock differences between hosts nor a step of the host's own wall clock extends
+or cuts short a lease. The local registration lease means that
 GameService considers this runtime fresh: UDP connection requests and joins are
 refused without it, so nobody joins a worker that GameService may already have
 replaced, and durable corpse restoration waits for it.
@@ -1397,10 +1408,15 @@ join is sealed with keys derived from it, as
 path between client and worker is untrusted; GameService, the worker, and the
 service channel between them are trusted.
 
-The client validates placement protocol and simulation revisions before opening
-UDP. Join acceptance must match the placed character, shard, World, simulation
-revision, and collision revision. These are the in-build agreements of
-[Client And Server Agreement](#client-and-server-agreement).
+GameService decides the version question before it issues a ticket: the join
+request names the client's protocol version, simulation revision, and the
+collision revision of its World, and a worker that runs others gets no player.
+The client checks the placement again before opening UDP, as the second line of
+defence. Join acceptance must match the placed character, shard, World,
+simulation revision, and collision revision. These are the in-build agreements
+of [Client And Server Agreement](#client-and-server-agreement), and
+[Versioning](REALTIME_PROTOCOL.md#versioning) describes who checks what and what
+a player sees.
 
 ### Development Surfaces
 
@@ -1469,8 +1485,10 @@ adds a production code path:
 4. Unity requests `POST /api/shards/{shardId}/join` for an owned character.
 5. GameService locks the account and character, applies global active-session
    rules, reserves authoritative session and pending-ticket capacity under a
-   worker row lock, refuses a worker whose item or quest catalog revision
-   differs from the mirrored catalog, and creates a ticket.
+   worker row lock, refuses a client whose protocol version, simulation
+   revision, or collision revision is not the worker's, refuses a worker whose
+   item or quest catalog revision differs from the mirrored catalog, and creates
+   a ticket.
 6. The response contains the selected shard plus an exact worker runtime
    endpoint and compatibility metadata.
 
@@ -1533,8 +1551,29 @@ comes back to it:
    body, so its timer stops. The client gets the body's place in its join
    acceptance and its vitals in the owner state that follows, and the combat
    authority moves the body's waiting work to the new peer's lane.
-4. When the new client is gone before the join binds it, the body stays under
-   the session's new generation instead of releasing the session.
+4. When the new client is gone before the join binds it, the session is
+   released only when the worker holds nothing of it. A body stays under the
+   session's new generation, and so does an entity that is still connected
+   under the older one: the consumption rotated the token at GameService, so
+   the connected player's token is a replaced generation, and the peer
+   supervisor ends its connection as a takeover while the entity stands as a
+   body for its full time, from which the player can come back. Combat work
+   that has not committed keeps the session the same way and goes on with the
+   new generation's token. Only a session without an entity and without such
+   work is released.
+5. Generations of one session have an order. GameService numbers every token
+   it issues for a session, and the consume answer carries the number. Two
+   joins of the same session may consume their tickets in one order and
+   register on the worker in the other, because the work after the
+   consumption differs; the worker's session store refuses the registration of
+   an older generation than the one it holds and leaves the held one
+   untouched. The join that lost is told `simulation_session_changed`, which
+   the client's reconnect rules give up on, since the session belongs to the
+   join that consumed last and a retry would only take it over again. The end
+   of an entity of an older generation removes the per-character state of the
+   session only while no newer generation holds the session, as one step
+   against the registration, so a reconnect that registered in the same
+   instant finds its state.
 
 ### Leave, Disconnect, Expiry, And Failover
 
@@ -1564,8 +1603,9 @@ comes back to it:
    reliable despawn, captures its final place and vitals, drops the local
    session, so its heartbeat stops renewing the lease, and calls release with
    two bounded retries, each with that state; GameService saves it in the
-   transaction of the release. A body that dies never respawns, so its saved
-   state is the World spawn with full health and mana.
+   transaction of the release. A body that dies never respawns, so once its
+   death committed its saved state is the World spawn with full health and
+   mana; a death that has not committed leaves no state to save.
 4. A session that ended takes its entity at once and is not released: a
    session whose heartbeat GameService refused, whose lease expired, or that an
    authority failure invalidated. This holds for a connected player and for a
@@ -1608,7 +1648,11 @@ comes back to it:
    worker runtime and only when it is newer than the stored state of the same
    session, as
    [Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
-   describes.
+   describes. A character whose death has not committed is left out, so the
+   state that GameService holds stays the last one the character had alive: an
+   orderly stop gives the death one more attempt, and a stop after an outage or
+   a crash before the commit returns the character alive where it last was
+   alive, with its items.
 
 ### Authoritative Movement
 

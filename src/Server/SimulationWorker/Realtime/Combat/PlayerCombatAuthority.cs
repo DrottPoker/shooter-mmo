@@ -456,12 +456,14 @@ internal sealed class PlayerCombatAuthority(
         }
     }
 
-    // A worker that stops commits the uncommitted shots it can still name exactly. A batch
-    // whose answer arrived but was never finalized is settled first, so the shots behind a
-    // committed batch commit on top of its state. A batch without a committed answer is
-    // left alone, and its arrows stay with the player. The quest kill credits that have not
-    // committed get one more attempt each. While GameService does not answer, nothing is sent,
-    // since every attempt would only spend its timeout, and the shots and credits are lost.
+    // A worker that stops commits the uncommitted shots it can still name exactly and gives a death
+    // that has not committed one more attempt, with the operation id of every retry. A batch whose
+    // answer arrived but was never finalized is settled first, so the shots behind a committed
+    // batch commit on top of its state. A batch without a committed answer is left alone, and its
+    // arrows stay with the player. The quest kill credits that have not committed get one more
+    // attempt each. While GameService does not answer, nothing is sent, since every attempt would
+    // only spend its timeout, and the shots, credits, and deaths are lost: a character whose death
+    // was lost returns alive where it last was saved alive.
     public async Task FlushOnShutdownAsync(IReadOnlyList<RealtimeOperationResult> unfinalized)
     {
         ArgumentNullException.ThrowIfNull(unfinalized);
@@ -491,6 +493,14 @@ internal sealed class PlayerCombatAuthority(
         }
 
         var flushes = new List<Task>();
+        foreach (var combatSession in sessions.Values)
+        {
+            if (combatSession.Death is { Committed: false } death)
+            {
+                flushes.Add(FlushDeathAsync(combatSession, death, unfinalized));
+            }
+        }
+
         foreach (var combatSession in sessions.Values)
         {
             if (combatSession.PendingShots <= 0
@@ -534,6 +544,39 @@ internal sealed class PlayerCombatAuthority(
         }
 
         await Task.WhenAll(flushes);
+    }
+
+    // A death that has not committed gets one more attempt, with the operation id every retry uses,
+    // so a death that did commit replays its result. One whose answer arrived and committed needs
+    // none. A death that commits is saved as the respawn leaves the character, in the last
+    // checkpoint that follows; one that does not leaves the character as it last was alive, with
+    // its items, because no save says that it respawned.
+    private async Task FlushDeathAsync(
+        PlayerCombatSession combatSession,
+        PlayerDeathAttempt death,
+        IReadOnlyList<RealtimeOperationResult> unfinalized)
+    {
+        if (unfinalized.OfType<PlayerDeathCompleted>().Any(
+                completed => ReferenceEquals(completed.Attempt, death) && completed.Result.Succeeded))
+        {
+            death.Committed = true;
+            return;
+        }
+
+        var session = combatSession.Session;
+        var result = await operations.ProcessDeathForShutdownAsync(
+            session.SimulationSessionId,
+            CreateDeathRequest(combatSession, death));
+        if (result.Succeeded)
+        {
+            death.Committed = true;
+            return;
+        }
+
+        logger.LogWarning(
+            "[SIMULATION] The death of simulation session {SimulationSessionId} did not commit at shutdown with {Code}, so the character continues as it was last saved alive.",
+            session.SimulationSessionId,
+            result.Error!.Code);
     }
 
     // A credit whose answer arrived committed or rejected needs no further attempt.

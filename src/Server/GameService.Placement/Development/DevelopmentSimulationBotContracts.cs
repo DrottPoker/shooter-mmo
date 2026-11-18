@@ -1,9 +1,13 @@
 namespace Mmorpg.GameService.Placement.Development;
 
+// A bot's ticket request names the realtime protocol version and simulation revision that the bot
+// was built with, as a player's join request does, and a worker of other versions refuses it.
 internal sealed record DevelopmentSimulationBotTicketRequest(
     Guid BotInstanceId,
     int BotIndex,
-    string? ShardId);
+    string? ShardId,
+    int? ProtocolVersion = null,
+    string? SimulationRevision = null);
 
 internal sealed record DevelopmentSimulationBotTicketResponse(
     Guid AccountId,

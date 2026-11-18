@@ -243,6 +243,16 @@ internal sealed class PostgresIntegrationTestContext : IAsyncDisposable
             ServiceContract.Version);
     }
 
+    // The join of a character by a client of this build: the protocol version and simulation
+    // revision that the heartbeat request above reports, so the join fits the test worker.
+    public static JoinShardRequest CreateJoinRequest(Guid characterId)
+    {
+        return new JoinShardRequest(
+            characterId,
+            RealtimeProtocol.Version,
+            GameSimulationCompatibility.Revision);
+    }
+
     public async Task<IntegrationPlayer> RegisterPlayerAsync(
         string email = "integration@example.com",
         string username = "integration_player",

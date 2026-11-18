@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using Mmorpg.GameProtocol;
 using Mmorpg.SimulationWorker.Realtime;
+using Mmorpg.WorldData.Items;
 
 namespace Mmorpg.SimulationWorker.Tests.Realtime;
 
@@ -154,5 +155,103 @@ public sealed class RealtimeNetworkMetricsTests
                 [("simulation_worker.realtime.received.messages", "0")] = 1
             },
             measured);
+    }
+
+    // The counters and the gauge that the entity ids, the entry budget, and the spawn isolation
+    // report through; the entity ids come from whatever counter the worker attaches.
+    [Fact]
+    public void TheEntityIdGaugeAndTheEntryAndSpawnCountersReportTheirValues()
+    {
+        var instruments = new[]
+        {
+            "simulation_worker.realtime.entity_ids.used",
+            "simulation_worker.realtime.interest.entries_deferred",
+            "simulation_worker.realtime.spawn.failures"
+        };
+        using var listening = Listen(instruments, out var measured, out var created);
+        created.Value = true;
+        using var metrics = new RealtimeNetworkMetrics();
+        created.Value = false;
+        long used = 0;
+        metrics.AttachEntityIds(() => used);
+
+        used = 4_294_967_295;
+        metrics.RecordInterestEntriesDeferred(5, 3);
+        metrics.RecordInterestEntriesDeferred(2, 0);
+        metrics.RecordSpawnFailure();
+        listening.RecordObservableInstruments();
+
+        Assert.Equal(
+            new Dictionary<string, long>
+            {
+                ["simulation_worker.realtime.entity_ids.used"] = 4_294_967_295,
+                ["simulation_worker.realtime.interest.entries_deferred:burst"] = 7,
+                ["simulation_worker.realtime.interest.entries_deferred:queue"] = 3,
+                ["simulation_worker.realtime.spawn.failures"] = 1
+            },
+            measured);
+    }
+
+    // The composition of the worker attaches its entity registry, so the gauge reads the ids
+    // that the registry gave out to players, with nothing else to remember.
+    [Fact]
+    public void TheComposedWorkersGaugeReadsTheIdsItsRegistryGaveOut()
+    {
+        using var listening = Listen(["simulation_worker.realtime.entity_ids.used"], out var measured, out var created);
+        created.Value = true;
+        using var fixture = new CombatTickFixture(RealtimeCombatTests.TestRules(), new ItemCatalogRuntimeDocument());
+        created.Value = false;
+        fixture.Join(1, "First Id");
+        fixture.Join(2, "Second Id");
+        listening.RecordObservableInstruments();
+
+        Assert.Equal(2, fixture.Entities.IssuedEntityIds);
+        Assert.Equal(2, measured["simulation_worker.realtime.entity_ids.used"]);
+    }
+
+    // Listens to the named instruments that this thread creates while the flag is set, since other
+    // tests create metrics under the same meter name at the same time.
+    private static MeterListener Listen(
+        string[] instruments,
+        out Dictionary<string, long> measured,
+        out ThreadFlag created)
+    {
+        var flag = new ThreadFlag(Environment.CurrentManagedThreadId);
+        var values = new Dictionary<string, long>();
+        var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (flag.IsOnItsThread && flag.Value && instruments.Contains(instrument.Name))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            // A counter that is told apart by its cause is kept under its name and cause.
+            var key = instrument.Name;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == RealtimeNetworkMetrics.DeferralCauseTagName)
+                {
+                    key += ":" + tag.Value;
+                }
+            }
+
+            values[key] = value;
+        });
+        listener.Start();
+        measured = values;
+        created = flag;
+        return listener;
+    }
+
+    private sealed class ThreadFlag(int thread)
+    {
+        public bool Value { get; set; }
+
+        public bool IsOnItsThread => Environment.CurrentManagedThreadId == thread;
     }
 }

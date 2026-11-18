@@ -63,10 +63,11 @@ internal sealed class RealtimePeerSupervisor(
             if (queuedReliablePackets > config.Admission.MaxReliableQueuedPackets)
             {
                 logger.LogWarning(
-                    "[SIMULATION] Disconnecting UDP peer {PeerId} with {QueuedPackets} unacknowledged reliable packets.",
+                    "[SIMULATION] Disconnecting UDP peer {PeerId} with {QueuedPackets} reliable packets in its queues, more than the {Limit} that are allowed.",
                     context.PeerId,
-                    queuedReliablePackets);
-                networkMetrics.RecordConnectionRejected();
+                    queuedReliablePackets,
+                    config.Admission.MaxReliableQueuedPackets);
+                networkMetrics.RecordPeerDisconnected(RealtimePeerDisconnectReason.ReliableQueueFull);
                 directory.DisconnectPeer(peer, null);
                 continue;
             }
@@ -240,6 +241,6 @@ internal sealed class RealtimePeerSupervisor(
 
     private bool IsCurrentSession(ActiveSimulationSession session)
     {
-        return sessionStore.IsCurrent(session, DateTime.UtcNow);
+        return sessionStore.IsCurrent(session);
     }
 }

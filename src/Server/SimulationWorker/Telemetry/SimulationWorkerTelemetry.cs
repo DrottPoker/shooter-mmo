@@ -6,6 +6,7 @@ using Mmorpg.SimulationWorker.Corpses;
 using Mmorpg.SimulationWorker.GameServiceApi;
 using Mmorpg.SimulationWorker.Realtime;
 using Mmorpg.SimulationWorker.Registry;
+using Mmorpg.SimulationWorker.Sessions;
 using Mmorpg.SimulationWorker.WorldActors;
 
 namespace Mmorpg.SimulationWorker.Telemetry;
@@ -31,7 +32,8 @@ public static class SimulationWorkerTelemetry
         CorpseRuntimeMetrics.MeterName,
         CombatMetrics.MeterName,
         GameServiceAvailabilityMetrics.MeterName,
-        GameServiceCallMetrics.MeterName
+        GameServiceCallMetrics.MeterName,
+        PresenceMetrics.MeterName
     ];
 
     public static TelemetryResource CreateResource(

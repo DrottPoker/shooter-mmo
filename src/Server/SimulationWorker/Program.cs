@@ -129,6 +129,7 @@ builder.Services.AddSingleton<CharacterLookStore>();
 builder.Services.AddSingleton(new DevelopmentBotLooks(appearanceCatalog, itemCatalog));
 builder.Services.AddSingleton<SimulationShardRules>();
 builder.Services.AddSingleton<CombatMetrics>();
+builder.Services.AddSingleton<PresenceMetrics>();
 builder.Services.AddSingleton(developmentItemInteractionOptions);
 builder.Services.AddSingleton(developmentAdminOptions);
 // Registered through a factory so that the host disposes the store, and with it the chunk

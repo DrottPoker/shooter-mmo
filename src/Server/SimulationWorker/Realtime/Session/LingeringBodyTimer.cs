@@ -17,7 +17,8 @@ internal sealed class LingeringBodyTimer(
     RealtimeSessionTeardown teardown,
     SessionAuthorityOperations sessionOperations,
     PlayerCombatAuthority? combatAuthority,
-    ILogger logger)
+    ILogger logger,
+    PresenceMetrics? metrics = null)
 {
     // The despawn reasons of a body that went.
     public const string TimeUpReason = "left_shard";
@@ -34,6 +35,7 @@ internal sealed class LingeringBodyTimer(
     // Takes every body out of the world at shutdown, after the flushes saved them.
     public void Clear()
     {
+        metrics?.RecordBodyEnded(PresenceMetrics.BodyWorkerStopped, bodies.Count);
         bodies.Clear();
         buffer.Clear();
     }
@@ -46,10 +48,9 @@ internal sealed class LingeringBodyTimer(
         }
 
         bodies.CopyTo(buffer);
-        var now = DateTime.UtcNow;
         foreach (var body in buffer)
         {
-            if (!sessionStore.IsCurrent(body.Session, now))
+            if (!sessionStore.IsCurrent(body.Session))
             {
                 if (sessionStore.IsSupersededByReconnect(body.Session))
                 {
@@ -92,6 +93,7 @@ internal sealed class LingeringBodyTimer(
             sessionOperations.ReleaseDetachedInBackground(session);
         }
 
+        metrics?.RecordBodyEnded(reason == DiedReason ? PresenceMetrics.BodyDied : PresenceMetrics.BodyTimeUp);
         Log(body, reason);
     }
 
@@ -102,6 +104,7 @@ internal sealed class LingeringBodyTimer(
             ? invalidation!.Code
             : SessionEndedReason;
         teardown.RemoveBody(body, reason);
+        metrics?.RecordBodyEnded(PresenceMetrics.BodySessionEnded);
         Log(body, reason);
     }
 

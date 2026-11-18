@@ -18,7 +18,8 @@ internal sealed class SimulationSessionService(
     ISimulationCharacterStateProvider characterStateProvider,
     ICharacterSimulationStates simulationStates,
     DevelopmentSimulationBotAuthority developmentBotAuthority,
-    IAccountSessionActivity accountSessionActivity)
+    IAccountSessionActivity accountSessionActivity,
+    PlacementMetrics metrics)
 {
     // The most sessions one heartbeat request names.
     public const int MaximumHeartbeatSessions = 500;
@@ -340,6 +341,30 @@ internal sealed class SimulationSessionService(
         return await ReleasedResponseAsync(connection, released, finalStateSaved: false, cancellationToken);
     }
 
+    // How many sessions nothing released although their lease ran out, on a worker runtime that
+    // still answers: a live worker renews or releases every session it holds, so each one is a
+    // session that it failed to let go of. Sessions of a worker that stopped answering are not
+    // counted; their worker's absence says why. One count over the partial index of unreleased
+    // sessions, which holds only the sessions whose lease has not been seen to end by a release.
+    public async Task<int> CountExpiredUnreleasedAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
+            select count(*)::integer
+            from character_simulation_sessions simulation_session
+            join simulation_workers worker
+              on worker.id = simulation_session.simulation_worker_id
+             and worker.runtime_id = simulation_session.worker_runtime_id
+            where simulation_session.released_at is null
+              and simulation_session.expires_at <= now()
+              and worker.is_online
+              and worker.last_heartbeat_at + make_interval(secs => @HeartbeatTimeoutSeconds) > now();
+            """,
+            new { HeartbeatTimeoutSeconds = (int)options.WorkerHeartbeatTimeout.TotalSeconds },
+            cancellationToken: cancellationToken));
+    }
+
     // Saves the character states of a worker runtime's sessions in one batch. A state is saved
     // only for a session that is its character's active, unreleased session on that worker and
     // runtime, and only when it is newer than the stored state of the same session; any other
@@ -419,6 +444,10 @@ internal sealed class SimulationSessionService(
         if (candidateCharacterIds.Length == 0)
         {
             await transaction.RollbackAsync(cancellationToken);
+            metrics.RecordCharacterStates(
+                PlacementMetrics.CheckpointSource,
+                PlacementMetrics.SessionNotActiveOutcome,
+                entries.Length);
             return ServiceResult<SimulationCharacterCheckpointResponse>.Ok(
                 new SimulationCharacterCheckpointResponse(0, entries.Length));
         }
@@ -459,6 +488,15 @@ internal sealed class SimulationSessionService(
             .ToArray();
         var saved = await simulationStates.SaveManyAsync(scope, writes, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        metrics.RecordCharacterStates(PlacementMetrics.CheckpointSource, PlacementMetrics.SavedOutcome, saved.Count);
+        metrics.RecordCharacterStates(
+            PlacementMetrics.CheckpointSource,
+            PlacementMetrics.NotNewerOutcome,
+            writes.Length - saved.Count);
+        metrics.RecordCharacterStates(
+            PlacementMetrics.CheckpointSource,
+            PlacementMetrics.SessionNotActiveOutcome,
+            entries.Length - writes.Length);
         return ServiceResult<SimulationCharacterCheckpointResponse>.Ok(
             new SimulationCharacterCheckpointResponse(saved.Count, entries.Length - saved.Count));
     }
@@ -538,6 +576,7 @@ internal sealed class SimulationSessionService(
                 transaction,
                 cancellationToken: cancellationToken));
             released = row?.Lease;
+            var finalStateOutcome = PlacementMetrics.AlreadyReleasedOutcome;
             if (row is { EndedByThisRelease: true, WorldId: not null, CollisionRevision: not null })
             {
                 var saved = await simulationStates.SaveManyAsync(
@@ -545,9 +584,18 @@ internal sealed class SimulationSessionService(
                     [row.ToWrite(finalState)],
                     cancellationToken);
                 finalStateSaved = saved.Contains(row.CharacterId);
+                finalStateOutcome = finalStateSaved ? PlacementMetrics.SavedOutcome : PlacementMetrics.NotNewerOutcome;
+            }
+            else if (row is { EndedByThisRelease: true })
+            {
+                finalStateOutcome = PlacementMetrics.SessionNotActiveOutcome;
             }
 
             await transaction.CommitAsync(cancellationToken);
+            if (row is not null)
+            {
+                metrics.RecordCharacterStates(PlacementMetrics.ReleaseSource, finalStateOutcome, 1);
+            }
         }
 
         return await ReleasedResponseAsync(connection, released, finalStateSaved, cancellationToken);

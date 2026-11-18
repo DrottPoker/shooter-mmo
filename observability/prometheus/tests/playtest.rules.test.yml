@@ -64,6 +64,27 @@ tests:
             exp_annotations:
               summary: More than 1 percent of the fixed ticks on w1 take longer than the tick interval.
 
+  - name: A worker that used more than half of its entity ids warns, one that did not stays quiet
+    interval: 15s
+    input_series:
+      # Half of 4,294,967,295 rounded down is 2,147,483,647: the third sample is the first above it.
+      - series: 'simulation_worker_realtime_entity_ids_used{job="mmorpg/simulation-worker", instance="w1"}'
+        values: '1000 2147483647 2147483648 2147483649'
+      - series: 'simulation_worker_realtime_entity_ids_used{job="mmorpg/simulation-worker", instance="w2"}'
+        values: '1000 1001 1002 1003'
+    alert_rule_test:
+      - eval_time: 15s
+        alertname: SimulationEntityIdsHalfUsed
+        exp_alerts: []
+      - eval_time: 30s
+        alertname: SimulationEntityIdsHalfUsed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+            exp_annotations:
+              summary: The worker on w1 used more than half of its entity ids; restart it at a quiet hour, as docs/MONITORING.md describes under Entity Ids.
+
   - name: GameService 5xx responses above one percent
     interval: 15s
     input_series:
@@ -133,6 +154,101 @@ tests:
               severity: warning
             exp_annotations:
               summary: The economy audit could not run every check in the last two hours; the GameService log says why.
+
+  - name: A retention task that keeps failing alerts, a lone failure and a task that recovers do not
+    interval: 1m
+    input_series:
+      # One failure a minute for 12 minutes, then none.
+      - series: 'game_service_retention_failures_total{job="mmorpg/game-service", instance="g1", task="item_operations", reason="lock_timeout"}'
+        values: '0+1x12 12x28'
+      # A single failure, which is routine.
+      - series: 'game_service_retention_failures_total{job="mmorpg/game-service", instance="g1", task="account_sessions", reason="error"}'
+        values: '0 0 1 1x38'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RetentionTaskFailing
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: RetentionTaskFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RetentionTaskFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              task: item_operations
+            exp_annotations:
+              summary: Retention task item_operations failed at least five times in the last ten minutes, so its table keeps growing; the GameService log says why.
+      - eval_time: 35m
+        alertname: RetentionTaskFailing
+        exp_alerts: []
+
+  - name: A retention task that falls behind alerts, a steady task and one that lost its lag series do not
+    interval: 1m
+    input_series:
+      - series: 'game_service_retention_lag_seconds{job="mmorpg/game-service", instance="g1", task="item_operations"}'
+        values: '0 0 0 1200x37'
+      - series: 'game_service_retention_lag_seconds{job="mmorpg/game-service", instance="g1", task="account_sessions"}'
+        values: '60x40'
+      # High for two minutes, then no series, as a task whose pass failed.
+      - series: 'game_service_retention_lag_seconds{job="mmorpg/game-service", instance="g1", task="join_tickets"}'
+        values: '2000 2000 _x38'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: RetentionLagHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RetentionLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              task: item_operations
+            exp_annotations:
+              summary: The oldest due row of retention task item_operations had waited more than 15 minutes when its latest pass began, so the task falls behind its table.
+
+  - name: Checkpoints that keep failing alert, a worker whose checkpoints are saved stays quiet
+    interval: 15s
+    input_series:
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w1", outcome="failed"}'
+        values: '0+4x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w1", outcome="saved"}'
+        values: '0+10x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w2", outcome="failed"}'
+        values: '0x40'
+      - series: 'simulation_worker_presence_checkpoint_states_total{instance="w2", outcome="saved"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CharacterCheckpointsFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CharacterCheckpointsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: w1
+            exp_annotations:
+              summary: GameService keeps refusing or failing the place and vitals that w1 sends, so a crash now loses more than the checkpoint interval of play.
+
+  - name: Sessions past their lease on a live worker alert after five minutes
+    interval: 15s
+    input_series:
+      - series: 'game_service_placement_sessions_expired_unreleased{job="mmorpg/game-service", instance="g1"}'
+        values: '0x12 2x28'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: SessionsUnreleasedPastLease
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Sessions of a worker that still answers are past their lease and unreleased, so it neither renews nor releases every session it holds; the worker log names them.
 
   - name: A worker that lost GameService alerts after a minute, one that answers does not
     interval: 15s

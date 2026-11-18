@@ -176,6 +176,7 @@ namespace Mmorpg.Client.Tests.EditMode
                     "Mmorpg.Client.Cloth",
                     "Unity.Mathematics",
                     "Mmorpg.Client.Worlds",
+                    "Mmorpg.GameProtocol",
                     "Mmorpg.GameSimulation",
                     "Mmorpg.WorldData",
                     "Mmorpg.WorldData.Client",

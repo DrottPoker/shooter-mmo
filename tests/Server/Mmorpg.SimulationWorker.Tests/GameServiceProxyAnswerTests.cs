@@ -443,7 +443,7 @@ public sealed class GameServiceProxyAnswerTests
         await service.HeartbeatRoundAsync(TestContext.Current.CancellationToken);
 
         Assert.True(requests >= 2, $"{description} was not sent again.");
-        Assert.True(sessions.IsCurrent(session, DateTime.UtcNow));
+        Assert.True(sessions.IsCurrent(session));
         Assert.True(sessions.IsCurrentGeneration(session));
         Assert.False(sessions.TryTakeInvalidation(session.SimulationSessionId, out _));
         Assert.True(sessions.TryGet(session.CharacterId, out var current));

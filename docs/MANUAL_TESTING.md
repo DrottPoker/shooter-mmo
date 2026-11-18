@@ -101,9 +101,10 @@ as the other:
    log in with another account.
 
 Expected result: the script ends with `Start check passed` and `Built
-local-development`, the player reaches LoginMenu with `Environment local ·
-Development build <commit>` in its footer, and it joins the same shard as the
-Editor client. Rebuild it after every change to the client, the protocol, or
+local-development`, its build summary names the realtime protocol version and
+the simulation revision of the code, the player reaches LoginMenu with
+`Environment local · Development build <commit>` and the same two versions in
+its footer, and it joins the same shard as the Editor client. Rebuild it after every change to the client, the protocol, or
 the shared simulation. [Build The Client](LOCAL_DEVELOPMENT.md#build-the-client)
 describes the script.
 
@@ -327,7 +328,9 @@ Close the Unity Editor of the checkout first.
 3. With the stack running, start `src\Client\Builds\local-release\MMORPG.exe`,
    log in, enter the World, and press `F3` and `F2`. Expected result: the
    login screen's footer shows `Environment local · Release build <commit> ·
-   Built <time> UTC`, no development login is filled in, `F3` opens nothing,
+   Built <time> UTC · Protocol <number> · Simulation <revision>`, which are the
+   realtime protocol version and the simulation revision that the servers must
+   run for this build to play, no development login is filled in, `F3` opens nothing,
    and `F2` opens the Debug menu, whose Network tab shows the environment and
    the stamp under Build and says that recording is available in the Editor
    and development builds only.
@@ -604,6 +607,50 @@ Expected result:
   the standalone player still sees the character standing. Entering it again
   from the new login within 20 seconds resumes the body where it stood; another
   character of the account gets the message of step 5 until the body is gone.
+
+### A Death That Waits For GameService
+
+Needs the stack, the Editor character in the wolf woods of `Local Shard 1` with
+an item in its bag, and the worker and GameService as separate processes, as
+[Local Development](LOCAL_DEVELOPMENT.md) starts them. The worker plays on for
+up to 120 seconds without GameService, so everything below takes less than that.
+
+1. Wait for the character to have been saved: the worker's `character
+   checkpoint` runs every 30 seconds, so wait a minute after walking to a
+   place.
+2. Stop GameService. Walk the character into a wolf and let the wolf kill it;
+   the character lies dead, and the notice that saving is paused shows.
+3. Stop the worker with Ctrl+C within the 120 seconds, then start GameService
+   and the worker again and enter the World with the same character.
+
+Expected result: the character enters alive where the checkpoint of step 1 left
+it, with the health it had then and the item in its bag, and no corpse lies
+where it died. The worker logged `GameService does not answer, so the uncommitted
+shots and quest kill credits of <n> sessions are not committed at shutdown` and
+no death was committed, as
+[Character Place And Vitals](SERVICE_FEATURES.md#character-place-and-vitals)
+describes.
+
+### Presence In The Metrics
+
+Needs the stack, the monitoring stack of [Monitoring](MONITORING.md) with both
+services exporting, and the Editor character in the World.
+
+1. In the Prometheus UI, query `simulation_worker_presence_lingering_bodies`.
+2. Press F2, click `Leave Shard`, and query again every few seconds.
+3. Enter the World again with the same character within 20 seconds, leave once
+   more, and let the 20 seconds pass.
+4. Query `sum by (reason) (simulation_worker_presence_bodies_ended_total)` and
+   `sum by (result) (simulation_worker_presence_reconnects_total)`.
+
+Expected result: the gauge reads 1 from step 2 until the body goes and 0 after
+it; `simulation_worker_realtime_players_real` drops by one at the leave and the
+body is not counted there. After step 4 `bodies_ended` has `resumed` 1 and
+`time_up` 1 for this worker, and `reconnects` has `resumed` 1. Within a
+minute `simulation_worker_presence_checkpoint_states_total{outcome="saved"}`
+has grown, and `game_service_placement_character_states_total` shows
+`source="checkpoint", outcome="saved"` and, after the last leave,
+`source="release"`.
 
 ### A Lost Connection
 
@@ -2745,6 +2792,57 @@ describes.
    walks faster than it does afterwards, neither at the start nor a moment
    later.
 
+### A Crowd Enters A View A Budget At A Time
+
+A connection gets at most 128 entities into its view between two of its
+refreshes, the nearest first, and only while its reliable queue has room for
+them, as [Interest Management](SERVICE_FEATURES.md#interest-management)
+describes, so a crowd can never fill the reliable queue that disconnects a peer,
+however slowly the client acknowledges.
+
+1. Start the infrastructure, GameService, and the stress arena worker as
+   [Active Simulation Bots](ACTIVE_SIMULATION_BOTS.md#run-the-local-population)
+   describes, and start 200 bots, more than one view takes at once, all inside
+   one interest radius:
+
+   ```powershell
+   dotnet run --project tools/ActiveSimulationBots --configuration Release -- --ActiveSimulationBots:MinimumActiveBots 200 --ActiveSimulationBots:MaximumActiveBots 200
+   ```
+
+2. Join `Local Stress Arena` with the Unity client once the bots have joined.
+   Expected result: the bots come into view around the character within about a
+   second of the first picture, the nearest first and a few a frame, not all at
+   once. The client is not disconnected, the stress arena worker's log has no
+   line `Disconnecting UDP peer`, and a second client that joins the same way
+   sees the crowd the same.
+3. With the [monitoring stack](MONITORING.md#run-the-monitoring-stack) running,
+   open Explore in Grafana and read
+   `simulation_worker_realtime_interest_entries_deferred_total`. Expected
+   result: the series with `cause="burst"` grew while the bots and the client
+   joined, and both causes stay at the same value while the crowd stands, since
+   nothing waits any more. The counter
+   `simulation_worker_realtime_peers_disconnected_total` has no series.
+4. Leave the client, and join again through the `poor` profile of the network
+   impairment proxy, a round trip of 200 ms, as
+   [Play On A Bad Network](#play-on-a-bad-network) describes. Expected result:
+   the 200 bots fill in over a second or two instead of a second: 400 packets
+   at a window of 64 per round trip take about 1.3 s, and the loss of the
+   profile slows it further, a few bots at a time and still nearest first; the
+   client is not disconnected, and the worker log has no line `Disconnecting
+   UDP peer`. The `cause="queue"` series grew while the crowd filled in.
+5. Run the worker-level checks of a crowd of 700 entities around one
+   connection, on a line that keeps up and on lines with a round trip of 200 and
+   400 ms, and of a client that acknowledges nothing for three seconds:
+
+   ```powershell
+   dotnet test tests/Server/Mmorpg.SimulationWorker.Tests --configuration Release --filter "FullyQualifiedName~EntryBurstTests"
+   ```
+
+   Expected result: five tests pass; with `--logger "console;verbosity=detailed"`
+   each prints how long the crowd took to be in the view, under a second on a
+   line that keeps up, and to be delivered, about 5 s at 200 ms and 10 s at
+   400 ms.
+
 ## Art In The Game
 
 The models, materials, clips, catalogs, prefabs, and item presentation of
@@ -3639,11 +3737,13 @@ without a disconnect.
 With the worker running and the shard online:
 
 ```powershell
+$protocol = (Get-Content src/Shared/GameProtocol/Schema~/realtime-protocol.json -Raw | ConvertFrom-Json).protocol.version
+$simulation = (Select-String -Path src/Shared/GameSimulation/Runtime/GameSimulationCompatibility.cs -Pattern 'Revision = "([^"]+)"').Matches[0].Groups[1].Value
 $join = Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join `
   -Method Post `
   -Headers $headers `
   -ContentType "application/json" `
-  -Body (@{ characterId = $character.id } | ConvertTo-Json)
+  -Body (@{ characterId = $character.id; protocolVersion = $protocol; simulationRevision = $simulation } | ConvertTo-Json)
 $join.shard.id
 $join.shard.worldId
 $join.endpoint
@@ -3651,7 +3751,10 @@ $join.joinTicketId
 [Convert]::FromBase64String($join.transportKey).Length
 ```
 
-Expected result: `local-shard-1`, `development-world-2`, an endpoint that
+The request names the protocol version and simulation revision of the code that
+the stack runs, as a client does; without them GameService refuses the join, as
+[Versions Of A Join](#versions-of-a-join) shows. Expected result: `local-shard-1`,
+`development-world-2`, an endpoint that
 names `local-simulation-worker-1`, its current runtime, host `127.0.0.1`, and
 UDP port `27015`, which the public shard list never shows, a ticket id, and a
 transport key of `32` bytes. The ticket is short-lived and is consumed only by
@@ -3662,6 +3765,72 @@ until the consume or a newer ticket clears it:
 ```text
 select id, octet_length(transport_key) as key_bytes, consumed_at from simulation_join_tickets order by created_at desc limit 3;
 ```
+
+### Versions Of A Join
+
+A client plays only on a worker with exactly its protocol version, simulation
+revision, and collision data, as [Versioning](REALTIME_PROTOCOL.md#versioning)
+describes. With the worker running, the shard online, and `$join` from the
+check above, send the join with other versions:
+
+```powershell
+function Join-With($Fields) {
+  $body = (@{ characterId = $character.id } + $Fields) | ConvertTo-Json
+  try {
+    (Invoke-RestMethod http://localhost:5000/api/shards/local-shard-1/join -Method Post `
+      -Headers $headers -ContentType "application/json" -Body $body).joinTicketId
+  }
+  catch { ($_.ErrorDetails.Message | ConvertFrom-Json).code }
+}
+$v = $join.endpoint.protocolVersion
+$sim = $join.endpoint.simulationRevision
+Join-With @{}
+Join-With @{ protocolVersion = $v - 1; simulationRevision = $sim }
+Join-With @{ protocolVersion = $v + 1; simulationRevision = $sim }
+Join-With @{ protocolVersion = $v; simulationRevision = "another-simulation" }
+Join-With @{ protocolVersion = $v; simulationRevision = $sim; worldId = $join.shard.worldId; collisionRevision = "another-collision" }
+Join-With @{ protocolVersion = $v; simulationRevision = $sim; worldId = "another-world"; collisionRevision = "another-collision" }
+```
+
+Expected result, in order: `incompatible_protocol` for a request without
+versions, `incompatible_protocol` for a worker ahead of the client,
+`shard_not_updated` for a worker behind it, `incompatible_simulation`,
+`incompatible_world_data`, and a ticket id for the last, whose World the shard
+does not run, so its collision revision is not judged. Every refusal is a `409`,
+leaves the ticket of the account as it was, and issues none. With the monitoring
+stack running, Prometheus shows `game_service_placement_join_refusals_total`
+labeled with the shard and each `reason`, five refusals in all.
+
+To see what a player sees, with the Unity Editor in Play Mode at CharacterSelect
+with the character and shard chosen:
+
+1. Stop SimulationWorker without a graceful stop, for example by closing its
+   terminal window. GameService counts it online until the heartbeat timeout, 30
+   seconds by default, and nothing renews its versions in that time.
+2. Within those 30 seconds change what the worker reported, in the local database
+   only, as [Look Into The Database](#look-into-the-database) runs a query, and
+   press `Enter World` after each change:
+
+   ```text
+   update simulation_workers set protocol_version = protocol_version + 1;
+   update simulation_workers set protocol_version = protocol_version - 2;
+   update simulation_workers set protocol_version = protocol_version + 1, simulation_revision = 'another-simulation';
+   update simulation_workers set simulation_revision = (select simulation_revision from simulation_workers limit 1), collision_revision = 'another-collision';
+   ```
+
+Expected result, in order: the status line says `Your game is out of date.
+Update it to play.`, `This shard has not been updated to your version of the
+game yet. Try again in a few minutes.`, `Your game and this shard are on
+different versions. Update the game, or try again in a few minutes if it is up
+to date.`, and `The world data of your game does not match this shard. Update the
+game, or try again in a few minutes if it is up to date.` No character appears in
+the World. Start SimulationWorker again afterwards, which reports its own
+versions again, and `Enter World` works.
+
+With the character in the World, stop the worker without a graceful stop, change
+its versions the same way, and wait for the Editor's connection to drop: its
+reconnect gives up at its first attempt and CharacterSelect shows the same text,
+not `The connection to the world was lost and could not be restored.`
 
 ### Logout And Session Revocation
 
@@ -3882,6 +4051,23 @@ it lists the missing migrations and seed changes and changes nothing. `migrate`
 prints what it applied, ends with `The database is current.`, and `$LASTEXITCODE`
 is `0`. Neither starts the web host.
 
+Check that a plan never runs as a migration, whatever the order of the
+arguments. The last two refuse before they connect, so they also work with
+PostgreSQL stopped:
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --Retention:BatchSize=500 --plan
+dotnet run --project src/Server/GameService -- migrate --Plan
+$LASTEXITCODE
+dotnet run --project src/Server/GameService -- migrate --dry-run
+$LASTEXITCODE
+```
+
+Expected result: the first prints the plan and changes nothing. The other two
+print one line, such as `migrate did not run: '--Plan' is not the option --plan,
+which is written exactly so, without a value.`, followed by the usage, and
+`$LASTEXITCODE` is `1`.
+
 Then start GameService the way every environment but Development does, and make
 the database fall behind once, as [Look Into The Database](#look-into-the-database)
 describes:
@@ -3906,6 +4092,32 @@ and names `Mmorpg.GameService migrate`. Run
 start with the variable reports ready. Remove the variable with
 `Remove-Item Env:Database__RunMigrationsOnStartup` before you start GameService
 for anything else.
+
+Now play the part of a rollback to an older build: record a migration that this
+build does not know, as [Look Into The Database](#look-into-the-database)
+describes.
+
+```text
+insert into schema_migrations (id) values ('209912315959_from_a_newer_release');
+```
+
+```powershell
+dotnet run --project src/Server/GameService -- migrate --plan
+dotnet run --project src/Server/GameService -- migrate
+$LASTEXITCODE
+$env:Database__RunMigrationsOnStartup = "false"
+dotnet run --project src/Server/GameService
+```
+
+Expected result: `migrate --plan` and `migrate` each print `migrate --plan
+failed:` or `migrate failed:` with `The database is newer than this build`
+and `209912315959_from_a_newer_release`, apply and seed nothing, and
+`$LASTEXITCODE` is `1`. The start reports ready and logs one warning that
+names the unknown migration. Change a catalog revision again with the update
+above and the start refuses, says that the database is newer than this build,
+and does not advise `migrate`. Clean up with
+`delete from schema_migrations where id = '209912315959_from_a_newer_release';`
+and `Remove-Item Env:Database__RunMigrationsOnStartup`.
 
 A second start of GameService with unchanged content logs no
 `Database seed change` line: it neither recomputes the carry state nor reads the
@@ -3987,6 +4199,25 @@ three and a half minutes, unless a death event of an open or recently closed
 corpse holds it, and no ended simulation session older than four minutes is
 left. The client keeps playing throughout. Remove the three variables, or
 close the terminal, before you start GameService for anything else.
+
+To see a stuck task, hold a lock on one of its tables while GameService runs
+with the same variables. In `psql`, as [Look Into The Database](#look-into-the-database)
+describes, leave this transaction open:
+
+```text
+begin;
+lock table item_destructions in access exclusive mode;
+```
+
+Expected result: about every 15 seconds GameService logs `Retention task
+item_destructions gave up a batch with 55P03` at warning level, never at error
+level, and the other tasks keep deleting. With the monitoring stack running,
+`game_service_retention_failures_total{task="item_destructions",reason="lock_timeout"}`
+grows by one per pass, `game_service_retention_lag_seconds{task="item_destructions"}`
+has no series while the task fails, and `RetentionTaskFailing` fires once the
+failures have gone on for several minutes. After `rollback;` the next pass
+deletes the due rows, the counter stops, the lag series returns with the time
+that the rows waited, and the alert resolves.
 
 ## Production-Like Stack
 

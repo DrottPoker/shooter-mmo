@@ -33,7 +33,8 @@ internal static class SessionFeature
             core.PerformanceMetrics,
             core.Logger,
             core.ShardRules,
-            playerCombat.Authority);
+            playerCombat.Authority,
+            core.PresenceMetrics);
         RealtimeSessionHandler.AddRoutes(core.Registries.Routes, handler.HandleJoinRequest, handler.HandleLeaveRequest);
         var timer = new LingeringBodyTimer(
             core.Bodies,
@@ -41,7 +42,8 @@ internal static class SessionFeature
             core.Teardown,
             core.SessionOperations,
             playerCombat.Authority,
-            core.Logger);
+            core.Logger,
+            core.PresenceMetrics);
         timer.AddTickPhase(core.Registries.TickPhases);
         core.Registries.ShutdownSteps.Add(RealtimeShutdownOrder.LingeringBodies, "lingering bodies", timer.Clear);
         var availabilityNotice = new GameServiceAvailabilityNotice(

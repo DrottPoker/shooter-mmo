@@ -6,8 +6,8 @@ internal static class AccountSessionRetentionIndexMigration
 
     // The retention of account sessions deletes the sessions whose token expired longest ago first.
     // The migration builds the index inside its transaction, which blocks writes to the table while
-    // it builds. That is fine at today's sizes; a large live table needs create index
-    // concurrently, which runs outside a transaction and the migration runner cannot run yet.
+    // it builds. That is fine at today's sizes; a large live table needs a migration from
+    // DatabaseMigration.CreateIndexConcurrently, which the runner runs outside a transaction.
     public const string Sql = """
         create index ix_account_sessions_retention
             on account_sessions(expires_at, id);

@@ -497,13 +497,23 @@ internal sealed class ReplicationBenchmark : IDisposable
 
         // World actors take their ids before the players, as at the worker's start.
         mobStore = CreateMobStore(layout, random, entities, config);
+
+        // Entries to a view follow the room of the peer's reliable queue as in the worker. The
+        // counting peers hold no queue, so the room is always a whole burst and the numbers stay
+        // as they were; the refresh pays for reading the queue of every connection, as it does.
+        var interestManager = new SimulationInterestManager(config.InterestManagement)
+        {
+            EntriesAllowedSource = new ReliableQueueEntryBudget(
+                peers,
+                ReliableQueueEntryBudget.HighWaterOf(config.Admission.MaxReliableQueuedPackets)).EntriesAllowed
+        };
         presence = new EntityPresenceReplicator(
             peers,
             sender,
             entities,
             bindings,
             mobStore,
-            new SimulationInterestManager(config.InterestManagement),
+            interestManager,
             networkMetrics,
             clock,
             hooks);

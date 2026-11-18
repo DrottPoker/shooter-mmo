@@ -141,7 +141,7 @@ public sealed class ItemPersistenceIntegrationTests
                 new { AccountId = accountId, CharacterId = characterId });
         }
 
-        var applied = await runner.ApplyAsync(schema.Migrations, CancellationToken.None);
+        var applied = (await runner.ApplyAsync(schema.Migrations, CancellationToken.None)).Applied;
         var first = await LoadBootstrapSnapshotAsync(context, characterId);
 
         Assert.Equal(0, first.Revision);

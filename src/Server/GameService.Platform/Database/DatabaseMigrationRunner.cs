@@ -5,9 +5,10 @@ using Npgsql;
 namespace Mmorpg.GameService.Platform.Database;
 
 // Applies migrations in order under one advisory lock, so concurrent GameService processes
-// apply each exactly once. A migration in a transaction holds the lock for its transaction
-// and waits for table locks only up to the migration lock timeout. A migration outside a
-// transaction runs alone under the session-level form of the same lock.
+// apply each exactly once. A migration in a transaction holds the lock for its transaction,
+// waits for table locks only up to the migration lock timeout, and runs its SQL under the
+// migration command timeout. A migration outside a transaction runs alone under the
+// session-level form of the same lock. Waiting for the lock itself never times out.
 public sealed class DatabaseMigrationRunner(
     NpgsqlDataSource dataSource,
     PlatformOptions options,
@@ -15,25 +16,66 @@ public sealed class DatabaseMigrationRunner(
 {
     public const long MigrationLockId = 7_104_202_607_071_600;
 
-    // The ids of the migrations that the database has not recorded, in order. Reads only
-    // schema_migrations, and a database without it has recorded none.
-    public async Task<IReadOnlyList<string>> PendingAsync(
-        IEnumerable<DatabaseMigration> migrations,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(migrations);
+    // Npgsql's command timeout of 30 seconds would end a wait that never times out: the wait for
+    // the migration lock lasts as long as another process migrates, and a concurrent index build
+    // lasts as long as the table needs.
+    private const int NoCommandTimeout = 0;
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var applied = await ReadAppliedAsync(connection, cancellationToken);
-        return migrations
-            .Where(migration => !applied.Contains(migration.Id))
-            .Select(migration => migration.Id)
-            .ToArray();
+    // The lock of one whole migrate-and-seed. The migration lock above serializes single
+    // migrations; this one serializes the complete operation of a process, from its read of the
+    // recorded ids to its last seed, so what one process decided about the database still holds
+    // when it seeds. It is a session lock on a connection of its own, so the migrations and the
+    // seeders, which use other connections, never wait for it.
+    public const long OperationLockId = 7_104_202_611_180_900;
+
+    // Waits for the operation lock, as long as another process holds it, and holds it until the
+    // result is disposed. The connection that holds it is outside the pool: it stays open for the
+    // whole operation, and with Database:MaximumPoolSize at 1 a pooled one would leave the
+    // migrations and the seeders none.
+    public async Task<IAsyncDisposable> HoldOperationLockAsync(CancellationToken cancellationToken)
+    {
+        var connection = new NpgsqlConnection(
+            new NpgsqlConnectionStringBuilder(options.PostgresConnectionString) { Pooling = false }.ConnectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select pg_advisory_lock(@OperationLockId);",
+                new { OperationLockId },
+                commandTimeout: NoCommandTimeout,
+                cancellationToken: cancellationToken));
+            return new OperationLock(connection);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
     }
 
-    // Applies every migration that the database has not recorded and returns the ids it
-    // applied. A database that recorded all of them sees only the read of their ids.
-    public async Task<IReadOnlyList<string>> ApplyAsync(
+    private sealed class OperationLock(NpgsqlConnection connection) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await connection.ExecuteAsync("select pg_advisory_unlock(@OperationLockId);", new { OperationLockId });
+            }
+            catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+            {
+                // A broken session has lost the lock already, and closing the session frees it too.
+            }
+            finally
+            {
+                await connection.DisposeAsync();
+            }
+        }
+    }
+
+    // The ids of the migrations that the database has not recorded, in order, and the recorded
+    // ids that these migrations do not contain, which a newer release recorded. Reads only
+    // schema_migrations, and a database without it has recorded none.
+    public async Task<MigrationPlan> PlanAsync(
         IEnumerable<DatabaseMigration> migrations,
         CancellationToken cancellationToken)
     {
@@ -41,10 +83,48 @@ public sealed class DatabaseMigrationRunner(
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var recorded = await ReadAppliedAsync(connection, cancellationToken);
-        var pending = migrations.Where(migration => !recorded.Contains(migration.Id)).ToArray();
+        return Compare(migrations, recorded).Plan;
+    }
+
+    // Applies every migration that the database has not recorded and says which it applied. A
+    // database that recorded all of them sees only the read of their ids. A database that a newer
+    // release migrated gets the migrations that it lacks all the same: the recorded ids that these
+    // migrations do not contain are only reported.
+    public Task<MigrationRun> ApplyAsync(
+        IEnumerable<DatabaseMigration> migrations,
+        CancellationToken cancellationToken)
+    {
+        return ApplyAsync(migrations, refuseWhenAhead: false, cancellationToken);
+    }
+
+    // Like ApplyAsync, but a database that a newer release migrated is refused before anything is
+    // applied, with a DatabaseAheadOfBuildException: this build cannot know what the newer
+    // release changed, so it must neither migrate nor seed over it.
+    public Task<MigrationRun> ApplyUnlessAheadAsync(
+        IEnumerable<DatabaseMigration> migrations,
+        CancellationToken cancellationToken)
+    {
+        return ApplyAsync(migrations, refuseWhenAhead: true, cancellationToken);
+    }
+
+    private async Task<MigrationRun> ApplyAsync(
+        IEnumerable<DatabaseMigration> migrations,
+        bool refuseWhenAhead,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(migrations);
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var recorded = await ReadAppliedAsync(connection, cancellationToken);
+        var (plan, pending) = Compare(migrations, recorded);
+        if (refuseWhenAhead && plan.IsAhead)
+        {
+            throw new DatabaseAheadOfBuildException(plan.Unknown);
+        }
+
         if (pending.Length == 0)
         {
-            return [];
+            return new MigrationRun([], plan.Unknown);
         }
 
         await EnsureMigrationTableAsync(connection, cancellationToken);
@@ -60,7 +140,18 @@ public sealed class DatabaseMigrationRunner(
             }
         }
 
-        return applied;
+        return new MigrationRun(applied, plan.Unknown);
+    }
+
+    private static (MigrationPlan Plan, DatabaseMigration[] Pending) Compare(
+        IEnumerable<DatabaseMigration> migrations,
+        HashSet<string> recorded)
+    {
+        var all = migrations.ToArray();
+        var pending = all.Where(migration => !recorded.Contains(migration.Id)).ToArray();
+        var known = all.Select(migration => migration.Id).ToHashSet(StringComparer.Ordinal);
+        var unknown = recorded.Where(id => !known.Contains(id)).Order(StringComparer.Ordinal).ToArray();
+        return (new MigrationPlan(pending.Select(migration => migration.Id).ToArray(), unknown), pending);
     }
 
     private static async Task<HashSet<string>> ReadAppliedAsync(
@@ -90,6 +181,7 @@ public sealed class DatabaseMigrationRunner(
                 "select pg_advisory_xact_lock(@MigrationLockId);",
                 new { MigrationLockId },
                 transaction,
+                commandTimeout: NoCommandTimeout,
                 cancellationToken: cancellationToken));
             await connection.ExecuteAsync(new CommandDefinition(
                 """
@@ -122,6 +214,7 @@ public sealed class DatabaseMigrationRunner(
                 "select pg_advisory_xact_lock(@MigrationLockId);",
                 new { MigrationLockId },
                 transaction: transaction,
+                commandTimeout: NoCommandTimeout,
                 cancellationToken: cancellationToken));
 
             // Set after the advisory lock, so waiting for another migrating process never
@@ -138,10 +231,7 @@ public sealed class DatabaseMigrationRunner(
                 return false;
             }
 
-            await connection.ExecuteAsync(new CommandDefinition(
-                migration.Sql,
-                transaction: transaction,
-                cancellationToken: cancellationToken));
+            await RunSqlAsync(connection, transaction, migration, cancellationToken);
             await RecordAsync(connection, transaction, migration, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             logger.LogInformation("Applied database migration {MigrationId}.", migration.Id);
@@ -175,6 +265,7 @@ public sealed class DatabaseMigrationRunner(
         await connection.ExecuteAsync(new CommandDefinition(
             "select pg_advisory_lock(@MigrationLockId);",
             new { MigrationLockId },
+            commandTimeout: NoCommandTimeout,
             cancellationToken: cancellationToken));
 
         bool applied;
@@ -244,6 +335,33 @@ public sealed class DatabaseMigrationRunner(
             "Applied database migration {MigrationId} outside a transaction.",
             migration.Id);
         return true;
+    }
+
+    // The SQL of a migration in a transaction runs under the explicit migration command timeout,
+    // not Npgsql's 30 seconds, which would fail every migration that runs longer.
+    private async Task RunSqlAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        DatabaseMigration migration,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                migration.Sql,
+                transaction: transaction,
+                commandTimeout: (int)Math.Ceiling(options.MigrationCommandTimeout.TotalSeconds),
+                cancellationToken: cancellationToken));
+        }
+        catch (NpgsqlException exception) when (
+            exception.InnerException is TimeoutException && !cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                $"Database migration {migration.Id} ran longer than "
+                + $"{options.MigrationCommandTimeout.TotalSeconds:0} s and was cancelled, so nothing of it was applied. "
+                + $"Raise {PlatformOptions.MigrationCommandTimeoutKey} to run it.",
+                exception);
+        }
     }
 
     private static Task<bool> IsRecordedAsync(

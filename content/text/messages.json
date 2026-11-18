@@ -251,6 +251,10 @@
       "text": "Your game and this shard are on different versions. Update the game, or try again in a few minutes if it is up to date."
     },
     {
+      "key": "message/incompatible_world_data",
+      "text": "The world data of your game does not match this shard. Update the game, or try again in a few minutes if it is up to date."
+    },
+    {
       "key": "message/insurance_applied",
       "text": "Insurance applied. It covers one death."
     },

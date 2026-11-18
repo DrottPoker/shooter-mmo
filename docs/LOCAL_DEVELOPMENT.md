@@ -382,8 +382,13 @@ script compilation finish. With GameService and a worker running, open
   [Configuration](UNITY_CLIENT_ARCHITECTURE.md#configuration) describes both.
 - After a change to the realtime protocol, the shared simulation, or the
   transport, exit Play Mode, restart SimulationWorker, and rebuild every
-  player, so that every process runs the same code. A worker rejects a client
-  of another protocol version at the join.
+  player, so that every process runs the same code. GameService refuses the
+  join of a client whose protocol version, simulation revision, or collision
+  data is not the worker's, with `incompatible_protocol`, `shard_not_updated`,
+  `incompatible_simulation`, or `incompatible_world_data`, as
+  [Versioning](REALTIME_PROTOCOL.md#versioning) describes. The Editor always
+  runs the code of its project, so only a restarted worker or a player build of
+  another commit meets one.
 - Player builds go to the ignored `Builds` folder below `src/Client`, as
   [Build The Client](#build-the-client) describes, and are never committed.
 - Run the Unity tests as [Run The Unity Tests](#run-the-unity-tests) describes.
@@ -414,8 +419,10 @@ The player goes to `src/Client/Builds/<environment>-<development|release>/`,
 which the script empties first, with `MMORPG.exe`. Beside that folder it
 writes `<build>.build-summary.txt`, the summary it prints: the result, the
 environment, the build kind, the commit and whether the working tree had
-changes, the build time, the scripting backend, the stripping level, the
-IL2CPP code generation and C++ compiler configuration, the time, the shipped
+changes, the build time, the realtime protocol version and the simulation
+revision of the code, which say which servers the build fits, the scripting
+backend, the stripping level, the IL2CPP code generation and C++ compiler
+configuration, the time, the shipped
 size and the size of the debug data that IL2CPP and Burst write beside the
 player, and the build errors and warnings and the C++ warnings of IL2CPP by
 count. `<build>.build-report.json` and `<build>.unity-build.log` keep the
@@ -1848,7 +1855,12 @@ $LASTEXITCODE
 ```
 
 Next to a build, the same is `Mmorpg.GameService migrate --plan` and
-`Mmorpg.GameService migrate`.
+`Mmorpg.GameService migrate`. `--plan` may stand anywhere after `migrate`, written
+exactly so, and configuration arguments may stand before it. Any other argument
+that the configuration would silently ignore, such as `--Plan`, `--plan=true`,
+`--dry-run`, or a bare word, makes the command print one line that names it and
+the usage and exit with code 1 before it connects, so a plan never runs as a
+migration.
 
 Expected result: on a database that the last start or `migrate` brought up to
 date, `migrate --plan` prints `Pending migrations: none`,
@@ -1861,7 +1873,15 @@ the migrations it applied and the seed changes, ends with
 `migrate failed:` with the reason and exits with code 1. A migration that waits
 longer than `Database:MigrationLockTimeoutMilliseconds` for a lock that other
 sessions hold fails this way without applying anything; run `migrate` again
-when that traffic has passed. What the command does is in
+when that traffic has passed. So does a migration whose SQL runs longer than
+`Database:MigrationCommandTimeoutSeconds`, which names the setting to raise.
+Waiting for another process that migrates never fails. A database that a newer
+release migrated, which records migrations that this build does not contain, is
+refused by `migrate` and `migrate --plan` with `migrate failed: The database is
+newer than this build`, the unknown ids, and exit code 1, and nothing is applied
+or seeded; start the newer release, or restore a backup from before it migrated,
+as [Rolling Back A Release](GAME_SERVICE_MODULES.md#rolling-back-a-release)
+describes. What the command does is in
 [Running Migrations](GAME_SERVICE_MODULES.md#running-migrations).
 
 ### Audit The Economy
@@ -1881,7 +1901,9 @@ dotnet run --project src/Server/GameService -- audit --json
 
 Next to a build, the same is `Mmorpg.GameService audit` and
 `Mmorpg.GameService audit --json`. Configuration arguments follow the command,
-such as `audit --Audit:ExampleLimit=20`. Beside a GameService that runs from the
+such as `audit --Audit:ExampleLimit=20`, and `--json` may stand anywhere after
+`audit`, written exactly so; an argument that the configuration would silently
+ignore is refused like the ones of `migrate`. Beside a GameService that runs from the
 same checkout, add `--no-build` before `--`, because a build cannot replace the
 files that the running service holds.
 
@@ -1892,7 +1914,8 @@ violation is marked `VIOLATED` with its description and up to
 `Audit:ExampleLimit` examples by id, the report ends with
 `Violations found by <n> checks: <ids>.`, and the exit code is `1`. When the
 audit could not run, because the database cannot be reached, `migrate` would
-still change it, or a check hit `Audit:StatementTimeoutSeconds`, the check is
+still change it, a newer release migrated it, or a check hit
+`Audit:StatementTimeoutSeconds`, the check is
 marked `FAILED` or the report says why, `audit failed:` follows on the error
 stream, and the exit code is `2`. `--json` prints the same report as one JSON
 object with `outcome` (`clean`, `violations`, or `failed`), `exitCode`,
